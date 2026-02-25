@@ -90,6 +90,14 @@ class WeatherService {
         self.cityWeatherData = weatherData
     }
     
+    func removeCity(_ cityWeather: CityWeather) {
+        cityWeatherData.removeAll { $0.id == cityWeather.id }
+    }
+    
+    func moveCity(from source: IndexSet, to destination: Int) {
+        cityWeatherData.move(fromOffsets: source, toOffset: destination)
+    }
+    
     private func generateForecastDays() {
         let calendar = Calendar.current
         let today = Date()

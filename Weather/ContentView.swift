@@ -20,8 +20,55 @@ struct ContentView: View {
     
     @State private var selectedCity: CityWeather?
     @State private var selectedDayOffset: Int = 0
+    @State private var isEditMode: Bool = false
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     
     var body: some View {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
+            // Sidebar
+            CityListSidebar(
+                cities: weatherService.cityWeatherData,
+                selectedCity: $selectedCity,
+                selectedDayOffset: selectedDayOffset,
+                isEditMode: $isEditMode,
+                columnVisibility: $columnVisibility,
+                onCitySelected: { cityWeather in
+                    selectedCity = cityWeather
+                    // Animate to the selected city
+                    withAnimation {
+                        position = .region(
+                            MKCoordinateRegion(
+                                center: CLLocationCoordinate2D(
+                                    latitude: cityWeather.city.latitude,
+                                    longitude: cityWeather.city.longitude
+                                ),
+                                span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 5.0)
+                            )
+                        )
+                    }
+                },
+                onDeleteCity: { cityWeather in
+                    weatherService.removeCity(cityWeather)
+                    if selectedCity?.id == cityWeather.id {
+                        selectedCity = nil
+                    }
+                },
+                onMoveCity: { source, destination in
+                    weatherService.moveCity(from: source, to: destination)
+                }
+            )
+        } detail: {
+            // Map view
+            mapView
+        }
+        .task {
+            print("Starting weather fetch...")
+            await weatherService.fetchWeatherForAllCities()
+            print("Weather data count: \(weatherService.cityWeatherData.count)")
+        }
+    }
+    
+    private var mapView: some View {
         ZStack(alignment: .bottom) {
             Map(position: $position, selection: $selectedCity) {
                 ForEach(weatherService.cityWeatherData) { cityWeather in
@@ -91,11 +138,6 @@ struct ContentView: View {
                 .padding(.bottom, 20)
             }
         }
-        .task {
-            print("Starting weather fetch...")
-            await weatherService.fetchWeatherForAllCities()
-            print("Weather data count: \(weatherService.cityWeatherData.count)")
-        }
     }
     
     private var currentForecastDay: ForecastDay? {
@@ -148,6 +190,141 @@ struct WeatherMarker: View {
         .padding(8)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
         .shadow(color: .black.opacity(0.2), radius: 3)
+    }
+}
+
+
+
+// MARK: - City List Sidebar
+
+struct CityListSidebar: View {
+    let cities: [CityWeather]
+    @Binding var selectedCity: CityWeather?
+    let selectedDayOffset: Int
+    @Binding var isEditMode: Bool
+    @Binding var columnVisibility: NavigationSplitViewVisibility
+    let onCitySelected: (CityWeather) -> Void
+    let onDeleteCity: (CityWeather) -> Void
+    let onMoveCity: (IndexSet, Int) -> Void
+    
+    private var isSidebarVisible: Bool {
+        columnVisibility != .detailOnly
+    }
+    
+    var body: some View {
+        List(selection: $selectedCity) {
+            ForEach(cities) { cityWeather in
+                CityRow(cityWeather: cityWeather, dayOffset: selectedDayOffset)
+                    .tag(cityWeather)
+                    #if os(macOS)
+                    .contextMenu {
+                        Button(role: .destructive) {
+                            onDeleteCity(cityWeather)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                    #else
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        if !isEditMode {
+                            onCitySelected(cityWeather)
+                        }
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button(role: .destructive) {
+                            onDeleteCity(cityWeather)
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                    }
+                    #endif
+            }
+            .onDelete { indexSet in
+                for index in indexSet {
+                    onDeleteCity(cities[index])
+                }
+            }
+            .onMove { source, destination in
+                onMoveCity(source, destination)
+            }
+        }
+        #if os(macOS)
+        .listStyle(.sidebar)
+        .onChange(of: selectedCity) { oldValue, newValue in
+            if let city = newValue {
+                onCitySelected(city)
+            }
+        }
+        #else
+        .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
+        #endif
+        .navigationTitle("Cities")
+        .toolbar {
+            if isSidebarVisible {
+                #if !os(macOS)
+                ToolbarItem(placement: .automatic) {
+                    Button {
+                        withAnimation {
+                            isEditMode.toggle()
+                        }
+                    } label: {
+                        Label(isEditMode ? "Done" : "Edit", systemImage: isEditMode ? "checkmark" : "pencil")
+                    }
+                }
+                #endif
+            }
+        }
+        #if os(macOS)
+        .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
+        #endif
+    }
+}
+
+// MARK: - City Row
+
+struct CityRow: View {
+    let cityWeather: CityWeather
+    let dayOffset: Int
+    
+    private var forecast: DailyForecast {
+        cityWeather.forecast(for: dayOffset)
+    }
+    
+    var body: some View {
+        HStack(spacing: 12) {
+            // Weather icon
+            if forecast.isRainIcon {
+                Image(systemName: forecast.weatherIcon)
+                    .font(.title3)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .blue)
+                    .frame(width: 32, height: 28)
+            } else if forecast.isPartiallySunnyIcon {
+                Image(systemName: forecast.weatherIcon)
+                    .font(.title3)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .yellow)
+                    .frame(width: 32, height: 28)
+            } else {
+                Image(systemName: forecast.weatherIcon)
+                    .font(.title3)
+                    .foregroundStyle(forecast.weatherColor)
+                    .frame(width: 32, height: 28)
+            }
+            
+            // City name
+            Text(cityWeather.city.name)
+                .font(.body)
+            
+            Spacer()
+            
+            // Temperature
+            Text("\(Int(forecast.temperature))°C")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 4)
     }
 }
 
