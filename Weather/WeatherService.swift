@@ -20,7 +20,7 @@ class WeatherService {
     
     private let weatherService = WeatherKit.WeatherService.shared
     
-    // Major European cities
+    // European cities
     let europeanCities: [City] = [
         // Western Europe
         City(name: "London", latitude: 51.5074, longitude: -0.1278),
@@ -37,7 +37,6 @@ class WeatherService {
         City(name: "Vienna", latitude: 48.2082, longitude: 16.3738),
         City(name: "Prague", latitude: 50.0755, longitude: 14.4378),
         City(name: "Zurich", latitude: 47.3769, longitude: 8.5417),
-        City(name: "Milan", latitude: 45.4642, longitude: 9.1900),
         
         // Nordic Countries
         City(name: "Stockholm", latitude: 59.3293, longitude: 18.0686),
@@ -49,20 +48,14 @@ class WeatherService {
         City(name: "Rome", latitude: 41.9028, longitude: 12.4964),
         City(name: "Athens", latitude: 37.9838, longitude: 23.7275),
         City(name: "Barcelona", latitude: 41.3851, longitude: 2.1734),
-        City(name: "Naples", latitude: 40.8518, longitude: 14.2681),
+        City(name: "Milan", latitude: 45.4642, longitude: 9.1900),
         
         // Eastern Europe
         City(name: "Warsaw", latitude: 52.2297, longitude: 21.0122),
         City(name: "Budapest", latitude: 47.4979, longitude: 19.0402),
         City(name: "Bucharest", latitude: 44.4268, longitude: 26.1025),
         City(name: "Sofia", latitude: 42.6977, longitude: 23.3219),
-        City(name: "Kiev", latitude: 50.4501, longitude: 30.5234),
-        
-        // Other major cities
-        City(name: "Istanbul", latitude: 41.0082, longitude: 28.9784),
-        City(name: "Lyon", latitude: 45.7640, longitude: 4.8357),
-        City(name: "Hamburg", latitude: 53.5511, longitude: 9.9937),
-        City(name: "Porto", latitude: 41.1579, longitude: -8.6291)
+        City(name: "Istanbul", latitude: 41.0082, longitude: 28.9784)
     ]
     
     func fetchWeatherForAllCities() async {
