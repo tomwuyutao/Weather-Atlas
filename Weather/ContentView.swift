@@ -26,6 +26,7 @@ struct ContentView: View {
     @State private var isZoomedOut: Bool = true
     @State private var showingCityDetail: Bool = false
     @State private var tappedCity: CityWeather?
+    @Namespace private var popupNamespace
     
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -73,7 +74,7 @@ struct ContentView: View {
     }
     
     private var mapView: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             Map(position: $position, selection: $selectedCity) {
                 ForEach(weatherService.cityWeatherData) { cityWeather in
                     Annotation(cityWeather.city.name, 
@@ -84,11 +85,15 @@ struct ContentView: View {
                         WeatherMarker(
                             cityWeather: cityWeather,
                             dayOffset: selectedDayOffset,
-                            isCompact: isZoomedOut
+                            isCompact: isZoomedOut,
+                            namespace: popupNamespace,
+                            isExpanded: showingCityDetail && tappedCity?.id == cityWeather.id
                         )
                         .onTapGesture {
                             tappedCity = cityWeather
-                            showingCityDetail = true
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                showingCityDetail = true
+                            }
                         }
                     }
                     .tag(cityWeather)
@@ -110,8 +115,11 @@ struct ContentView: View {
             .ignoresSafeArea()
             
             // Time slider
-            if !weatherService.forecastDays.isEmpty {
-                VStack(spacing: 12) {
+            VStack {
+                Spacer()
+                
+                if !weatherService.forecastDays.isEmpty {
+                    VStack(spacing: 12) {
                     // Current date display
                     Text(currentForecastDay?.displayText ?? "")
                         .font(.headline)
@@ -162,37 +170,54 @@ struct ContentView: View {
                 .padding(.horizontal)
                 .padding(.bottom, 20)
             }
+        }
             
             // City detail popup
             if showingCityDetail, let city = tappedCity {
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
                     .onTapGesture {
-                        showingCityDetail = false
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            showingCityDetail = false
+                        }
                     }
+                    .transition(.opacity)
                 
-                VStack(spacing: 16) {
-                    Text(city.city.name)
-                        .font(.title)
-                        .fontWeight(.bold)
-                    
-                    Text("This is a placeholder for weather details")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                    
-                    Text("Temperature: \(Int(city.forecast(for: selectedDayOffset).temperature))°C")
-                        .font(.headline)
-                    
-                    Button("Close") {
-                        showingCityDetail = false
+                ZStack(alignment: .topTrailing) {
+                    VStack(spacing: 16) {
+                        Text(city.city.name)
+                            .font(.title)
+                            .fontWeight(.bold)
+                        
+                        Text("This is a placeholder for weather details")
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                        
+                        Text("Temperature: \(Int(city.forecast(for: selectedDayOffset).temperature))°C")
+                            .font(.headline)
                     }
-                    .buttonStyle(.bordered)
+                    .padding(32)
+                    .frame(maxWidth: 400)
+                    .background(.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 20))
+                    .shadow(color: .black.opacity(0.3), radius: 20)
+                    .matchedGeometryEffect(id: "marker-\(city.id)", in: popupNamespace)
+                    
+                    // X button in upper right corner
+                    Button {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            showingCityDetail = false
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .background(.background.opacity(0.8), in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .padding(12)
+                    .transition(.opacity.combined(with: .scale))
                 }
-                .padding(32)
-                .frame(maxWidth: 400)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20))
-                .shadow(color: .black.opacity(0.3), radius: 20)
-                .transition(.scale.combined(with: .opacity))
             }
         }
     }
@@ -212,74 +237,82 @@ struct WeatherMarker: View {
     let cityWeather: CityWeather
     let dayOffset: Int
     let isCompact: Bool
+    let namespace: Namespace.ID
+    let isExpanded: Bool
     
     private var forecast: DailyForecast {
         cityWeather.forecast(for: dayOffset)
     }
     
     var body: some View {
-        if isCompact {
-            // Compact mode: just the icon with rounded square background, no temperature
-            Group {
-                if forecast.isRainIcon {
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .blue)
-                } else if forecast.isPartiallySunnyIcon {
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .yellow)
+        Group {
+            if !isExpanded {
+                if isCompact {
+                    // Compact mode: just the icon with rounded square background, no temperature
+                    Group {
+                        if forecast.isRainIcon {
+                            Image(systemName: forecast.weatherIcon)
+                                .font(.title2)
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .blue)
+                        } else if forecast.isPartiallySunnyIcon {
+                            Image(systemName: forecast.weatherIcon)
+                                .font(.title2)
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .yellow)
+                        } else {
+                            Image(systemName: forecast.weatherIcon)
+                                .font(.title2)
+                                .foregroundStyle(forecast.weatherColor)
+                        }
+                    }
+                    .frame(width: 32, height: 32)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
+                    .shadow(color: .black.opacity(0.2), radius: 2)
+                    .contentTransition(.symbolEffect(.replace))
+                    .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
+                    .id("compact-\(cityWeather.id)-\(dayOffset)")
                 } else {
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .foregroundStyle(forecast.weatherColor)
+                    // Full mode: icon + temperature + background
+                    VStack(spacing: 4) {
+                        if forecast.isRainIcon {
+                            // For rain icons, use palette rendering
+                            // Cloud is white, raindrops are blue
+                            Image(systemName: forecast.weatherIcon)
+                                .font(.title2)
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .blue)
+                                .contentTransition(.symbolEffect(.replace))
+                        } else if forecast.isPartiallySunnyIcon {
+                            // For partially sunny icons
+                            // Cloud is white, sun is yellow
+                            Image(systemName: forecast.weatherIcon)
+                                .font(.title2)
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .yellow)
+                                .contentTransition(.symbolEffect(.replace))
+                        } else {
+                            // For other icons, use the standard color
+                            Image(systemName: forecast.weatherIcon)
+                                .font(.title2)
+                                .foregroundStyle(forecast.weatherColor)
+                                .contentTransition(.symbolEffect(.replace))
+                        }
+                        
+                        Text("\(Int(forecast.temperature))°C")
+                            .font(.caption2)
+                            .fontWeight(.medium)
+                            .foregroundStyle(.primary)
+                            .frame(minWidth: 40)
+                            .contentTransition(.numericText())
+                    }
+                    .frame(width: 40, height: 56)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+                    .shadow(color: .black.opacity(0.2), radius: 3)
+                    .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
+                    .id("full-\(cityWeather.id)-\(dayOffset)")
                 }
             }
-            .frame(width: 32, height: 32)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
-            .shadow(color: .black.opacity(0.2), radius: 2)
-            .contentTransition(.symbolEffect(.replace))
-            .id("compact-\(cityWeather.id)-\(dayOffset)")
-        } else {
-            // Full mode: icon + temperature + background
-            VStack(spacing: 4) {
-                if forecast.isRainIcon {
-                    // For rain icons, use palette rendering
-                    // Cloud is white, raindrops are blue
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .blue)
-                        .contentTransition(.symbolEffect(.replace))
-                } else if forecast.isPartiallySunnyIcon {
-                    // For partially sunny icons
-                    // Cloud is white, sun is yellow
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .yellow)
-                        .contentTransition(.symbolEffect(.replace))
-                } else {
-                    // For other icons, use the standard color
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .foregroundStyle(forecast.weatherColor)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                
-                Text("\(Int(forecast.temperature))°C")
-                    .font(.caption2)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.primary)
-                    .frame(minWidth: 40)
-                    .contentTransition(.numericText())
-            }
-            .frame(width: 40, height: 56)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-            .shadow(color: .black.opacity(0.2), radius: 3)
-            .id("full-\(cityWeather.id)-\(dayOffset)")
         }
     }
 }
