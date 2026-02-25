@@ -16,6 +16,7 @@ import Combine
 class WeatherService {
     var cityWeatherData: [CityWeather] = []
     var isLoading = false
+    var forecastDays: [ForecastDay] = []
     
     private let weatherService = WeatherKit.WeatherService.shared
     
@@ -68,40 +69,55 @@ class WeatherService {
         isLoading = true
         defer { isLoading = false }
         
+        // Generate 10 days of forecast data
+        generateForecastDays()
+        
         var weatherData: [CityWeather] = []
         
         for city in europeanCities {
-            do {
-                let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
-                let weather = try await weatherService.weather(for: location)
-                
-                let cityWeather = CityWeather(
-                    city: city,
-                    condition: weather.currentWeather.condition,
-                    temperature: weather.currentWeather.temperature.value,
-                    symbolName: weather.currentWeather.symbolName
-                )
-                
-                weatherData.append(cityWeather)
-                print("✅ Fetched weather for \(city.name): \(cityWeather.symbolName)")
-                
-                // Small delay to avoid rate limiting
-                try? await Task.sleep(for: .milliseconds(100))
-            } catch {
-                print("❌ Failed to fetch weather for \(city.name): \(error.localizedDescription)")
-                // Add mock data as fallback for testing
-                let mockWeather = CityWeather(
-                    city: city,
-                    condition: .clear,
-                    temperature: Double.random(in: 10...25),
-                    symbolName: ["sun.max", "cloud.sun", "cloud", "cloud.rain", "cloud.drizzle"].randomElement()!
-                )
-                weatherData.append(mockWeather)
-            }
+            // Use dummy data for now
+            let mockWeather = CityWeather(
+                city: city,
+                condition: .clear,
+                temperature: Double.random(in: 10...25),
+                symbolName: ["sun.max", "cloud.sun", "cloud", "cloud.rain", "cloud.drizzle"].randomElement()!,
+                dailyForecasts: generateDummyForecast(for: city)
+            )
+            weatherData.append(mockWeather)
         }
         
         print("📊 Total cities loaded: \(weatherData.count)")
         self.cityWeatherData = weatherData
+    }
+    
+    private func generateForecastDays() {
+        let calendar = Calendar.current
+        let today = Date()
+        
+        forecastDays = (0..<10).map { dayOffset in
+            let date = calendar.date(byAdding: .day, value: dayOffset, to: today)!
+            return ForecastDay(date: date, dayOffset: dayOffset)
+        }
+    }
+    
+    private func generateDummyForecast(for city: City) -> [DailyForecast] {
+        return (0..<10).map { dayOffset in
+            // Generate semi-realistic temperature variations
+            let baseTemp = Double.random(in: 8...22)
+            let variation = Double.random(in: -3...3)
+            let temp = baseTemp + variation
+            
+            // Random weather conditions with some continuity
+            let conditions = ["sun.max", "sun.max", "cloud.sun", "cloud", "cloud.rain", "cloud.drizzle"]
+            let symbol = conditions.randomElement()!
+            
+            return DailyForecast(
+                dayOffset: dayOffset,
+                temperature: temp,
+                symbolName: symbol,
+                condition: [.clear, .partlyCloudy, .cloudy, .rain, .drizzle].randomElement()!
+            )
+        }
     }
 }
 
@@ -118,6 +134,7 @@ struct CityWeather: Identifiable, Hashable {
     let condition: WeatherCondition
     let temperature: Double
     let symbolName: String
+    let dailyForecasts: [DailyForecast]
     
     // Hashable conformance
     static func == (lhs: CityWeather, rhs: CityWeather) -> Bool {
@@ -126,6 +143,11 @@ struct CityWeather: Identifiable, Hashable {
     
     func hash(into hasher: inout Hasher) {
         hasher.combine(id)
+    }
+    
+    // Get forecast for a specific day
+    func forecast(for dayOffset: Int) -> DailyForecast {
+        dailyForecasts.first { $0.dayOffset == dayOffset } ?? dailyForecasts[0]
     }
     
     var weatherIcon: String {
@@ -154,16 +176,80 @@ struct CityWeather: Identifiable, Hashable {
     var weatherColor: Color {
         if symbolName.contains("sun") && !symbolName.contains("cloud") {
             return .yellow
-        } else if symbolName.contains("cloud") && symbolName.contains("sun") {
-            return .orange
-        } else if symbolName.contains("rain") {
-            return .blue
-        } else if symbolName.contains("snow") {
-            return .cyan
-        } else if symbolName.contains("cloud") {
-            return .gray
         } else {
-            return .primary
+            return .white
         }
     }
 }
+// MARK: - Forecast Models
+
+struct ForecastDay: Identifiable {
+    let id = UUID()
+    let date: Date
+    let dayOffset: Int
+    
+    var displayText: String {
+        if dayOffset == 0 {
+            return "Today"
+        } else if dayOffset == 1 {
+            return "Tomorrow"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEE, MMM d"
+            return formatter.string(from: date)
+        }
+    }
+    
+    var shortDisplayText: String {
+        if dayOffset == 0 {
+            return "Today"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEE d"
+            return formatter.string(from: date)
+        }
+    }
+}
+
+struct DailyForecast {
+    let dayOffset: Int
+    let temperature: Double
+    let symbolName: String
+    let condition: WeatherCondition
+    
+    var weatherIcon: String {
+        if symbolName.contains("sun") && !symbolName.contains("cloud") {
+            return "sun.max.fill"
+        } else if symbolName.contains("cloud") && symbolName.contains("sun") {
+            return "cloud.sun.fill"
+        } else if symbolName.contains("cloud.rain") || symbolName.contains("rain") {
+            return "cloud.rain.fill"
+        } else if symbolName.contains("cloud.drizzle") || symbolName.contains("drizzle") {
+            return "cloud.drizzle.fill"
+        } else if symbolName.contains("snow") {
+            return "cloud.snow.fill"
+        } else if symbolName.contains("cloud") {
+            return "cloud.fill"
+        } else {
+            return symbolName
+        }
+    }
+    
+    var weatherColor: Color {
+        if symbolName.contains("sun") && !symbolName.contains("cloud") {
+            return .yellow
+        } else {
+            return .white
+        }
+    }
+    
+    var isRainIcon: Bool {
+        symbolName.contains("rain") || symbolName.contains("drizzle")
+    }
+    
+    var isPartiallySunnyIcon: Bool {
+        symbolName.contains("cloud") && symbolName.contains("sun")
+    }
+}
+
+

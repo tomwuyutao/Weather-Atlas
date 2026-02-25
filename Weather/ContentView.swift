@@ -19,9 +19,10 @@ struct ContentView: View {
     )
     
     @State private var selectedCity: CityWeather?
+    @State private var selectedDayOffset: Int = 0
     
     var body: some View {
-        ZStack(alignment: .topTrailing) {
+        ZStack(alignment: .bottom) {
             Map(position: $position, selection: $selectedCity) {
                 ForEach(weatherService.cityWeatherData) { cityWeather in
                     Annotation(cityWeather.city.name, 
@@ -29,54 +30,66 @@ struct ContentView: View {
                                 latitude: cityWeather.city.latitude,
                                 longitude: cityWeather.city.longitude
                              )) {
-                        WeatherMarker(cityWeather: cityWeather)
+                        WeatherMarker(
+                            cityWeather: cityWeather,
+                            dayOffset: selectedDayOffset
+                        )
                     }
                     .tag(cityWeather)
                 }
             }
             .mapStyle(.standard(elevation: .realistic))
+            .mapControls {
+                MapCompass()
+                MapPitchToggle()
+                MapUserLocationButton()
+                // Scale is intentionally omitted to hide it
+            }
             .ignoresSafeArea()
             
-            // Debug info overlay
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Cities loaded: \(weatherService.cityWeatherData.count)")
-                    .font(.caption)
-                    .padding(8)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                
-                if weatherService.isLoading {
-                    Text("Loading weather...")
-                        .font(.caption)
-                        .padding(8)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                }
-            }
-            .padding(.leading)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            
-            // Refresh button
-            VStack(spacing: 12) {
-                Button(action: {
-                    Task {
-                        await weatherService.fetchWeatherForAllCities()
+            // Time slider
+            if !weatherService.forecastDays.isEmpty {
+                VStack(spacing: 12) {
+                    // Current date display
+                    Text(currentForecastDay?.displayText ?? "")
+                        .font(.headline)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .background(.ultraThinMaterial, in: Capsule())
+                    
+                    // Slider
+                    VStack(spacing: 8) {
+                        Slider(value: Binding(
+                            get: { Double(selectedDayOffset) },
+                            set: { selectedDayOffset = Int($0) }
+                        ), in: 0...9, step: 1)
+                        .tint(.blue)
+                        
+                        // Day labels aligned with slider positions
+                        GeometryReader { geometry in
+                            let thumbRadius: CGFloat = 10  // Approximate slider thumb radius
+                            let trackWidth = geometry.size.width - (thumbRadius * 2)
+                            let stepWidth = trackWidth / 9  // 9 intervals for 10 positions (0-9)
+                            
+                            ForEach(Array(weatherService.forecastDays.prefix(10).enumerated()), id: \.element.id) { index, day in
+                                Text(dayOfWeek(for: day.date))
+                                    .font(.caption2)
+                                    .foregroundStyle(.secondary)
+                                    .position(
+                                        x: thumbRadius + (CGFloat(index) * stepWidth),
+                                        y: geometry.size.height / 2
+                                    )
+                            }
+                        }
+                        .frame(height: 20)
                     }
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.title2)
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial, in: Circle())
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
                 }
-                .disabled(weatherService.isLoading)
-                
-                if weatherService.isLoading {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial, in: Circle())
-                }
+                .padding(.horizontal)
+                .padding(.bottom, 20)
             }
-            .padding()
         }
         .task {
             print("Starting weather fetch...")
@@ -84,33 +97,57 @@ struct ContentView: View {
             print("Weather data count: \(weatherService.cityWeatherData.count)")
         }
     }
+    
+    private var currentForecastDay: ForecastDay? {
+        weatherService.forecastDays.first { $0.dayOffset == selectedDayOffset }
+    }
+    
+    private func dayOfWeek(for date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "EEE"
+        return formatter.string(from: date)
+    }
 }
 
 struct WeatherMarker: View {
     let cityWeather: CityWeather
+    let dayOffset: Int
+    
+    private var forecast: DailyForecast {
+        cityWeather.forecast(for: dayOffset)
+    }
     
     var body: some View {
         VStack(spacing: 4) {
-            Image(systemName: cityWeather.weatherIcon)
-                .font(.title2)
-                .foregroundStyle(cityWeather.weatherColor)
-                .shadow(color: .black.opacity(0.3), radius: 2)
+            if forecast.isRainIcon {
+                // For rain icons, use palette rendering
+                // Cloud is white, raindrops are blue
+                Image(systemName: forecast.weatherIcon)
+                    .font(.title2)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .blue)
+            } else if forecast.isPartiallySunnyIcon {
+                // For partially sunny icons
+                // Cloud is white, sun is yellow
+                Image(systemName: forecast.weatherIcon)
+                    .font(.title2)
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.white, .yellow)
+            } else {
+                // For other icons, use the standard color
+                Image(systemName: forecast.weatherIcon)
+                    .font(.title2)
+                    .foregroundStyle(forecast.weatherColor)
+            }
             
-            Text(cityWeather.city.name)
-                .font(.caption)
+            Text("\(Int(forecast.temperature))°C")
+                .font(.caption2)
                 .fontWeight(.medium)
                 .foregroundStyle(.primary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.ultraThinMaterial, in: Capsule())
-            
-            Text("\(Int(cityWeather.temperature))°C")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
-                .background(.ultraThinMaterial, in: Capsule())
         }
+        .padding(8)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+        .shadow(color: .black.opacity(0.2), radius: 3)
     }
 }
 
