@@ -54,7 +54,7 @@ class WeatherService {
     private let weatherService = WeatherKit.WeatherService.shared
     private let cacheKey = "cachedWeatherData"
     private let cacheTimestampKey = "weatherCacheTimestamp"
-    private let cacheDuration: TimeInterval = 30 * 60 // 30 minutes
+    private let cacheDuration: TimeInterval = 2 * 60 * 60 // 2 hours
     
     // European cities
     let europeanCities: [City] = [
@@ -349,6 +349,63 @@ class WeatherService {
     
     func removeCity(_ cityWeather: CityWeather) {
         cityWeatherData.removeAll { $0.id == cityWeather.id }
+    }
+    
+    func addCity(_ city: City) async {
+        print("📍 Adding city: \(city.name)")
+        
+        do {
+            // Fetch weather for the new city
+            let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
+            let weather = try await weatherService.weather(for: location)
+            
+            // Convert to our model
+            let cityWeather = await convertWeatherKitData(weather: weather, for: city)
+            
+            // Add to the beginning of the list
+            cityWeatherData.insert(cityWeather, at: 0)
+            
+            print("✅ Added weather for \(city.name): \(Int(cityWeather.temperature))°C")
+        } catch {
+            print("❌ Error fetching weather for \(city.name): \(error.localizedDescription)")
+            
+            // Fallback to dummy data
+            let mockWeather = CityWeather(
+                city: city,
+                condition: .clear,
+                temperature: Double.random(in: 10...25),
+                symbolName: "cloud.sun",
+                dailyForecasts: generateDummyForecast(for: city)
+            )
+            cityWeatherData.insert(mockWeather, at: 0)
+        }
+    }
+    
+    func fetchWeatherForCity(_ city: City) async -> CityWeather {
+        print("🔍 Fetching weather for \(city.name) (temporary)")
+        
+        do {
+            // Fetch weather for the city
+            let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
+            let weather = try await weatherService.weather(for: location)
+            
+            // Convert to our model
+            let cityWeather = await convertWeatherKitData(weather: weather, for: city)
+            
+            print("✅ Fetched weather for \(city.name): \(Int(cityWeather.temperature))°C")
+            return cityWeather
+        } catch {
+            print("❌ Error fetching weather for \(city.name): \(error.localizedDescription)")
+            
+            // Fallback to dummy data
+            return CityWeather(
+                city: city,
+                condition: .clear,
+                temperature: Double.random(in: 10...25),
+                symbolName: "cloud.sun",
+                dailyForecasts: generateDummyForecast(for: city)
+            )
+        }
     }
     
     func moveCity(from source: IndexSet, to destination: Int) {

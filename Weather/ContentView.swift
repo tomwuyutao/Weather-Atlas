@@ -27,6 +27,8 @@ struct ContentView: View {
     @State private var showingCityDetail: Bool = false
     @State private var tappedCity: CityWeather?
     @Namespace private var popupNamespace
+    @State private var searchText: String = ""
+    @State private var citySearchManager = CitySearchManager()
     
     var body: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
@@ -37,6 +39,11 @@ struct ContentView: View {
                 selectedDayOffset: selectedDayOffset,
                 isEditMode: $isEditMode,
                 columnVisibility: $columnVisibility,
+                searchText: $searchText,
+                showingCityDetail: $showingCityDetail,
+                tappedCity: $tappedCity,
+                citySearchManager: citySearchManager,
+                weatherService: weatherService,
                 onCitySelected: { cityWeather in
                     selectedCity = cityWeather
                     // Animate to the selected city
@@ -196,9 +203,27 @@ struct ContentView: View {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             showingCityDetail = false
                         }
-                    }
+                    },
+                    onAddCity: cityIsInSidebar(city) ? nil : {
+                        Task {
+                            await addCityToSidebar(city)
+                        }
+                    },
+                    isInSidebar: cityIsInSidebar(city)
                 )
             }
+        }
+    }
+    
+    private func cityIsInSidebar(_ cityWeather: CityWeather) -> Bool {
+        weatherService.cityWeatherData.contains(where: { $0.city.name == cityWeather.city.name })
+    }
+    
+    private func addCityToSidebar(_ cityWeather: CityWeather) async {
+        await weatherService.addCity(cityWeather.city)
+        // Update the tapped city to the newly added one from the sidebar
+        if let newCity = weatherService.cityWeatherData.first(where: { $0.city.name == cityWeather.city.name }) {
+            tappedCity = newCity
         }
     }
     
@@ -311,6 +336,11 @@ struct CityListSidebar: View {
     let selectedDayOffset: Int
     @Binding var isEditMode: Bool
     @Binding var columnVisibility: NavigationSplitViewVisibility
+    @Binding var searchText: String
+    @Binding var showingCityDetail: Bool
+    @Binding var tappedCity: CityWeather?
+    @State var citySearchManager: CitySearchManager
+    let weatherService: WeatherService
     let onCitySelected: (CityWeather) -> Void
     let onDeleteCity: (CityWeather) -> Void
     let onMoveCity: (IndexSet, Int) -> Void
@@ -318,8 +348,25 @@ struct CityListSidebar: View {
     let lastFetchDate: Date?
     let isRefreshing: Bool
     
+    @State private var isSearching = false
+    @State private var isLoadingSearchedCity = false
+    
     private var isSidebarVisible: Bool {
         columnVisibility != .detailOnly
+    }
+    
+    private var filteredCities: [CityWeather] {
+        if searchText.isEmpty {
+            return cities
+        } else {
+            return cities.filter { cityWeather in
+                cityWeather.city.name.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+    
+    private var shouldShowSearchResults: Bool {
+        !searchText.isEmpty && !citySearchManager.searchResults.isEmpty
     }
     
     private var cacheStatusText: String {
@@ -344,52 +391,100 @@ struct CityListSidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             List(selection: $selectedCity) {
-                ForEach(cities) { cityWeather in
-                    CityRow(cityWeather: cityWeather, dayOffset: selectedDayOffset)
-                        .tag(cityWeather)
-                        #if os(macOS)
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                onDeleteCity(cityWeather)
+                // Show search results if searching
+                if shouldShowSearchResults {
+                    Section("Search Results") {
+                        ForEach(citySearchManager.searchResults, id: \.title) { result in
+                            Button {
+                                Task {
+                                    await selectSearchResult(result)
+                                }
                             } label: {
-                                Label("Delete", systemImage: "trash")
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(result.title)
+                                            .font(.body)
+                                        Text(result.subtitle)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    if isLoadingSearchedCity {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    }
+                                }
                             }
+                            .disabled(isLoadingSearchedCity)
                         }
-                        #else
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if !isEditMode {
-                                onCitySelected(cityWeather)
-                            }
-                        }
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                onDeleteCity(cityWeather)
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                        }
-                        #endif
-                }
-                .onDelete { indexSet in
-                    for index in indexSet {
-                        onDeleteCity(cities[index])
                     }
                 }
-                .onMove { source, destination in
-                    onMoveCity(source, destination)
+                
+                // Show existing cities
+                if !filteredCities.isEmpty {
+                    Section(shouldShowSearchResults ? "My Cities" : "") {
+                        ForEach(filteredCities) { cityWeather in
+                            CityRow(cityWeather: cityWeather, dayOffset: selectedDayOffset)
+                                .tag(cityWeather)
+                                #if os(macOS)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        onDeleteCity(cityWeather)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                                #else
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if !isEditMode {
+                                        // When tapping a city in the list, open the detail popup
+                                        tappedCity = cityWeather
+                                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                            showingCityDetail = true
+                                        }
+                                        // Also update selection and map position
+                                        onCitySelected(cityWeather)
+                                    }
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        onDeleteCity(cityWeather)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
+                                #endif
+                        }
+                        .onDelete { indexSet in
+                            for index in indexSet {
+                                let cityToDelete = filteredCities[index]
+                                onDeleteCity(cityToDelete)
+                            }
+                        }
+                        .onMove { source, destination in
+                            onMoveCity(source, destination)
+                        }
+                    }
                 }
             }
             #if os(macOS)
             .listStyle(.sidebar)
             .onChange(of: selectedCity) { oldValue, newValue in
                 if let city = newValue {
+                    // On macOS, open the detail popup when selecting from list
+                    tappedCity = city
+                    showingCityDetail = true
                     onCitySelected(city)
                 }
             }
             #else
             .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
             #endif
+            .searchable(text: $searchText, placement: .sidebar, prompt: "Search")
+            .onChange(of: searchText) { oldValue, newValue in
+                citySearchManager.search(query: newValue)
+            }
             
             // Cache status footer
             if !isEditMode {
@@ -443,6 +538,55 @@ struct CityListSidebar: View {
         .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
         #endif
     }
+    
+    private func selectSearchResult(_ result: MKLocalSearchCompletion) async {
+        isLoadingSearchedCity = true
+        defer { isLoadingSearchedCity = false }
+        
+        // Get the full location details
+        let searchRequest = MKLocalSearch.Request(completion: result)
+        let search = MKLocalSearch(request: searchRequest)
+        
+        do {
+            let response = try await search.start()
+            if let mapItem = response.mapItems.first {
+                let coordinate = mapItem.placemark.coordinate
+                let cityName = result.title
+                
+                // Check if this city already exists in the sidebar
+                if let existingCity = cities.first(where: { $0.city.name == cityName }) {
+                    print("City \(cityName) already exists in sidebar")
+                    // Just show the existing city's detail
+                    tappedCity = existingCity
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                        showingCityDetail = true
+                    }
+                    onCitySelected(existingCity)
+                    searchText = ""
+                    return
+                }
+                
+                // Create a temporary city and fetch its weather to show in detail view
+                print("Fetching weather for \(cityName) (not adding to sidebar)")
+                let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
+                
+                // Fetch weather for display only
+                let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity)
+                
+                // Show the detail popup for this city
+                tappedCity = tempCityWeather
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    showingCityDetail = true
+                }
+                onCitySelected(tempCityWeather)
+                
+                // Clear search
+                searchText = ""
+            }
+        } catch {
+            print("Error searching for location: \(error.localizedDescription)")
+        }
+    }
 }
 
 // MARK: - City Row
@@ -495,8 +639,42 @@ struct CityRow: View {
         .padding(.vertical, 4)
     }
 }
+// MARK: - City Search Manager
 
-#Preview {
-    ContentView()
+@Observable
+class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
+    var searchResults: [MKLocalSearchCompletion] = []
+    private let completer: MKLocalSearchCompleter
+    
+    override init() {
+        completer = MKLocalSearchCompleter()
+        super.init()
+        completer.delegate = self
+        completer.resultTypes = .address
+        completer.region = MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
+            span: MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360)
+        )
+    }
+    
+    func search(query: String) {
+        if query.isEmpty {
+            searchResults = []
+            return
+        }
+        completer.queryFragment = query
+    }
+    
+    func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        // Filter to only show city-like results
+        searchResults = completer.results.filter { result in
+            // Prioritize results that look like cities (have locality info)
+            result.subtitle.contains(",") || result.title.count > 2
+        }
+    }
+    
+    func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+        print("Search error: \(error.localizedDescription)")
+    }
 }
 

@@ -13,16 +13,20 @@ struct WeatherDetailView: View {
     let selectedDayOffset: Int
     let namespace: Namespace.ID
     let onDismiss: () -> Void
+    let onAddCity: (() -> Void)?
+    let isInSidebar: Bool
     
     @Environment(\.colorScheme) private var colorScheme
     @State private var internalSelectedDay: Int
     
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void) {
+    init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, isInSidebar: Bool = true) {
         self.cityWeather = cityWeather
         self.selectedDayOffset = selectedDayOffset
         self.namespace = namespace
         self.onDismiss = onDismiss
+        self.onAddCity = onAddCity
+        self.isInSidebar = isInSidebar
         self._internalSelectedDay = State(initialValue: selectedDayOffset)
     }
     
@@ -31,81 +35,97 @@ struct WeatherDetailView: View {
     }
     
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            VStack(spacing: 16) {
-                // Header
-                VStack(alignment: .center, spacing: 4) {
-                    Text(cityWeather.city.name)
-                        .font(.title2)
-                        .fontWeight(.semibold)
-                    
-                    Text(forecastDateText)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .id("date-\(internalSelectedDay)") // Force SwiftUI to treat this as a new view
-                        .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
-                        ))
-                }
-                .clipped() // Clip the header transitions
+        VStack(spacing: 16) {
+            // Header
+            VStack(alignment: .center, spacing: 4) {
+                Text(cityWeather.city.name)
+                    .font(.title2)
+                    .fontWeight(.semibold)
                 
-                // Horizontal timeline forecast section
-                HStack(spacing: 0) {
-                    ForEach(forecast.hourlyForecasts.filter { [6, 9, 12, 15, 18, 21].contains($0.hour) }) { hourlyForecast in
-                        TimelineForecastColumn(hourlyForecast: hourlyForecast)
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 12)
-                .id("hourly-\(internalSelectedDay)") // Force SwiftUI to treat this as a new view when day changes
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity),
-                    removal: .move(edge: .leading).combined(with: .opacity)
-                ))
-                .clipped() // Clip the hourly forecast transitions
-                
-                // 10-day forecast grid
-                VStack(spacing: 0) {
-                    // First row - 5 days
-                    HStack(spacing: 0) {
-                        ForEach(cityWeather.dailyForecasts.prefix(5)) { dailyForecast in
-                            DayForecastBox(
-                                dailyForecast: dailyForecast,
-                                isSelected: internalSelectedDay == dailyForecast.dayOffset
-                            )
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    internalSelectedDay = dailyForecast.dayOffset
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Second row - 5 days
-                    HStack(spacing: 0) {
-                        ForEach(Array(cityWeather.dailyForecasts.dropFirst(5).prefix(5))) { dailyForecast in
-                            DayForecastBox(
-                                dailyForecast: dailyForecast,
-                                isSelected: internalSelectedDay == dailyForecast.dayOffset
-                            )
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    internalSelectedDay = dailyForecast.dayOffset
-                                }
-                            }
-                        }
-                    }
-                }
-                .frame(width: 40 * 6) // Match width of 6 icons (each 40 wide)
-                .padding(.horizontal, 8)
+                Text(forecastDateText)
+                    .font(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .id("date-\(internalSelectedDay)") // Force SwiftUI to treat this as a new view
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
             }
-            .padding(20)
-            .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 24))
-            .clipShape(RoundedRectangle(cornerRadius: 24)) // Clip the entire content to the rounded rectangle
-            .shadow(color: .black.opacity(0.3), radius: 20)
-            .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace, isSource: true)
+            .clipped() // Clip the header transitions
             
+            // Horizontal timeline forecast section
+            HStack(spacing: 0) {
+                ForEach(forecast.hourlyForecasts.filter { [6, 9, 12, 15, 18, 21].contains($0.hour) }) { hourlyForecast in
+                    TimelineForecastColumn(hourlyForecast: hourlyForecast)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 12)
+            .id("hourly-\(internalSelectedDay)") // Force SwiftUI to treat this as a new view when day changes
+            .transition(.asymmetric(
+                insertion: .move(edge: .trailing).combined(with: .opacity),
+                removal: .move(edge: .leading).combined(with: .opacity)
+            ))
+            .clipped() // Clip the hourly forecast transitions
+            
+            // 10-day forecast grid
+            VStack(spacing: 0) {
+                // First row - 5 days
+                HStack(spacing: 0) {
+                    ForEach(cityWeather.dailyForecasts.prefix(5)) { dailyForecast in
+                        DayForecastBox(
+                            dailyForecast: dailyForecast,
+                            isSelected: internalSelectedDay == dailyForecast.dayOffset
+                        )
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                internalSelectedDay = dailyForecast.dayOffset
+                            }
+                        }
+                    }
+                }
+                
+                // Second row - 5 days
+                HStack(spacing: 0) {
+                    ForEach(Array(cityWeather.dailyForecasts.dropFirst(5).prefix(5))) { dailyForecast in
+                        DayForecastBox(
+                            dailyForecast: dailyForecast,
+                            isSelected: internalSelectedDay == dailyForecast.dayOffset
+                        )
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                internalSelectedDay = dailyForecast.dayOffset
+                            }
+                        }
+                    }
+                }
+            }
+            .frame(width: 40 * 6) // Match width of 6 icons (each 40 wide)
+            .padding(.horizontal, 8)
+        }
+        .padding(20)
+        .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 24))
+        .clipShape(RoundedRectangle(cornerRadius: 24)) // Clip the entire content to the rounded rectangle
+        .shadow(color: .black.opacity(0.3), radius: 20)
+        .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace, isSource: true)
+        .overlay(alignment: .topLeading) {
+            // Add button in upper left corner (if city is not in sidebar)
+            if !isInSidebar, let addAction = onAddCity {
+                Button {
+                    addAction()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 28, height: 28)
+                        .background(Color.accentColor, in: Circle())
+                }
+                .buttonStyle(.plain)
+                .padding(12)
+                .transition(.opacity.combined(with: .scale))
+            }
+        }
+        .overlay(alignment: .topTrailing) {
             // X button in upper right corner
             Button {
                 onDismiss()
