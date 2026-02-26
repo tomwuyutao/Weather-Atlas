@@ -48,6 +48,7 @@ struct WeatherDetailView: View {
                             removal: .move(edge: .leading).combined(with: .opacity)
                         ))
                 }
+                .clipped() // Clip the header transitions
                 
                 // Horizontal timeline forecast section
                 HStack(spacing: 0) {
@@ -62,6 +63,7 @@ struct WeatherDetailView: View {
                     insertion: .move(edge: .trailing).combined(with: .opacity),
                     removal: .move(edge: .leading).combined(with: .opacity)
                 ))
+                .clipped() // Clip the hourly forecast transitions
                 
                 // 10-day forecast grid
                 VStack(spacing: 0) {
@@ -100,6 +102,7 @@ struct WeatherDetailView: View {
             }
             .padding(20)
             .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 24))
+            .clipShape(RoundedRectangle(cornerRadius: 24)) // Clip the entire content to the rounded rectangle
             .shadow(color: .black.opacity(0.3), radius: 20)
             .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace, isSource: true)
             
