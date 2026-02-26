@@ -199,62 +199,122 @@ struct ContentView: View {
             .ignoresSafeArea()
             
             // Time slider
+            #if os(iOS)
+            VStack {
+                Spacer()
+                
+                if !weatherService.forecastDays.isEmpty && selectedDetent != .large {
+                    VStack(spacing: 12) {
+                        // Current date display
+                        Text(currentForecastDay?.displayText ?? "")
+                            .font(.headline)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .id("date-\(selectedDayOffset)")
+                            .transition(.asymmetric(
+                                insertion: .push(from: .trailing).combined(with: .opacity),
+                                removal: .push(from: .leading).combined(with: .opacity)
+                            ))
+                        
+                        // Slider
+                        VStack(spacing: 8) {
+                            Slider(value: Binding(
+                                get: { Double(selectedDayOffset) },
+                                set: { newValue in
+                                    withAnimation(.smooth(duration: 0.1)) {
+                                        selectedDayOffset = Int(newValue)
+                                    }
+                                }
+                            ), in: 0...9, step: 1)
+                            .tint(.blue)
+                            
+                            // Day labels aligned with slider positions
+                            GeometryReader { geometry in
+                                let thumbRadius: CGFloat = 10  // Approximate slider thumb radius
+                                let trackWidth = geometry.size.width - (thumbRadius * 2)
+                                let stepWidth = trackWidth / 9  // 9 intervals for 10 positions (0-9)
+                                
+                                ForEach(Array(weatherService.forecastDays.prefix(10).enumerated()), id: \.element.id) { index, day in
+                                    Text(dayOfWeek(for: day.date))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .position(
+                                            x: thumbRadius + (CGFloat(index) * stepWidth),
+                                            y: geometry.size.height / 2
+                                        )
+                                }
+                            }
+                            .frame(height: 20)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        .frame(maxWidth: 500)
+                    }
+                    .padding(.horizontal)
+                    .padding(.bottom, sliderBottomPadding)
+                    .animation(.smooth(duration: 0.3), value: selectedDetent)
+                }
+            }
+            #else
             VStack {
                 Spacer()
                 
                 if !weatherService.forecastDays.isEmpty {
                     VStack(spacing: 12) {
-                    // Current date display
-                    Text(currentForecastDay?.displayText ?? "")
-                        .font(.headline)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .id("date-\(selectedDayOffset)")
-                        .transition(.asymmetric(
-                            insertion: .push(from: .trailing).combined(with: .opacity),
-                            removal: .push(from: .leading).combined(with: .opacity)
-                        ))
-                    
-                    // Slider
-                    VStack(spacing: 8) {
-                        Slider(value: Binding(
-                            get: { Double(selectedDayOffset) },
-                            set: { newValue in
-                                withAnimation(.smooth(duration: 0.1)) {
-                                    selectedDayOffset = Int(newValue)
+                        // Current date display
+                        Text(currentForecastDay?.displayText ?? "")
+                            .font(.headline)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .id("date-\(selectedDayOffset)")
+                            .transition(.asymmetric(
+                                insertion: .push(from: .trailing).combined(with: .opacity),
+                                removal: .push(from: .leading).combined(with: .opacity)
+                            ))
+                        
+                        // Slider
+                        VStack(spacing: 8) {
+                            Slider(value: Binding(
+                                get: { Double(selectedDayOffset) },
+                                set: { newValue in
+                                    withAnimation(.smooth(duration: 0.1)) {
+                                        selectedDayOffset = Int(newValue)
+                                    }
+                                }
+                            ), in: 0...9, step: 1)
+                            .tint(.blue)
+                            
+                            // Day labels aligned with slider positions
+                            GeometryReader { geometry in
+                                let thumbRadius: CGFloat = 10  // Approximate slider thumb radius
+                                let trackWidth = geometry.size.width - (thumbRadius * 2)
+                                let stepWidth = trackWidth / 9  // 9 intervals for 10 positions (0-9)
+                                
+                                ForEach(Array(weatherService.forecastDays.prefix(10).enumerated()), id: \.element.id) { index, day in
+                                    Text(dayOfWeek(for: day.date))
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                        .position(
+                                            x: thumbRadius + (CGFloat(index) * stepWidth),
+                                            y: geometry.size.height / 2
+                                        )
                                 }
                             }
-                        ), in: 0...9, step: 1)
-                        .tint(.blue)
-                        
-                        // Day labels aligned with slider positions
-                        GeometryReader { geometry in
-                            let thumbRadius: CGFloat = 10  // Approximate slider thumb radius
-                            let trackWidth = geometry.size.width - (thumbRadius * 2)
-                            let stepWidth = trackWidth / 9  // 9 intervals for 10 positions (0-9)
-                            
-                            ForEach(Array(weatherService.forecastDays.prefix(10).enumerated()), id: \.element.id) { index, day in
-                                Text(dayOfWeek(for: day.date))
-                                    .font(.caption2)
-                                    .foregroundStyle(.secondary)
-                                    .position(
-                                        x: thumbRadius + (CGFloat(index) * stepWidth),
-                                        y: geometry.size.height / 2
-                                    )
-                            }
+                            .frame(height: 20)
                         }
-                        .frame(height: 20)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 12)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                        .frame(maxWidth: 500)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 12)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                    .frame(maxWidth: 500)
+                    .padding(.horizontal)
+                    .padding(.bottom, 20)
                 }
-                .padding(.horizontal)
-                .padding(.bottom, 20)
             }
-        }
+            #endif
             
             // City detail popup
             if showingCityDetail, let city = tappedCity {
@@ -301,6 +361,17 @@ struct ContentView: View {
     
     private var currentForecastDay: ForecastDay? {
         weatherService.forecastDays.first { $0.dayOffset == selectedDayOffset }
+    }
+    
+    private var sliderBottomPadding: CGFloat {
+        switch selectedDetent {
+        case .height(80):
+            return 100  // Above minimized sheet
+        case .medium:
+            return UIScreen.main.bounds.height * 0.5 + 20  // Above medium sheet
+        default:
+            return 20  // Hidden when large, but keep minimal padding
+        }
     }
     
     private func dayOfWeek(for date: Date) -> String {
@@ -813,37 +884,53 @@ struct NativeSearchSheet: View {
     var body: some View {
         VStack(spacing: 0) {
             // Search bar
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.tertiary)
-                    .font(.system(size: 16, weight: .medium))
+            HStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 16, weight: .medium))
+                    
+                    TextField("Search for a city", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 17))
+                        .focused($isSearchFocused)
+                    
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.tertiary)
+                                .font(.system(size: 16, weight: .medium))
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    Capsule(style: .continuous)
+                        .fill(Color(.systemGray6))
+                )
                 
-                TextField("Search for a city", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 17))
-                    .focused($isSearchFocused)
-                
-                if !searchText.isEmpty {
+                if isSearchFocused {
                     Button {
                         searchText = ""
+                        isSearchFocused = false
                     } label: {
                         Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 28))
                             .foregroundStyle(.tertiary)
-                            .font(.system(size: 16, weight: .medium))
                     }
                     .buttonStyle(.plain)
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(
-                Capsule(style: .continuous)
-                    .fill(Color(.systemGray6))
-            )
             .padding(.horizontal, 24)
             .padding(.top, isMinimized ? 22 : 36)
             .padding(.bottom, 16)
+            .animation(.easeInOut(duration: 0.25), value: isSearchFocused)
             
             // Content - only show when not minimized
             if !isMinimized {
