@@ -30,6 +30,7 @@ struct ContentView: View {
     @State private var searchText: String = ""
     @State private var citySearchManager = CitySearchManager()
     @State private var showingSearchSheet: Bool = true
+    @State private var selectedDetent: PresentationDetent = .height(80)
     
     var body: some View {
         #if os(macOS)
@@ -114,6 +115,7 @@ struct ContentView: View {
                 tappedCity: $tappedCity,
                 citySearchManager: citySearchManager,
                 weatherService: weatherService,
+                selectedDetent: $selectedDetent,
                 onCitySelected: { cityWeather in
                     selectedCity = cityWeather
                     // Animate to the selected city
@@ -144,10 +146,10 @@ struct ContentView: View {
                 lastFetchDate: weatherService.lastFetchDate,
                 isRefreshing: weatherService.isLoading
             )
-            .presentationDetents([.height(100), .medium, .large])
+            .presentationDetents([.height(80), .medium, .large], selection: $selectedDetent)
             .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             .presentationBackground(.regularMaterial)
-            .presentationCornerRadius(39)
+            .presentationCornerRadius(65)
             .interactiveDismissDisabled()
         }
         .task {
@@ -779,6 +781,7 @@ struct NativeSearchSheet: View {
     @Binding var tappedCity: CityWeather?
     @State var citySearchManager: CitySearchManager
     let weatherService: WeatherService
+    @Binding var selectedDetent: PresentationDetent
     let onCitySelected: (CityWeather) -> Void
     let onDeleteCity: (CityWeather) -> Void
     let onMoveCity: (IndexSet, Int) -> Void
@@ -788,6 +791,10 @@ struct NativeSearchSheet: View {
     
     @State private var isLoadingSearchedCity = false
     @FocusState private var isSearchFocused: Bool
+    
+    private var isMinimized: Bool {
+        selectedDetent == .height(80)
+    }
     
     private var filteredCities: [CityWeather] {
         if searchText.isEmpty {
@@ -835,112 +842,114 @@ struct NativeSearchSheet: View {
                     .fill(Color(.systemGray6))
             )
             .padding(.horizontal, 24)
-            .padding(.top, 30)
+            .padding(.top, isMinimized ? 22 : 36)
             .padding(.bottom, 16)
             
-            // Content
-            if shouldShowSearchResults {
-                // Search results
-                VStack(spacing: 0) {
-                    HStack {
-                        Text("Search Results")
-                            .font(.title2)
-                            .fontWeight(.bold)
+            // Content - only show when not minimized
+            if !isMinimized {
+                if shouldShowSearchResults {
+                    // Search results
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text("Search Results")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                            
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                         
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(citySearchManager.searchResults.enumerated()), id: \.element.title) { index, result in
-                                Button {
-                                    Task {
-                                        await selectSearchResult(result)
-                                    }
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        Image(systemName: "mappin.circle.fill")
-                                            .font(.title2)
-                                            .foregroundStyle(.red)
-                                        
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text(result.title)
-                                                .font(.body)
-                                                .foregroundStyle(.primary)
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(citySearchManager.searchResults.enumerated()), id: \.element.title) { index, result in
+                                    Button {
+                                        Task {
+                                            await selectSearchResult(result)
+                                        }
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Image(systemName: "mappin.circle.fill")
+                                                .font(.title2)
+                                                .foregroundStyle(.red)
                                             
-                                            Text(result.subtitle)
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(result.title)
+                                                    .font(.body)
+                                                    .foregroundStyle(.primary)
+                                                
+                                                Text(result.subtitle)
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                            
+                                            Spacer()
+                                            
+                                            if isLoadingSearchedCity {
+                                                ProgressView()
+                                                    .controlSize(.small)
+                                            }
                                         }
-                                        
-                                        Spacer()
-                                        
-                                        if isLoadingSearchedCity {
-                                            ProgressView()
-                                                .controlSize(.small)
-                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 12)
+                                        .background(.clear)
                                     }
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 12)
-                                    .background(.clear)
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(isLoadingSearchedCity)
-                                
-                                if index < citySearchManager.searchResults.count - 1 {
-                                    Divider()
-                                        .padding(.leading, 60)
+                                    .buttonStyle(.plain)
+                                    .disabled(isLoadingSearchedCity)
+                                    
+                                    if index < citySearchManager.searchResults.count - 1 {
+                                        Divider()
+                                            .padding(.leading, 60)
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            } else if !filteredCities.isEmpty {
-                // Cities list
-                VStack(spacing: 0) {
-                    HStack {
-                        Text("My Cities")
-                            .font(.title2)
-                            .fontWeight(.bold)
+                } else if !filteredCities.isEmpty {
+                    // Cities list
+                    VStack(spacing: 0) {
+                        HStack {
+                            Text("My Cities")
+                                .font(.title2)
+                                .fontWeight(.bold)
+                            
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
                         
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    
-                    ScrollView {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(filteredCities.enumerated()), id: \.element.id) { index, cityWeather in
-                                Button {
-                                    onCitySelected(cityWeather)
-                                    tappedCity = cityWeather
-                                    showingCityDetail = true
-                                } label: {
-                                    CityRow(
-                                        cityWeather: cityWeather,
-                                        dayOffset: selectedDayOffset
-                                    )
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                }
-                                .buttonStyle(.plain)
-                                
-                                if index < filteredCities.count - 1 {
-                                    Divider()
-                                        .padding(.leading, 60)
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                ForEach(Array(filteredCities.enumerated()), id: \.element.id) { index, cityWeather in
+                                    Button {
+                                        onCitySelected(cityWeather)
+                                        tappedCity = cityWeather
+                                        showingCityDetail = true
+                                    } label: {
+                                        CityRow(
+                                            cityWeather: cityWeather,
+                                            dayOffset: selectedDayOffset
+                                        )
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                    }
+                                    .buttonStyle(.plain)
+                                    
+                                    if index < filteredCities.count - 1 {
+                                        Divider()
+                                            .padding(.leading, 60)
+                                    }
                                 }
                             }
                         }
                     }
+                } else {
+                    Spacer()
+                    Text("No cities added yet")
+                        .font(.body)
+                        .foregroundStyle(.secondary)
+                    Spacer()
                 }
-            } else {
-                Spacer()
-                Text("No cities added yet")
-                    .font(.body)
-                    .foregroundStyle(.secondary)
-                Spacer()
             }
         }
         .onChange(of: searchText) { oldValue, newValue in
@@ -987,6 +996,7 @@ struct NativeSearchSheet: View {
         }
     }
 }
+
 
 
 

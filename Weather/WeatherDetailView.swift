@@ -37,11 +37,11 @@ struct WeatherDetailView: View {
     var body: some View {
         ZStack {
             // Main content card
-            VStack(spacing: 16) {
+            VStack(spacing: 26) {
                 // Header
-                VStack(alignment: .center, spacing: 4) {
+                VStack(alignment: .center, spacing: 7) {
                     Text(cityWeather.city.name)
-                        .font(.title2)
+                        .font(.title)
                         .fontWeight(.semibold)
                     
                     Text(forecastDateText)
@@ -56,13 +56,13 @@ struct WeatherDetailView: View {
                 .clipped() // Clip the header transitions
                 
                 // Horizontal timeline forecast section
-                HStack(spacing: 0) {
+                HStack(spacing: 1) {
                     ForEach(forecast.hourlyForecasts.filter { [6, 9, 12, 15, 18, 21].contains($0.hour) }) { hourlyForecast in
                         TimelineForecastColumn(hourlyForecast: hourlyForecast)
                     }
                 }
                 .padding(.horizontal, 8)
-                .padding(.vertical, 12)
+                .padding(.vertical, 18)
                 .id("hourly-\(internalSelectedDay)") // Force SwiftUI to treat this as a new view when day changes
                 .transition(.asymmetric(
                     insertion: .move(edge: .trailing).combined(with: .opacity),
@@ -110,12 +110,15 @@ struct WeatherDetailView: View {
                         }
                     }
                 }
-                .frame(width: 40 * 6) // Match width of 6 icons (each 40 wide)
                 .padding(.horizontal, 8)
+                .padding(.bottom, 8)
             }
-            .padding(20)
-            .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 24))
-            .clipShape(RoundedRectangle(cornerRadius: 24)) // Clip the entire content to the rounded rectangle
+            .padding(.horizontal, 20)
+            .padding(.top, 30)
+            .padding(.bottom, 36)
+            .frame(maxWidth: 340)
+            .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 26))
+            .clipShape(RoundedRectangle(cornerRadius: 26)) // Clip the entire content to the rounded rectangle
             .shadow(color: .black.opacity(0.3), radius: 20)
             .overlay(alignment: .topLeading) {
                 // Add button in upper left corner (if city is not in sidebar)
@@ -124,13 +127,13 @@ struct WeatherDetailView: View {
                         addAction()
                     } label: {
                         Image(systemName: "plus")
-                            .font(.system(size: 14, weight: .medium))
+                            .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(.white)
-                            .frame(width: 28, height: 28)
+                            .frame(width: 32, height: 32)
                             .background(Color.accentColor, in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .padding(12)
+                    .padding(14)
                 }
             }
             .overlay(alignment: .topTrailing) {
@@ -139,13 +142,13 @@ struct WeatherDetailView: View {
                     onDismiss()
                 } label: {
                     Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 32, height: 32)
                         .background(.background.opacity(0.8), in: Circle())
                 }
                 .buttonStyle(.plain)
-                .padding(12)
+                .padding(14)
             }
         }
         .matchedGeometryEffect(id: isInSidebar ? "sidebar-\(cityWeather.id)" : "marker-\(cityWeather.id)", in: namespace, isSource: true)
@@ -180,10 +183,10 @@ struct TimelineForecastColumn: View {
     @Environment(\.colorScheme) private var colorScheme
     
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 7) {
             // Time
             Text(hourlyForecast.shortFormattedHour)
-                .font(.caption2)
+                .font(.caption)
                 .foregroundStyle(.secondary)
             
             // Weather icon
@@ -212,14 +215,14 @@ struct TimelineForecastColumn: View {
                         .foregroundStyle(hourlyForecast.weatherColor(for: colorScheme))
                 }
             }
-            .frame(height: 24)
+            .frame(height: 28)
             
             // Temperature
             Text("\(Int(hourlyForecast.temperature))°")
-                .font(.caption)
+                .font(.callout)
                 .fontWeight(.semibold)
         }
-        .frame(minWidth: 40)
+        .frame(minWidth: 46)
     }
 }
 
@@ -253,7 +256,7 @@ struct DayForecastBox: View {
     }
     
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 9) {
             // Weather icon
             Group {
                 if dailyForecast.isRainIcon {
@@ -274,7 +277,7 @@ struct DayForecastBox: View {
                         .foregroundStyle(dailyForecast.weatherColor(for: colorScheme))
                 }
             }
-            .frame(height: 28)
+            .frame(height: 30)
             
             // Day of week
             Text(dayOfWeek)
@@ -282,8 +285,9 @@ struct DayForecastBox: View {
                 .fontWeight(isSelected ? .semibold : .medium)
                 .foregroundStyle(isSelected ? .primary : .secondary)
         }
-        .frame(width: 40 * 1.2) // Each box is 1/5 of the 6-icon width (240/5 = 48)
-        .padding(.vertical, 12)
+        .frame(minWidth: 50)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
         .background(isSelected ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.05), in: UnevenRoundedRectangle(cornerRadii: cornerRadius))
         .overlay {
             UnevenRoundedRectangle(cornerRadii: cornerRadius)
