@@ -35,111 +35,124 @@ struct WeatherDetailView: View {
     }
     
     var body: some View {
-        VStack(spacing: 16) {
-            // Header
-            VStack(alignment: .center, spacing: 4) {
-                Text(cityWeather.city.name)
-                    .font(.title2)
-                    .fontWeight(.semibold)
-                
-                Text(forecastDateText)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .id("date-\(internalSelectedDay)") // Force SwiftUI to treat this as a new view
-                    .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
-                    ))
-            }
-            .clipped() // Clip the header transitions
-            
-            // Horizontal timeline forecast section
-            HStack(spacing: 0) {
-                ForEach(forecast.hourlyForecasts.filter { [6, 9, 12, 15, 18, 21].contains($0.hour) }) { hourlyForecast in
-                    TimelineForecastColumn(hourlyForecast: hourlyForecast)
+        ZStack {
+            // Main content card
+            VStack(spacing: 16) {
+                // Header
+                VStack(alignment: .center, spacing: 4) {
+                    Text(cityWeather.city.name)
+                        .font(.title2)
+                        .fontWeight(.semibold)
+                    
+                    Text(forecastDateText)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .id("date-\(internalSelectedDay)") // Force SwiftUI to treat this as a new view
+                        .transition(.asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .leading).combined(with: .opacity)
+                        ))
                 }
-            }
-            .padding(.horizontal, 8)
-            .padding(.vertical, 12)
-            .id("hourly-\(internalSelectedDay)") // Force SwiftUI to treat this as a new view when day changes
-            .transition(.asymmetric(
-                insertion: .move(edge: .trailing).combined(with: .opacity),
-                removal: .move(edge: .leading).combined(with: .opacity)
-            ))
-            .clipped() // Clip the hourly forecast transitions
-            
-            // 10-day forecast grid
-            VStack(spacing: 0) {
-                // First row - 5 days
+                .clipped() // Clip the header transitions
+                
+                // Horizontal timeline forecast section
                 HStack(spacing: 0) {
-                    ForEach(cityWeather.dailyForecasts.prefix(5)) { dailyForecast in
-                        DayForecastBox(
-                            dailyForecast: dailyForecast,
-                            isSelected: internalSelectedDay == dailyForecast.dayOffset
-                        )
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                internalSelectedDay = dailyForecast.dayOffset
+                    ForEach(forecast.hourlyForecasts.filter { [6, 9, 12, 15, 18, 21].contains($0.hour) }) { hourlyForecast in
+                        TimelineForecastColumn(hourlyForecast: hourlyForecast)
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 12)
+                .id("hourly-\(internalSelectedDay)") // Force SwiftUI to treat this as a new view when day changes
+                .transition(.asymmetric(
+                    insertion: .move(edge: .trailing).combined(with: .opacity),
+                    removal: .move(edge: .leading).combined(with: .opacity)
+                ))
+                .clipped() // Clip the hourly forecast transitions
+                
+                // 10-day forecast grid
+                VStack(spacing: 0) {
+                    // First row - 5 days
+                    HStack(spacing: 0) {
+                        ForEach(Array(cityWeather.dailyForecasts.prefix(5).enumerated()), id: \.element.id) { index, dailyForecast in
+                            DayForecastBox(
+                                dailyForecast: dailyForecast,
+                                isSelected: internalSelectedDay == dailyForecast.dayOffset,
+                                cornerRadius: .init(
+                                    topLeading: index == 0 ? 8 : 0,
+                                    topTrailing: index == 4 ? 8 : 0
+                                )
+                            )
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    internalSelectedDay = dailyForecast.dayOffset
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Second row - 5 days
+                    HStack(spacing: 0) {
+                        ForEach(Array(cityWeather.dailyForecasts.dropFirst(5).prefix(5).enumerated()), id: \.element.id) { index, dailyForecast in
+                            DayForecastBox(
+                                dailyForecast: dailyForecast,
+                                isSelected: internalSelectedDay == dailyForecast.dayOffset,
+                                cornerRadius: .init(
+                                    bottomLeading: index == 0 ? 8 : 0,
+                                    bottomTrailing: index == 4 ? 8 : 0
+                                )
+                            )
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    internalSelectedDay = dailyForecast.dayOffset
+                                }
                             }
                         }
                     }
                 }
-                
-                // Second row - 5 days
-                HStack(spacing: 0) {
-                    ForEach(Array(cityWeather.dailyForecasts.dropFirst(5).prefix(5))) { dailyForecast in
-                        DayForecastBox(
-                            dailyForecast: dailyForecast,
-                            isSelected: internalSelectedDay == dailyForecast.dayOffset
-                        )
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                internalSelectedDay = dailyForecast.dayOffset
-                            }
-                        }
+                .frame(width: 40 * 6) // Match width of 6 icons (each 40 wide)
+                .padding(.horizontal, 8)
+            }
+            .padding(20)
+            .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 24))
+            .clipShape(RoundedRectangle(cornerRadius: 24)) // Clip the entire content to the rounded rectangle
+            .shadow(color: .black.opacity(0.3), radius: 20)
+            .overlay(alignment: .topLeading) {
+                // Add button in upper left corner (if city is not in sidebar)
+                if !isInSidebar, let addAction = onAddCity {
+                    Button {
+                        addAction()
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 28, height: 28)
+                            .background(Color.accentColor, in: Circle())
                     }
+                    .buttonStyle(.plain)
+                    .padding(12)
                 }
             }
-            .frame(width: 40 * 6) // Match width of 6 icons (each 40 wide)
-            .padding(.horizontal, 8)
-        }
-        .padding(20)
-        .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 24))
-        .clipShape(RoundedRectangle(cornerRadius: 24)) // Clip the entire content to the rounded rectangle
-        .shadow(color: .black.opacity(0.3), radius: 20)
-        .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace, isSource: true)
-        .overlay(alignment: .topLeading) {
-            // Add button in upper left corner (if city is not in sidebar)
-            if !isInSidebar, let addAction = onAddCity {
+            .overlay(alignment: .topTrailing) {
+                // X button in upper right corner
                 Button {
-                    addAction()
+                    onDismiss()
                 } label: {
-                    Image(systemName: "plus")
+                    Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.secondary)
                         .frame(width: 28, height: 28)
-                        .background(Color.accentColor, in: Circle())
+                        .background(.background.opacity(0.8), in: Circle())
                 }
                 .buttonStyle(.plain)
                 .padding(12)
-                .transition(.opacity.combined(with: .scale))
             }
         }
-        .overlay(alignment: .topTrailing) {
-            // X button in upper right corner
-            Button {
-                onDismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 28, height: 28)
-                    .background(.background.opacity(0.8), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .padding(12)
-            .transition(.opacity.combined(with: .scale))
-        }
+        .matchedGeometryEffect(id: isInSidebar ? "sidebar-\(cityWeather.id)" : "marker-\(cityWeather.id)", in: namespace, isSource: true)
+        .transition(.asymmetric(
+            insertion: .scale(scale: 0.8).combined(with: .opacity),
+            removal: .scale(scale: 0.8).combined(with: .opacity)
+        ))
     }
     
     private var forecastDateText: String {
@@ -213,8 +226,15 @@ struct TimelineForecastColumn: View {
 struct DayForecastBox: View {
     let dailyForecast: DailyForecast
     let isSelected: Bool
+    let cornerRadius: RectangleCornerRadii
     
     @Environment(\.colorScheme) private var colorScheme
+    
+    init(dailyForecast: DailyForecast, isSelected: Bool, cornerRadius: RectangleCornerRadii = .init()) {
+        self.dailyForecast = dailyForecast
+        self.isSelected = isSelected
+        self.cornerRadius = cornerRadius
+    }
     
     private var dayOfWeek: String {
         let calendar = Calendar.current
@@ -264,8 +284,11 @@ struct DayForecastBox: View {
         }
         .frame(width: 40 * 1.2) // Each box is 1/5 of the 6-icon width (240/5 = 48)
         .padding(.vertical, 12)
-        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.05))
-        .border(isSelected ? Color.accentColor.opacity(0.3) : Color.primary.opacity(0.1), width: isSelected ? 1.5 : 0.5)
+        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.05), in: UnevenRoundedRectangle(cornerRadii: cornerRadius))
+        .overlay {
+            UnevenRoundedRectangle(cornerRadii: cornerRadius)
+                .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.primary.opacity(0.1), lineWidth: isSelected ? 1.5 : 0.5)
+        }
     }
 }
 #Preview("Weather Detail - London", traits: .portrait) {
@@ -403,7 +426,11 @@ struct DayForecastBox: View {
                 cityWeather: londonWeather,
                 selectedDayOffset: 0,
                 namespace: namespace,
-                onDismiss: { }
+                onDismiss: { },
+                onAddCity: {
+                    print("Add London to sidebar")
+                },
+                isInSidebar: false
             )
         }
     }

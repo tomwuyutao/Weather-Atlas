@@ -98,8 +98,7 @@ struct ContentView: View {
                             cityWeather: cityWeather,
                             dayOffset: selectedDayOffset,
                             isCompact: isZoomedOut,
-                            namespace: popupNamespace,
-                            isExpanded: showingCityDetail && tappedCity?.id == cityWeather.id
+                            namespace: popupNamespace
                         )
                         .onTapGesture {
                             tappedCity = cityWeather
@@ -113,10 +112,9 @@ struct ContentView: View {
             }
             .mapStyle(.standard(elevation: .realistic, emphasis: .muted))
             .mapControls {
-                MapCompass()
                 MapPitchToggle()
                 MapUserLocationButton()
-                // Scale is intentionally omitted to hide it
+                // Scale and Compass are intentionally omitted to hide them
             }
             .onMapCameraChange(frequency: .onEnd) { context in
                 // Determine if zoomed out based on the span
@@ -243,7 +241,6 @@ struct WeatherMarker: View {
     let dayOffset: Int
     let isCompact: Bool
     let namespace: Namespace.ID
-    let isExpanded: Bool
     
     @Environment(\.colorScheme) private var colorScheme
     
@@ -252,76 +249,72 @@ struct WeatherMarker: View {
     }
     
     var body: some View {
-        Group {
-            if !isExpanded {
-                if isCompact {
-                    // Compact mode: just the icon with rounded square background, no temperature
-                    Group {
-                        if forecast.isRainIcon {
-                            let colors = forecast.rainPaletteColors(for: colorScheme)
-                            Image(systemName: forecast.weatherIcon)
-                                .font(.title2)
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(colors.primary, colors.secondary)
-                        } else if forecast.isPartiallySunnyIcon {
-                            let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
-                            Image(systemName: forecast.weatherIcon)
-                                .font(.title2)
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(colors.primary, colors.secondary)
-                        } else {
-                            Image(systemName: forecast.weatherIcon)
-                                .font(.title2)
-                                .foregroundStyle(forecast.weatherColor(for: colorScheme))
-                        }
-                    }
-                    .frame(width: 32, height: 32)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
-                    .shadow(color: .black.opacity(0.2), radius: 2)
-                    .contentTransition(.symbolEffect(.replace))
-                    .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
-                    .id("compact-\(cityWeather.id)-\(dayOffset)")
+        if isCompact {
+            // Compact mode: just the icon with rounded square background, no temperature
+            Group {
+                if forecast.isRainIcon {
+                    let colors = forecast.rainPaletteColors(for: colorScheme)
+                    Image(systemName: forecast.weatherIcon)
+                        .font(.title2)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(colors.primary, colors.secondary)
+                } else if forecast.isPartiallySunnyIcon {
+                    let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
+                    Image(systemName: forecast.weatherIcon)
+                        .font(.title2)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(colors.primary, colors.secondary)
                 } else {
-                    // Full mode: icon + temperature + background
-                    VStack(spacing: 4) {
-                        if forecast.isRainIcon {
-                            // For rain icons, use palette rendering
-                            let colors = forecast.rainPaletteColors(for: colorScheme)
-                            Image(systemName: forecast.weatherIcon)
-                                .font(.title2)
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(colors.primary, colors.secondary)
-                                .contentTransition(.symbolEffect(.replace))
-                        } else if forecast.isPartiallySunnyIcon {
-                            // For partially sunny icons
-                            let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
-                            Image(systemName: forecast.weatherIcon)
-                                .font(.title2)
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(colors.primary, colors.secondary)
-                                .contentTransition(.symbolEffect(.replace))
-                        } else {
-                            // For other icons, use the color scheme-aware color
-                            Image(systemName: forecast.weatherIcon)
-                                .font(.title2)
-                                .foregroundStyle(forecast.weatherColor(for: colorScheme))
-                                .contentTransition(.symbolEffect(.replace))
-                        }
-                        
-                        Text("\(Int(forecast.temperature))°C")
-                            .font(.caption2)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.primary)
-                            .frame(minWidth: 40)
-                            .contentTransition(.numericText())
-                    }
-                    .frame(width: 40, height: 56)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-                    .shadow(color: .black.opacity(0.2), radius: 3)
-                    .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
-                    .id("full-\(cityWeather.id)-\(dayOffset)")
+                    Image(systemName: forecast.weatherIcon)
+                        .font(.title2)
+                        .foregroundStyle(forecast.weatherColor(for: colorScheme))
                 }
             }
+            .frame(width: 32, height: 32)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
+            .shadow(color: .black.opacity(0.2), radius: 2)
+            .contentTransition(.symbolEffect(.replace))
+            .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
+            .id("compact-\(cityWeather.id)-\(dayOffset)")
+        } else {
+            // Full mode: icon + temperature + background
+            VStack(spacing: 4) {
+                if forecast.isRainIcon {
+                    // For rain icons, use palette rendering
+                    let colors = forecast.rainPaletteColors(for: colorScheme)
+                    Image(systemName: forecast.weatherIcon)
+                        .font(.title2)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(colors.primary, colors.secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                } else if forecast.isPartiallySunnyIcon {
+                    // For partially sunny icons
+                    let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
+                    Image(systemName: forecast.weatherIcon)
+                        .font(.title2)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(colors.primary, colors.secondary)
+                        .contentTransition(.symbolEffect(.replace))
+                } else {
+                    // For other icons, use the color scheme-aware color
+                    Image(systemName: forecast.weatherIcon)
+                        .font(.title2)
+                        .foregroundStyle(forecast.weatherColor(for: colorScheme))
+                        .contentTransition(.symbolEffect(.replace))
+                }
+                
+                Text("\(Int(forecast.temperature))°C")
+                    .font(.caption2)
+                    .fontWeight(.medium)
+                    .foregroundStyle(.primary)
+                    .frame(minWidth: 40)
+                    .contentTransition(.numericText())
+            }
+            .frame(width: 40, height: 56)
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
+            .shadow(color: .black.opacity(0.2), radius: 3)
+            .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
+            .id("full-\(cityWeather.id)-\(dayOffset)")
         }
     }
 }
@@ -393,29 +386,36 @@ struct CityListSidebar: View {
             List(selection: $selectedCity) {
                 // Show search results if searching
                 if shouldShowSearchResults {
-                    Section("Search Results") {
-                        ForEach(citySearchManager.searchResults, id: \.title) { result in
-                            Button {
-                                Task {
-                                    await selectSearchResult(result)
-                                }
-                            } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(result.title)
+                    Section {
+                        ForEach(Array(citySearchManager.searchResults.enumerated()), id: \.element.title) { index, result in
+                            VStack(spacing: 0) {
+                                Button {
+                                    Task {
+                                        await selectSearchResult(result)
+                                    }
+                                } label: {
+                                    HStack {
+                                        Text("\(result.title), \(result.subtitle)")
                                             .font(.body)
-                                        Text(result.subtitle)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                        if isLoadingSearchedCity {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                        }
                                     }
-                                    Spacer()
-                                    if isLoadingSearchedCity {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    }
+                                    .padding(.vertical, 8)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isLoadingSearchedCity)
+                                
+                                // Divider between results (except for the last one)
+                                if index < citySearchManager.searchResults.count - 1 {
+                                    Divider()
+                                        .padding(.leading, 0)
                                 }
                             }
-                            .disabled(isLoadingSearchedCity)
+                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 16))
                         }
                     }
                 }
@@ -424,9 +424,12 @@ struct CityListSidebar: View {
                 if !filteredCities.isEmpty {
                     Section(shouldShowSearchResults ? "My Cities" : "") {
                         ForEach(filteredCities) { cityWeather in
-                            CityRow(cityWeather: cityWeather, dayOffset: selectedDayOffset)
+                            #if os(macOS)
+                            CityRow(
+                                cityWeather: cityWeather,
+                                dayOffset: selectedDayOffset
+                            )
                                 .tag(cityWeather)
-                                #if os(macOS)
                                 .contextMenu {
                                     Button(role: .destructive) {
                                         onDeleteCity(cityWeather)
@@ -434,27 +437,32 @@ struct CityListSidebar: View {
                                         Label("Delete", systemImage: "trash")
                                     }
                                 }
-                                #else
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if !isEditMode {
-                                        // When tapping a city in the list, open the detail popup
-                                        tappedCity = cityWeather
-                                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                            showingCityDetail = true
-                                        }
-                                        // Also update selection and map position
-                                        onCitySelected(cityWeather)
+                            #else
+                            Button {
+                                if !isEditMode {
+                                    // When tapping a city in the list, open the detail popup
+                                    tappedCity = cityWeather
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                        showingCityDetail = true
                                     }
+                                    // Also update selection and map position
+                                    onCitySelected(cityWeather)
                                 }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        onDeleteCity(cityWeather)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
+                            } label: {
+                                CityRow(
+                                    cityWeather: cityWeather,
+                                    dayOffset: selectedDayOffset
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    onDeleteCity(cityWeather)
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
                                 }
-                                #endif
+                            }
+                            #endif
                         }
                         .onDelete { indexSet in
                             for index in indexSet {
@@ -474,7 +482,9 @@ struct CityListSidebar: View {
                 if let city = newValue {
                     // On macOS, open the detail popup when selecting from list
                     tappedCity = city
-                    showingCityDetail = true
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        showingCityDetail = true
+                    }
                     onCitySelected(city)
                 }
             }
@@ -558,7 +568,7 @@ struct CityListSidebar: View {
                     print("City \(cityName) already exists in sidebar")
                     // Just show the existing city's detail
                     tappedCity = existingCity
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                         showingCityDetail = true
                     }
                     onCitySelected(existingCity)
@@ -575,7 +585,7 @@ struct CityListSidebar: View {
                 
                 // Show the detail popup for this city
                 tappedCity = tempCityWeather
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                     showingCityDetail = true
                 }
                 onCitySelected(tempCityWeather)
@@ -666,10 +676,18 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     }
     
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        // Filter to only show city-like results
+        // Filter to only show city-level results (Title: "Bologna", Subtitle: "Italy")
         searchResults = completer.results.filter { result in
-            // Prioritize results that look like cities (have locality info)
-            result.subtitle.contains(",") || result.title.count > 2
+            // We want results where NEITHER title nor subtitle contain commas
+            // This gives us simple city results like "Bologna" / "Italy" or "London" / "England"
+            // And filters out more specific results like "LHR, London" / "England"
+            let titleHasNoComma = !result.title.contains(",")
+            let subtitleHasNoComma = !result.subtitle.contains(",")
+            
+            // Also ensure subtitle is not empty (to avoid invalid results)
+            let hasSubtitle = !result.subtitle.isEmpty
+            
+            return titleHasNoComma && subtitleHasNoComma && hasSubtitle
         }
     }
     

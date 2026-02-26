@@ -349,6 +349,8 @@ class WeatherService {
     
     func removeCity(_ cityWeather: CityWeather) {
         cityWeatherData.removeAll { $0.id == cityWeather.id }
+        // Update cache after removing city
+        cacheData(cityWeatherData)
     }
     
     func addCity(_ city: City) async {
@@ -365,6 +367,9 @@ class WeatherService {
             // Add to the beginning of the list
             cityWeatherData.insert(cityWeather, at: 0)
             
+            // Update cache with the new city included
+            cacheData(cityWeatherData)
+            
             print("✅ Added weather for \(city.name): \(Int(cityWeather.temperature))°C")
         } catch {
             print("❌ Error fetching weather for \(city.name): \(error.localizedDescription)")
@@ -378,6 +383,9 @@ class WeatherService {
                 dailyForecasts: generateDummyForecast(for: city)
             )
             cityWeatherData.insert(mockWeather, at: 0)
+            
+            // Update cache even with fallback data
+            cacheData(cityWeatherData)
         }
     }
     
@@ -410,6 +418,8 @@ class WeatherService {
     
     func moveCity(from source: IndexSet, to destination: Int) {
         cityWeatherData.move(fromOffsets: source, toOffset: destination)
+        // Update cache after reordering cities
+        cacheData(cityWeatherData)
     }
     
     private func generateForecastDays() {
@@ -797,12 +807,10 @@ struct CachedCityWeather: Codable {
     }
     
     func toCityWeather(cities: [City]) -> CityWeather? {
-        // Find matching city by coordinates
-        guard let city = cities.first(where: {
+        // Find matching city by coordinates, or create a new one
+        let city = cities.first(where: {
             abs($0.latitude - cityLatitude) < 0.01 && abs($0.longitude - cityLongitude) < 0.01
-        }) else {
-            return nil
-        }
+        }) ?? City(name: cityName, latitude: cityLatitude, longitude: cityLongitude)
         
         let appCondition = AppWeatherCondition.fromDisplayName(condition)
         let forecasts = dailyForecasts.map { $0.toDailyForecast() }
