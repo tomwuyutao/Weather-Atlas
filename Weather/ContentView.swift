@@ -60,7 +60,12 @@ struct ContentView: View {
                 },
                 onMoveCity: { source, destination in
                     weatherService.moveCity(from: source, to: destination)
-                }
+                },
+                onRefresh: {
+                    await weatherService.refreshWeather()
+                },
+                lastFetchDate: weatherService.lastFetchDate,
+                isRefreshing: weatherService.isLoading
             )
         } detail: {
             // Map view
@@ -183,41 +188,16 @@ struct ContentView: View {
                     }
                     .transition(.opacity)
                 
-                ZStack(alignment: .topTrailing) {
-                    VStack(spacing: 16) {
-                        Text(city.city.name)
-                            .font(.title)
-                            .fontWeight(.bold)
-                        
-                        Text("This is a placeholder for weather details")
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                        
-                        Text("Temperature: \(Int(city.forecast(for: selectedDayOffset).temperature))°C")
-                            .font(.headline)
-                    }
-                    .padding(32)
-                    .frame(maxWidth: 400)
-                    .background(.white.opacity(0.85), in: RoundedRectangle(cornerRadius: 20))
-                    .shadow(color: .black.opacity(0.3), radius: 20)
-                    .matchedGeometryEffect(id: "marker-\(city.id)", in: popupNamespace)
-                    
-                    // X button in upper right corner
-                    Button {
+                WeatherDetailView(
+                    cityWeather: city,
+                    selectedDayOffset: selectedDayOffset,
+                    namespace: popupNamespace,
+                    onDismiss: {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             showingCityDetail = false
                         }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 28, height: 28)
-                            .background(.background.opacity(0.8), in: Circle())
                     }
-                    .buttonStyle(.plain)
-                    .padding(12)
-                    .transition(.opacity.combined(with: .scale))
-                }
+                )
             }
         }
     }
@@ -240,6 +220,8 @@ struct WeatherMarker: View {
     let namespace: Namespace.ID
     let isExpanded: Bool
     
+    @Environment(\.colorScheme) private var colorScheme
+    
     private var forecast: DailyForecast {
         cityWeather.forecast(for: dayOffset)
     }
@@ -251,19 +233,21 @@ struct WeatherMarker: View {
                     // Compact mode: just the icon with rounded square background, no temperature
                     Group {
                         if forecast.isRainIcon {
+                            let colors = forecast.rainPaletteColors(for: colorScheme)
                             Image(systemName: forecast.weatherIcon)
                                 .font(.title2)
                                 .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .blue)
+                                .foregroundStyle(colors.primary, colors.secondary)
                         } else if forecast.isPartiallySunnyIcon {
+                            let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
                             Image(systemName: forecast.weatherIcon)
                                 .font(.title2)
                                 .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .yellow)
+                                .foregroundStyle(colors.primary, colors.secondary)
                         } else {
                             Image(systemName: forecast.weatherIcon)
                                 .font(.title2)
-                                .foregroundStyle(forecast.weatherColor)
+                                .foregroundStyle(forecast.weatherColor(for: colorScheme))
                         }
                     }
                     .frame(width: 32, height: 32)
@@ -277,25 +261,25 @@ struct WeatherMarker: View {
                     VStack(spacing: 4) {
                         if forecast.isRainIcon {
                             // For rain icons, use palette rendering
-                            // Cloud is white, raindrops are blue
+                            let colors = forecast.rainPaletteColors(for: colorScheme)
                             Image(systemName: forecast.weatherIcon)
                                 .font(.title2)
                                 .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .blue)
+                                .foregroundStyle(colors.primary, colors.secondary)
                                 .contentTransition(.symbolEffect(.replace))
                         } else if forecast.isPartiallySunnyIcon {
                             // For partially sunny icons
-                            // Cloud is white, sun is yellow
+                            let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
                             Image(systemName: forecast.weatherIcon)
                                 .font(.title2)
                                 .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .yellow)
+                                .foregroundStyle(colors.primary, colors.secondary)
                                 .contentTransition(.symbolEffect(.replace))
                         } else {
-                            // For other icons, use the standard color
+                            // For other icons, use the color scheme-aware color
                             Image(systemName: forecast.weatherIcon)
                                 .font(.title2)
-                                .foregroundStyle(forecast.weatherColor)
+                                .foregroundStyle(forecast.weatherColor(for: colorScheme))
                                 .contentTransition(.symbolEffect(.replace))
                         }
                         
@@ -330,59 +314,115 @@ struct CityListSidebar: View {
     let onCitySelected: (CityWeather) -> Void
     let onDeleteCity: (CityWeather) -> Void
     let onMoveCity: (IndexSet, Int) -> Void
+    let onRefresh: () async -> Void
+    let lastFetchDate: Date?
+    let isRefreshing: Bool
     
     private var isSidebarVisible: Bool {
         columnVisibility != .detailOnly
     }
     
+    private var cacheStatusText: String {
+        guard let lastFetch = lastFetchDate else {
+            return "Never updated"
+        }
+        
+        let now = Date()
+        let elapsed = now.timeIntervalSince(lastFetch)
+        let minutes = Int(elapsed / 60)
+        
+        if minutes < 1 {
+            return "Just now"
+        } else if minutes < 60 {
+            return "\(minutes)m ago"
+        } else {
+            let hours = minutes / 60
+            return "\(hours)h ago"
+        }
+    }
+    
     var body: some View {
-        List(selection: $selectedCity) {
-            ForEach(cities) { cityWeather in
-                CityRow(cityWeather: cityWeather, dayOffset: selectedDayOffset)
-                    .tag(cityWeather)
-                    #if os(macOS)
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            onDeleteCity(cityWeather)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+        VStack(spacing: 0) {
+            List(selection: $selectedCity) {
+                ForEach(cities) { cityWeather in
+                    CityRow(cityWeather: cityWeather, dayOffset: selectedDayOffset)
+                        .tag(cityWeather)
+                        #if os(macOS)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                onDeleteCity(cityWeather)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
-                    }
-                    #else
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        if !isEditMode {
-                            onCitySelected(cityWeather)
+                        #else
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            if !isEditMode {
+                                onCitySelected(cityWeather)
+                            }
                         }
-                    }
-                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                        Button(role: .destructive) {
-                            onDeleteCity(cityWeather)
-                        } label: {
-                            Label("Delete", systemImage: "trash")
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                onDeleteCity(cityWeather)
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                         }
+                        #endif
+                }
+                .onDelete { indexSet in
+                    for index in indexSet {
+                        onDeleteCity(cities[index])
                     }
-                    #endif
-            }
-            .onDelete { indexSet in
-                for index in indexSet {
-                    onDeleteCity(cities[index])
+                }
+                .onMove { source, destination in
+                    onMoveCity(source, destination)
                 }
             }
-            .onMove { source, destination in
-                onMoveCity(source, destination)
+            #if os(macOS)
+            .listStyle(.sidebar)
+            .onChange(of: selectedCity) { oldValue, newValue in
+                if let city = newValue {
+                    onCitySelected(city)
+                }
+            }
+            #else
+            .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
+            #endif
+            
+            // Cache status footer
+            if !isEditMode {
+                HStack {
+                    Text("Updated: \(cacheStatusText)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    
+                    Spacer()
+                    
+                    Button {
+                        Task {
+                            await onRefresh()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if isRefreshing {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.caption)
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isRefreshing)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
             }
         }
-        #if os(macOS)
-        .listStyle(.sidebar)
-        .onChange(of: selectedCity) { oldValue, newValue in
-            if let city = newValue {
-                onCitySelected(city)
-            }
-        }
-        #else
-        .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
-        #endif
         .navigationTitle("Cities")
         .toolbar {
             if isSidebarVisible {
@@ -411,6 +451,8 @@ struct CityRow: View {
     let cityWeather: CityWeather
     let dayOffset: Int
     
+    @Environment(\.colorScheme) private var colorScheme
+    
     private var forecast: DailyForecast {
         cityWeather.forecast(for: dayOffset)
     }
@@ -419,21 +461,23 @@ struct CityRow: View {
         HStack(spacing: 12) {
             // Weather icon
             if forecast.isRainIcon {
+                let colors = forecast.rainPaletteColors(for: colorScheme)
                 Image(systemName: forecast.weatherIcon)
                     .font(.title3)
                     .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, .blue)
+                    .foregroundStyle(colors.primary, colors.secondary)
                     .frame(width: 32, height: 28)
             } else if forecast.isPartiallySunnyIcon {
+                let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
                 Image(systemName: forecast.weatherIcon)
                     .font(.title3)
                     .symbolRenderingMode(.palette)
-                    .foregroundStyle(.white, .yellow)
+                    .foregroundStyle(colors.primary, colors.secondary)
                     .frame(width: 32, height: 28)
             } else {
                 Image(systemName: forecast.weatherIcon)
                     .font(.title3)
-                    .foregroundStyle(forecast.weatherColor)
+                    .foregroundStyle(forecast.weatherColor(for: colorScheme))
                     .frame(width: 32, height: 28)
             }
             
