@@ -150,7 +150,7 @@ struct ContentView: View {
             .presentationDetents([.height(80), .medium, .large], selection: $selectedDetent)
             .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             .presentationBackground(.regularMaterial)
-            .presentationCornerRadius(65)
+            .presentationCornerRadius(selectedDetent == .height(80) ? 65 : 45)
             .interactiveDismissDisabled()
         }
         .task {
@@ -188,7 +188,7 @@ struct ContentView: View {
             .mapStyle(.standard(elevation: .realistic, emphasis: .muted))
             .mapControls {
                 MapPitchToggle()
-                MapUserLocationButton()
+                // MapUserLocationButton removed
                 // Scale and Compass are intentionally omitted to hide them
             }
             .onMapCameraChange(frequency: .onEnd) { context in
@@ -1015,9 +1015,9 @@ struct NativeSearchSheet: View {
                                 Button {
                                     showingAddCityView = true
                                 } label: {
-                                    Image(systemName: "plus.circle.fill")
+                                    Image(systemName: "plus")
                                         .font(.title2)
-                                        .foregroundStyle(.blue)
+                                        .foregroundStyle(.primary)
                                 }
                                 .buttonStyle(.plain)
                             }
@@ -1030,7 +1030,10 @@ struct NativeSearchSheet: View {
                                         Button {
                                             onCitySelected(cityWeather)
                                             tappedCity = cityWeather
-                                            showingCityDetail = true
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                                showingCityDetail = true
+                                                selectedDetent = .height(80)
+                                            }
                                         } label: {
                                             CityRow(
                                                 cityWeather: cityWeather,
@@ -1132,7 +1135,9 @@ struct AddCitySearchView: View {
     
     @State private var searchText: String = ""
     @State private var isLoadingCity = false
+    @State private var isSearchFieldFocused = false
     @Environment(\.dismiss) private var dismiss
+    @FocusState private var searchFieldFocus: Bool
     
     private var shouldShowSearchResults: Bool {
         !searchText.isEmpty && !citySearchManager.searchResults.isEmpty
@@ -1140,38 +1145,63 @@ struct AddCitySearchView: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Search bar
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.tertiary)
-                    .font(.system(size: 16, weight: .medium))
+            // Search bar with dismiss button
+            HStack(spacing: 12) {
+                // Search bar
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.tertiary)
+                        .font(.system(size: 16, weight: .medium))
+                    
+                    TextField("Search for a city", text: $searchText)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 17))
+                        .autocorrectionDisabled()
+                        .focused($searchFieldFocus)
+                    
+                    if !searchText.isEmpty {
+                        Button {
+                            searchText = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.tertiary)
+                                .font(.system(size: 16, weight: .medium))
+                        }
+                        .buttonStyle(.plain)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(
+                    Capsule()
+                        .fill(.regularMaterial)
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(.quaternary, lineWidth: 1)
+                )
                 
-                TextField("Search for a city", text: $searchText)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 17))
-                    .autocorrectionDisabled()
-                
-                if !searchText.isEmpty {
+                // Dismiss keyboard button (appears when focused)
+                if searchFieldFocus {
                     Button {
-                        searchText = ""
+                        searchFieldFocus = false
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.tertiary)
-                            .font(.system(size: 16, weight: .medium))
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 44)
+                            .frame(height: 44)
+                            .background(.regularMaterial, in: Capsule())
                     }
                     .buttonStyle(.plain)
                     .transition(.scale.combined(with: .opacity))
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(Color(.systemGray6))
-            )
-            .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 16)
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: searchFieldFocus)
             
             // Search results
             if shouldShowSearchResults {
@@ -1231,12 +1261,6 @@ struct AddCitySearchView: View {
                         .font(.title3)
                         .fontWeight(.medium)
                     
-                    Text("Start typing to find cities around the world")
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 32)
-                    
                     Spacer()
                 }
             } else {
@@ -1261,8 +1285,12 @@ struct AddCitySearchView: View {
         }
         .navigationTitle("Add City")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.visible, for: .navigationBar)
         .onChange(of: searchText) { oldValue, newValue in
             citySearchManager.search(query: newValue)
+        }
+        .onChange(of: searchFieldFocus) { oldValue, newValue in
+            isSearchFieldFocused = newValue
         }
     }
     
