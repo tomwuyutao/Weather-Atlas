@@ -867,6 +867,15 @@ struct NativeSearchSheet: View {
         selectedDetent == .height(80)
     }
     
+    // Watch for focus changes
+    private func handleSearchFocusChange(_ isFocused: Bool) {
+        if isFocused && isMinimized {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                selectedDetent = .medium
+            }
+        }
+    }
+    
     private var filteredCities: [CityWeather] {
         if searchText.isEmpty {
             return cities
@@ -1042,6 +1051,9 @@ struct NativeSearchSheet: View {
         .onChange(of: searchText) { oldValue, newValue in
             citySearchManager.search(query: newValue)
         }
+        .onChange(of: isSearchFocused) { oldValue, newValue in
+            handleSearchFocusChange(newValue)
+        }
     }
     
     private func selectSearchResult(_ result: MKLocalSearchCompletion) async {
@@ -1061,6 +1073,8 @@ struct NativeSearchSheet: View {
                     tappedCity = existingCity
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                         showingCityDetail = true
+                        // Minimize the search sheet
+                        selectedDetent = .height(80)
                     }
                     onCitySelected(existingCity)
                     searchText = ""
@@ -1073,6 +1087,8 @@ struct NativeSearchSheet: View {
                 tappedCity = tempCityWeather
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                     showingCityDetail = true
+                    // Minimize the search sheet
+                    selectedDetent = .height(80)
                 }
                 onCitySelected(tempCityWeather)
                 

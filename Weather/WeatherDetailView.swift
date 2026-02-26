@@ -130,7 +130,7 @@ struct WeatherDetailView: View {
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(.white)
                             .frame(width: 32, height: 32)
-                            .background(Color.accentColor, in: Circle())
+                            .glassEffect(.regular.tint(.accentColor).interactive(), in: .circle)
                     }
                     .buttonStyle(.plain)
                     .padding(14)
@@ -145,7 +145,7 @@ struct WeatherDetailView: View {
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.secondary)
                         .frame(width: 32, height: 32)
-                        .background(.background.opacity(0.8), in: Circle())
+                            .glassEffect(.regular.interactive(), in: .circle)
                 }
                 .buttonStyle(.plain)
                 .padding(14)
