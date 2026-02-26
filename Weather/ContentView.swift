@@ -29,6 +29,7 @@ struct ContentView: View {
     @Namespace private var popupNamespace
     @State private var searchText: String = ""
     @State private var citySearchManager = CitySearchManager()
+    @State private var showingSearchSheet: Bool = true
     
     var body: some View {
         #if os(macOS)
@@ -101,55 +102,53 @@ struct ContentView: View {
         ZStack {
             // Map view as the main content
             mapView
-            
-            // Floating search sheet (Apple Maps style)
-            VStack {
-                Spacer()
-                
-                FloatingSearchSheet(
-                    cities: weatherService.cityWeatherData,
-                    selectedCity: $selectedCity,
-                    selectedDayOffset: selectedDayOffset,
-                    isEditMode: $isEditMode,
-                    searchText: $searchText,
-                    showingCityDetail: $showingCityDetail,
-                    tappedCity: $tappedCity,
-                    citySearchManager: citySearchManager,
-                    weatherService: weatherService,
-                    onCitySelected: { cityWeather in
-                        selectedCity = cityWeather
-                        // Animate to the selected city
-                        withAnimation {
-                            position = .region(
-                                MKCoordinateRegion(
-                                    center: CLLocationCoordinate2D(
-                                        latitude: cityWeather.city.latitude,
-                                        longitude: cityWeather.city.longitude
-                                    ),
-                                    span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 5.0)
-                                )
+        }
+        .sheet(isPresented: $showingSearchSheet) {
+            NativeSearchSheet(
+                cities: weatherService.cityWeatherData,
+                selectedCity: $selectedCity,
+                selectedDayOffset: selectedDayOffset,
+                isEditMode: $isEditMode,
+                searchText: $searchText,
+                showingCityDetail: $showingCityDetail,
+                tappedCity: $tappedCity,
+                citySearchManager: citySearchManager,
+                weatherService: weatherService,
+                onCitySelected: { cityWeather in
+                    selectedCity = cityWeather
+                    // Animate to the selected city
+                    withAnimation {
+                        position = .region(
+                            MKCoordinateRegion(
+                                center: CLLocationCoordinate2D(
+                                    latitude: cityWeather.city.latitude,
+                                    longitude: cityWeather.city.longitude
+                                ),
+                                span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 5.0)
                             )
-                        }
-                    },
-                    onDeleteCity: { cityWeather in
-                        weatherService.removeCity(cityWeather)
-                        if selectedCity?.id == cityWeather.id {
-                            selectedCity = nil
-                        }
-                    },
-                    onMoveCity: { source, destination in
-                        weatherService.moveCity(from: source, to: destination)
-                    },
-                    onRefresh: {
-                        await weatherService.refreshWeather()
-                    },
-                    lastFetchDate: weatherService.lastFetchDate,
-                    isRefreshing: weatherService.isLoading
-                )
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
-            }
-            .ignoresSafeArea(edges: .bottom)
+                        )
+                    }
+                },
+                onDeleteCity: { cityWeather in
+                    weatherService.removeCity(cityWeather)
+                    if selectedCity?.id == cityWeather.id {
+                        selectedCity = nil
+                    }
+                },
+                onMoveCity: { source, destination in
+                    weatherService.moveCity(from: source, to: destination)
+                },
+                onRefresh: {
+                    await weatherService.refreshWeather()
+                },
+                lastFetchDate: weatherService.lastFetchDate,
+                isRefreshing: weatherService.isLoading
+            )
+            .presentationDetents([.height(100), .medium, .large])
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            .presentationBackground(.regularMaterial)
+            .presentationCornerRadius(39)
+            .interactiveDismissDisabled()
         }
         .task {
             print("Starting weather fetch...")
@@ -769,8 +768,8 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     }
 }
 
-// MARK: - Floating Search Sheet (iOS - Apple Maps style)
-struct FloatingSearchSheet: View {
+// MARK: - Native Search Sheet (iOS - using native sheet presentation)
+struct NativeSearchSheet: View {
     let cities: [CityWeather]
     @Binding var selectedCity: CityWeather?
     let selectedDayOffset: Int
@@ -787,7 +786,6 @@ struct FloatingSearchSheet: View {
     let lastFetchDate: Date?
     let isRefreshing: Bool
     
-    @State private var isExpanded: Bool = false
     @State private var isLoadingSearchedCity = false
     @FocusState private var isSearchFocused: Bool
     
@@ -807,13 +805,6 @@ struct FloatingSearchSheet: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            // Drag indicator (always visible)
-            RoundedRectangle(cornerRadius: 2.5)
-                .fill(.quaternary)
-                .frame(width: 36, height: 5)
-                .padding(.top, 10)
-                .padding(.bottom, 10)
-            
             // Search bar
             HStack(spacing: 10) {
                 Image(systemName: "magnifyingglass")
@@ -824,11 +815,6 @@ struct FloatingSearchSheet: View {
                     .textFieldStyle(.plain)
                     .font(.system(size: 17))
                     .focused($isSearchFocused)
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                            isExpanded = true
-                        }
-                    }
                 
                 if !searchText.isEmpty {
                     Button {
@@ -849,14 +835,15 @@ struct FloatingSearchSheet: View {
                     .fill(Color(.systemGray6))
             )
             .padding(.horizontal, 24)
-            .padding(.bottom, 25)
+            .padding(.top, 30)
+            .padding(.bottom, 16)
             
-            // Expanded content
-            if isExpanded {
+            // Content
+            if shouldShowSearchResults {
+                // Search results
                 VStack(spacing: 0) {
-                    // Section header
                     HStack {
-                        Text(shouldShowSearchResults ? "Search Results" : "My Cities")
+                        Text("Search Results")
                             .font(.title2)
                             .fontWeight(.bold)
                         
@@ -865,136 +852,100 @@ struct FloatingSearchSheet: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     
-                    // Search results list
-                    if shouldShowSearchResults {
-                        ScrollView {
-                            LazyVStack(spacing: 0) {
-                                ForEach(Array(citySearchManager.searchResults.enumerated()), id: \.element.title) { index, result in
-                                    Button {
-                                        Task {
-                                            await selectSearchResult(result)
-                                        }
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Image(systemName: "mappin.circle.fill")
-                                                .font(.title2)
-                                                .foregroundStyle(.red)
-                                            
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(result.title)
-                                                    .font(.body)
-                                                    .foregroundStyle(.primary)
-                                                
-                                                Text(result.subtitle)
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                            
-                                            Spacer()
-                                            
-                                            if isLoadingSearchedCity {
-                                                ProgressView()
-                                                    .controlSize(.small)
-                                            }
-                                        }
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 12)
-                                        .background(.clear)
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(citySearchManager.searchResults.enumerated()), id: \.element.title) { index, result in
+                                Button {
+                                    Task {
+                                        await selectSearchResult(result)
                                     }
-                                    .buttonStyle(.plain)
-                                    .disabled(isLoadingSearchedCity)
-                                    
-                                    if index < citySearchManager.searchResults.count - 1 {
-                                        Divider()
-                                            .padding(.leading, 60)
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "mappin.circle.fill")
+                                            .font(.title2)
+                                            .foregroundStyle(.red)
+                                        
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(result.title)
+                                                .font(.body)
+                                                .foregroundStyle(.primary)
+                                            
+                                            Text(result.subtitle)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        
+                                        Spacer()
+                                        
+                                        if isLoadingSearchedCity {
+                                            ProgressView()
+                                                .controlSize(.small)
+                                        }
                                     }
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 12)
+                                    .background(.clear)
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(isLoadingSearchedCity)
+                                
+                                if index < citySearchManager.searchResults.count - 1 {
+                                    Divider()
+                                        .padding(.leading, 60)
                                 }
                             }
                         }
-                        .frame(maxHeight: 300)
-                    }
-                    
-                    // Cities list (original style)
-                    if !shouldShowSearchResults && !filteredCities.isEmpty {
-                        ScrollView {
-                            LazyVStack(spacing: 0) {
-                                ForEach(Array(filteredCities.enumerated()), id: \.element.id) { index, cityWeather in
-                                    Button {
-                                        onCitySelected(cityWeather)
-                                        tappedCity = cityWeather
-                                        showingCityDetail = true
-                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                                            isExpanded = false
-                                        }
-                                    } label: {
-                                        CityRow(
-                                            cityWeather: cityWeather,
-                                            dayOffset: selectedDayOffset
-                                        )
-                                        .padding(.horizontal, 16)
-                                        .padding(.vertical, 8)
-                                    }
-                                    .buttonStyle(.plain)
-                                    
-                                    if index < filteredCities.count - 1 {
-                                        Divider()
-                                            .padding(.leading, 60)
-                                    }
-                                }
-                            }
-                        }
-                        .frame(maxHeight: 400)
                     }
                 }
-                .transition(.asymmetric(
-                    insertion: .move(edge: .bottom).combined(with: .opacity),
-                    removal: .move(edge: .bottom).combined(with: .opacity)
-                ))
-            }
-        }
-        .background {
-            if isExpanded {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .fill(.regularMaterial)
+            } else if !filteredCities.isEmpty {
+                // Cities list
+                VStack(spacing: 0) {
+                    HStack {
+                        Text("My Cities")
+                            .font(.title2)
+                            .fontWeight(.bold)
+                        
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    
+                    ScrollView {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(filteredCities.enumerated()), id: \.element.id) { index, cityWeather in
+                                Button {
+                                    onCitySelected(cityWeather)
+                                    tappedCity = cityWeather
+                                    showingCityDetail = true
+                                } label: {
+                                    CityRow(
+                                        cityWeather: cityWeather,
+                                        dayOffset: selectedDayOffset
+                                    )
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                }
+                                .buttonStyle(.plain)
+                                
+                                if index < filteredCities.count - 1 {
+                                    Divider()
+                                        .padding(.leading, 60)
+                                }
+                            }
+                        }
+                    }
+                }
             } else {
-                Capsule(style: .continuous)
-                    .fill(.regularMaterial)
+                Spacer()
+                Text("No cities added yet")
+                    .font(.body)
+                    .foregroundStyle(.secondary)
+                Spacer()
             }
         }
-        .shadow(color: .black.opacity(0.15), radius: 12, y: 4)
         .onChange(of: searchText) { oldValue, newValue in
             citySearchManager.search(query: newValue)
-            if !newValue.isEmpty && !isExpanded {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    isExpanded = true
-                }
-            }
         }
-        .onChange(of: isSearchFocused) { oldValue, newValue in
-            if newValue && !isExpanded {
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    isExpanded = true
-                }
-            }
-        }
-        .gesture(
-            DragGesture(minimumDistance: 20)
-                .onEnded { value in
-                    // Drag down to collapse
-                    if value.translation.height > 50 && isExpanded {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                            isExpanded = false
-                            isSearchFocused = false
-                        }
-                    }
-                    // Drag up to expand
-                    else if value.translation.height < -50 && !isExpanded {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                            isExpanded = true
-                        }
-                    }
-                }
-        )
     }
     
     private func selectSearchResult(_ result: MKLocalSearchCompletion) async {
@@ -1017,9 +968,6 @@ struct FloatingSearchSheet: View {
                     }
                     onCitySelected(existingCity)
                     searchText = ""
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                        isExpanded = false
-                    }
                     return
                 }
                 
@@ -1033,9 +981,6 @@ struct FloatingSearchSheet: View {
                 onCitySelected(tempCityWeather)
                 
                 searchText = ""
-                withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                    isExpanded = false
-                }
             }
         } catch {
             print("Error searching for location: \(error.localizedDescription)")
