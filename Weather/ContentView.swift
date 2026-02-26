@@ -31,6 +31,7 @@ struct ContentView: View {
     @State private var citySearchManager = CitySearchManager()
     @State private var showingSearchSheet: Bool = true
     @State private var selectedDetent: PresentationDetent = .height(80)
+    @State private var showTimeSlider: Bool = false
     
     var body: some View {
         #if os(macOS)
@@ -205,56 +206,68 @@ struct ContentView: View {
                 
                 if !weatherService.forecastDays.isEmpty && selectedDetent != .large {
                     VStack(spacing: 12) {
-                        // Current date display
-                        Text(currentForecastDay?.displayText ?? "")
-                            .font(.headline)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .id("date-\(selectedDayOffset)")
-                            .transition(.asymmetric(
-                                insertion: .push(from: .trailing).combined(with: .opacity),
-                                removal: .push(from: .leading).combined(with: .opacity)
-                            ))
-                        
-                        // Slider
-                        VStack(spacing: 8) {
-                            Slider(value: Binding(
-                                get: { Double(selectedDayOffset) },
-                                set: { newValue in
-                                    withAnimation(.smooth(duration: 0.1)) {
-                                        selectedDayOffset = Int(newValue)
-                                    }
-                                }
-                            ), in: 0...9, step: 1)
-                            .tint(.blue)
-                            
-                            // Day labels aligned with slider positions
-                            GeometryReader { geometry in
-                                let thumbRadius: CGFloat = 10  // Approximate slider thumb radius
-                                let trackWidth = geometry.size.width - (thumbRadius * 2)
-                                let stepWidth = trackWidth / 9  // 9 intervals for 10 positions (0-9)
+                        // Time slider (revealed when showTimeSlider is true)
+                        if showTimeSlider {
+                            VStack(spacing: 12) {
+                                // Current date display
+                                Text(currentForecastDay?.displayText ?? "")
+                                    .font(.headline)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(.ultraThinMaterial, in: Capsule())
+                                    .id("date-\(selectedDayOffset)")
+                                    .transition(.asymmetric(
+                                        insertion: .push(from: .trailing).combined(with: .opacity),
+                                        removal: .push(from: .leading).combined(with: .opacity)
+                                    ))
                                 
-                                ForEach(Array(weatherService.forecastDays.prefix(10).enumerated()), id: \.element.id) { index, day in
-                                    Text(dayOfWeek(for: day.date))
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .position(
-                                            x: thumbRadius + (CGFloat(index) * stepWidth),
-                                            y: geometry.size.height / 2
-                                        )
+                                // Slider without day labels
+                                Slider(value: Binding(
+                                    get: { Double(selectedDayOffset) },
+                                    set: { newValue in
+                                        withAnimation(.smooth(duration: 0.1)) {
+                                            selectedDayOffset = Int(newValue)
+                                        }
+                                    }
+                                ), in: 0...9, step: 1)
+                                .tint(.blue)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 12)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                                .frame(maxWidth: 500)
+                            }
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        
+                        // "Today" button (always visible)
+                        Button {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                if showTimeSlider {
+                                    // If slider is showing, toggle it off and reset to today
+                                    selectedDayOffset = 0
+                                    showTimeSlider = false
+                                } else {
+                                    // If slider is hidden, reveal it
+                                    showTimeSlider = true
                                 }
                             }
-                            .frame(height: 20)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: showTimeSlider ? "calendar" : "calendar.badge.clock")
+                                    .font(.system(size: 16, weight: .medium))
+                                Text(showTimeSlider ? "Hide" : "Today")
+                                    .font(.headline)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(.ultraThinMaterial, in: Capsule())
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 12)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                        .frame(maxWidth: 500)
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal)
                     .padding(.bottom, sliderBottomPadding)
                     .animation(.smooth(duration: 0.3), value: selectedDetent)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.75), value: showTimeSlider)
                 }
             }
             #else
@@ -263,55 +276,67 @@ struct ContentView: View {
                 
                 if !weatherService.forecastDays.isEmpty {
                     VStack(spacing: 12) {
-                        // Current date display
-                        Text(currentForecastDay?.displayText ?? "")
-                            .font(.headline)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(.ultraThinMaterial, in: Capsule())
-                            .id("date-\(selectedDayOffset)")
-                            .transition(.asymmetric(
-                                insertion: .push(from: .trailing).combined(with: .opacity),
-                                removal: .push(from: .leading).combined(with: .opacity)
-                            ))
-                        
-                        // Slider
-                        VStack(spacing: 8) {
-                            Slider(value: Binding(
-                                get: { Double(selectedDayOffset) },
-                                set: { newValue in
-                                    withAnimation(.smooth(duration: 0.1)) {
-                                        selectedDayOffset = Int(newValue)
-                                    }
-                                }
-                            ), in: 0...9, step: 1)
-                            .tint(.blue)
-                            
-                            // Day labels aligned with slider positions
-                            GeometryReader { geometry in
-                                let thumbRadius: CGFloat = 10  // Approximate slider thumb radius
-                                let trackWidth = geometry.size.width - (thumbRadius * 2)
-                                let stepWidth = trackWidth / 9  // 9 intervals for 10 positions (0-9)
+                        // Time slider (revealed when showTimeSlider is true)
+                        if showTimeSlider {
+                            VStack(spacing: 12) {
+                                // Current date display
+                                Text(currentForecastDay?.displayText ?? "")
+                                    .font(.headline)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(.ultraThinMaterial, in: Capsule())
+                                    .id("date-\(selectedDayOffset)")
+                                    .transition(.asymmetric(
+                                        insertion: .push(from: .trailing).combined(with: .opacity),
+                                        removal: .push(from: .leading).combined(with: .opacity)
+                                    ))
                                 
-                                ForEach(Array(weatherService.forecastDays.prefix(10).enumerated()), id: \.element.id) { index, day in
-                                    Text(dayOfWeek(for: day.date))
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
-                                        .position(
-                                            x: thumbRadius + (CGFloat(index) * stepWidth),
-                                            y: geometry.size.height / 2
-                                        )
+                                // Slider without day labels
+                                Slider(value: Binding(
+                                    get: { Double(selectedDayOffset) },
+                                    set: { newValue in
+                                        withAnimation(.smooth(duration: 0.1)) {
+                                            selectedDayOffset = Int(newValue)
+                                        }
+                                    }
+                                ), in: 0...9, step: 1)
+                                .tint(.blue)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 12)
+                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                                .frame(maxWidth: 500)
+                            }
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                        }
+                        
+                        // "Today" button (always visible)
+                        Button {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                                if showTimeSlider {
+                                    // If slider is showing, toggle it off and reset to today
+                                    selectedDayOffset = 0
+                                    showTimeSlider = false
+                                } else {
+                                    // If slider is hidden, reveal it
+                                    showTimeSlider = true
                                 }
                             }
-                            .frame(height: 20)
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: showTimeSlider ? "calendar" : "calendar.badge.clock")
+                                    .font(.system(size: 16, weight: .medium))
+                                Text(showTimeSlider ? "Hide" : "Today")
+                                    .font(.headline)
+                            }
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
+                            .background(.ultraThinMaterial, in: Capsule())
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 12)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                        .frame(maxWidth: 500)
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal)
                     .padding(.bottom, 20)
+                    .animation(.spring(response: 0.4, dampingFraction: 0.75), value: showTimeSlider)
                 }
             }
             #endif
@@ -372,12 +397,6 @@ struct ContentView: View {
         default:
             return 20  // Hidden when large, but keep minimal padding
         }
-    }
-    
-    private func dayOfWeek(for date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE"
-        return formatter.string(from: date)
     }
 }
 
