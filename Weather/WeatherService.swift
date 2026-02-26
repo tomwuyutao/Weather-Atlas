@@ -590,10 +590,16 @@ struct ForecastDay: Identifiable {
     var shortDisplayText: String {
         if dayOffset == 0 {
             return "Today"
+        } else if dayOffset == 1 {
+            return "Tomorrow"
         } else {
+            let calendar = Calendar.current
+            let day = calendar.component(.day, from: date)
+            let month = calendar.component(.month, from: date)
             let formatter = DateFormatter()
-            formatter.dateFormat = "EEE d"
-            return formatter.string(from: date)
+            formatter.dateFormat = "EEE"
+            let weekday = formatter.string(from: date)
+            return "\(weekday), \(day)/\(month)"
         }
     }
 }
