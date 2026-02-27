@@ -1011,6 +1011,18 @@ struct NativeSearchSheet: View {
                                 
                                 Spacer()
                                 
+                                // Edit button
+                                Button {
+                                    withAnimation {
+                                        isEditMode.toggle()
+                                    }
+                                } label: {
+                                    Image(systemName: isEditMode ? "checkmark" : "pencil")
+                                        .font(.title2)
+                                        .foregroundStyle(.primary)
+                                }
+                                .buttonStyle(.plain)
+                                
                                 // Add city button
                                 Button {
                                     showingAddCityView = true
@@ -1024,33 +1036,42 @@ struct NativeSearchSheet: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
                             
-                            ScrollView {
-                                LazyVStack(spacing: 0) {
-                                    ForEach(Array(filteredCities.enumerated()), id: \.element.id) { index, cityWeather in
-                                        Button {
+                            // Use List in both modes, but with consistent styling
+                            List {
+                                ForEach(filteredCities) { cityWeather in
+                                    Button {
+                                        if !isEditMode {
                                             onCitySelected(cityWeather)
                                             tappedCity = cityWeather
                                             withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                                                 showingCityDetail = true
                                                 selectedDetent = .height(80)
                                             }
-                                        } label: {
-                                            CityRow(
-                                                cityWeather: cityWeather,
-                                                dayOffset: selectedDayOffset
-                                            )
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 8)
                                         }
-                                        .buttonStyle(.plain)
-                                        
-                                        if index < filteredCities.count - 1 {
-                                            Divider()
-                                                .padding(.leading, 60)
-                                        }
+                                    } label: {
+                                        CityRow(
+                                            cityWeather: cityWeather,
+                                            dayOffset: selectedDayOffset
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                                    .listRowSeparator(.visible)
+                                    .listRowBackground(Color.clear)
+                                }
+                                .onDelete { indexSet in
+                                    for index in indexSet {
+                                        let cityToDelete = filteredCities[index]
+                                        onDeleteCity(cityToDelete)
                                     }
                                 }
+                                .onMove { source, destination in
+                                    onMoveCity(source, destination)
+                                }
                             }
+                            .listStyle(.plain)
+                            .scrollContentBackground(.hidden)
+                            .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
                         }
                     } else {
                         Spacer()

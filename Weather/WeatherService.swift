@@ -54,6 +54,7 @@ class WeatherService {
     private let weatherService = WeatherKit.WeatherService.shared
     private let cacheKey = "cachedWeatherData"
     private let cacheTimestampKey = "weatherCacheTimestamp"
+    private let citiesListKey = "savedCitiesList"  // NEW: Key for persisting the city list
     private let cacheDuration: TimeInterval = 2 * 60 * 60 // 2 hours
     
     // European cities
@@ -109,9 +110,13 @@ class WeatherService {
         // Generate 10 days of forecast data
         generateForecastDays()
         
+        // Load the saved cities list, or use default European cities if none saved
+        let citiesToFetch = loadSavedCities() ?? europeanCities
+        print("📍 Fetching weather for \(citiesToFetch.count) cities")
+        
         var weatherData: [CityWeather] = []
         
-        for city in europeanCities {
+        for city in citiesToFetch {
             do {
                 // Fetch real weather data from WeatherKit
                 let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
@@ -213,6 +218,41 @@ class WeatherService {
         UserDefaults.standard.removeObject(forKey: cacheTimestampKey)
         lastFetchDate = nil
         print("🗑️ Cache cleared")
+    }
+    
+    // MARK: - Cities List Persistence
+    
+    /// Save the current list of cities (just the City objects, not the weather data)
+    private func saveCitiesList() {
+        let cities = cityWeatherData.map { $0.city }
+        
+        do {
+            let encoder = JSONEncoder()
+            let encoded = try encoder.encode(cities.map { CachedCity(from: $0) })
+            UserDefaults.standard.set(encoded, forKey: citiesListKey)
+            print("💾 Saved cities list: \(cities.map { $0.name }.joined(separator: ", "))")
+        } catch {
+            print("❌ Failed to save cities list: \(error)")
+        }
+    }
+    
+    /// Load the saved cities list (returns nil if no list was saved)
+    private func loadSavedCities() -> [City]? {
+        guard let data = UserDefaults.standard.data(forKey: citiesListKey) else {
+            print("📭 No saved cities list found, using default European cities")
+            return nil
+        }
+        
+        do {
+            let decoder = JSONDecoder()
+            let cachedCities = try decoder.decode([CachedCity].self, from: data)
+            let cities = cachedCities.map { $0.toCity() }
+            print("📍 Loaded \(cities.count) saved cities: \(cities.map { $0.name }.joined(separator: ", "))")
+            return cities
+        } catch {
+            print("❌ Failed to decode saved cities: \(error)")
+            return nil
+        }
     }
     
     // Helper function to get timezone for a location
@@ -351,6 +391,8 @@ class WeatherService {
         cityWeatherData.removeAll { $0.id == cityWeather.id }
         // Update cache after removing city
         cacheData(cityWeatherData)
+        // Save the updated cities list
+        saveCitiesList()
     }
     
     func addCity(_ city: City) async {
@@ -370,6 +412,9 @@ class WeatherService {
             // Update cache with the new city included
             cacheData(cityWeatherData)
             
+            // Save the updated cities list
+            saveCitiesList()
+            
             print("✅ Added weather for \(city.name): \(Int(cityWeather.temperature))°C")
         } catch {
             print("❌ Error fetching weather for \(city.name): \(error.localizedDescription)")
@@ -386,6 +431,9 @@ class WeatherService {
             
             // Update cache even with fallback data
             cacheData(cityWeatherData)
+            
+            // Save the updated cities list
+            saveCitiesList()
         }
     }
     
@@ -420,6 +468,8 @@ class WeatherService {
         cityWeatherData.move(fromOffsets: source, toOffset: destination)
         // Update cache after reordering cities
         cacheData(cityWeatherData)
+        // Save the updated cities list
+        saveCitiesList()
     }
     
     private func generateForecastDays() {
@@ -508,7 +558,7 @@ class WeatherService {
     }
 }
 
-struct City: Identifiable, Hashable {
+struct City: Identifiable, Hashable, Codable {
     let id = UUID()
     let name: String
     let latitude: Double
@@ -792,6 +842,22 @@ struct HourlyForecast: Identifiable {
 }
 
 // MARK: - Cache Models
+
+struct CachedCity: Codable {
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    
+    init(from city: City) {
+        self.name = city.name
+        self.latitude = city.latitude
+        self.longitude = city.longitude
+    }
+    
+    func toCity() -> City {
+        return City(name: name, latitude: latitude, longitude: longitude)
+    }
+}
 
 struct CachedCityWeather: Codable {
     let cityName: String
