@@ -206,7 +206,7 @@ struct ContentView: View {
             )
             .presentationDetents([.height(80), .medium, .large], selection: $selectedDetent)
             .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-            .presentationBackground(.thinMaterial)
+            .presentationBackground(Color(.systemBackground))
             .presentationCornerRadius(selectedDetent == .height(80) ? 65 : 45)
             .interactiveDismissDisabled()
         }
@@ -451,35 +451,32 @@ struct CityListSidebar: View {
                 // Show search results if searching
                 if shouldShowSearchResults {
                     Section {
-                        ForEach(Array(citySearchManager.searchResults.enumerated()), id: \.element.title) { index, result in
-                            VStack(spacing: 0) {
-                                Button {
-                                    Task {
-                                        await selectSearchResult(result)
-                                    }
-                                } label: {
-                                    HStack {
-                                        Text("\(result.title), \(result.subtitle)")
-                                            .font(.body)
-                                            .foregroundStyle(.primary)
-                                        Spacer()
-                                        if isLoadingSearchedCity {
-                                            ProgressView()
-                                                .controlSize(.small)
-                                        }
-                                    }
-                                    .padding(.vertical, 8)
+                        ForEach(citySearchManager.searchResults, id: \.title) { result in
+                            Button {
+                                Task {
+                                    await selectSearchResult(result)
                                 }
-                                .buttonStyle(.plain)
-                                .disabled(isLoadingSearchedCity)
-                                
-                                // Divider between results (except for the last one)
-                                if index < citySearchManager.searchResults.count - 1 {
-                                    Divider()
-                                        .padding(.leading, 0)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Text(result.title)
+                                        .font(.body)
+                                        .foregroundStyle(.primary)
+                                    
+                                    Spacer()
+                                    
+                                    if isLoadingSearchedCity {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    } else {
+                                        Text(result.subtitle)
+                                            .font(.headline)
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
+                                .padding(.vertical, 4)
                             }
-                            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 16))
+                            .buttonStyle(.plain)
+                            .disabled(isLoadingSearchedCity)
                         }
                     }
                 }
@@ -959,50 +956,40 @@ struct NativeSearchSheet: View {
                             .padding(.horizontal, 16)
                             .padding(.vertical, 12)
                             
-                            ScrollView {
-                                LazyVStack(spacing: 0) {
-                                    ForEach(Array(citySearchManager.searchResults.enumerated()), id: \.element.title) { index, result in
-                                        Button {
-                                            Task {
-                                                await selectSearchResult(result)
-                                            }
-                                        } label: {
-                                            HStack(spacing: 12) {
-                                                Image(systemName: "mappin.circle.fill")
-                                                    .font(.title2)
-                                                    .foregroundStyle(.red)
-                                                
-                                                VStack(alignment: .leading, spacing: 2) {
-                                                    Text(result.title)
-                                                        .font(.body)
-                                                        .foregroundStyle(.primary)
-                                                    
-                                                    Text(result.subtitle)
-                                                        .font(.caption)
-                                                        .foregroundStyle(.secondary)
-                                                }
-                                                
-                                                Spacer()
-                                                
-                                                if isLoadingSearchedCity {
-                                                    ProgressView()
-                                                        .controlSize(.small)
-                                                }
-                                            }
-                                            .padding(.horizontal, 16)
-                                            .padding(.vertical, 12)
-                                            .background(.clear)
+                            List {
+                                ForEach(citySearchManager.searchResults, id: \.title) { result in
+                                    Button {
+                                        Task {
+                                            await selectSearchResult(result)
                                         }
-                                        .buttonStyle(.plain)
-                                        .disabled(isLoadingSearchedCity)
-                                        
-                                        if index < citySearchManager.searchResults.count - 1 {
-                                            Divider()
-                                                .padding(.leading, 60)
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Text(result.title)
+                                                .font(.body)
+                                                .foregroundStyle(.primary)
+                                            
+                                            Spacer()
+                                            
+                                            if isLoadingSearchedCity {
+                                                ProgressView()
+                                                    .controlSize(.small)
+                                            } else {
+                                                Text(result.subtitle)
+                                                    .font(.headline)
+                                                    .foregroundStyle(.secondary)
+                                            }
                                         }
+                                        .padding(.vertical, 4)
                                     }
+                                    .buttonStyle(.plain)
+                                    .disabled(isLoadingSearchedCity)
+                                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                                    .listRowSeparator(.visible)
+                                    .listRowBackground(Color.clear)
                                 }
                             }
+                            .listStyle(.plain)
+                            .scrollContentBackground(.hidden)
                         }
                     } else if !filteredCities.isEmpty {
                         // Cities list
@@ -1280,50 +1267,40 @@ struct AddCitySearchView: View {
             
             // Search results
             if shouldShowSearchResults {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(citySearchManager.searchResults.enumerated()), id: \.element.title) { index, result in
-                            Button {
-                                Task {
-                                    await selectSearchResult(result)
-                                }
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "mappin.circle.fill")
-                                        .font(.title2)
-                                        .foregroundStyle(.red)
-                                    
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(result.title)
-                                            .font(.body)
-                                            .foregroundStyle(.primary)
-                                        
-                                        Text(result.subtitle)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                    
-                                    Spacer()
-                                    
-                                    if isLoadingCity {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 12)
-                                .background(.clear)
+                List {
+                    ForEach(citySearchManager.searchResults, id: \.title) { result in
+                        Button {
+                            Task {
+                                await selectSearchResult(result)
                             }
-                            .buttonStyle(.plain)
-                            .disabled(isLoadingCity)
-                            
-                            if index < citySearchManager.searchResults.count - 1 {
-                                Divider()
-                                    .padding(.leading, 60)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(result.title)
+                                    .font(.body)
+                                    .foregroundStyle(.primary)
+                                
+                                Spacer()
+                                
+                                if isLoadingCity {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    Text(result.subtitle)
+                                        .font(.headline)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
+                            .padding(.vertical, 4)
                         }
+                        .buttonStyle(.plain)
+                        .disabled(isLoadingCity)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowSeparator(.visible)
+                        .listRowBackground(Color.clear)
                     }
                 }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             } else if searchText.isEmpty {
                 VStack(spacing: 16) {
                     Spacer()

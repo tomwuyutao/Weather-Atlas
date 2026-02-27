@@ -207,7 +207,7 @@ class WeatherService {
             let decoder = JSONDecoder()
             let cachedWeather = try decoder.decode([CachedCityWeather].self, from: data)
             lastFetchDate = UserDefaults.standard.object(forKey: cacheTimestampKey) as? Date
-            return cachedWeather.compactMap { $0.toCityWeather(cities: europeanCities) }
+            return cachedWeather.map { $0.toCityWeather() }
         } catch {
             print("❌ Failed to decode cached data: \(error)")
             return nil
@@ -858,22 +858,25 @@ struct HourlyForecast: Identifiable {
 // MARK: - Cache Models
 
 struct CachedCity: Codable {
+    let id: UUID
     let name: String
     let latitude: Double
     let longitude: Double
     
     init(from city: City) {
+        self.id = city.id
         self.name = city.name
         self.latitude = city.latitude
         self.longitude = city.longitude
     }
     
     func toCity() -> City {
-        return City(name: name, latitude: latitude, longitude: longitude)
+        return City(id: id, name: name, latitude: latitude, longitude: longitude)
     }
 }
 
 struct CachedCityWeather: Codable {
+    let cityId: UUID
     let cityName: String
     let cityLatitude: Double
     let cityLongitude: Double
@@ -883,6 +886,7 @@ struct CachedCityWeather: Codable {
     let dailyForecasts: [CachedDailyForecast]
     
     init(from cityWeather: CityWeather) {
+        self.cityId = cityWeather.city.id
         self.cityName = cityWeather.city.name
         self.cityLatitude = cityWeather.city.latitude
         self.cityLongitude = cityWeather.city.longitude
@@ -892,12 +896,8 @@ struct CachedCityWeather: Codable {
         self.dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
     }
     
-    func toCityWeather(cities: [City]) -> CityWeather? {
-        // Find matching city by coordinates, or create a new one
-        let city = cities.first(where: {
-            abs($0.latitude - cityLatitude) < 0.01 && abs($0.longitude - cityLongitude) < 0.01
-        }) ?? City(name: cityName, latitude: cityLatitude, longitude: cityLongitude)
-        
+    func toCityWeather() -> CityWeather {
+        let city = City(id: cityId, name: cityName, latitude: cityLatitude, longitude: cityLongitude)
         let appCondition = AppWeatherCondition.fromDisplayName(condition)
         let forecasts = dailyForecasts.map { $0.toDailyForecast() }
         
