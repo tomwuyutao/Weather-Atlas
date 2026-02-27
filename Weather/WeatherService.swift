@@ -9,6 +9,7 @@ import Foundation
 import SwiftUI
 import WeatherKit
 import CoreLocation
+import MapKit
 import Combine
 
 enum AppWeatherCondition {
@@ -257,14 +258,15 @@ class WeatherService {
     
     // Helper function to get timezone for a location
     private func getTimeZone(for location: CLLocation) async -> TimeZone {
-        let geocoder = CLGeocoder()
-        do {
-            let placemarks = try await geocoder.reverseGeocodeLocation(location)
-            if let timeZone = placemarks.first?.timeZone {
-                return timeZone
+        if let request = MKReverseGeocodingRequest(location: location) {
+            do {
+                let mapItems = try await request.mapItems
+                if let timeZone = mapItems.first?.timeZone {
+                    return timeZone
+                }
+            } catch {
+                print("⚠️ Could not determine timezone for location: \(error.localizedDescription)")
             }
-        } catch {
-            print("⚠️ Could not determine timezone for location: \(error.localizedDescription)")
         }
         // Fallback to UTC if we can't determine the timezone
         return TimeZone(identifier: "UTC") ?? TimeZone.current
@@ -559,7 +561,7 @@ class WeatherService {
 }
 
 struct City: Identifiable, Hashable, Codable {
-    let id = UUID()
+    var id = UUID()
     let name: String
     let latitude: Double
     let longitude: Double

@@ -636,7 +636,7 @@ struct CityListSidebar: View {
         do {
             let response = try await search.start()
             if let mapItem = response.mapItems.first {
-                let coordinate = mapItem.placemark.coordinate
+                let coordinate = mapItem.location.coordinate
                 let cityName = result.title
                 
                 // Check if this city already exists in the sidebar
@@ -850,98 +850,96 @@ struct NativeSearchSheet: View {
                 // Date navigation - only show when minimized
                 if isMinimized {
                     HStack {
-                        Spacer()
-                        
-                        HStack(spacing: 0) {
-                            // Previous day button
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
-                                .frame(width: 40, height: 50)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if selectedDayOffset > 0 {
-                                        withAnimation(.smooth(duration: 0.2)) {
-                                            selectedDayOffset -= 1
-                                        }
+                        // Previous day button - left edge
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
+                            .frame(width: 44, height: 50)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if selectedDayOffset > 0 {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        selectedDayOffset -= 1
                                     }
                                 }
-                                .onLongPressGesture {
-                                    withAnimation(.smooth(duration: 0.3)) {
-                                        selectedDayOffset = 0
-                                    }
+                            }
+                            .onLongPressGesture {
+                                withAnimation(.smooth(duration: 0.3)) {
+                                    selectedDayOffset = 0
                                 }
-                            
-                            // Day indicator - tappable
-                            Text(shortDateWithDayText)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-                                .id("minimized-date-\(selectedDayOffset)")
-                                .transition(.asymmetric(
-                                    insertion: .move(edge: selectedDayOffset >= previousDayOffset ? .trailing : .leading).combined(with: .opacity),
-                                    removal: .move(edge: selectedDayOffset >= previousDayOffset ? .leading : .trailing).combined(with: .opacity)
-                                ))
-                                .frame(width: 100, height: 50)
-                                .clipped()
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if !showingDatePopover {
-                                        showingDatePopover = true
-                                    }
-                                }
-                            
-                            // Next day button
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
-                                .frame(width: 40, height: 50)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    if selectedDayOffset < 9 {
-                                        withAnimation(.smooth(duration: 0.2)) {
-                                            selectedDayOffset += 1
-                                        }
-                                    }
-                                }
-                                .onLongPressGesture {
-                                    withAnimation(.smooth(duration: 0.3)) {
-                                        selectedDayOffset = 9
-                                    }
-                                }
-                        }
-                        .glassEffect(.regular.interactive())
-                        .onChange(of: selectedDayOffset) { oldValue, _ in
-                            previousDayOffset = oldValue
-                        }
-                        .popover(isPresented: $showingDatePopover) {
-                            DatePicker(
-                                "",
-                                selection: Binding(
-                                    get: { selectedDate },
-                                    set: { newDate in
-                                        let calendar = Calendar.current
-                                        let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
-                                        if let days = components.day {
-                                            withAnimation(.smooth(duration: 0.2)) {
-                                                selectedDayOffset = max(0, min(9, days))
-                                            }
-                                        }
-                                    }
-                                ),
-                                in: dateRange,
-                                displayedComponents: .date
-                            )
-                            .datePickerStyle(.graphical)
-                            .labelsHidden()
-                            .frame(width: 280, height: 300)
-                            .padding(8)
-                            .presentationCompactAdaptation(.popover)
-                            .presentationBackground(.thickMaterial)
-                        }
+                            }
                         
                         Spacer()
+                        
+                        // Day indicator - tappable capsule
+                        Text(shortDateWithDayText)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .id("minimized-date-\(selectedDayOffset)")
+                            .transition(.asymmetric(
+                                insertion: .move(edge: selectedDayOffset >= previousDayOffset ? .trailing : .leading).combined(with: .opacity),
+                                removal: .move(edge: selectedDayOffset >= previousDayOffset ? .leading : .trailing).combined(with: .opacity)
+                            ))
+                            .frame(width: 100, height: 50)
+                            .clipped()
+                            .glassEffect(.regular.interactive())
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if !showingDatePopover {
+                                    showingDatePopover = true
+                                }
+                            }
+                        
+                        Spacer()
+                        
+                        // Next day button - right edge
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
+                            .frame(width: 44, height: 50)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                if selectedDayOffset < 9 {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        selectedDayOffset += 1
+                                    }
+                                }
+                            }
+                            .onLongPressGesture {
+                                withAnimation(.smooth(duration: 0.3)) {
+                                    selectedDayOffset = 9
+                                }
+                            }
                     }
-                    .padding(.horizontal, 24)
+                    .onChange(of: selectedDayOffset) { oldValue, _ in
+                        previousDayOffset = oldValue
+                    }
+                    .popover(isPresented: $showingDatePopover) {
+                        DatePicker(
+                            "",
+                            selection: Binding(
+                                get: { selectedDate },
+                                set: { newDate in
+                                    let calendar = Calendar.current
+                                    let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
+                                    if let days = components.day {
+                                        withAnimation(.smooth(duration: 0.2)) {
+                                            selectedDayOffset = max(0, min(9, days))
+                                        }
+                                    }
+                                }
+                            ),
+                            in: dateRange,
+                            displayedComponents: .date
+                        )
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                        .frame(width: 280, height: 300)
+                        .padding(8)
+                        .presentationCompactAdaptation(.popover)
+                        .presentationBackground(.thickMaterial)
+                    }
+                    .padding(.horizontal, 16)
                     .padding(.top, 22)
                     .padding(.bottom, 16)
                 }
@@ -1168,7 +1166,7 @@ struct NativeSearchSheet: View {
         do {
             let response = try await search.start()
             if let mapItem = response.mapItems.first {
-                let coordinate = mapItem.placemark.coordinate
+                let coordinate = mapItem.location.coordinate
                 let cityName = result.title
                 
                 if let existingCity = cities.first(where: { $0.city.name == cityName }) {
@@ -1381,7 +1379,7 @@ struct AddCitySearchView: View {
         do {
             let response = try await search.start()
             if let mapItem = response.mapItems.first {
-                let coordinate = mapItem.placemark.coordinate
+                let coordinate = mapItem.location.coordinate
                 let cityName = result.title
                 
                 // Check if city already exists
