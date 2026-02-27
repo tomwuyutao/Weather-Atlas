@@ -148,7 +148,7 @@ struct ContentView: View {
                 isRefreshing: weatherService.isLoading
             )
             .presentationDetents([.height(80), .medium, .large], selection: $selectedDetent)
-            .presentationBackgroundInteraction(.enabled(upThrough: .height(80)))
+            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
             .presentationBackground(.regularMaterial)
             .presentationCornerRadius(selectedDetent == .height(80) ? 65 : 45)
             .interactiveDismissDisabled()
@@ -930,16 +930,33 @@ struct NativeSearchSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Time slider - only show when minimized
+                // Date navigation - only show when minimized
                 if isMinimized {
-                    HStack(spacing: 12) {
-                        // Day indicator capsule on the left
+                    HStack(spacing: 8) {
+                        Spacer()
+                        
+                        // Previous day button
+                        Button {
+                            withAnimation(.smooth(duration: 0.2)) {
+                                selectedDayOffset = max(0, selectedDayOffset - 1)
+                            }
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
+                                .frame(width: 36, height: 36)
+                                .background(.ultraThinMaterial, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(selectedDayOffset == 0)
+                        
+                        // Day indicator
                         Text(currentForecastDay?.shortDisplayText ?? "Today")
                             .font(.subheadline)
                             .fontWeight(.medium)
-                            .frame(width: 75)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 8)
+                            .frame(minWidth: 75)
+                            .padding(.horizontal, 16)
+                            .frame(height: 36)
                             .background(.ultraThinMaterial, in: Capsule())
                             .id("date-\(selectedDayOffset)")
                             .transition(.asymmetric(
@@ -947,16 +964,22 @@ struct NativeSearchSheet: View {
                                 removal: .push(from: .leading).combined(with: .opacity)
                             ))
                         
-                        // Time slider
-                        Slider(value: Binding(
-                            get: { Double(selectedDayOffset) },
-                            set: { newValue in
-                                withAnimation(.smooth(duration: 0.1)) {
-                                    selectedDayOffset = Int(newValue)
-                                }
+                        // Next day button
+                        Button {
+                            withAnimation(.smooth(duration: 0.2)) {
+                                selectedDayOffset = min(9, selectedDayOffset + 1)
                             }
-                        ), in: 0...9, step: 1)
-                        .tint(.blue)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
+                                .frame(width: 36, height: 36)
+                                .background(.ultraThinMaterial, in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(selectedDayOffset == 9)
+                        
+                        Spacer()
                     }
                     .padding(.horizontal, 24)
                     .padding(.top, 22)
