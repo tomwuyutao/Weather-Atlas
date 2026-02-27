@@ -22,7 +22,6 @@ struct ContentView: View {
     @State private var selectedDayOffset: Int = 0
     @State private var isEditMode: Bool = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
-    @State private var mapCameraPosition: MapCameraPosition = .automatic
     @State private var isZoomedOut: Bool = true
     @State private var showingCityDetail: Bool = false
     @State private var tappedCity: CityWeather?
@@ -31,8 +30,6 @@ struct ContentView: View {
     @State private var citySearchManager = CitySearchManager()
     @State private var showingSearchSheet: Bool = true
     @State private var selectedDetent: PresentationDetent = .height(80)
-    @State private var showTimeSlider: Bool = false
-    @State private var showingDatePicker: Bool = false
     
     var body: some View {
         #if os(macOS)
@@ -118,7 +115,6 @@ struct ContentView: View {
                 citySearchManager: citySearchManager,
                 weatherService: weatherService,
                 selectedDetent: $selectedDetent,
-                showingDatePicker: $showingDatePicker,
                 onCitySelected: { cityWeather in
                     selectedCity = cityWeather
                     // Animate to the selected city
@@ -201,151 +197,6 @@ struct ContentView: View {
             }
             .ignoresSafeArea()
             
-            // Time slider - now moved to search sheet
-            // Keeping this code commented for reference
-            /*
-            #if os(iOS)
-            VStack {
-                Spacer()
-                
-                if !weatherService.forecastDays.isEmpty && selectedDetent != .large {
-                    VStack(spacing: 12) {
-                        // Time slider (revealed when showTimeSlider is true)
-                        if showTimeSlider {
-                            VStack(spacing: 12) {
-                                // Current date display
-                                Text(currentForecastDay?.displayText ?? "")
-                                    .font(.headline)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(.ultraThinMaterial, in: Capsule())
-                                    .id("date-\(selectedDayOffset)")
-                                    .transition(.asymmetric(
-                                        insertion: .push(from: .trailing).combined(with: .opacity),
-                                        removal: .push(from: .leading).combined(with: .opacity)
-                                    ))
-                                
-                                // Slider without day labels
-                                Slider(value: Binding(
-                                    get: { Double(selectedDayOffset) },
-                                    set: { newValue in
-                                        withAnimation(.smooth(duration: 0.1)) {
-                                            selectedDayOffset = Int(newValue)
-                                        }
-                                    }
-                                ), in: 0...9, step: 1)
-                                .tint(.blue)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 12)
-                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                                .frame(maxWidth: 500)
-                            }
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                        
-                        // "Today" button (always visible)
-                        Button {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                                if showTimeSlider {
-                                    // If slider is showing, toggle it off and reset to today
-                                    selectedDayOffset = 0
-                                    showTimeSlider = false
-                                } else {
-                                    // If slider is hidden, reveal it
-                                    showTimeSlider = true
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: showTimeSlider ? "calendar" : "calendar.badge.clock")
-                                    .font(.system(size: 16, weight: .medium))
-                                Text(showTimeSlider ? "Hide" : "Today")
-                                    .font(.headline)
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            .background(.ultraThinMaterial, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal)
-                    .padding(.bottom, sliderBottomPadding)
-                    .animation(.smooth(duration: 0.3), value: selectedDetent)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.75), value: showTimeSlider)
-                }
-            }
-            #else
-            VStack {
-                Spacer()
-                
-                if !weatherService.forecastDays.isEmpty {
-                    VStack(spacing: 12) {
-                        // Time slider (revealed when showTimeSlider is true)
-                        if showTimeSlider {
-                            VStack(spacing: 12) {
-                                // Current date display
-                                Text(currentForecastDay?.displayText ?? "")
-                                    .font(.headline)
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(.ultraThinMaterial, in: Capsule())
-                                    .id("date-\(selectedDayOffset)")
-                                    .transition(.asymmetric(
-                                        insertion: .push(from: .trailing).combined(with: .opacity),
-                                        removal: .push(from: .leading).combined(with: .opacity)
-                                    ))
-                                
-                                // Slider without day labels
-                                Slider(value: Binding(
-                                    get: { Double(selectedDayOffset) },
-                                    set: { newValue in
-                                        withAnimation(.smooth(duration: 0.1)) {
-                                            selectedDayOffset = Int(newValue)
-                                        }
-                                    }
-                                ), in: 0...9, step: 1)
-                                .tint(.blue)
-                                .padding(.horizontal, 12)
-                                .padding(.vertical, 12)
-                                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                                .frame(maxWidth: 500)
-                            }
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                        }
-                        
-                        // "Today" button (always visible)
-                        Button {
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                                if showTimeSlider {
-                                    // If slider is showing, toggle it off and reset to today
-                                    selectedDayOffset = 0
-                                    showTimeSlider = false
-                                } else {
-                                    // If slider is hidden, reveal it
-                                    showTimeSlider = true
-                                }
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: showTimeSlider ? "calendar" : "calendar.badge.clock")
-                                    .font(.system(size: 16, weight: .medium))
-                                Text(showTimeSlider ? "Hide" : "Today")
-                                    .font(.headline)
-                            }
-                            .padding(.horizontal, 20)
-                            .padding(.vertical, 12)
-                            .background(.ultraThinMaterial, in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal)
-                    .padding(.bottom, 20)
-                    .animation(.spring(response: 0.4, dampingFraction: 0.75), value: showTimeSlider)
-                }
-            }
-            #endif
-            */
-            
             // City detail popup
             if showingCityDetail, let city = tappedCity {
                 Color.black.opacity(0.3)
@@ -386,21 +237,6 @@ struct ContentView: View {
         // Update the tapped city to the newly added one from the sidebar
         if let newCity = weatherService.cityWeatherData.first(where: { $0.city.name == cityWeather.city.name }) {
             tappedCity = newCity
-        }
-    }
-    
-    private var currentForecastDay: ForecastDay? {
-        weatherService.forecastDays.first { $0.dayOffset == selectedDayOffset }
-    }
-    
-    private var sliderBottomPadding: CGFloat {
-        switch selectedDetent {
-        case .height(80):
-            return 100  // Above minimized sheet
-        case .medium:
-            return UIScreen.main.bounds.height * 0.5 + 20  // Above medium sheet
-        default:
-            return 20  // Hidden when large, but keep minimal padding
         }
     }
 }
@@ -897,7 +733,6 @@ struct NativeSearchSheet: View {
     @State var citySearchManager: CitySearchManager
     let weatherService: WeatherService
     @Binding var selectedDetent: PresentationDetent
-    @Binding var showingDatePicker: Bool
     let onCitySelected: (CityWeather) -> Void
     let onDeleteCity: (CityWeather) -> Void
     let onMoveCity: (IndexSet, Int) -> Void
@@ -924,10 +759,6 @@ struct NativeSearchSheet: View {
     
     private var shouldShowSearchResults: Bool {
         !searchText.isEmpty && !citySearchManager.searchResults.isEmpty
-    }
-    
-    private var currentForecastDay: ForecastDay? {
-        weatherService.forecastDays.first { $0.dayOffset == selectedDayOffset }
     }
     
     var body: some View {
@@ -1448,54 +1279,6 @@ struct AddCitySearchView: View {
         } catch {
             print("Error searching for location: \(error.localizedDescription)")
         }
-    }
-}
-
-// MARK: - Forecast Date Picker Popover
-
-struct ForecastDatePickerPopover: View {
-    @Binding var selectedDayOffset: Int
-    let forecastDays: [ForecastDay]
-    @Binding var isPresented: Bool
-    
-    private let calendar = Calendar.current
-    private let today = Date()
-    
-    // Calculate date range (today to 9 days from now)
-    private var startDate: Date {
-        today
-    }
-    
-    private var endDate: Date {
-        calendar.date(byAdding: .day, value: 9, to: today) ?? today
-    }
-    
-    // Convert selectedDayOffset to Date
-    private var selectedDate: Date {
-        calendar.date(byAdding: .day, value: selectedDayOffset, to: today) ?? today
-    }
-    
-    var body: some View {
-        DatePicker(
-            "",
-            selection: Binding(
-                get: { selectedDate },
-                set: { newDate in
-                    // Convert selected date back to day offset
-                    let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: today), to: calendar.startOfDay(for: newDate))
-                    if let days = components.day {
-                        selectedDayOffset = max(0, min(9, days))
-                    }
-                    isPresented = false
-                }
-            ),
-            in: startDate...endDate,
-            displayedComponents: .date
-        )
-        .datePickerStyle(.graphical)
-        .labelsHidden()
-        .padding()
-        .frame(width: 320)
     }
 }
 
