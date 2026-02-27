@@ -30,6 +30,23 @@ struct ContentView: View {
     @State private var citySearchManager = CitySearchManager()
     @State private var showingSearchSheet: Bool = true
     @State private var selectedDetent: PresentationDetent = .height(80)
+    @State private var lastRefreshText: String = ""
+    
+    private func timeSinceRefreshText() -> String {
+        guard let lastFetch = weatherService.lastFetchDate else {
+            return ""
+        }
+        let elapsed = Date().timeIntervalSince(lastFetch)
+        let minutes = Int(elapsed / 60)
+        if minutes < 1 {
+            return "Now"
+        } else if minutes < 60 {
+            return "\(minutes)m"
+        } else {
+            let hours = minutes / 60
+            return "\(hours)h"
+        }
+    }
     
     var body: some View {
         #if os(macOS)
@@ -102,6 +119,48 @@ struct ContentView: View {
         ZStack {
             // Map view as the main content
             mapView
+        }
+        .overlay(alignment: .topTrailing) {
+            Button {
+                Task {
+                    await weatherService.refreshWeather()
+                }
+            } label: {
+                Group {
+                    if weatherService.isLoading {
+                        ProgressView()
+                            .controlSize(.small)
+                    } else {
+                        VStack(spacing: 2) {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .semibold))
+                            
+                            Text(lastRefreshText)
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+                .frame(width: 50, height: 50)
+                .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .buttonStyle(.plain)
+            .disabled(weatherService.isLoading)
+            .padding(.trailing, 16)
+            .padding(.top, 60)
+        }
+        .onAppear {
+            lastRefreshText = timeSinceRefreshText()
+        }
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(30))
+                lastRefreshText = timeSinceRefreshText()
+            }
+        }
+        .onChange(of: weatherService.lastFetchDate) { _, _ in
+            lastRefreshText = timeSinceRefreshText()
         }
         .sheet(isPresented: $showingSearchSheet) {
             NativeSearchSheet(
@@ -377,12 +436,12 @@ struct CityListSidebar: View {
         let minutes = Int(elapsed / 60)
         
         if minutes < 1 {
-            return "Just now"
+            return "Now"
         } else if minutes < 60 {
-            return "\(minutes)m ago"
+            return "\(minutes)m"
         } else {
             let hours = minutes / 60
-            return "\(hours)h ago"
+            return "\(hours)h"
         }
     }
     
