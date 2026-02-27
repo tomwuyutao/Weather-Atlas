@@ -148,7 +148,7 @@ struct ContentView: View {
                 isRefreshing: weatherService.isLoading
             )
             .presentationDetents([.height(80), .medium, .large], selection: $selectedDetent)
-            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
+            .presentationBackgroundInteraction(.enabled(upThrough: .height(80)))
             .presentationBackground(.regularMaterial)
             .presentationCornerRadius(selectedDetent == .height(80) ? 65 : 45)
             .interactiveDismissDisabled()
@@ -598,6 +598,18 @@ struct CityListSidebar: View {
                             )
                                 .tag(cityWeather)
                                 .contextMenu {
+                                    Button {
+                                        tappedCity = cityWeather
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                            showingCityDetail = true
+                                        }
+                                        onCitySelected(cityWeather)
+                                    } label: {
+                                        Label("View Details", systemImage: "info.circle")
+                                    }
+                                    
+                                    Divider()
+                                    
                                     Button(role: .destructive) {
                                         onDeleteCity(cityWeather)
                                     } label: {
@@ -780,27 +792,30 @@ struct CityRow: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Weather icon
-            if forecast.isRainIcon {
-                let colors = forecast.rainPaletteColors(for: colorScheme)
-                Image(systemName: forecast.weatherIcon)
-                    .font(.title3)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(colors.primary, colors.secondary)
-                    .frame(width: 32, height: 28)
-            } else if forecast.isPartiallySunnyIcon {
-                let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
-                Image(systemName: forecast.weatherIcon)
-                    .font(.title3)
-                    .symbolRenderingMode(.palette)
-                    .foregroundStyle(colors.primary, colors.secondary)
-                    .frame(width: 32, height: 28)
-            } else {
-                Image(systemName: forecast.weatherIcon)
-                    .font(.title3)
-                    .foregroundStyle(forecast.weatherColor(for: colorScheme))
-                    .frame(width: 32, height: 28)
+            // Weather icon using Label
+            Label {
+                EmptyView()
+            } icon: {
+                if forecast.isRainIcon {
+                    let colors = forecast.rainPaletteColors(for: colorScheme)
+                    Image(systemName: forecast.weatherIcon)
+                        .font(.title3)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(colors.primary, colors.secondary)
+                } else if forecast.isPartiallySunnyIcon {
+                    let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
+                    Image(systemName: forecast.weatherIcon)
+                        .font(.title3)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(colors.primary, colors.secondary)
+                } else {
+                    Image(systemName: forecast.weatherIcon)
+                        .font(.title3)
+                        .foregroundStyle(forecast.weatherColor(for: colorScheme))
+                }
             }
+            .labelStyle(.iconOnly)
+            .frame(width: 32, height: 28)
             
             // City name
             Text(cityWeather.city.name)
@@ -808,10 +823,15 @@ struct CityRow: View {
             
             Spacer()
             
-            // Temperature
-            Text("\(Int(forecast.temperature))°C")
-                .font(.headline)
-                .foregroundStyle(.secondary)
+            // Temperature using Label
+            Label {
+                Text("\(Int(forecast.temperature))°C")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            } icon: {
+                EmptyView()
+            }
+            .labelStyle(.titleOnly)
         }
         .padding(.vertical, 4)
     }
@@ -910,36 +930,38 @@ struct NativeSearchSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Time slider with day indicator
-                HStack(spacing: 12) {
-                    // Day indicator capsule on the left
-                    Text(currentForecastDay?.shortDisplayText ?? "Today")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .frame(width: 75)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(.ultraThinMaterial, in: Capsule())
-                        .id("date-\(selectedDayOffset)")
-                        .transition(.asymmetric(
-                            insertion: .push(from: .trailing).combined(with: .opacity),
-                            removal: .push(from: .leading).combined(with: .opacity)
-                        ))
-                    
-                    // Time slider
-                    Slider(value: Binding(
-                        get: { Double(selectedDayOffset) },
-                        set: { newValue in
-                            withAnimation(.smooth(duration: 0.1)) {
-                                selectedDayOffset = Int(newValue)
+                // Time slider - only show when minimized
+                if isMinimized {
+                    HStack(spacing: 12) {
+                        // Day indicator capsule on the left
+                        Text(currentForecastDay?.shortDisplayText ?? "Today")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .frame(width: 75)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(.ultraThinMaterial, in: Capsule())
+                            .id("date-\(selectedDayOffset)")
+                            .transition(.asymmetric(
+                                insertion: .push(from: .trailing).combined(with: .opacity),
+                                removal: .push(from: .leading).combined(with: .opacity)
+                            ))
+                        
+                        // Time slider
+                        Slider(value: Binding(
+                            get: { Double(selectedDayOffset) },
+                            set: { newValue in
+                                withAnimation(.smooth(duration: 0.1)) {
+                                    selectedDayOffset = Int(newValue)
+                                }
                             }
-                        }
-                    ), in: 0...9, step: 1)
-                    .tint(.blue)
+                        ), in: 0...9, step: 1)
+                        .tint(.blue)
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.top, 22)
+                    .padding(.bottom, 16)
                 }
-                .padding(.horizontal, 24)
-                .padding(.top, isMinimized ? 22 : 36)
-                .padding(.bottom, 16)
                 
                 // Content - only show when not minimized
                 if !isMinimized {
@@ -1004,38 +1026,6 @@ struct NativeSearchSheet: View {
                     } else if !filteredCities.isEmpty {
                         // Cities list
                         VStack(spacing: 0) {
-                            HStack {
-                                Text("My Cities")
-                                    .font(.title2)
-                                    .fontWeight(.bold)
-                                
-                                Spacer()
-                                
-                                // Edit button
-                                Button {
-                                    withAnimation {
-                                        isEditMode.toggle()
-                                    }
-                                } label: {
-                                    Image(systemName: isEditMode ? "checkmark" : "pencil")
-                                        .font(.title2)
-                                        .foregroundStyle(.primary)
-                                }
-                                .buttonStyle(.plain)
-                                
-                                // Add city button
-                                Button {
-                                    showingAddCityView = true
-                                } label: {
-                                    Image(systemName: "plus")
-                                        .font(.title2)
-                                        .foregroundStyle(.primary)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            
                             // Use List in both modes, but with consistent styling
                             List {
                                 ForEach(filteredCities) { cityWeather in
@@ -1058,6 +1048,26 @@ struct NativeSearchSheet: View {
                                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                                     .listRowSeparator(.visible)
                                     .listRowBackground(Color.clear)
+                                    .contextMenu {
+                                        Button {
+                                            onCitySelected(cityWeather)
+                                            tappedCity = cityWeather
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                                                showingCityDetail = true
+                                                selectedDetent = .height(80)
+                                            }
+                                        } label: {
+                                            Label("View Details", systemImage: "info.circle")
+                                        }
+                                        
+                                        Divider()
+                                        
+                                        Button(role: .destructive) {
+                                            onDeleteCity(cityWeather)
+                                        } label: {
+                                            Label("Delete", systemImage: "trash")
+                                        }
+                                    }
                                 }
                                 .onDelete { indexSet in
                                     for index in indexSet {
@@ -1073,6 +1083,48 @@ struct NativeSearchSheet: View {
                             .scrollContentBackground(.hidden)
                             .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
                         }
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                if !isMinimized {
+                                    // Date indicator in toolbar when expanded - wider button
+                                    Text(currentForecastDay?.shortDisplayText ?? "Today")
+                                        .font(.subheadline)
+                                        .fontWeight(.medium)
+                                        .frame(width: 60)
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 8)
+                                        .background(.ultraThinMaterial, in: Capsule())
+                                        .id("toolbar-date-\(selectedDayOffset)")
+                                        .transition(.asymmetric(
+                                            insertion: .push(from: .trailing).combined(with: .opacity),
+                                            removal: .push(from: .leading).combined(with: .opacity)
+                                        ))
+                                }
+                            }
+                            
+                            ToolbarItem(placement: .principal) {
+                                Text("My Cities")
+                                    .font(.title2)
+                                    .fontWeight(.bold)
+                            }
+                            
+                            ToolbarItemGroup(placement: .topBarTrailing) {
+                                Button {
+                                    withAnimation {
+                                        isEditMode.toggle()
+                                    }
+                                } label: {
+                                    Label(isEditMode ? "Done" : "Edit", systemImage: isEditMode ? "checkmark" : "pencil")
+                                }
+                                
+                                Button {
+                                    showingAddCityView = true
+                                } label: {
+                                    Label("Add", systemImage: "plus")
+                                }
+                            }
+                        }
+                        .toolbarTitleDisplayMode(.inline)
                     } else {
                         Spacer()
                         Text("No cities added yet")
