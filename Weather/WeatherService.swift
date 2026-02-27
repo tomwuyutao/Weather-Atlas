@@ -652,6 +652,18 @@ struct ForecastDay: Identifiable {
             return "\(weekday), \(day)/\(month)"
         }
     }
+    
+    var veryShortDisplayText: String {
+        if dayOffset == 0 {
+            return "Today"
+        } else if dayOffset == 1 {
+            return "Tmrw"
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "EEE"
+            return formatter.string(from: date)
+        }
+    }
 }
 
 struct DailyForecast: Identifiable {
