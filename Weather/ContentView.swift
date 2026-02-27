@@ -147,7 +147,7 @@ struct ContentView: View {
             )
             .presentationDetents([.height(80), .medium, .large], selection: $selectedDetent)
             .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-            .presentationBackground(.regularMaterial)
+            .presentationBackground(.thinMaterial)
             .presentationCornerRadius(selectedDetent == .height(80) ? 65 : 45)
             .interactiveDismissDisabled()
         }
@@ -742,9 +742,33 @@ struct NativeSearchSheet: View {
     
     @State private var isLoadingSearchedCity = false
     @State private var showingAddCityView = false
+    @State private var showingDatePopover = false
+    @State private var previousDayOffset: Int = 0
     
     private var isMinimized: Bool {
         selectedDetent == .height(80)
+    }
+    
+    private var selectedDate: Date {
+        Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
+    }
+    
+    private var dateRange: ClosedRange<Date> {
+        Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date())
+    }
+    
+    private var shortDateText: String {
+        if selectedDayOffset == 0 { return "Today" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: selectedDate)
+    }
+    
+    private var shortDateWithDayText: String {
+        if selectedDayOffset == 0 { return "Today" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, EEE"
+        return formatter.string(from: selectedDate)
     }
     
     private var filteredCities: [CityWeather] {
@@ -766,64 +790,95 @@ struct NativeSearchSheet: View {
             VStack(spacing: 0) {
                 // Date navigation - only show when minimized
                 if isMinimized {
-                    HStack(spacing: 8) {
+                    HStack {
                         Spacer()
                         
-                        // Previous day button
-                        Button {
-                            withAnimation(.smooth(duration: 0.2)) {
-                                selectedDayOffset = max(0, selectedDayOffset - 1)
-                            }
-                        } label: {
+                        HStack(spacing: 0) {
+                            // Previous day button
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
-                                .frame(width: 36, height: 36)
-                                .background(.ultraThinMaterial, in: Circle())
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(selectedDayOffset == 0)
-                        
-                        // Day indicator - tappable
-                        DatePicker(
-                            "",
-                            selection: Binding(
-                                get: {
-                                    let calendar = Calendar.current
-                                    return calendar.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
-                                },
-                                set: { newDate in
-                                    let calendar = Calendar.current
-                                    let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
-                                    if let days = components.day {
+                                .frame(width: 40, height: 50)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if selectedDayOffset > 0 {
                                         withAnimation(.smooth(duration: 0.2)) {
-                                            selectedDayOffset = max(0, min(9, days))
+                                            selectedDayOffset -= 1
                                         }
                                     }
                                 }
-                            ),
-                            in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
-                            displayedComponents: .date
-                        )
-                        .datePickerStyle(.compact)
-                        .labelsHidden()
-                        .frame(height: 36)
-                        .id("date-picker-\(selectedDayOffset)")
-                        
-                        // Next day button
-                        Button {
-                            withAnimation(.smooth(duration: 0.2)) {
-                                selectedDayOffset = min(9, selectedDayOffset + 1)
-                            }
-                        } label: {
+                                .onLongPressGesture {
+                                    withAnimation(.smooth(duration: 0.3)) {
+                                        selectedDayOffset = 0
+                                    }
+                                }
+                            
+                            // Day indicator - tappable
+                            Text(shortDateWithDayText)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .id("minimized-date-\(selectedDayOffset)")
+                                .transition(.asymmetric(
+                                    insertion: .move(edge: selectedDayOffset >= previousDayOffset ? .trailing : .leading).combined(with: .opacity),
+                                    removal: .move(edge: selectedDayOffset >= previousDayOffset ? .leading : .trailing).combined(with: .opacity)
+                                ))
+                                .frame(width: 100, height: 50)
+                                .clipped()
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if !showingDatePopover {
+                                        showingDatePopover = true
+                                    }
+                                }
+                            
+                            // Next day button
                             Image(systemName: "chevron.right")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
-                                .frame(width: 36, height: 36)
-                                .background(.ultraThinMaterial, in: Circle())
+                                .frame(width: 40, height: 50)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    if selectedDayOffset < 9 {
+                                        withAnimation(.smooth(duration: 0.2)) {
+                                            selectedDayOffset += 1
+                                        }
+                                    }
+                                }
+                                .onLongPressGesture {
+                                    withAnimation(.smooth(duration: 0.3)) {
+                                        selectedDayOffset = 9
+                                    }
+                                }
                         }
-                        .buttonStyle(.plain)
-                        .disabled(selectedDayOffset == 9)
+                        .glassEffect(.regular.interactive())
+                        .onChange(of: selectedDayOffset) { oldValue, _ in
+                            previousDayOffset = oldValue
+                        }
+                        .popover(isPresented: $showingDatePopover) {
+                            DatePicker(
+                                "",
+                                selection: Binding(
+                                    get: { selectedDate },
+                                    set: { newDate in
+                                        let calendar = Calendar.current
+                                        let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
+                                        if let days = components.day {
+                                            withAnimation(.smooth(duration: 0.2)) {
+                                                selectedDayOffset = max(0, min(9, days))
+                                            }
+                                        }
+                                    }
+                                ),
+                                in: dateRange,
+                                displayedComponents: .date
+                            )
+                            .datePickerStyle(.graphical)
+                            .labelsHidden()
+                            .frame(width: 280, height: 300)
+                            .padding(8)
+                            .presentationCompactAdaptation(.popover)
+                            .presentationBackground(.thickMaterial)
+                        }
                         
                         Spacer()
                     }
@@ -955,31 +1010,40 @@ struct NativeSearchSheet: View {
                         .toolbar {
                             ToolbarItem(placement: .topBarLeading) {
                                 if !isMinimized {
-                                    // Native date picker in toolbar when expanded
-                                    DatePicker(
-                                        "",
-                                        selection: Binding(
-                                            get: {
-                                                let calendar = Calendar.current
-                                                return calendar.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
-                                            },
-                                            set: { newDate in
-                                                let calendar = Calendar.current
-                                                let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
-                                                if let days = components.day {
-                                                    withAnimation(.smooth(duration: 0.2)) {
-                                                        selectedDayOffset = max(0, min(9, days))
+                                    // Date picker button in toolbar when expanded
+                                    Button {
+                                        showingDatePopover.toggle()
+                                    } label: {
+                                        Text(shortDateText)
+                                            .font(.subheadline)
+                                            .fontWeight(.medium)
+                                            .frame(width: 60)
+                                    }
+                                    .popover(isPresented: $showingDatePopover) {
+                                        DatePicker(
+                                            "",
+                                            selection: Binding(
+                                                get: { selectedDate },
+                                                set: { newDate in
+                                                    let calendar = Calendar.current
+                                                    let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
+                                                    if let days = components.day {
+                                                        withAnimation(.smooth(duration: 0.2)) {
+                                                            selectedDayOffset = max(0, min(9, days))
+                                                        }
                                                     }
                                                 }
-                                            }
-                                        ),
-                                        in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
-                                        displayedComponents: .date
-                                    )
-                                    .datePickerStyle(.compact)
-                                    .labelsHidden()
-                                    .frame(height: 36)
-                                    .id("toolbar-date-picker-\(selectedDayOffset)")
+                                            ),
+                                            in: dateRange,
+                                            displayedComponents: .date
+                                        )
+                                        .datePickerStyle(.graphical)
+                                        .labelsHidden()
+                                        .frame(width: 280, height: 300)
+                                        .padding(8)
+                                        .presentationCompactAdaptation(.popover)
+                                        .presentationBackground(.thickMaterial)
+                                    }
                                 }
                             }
                             
