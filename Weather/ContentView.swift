@@ -32,6 +32,7 @@ struct ContentView: View {
     @State private var selectedDetent: PresentationDetent = .height(80)
     @State private var lastRefreshText: String = ""
     @State private var showCloudCover: Bool = false
+    @State private var filterSunny: Bool = false
     
     private func timeSinceRefreshText() -> String {
         guard let lastFetch = weatherService.lastFetchDate else {
@@ -110,7 +111,7 @@ struct ContentView: View {
             // Map view with bottom date bar
             mapView
                 .overlay(alignment: .bottom) {
-                    DesktopDateBar(selectedDayOffset: $selectedDayOffset, showCloudCover: $showCloudCover)
+                    DesktopDateBar(selectedDayOffset: $selectedDayOffset, showCloudCover: $showCloudCover, filterSunny: $filterSunny)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 12)
                 }
@@ -232,26 +233,31 @@ struct ContentView: View {
         ZStack {
             Map(position: $position, selection: $selectedCity) {
                 ForEach(weatherService.cityWeatherData) { cityWeather in
-                    Annotation(cityWeather.city.name, 
-                             coordinate: CLLocationCoordinate2D(
-                                latitude: cityWeather.city.latitude,
-                                longitude: cityWeather.city.longitude
-                             )) {
-                        WeatherMarker(
-                            cityWeather: cityWeather,
-                            dayOffset: selectedDayOffset,
-                            isCompact: isZoomedOut,
-                            namespace: popupNamespace,
-                            showCloudCover: showCloudCover
-                        )
-                        .onTapGesture {
-                            tappedCity = cityWeather
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                showingCityDetail = true
+                    let forecast = cityWeather.forecast(for: selectedDayOffset)
+                    let passesFilter = !filterSunny || (forecast.condition == .clear && forecast.cloudCover < 0.30)
+                    
+                    if passesFilter {
+                        Annotation(cityWeather.city.name, 
+                                 coordinate: CLLocationCoordinate2D(
+                                    latitude: cityWeather.city.latitude,
+                                    longitude: cityWeather.city.longitude
+                                 )) {
+                            WeatherMarker(
+                                cityWeather: cityWeather,
+                                dayOffset: selectedDayOffset,
+                                isCompact: isZoomedOut,
+                                namespace: popupNamespace,
+                                showCloudCover: showCloudCover
+                            )
+                            .onTapGesture {
+                                tappedCity = cityWeather
+                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                    showingCityDetail = true
+                                }
                             }
                         }
+                        .tag(cityWeather)
                     }
-                    .tag(cityWeather)
                 }
             }
             .mapStyle(.standard(elevation: .flat, emphasis: .muted))
@@ -653,6 +659,7 @@ struct DesktopSidebar: View {
 struct DesktopDateBar: View {
     @Binding var selectedDayOffset: Int
     @Binding var showCloudCover: Bool
+    @Binding var filterSunny: Bool
     
     @State private var showingDatePopover = false
     @State private var previousDayOffset: Int = 0
@@ -676,6 +683,20 @@ struct DesktopDateBar: View {
     
     var body: some View {
         HStack(spacing: 8) {
+            // Sunny filter toggle
+            Button {
+                withAnimation(.smooth(duration: 0.3)) {
+                    filterSunny.toggle()
+                }
+            } label: {
+                Image(systemName: "sun.max.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(filterSunny ? .orange : .secondary)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .background(.thickMaterial, in: Circle())
+            
             // Cloud cover toggle
             Button {
                 withAnimation(.smooth(duration: 0.3)) {
