@@ -132,6 +132,7 @@ struct ContentView: View {
     @Namespace private var tabBarNamespace
     @State private var iOSPreviousDayOffset: Int = 0
     @State private var showingDatePopover: Bool = false
+    @State private var playbackTask: Task<Void, Never>?
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -275,31 +276,61 @@ struct ContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
             }
-            .navigationTitle(selectedTab == 0 ? "My Cities" : "Map")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if selectedTab == 0 {
-                    if filterSunny {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button {
-                                withAnimation {
-                                    filterSunny = false
-                                }
-                            } label: {
-                                Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                                    .foregroundStyle(.blue)
+                    ToolbarItem(placement: .topBarLeading) {
+                        Text("My Cities")
+                            .font(.title3)
+                            .fontWeight(.semibold)
+                            .foregroundStyle(.primary)
+                            .fixedSize()
+                            .allowsHitTesting(false)
+                    }
+                    .sharedBackgroundVisibility(.hidden)
+                }
+            }
+            .toolbar {
+                if weatherService.isLoading {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                }
+
+                if filterSunny {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            withAnimation {
+                                filterSunny = false
                             }
+                        } label: {
+                            Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                                .foregroundStyle(.blue)
                         }
                     }
+                }
 
+                if isPlaying {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button {
-                                showingAddCityView = true
-                            } label: {
-                                Label("Add City", systemImage: "plus")
-                            }
+                        Button {
+                            iOSStopPlayback()
+                        } label: {
+                            Image(systemName: "stop.fill")
+                        }
+                    }
+                }
 
+                ToolbarItem(placement: .topBarTrailing) {
+                    Menu {
+                        Button {
+                            showingAddCityView = true
+                        } label: {
+                            Label("Add City", systemImage: "plus")
+                        }
+
+                        if selectedTab == 0 {
                             Button {
                                 withAnimation {
                                     isEditMode.toggle()
@@ -307,27 +338,49 @@ struct ContentView: View {
                             } label: {
                                 Label(isEditMode ? "Done Editing" : "Edit List", systemImage: isEditMode ? "checkmark" : "pencil")
                             }
-
-                            Button {
-                                withAnimation {
-                                    filterSunny.toggle()
-                                }
-                            } label: {
-                                Label(filterSunny ? "Clear Filter" : "Filter", systemImage: filterSunny ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                            }
-
-                            Button {
-                                Task {
-                                    await weatherService.refreshWeather()
-                                }
-                            } label: {
-                                let refreshText = timeSinceRefreshText()
-                                Label("Refresh\(refreshText.isEmpty ? "" : " (\(refreshText))")", systemImage: "arrow.clockwise")
-                            }
-                            .disabled(weatherService.isLoading)
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
                         }
+
+                        Divider()
+
+                        Button {
+                            withAnimation {
+                                filterSunny.toggle()
+                            }
+                        } label: {
+                            Label(filterSunny ? "Clear Filter" : "Filter", systemImage: filterSunny ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                        }
+
+                        if selectedTab == 1 {
+                            Button {
+                                if isPlaying {
+                                    iOSStopPlayback()
+                                } else {
+                                    iOSStartPlayback()
+                                }
+                            } label: {
+                                Label(isPlaying ? "Stop Playback" : "Play Forecast", systemImage: isPlaying ? "stop.fill" : "play.fill")
+                            }
+                        }
+
+                        Button {
+                            Task {
+                                await weatherService.refreshWeather()
+                            }
+                        } label: {
+                            let refreshText = timeSinceRefreshText()
+                            Label("Refresh\(refreshText.isEmpty ? "" : " (\(refreshText))")", systemImage: "arrow.clockwise")
+                        }
+                        .disabled(weatherService.isLoading)
+
+                        Divider()
+
+                        Button {
+                            // Settings action placeholder
+                        } label: {
+                            Label("Settings", systemImage: "gearshape")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
                     }
                 }
             }
@@ -383,20 +436,19 @@ struct ContentView: View {
                     onCitySelected: { cityWeather in
                         selectedCity = cityWeather
                         tappedCity = cityWeather
-                        showingCityDetail = true
-                        showingAddCityView = false
-                        selectedTab = 1
-                        withAnimation {
-                            position = .region(
-                                MKCoordinateRegion(
-                                    center: CLLocationCoordinate2D(
-                                        latitude: cityWeather.city.latitude,
-                                        longitude: cityWeather.city.longitude
-                                    ),
-                                    span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 5.0)
-                                )
+                        // Update map position without animation
+                        position = .region(
+                            MKCoordinateRegion(
+                                center: CLLocationCoordinate2D(
+                                    latitude: cityWeather.city.latitude,
+                                    longitude: cityWeather.city.longitude
+                                ),
+                                span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 5.0)
                             )
-                        }
+                        )
+                        // Replace the add city view with the detail view directly
+                        showingAddCityView = false
+                        showingCityDetail = true
                     }
                 )
             }
@@ -407,6 +459,31 @@ struct ContentView: View {
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
         }
+    }
+
+    private func iOSStartPlayback() {
+        isPlaying = true
+        if selectedDayOffset >= 9 {
+            selectedDayOffset = 0
+        }
+        playbackTask = Task {
+            while !Task.isCancelled && selectedDayOffset < 9 {
+                try? await Task.sleep(for: .seconds(1.5))
+                guard !Task.isCancelled else { break }
+                withAnimation(.smooth(duration: 0.4)) {
+                    selectedDayOffset += 1
+                }
+            }
+            if !Task.isCancelled {
+                isPlaying = false
+            }
+        }
+    }
+
+    private func iOSStopPlayback() {
+        playbackTask?.cancel()
+        playbackTask = nil
+        isPlaying = false
     }
 
     private var iOSListView: some View {
@@ -477,29 +554,6 @@ struct ContentView: View {
 
     private var iOSMapView: some View {
         mapView
-            .overlay(alignment: .topTrailing) {
-                Button {
-                    Task {
-                        await weatherService.refreshWeather()
-                    }
-                } label: {
-                    Group {
-                        if weatherService.isLoading {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 14, weight: .semibold))
-                        }
-                    }
-                    .frame(width: 40, height: 40)
-                    .glassEffect(.regular.interactive(), in: .circle)
-                }
-                .buttonStyle(.plain)
-                .disabled(weatherService.isLoading)
-                .padding(.trailing, 12)
-                .padding(.top, 8)
-            }
     }
     #endif
 

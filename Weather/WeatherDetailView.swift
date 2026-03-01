@@ -200,6 +200,18 @@ struct WeatherDetailView: View {
             }
         }
         .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)
+        .contentShape(Rectangle())
+        .gesture(
+            isPopup ? nil : DragGesture(minimumDistance: 50, coordinateSpace: .global)
+                .onEnded { value in
+                    let horizontal = value.translation.width
+                    let vertical = value.translation.height
+                    // Only trigger on right swipe (and mostly horizontal)
+                    if horizontal > 80 && abs(horizontal) > abs(vertical) * 1.5 {
+                        onDismiss()
+                    }
+                }
+        )
         .matchedGeometryEffect(id: isPopup ? (isInSidebar ? "sidebar-\(cityWeather.id)" : "marker-\(cityWeather.id)") : "", in: namespace, isSource: isPopup)
         .transition(isPopup ? .scale(scale: 0.5).combined(with: .opacity) : .identity)
     }
@@ -336,7 +348,11 @@ struct HourlyTimelineChart: View {
     let hourlyForecasts: [HourlyForecast]
     let showCloudCover: Bool
     
+    #if os(macOS)
     private let totalHeight: CGFloat = 156
+    #else
+    private let totalHeight: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 156 : 220
+    #endif
     private let hourLabelHeight: CGFloat = 18  // fixed hour label at top
     private let topPadding: CGFloat = 6        // space below hour label
     private let iconHeight: CGFloat = 24

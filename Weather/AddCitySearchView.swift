@@ -183,7 +183,6 @@ struct AddCitySearchView: View {
                 if let existingCity = cities.first(where: { $0.city.name == cityName }) {
                     print("City \(cityName) already exists")
                     onCitySelected(existingCity)
-                    dismiss()
                     return
                 }
                 
@@ -195,7 +194,6 @@ struct AddCitySearchView: View {
                 }
                 
                 onCitySelected(tempCityWeather)
-                dismiss()
             }
         } catch {
             print("Error searching for location: \(error.localizedDescription)")
