@@ -20,6 +20,7 @@ struct WeatherDetailView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var internalSelectedDay: Int
     @State private var previousDay: Int
+    @State private var chartDragOffset: CGFloat = 0
     
     // Initialize with the day from the map slider
     init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false) {
@@ -83,6 +84,8 @@ struct WeatherDetailView: View {
                         removal: .move(edge: goingForward ? .leading : .trailing)
                     ))
                 }
+                .offset(x: chartDragOffset)
+                .opacity(Double(1.0 - min(abs(chartDragOffset) / 200.0, 0.4)))
                 .padding(.top, 12)
                 .clipShape(RoundedRectangle(cornerRadius: 8))
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
@@ -93,16 +96,36 @@ struct WeatherDetailView: View {
                 .padding(.horizontal, 8)
                 .contentShape(Rectangle())
                 .gesture(
-                    DragGesture(minimumDistance: 30, coordinateSpace: .local)
-                        .onEnded { value in
+                    DragGesture(minimumDistance: 20, coordinateSpace: .local)
+                        .onChanged { value in
                             let horizontal = value.translation.width
                             let vertical = value.translation.height
                             guard abs(horizontal) > abs(vertical) else { return }
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                if horizontal < 0 && internalSelectedDay < 9 {
-                                    internalSelectedDay += 1
-                                } else if horizontal > 0 && internalSelectedDay > 0 {
-                                    internalSelectedDay -= 1
+                            // Resist dragging if at boundary
+                            let atStart = internalSelectedDay <= 0 && horizontal > 0
+                            let atEnd = internalSelectedDay >= 9 && horizontal < 0
+                            if atStart || atEnd {
+                                chartDragOffset = horizontal * 0.2
+                            } else {
+                                chartDragOffset = horizontal * 0.6
+                            }
+                        }
+                        .onEnded { value in
+                            let horizontal = value.translation.width
+                            let vertical = value.translation.height
+                            let threshold: CGFloat = 40
+                            if abs(horizontal) > abs(vertical) && abs(horizontal) > threshold {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    if horizontal < 0 && internalSelectedDay < 9 {
+                                        internalSelectedDay += 1
+                                    } else if horizontal > 0 && internalSelectedDay > 0 {
+                                        internalSelectedDay -= 1
+                                    }
+                                    chartDragOffset = 0
+                                }
+                            } else {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    chartDragOffset = 0
                                 }
                             }
                         }
@@ -492,7 +515,7 @@ struct DayForecastBox: View {
                 .frame(height: 22)
             
             // Temperature range or cloud cover percentage
-            Text(showCloudCover ? "\(dailyForecast.cloudCoverPercent)%" : dailyForecast.daytimeTempString)
+            Text(showCloudCover ? "\(dailyForecast.cloudCoverPercent)%" : "\(Int(dailyForecast.daytimeHigh))°")
                 .font(.caption2)
                 .fontWeight(.medium)
                 .foregroundStyle(.secondary)
