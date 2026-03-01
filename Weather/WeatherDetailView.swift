@@ -42,6 +42,14 @@ struct WeatherDetailView: View {
         internalSelectedDay >= previousDay
     }
     
+    private var isPopup: Bool {
+        #if os(macOS)
+        return true
+        #else
+        return UIDevice.current.userInterfaceIdiom == .pad
+        #endif
+    }
+
     var body: some View {
         ZStack {
             // Main content card
@@ -144,19 +152,23 @@ struct WeatherDetailView: View {
                 }
                 .padding(.horizontal, 8)
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 36)
+            .padding(.horizontal, isPopup ? 20 : 16)
+            .padding(.top, isPopup ? 36 : 0)
             .padding(.bottom, 24)
-            .frame(maxWidth: 340)
+            .frame(maxWidth: isPopup ? 340 : .infinity)
             .onChange(of: internalSelectedDay) { oldValue, _ in
                 previousDay = oldValue
             }
-            .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 26))
-            .clipShape(RoundedRectangle(cornerRadius: 26)) // Clip the entire content to the rounded rectangle
-            .shadow(color: .black.opacity(0.3), radius: 20)
+            .background {
+                if isPopup {
+                    RoundedRectangle(cornerRadius: 26)
+                        .fill(.thickMaterial)
+                }
+            }
+            .clipShape(isPopup ? AnyShape(RoundedRectangle(cornerRadius: 26)) : AnyShape(Rectangle()))
+            .shadow(color: isPopup ? .black.opacity(0.3) : .clear, radius: isPopup ? 20 : 0)
             .overlay(alignment: .topLeading) {
-                // Add button in upper left corner (if city is not in sidebar)
-                if !isInSidebar, let addAction = onAddCity {
+                if isPopup, !isInSidebar, let addAction = onAddCity {
                     Button {
                         addAction()
                     } label: {
@@ -171,25 +183,25 @@ struct WeatherDetailView: View {
                 }
             }
             .overlay(alignment: .topTrailing) {
-                // X button in upper right corner
-                Button {
-                    onDismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
-                            .glassEffect(.regular.interactive(), in: .circle)
+                if isPopup {
+                    // X button in upper right corner (popup only)
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32, height: 32)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(14)
                 }
-                .buttonStyle(.plain)
-                .padding(14)
             }
         }
-        .matchedGeometryEffect(id: isInSidebar ? "sidebar-\(cityWeather.id)" : "marker-\(cityWeather.id)", in: namespace, isSource: true)
-        .transition(.asymmetric(
-            insertion: .scale(scale: 0.8).combined(with: .opacity),
-            removal: .scale(scale: 0.8).combined(with: .opacity)
-        ))
+        .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)
+        .matchedGeometryEffect(id: isPopup ? (isInSidebar ? "sidebar-\(cityWeather.id)" : "marker-\(cityWeather.id)") : "", in: namespace, isSource: isPopup)
+        .transition(isPopup ? .scale(scale: 0.5).combined(with: .opacity) : .identity)
     }
     
     private var forecastDateText: String {

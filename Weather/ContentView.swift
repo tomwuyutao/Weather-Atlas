@@ -28,9 +28,11 @@ struct ContentView: View {
     @Namespace private var popupNamespace
     @State private var searchText: String = ""
     @State private var citySearchManager = CitySearchManager()
+    @State private var selectedTab: Int = 0
     @State private var showingSearchSheet: Bool = true
     @State private var selectedDetent: PresentationDetent = .height(80)
     @State private var lastRefreshText: String = ""
+    @State private var showingAddCityView: Bool = false
     @State private var showCloudCover: Bool = false
     @State private var filterSunny: Bool = false
     @State private var isPlaying: Bool = false
@@ -127,106 +129,377 @@ struct ContentView: View {
     // MARK: - iOS View
 
     #if !os(macOS)
-    private var iOSView: some View {
-        ZStack {
-            // Map view as the main content
-            mapView
-        }
-        .overlay(alignment: .topTrailing) {
-            Button {
-                Task {
-                    await weatherService.refreshWeather()
-                }
-            } label: {
-                Group {
-                    if weatherService.isLoading {
-                        ProgressView()
-                            .controlSize(.small)
-                    } else {
-                        VStack(spacing: 2) {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 14, weight: .semibold))
+    @Namespace private var tabBarNamespace
+    @State private var iOSPreviousDayOffset: Int = 0
+    @State private var showingDatePopover: Bool = false
 
-                            Text(lastRefreshText)
-                                .font(.system(size: 9))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+    private var iOSDateText: String {
+        if selectedDayOffset == 0 { return "Today" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, EEE"
+        return formatter.string(from: Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date())
+    }
+
+    private var iOSView: some View {
+        NavigationStack {
+            ZStack(alignment: .bottom) {
+                Group {
+                    if selectedTab == 0 {
+                        iOSListView
+                            .transition(.move(edge: .leading).combined(with: .opacity))
+                    } else {
+                        iOSMapView
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                    }
+                }
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
+
+                // Floating bottom toolbar
+                HStack(spacing: 12) {
+                    // Date switcher capsule
+                    HStack(spacing: 0) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Circle())
+                            .onTapGesture {
+                                if selectedDayOffset > 0 {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        selectedDayOffset -= 1
+                                    }
+                                }
+                            }
+
+                        Text(iOSDateText)
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                            .frame(width: 80)
+                            .id("ios-date-\(selectedDayOffset)")
+                            .transition(.asymmetric(
+                                insertion: .move(edge: selectedDayOffset >= iOSPreviousDayOffset ? .trailing : .leading).combined(with: .opacity),
+                                removal: .move(edge: selectedDayOffset >= iOSPreviousDayOffset ? .leading : .trailing).combined(with: .opacity)
+                            ))
+                            .clipped()
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                showingDatePopover = true
+                            }
+                            .popover(isPresented: $showingDatePopover) {
+                                DatePicker(
+                                    "",
+                                    selection: Binding(
+                                        get: {
+                                            Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
+                                        },
+                                        set: { newDate in
+                                            let calendar = Calendar.current
+                                            let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
+                                            if let days = components.day {
+                                                withAnimation(.smooth(duration: 0.2)) {
+                                                    selectedDayOffset = max(0, min(9, days))
+                                                }
+                                            }
+                                        }
+                                    ),
+                                    in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
+                                    displayedComponents: .date
+                                )
+                                .datePickerStyle(.graphical)
+                                .labelsHidden()
+                                .frame(width: 280, height: 300)
+                                .padding(8)
+                                .presentationCompactAdaptation(.popover)
+                                .presentationBackground(.thickMaterial)
+                            }
+
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
+                            .frame(width: 36, height: 36)
+                            .contentShape(Circle())
+                            .onTapGesture {
+                                if selectedDayOffset < 9 {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        selectedDayOffset += 1
+                                    }
+                                }
+                            }
+                    }
+                    .padding(6)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+
+                    Spacer()
+
+                    // View switcher capsule
+                    HStack(spacing: 8) {
+                        Image(systemName: "list.bullet")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
+                            .frame(width: 42, height: 36)
+                            .background {
+                                if selectedTab == 0 {
+                                    Capsule()
+                                        .fill(.ultraThinMaterial)
+                                        .transition(.scale.combined(with: .opacity))
+                                }
+                            }
+                            .contentShape(Capsule())
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    selectedTab = 0
+                                }
+                            }
+
+                        Image(systemName: selectedTab == 1 ? "map.fill" : "map")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(selectedTab == 1 ? .primary : .secondary)
+                            .frame(width: 42, height: 36)
+                            .background {
+                                if selectedTab == 1 {
+                                    Capsule()
+                                        .fill(.ultraThinMaterial)
+                                        .transition(.scale.combined(with: .opacity))
+                                }
+                            }
+                            .contentShape(Capsule())
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    selectedTab = 1
+                                }
+                            }
+                    }
+                    .padding(6)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
+            }
+            .navigationTitle(selectedTab == 0 ? "My Cities" : "Map")
+            .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                if selectedTab == 0 {
+                    if filterSunny {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                withAnimation {
+                                    filterSunny = false
+                                }
+                            } label: {
+                                Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                                    .foregroundStyle(.blue)
+                            }
+                        }
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Button {
+                                showingAddCityView = true
+                            } label: {
+                                Label("Add City", systemImage: "plus")
+                            }
+
+                            Button {
+                                withAnimation {
+                                    isEditMode.toggle()
+                                }
+                            } label: {
+                                Label(isEditMode ? "Done Editing" : "Edit List", systemImage: isEditMode ? "checkmark" : "pencil")
+                            }
+
+                            Button {
+                                withAnimation {
+                                    filterSunny.toggle()
+                                }
+                            } label: {
+                                Label(filterSunny ? "Clear Filter" : "Filter", systemImage: filterSunny ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            }
+
+                            Button {
+                                Task {
+                                    await weatherService.refreshWeather()
+                                }
+                            } label: {
+                                let refreshText = timeSinceRefreshText()
+                                Label("Refresh\(refreshText.isEmpty ? "" : " (\(refreshText))")", systemImage: "arrow.clockwise")
+                            }
+                            .disabled(weatherService.isLoading)
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
                         }
                     }
                 }
-                .frame(width: 50, height: 50)
-                .glassEffect(.regular.interactive(), in: .circle)
             }
-            .buttonStyle(.plain)
-            .disabled(weatherService.isLoading)
-            .padding(.trailing, 16)
-            .padding(.top, 60)
-        }
-        .onAppear {
-            lastRefreshText = timeSinceRefreshText()
-        }
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(30))
-                lastRefreshText = timeSinceRefreshText()
+            .navigationDestination(isPresented: $showingCityDetail) {
+                if let city = tappedCity {
+                    WeatherDetailView(
+                        cityWeather: city,
+                        selectedDayOffset: selectedDayOffset,
+                        namespace: popupNamespace,
+                        onDismiss: {
+                            showingCityDetail = false
+                        },
+                        onAddCity: cityIsInSidebar(city) ? nil : {
+                            Task {
+                                await addCityToSidebar(city)
+                            }
+                        },
+                        isInSidebar: cityIsInSidebar(city),
+                        showCloudCover: showCloudCover
+                    )
+                    .navigationBarBackButtonHidden(true)
+                    .toolbar {
+                        ToolbarItem(placement: .topBarLeading) {
+                            Button {
+                                showingCityDetail = false
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "chevron.left")
+                                    Text("Back")
+                                }
+                            }
+                        }
+                        if !cityIsInSidebar(city) {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Button {
+                                    Task {
+                                        await addCityToSidebar(city)
+                                    }
+                                } label: {
+                                    Image(systemName: "plus")
+                                        .foregroundStyle(.blue)
+                                }
+                            }
+                        }
+                    }
+                }
             }
-        }
-        .onChange(of: weatherService.lastFetchDate) { _, _ in
-            lastRefreshText = timeSinceRefreshText()
-        }
-        .sheet(isPresented: $showingSearchSheet) {
-            NativeSearchSheet(
-                cities: weatherService.cityWeatherData,
-                selectedCity: $selectedCity,
-                selectedDayOffset: $selectedDayOffset,
-                isEditMode: $isEditMode,
-                searchText: $searchText,
-                showingCityDetail: $showingCityDetail,
-                tappedCity: $tappedCity,
-                citySearchManager: citySearchManager,
-                weatherService: weatherService,
-                selectedDetent: $selectedDetent,
-                onCitySelected: { cityWeather in
-                    selectedCity = cityWeather
-                    // Animate to the selected city
-                    withAnimation {
-                        position = .region(
-                            MKCoordinateRegion(
-                                center: CLLocationCoordinate2D(
-                                    latitude: cityWeather.city.latitude,
-                                    longitude: cityWeather.city.longitude
-                                ),
-                                span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 5.0)
+            .navigationDestination(isPresented: $showingAddCityView) {
+                AddCitySearchView(
+                    cities: weatherService.cityWeatherData,
+                    citySearchManager: CitySearchManager(),
+                    weatherService: weatherService,
+                    onCitySelected: { cityWeather in
+                        selectedCity = cityWeather
+                        tappedCity = cityWeather
+                        showingCityDetail = true
+                        showingAddCityView = false
+                        selectedTab = 1
+                        withAnimation {
+                            position = .region(
+                                MKCoordinateRegion(
+                                    center: CLLocationCoordinate2D(
+                                        latitude: cityWeather.city.latitude,
+                                        longitude: cityWeather.city.longitude
+                                    ),
+                                    span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 5.0)
+                                )
                             )
-                        )
+                        }
                     }
-                },
-                onDeleteCity: { cityWeather in
-                    weatherService.removeCity(cityWeather)
-                    if selectedCity?.id == cityWeather.id {
-                        selectedCity = nil
-                    }
-                },
-                onMoveCity: { source, destination in
-                    weatherService.moveCity(from: source, to: destination)
-                },
-                onRefresh: {
-                    await weatherService.refreshWeather()
-                },
-                lastFetchDate: weatherService.lastFetchDate,
-                isRefreshing: weatherService.isLoading
-            )
-            .presentationDetents([.height(80), .medium, .large], selection: $selectedDetent)
-            .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-            .presentationBackground(Color(.systemBackground))
-            .presentationCornerRadius(selectedDetent == .height(80) ? 65 : 45)
-            .interactiveDismissDisabled()
+                )
+            }
         }
         .task {
-            print("Starting weather fetch...")
             await weatherService.fetchWeatherForAllCities()
-            print("Weather data count: \(weatherService.cityWeatherData.count)")
         }
+        .onChange(of: selectedDayOffset) { oldValue, _ in
+            iOSPreviousDayOffset = oldValue
+        }
+    }
+
+    private var iOSListView: some View {
+        Group {
+            if weatherService.cityWeatherData.isEmpty {
+                ContentUnavailableView("No Cities", systemImage: "cloud.sun", description: Text("Tap + to add a city"))
+            } else {
+                List {
+                    ForEach(iOSFilteredCities) { cityWeather in
+                        Button {
+                            if !isEditMode {
+                                tappedCity = cityWeather
+                                showingCityDetail = true
+                            }
+                        } label: {
+                            CityRow(
+                                cityWeather: cityWeather,
+                                dayOffset: selectedDayOffset,
+                                showCloudCover: false
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button(role: .destructive) {
+                                weatherService.removeCity(cityWeather)
+                                if selectedCity?.id == cityWeather.id {
+                                    selectedCity = nil
+                                }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
+                        }
+                    }
+                    .onDelete { indexSet in
+                        for index in indexSet {
+                            let cityToDelete = iOSFilteredCities[index]
+                            weatherService.removeCity(cityToDelete)
+                            if selectedCity?.id == cityToDelete.id {
+                                selectedCity = nil
+                            }
+                        }
+                    }
+                    .onMove { source, destination in
+                        weatherService.moveCity(from: source, to: destination)
+                    }
+                }
+                .listStyle(.plain)
+                .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
+            }
+        }
+    }
+
+    private var iOSFilteredCities: [CityWeather] {
+        var cities = weatherService.cityWeatherData
+        if !searchText.isEmpty {
+            cities = cities.filter {
+                $0.city.name.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+        if filterSunny {
+            cities = cities.filter {
+                let forecast = $0.forecast(for: selectedDayOffset)
+                return forecast.condition == .clear && forecast.cloudCover < 0.30
+            }
+        }
+        return cities
+    }
+
+    private var iOSMapView: some View {
+        mapView
+            .overlay(alignment: .topTrailing) {
+                Button {
+                    Task {
+                        await weatherService.refreshWeather()
+                    }
+                } label: {
+                    Group {
+                        if weatherService.isLoading {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .semibold))
+                        }
+                    }
+                    .frame(width: 40, height: 40)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain)
+                .disabled(weatherService.isLoading)
+                .padding(.trailing, 12)
+                .padding(.top, 8)
+            }
     }
     #endif
 
@@ -279,7 +552,8 @@ struct ContentView: View {
             }
             .ignoresSafeArea()
 
-            // City detail popup
+            // City detail popup (desktop/iPad only — iPhone uses navigation)
+            #if os(macOS)
             if showingCityDetail, let city = tappedCity {
                 Color.black.opacity(0.3)
                     .ignoresSafeArea()
@@ -308,6 +582,38 @@ struct ContentView: View {
                     showCloudCover: showCloudCover
                 )
             }
+            #else
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                if showingCityDetail, let city = tappedCity {
+                    Color.black.opacity(0.3)
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                showingCityDetail = false
+                            }
+                        }
+                        .transition(.opacity)
+
+                    WeatherDetailView(
+                        cityWeather: city,
+                        selectedDayOffset: selectedDayOffset,
+                        namespace: popupNamespace,
+                        onDismiss: {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                showingCityDetail = false
+                            }
+                        },
+                        onAddCity: cityIsInSidebar(city) ? nil : {
+                            Task {
+                                await addCityToSidebar(city)
+                            }
+                        },
+                        isInSidebar: cityIsInSidebar(city),
+                        showCloudCover: showCloudCover
+                    )
+                }
+            }
+            #endif
         }
     }
 
