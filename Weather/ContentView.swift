@@ -50,23 +50,26 @@ struct ContentView: View {
     
     var body: some View {
         #if os(macOS)
-        macOSView
+        desktopView
         #else
-        iOSView
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            desktopView
+        } else {
+            iOSView
+        }
         #endif
     }
     
-    // MARK: - macOS View
+    // MARK: - Desktop View (macOS & iPadOS)
     
-    private var macOSView: some View {
+    private var desktopView: some View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
-            // Sidebar
-            CityListSidebar(
+            // Sidebar - uses the same content as the iOS large sheet
+            DesktopSidebar(
                 cities: weatherService.cityWeatherData,
                 selectedCity: $selectedCity,
-                selectedDayOffset: selectedDayOffset,
+                selectedDayOffset: $selectedDayOffset,
                 isEditMode: $isEditMode,
-                columnVisibility: $columnVisibility,
                 searchText: $searchText,
                 showingCityDetail: $showingCityDetail,
                 tappedCity: $tappedCity,
@@ -74,7 +77,6 @@ struct ContentView: View {
                 weatherService: weatherService,
                 onCitySelected: { cityWeather in
                     selectedCity = cityWeather
-                    // Animate to the selected city
                     withAnimation {
                         position = .region(
                             MKCoordinateRegion(
@@ -103,8 +105,13 @@ struct ContentView: View {
                 isRefreshing: weatherService.isLoading
             )
         } detail: {
-            // Map view
+            // Map view with bottom date bar
             mapView
+                .overlay(alignment: .bottom) {
+                    DesktopDateBar(selectedDayOffset: $selectedDayOffset)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                }
         }
         .task {
             print("Starting weather fetch...")
@@ -115,6 +122,7 @@ struct ContentView: View {
     
     // MARK: - iOS View
     
+    #if !os(macOS)
     private var iOSView: some View {
         ZStack {
             // Map view as the main content
@@ -216,6 +224,7 @@ struct ContentView: View {
             print("Weather data count: \(weatherService.cityWeatherData.count)")
         }
     }
+    #endif
     
     private var mapView: some View {
         ZStack {
@@ -242,7 +251,7 @@ struct ContentView: View {
                     .tag(cityWeather)
                 }
             }
-            .mapStyle(.standard(elevation: .realistic, emphasis: .muted))
+            .mapStyle(.standard(elevation: .flat, emphasis: .muted))
             .mapControls {
                 MapPitchToggle()
                 // MapUserLocationButton removed
@@ -315,57 +324,21 @@ struct WeatherMarker: View {
     var body: some View {
         if isCompact {
             // Compact mode: just the icon with rounded square background, no temperature
-            Group {
-                if forecast.isRainIcon {
-                    let colors = forecast.rainPaletteColors(for: colorScheme)
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(colors.primary, colors.secondary)
-                } else if forecast.isPartiallySunnyIcon {
-                    let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(colors.primary, colors.secondary)
-                } else {
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .foregroundStyle(forecast.weatherColor(for: colorScheme))
-                }
-            }
-            .frame(width: 32, height: 32)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
-            .shadow(color: .black.opacity(0.2), radius: 2)
-            .contentTransition(.symbolEffect(.replace))
-            .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
-            .id("compact-\(cityWeather.id)-\(dayOffset)")
+            Image(systemName: forecast.weatherIcon)
+                .font(.title2)
+                .symbolRenderingMode(.multicolor)
+                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                .frame(width: 32, height: 32)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
+                .shadow(color: .black.opacity(0.2), radius: 2)
+                .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
         } else {
             // Full mode: icon + temperature + background
             VStack(spacing: 4) {
-                if forecast.isRainIcon {
-                    // For rain icons, use palette rendering
-                    let colors = forecast.rainPaletteColors(for: colorScheme)
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(colors.primary, colors.secondary)
-                        .contentTransition(.symbolEffect(.replace))
-                } else if forecast.isPartiallySunnyIcon {
-                    // For partially sunny icons
-                    let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(colors.primary, colors.secondary)
-                        .contentTransition(.symbolEffect(.replace))
-                } else {
-                    // For other icons, use the color scheme-aware color
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title2)
-                        .foregroundStyle(forecast.weatherColor(for: colorScheme))
-                        .contentTransition(.symbolEffect(.replace))
-                }
+                Image(systemName: forecast.weatherIcon)
+                    .font(.title2)
+                    .symbolRenderingMode(.multicolor)
+                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 
                 Text("\(Int(forecast.temperature))°C")
                     .font(.caption2)
@@ -373,304 +346,18 @@ struct WeatherMarker: View {
                     .foregroundStyle(.primary)
                     .frame(minWidth: 40)
                     .contentTransition(.numericText())
+                    .animation(.smooth(duration: 0.4), value: dayOffset)
             }
             .frame(width: 40, height: 56)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
             .shadow(color: .black.opacity(0.2), radius: 3)
             .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
-            .id("full-\(cityWeather.id)-\(dayOffset)")
         }
     }
+    
+
 }
 
-
-
-// MARK: - City List Sidebar
-
-struct CityListSidebar: View {
-    let cities: [CityWeather]
-    @Binding var selectedCity: CityWeather?
-    let selectedDayOffset: Int
-    @Binding var isEditMode: Bool
-    @Binding var columnVisibility: NavigationSplitViewVisibility
-    @Binding var searchText: String
-    @Binding var showingCityDetail: Bool
-    @Binding var tappedCity: CityWeather?
-    @State var citySearchManager: CitySearchManager
-    let weatherService: WeatherService
-    let onCitySelected: (CityWeather) -> Void
-    let onDeleteCity: (CityWeather) -> Void
-    let onMoveCity: (IndexSet, Int) -> Void
-    let onRefresh: () async -> Void
-    let lastFetchDate: Date?
-    let isRefreshing: Bool
-    
-    @State private var isSearching = false
-    @State private var isLoadingSearchedCity = false
-    
-    private var isSidebarVisible: Bool {
-        columnVisibility != .detailOnly
-    }
-    
-    private var filteredCities: [CityWeather] {
-        if searchText.isEmpty {
-            return cities
-        } else {
-            return cities.filter { cityWeather in
-                cityWeather.city.name.localizedCaseInsensitiveContains(searchText)
-            }
-        }
-    }
-    
-    private var shouldShowSearchResults: Bool {
-        !searchText.isEmpty && !citySearchManager.searchResults.isEmpty
-    }
-    
-    private var cacheStatusText: String {
-        guard let lastFetch = lastFetchDate else {
-            return "Never updated"
-        }
-        
-        let now = Date()
-        let elapsed = now.timeIntervalSince(lastFetch)
-        let minutes = Int(elapsed / 60)
-        
-        if minutes < 1 {
-            return "Now"
-        } else if minutes < 60 {
-            return "\(minutes)m"
-        } else {
-            let hours = minutes / 60
-            return "\(hours)h"
-        }
-    }
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            List(selection: $selectedCity) {
-                // Show search results if searching
-                if shouldShowSearchResults {
-                    Section {
-                        ForEach(citySearchManager.searchResults, id: \.title) { result in
-                            Button {
-                                Task {
-                                    await selectSearchResult(result)
-                                }
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Text(result.title)
-                                        .font(.body)
-                                        .foregroundStyle(.primary)
-                                    
-                                    Spacer()
-                                    
-                                    if isLoadingSearchedCity {
-                                        ProgressView()
-                                            .controlSize(.small)
-                                    } else {
-                                        Text(result.subtitle)
-                                            .font(.headline)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .padding(.vertical, 4)
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(isLoadingSearchedCity)
-                        }
-                    }
-                }
-                
-                // Show existing cities
-                if !filteredCities.isEmpty {
-                    Section(shouldShowSearchResults ? "My Cities" : "") {
-                        ForEach(filteredCities) { cityWeather in
-                            #if os(macOS)
-                            CityRow(
-                                cityWeather: cityWeather,
-                                dayOffset: selectedDayOffset
-                            )
-                                .tag(cityWeather)
-                                .contextMenu {
-                                    Button {
-                                        tappedCity = cityWeather
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                            showingCityDetail = true
-                                        }
-                                        onCitySelected(cityWeather)
-                                    } label: {
-                                        Label("View Details", systemImage: "info.circle")
-                                    }
-                                    
-                                    Divider()
-                                    
-                                    Button(role: .destructive) {
-                                        onDeleteCity(cityWeather)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
-                            #else
-                            Button {
-                                if !isEditMode {
-                                    // When tapping a city in the list, open the detail popup
-                                    tappedCity = cityWeather
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                                        showingCityDetail = true
-                                    }
-                                    // Also update selection and map position
-                                    onCitySelected(cityWeather)
-                                }
-                            } label: {
-                                CityRow(
-                                    cityWeather: cityWeather,
-                                    dayOffset: selectedDayOffset
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    onDeleteCity(cityWeather)
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
-                            #endif
-                        }
-                        .onDelete { indexSet in
-                            for index in indexSet {
-                                let cityToDelete = filteredCities[index]
-                                onDeleteCity(cityToDelete)
-                            }
-                        }
-                        .onMove { source, destination in
-                            onMoveCity(source, destination)
-                        }
-                    }
-                }
-            }
-            #if os(macOS)
-            .listStyle(.sidebar)
-            .onChange(of: selectedCity) { oldValue, newValue in
-                if let city = newValue {
-                    // On macOS, open the detail popup when selecting from list
-                    tappedCity = city
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        showingCityDetail = true
-                    }
-                    onCitySelected(city)
-                }
-            }
-            #else
-            .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
-            #endif
-            .searchable(text: $searchText, placement: .sidebar, prompt: "Search")
-            .onChange(of: searchText) { oldValue, newValue in
-                citySearchManager.search(query: newValue)
-            }
-            
-            // Cache status footer
-            if !isEditMode {
-                HStack {
-                    Text("Updated: \(cacheStatusText)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
-                    
-                    Spacer()
-                    
-                    Button {
-                        Task {
-                            await onRefresh()
-                        }
-                    } label: {
-                        HStack(spacing: 4) {
-                            if isRefreshing {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.caption)
-                            }
-                        }
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(isRefreshing)
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(.ultraThinMaterial)
-            }
-        }
-        .navigationTitle("Cities")
-        .toolbar {
-            if isSidebarVisible {
-                #if !os(macOS)
-                ToolbarItem(placement: .automatic) {
-                    Button {
-                        withAnimation {
-                            isEditMode.toggle()
-                        }
-                    } label: {
-                        Label(isEditMode ? "Done" : "Edit", systemImage: isEditMode ? "checkmark" : "pencil")
-                    }
-                }
-                #endif
-            }
-        }
-        #if os(macOS)
-        .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
-        #endif
-    }
-    
-    private func selectSearchResult(_ result: MKLocalSearchCompletion) async {
-        isLoadingSearchedCity = true
-        defer { isLoadingSearchedCity = false }
-        
-        // Get the full location details
-        let searchRequest = MKLocalSearch.Request(completion: result)
-        let search = MKLocalSearch(request: searchRequest)
-        
-        do {
-            let response = try await search.start()
-            if let mapItem = response.mapItems.first {
-                let coordinate = mapItem.location.coordinate
-                let cityName = result.title
-                
-                // Check if this city already exists in the sidebar
-                if let existingCity = cities.first(where: { $0.city.name == cityName }) {
-                    print("City \(cityName) already exists in sidebar")
-                    // Just show the existing city's detail
-                    tappedCity = existingCity
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        showingCityDetail = true
-                    }
-                    onCitySelected(existingCity)
-                    searchText = ""
-                    return
-                }
-                
-                // Create a temporary city and fetch its weather to show in detail view
-                print("Fetching weather for \(cityName) (not adding to sidebar)")
-                let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
-                
-                // Fetch weather for display only
-                let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity)
-                
-                // Show the detail popup for this city
-                tappedCity = tempCityWeather
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                    showingCityDetail = true
-                }
-                onCitySelected(tempCityWeather)
-                
-                // Clear search
-                searchText = ""
-            }
-        } catch {
-            print("Error searching for location: \(error.localizedDescription)")
-        }
-    }
-}
 
 // MARK: - City Row
 
@@ -730,6 +417,416 @@ struct CityRow: View {
         .padding(.vertical, 4)
     }
 }
+
+// MARK: - Desktop Sidebar (macOS & iPadOS)
+
+struct DesktopSidebar: View {
+    let cities: [CityWeather]
+    @Binding var selectedCity: CityWeather?
+    @Binding var selectedDayOffset: Int
+    @Binding var isEditMode: Bool
+    @Binding var searchText: String
+    @Binding var showingCityDetail: Bool
+    @Binding var tappedCity: CityWeather?
+    @State var citySearchManager: CitySearchManager
+    let weatherService: WeatherService
+    let onCitySelected: (CityWeather) -> Void
+    let onDeleteCity: (CityWeather) -> Void
+    let onMoveCity: (IndexSet, Int) -> Void
+    let onRefresh: () async -> Void
+    let lastFetchDate: Date?
+    let isRefreshing: Bool
+    
+    @State private var isLoadingSearchedCity = false
+    @State private var showingAddCityView = false
+    
+    private var filteredCities: [CityWeather] {
+        if searchText.isEmpty {
+            return cities
+        } else {
+            return cities.filter { cityWeather in
+                cityWeather.city.name.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+    
+    private var shouldShowSearchResults: Bool {
+        !searchText.isEmpty && !citySearchManager.searchResults.isEmpty
+    }
+    
+    private var cacheStatusText: String {
+        guard let lastFetch = lastFetchDate else {
+            return "Never updated"
+        }
+        
+        let now = Date()
+        let elapsed = now.timeIntervalSince(lastFetch)
+        let minutes = Int(elapsed / 60)
+        
+        if minutes < 1 {
+            return "Now"
+        } else if minutes < 60 {
+            return "\(minutes)m"
+        } else {
+            let hours = minutes / 60
+            return "\(hours)h"
+        }
+    }
+    
+    @ViewBuilder
+    private var cityListContent: some View {
+        ForEach(filteredCities) { cityWeather in
+            CityRow(
+                cityWeather: cityWeather,
+                dayOffset: selectedDayOffset
+            )
+                .tag(cityWeather)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    tappedCity = cityWeather
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        showingCityDetail = true
+                    }
+                    onCitySelected(cityWeather)
+                }
+                .contextMenu {
+                    Button {
+                        tappedCity = cityWeather
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                            showingCityDetail = true
+                        }
+                        onCitySelected(cityWeather)
+                    } label: {
+                        Label("View Details", systemImage: "info.circle")
+                    }
+                    
+                    Divider()
+                    
+                    Button(role: .destructive) {
+                        onDeleteCity(cityWeather)
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
+                }
+        }
+        .onDelete { indexSet in
+            for index in indexSet {
+                let cityToDelete = filteredCities[index]
+                onDeleteCity(cityToDelete)
+            }
+        }
+        .onMove { source, destination in
+            onMoveCity(source, destination)
+        }
+    }
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            List {
+                // Show search results if searching
+                if shouldShowSearchResults {
+                    Section {
+                        ForEach(citySearchManager.searchResults, id: \.title) { result in
+                            Button {
+                                Task {
+                                    await selectSearchResult(result)
+                                }
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Text(result.title)
+                                        .font(.body)
+                                        .foregroundStyle(.primary)
+                                    
+                                    Spacer()
+                                    
+                                    if isLoadingSearchedCity {
+                                        ProgressView()
+                                            .controlSize(.small)
+                                    } else {
+                                        Text(result.subtitle)
+                                            .font(.headline)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .padding(.vertical, 4)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isLoadingSearchedCity)
+                        }
+                    }
+                }
+                
+                // Show existing cities
+                if !filteredCities.isEmpty {
+                    if shouldShowSearchResults {
+                        Section("My Cities") {
+                            cityListContent
+                        }
+                    } else {
+                        cityListContent
+                    }
+                }
+            }
+            #if os(macOS)
+            .listStyle(.sidebar)
+            #else
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            #endif
+            .searchable(text: $searchText, placement: .sidebar, prompt: "Search")
+            .onChange(of: searchText) { oldValue, newValue in
+                citySearchManager.search(query: newValue)
+            }
+            
+            // Cache status footer
+            if !isEditMode {
+                HStack {
+                    Text("Updated: \(cacheStatusText)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                    
+                    Spacer()
+                    
+                    Button {
+                        Task {
+                            await onRefresh()
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            if isRefreshing {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.caption)
+                            }
+                        }
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(isRefreshing)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(.ultraThinMaterial)
+            }
+        }
+        .navigationTitle("My Cities")
+        
+        #if os(macOS)
+        .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
+        #endif
+    }
+    
+    private func selectSearchResult(_ result: MKLocalSearchCompletion) async {
+        isLoadingSearchedCity = true
+        defer { isLoadingSearchedCity = false }
+        
+        let searchRequest = MKLocalSearch.Request(completion: result)
+        let search = MKLocalSearch(request: searchRequest)
+        
+        do {
+            let response = try await search.start()
+            if let mapItem = response.mapItems.first {
+                let coordinate = mapItem.location.coordinate
+                let cityName = result.title
+                
+                if let existingCity = cities.first(where: { $0.city.name == cityName }) {
+                    tappedCity = existingCity
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        showingCityDetail = true
+                    }
+                    onCitySelected(existingCity)
+                    searchText = ""
+                    return
+                }
+                
+                let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
+                let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity)
+                
+                tappedCity = tempCityWeather
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    showingCityDetail = true
+                }
+                onCitySelected(tempCityWeather)
+                
+                searchText = ""
+            }
+        } catch {
+            print("Error searching for location: \(error.localizedDescription)")
+        }
+    }
+}
+
+// MARK: - Desktop Date Bar (macOS & iPadOS)
+
+struct DesktopDateBar: View {
+    @Binding var selectedDayOffset: Int
+    
+    @State private var showingDatePopover = false
+    @State private var previousDayOffset: Int = 0
+    @State private var isPlaying = false
+    @State private var playbackTask: Task<Void, Never>?
+    
+    private var selectedDate: Date {
+        Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
+    }
+    
+    private var dateRange: ClosedRange<Date> {
+        Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date())
+    }
+    
+    private var shortDateWithDayText: String {
+        if selectedDayOffset == 0 { return "Today" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d, EEE"
+        return formatter.string(from: selectedDate)
+    }
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 2) {
+                // Previous day button
+                Button {
+                    stopPlayback()
+                    if selectedDayOffset > 0 {
+                        withAnimation(.smooth(duration: 0.2)) {
+                            selectedDayOffset -= 1
+                        }
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(LongPressGesture().onEnded { _ in
+                    stopPlayback()
+                    withAnimation(.smooth(duration: 0.3)) {
+                        selectedDayOffset = 0
+                    }
+                })
+                
+                // Day indicator
+                Button {
+                    showingDatePopover.toggle()
+                } label: {
+                    Text(shortDateWithDayText)
+                        .font(.caption)
+                        .fontWeight(.medium)
+                        .id("desktop-date-\(selectedDayOffset)")
+                        .transition(.asymmetric(
+                            insertion: .move(edge: selectedDayOffset >= previousDayOffset ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: selectedDayOffset >= previousDayOffset ? .leading : .trailing).combined(with: .opacity)
+                        ))
+                        .frame(width: 80)
+                        .clipped()
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showingDatePopover) {
+                    DatePicker(
+                        "",
+                        selection: Binding(
+                            get: { selectedDate },
+                            set: { newDate in
+                                let calendar = Calendar.current
+                                let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
+                                if let days = components.day {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        selectedDayOffset = max(0, min(9, days))
+                                    }
+                                }
+                            }
+                        ),
+                        in: dateRange,
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+                    .frame(width: 280, height: 300)
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+                    .presentationBackground(.thickMaterial)
+                }
+                
+                // Next day button
+                Button {
+                    stopPlayback()
+                    if selectedDayOffset < 9 {
+                        withAnimation(.smooth(duration: 0.2)) {
+                            selectedDayOffset += 1
+                        }
+                    }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
+                        .frame(width: 28, height: 28)
+                }
+                .buttonStyle(.plain)
+                .simultaneousGesture(LongPressGesture().onEnded { _ in
+                    stopPlayback()
+                    withAnimation(.smooth(duration: 0.3)) {
+                        selectedDayOffset = 9
+                    }
+                })
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .fixedSize()
+            .background(.thickMaterial, in: Capsule())
+            
+            // Play/pause button
+            Button {
+                if isPlaying {
+                    stopPlayback()
+                } else {
+                    startPlayback()
+                }
+            } label: {
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 28, height: 28)
+                    .contentTransition(.symbolEffect(.replace))
+            }
+            .buttonStyle(.plain)
+            .background(.thickMaterial, in: Circle())
+        }
+        .onChange(of: selectedDayOffset) { oldValue, _ in
+            previousDayOffset = oldValue
+        }
+        .shadow(color: .black.opacity(0.15), radius: 8, y: 2)
+    }
+    
+    private func startPlayback() {
+        isPlaying = true
+        // If already at the end, restart from the beginning
+        if selectedDayOffset >= 9 {
+            selectedDayOffset = 0
+        }
+        playbackTask = Task {
+            while !Task.isCancelled && selectedDayOffset < 9 {
+                try? await Task.sleep(for: .seconds(1.5))
+                guard !Task.isCancelled else { break }
+                withAnimation(.smooth(duration: 0.4)) {
+                    selectedDayOffset += 1
+                }
+            }
+            // Playback finished naturally
+            if !Task.isCancelled {
+                isPlaying = false
+            }
+        }
+    }
+    
+    private func stopPlayback() {
+        playbackTask?.cancel()
+        playbackTask = nil
+        isPlaying = false
+    }
+}
+
 // MARK: - City Search Manager
 
 @Observable
@@ -777,6 +874,7 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     }
 }
 
+#if !os(macOS)
 // MARK: - Native Search Sheet (iOS - using native sheet presentation)
 struct NativeSearchSheet: View {
     let cities: [CityWeather]
@@ -1379,4 +1477,5 @@ struct AddCitySearchView: View {
         }
     }
 }
+#endif
 
