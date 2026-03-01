@@ -33,6 +33,7 @@ struct ContentView: View {
     @State private var lastRefreshText: String = ""
     @State private var showCloudCover: Bool = false
     @State private var filterSunny: Bool = false
+    @State private var isPlaying: Bool = false
     
     private func timeSinceRefreshText() -> String {
         guard let lastFetch = weatherService.lastFetchDate else {
@@ -111,7 +112,7 @@ struct ContentView: View {
             // Map view with bottom date bar
             mapView
                 .overlay(alignment: .bottom) {
-                    DesktopDateBar(selectedDayOffset: $selectedDayOffset, showCloudCover: $showCloudCover, filterSunny: $filterSunny)
+                    DesktopDateBar(selectedDayOffset: $selectedDayOffset, showCloudCover: $showCloudCover, filterSunny: $filterSunny, isPlaying: $isPlaying)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 12)
                 }
@@ -236,28 +237,32 @@ struct ContentView: View {
                     let forecast = cityWeather.forecast(for: selectedDayOffset)
                     let passesFilter = !filterSunny || (forecast.condition == .clear && forecast.cloudCover < 0.30)
                     
-                    if passesFilter {
-                        Annotation(cityWeather.city.name, 
-                                 coordinate: CLLocationCoordinate2D(
-                                    latitude: cityWeather.city.latitude,
-                                    longitude: cityWeather.city.longitude
-                                 )) {
-                            WeatherMarker(
-                                cityWeather: cityWeather,
-                                dayOffset: selectedDayOffset,
-                                isCompact: isZoomedOut,
-                                namespace: popupNamespace,
-                                showCloudCover: showCloudCover
-                            )
-                            .onTapGesture {
-                                tappedCity = cityWeather
-                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                    showingCityDetail = true
-                                }
+                    Annotation(cityWeather.city.name, 
+                             coordinate: CLLocationCoordinate2D(
+                                latitude: cityWeather.city.latitude,
+                                longitude: cityWeather.city.longitude
+                             )) {
+                        WeatherMarker(
+                            cityWeather: cityWeather,
+                            dayOffset: selectedDayOffset,
+                            isCompact: isZoomedOut,
+                            namespace: popupNamespace,
+                            showCloudCover: showCloudCover,
+                            filterSunny: filterSunny,
+                            passesFilter: passesFilter,
+                            isPlaying: isPlaying
+                        )
+                        .opacity(passesFilter ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.3), value: passesFilter)
+                        .allowsHitTesting(passesFilter)
+                        .onTapGesture {
+                            tappedCity = cityWeather
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                showingCityDetail = true
                             }
                         }
-                        .tag(cityWeather)
                     }
+                    .tag(cityWeather)
                 }
             }
             .mapStyle(.standard(elevation: .flat, emphasis: .muted))
@@ -325,6 +330,9 @@ struct WeatherMarker: View {
     let isCompact: Bool
     let namespace: Namespace.ID
     let showCloudCover: Bool
+    var filterSunny: Bool = false
+    var passesFilter: Bool = true
+    var isPlaying: Bool = false
     
     @Environment(\.colorScheme) private var colorScheme
     
@@ -332,10 +340,24 @@ struct WeatherMarker: View {
         cityWeather.forecast(for: dayOffset)
     }
     
+    private var displayIcon: String {
+        if filterSunny {
+            if isPlaying {
+                // During playback: always sun so no icon transitions
+                return "sun.max.fill"
+            } else {
+                // Not playing: only sun for passing cities, others keep real icon for clean fade out
+                return passesFilter ? "sun.max.fill" : forecast.weatherIcon
+            }
+        }
+        return forecast.weatherIcon
+    }
+    
     var body: some View {
         if isCompact {
             // Compact mode: just the weather icon, no text
-            Image(systemName: forecast.weatherIcon)
+            Image(systemName: displayIcon)
+                .id(isPlaying ? "playing" : "filter-\(filterSunny)")
                 .font(.title2)
                 .symbolRenderingMode(.multicolor)
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
@@ -346,7 +368,8 @@ struct WeatherMarker: View {
         } else {
             // Full mode: weather icon + temperature or cloud cover
             VStack(spacing: 2) {
-                Image(systemName: forecast.weatherIcon)
+                Image(systemName: displayIcon)
+                    .id(isPlaying ? "playing" : "filter-\(filterSunny)")
                     .font(.title2)
                     .symbolRenderingMode(.multicolor)
                     .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
@@ -660,10 +683,10 @@ struct DesktopDateBar: View {
     @Binding var selectedDayOffset: Int
     @Binding var showCloudCover: Bool
     @Binding var filterSunny: Bool
+    @Binding var isPlaying: Bool
     
     @State private var showingDatePopover = false
     @State private var previousDayOffset: Int = 0
-    @State private var isPlaying = false
     @State private var playbackTask: Task<Void, Never>?
     
     private var selectedDate: Date {
@@ -685,9 +708,7 @@ struct DesktopDateBar: View {
         HStack(spacing: 8) {
             // Sunny filter toggle
             Button {
-                withAnimation(.smooth(duration: 0.3)) {
-                    filterSunny.toggle()
-                }
+                filterSunny.toggle()
             } label: {
                 Image(systemName: "sun.max.fill")
                     .font(.system(size: 11, weight: .semibold))
