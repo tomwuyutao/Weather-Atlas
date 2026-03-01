@@ -42,6 +42,19 @@ enum AppWeatherCondition {
             return "Windy"
         }
     }
+    
+    var estimatedCloudCover: Int {
+        switch self {
+        case .clear: return 5
+        case .partlyCloudy: return 35
+        case .cloudy: return 80
+        case .rain: return 90
+        case .drizzle: return 90
+        case .snow: return 85
+        case .fog: return 70
+        case .wind: return 20
+        }
+    }
 }
 
 @Observable
@@ -99,7 +112,10 @@ class WeatherService {
     func fetchWeatherForAllCities() async {
         // Check if we have valid cached data
         if let cachedData = loadCachedData(), isCacheValid() {
-            print("📦 Using cached weather data")
+            print("📦 Using CACHED weather data")
+            for cw in cachedData {
+                print("📦 CACHED \(cw.city.name): temp=\(Int(cw.temperature))°C, icon=\(cw.symbolName), cloud cover=\(cw.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", ")) [from cache — may be ESTIMATED if old cache]")
+            }
             self.cityWeatherData = cachedData
             generateForecastDays()
             return
@@ -127,7 +143,7 @@ class WeatherService {
                 let cityWeather = await convertWeatherKitData(weather: weather, for: city)
                 weatherData.append(cityWeather)
                 
-                print("✅ Fetched weather for \(city.name): \(Int(cityWeather.temperature))°C")
+                print("✅ Fetched REAL weather for \(city.name): \(Int(cityWeather.temperature))°C, cloud cover: \(cityWeather.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", "))")
             } catch let error as NSError {
                 // Check if this is a WeatherKit authentication error
                 if error.domain == "WeatherDaemon.WDSJWTAuthenticatorServiceListener.Errors" && error.code == 2 {
@@ -139,15 +155,8 @@ class WeatherService {
                     print("❌ Error fetching weather for \(city.name): \(error.localizedDescription)")
                 }
                 
-                // Fallback to dummy data if API fails
-                let mockWeather = CityWeather(
-                    city: city,
-                    condition: .clear,
-                    temperature: Double.random(in: 10...25),
-                    symbolName: "cloud.sun",
-                    dailyForecasts: generateDummyForecast(for: city)
-                )
-                weatherData.append(mockWeather)
+                // Skip city — no mock data, will retry on next refresh
+                print("⚠️ Skipping \(city.name) — no data available")
             }
         }
         
@@ -284,7 +293,7 @@ class WeatherService {
         
         // Daily forecasts
         let dailyForecasts = weather.dailyForecast.forecast.prefix(10).enumerated().map { (index, day) -> DailyForecast in
-            let dayTemp = day.highTemperature.value
+            let daytimeForecast = day.daytimeForecast
             let daySymbol = day.symbolName
             let dayCondition = mapWeatherKitCondition(day.condition)
             
@@ -293,10 +302,12 @@ class WeatherService {
             
             return DailyForecast(
                 dayOffset: index,
-                temperature: dayTemp,
+                daytimeLow: daytimeForecast.lowTemperature.value,
+                daytimeHigh: daytimeForecast.highTemperature.value,
                 symbolName: daySymbol,
                 condition: dayCondition,
-                hourlyForecasts: hourlyForecasts
+                hourlyForecasts: hourlyForecasts,
+                cloudCover: daytimeForecast.cloudCover
             )
         }
         
@@ -332,22 +343,28 @@ class WeatherService {
                     temperature: hourWeather.temperature.value,
                     symbolName: hourWeather.symbolName,
                     condition: mapWeatherKitCondition(hourWeather.condition),
-                    precipitationChance: hourWeather.precipitationChance
+                    precipitationChance: hourWeather.precipitationChance,
+                    cloudCover: hourWeather.cloudCover
                 )
             }
         }
         
         // Fallback: Generate 24 hours based on the daily forecast
+        print("⚠️ No real hourly data for day \(dayOffset), using fallback hourly from daily forecast")
+        let daytime = day.daytimeForecast
+        let fallbackCloudCover = daytime.cloudCover
+        let baseTemp = (daytime.lowTemperature.value + daytime.highTemperature.value) / 2.0
         return (0..<24).map { hour in
             let hourVariation = calculateHourVariation(hour: hour)
-            let temp = day.highTemperature.value + hourVariation
+            let temp = baseTemp + hourVariation
             
             return HourlyForecast(
                 hour: hour,
                 temperature: temp,
                 symbolName: day.symbolName,
                 condition: mapWeatherKitCondition(day.condition),
-                precipitationChance: day.precipitationChance
+                precipitationChance: day.precipitationChance,
+                cloudCover: fallbackCloudCover
             )
         }
     }
@@ -417,29 +434,14 @@ class WeatherService {
             // Save the updated cities list
             saveCitiesList()
             
-            print("✅ Added weather for \(city.name): \(Int(cityWeather.temperature))°C")
+            print("✅ Added REAL weather for \(city.name): \(Int(cityWeather.temperature))°C, cloud cover: \(cityWeather.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", "))")
         } catch {
             print("❌ Error fetching weather for \(city.name): \(error.localizedDescription)")
-            
-            // Fallback to dummy data
-            let mockWeather = CityWeather(
-                city: city,
-                condition: .clear,
-                temperature: Double.random(in: 10...25),
-                symbolName: "cloud.sun",
-                dailyForecasts: generateDummyForecast(for: city)
-            )
-            cityWeatherData.insert(mockWeather, at: 0)
-            
-            // Update cache even with fallback data
-            cacheData(cityWeatherData)
-            
-            // Save the updated cities list
-            saveCitiesList()
+            print("⚠️ City \(city.name) not added — no data available")
         }
     }
     
-    func fetchWeatherForCity(_ city: City) async -> CityWeather {
+    func fetchWeatherForCity(_ city: City) async -> CityWeather? {
         print("🔍 Fetching weather for \(city.name) (temporary)")
         
         do {
@@ -450,19 +452,12 @@ class WeatherService {
             // Convert to our model
             let cityWeather = await convertWeatherKitData(weather: weather, for: city)
             
-            print("✅ Fetched weather for \(city.name): \(Int(cityWeather.temperature))°C")
+            print("✅ Fetched REAL weather for \(city.name): \(Int(cityWeather.temperature))°C, cloud cover: \(cityWeather.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", "))")
             return cityWeather
         } catch {
             print("❌ Error fetching weather for \(city.name): \(error.localizedDescription)")
-            
-            // Fallback to dummy data
-            return CityWeather(
-                city: city,
-                condition: .clear,
-                temperature: Double.random(in: 10...25),
-                symbolName: "cloud.sun",
-                dailyForecasts: generateDummyForecast(for: city)
-            )
+            print("⚠️ No data available for \(city.name)")
+            return nil
         }
     }
     
@@ -484,80 +479,6 @@ class WeatherService {
         }
     }
     
-    private func generateDummyForecast(for city: City) -> [DailyForecast] {
-        return (0..<10).map { dayOffset in
-            // Generate semi-realistic temperature variations
-            let baseTemp = Double.random(in: 8...22)
-            let variation = Double.random(in: -3...3)
-            let temp = baseTemp + variation
-            
-            // Random weather conditions with some continuity
-            let conditions = ["sun.max", "sun.max", "cloud.sun", "cloud", "cloud.rain", "cloud.drizzle"]
-            let symbol = conditions.randomElement()!
-            
-            // Generate hourly forecast for this day
-            let hourlyForecasts = generateHourlyForecast(baseTemp: baseTemp, dayOffset: dayOffset)
-            
-            return DailyForecast(
-                dayOffset: dayOffset,
-                temperature: temp,
-                symbolName: symbol,
-                condition: [.clear, .partlyCloudy, .cloudy, .rain, .drizzle].randomElement()!,
-                hourlyForecasts: hourlyForecasts
-            )
-        }
-    }
-    
-    private func generateHourlyForecast(baseTemp: Double, dayOffset: Int) -> [HourlyForecast] {
-        return (0..<24).map { hour in
-            // Temperature varies throughout the day
-            let hourVariation: Double
-            if hour < 6 {
-                // Coldest before sunrise
-                hourVariation = -4.0 - Double.random(in: 0...2)
-            } else if hour < 12 {
-                // Warming up in the morning
-                hourVariation = -2.0 + Double(hour - 6) * 0.5
-            } else if hour < 16 {
-                // Warmest in afternoon
-                hourVariation = 2.0 + Double.random(in: 0...2)
-            } else if hour < 20 {
-                // Cooling down in evening
-                hourVariation = 1.0 - Double(hour - 16) * 0.5
-            } else {
-                // Cool at night
-                hourVariation = -2.0 - Double.random(in: 0...2)
-            }
-            
-            let temp = baseTemp + hourVariation
-            
-            // Weather conditions based on time of day
-            let symbol: String
-            let condition: AppWeatherCondition
-            
-            if hour >= 6 && hour < 18 {
-                // Daytime
-                let dayConditions = ["sun.max", "sun.max", "cloud.sun", "cloud", "cloud.rain"]
-                symbol = dayConditions.randomElement()!
-                condition = [.clear, .clear, .partlyCloudy, .cloudy, .rain].randomElement()!
-            } else {
-                // Nighttime
-                let nightConditions = ["moon", "moon", "cloud.moon", "cloud", "cloud.rain"]
-                symbol = nightConditions.randomElement()!
-                condition = [.clear, .clear, .partlyCloudy, .cloudy, .rain].randomElement()!
-            }
-            
-            let precipChance = condition == .rain ? Double.random(in: 0.4...0.9) : Double.random(in: 0...0.3)
-            
-            return HourlyForecast(
-                hour: hour,
-                temperature: temp,
-                symbolName: symbol,
-                condition: condition,
-                precipitationChance: precipChance
-            )
-        }
-    }
 }
 
 struct City: Identifiable, Hashable, Codable {
@@ -671,10 +592,12 @@ struct ForecastDay: Identifiable {
 struct DailyForecast: Identifiable {
     let id = UUID()
     let dayOffset: Int
-    let temperature: Double
+    let daytimeLow: Double   // 7AM-7PM low temperature
+    let daytimeHigh: Double  // 7AM-7PM high temperature
     let symbolName: String
     let condition: AppWeatherCondition
     let hourlyForecasts: [HourlyForecast]
+    let cloudCover: Double  // 0.0 to 1.0
     
     var weatherIcon: String {
         if symbolName.contains("sun") && !symbolName.contains("cloud") {
@@ -742,6 +665,14 @@ struct DailyForecast: Identifiable {
     var isPartiallySunnyIcon: Bool {
         symbolName.contains("cloud") && symbolName.contains("sun")
     }
+    
+    var cloudCoverPercent: Int {
+        Int(cloudCover * 100)
+    }
+    
+    var daytimeTempString: String {
+        "\(Int(daytimeLow))-\(Int(daytimeHigh))°"
+    }
 }
 
 struct HourlyForecast: Identifiable {
@@ -751,6 +682,7 @@ struct HourlyForecast: Identifiable {
     let symbolName: String
     let condition: AppWeatherCondition
     let precipitationChance: Double  // 0.0 to 1.0
+    let cloudCover: Double  // 0.0 to 1.0
     
     var weatherIcon: String {
         if symbolName.contains("sun") && !symbolName.contains("cloud") {
@@ -828,6 +760,10 @@ struct HourlyForecast: Identifiable {
     
     var isPartlyMoonIcon: Bool {
         symbolName.contains("cloud") && symbolName.contains("moon")
+    }
+    
+    var cloudCoverPercent: Int {
+        Int(cloudCover * 100)
     }
     
     var formattedHour: String {
@@ -912,17 +848,57 @@ struct CachedCityWeather: Codable {
 }
 struct CachedDailyForecast: Codable {
     let dayOffset: Int
-    let temperature: Double
+    let daytimeLow: Double
+    let daytimeHigh: Double
     let symbolName: String
     let condition: String
     let hourlyForecasts: [CachedHourlyForecast]
+    let cloudCover: Double
     
     init(from forecast: DailyForecast) {
         self.dayOffset = forecast.dayOffset
-        self.temperature = forecast.temperature
+        self.daytimeLow = forecast.daytimeLow
+        self.daytimeHigh = forecast.daytimeHigh
         self.symbolName = forecast.symbolName
         self.condition = forecast.condition.displayName
         self.hourlyForecasts = forecast.hourlyForecasts.map { CachedHourlyForecast(from: $0) }
+        self.cloudCover = forecast.cloudCover
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        dayOffset = try container.decode(Int.self, forKey: .dayOffset)
+        // Migration: old cache had single `temperature`, new cache has daytimeLow/daytimeHigh
+        if let low = try container.decodeIfPresent(Double.self, forKey: .daytimeLow),
+           let high = try container.decodeIfPresent(Double.self, forKey: .daytimeHigh) {
+            daytimeLow = low
+            daytimeHigh = high
+        } else {
+            let temp = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 15.0
+            daytimeLow = temp - 3.0
+            daytimeHigh = temp
+        }
+        symbolName = try container.decode(String.self, forKey: .symbolName)
+        condition = try container.decode(String.self, forKey: .condition)
+        hourlyForecasts = try container.decode([CachedHourlyForecast].self, forKey: .hourlyForecasts)
+        cloudCover = try container.decodeIfPresent(Double.self, forKey: .cloudCover)
+            ?? Double(AppWeatherCondition.fromDisplayName(condition).estimatedCloudCover) / 100.0
+    }
+    
+    // Keep the old key for migration during decoding
+    private enum CodingKeys: String, CodingKey {
+        case dayOffset, daytimeLow, daytimeHigh, symbolName, condition, hourlyForecasts, cloudCover, temperature
+    }
+    
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(dayOffset, forKey: .dayOffset)
+        try container.encode(daytimeLow, forKey: .daytimeLow)
+        try container.encode(daytimeHigh, forKey: .daytimeHigh)
+        try container.encode(symbolName, forKey: .symbolName)
+        try container.encode(condition, forKey: .condition)
+        try container.encode(hourlyForecasts, forKey: .hourlyForecasts)
+        try container.encode(cloudCover, forKey: .cloudCover)
     }
     
     func toDailyForecast() -> DailyForecast {
@@ -931,10 +907,12 @@ struct CachedDailyForecast: Codable {
         
         return DailyForecast(
             dayOffset: dayOffset,
-            temperature: temperature,
+            daytimeLow: daytimeLow,
+            daytimeHigh: daytimeHigh,
             symbolName: symbolName,
             condition: appCondition,
-            hourlyForecasts: forecasts
+            hourlyForecasts: forecasts,
+            cloudCover: cloudCover
         )
     }
 }
@@ -945,6 +923,7 @@ struct CachedHourlyForecast: Codable {
     let symbolName: String
     let condition: String
     let precipitationChance: Double
+    let cloudCover: Double
     
     init(from forecast: HourlyForecast) {
         self.hour = forecast.hour
@@ -952,6 +931,18 @@ struct CachedHourlyForecast: Codable {
         self.symbolName = forecast.symbolName
         self.condition = forecast.condition.displayName
         self.precipitationChance = forecast.precipitationChance
+        self.cloudCover = forecast.cloudCover
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        hour = try container.decode(Int.self, forKey: .hour)
+        temperature = try container.decode(Double.self, forKey: .temperature)
+        symbolName = try container.decode(String.self, forKey: .symbolName)
+        condition = try container.decode(String.self, forKey: .condition)
+        precipitationChance = try container.decode(Double.self, forKey: .precipitationChance)
+        cloudCover = try container.decodeIfPresent(Double.self, forKey: .cloudCover)
+            ?? Double(AppWeatherCondition.fromDisplayName(condition).estimatedCloudCover) / 100.0
     }
     
     func toHourlyForecast() -> HourlyForecast {
@@ -962,7 +953,8 @@ struct CachedHourlyForecast: Codable {
             temperature: temperature,
             symbolName: symbolName,
             condition: appCondition,
-            precipitationChance: precipitationChance
+            precipitationChance: precipitationChance,
+            cloudCover: cloudCover
         )
     }
 }

@@ -15,18 +15,20 @@ struct WeatherDetailView: View {
     let onDismiss: () -> Void
     let onAddCity: (() -> Void)?
     let isInSidebar: Bool
+    let showCloudCover: Bool
     
     @Environment(\.colorScheme) private var colorScheme
     @State private var internalSelectedDay: Int
     
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, isInSidebar: Bool = true) {
+    init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false) {
         self.cityWeather = cityWeather
         self.selectedDayOffset = selectedDayOffset
         self.namespace = namespace
         self.onDismiss = onDismiss
         self.onAddCity = onAddCity
         self.isInSidebar = isInSidebar
+        self.showCloudCover = showCloudCover
         self._internalSelectedDay = State(initialValue: selectedDayOffset)
     }
     
@@ -37,7 +39,7 @@ struct WeatherDetailView: View {
     var body: some View {
         ZStack {
             // Main content card
-            VStack(spacing: 26) {
+            VStack(spacing: 16) {
                 // Header
                 VStack(alignment: .center, spacing: 7) {
                     Text(cityWeather.city.name)
@@ -47,28 +49,32 @@ struct WeatherDetailView: View {
                     Text(forecastDateText)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
-                        .id("date-\(internalSelectedDay)") // Force SwiftUI to treat this as a new view
+                        .id("date-\(internalSelectedDay)")
                         .transition(.asymmetric(
                             insertion: .move(edge: .trailing).combined(with: .opacity),
                             removal: .move(edge: .leading).combined(with: .opacity)
                         ))
                 }
-                .clipped() // Clip the header transitions
+                .clipped()
                 
-                // Horizontal timeline forecast section
-                HStack(spacing: 1) {
-                    ForEach(forecast.hourlyForecasts.filter { [6, 9, 12, 15, 18, 21].contains($0.hour) }) { hourlyForecast in
-                        TimelineForecastColumn(hourlyForecast: hourlyForecast)
-                    }
+                // Chart container
+                HourlyTimelineChart(
+                    hourlyForecasts: forecast.hourlyForecasts,
+                    showCloudCover: showCloudCover
+                )
+                .padding(.top, 12)
+                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 8)
+                        .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
                 }
                 .padding(.horizontal, 8)
-                .padding(.vertical, 18)
-                .id("hourly-\(internalSelectedDay)") // Force SwiftUI to treat this as a new view when day changes
+                .id("hourly-\(internalSelectedDay)")
                 .transition(.asymmetric(
                     insertion: .move(edge: .trailing).combined(with: .opacity),
                     removal: .move(edge: .leading).combined(with: .opacity)
                 ))
-                .clipped() // Clip the hourly forecast transitions
+                .clipped()
                 
                 // 10-day forecast grid
                 VStack(spacing: 0) {
@@ -81,7 +87,8 @@ struct WeatherDetailView: View {
                                 cornerRadius: .init(
                                     topLeading: index == 0 ? 8 : 0,
                                     topTrailing: index == 4 ? 8 : 0
-                                )
+                                ),
+                                showCloudCover: showCloudCover
                             )
                             .onTapGesture {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -100,7 +107,8 @@ struct WeatherDetailView: View {
                                 cornerRadius: .init(
                                     bottomLeading: index == 0 ? 8 : 0,
                                     bottomTrailing: index == 4 ? 8 : 0
-                                )
+                                ),
+                                showCloudCover: showCloudCover
                             )
                             .onTapGesture {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -111,11 +119,10 @@ struct WeatherDetailView: View {
                     }
                 }
                 .padding(.horizontal, 8)
-                .padding(.bottom, 8)
             }
             .padding(.horizontal, 20)
-            .padding(.top, 30)
-            .padding(.bottom, 36)
+            .padding(.top, 36)
+            .padding(.bottom, 24)
             .frame(maxWidth: 340)
             .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 26))
             .clipShape(RoundedRectangle(cornerRadius: 26)) // Clip the entire content to the rounded rectangle
@@ -177,52 +184,227 @@ struct WeatherDetailView: View {
     }
 }
 
-struct TimelineForecastColumn: View {
-    let hourlyForecast: HourlyForecast
+// MARK: - Animatable helpers for chart line
+
+struct AnimatablePointList: VectorArithmetic {
+    var values: [Double]
     
-    @Environment(\.colorScheme) private var colorScheme
+    static var zero: AnimatablePointList { .init(values: []) }
     
-    var body: some View {
-        VStack(spacing: 7) {
-            // Time
-            Text(hourlyForecast.shortFormattedHour)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+    static func + (lhs: AnimatablePointList, rhs: AnimatablePointList) -> AnimatablePointList {
+        let count = max(lhs.values.count, rhs.values.count)
+        var result = [Double](repeating: 0, count: count)
+        for i in 0..<count {
+            let l = i < lhs.values.count ? lhs.values[i] : 0
+            let r = i < rhs.values.count ? rhs.values[i] : 0
+            result[i] = l + r
+        }
+        return .init(values: result)
+    }
+    
+    static func - (lhs: AnimatablePointList, rhs: AnimatablePointList) -> AnimatablePointList {
+        let count = max(lhs.values.count, rhs.values.count)
+        var result = [Double](repeating: 0, count: count)
+        for i in 0..<count {
+            let l = i < lhs.values.count ? lhs.values[i] : 0
+            let r = i < rhs.values.count ? rhs.values[i] : 0
+            result[i] = l - r
+        }
+        return .init(values: result)
+    }
+    
+    mutating func scale(by rhs: Double) {
+        for i in values.indices { values[i] *= rhs }
+    }
+    
+    var magnitudeSquared: Double {
+        values.reduce(0) { $0 + $1 * $1 }
+    }
+}
+
+// MARK: - Chart line shape
+
+struct HourlyChartLineShape: Shape {
+    var pointYValues: AnimatablePointList
+    let pointXPositions: [CGFloat]
+    let gapRadius: CGFloat
+    
+    var animatableData: AnimatablePointList {
+        get { pointYValues }
+        set { pointYValues = newValue }
+    }
+    
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let points = zip(pointXPositions, pointYValues.values).map { CGPoint(x: $0, y: $1) }
+        guard points.count >= 2 else { return path }
+        
+        // Sample the full Catmull-Rom spline, then draw segments with gaps around data points
+        let steps = 100
+        var allPoints: [CGPoint] = []
+        
+        for i in 0..<(points.count - 1) {
+            let p0 = i > 0 ? points[i - 1] : points[i]
+            let p1 = points[i]
+            let p2 = points[i + 1]
+            let p3 = i + 2 < points.count ? points[i + 2] : points[i + 1]
             
-            // Weather icon
-            Group {
-                if hourlyForecast.isRainIcon {
-                    let colors = hourlyForecast.rainPaletteColors(for: colorScheme)
-                    Image(systemName: hourlyForecast.weatherIcon)
-                        .font(.title3)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(colors.primary, colors.secondary)
-                } else if hourlyForecast.isPartiallySunnyIcon {
-                    let colors = hourlyForecast.partlySunnyPaletteColors(for: colorScheme)
-                    Image(systemName: hourlyForecast.weatherIcon)
-                        .font(.title3)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(colors.primary, colors.secondary)
-                } else if hourlyForecast.isPartlyMoonIcon {
-                    let colors = hourlyForecast.partlyMoonPaletteColors(for: colorScheme)
-                    Image(systemName: hourlyForecast.weatherIcon)
-                        .font(.title3)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(colors.primary, colors.secondary)
+            let segSteps = steps / (points.count - 1)
+            for s in 0...segSteps {
+                let t = CGFloat(s) / CGFloat(segSteps)
+                let x = catmullRom(t: t, p0: p0.x, p1: p1.x, p2: p2.x, p3: p3.x)
+                let y = catmullRom(t: t, p0: p0.y, p1: p1.y, p2: p2.y, p3: p3.y)
+                allPoints.append(CGPoint(x: x, y: y))
+            }
+        }
+        
+        // Draw the sampled curve, skipping points near data points
+        var drawing = false
+        for pt in allPoints {
+            let nearDataPoint = points.contains { dp in
+                abs(pt.x - dp.x) < gapRadius
+            }
+            if nearDataPoint {
+                drawing = false
+            } else {
+                if !drawing {
+                    path.move(to: pt)
+                    drawing = true
                 } else {
-                    Image(systemName: hourlyForecast.weatherIcon)
-                        .font(.title3)
-                        .foregroundStyle(hourlyForecast.weatherColor(for: colorScheme))
+                    path.addLine(to: pt)
                 }
             }
-            .frame(height: 28)
-            
-            // Temperature
-            Text("\(Int(hourlyForecast.temperature))°")
-                .font(.callout)
-                .fontWeight(.semibold)
         }
-        .frame(minWidth: 46)
+        
+        return path
+    }
+    
+    private func catmullRom(t: CGFloat, p0: CGFloat, p1: CGFloat, p2: CGFloat, p3: CGFloat) -> CGFloat {
+        let t2 = t * t
+        let t3 = t2 * t
+        return 0.5 * (
+            (2 * p1) +
+            (-p0 + p2) * t +
+            (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+            (-p0 + 3 * p1 - 3 * p2 + p3) * t3
+        )
+    }
+}
+
+// MARK: - Chart timeline view
+
+struct HourlyTimelineChart: View {
+    let hourlyForecasts: [HourlyForecast]
+    let showCloudCover: Bool
+    
+    private let totalHeight: CGFloat = 156
+    private let hourLabelHeight: CGFloat = 18  // fixed hour label at top
+    private let topPadding: CGFloat = 6        // space below hour label
+    private let iconHeight: CGFloat = 24
+    private let iconToValue: CGFloat = 8       // gap between icon bottom and value center
+    private let valueHeight: CGFloat = 18      // height of value text (sits on line)
+    
+    // Chart zone: area where the line center can move
+    private var chartTop: CGFloat { hourLabelHeight + topPadding + iconHeight + iconToValue + valueHeight / 2 }
+    private var chartBottom: CGFloat { totalHeight - valueHeight / 2 - 4 }
+    private var chartZone: CGFloat { chartBottom - chartTop }
+    
+    private var dataPoints: [HourlyForecast] {
+        hourlyForecasts.filter { [7, 9, 11, 13, 15, 17, 19].contains($0.hour) }
+    }
+    
+    private func value(for forecast: HourlyForecast) -> Double {
+        showCloudCover ? Double(forecast.cloudCoverPercent) : forecast.temperature
+    }
+    
+    private var valueRange: (min: Double, max: Double) {
+        if showCloudCover {
+            return (0, 100)
+        } else {
+            let temps = dataPoints.map(\.temperature)
+            let minT = temps.min() ?? 10
+            let maxT = temps.max() ?? 20
+            let padding = max((maxT - minT) * 0.25, 2.0)
+            return (minT - padding, maxT + padding)
+        }
+    }
+    
+    // Returns the Y coordinate of the line point (higher value = lower Y = higher on screen)
+    private func lineY(for val: Double) -> CGFloat {
+        let range = valueRange.max - valueRange.min
+        guard range > 0 else { return chartTop + chartZone * 0.5 }
+        let normalized = 1.0 - CGFloat((val - valueRange.min) / range)
+        return chartTop + normalized * chartZone
+    }
+    
+    var body: some View {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let count = CGFloat(dataPoints.count)
+            let columnWidth = count > 0 ? width / count : width
+            
+            let xPositions = dataPoints.indices.map { i in
+                (CGFloat(i) + 0.5) * columnWidth
+            }
+            let lineYPositions = dataPoints.map { lineY(for: value(for: $0)) }
+            
+            ZStack(alignment: .topLeading) {
+                // Layer 1: Grid lines
+                Path { path in
+                    let lineCount = 3
+                    for i in 0..<lineCount {
+                        let fraction = CGFloat(i) / CGFloat(lineCount - 1)
+                        let y = chartTop + fraction * chartZone
+                        path.move(to: CGPoint(x: 16, y: y))
+                        path.addLine(to: CGPoint(x: width - 16, y: y))
+                    }
+                }
+                .stroke(Color.primary.opacity(0.12), style: StrokeStyle(lineWidth: 0.5, dash: [4, 3]))
+                
+                // Layer 2: Connecting line
+                HourlyChartLineShape(
+                    pointYValues: AnimatablePointList(values: lineYPositions.map { Double($0) }),
+                    pointXPositions: xPositions,
+                    gapRadius: 12
+                )
+                .stroke(Color.primary.opacity(0.2), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                
+                // Layer 3: Data columns
+                HStack(spacing: 0) {
+                    ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, forecast in
+                        let pointY = lineYPositions[index]
+                        
+                        ZStack {
+                            // Hour label — fixed near top
+                            Text(forecast.shortFormattedHour)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .frame(height: hourLabelHeight)
+                                .position(x: columnWidth / 2, y: hourLabelHeight / 2 + 10)
+                            
+                            // Icon — above the value
+                            Image(systemName: forecast.weatherIcon)
+                                .font(.title3)
+                                .symbolRenderingMode(.multicolor)
+                                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                                .frame(height: iconHeight)
+                                .position(x: columnWidth / 2, y: pointY - iconToValue - iconHeight / 2)
+                            
+                            // Value text — centered on the line point, offset right so numbers align with icon
+                            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.temperature))°")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .contentTransition(.numericText())
+                                .frame(height: valueHeight)
+                                .position(x: columnWidth / 2 + 2 , y: pointY)
+                        }
+                        .frame(width: columnWidth, height: totalHeight)
+                    }
+                }
+            }
+        }
+        .frame(height: totalHeight)
+        .animation(.smooth(duration: 0.3), value: showCloudCover)
     }
 }
 
@@ -230,13 +412,15 @@ struct DayForecastBox: View {
     let dailyForecast: DailyForecast
     let isSelected: Bool
     let cornerRadius: RectangleCornerRadii
+    let showCloudCover: Bool
     
     @Environment(\.colorScheme) private var colorScheme
     
-    init(dailyForecast: DailyForecast, isSelected: Bool, cornerRadius: RectangleCornerRadii = .init()) {
+    init(dailyForecast: DailyForecast, isSelected: Bool, cornerRadius: RectangleCornerRadii = .init(), showCloudCover: Bool = false) {
         self.dailyForecast = dailyForecast
         self.isSelected = isSelected
         self.cornerRadius = cornerRadius
+        self.showCloudCover = showCloudCover
     }
     
     private var dayOfWeek: String {
@@ -256,28 +440,22 @@ struct DayForecastBox: View {
     }
     
     var body: some View {
-        VStack(spacing: 9) {
-            // Weather icon
-            Group {
-                if dailyForecast.isRainIcon {
-                    let colors = dailyForecast.rainPaletteColors(for: colorScheme)
-                    Image(systemName: dailyForecast.weatherIcon)
-                        .font(.title2)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(colors.primary, colors.secondary)
-                } else if dailyForecast.isPartiallySunnyIcon {
-                    let colors = dailyForecast.partlySunnyPaletteColors(for: colorScheme)
-                    Image(systemName: dailyForecast.weatherIcon)
-                        .font(.title2)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(colors.primary, colors.secondary)
-                } else {
-                    Image(systemName: dailyForecast.weatherIcon)
-                        .font(.title2)
-                        .foregroundStyle(dailyForecast.weatherColor(for: colorScheme))
-                }
-            }
-            .frame(height: 30)
+        VStack(spacing: 4) {
+            // Weather icon - always shown
+            Image(systemName: dailyForecast.weatherIcon)
+                .font(.body)
+                .symbolRenderingMode(.multicolor)
+                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                .frame(height: 22)
+            
+            // Temperature range or cloud cover percentage
+            Text(showCloudCover ? "\(dailyForecast.cloudCoverPercent)%" : dailyForecast.daytimeTempString)
+                .font(.caption2)
+                .fontWeight(.medium)
+                .foregroundStyle(.secondary)
+                .offset(x: 2)
+                .contentTransition(.numericText())
+                .animation(.smooth(duration: 0.3), value: showCloudCover)
             
             // Day of week
             Text(dayOfWeek)
@@ -350,7 +528,8 @@ struct DayForecastBox: View {
             temperature: temp,
             symbolName: symbol,
             condition: condition,
-            precipitationChance: precipChance
+            precipitationChance: precipChance,
+            cloudCover: Double(condition.estimatedCloudCover) / 100.0
         )
     }
     
@@ -395,16 +574,19 @@ struct DayForecastBox: View {
                 temperature: temp,
                 symbolName: hourSymbol,
                 condition: condition,
-                precipitationChance: precipChance
+                precipitationChance: precipChance,
+                cloudCover: Double(condition.estimatedCloudCover) / 100.0
             )
         }
         
         return DailyForecast(
             dayOffset: dayOffset,
-            temperature: baseTemp,
+            daytimeLow: baseTemp - 3.0,
+            daytimeHigh: baseTemp + 3.0,
             symbolName: symbol,
             condition: condition,
-            hourlyForecasts: dayOffset == 0 ? hourlyForecasts : dayHourlyForecasts
+            hourlyForecasts: dayOffset == 0 ? hourlyForecasts : dayHourlyForecasts,
+            cloudCover: Double(condition.estimatedCloudCover) / 100.0
         )
     }
     

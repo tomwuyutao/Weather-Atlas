@@ -31,6 +31,7 @@ struct ContentView: View {
     @State private var showingSearchSheet: Bool = true
     @State private var selectedDetent: PresentationDetent = .height(80)
     @State private var lastRefreshText: String = ""
+    @State private var showCloudCover: Bool = false
     
     private func timeSinceRefreshText() -> String {
         guard let lastFetch = weatherService.lastFetchDate else {
@@ -75,6 +76,7 @@ struct ContentView: View {
                 tappedCity: $tappedCity,
                 citySearchManager: citySearchManager,
                 weatherService: weatherService,
+                showCloudCover: showCloudCover,
                 onCitySelected: { cityWeather in
                     selectedCity = cityWeather
                     withAnimation {
@@ -108,7 +110,7 @@ struct ContentView: View {
             // Map view with bottom date bar
             mapView
                 .overlay(alignment: .bottom) {
-                    DesktopDateBar(selectedDayOffset: $selectedDayOffset)
+                    DesktopDateBar(selectedDayOffset: $selectedDayOffset, showCloudCover: $showCloudCover)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 12)
                 }
@@ -239,7 +241,8 @@ struct ContentView: View {
                             cityWeather: cityWeather,
                             dayOffset: selectedDayOffset,
                             isCompact: isZoomedOut,
-                            namespace: popupNamespace
+                            namespace: popupNamespace,
+                            showCloudCover: showCloudCover
                         )
                         .onTapGesture {
                             tappedCity = cityWeather
@@ -290,7 +293,8 @@ struct ContentView: View {
                             await addCityToSidebar(city)
                         }
                     },
-                    isInSidebar: cityIsInSidebar(city)
+                    isInSidebar: cityIsInSidebar(city),
+                    showCloudCover: showCloudCover
                 )
             }
         }
@@ -314,6 +318,7 @@ struct WeatherMarker: View {
     let dayOffset: Int
     let isCompact: Bool
     let namespace: Namespace.ID
+    let showCloudCover: Bool
     
     @Environment(\.colorScheme) private var colorScheme
     
@@ -323,7 +328,7 @@ struct WeatherMarker: View {
     
     var body: some View {
         if isCompact {
-            // Compact mode: just the icon with rounded square background, no temperature
+            // Compact mode: just the weather icon, no text
             Image(systemName: forecast.weatherIcon)
                 .font(.title2)
                 .symbolRenderingMode(.multicolor)
@@ -333,22 +338,23 @@ struct WeatherMarker: View {
                 .shadow(color: .black.opacity(0.2), radius: 2)
                 .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
         } else {
-            // Full mode: icon + temperature + background
-            VStack(spacing: 4) {
+            // Full mode: weather icon + temperature or cloud cover
+            VStack(spacing: 2) {
                 Image(systemName: forecast.weatherIcon)
                     .font(.title2)
                     .symbolRenderingMode(.multicolor)
                     .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 
-                Text("\(Int(forecast.temperature))°C")
+                Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.daytimeHigh))°")
                     .font(.caption2)
                     .fontWeight(.medium)
                     .foregroundStyle(.primary)
-                    .frame(minWidth: 40)
+                    .offset(x: 2)
                     .contentTransition(.numericText())
                     .animation(.smooth(duration: 0.4), value: dayOffset)
+                    .animation(.smooth(duration: 0.4), value: showCloudCover)
             }
-            .frame(width: 40, height: 56)
+            .frame(width: 32, height: 46)
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
             .shadow(color: .black.opacity(0.2), radius: 3)
             .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
@@ -364,6 +370,7 @@ struct WeatherMarker: View {
 struct CityRow: View {
     let cityWeather: CityWeather
     let dayOffset: Int
+    let showCloudCover: Bool
     
     @Environment(\.colorScheme) private var colorScheme
     
@@ -373,30 +380,12 @@ struct CityRow: View {
     
     var body: some View {
         HStack(spacing: 12) {
-            // Weather icon using Label
-            Label {
-                EmptyView()
-            } icon: {
-                if forecast.isRainIcon {
-                    let colors = forecast.rainPaletteColors(for: colorScheme)
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title3)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(colors.primary, colors.secondary)
-                } else if forecast.isPartiallySunnyIcon {
-                    let colors = forecast.partlySunnyPaletteColors(for: colorScheme)
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title3)
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(colors.primary, colors.secondary)
-                } else {
-                    Image(systemName: forecast.weatherIcon)
-                        .font(.title3)
-                        .foregroundStyle(forecast.weatherColor(for: colorScheme))
-                }
-            }
-            .labelStyle(.iconOnly)
-            .frame(width: 32, height: 28)
+            // Weather icon - always shown
+            Image(systemName: forecast.weatherIcon)
+                .font(.title3)
+                .symbolRenderingMode(.multicolor)
+                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                .frame(width: 32, height: 28)
             
             // City name
             Text(cityWeather.city.name)
@@ -404,15 +393,12 @@ struct CityRow: View {
             
             Spacer()
             
-            // Temperature using Label
-            Label {
-                Text("\(Int(forecast.temperature))°C")
-                    .font(.headline)
-                    .foregroundStyle(.secondary)
-            } icon: {
-                EmptyView()
-            }
-            .labelStyle(.titleOnly)
+            // Temperature or cloud cover
+            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.daytimeHigh))°")
+                .font(.headline)
+                .foregroundStyle(.secondary)
+                .contentTransition(.numericText())
+                .animation(.smooth(duration: 0.3), value: showCloudCover)
         }
         .padding(.vertical, 4)
     }
@@ -430,6 +416,7 @@ struct DesktopSidebar: View {
     @Binding var tappedCity: CityWeather?
     @State var citySearchManager: CitySearchManager
     let weatherService: WeatherService
+    let showCloudCover: Bool
     let onCitySelected: (CityWeather) -> Void
     let onDeleteCity: (CityWeather) -> Void
     let onMoveCity: (IndexSet, Int) -> Void
@@ -456,7 +443,7 @@ struct DesktopSidebar: View {
     
     private var cacheStatusText: String {
         guard let lastFetch = lastFetchDate else {
-            return "Never updated"
+            return "Loading…"
         }
         
         let now = Date()
@@ -478,7 +465,8 @@ struct DesktopSidebar: View {
         ForEach(filteredCities) { cityWeather in
             CityRow(
                 cityWeather: cityWeather,
-                dayOffset: selectedDayOffset
+                dayOffset: selectedDayOffset,
+                showCloudCover: showCloudCover
             )
                 .tag(cityWeather)
                 .contentShape(Rectangle())
@@ -641,7 +629,10 @@ struct DesktopSidebar: View {
                 }
                 
                 let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
-                let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity)
+                guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
+                    print("⚠️ Could not fetch weather for \(cityName)")
+                    return
+                }
                 
                 tappedCity = tempCityWeather
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
@@ -661,6 +652,7 @@ struct DesktopSidebar: View {
 
 struct DesktopDateBar: View {
     @Binding var selectedDayOffset: Int
+    @Binding var showCloudCover: Bool
     
     @State private var showingDatePopover = false
     @State private var previousDayOffset: Int = 0
@@ -684,6 +676,20 @@ struct DesktopDateBar: View {
     
     var body: some View {
         HStack(spacing: 8) {
+            // Cloud cover toggle
+            Button {
+                withAnimation(.smooth(duration: 0.3)) {
+                    showCloudCover.toggle()
+                }
+            } label: {
+                Image(systemName: "cloud.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(showCloudCover ? .blue : .secondary)
+                    .frame(width: 28, height: 28)
+            }
+            .buttonStyle(.plain)
+            .background(.thickMaterial, in: Circle())
+            
             HStack(spacing: 2) {
                 // Previous day button
                 Button {
@@ -1107,7 +1113,8 @@ struct NativeSearchSheet: View {
                                     } label: {
                                         CityRow(
                                             cityWeather: cityWeather,
-                                            dayOffset: selectedDayOffset
+                                            dayOffset: selectedDayOffset,
+                                            showCloudCover: false
                                         )
                                     }
                                     .buttonStyle(.plain)
@@ -1267,7 +1274,10 @@ struct NativeSearchSheet: View {
                 }
                 
                 let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
-                let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity)
+                guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
+                    print("⚠️ Could not fetch weather for \(cityName)")
+                    return
+                }
                 
                 tappedCity = tempCityWeather
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
@@ -1467,7 +1477,10 @@ struct AddCitySearchView: View {
                 
                 // Create and fetch weather for new city
                 let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
-                let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity)
+                guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
+                    print("⚠️ Could not fetch weather for \(cityName)")
+                    return
+                }
                 
                 onCitySelected(tempCityWeather)
                 dismiss()
