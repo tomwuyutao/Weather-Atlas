@@ -58,11 +58,10 @@ struct WeatherDetailView: View {
                 // Header
                 VStack(alignment: .center, spacing: 7) {
                     Text(cityWeather.city.name)
-                        .font(.title)
-                        .fontWeight(.semibold)
+                        .font(.avenir(.title, weight: .semibold))
                     
                     Text(forecastDateText)
-                        .font(.subheadline)
+                        .font(.avenir(.subheadline))
                         .foregroundStyle(.secondary)
                         .id("date-\(internalSelectedDay)")
                         .transition(.asymmetric(
@@ -443,7 +442,7 @@ struct HourlyTimelineChart: View {
                         ZStack {
                             // Hour label — fixed near top
                             Text(forecast.shortFormattedHour)
-                                .font(.caption)
+                                .font(.avenir(.caption))
                                 .foregroundStyle(.secondary)
                                 .frame(height: hourLabelHeight)
                                 .position(x: columnWidth / 2, y: hourLabelHeight / 2 + 10)
@@ -458,8 +457,7 @@ struct HourlyTimelineChart: View {
                             
                             // Value text — centered on the line point, offset right so numbers align with icon
                             Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.temperature))°")
-                                .font(.caption)
-                                .fontWeight(.semibold)
+                                .font(.avenir(.caption, weight: .semibold))
                                 .contentTransition(.numericText())
                                 .frame(height: valueHeight)
                                 .position(x: columnWidth / 2 + 2 , y: pointY)
@@ -516,8 +514,7 @@ struct DayForecastBox: View {
             
             // Temperature range or cloud cover percentage
             Text(showCloudCover ? "\(dailyForecast.cloudCoverPercent)%" : "\(Int(dailyForecast.daytimeHigh))°")
-                .font(.caption2)
-                .fontWeight(.medium)
+                .font(.avenir(.caption2, weight: .medium))
                 .foregroundStyle(.secondary)
                 .offset(x: 2)
                 .contentTransition(.numericText())
@@ -525,8 +522,7 @@ struct DayForecastBox: View {
             
             // Day of week
             Text(dayOfWeek)
-                .font(.caption)
-                .fontWeight(isSelected ? .semibold : .medium)
+                .font(.avenir(.caption, weight: isSelected ? .semibold : .medium))
                 .foregroundStyle(isSelected ? .primary : .secondary)
         }
         .frame(minWidth: 50)

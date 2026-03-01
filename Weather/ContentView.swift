@@ -133,6 +133,7 @@ struct ContentView: View {
     @State private var iOSPreviousDayOffset: Int = 0
     @State private var showingDatePopover: Bool = false
     @State private var playbackTask: Task<Void, Never>?
+    @State private var showingMenuPopover: Bool = false
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -173,8 +174,7 @@ struct ContentView: View {
                             }
 
                         Text(iOSDateText)
-                            .font(.subheadline)
-                            .fontWeight(.medium)
+                            .font(.avenir(.subheadline, weight: .medium))
                             .frame(width: 80)
                             .id("ios-date-\(selectedDayOffset)")
                             .transition(.asymmetric(
@@ -278,19 +278,7 @@ struct ContentView: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if selectedTab == 0 {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Text("My Cities")
-                            .font(.title3)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(.primary)
-                            .fixedSize()
-                            .allowsHitTesting(false)
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                }
-            }
+            .toolbar { }
             .toolbar {
                 if weatherService.isLoading {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -323,64 +311,14 @@ struct ContentView: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        Button {
-                            showingAddCityView = true
-                        } label: {
-                            Label("Add City", systemImage: "plus")
-                        }
-
-                        if selectedTab == 0 {
-                            Button {
-                                withAnimation {
-                                    isEditMode.toggle()
-                                }
-                            } label: {
-                                Label(isEditMode ? "Done Editing" : "Edit List", systemImage: isEditMode ? "checkmark" : "pencil")
-                            }
-                        }
-
-                        Divider()
-
-                        Button {
-                            withAnimation {
-                                filterSunny.toggle()
-                            }
-                        } label: {
-                            Label(filterSunny ? "Clear Filter" : "Filter", systemImage: filterSunny ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                        }
-
-                        if selectedTab == 1 {
-                            Button {
-                                if isPlaying {
-                                    iOSStopPlayback()
-                                } else {
-                                    iOSStartPlayback()
-                                }
-                            } label: {
-                                Label(isPlaying ? "Stop Playback" : "Play Forecast", systemImage: isPlaying ? "stop.fill" : "play.fill")
-                            }
-                        }
-
-                        Button {
-                            Task {
-                                await weatherService.refreshWeather()
-                            }
-                        } label: {
-                            let refreshText = timeSinceRefreshText()
-                            Label("Refresh\(refreshText.isEmpty ? "" : " (\(refreshText))")", systemImage: "arrow.clockwise")
-                        }
-                        .disabled(weatherService.isLoading)
-
-                        Divider()
-
-                        Button {
-                            // Settings action placeholder
-                        } label: {
-                            Label("Settings", systemImage: "gearshape")
-                        }
+                    Button {
+                        showingMenuPopover = true
                     } label: {
                         Image(systemName: "ellipsis.circle")
+                    }
+                    .popover(isPresented: $showingMenuPopover) {
+                        iOSCustomMenu
+                            .presentationCompactAdaptation(.popover)
                     }
                 }
             }
@@ -407,10 +345,7 @@ struct ContentView: View {
                             Button {
                                 showingCityDetail = false
                             } label: {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "chevron.left")
-                                    Text("Back")
-                                }
+                                Image(systemName: "chevron.left")
                             }
                         }
                         if !cityIsInSidebar(city) {
@@ -461,6 +396,71 @@ struct ContentView: View {
         }
     }
 
+    private var iOSCustomMenu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            menuRow(icon: "plus", title: "Add City") {
+                showingMenuPopover = false
+                showingAddCityView = true
+            }
+
+            if selectedTab == 0 {
+                menuRow(icon: isEditMode ? "checkmark" : "pencil", title: isEditMode ? "Done Editing" : "Edit List") {
+                    showingMenuPopover = false
+                    withAnimation { isEditMode.toggle() }
+                }
+            }
+
+            Divider().padding(.horizontal, 12)
+
+            menuRow(icon: filterSunny ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle", title: filterSunny ? "Clear Filter" : "Filter") {
+                showingMenuPopover = false
+                withAnimation { filterSunny.toggle() }
+            }
+
+            if selectedTab == 1 {
+                menuRow(icon: isPlaying ? "stop.fill" : "play.fill", title: isPlaying ? "Stop Playback" : "Play Forecast") {
+                    showingMenuPopover = false
+                    if isPlaying { iOSStopPlayback() } else { iOSStartPlayback() }
+                }
+            }
+
+            menuRow(icon: "arrow.clockwise", title: "Refresh\(timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))")") {
+                showingMenuPopover = false
+                Task { await weatherService.refreshWeather() }
+            }
+            .opacity(weatherService.isLoading ? 0.4 : 1.0)
+            .disabled(weatherService.isLoading)
+
+            Divider().padding(.horizontal, 12)
+
+            menuRow(icon: "gearshape", title: "Settings") {
+                showingMenuPopover = false
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(width: 220)
+        .presentationBackground(.ultraThinMaterial)
+    }
+
+    private func menuRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 15))
+                    .frame(width: 24)
+                    .foregroundStyle(.primary)
+                Text(title)
+                    .font(.avenir(.body, weight: .medium))
+                    .foregroundStyle(.primary)
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 11)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
     private func iOSStartPlayback() {
         isPlaying = true
         if selectedDayOffset >= 9 {
@@ -492,6 +492,14 @@ struct ContentView: View {
                 ContentUnavailableView("No Cities", systemImage: "cloud.sun", description: Text("Tap + to add a city"))
             } else {
                 List {
+                    Text("My Cities")
+                        .font(.avenir(.title, weight: .bold))
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 20, trailing: 16))
+                        .padding(.top, 8)
+
                     ForEach(iOSFilteredCities) { cityWeather in
                         Button {
                             if !isEditMode {
@@ -499,10 +507,25 @@ struct ContentView: View {
                                 showingCityDetail = true
                             }
                         } label: {
-                            CityRow(
-                                cityWeather: cityWeather,
-                                dayOffset: selectedDayOffset,
-                                showCloudCover: false
+                            HStack {
+                                Text(cityWeather.city.name)
+                                    .font(.avenir(.body, weight: .medium))
+                                Spacer()
+                                Text("\(Int(cityWeather.forecast(for: selectedDayOffset).daytimeHigh))°")
+                                    .font(.avenir(.title2, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                    .contentTransition(.numericText())
+                                Image(systemName: cityWeather.forecast(for: selectedDayOffset).weatherIcon)
+                                    .font(.title3)
+                                    .symbolRenderingMode(.multicolor)
+                                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                                    .frame(width: 32)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 18)
+                            .background(
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                             )
                         }
                         .buttonStyle(.plain)
@@ -529,6 +552,9 @@ struct ContentView: View {
                     .onMove { source, destination in
                         weatherService.moveCity(from: source, to: destination)
                     }
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 }
                 .listStyle(.plain)
                 .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
@@ -739,8 +765,7 @@ struct WeatherMarker: View {
                     .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
 
                 Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.daytimeHigh))°")
-                    .font(.caption2)
-                    .fontWeight(.medium)
+                    .font(.avenir(.caption2, weight: .medium))
                     .foregroundStyle(.primary)
                     .offset(x: 2)
                     .contentTransition(.numericText())

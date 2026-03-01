@@ -37,7 +37,7 @@ struct AddCitySearchView: View {
                     
                     TextField("Search for a city", text: $searchText)
                         .textFieldStyle(.plain)
-                        .font(.system(size: 17))
+                        .font(.avenir(.body))
                         .autocorrectionDisabled()
                         .focused($searchFieldFocus)
                     
@@ -96,7 +96,7 @@ struct AddCitySearchView: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Text(result.title)
-                                    .font(.body)
+                                    .font(.avenir(.body))
                                     .foregroundStyle(.primary)
                                 
                                 Spacer()
@@ -106,7 +106,7 @@ struct AddCitySearchView: View {
                                         .controlSize(.small)
                                 } else {
                                     Text(result.subtitle)
-                                        .font(.headline)
+                                        .font(.avenir(.headline, weight: .semibold))
                                         .foregroundStyle(.secondary)
                                 }
                             }
@@ -130,8 +130,7 @@ struct AddCitySearchView: View {
                         .foregroundStyle(.tertiary)
                     
                     Text("Search for a city")
-                        .font(.title3)
-                        .fontWeight(.medium)
+                        .font(.avenir(.title3, weight: .medium))
                     
                     Spacer()
                 }
@@ -144,11 +143,10 @@ struct AddCitySearchView: View {
                         .foregroundStyle(.tertiary)
                     
                     Text("No results")
-                        .font(.title3)
-                        .fontWeight(.medium)
+                        .font(.avenir(.title3, weight: .medium))
                     
                     Text("Try a different search term")
-                        .font(.body)
+                        .font(.avenir(.body))
                         .foregroundStyle(.secondary)
                     
                     Spacer()
