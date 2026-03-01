@@ -324,6 +324,10 @@ struct ContentView: View {
     }
 }
 
+#Preview {
+    ContentView()
+}
+
 struct WeatherMarker: View {
     let cityWeather: CityWeather
     let dayOffset: Int

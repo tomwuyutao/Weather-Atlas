@@ -19,6 +19,7 @@ struct WeatherDetailView: View {
     
     @Environment(\.colorScheme) private var colorScheme
     @State private var internalSelectedDay: Int
+    @State private var previousDay: Int
     
     // Initialize with the day from the map slider
     init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false) {
@@ -30,10 +31,15 @@ struct WeatherDetailView: View {
         self.isInSidebar = isInSidebar
         self.showCloudCover = showCloudCover
         self._internalSelectedDay = State(initialValue: selectedDayOffset)
+        self._previousDay = State(initialValue: selectedDayOffset)
     }
     
     private var forecast: DailyForecast {
         cityWeather.forecast(for: internalSelectedDay)
+    }
+    
+    private var goingForward: Bool {
+        internalSelectedDay >= previousDay
     }
     
     var body: some View {
@@ -51,30 +57,48 @@ struct WeatherDetailView: View {
                         .foregroundStyle(.secondary)
                         .id("date-\(internalSelectedDay)")
                         .transition(.asymmetric(
-                            insertion: .move(edge: .trailing).combined(with: .opacity),
-                            removal: .move(edge: .leading).combined(with: .opacity)
+                            insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity)
                         ))
                 }
                 .clipped()
                 
-                // Chart container
-                HourlyTimelineChart(
-                    hourlyForecasts: forecast.hourlyForecasts,
-                    showCloudCover: showCloudCover
-                )
+                // Chart container — box stays fixed, content slides inside
+                ZStack {
+                    HourlyTimelineChart(
+                        hourlyForecasts: forecast.hourlyForecasts,
+                        showCloudCover: showCloudCover
+                    )
+                    .id("hourly-\(internalSelectedDay)")
+                    .transition(.asymmetric(
+                        insertion: .move(edge: goingForward ? .trailing : .leading),
+                        removal: .move(edge: goingForward ? .leading : .trailing)
+                    ))
+                }
                 .padding(.top, 12)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
                 .overlay {
                     RoundedRectangle(cornerRadius: 8)
                         .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
                 }
                 .padding(.horizontal, 8)
-                .id("hourly-\(internalSelectedDay)")
-                .transition(.asymmetric(
-                    insertion: .move(edge: .trailing).combined(with: .opacity),
-                    removal: .move(edge: .leading).combined(with: .opacity)
-                ))
-                .clipped()
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 30, coordinateSpace: .local)
+                        .onEnded { value in
+                            let horizontal = value.translation.width
+                            let vertical = value.translation.height
+                            guard abs(horizontal) > abs(vertical) else { return }
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                if horizontal < 0 && internalSelectedDay < 9 {
+                                    internalSelectedDay += 1
+                                } else if horizontal > 0 && internalSelectedDay > 0 {
+                                    internalSelectedDay -= 1
+                                }
+                            }
+                        }
+                )
                 
                 // 10-day forecast grid
                 VStack(spacing: 0) {
@@ -124,6 +148,9 @@ struct WeatherDetailView: View {
             .padding(.top, 36)
             .padding(.bottom, 24)
             .frame(maxWidth: 340)
+            .onChange(of: internalSelectedDay) { oldValue, _ in
+                previousDay = oldValue
+            }
             .background(.thickMaterial, in: RoundedRectangle(cornerRadius: 26))
             .clipShape(RoundedRectangle(cornerRadius: 26)) // Clip the entire content to the rounded rectangle
             .shadow(color: .black.opacity(0.3), radius: 20)
@@ -239,17 +266,17 @@ struct HourlyChartLineShape: Shape {
         let points = zip(pointXPositions, pointYValues.values).map { CGPoint(x: $0, y: $1) }
         guard points.count >= 2 else { return path }
         
-        // Sample the full Catmull-Rom spline, then draw segments with gaps around data points
-        let steps = 100
+        // Sample the full Catmull-Rom spline with high resolution for smooth curves
+        let segSteps = 40  // samples per segment
         var allPoints: [CGPoint] = []
         
         for i in 0..<(points.count - 1) {
-            let p0 = i > 0 ? points[i - 1] : points[i]
+            // Mirror endpoints for smoother curve at the edges
+            let p0 = i > 0 ? points[i - 1] : CGPoint(x: 2 * points[i].x - points[i + 1].x, y: 2 * points[i].y - points[i + 1].y)
             let p1 = points[i]
             let p2 = points[i + 1]
-            let p3 = i + 2 < points.count ? points[i + 2] : points[i + 1]
+            let p3 = i + 2 < points.count ? points[i + 2] : CGPoint(x: 2 * p2.x - p1.x, y: 2 * p2.y - p1.y)
             
-            let segSteps = steps / (points.count - 1)
             for s in 0...segSteps {
                 let t = CGFloat(s) / CGFloat(segSteps)
                 let x = catmullRom(t: t, p0: p0.x, p1: p1.x, p2: p2.x, p3: p3.x)
@@ -349,19 +376,7 @@ struct HourlyTimelineChart: View {
             let lineYPositions = dataPoints.map { lineY(for: value(for: $0)) }
             
             ZStack(alignment: .topLeading) {
-                // Layer 1: Grid lines
-                Path { path in
-                    let lineCount = 3
-                    for i in 0..<lineCount {
-                        let fraction = CGFloat(i) / CGFloat(lineCount - 1)
-                        let y = chartTop + fraction * chartZone
-                        path.move(to: CGPoint(x: 16, y: y))
-                        path.addLine(to: CGPoint(x: width - 16, y: y))
-                    }
-                }
-                .stroke(Color.primary.opacity(0.12), style: StrokeStyle(lineWidth: 0.5, dash: [4, 3]))
-                
-                // Layer 2: Connecting line
+                // Layer 1: Connecting line
                 HourlyChartLineShape(
                     pointYValues: AnimatablePointList(values: lineYPositions.map { Double($0) }),
                     pointXPositions: xPositions,
