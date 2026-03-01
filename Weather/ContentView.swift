@@ -618,7 +618,7 @@ struct ContentView: View {
                     .tag(cityWeather)
                 }
             }
-            .mapStyle(.standard(elevation: .flat, emphasis: .muted))
+            .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
             .mapControls {
                 MapPitchToggle()
                 // MapUserLocationButton removed
