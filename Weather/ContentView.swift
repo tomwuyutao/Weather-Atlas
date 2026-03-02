@@ -921,7 +921,7 @@ struct WeatherMarker: View {
     }
 
     var body: some View {
-        ZStack {
+        ZStack(alignment: .center) {
             // Dot layer
             Circle()
                 .fill(displayCondition.dotColor)
@@ -964,11 +964,11 @@ struct WeatherMarker: View {
                     .frame(width: 40, height: 56)
                 }
             }
-            .scaleEffect(showAsDot ? 0.01 : 1)
+            .scaleEffect(showAsDot ? 0.01 : 1, anchor: .center)
             .opacity(showAsDot ? 0 : 1)
         }
-        .padding(showAsDot ? 15 : 0)
-        .contentShape(Circle())
+        .frame(width: 40, height: 56)
+        .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.3), value: showAsDot)
     }
 }
