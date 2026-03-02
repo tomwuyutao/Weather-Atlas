@@ -24,9 +24,7 @@ struct WeatherApp: App {
         WindowGroup {
             ContentView()
                 .defaultFont()
-                #if !os(macOS)
                 .preferredColorScheme(.dark)
-                #endif
         }
     }
 }
