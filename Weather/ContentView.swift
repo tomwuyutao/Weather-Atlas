@@ -373,6 +373,13 @@ struct ContentView: View {
                                 }
                             }
                         },
+                        onDeleteCity: cityIsInSidebar(city) ? {
+                            weatherService.removeCity(city)
+                            showingCityDetail = false
+                            if selectedTab == 1 {
+                                recenterOnAllCities = true
+                            }
+                        } : nil,
                         isInSidebar: cityIsInSidebar(city),
                         showCloudCover: showCloudCover
                     )
@@ -402,6 +409,23 @@ struct ContentView: View {
                                 } label: {
                                     Image(systemName: "plus")
                                         .foregroundStyle(.blue)
+                                }
+                            }
+                        }
+                        if cityIsInSidebar(city) {
+                            ToolbarItem(placement: .topBarTrailing) {
+                                Menu {
+                                    Button(role: .destructive) {
+                                        weatherService.removeCity(city)
+                                        showingCityDetail = false
+                                        if selectedTab == 1 {
+                                            recenterOnAllCities = true
+                                        }
+                                    } label: {
+                                        Label("Delete City", systemImage: "trash")
+                                    }
+                                } label: {
+                                    Image(systemName: "ellipsis.circle")
                                 }
                             }
                         }
@@ -828,6 +852,13 @@ struct ContentView: View {
                             recenterOnAllCities = true
                         }
                     },
+                    onDeleteCity: cityIsInSidebar(city) ? {
+                        weatherService.removeCity(city)
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            showingCityDetail = false
+                        }
+                        recenterOnAllCities = true
+                    } : nil,
                     isInSidebar: cityIsInSidebar(city),
                     showCloudCover: showCloudCover
                 )
@@ -862,6 +893,13 @@ struct ContentView: View {
                                 recenterOnAllCities = true
                             }
                         },
+                        onDeleteCity: cityIsInSidebar(city) ? {
+                            weatherService.removeCity(city)
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                showingCityDetail = false
+                            }
+                            recenterOnAllCities = true
+                        } : nil,
                         isInSidebar: cityIsInSidebar(city),
                         showCloudCover: showCloudCover
                     )

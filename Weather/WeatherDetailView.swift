@@ -14,6 +14,7 @@ struct WeatherDetailView: View {
     let namespace: Namespace.ID
     let onDismiss: () -> Void
     let onAddCity: (() -> Void)?
+    let onDeleteCity: (() -> Void)?
     let isInSidebar: Bool
     let showCloudCover: Bool
     
@@ -22,14 +23,16 @@ struct WeatherDetailView: View {
     @State private var previousDay: Int
     @State private var chartDragOffset: CGFloat = 0
     @State private var showingCloudCover: Bool = false
+    @State private var showingDetailMenu: Bool = false
     
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false) {
+    init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onDeleteCity: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false) {
         self.cityWeather = cityWeather
         self.selectedDayOffset = selectedDayOffset
         self.namespace = namespace
         self.onDismiss = onDismiss
         self.onAddCity = onAddCity
+        self.onDeleteCity = onDeleteCity
         self.isInSidebar = isInSidebar
         self.showCloudCover = showCloudCover
         self._internalSelectedDay = State(initialValue: selectedDayOffset)
@@ -268,17 +271,42 @@ struct WeatherDetailView: View {
             }
             .overlay(alignment: .topTrailing) {
                 if isPopup {
-                    // X button in upper right corner (popup only)
-                    Button {
-                        onDismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 32, height: 32)
+                    HStack(spacing: 8) {
+                        if isInSidebar, let deleteAction = onDeleteCity {
+                            Button {
+                                showingDetailMenu = true
+                            } label: {
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 32, height: 32)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+                            }
+                            .buttonStyle(.plain)
+                            .popover(isPresented: $showingDetailMenu) {
+                                Button(role: .destructive) {
+                                    showingDetailMenu = false
+                                    deleteAction()
+                                } label: {
+                                    Label("Delete City", systemImage: "trash")
+                                }
+                                .padding(12)
+                                .presentationCompactAdaptation(.popover)
+                            }
+                        }
+                        
+                        // X button in upper right corner (popup only)
+                        Button {
+                            onDismiss()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .frame(width: 32, height: 32)
                                 .glassEffect(.regular.interactive(), in: .circle)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                     .padding(14)
                 }
             }
