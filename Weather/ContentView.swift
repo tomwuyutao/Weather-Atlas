@@ -6,17 +6,12 @@
 //
 
 import SwiftUI
-import MapKit
 
 struct ContentView: View {
     @State private var weatherService = WeatherService()
 
-    @State private var position: MapCameraPosition = .region(
-        MKCoordinateRegion(
-            center: CLLocationCoordinate2D(latitude: 50.0, longitude: 10.0),
-            span: MKCoordinateSpan(latitudeDelta: 30.0, longitudeDelta: 40.0)
-        )
-    )
+    @State private var countries: [CountryPath] = []
+    @State private var centerOnCityTrigger: CityWeather?
 
     @State private var selectedCity: CityWeather?
     @State private var selectedDayOffset: Int = 0
@@ -28,7 +23,7 @@ struct ContentView: View {
     @Namespace private var popupNamespace
     @State private var searchText: String = ""
     @State private var citySearchManager = CitySearchManager()
-    @State private var selectedTab: Int = 0
+    @State private var selectedTab: Int = 1
     @State private var showingSearchSheet: Bool = true
     @State private var selectedDetent: PresentationDetent = .height(80)
     @State private var lastRefreshText: String = ""
@@ -83,17 +78,7 @@ struct ContentView: View {
                 showCloudCover: showCloudCover,
                 onCitySelected: { cityWeather in
                     selectedCity = cityWeather
-                    withAnimation {
-                        position = .region(
-                            MKCoordinateRegion(
-                                center: CLLocationCoordinate2D(
-                                    latitude: cityWeather.city.latitude,
-                                    longitude: cityWeather.city.longitude
-                                ),
-                                span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 5.0)
-                            )
-                        )
-                    }
+                    centerOnCityTrigger = cityWeather
                 },
                 onDeleteCity: { cityWeather in
                     weatherService.removeCity(cityWeather)
@@ -120,6 +105,7 @@ struct ContentView: View {
                 }
         }
         .task {
+            countries = SVGMapParser.parse()
             print("Starting weather fetch...")
             await weatherService.fetchWeatherForAllCities()
             print("Weather data count: \(weatherService.cityWeatherData.count)")
@@ -388,16 +374,7 @@ struct ContentView: View {
                     onCitySelected: { cityWeather in
                         selectedCity = cityWeather
                         tappedCity = cityWeather
-                        // Update map position without animation
-                        position = .region(
-                            MKCoordinateRegion(
-                                center: CLLocationCoordinate2D(
-                                    latitude: cityWeather.city.latitude,
-                                    longitude: cityWeather.city.longitude
-                                ),
-                                span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 5.0)
-                            )
-                        )
+                        centerOnCityTrigger = cityWeather
                         // Replace the add city view with the detail view directly
                         showingAddCityView = false
                         showingCityDetail = true
@@ -406,6 +383,9 @@ struct ContentView: View {
             }
         }
         .task {
+            if countries.isEmpty {
+                countries = SVGMapParser.parse()
+            }
             await weatherService.fetchWeatherForAllCities()
         }
         .onChange(of: selectedDayOffset) { oldValue, _ in
@@ -663,51 +643,19 @@ struct ContentView: View {
 
     private var mapView: some View {
         ZStack {
-            Map(position: $position, selection: $selectedCity) {
-                ForEach(weatherService.cityWeatherData) { cityWeather in
-                    let forecast = cityWeather.forecast(for: selectedDayOffset)
-                    let passesFilter = !filterSunny || (forecast.condition == .clear && forecast.cloudCover < 0.30)
-
-                    Annotation(cityWeather.city.name,
-                             coordinate: CLLocationCoordinate2D(
-                                latitude: cityWeather.city.latitude,
-                                longitude: cityWeather.city.longitude
-                             )) {
-                        WeatherMarker(
-                            cityWeather: cityWeather,
-                            dayOffset: selectedDayOffset,
-                            isCompact: isZoomedOut,
-                            namespace: popupNamespace,
-                            showCloudCover: showCloudCover,
-                            filterSunny: filterSunny,
-                            passesFilter: passesFilter,
-                            isPlaying: isPlaying
-                        )
-                        .opacity(passesFilter ? 1 : 0)
-                        .animation(.easeInOut(duration: 0.3), value: passesFilter)
-                        .allowsHitTesting(passesFilter)
-                        .onTapGesture {
-                            tappedCity = cityWeather
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                showingCityDetail = true
-                            }
-                        }
-                    }
-                    .tag(cityWeather)
-                }
-            }
-            .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
-            .mapControls {
-                MapPitchToggle()
-                // MapUserLocationButton removed
-                // Scale and Compass are intentionally omitted to hide them
-            }
-            .onMapCameraChange(frequency: .onEnd) { context in
-                // Determine if zoomed out based on the span
-                // If span is larger than ~8 degrees, consider it "zoomed out"
-                let span = context.region.span
-                isZoomedOut = span.latitudeDelta > 50.0 || span.longitudeDelta > 50.0
-            }
+            SVGMapView(
+                countries: countries,
+                cities: weatherService.cityWeatherData,
+                selectedDayOffset: selectedDayOffset,
+                showCloudCover: showCloudCover,
+                filterSunny: filterSunny,
+                isPlaying: isPlaying,
+                namespace: popupNamespace,
+                isZoomedOut: $isZoomedOut,
+                showingCityDetail: $showingCityDetail,
+                tappedCity: $tappedCity,
+                centerOnCity: centerOnCityTrigger
+            )
             .ignoresSafeArea()
 
             // City detail popup (desktop/iPad only — iPhone uses navigation)
