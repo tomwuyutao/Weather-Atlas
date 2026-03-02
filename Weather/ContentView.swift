@@ -291,6 +291,8 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
+                .padding(.top, 20)
+                .contentShape(Rectangle())
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
