@@ -35,6 +35,8 @@ struct SVGMapView: View {
     @State private var magnificationSamples: [(magnification: CGFloat, time: Date)] = []
     // SVG anchor point computed at gesture start, reused throughout
     @State private var zoomAnchorSVG: CGPoint = .zero
+    // Whether a zoom or drag gesture is active — disables marker taps
+    @State private var isGesturing: Bool = false
     
     // The scale at which the Canvas is actually rasterized.
     // Only updated when gestures end so the Canvas doesn't re-render mid-gesture.
@@ -98,7 +100,7 @@ struct SVGMapView: View {
         }
         .frame(width: canvasWidth, height: canvasHeight)
         .overlay {
-            markersOverlay(canvasEffective: canvasEffective, liveZoom: liveZoom)
+            markersOverlay(canvasEffective: canvasEffective, liveZoom: liveZoom, isGesturing: isGesturing)
         }
         .scaleEffect(liveZoom, anchor: .topLeading)
         .offset(mapOffset)
@@ -107,7 +109,7 @@ struct SVGMapView: View {
     }
     
     @ViewBuilder
-    private func markersOverlay(canvasEffective: CGFloat, liveZoom: CGFloat) -> some View {
+    private func markersOverlay(canvasEffective: CGFloat, liveZoom: CGFloat, isGesturing: Bool) -> some View {
         ForEach(cities) { cityWeather in
             let forecast = cityWeather.forecast(for: selectedDayOffset)
             let passesFilter = !filterSunny || (forecast.condition == .clear && forecast.cloudCover < 0.30)
@@ -133,7 +135,7 @@ struct SVGMapView: View {
             )
             .opacity(passesFilter ? 1 : 0)
             .animation(.easeInOut(duration: 0.3), value: passesFilter)
-            .allowsHitTesting(passesFilter)
+            .allowsHitTesting(passesFilter && !isGesturing)
             .onTapGesture {
                 tappedCity = cityWeather
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
@@ -146,6 +148,7 @@ struct SVGMapView: View {
     private func dragGesture() -> some Gesture {
         DragGesture()
             .onChanged { value in
+                isGesturing = true
                 mapOffset = CGSize(
                     width: mapLastOffset.width + value.translation.width,
                     height: mapLastOffset.height + value.translation.height
@@ -163,12 +166,14 @@ struct SVGMapView: View {
                     mapOffset = target
                 }
                 mapLastOffset = target
+                isGesturing = false
             }
     }
     
     private func magnifyGesture(viewSize: CGSize, baseScale: CGFloat, minScale: CGFloat, rubberBandMinScale: CGFloat, svgWidth: CGFloat, svgHeight: CGFloat) -> some Gesture {
         MagnifyGesture()
             .onChanged { value in
+                isGesturing = true
                 // Cap how fast scale can change per frame (~4x per second max)
                 let maxScaleRatePerSec: CGFloat = 4.0
                 let rawScale = mapLastScale * value.magnification
@@ -235,6 +240,7 @@ struct SVGMapView: View {
                 mapLastScale = finalScale
                 mapLastOffset = targetOffset
                 renderScale = finalScale
+                isGesturing = false
             }
     }
     
