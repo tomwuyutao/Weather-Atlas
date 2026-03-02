@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @State private var weatherService = WeatherService()
@@ -127,6 +128,7 @@ struct ContentView: View {
     @State private var playbackTask: Task<Void, Never>?
     @State private var showingMenuPopover: Bool = false
     @AppStorage("isGridView") private var isGridView: Bool = false
+    @State private var gridDragItem: CityWeather?
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -470,6 +472,85 @@ struct ContentView: View {
         .buttonStyle(.plain)
     }
 
+    @ViewBuilder
+    private func gridCell(for cityWeather: CityWeather) -> some View {
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        VStack(spacing: 8) {
+            Image(systemName: forecast.weatherIcon)
+                .font(.title2)
+                .symbolRenderingMode(.multicolor)
+                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+
+            Text("\(Int(forecast.daytimeHigh))°")
+                .font(.avenir(.title2, weight: .medium))
+                .contentTransition(.numericText())
+
+            Text(cityWeather.city.name)
+                .font(.avenir(.footnote, weight: .medium))
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+        )
+        .overlay(alignment: .topLeading) {
+            if isEditMode {
+                Button {
+                    withAnimation {
+                        weatherService.removeCity(cityWeather)
+                        if selectedCity?.id == cityWeather.id {
+                            selectedCity = nil
+                        }
+                    }
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.title3)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(.white, .red)
+                }
+                .offset(x: -6, y: -6)
+                .transition(.scale.combined(with: .opacity))
+            }
+        }
+        
+        .onTapGesture {
+            if !isEditMode {
+                tappedCity = cityWeather
+                showingCityDetail = true
+            }
+        }
+        .onDrag {
+            if isEditMode {
+                gridDragItem = cityWeather
+                return NSItemProvider(object: cityWeather.id.uuidString as NSString)
+            }
+            return NSItemProvider()
+        }
+        .onDrop(of: [.text], delegate: GridDropDelegate(
+            item: cityWeather,
+            dragItem: $gridDragItem,
+            cities: weatherService.cityWeatherData,
+            moveCity: { from, to in
+                weatherService.moveCity(from: from, to: to)
+            }
+        ))
+        .contextMenu {
+            if !isEditMode {
+                Button(role: .destructive) {
+                    weatherService.removeCity(cityWeather)
+                    if selectedCity?.id == cityWeather.id {
+                        selectedCity = nil
+                    }
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+            }
+        }
+    }
+
     private func iOSStartPlayback() {
         isPlaying = true
         if selectedDayOffset >= 9 {
@@ -509,43 +590,7 @@ struct ContentView: View {
 
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
                         ForEach(iOSFilteredCities) { cityWeather in
-                            Button {
-                                tappedCity = cityWeather
-                                showingCityDetail = true
-                            } label: {
-                                VStack(spacing: 8) {
-                                    Image(systemName: cityWeather.forecast(for: selectedDayOffset).weatherIcon)
-                                        .font(.title2)
-                                        .symbolRenderingMode(.multicolor)
-                                        .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-
-                                    Text("\(Int(cityWeather.forecast(for: selectedDayOffset).daytimeHigh))°")
-                                        .font(.avenir(.title2, weight: .medium))
-                                        .contentTransition(.numericText())
-
-                                    Text(cityWeather.city.name)
-                                        .font(.avenir(.footnote, weight: .medium))
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.7)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    weatherService.removeCity(cityWeather)
-                                    if selectedCity?.id == cityWeather.id {
-                                        selectedCity = nil
-                                    }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                            }
+                            gridCell(for: cityWeather)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -813,3 +858,34 @@ struct WeatherMarker: View {
         }
     }
 }
+#if !os(macOS)
+struct GridDropDelegate: DropDelegate {
+    let item: CityWeather
+    @Binding var dragItem: CityWeather?
+    let cities: [CityWeather]
+    let moveCity: (IndexSet, Int) -> Void
+
+    func performDrop(info: DropInfo) -> Bool {
+        dragItem = nil
+        return true
+    }
+
+    func dropEntered(info: DropInfo) {
+        guard let dragItem,
+              dragItem.id != item.id,
+              let fromIndex = cities.firstIndex(where: { $0.id == dragItem.id }),
+              let toIndex = cities.firstIndex(where: { $0.id == item.id }) else {
+            return
+        }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            let destination = toIndex > fromIndex ? toIndex + 1 : toIndex
+            moveCity(IndexSet(integer: fromIndex), destination)
+        }
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+}
+#endif
+
