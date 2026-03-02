@@ -778,8 +778,6 @@ struct WeatherMarker: View {
                 .symbolRenderingMode(.multicolor)
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 .frame(width: 32, height: 32)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 6))
-                .shadow(color: .black.opacity(0.2), radius: 2)
                 .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
         } else {
             // Full mode: weather icon + temperature or cloud cover
@@ -799,8 +797,6 @@ struct WeatherMarker: View {
                     .animation(.smooth(duration: 0.4), value: showCloudCover)
             }
             .frame(width: 32, height: 46)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
-            .shadow(color: .black.opacity(0.2), radius: 3)
             .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
         }
     }

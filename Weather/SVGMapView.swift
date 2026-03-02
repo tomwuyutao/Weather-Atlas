@@ -22,14 +22,15 @@ struct SVGMapView: View {
     
     var centerOnCity: CityWeather?
     
-    @State private var scale: CGFloat = 2.5
+    @State private var scale: CGFloat = 10.0
     @State private var offset: CGSize = .zero
-    @State private var lastScale: CGFloat = 2.5
+    @State private var lastScale: CGFloat = 10.0
     @State private var lastOffset: CGSize = .zero
     @State private var hasInitialized: Bool = false
+    @State private var pinchAnchor: CGPoint = .zero
     
     private let minScale: CGFloat = 0.8
-    private let maxScale: CGFloat = 8.0
+    private let maxScale: CGFloat = 30.0
     
     var body: some View {
         GeometryReader { geometry in
@@ -41,28 +42,25 @@ struct SVGMapView: View {
             let effectiveScale = baseScale * scale
             
             ZStack {
-                // Country shapes
+                // Country shapes — drawn at origin, offset applied to container
                 Canvas { context, size in
                     for country in countries {
                         var transform = CGAffineTransform(
                             scaleX: effectiveScale, y: effectiveScale
-                        ).translatedBy(
-                            x: offset.width / effectiveScale,
-                            y: offset.height / effectiveScale
                         )
                         if let transformedPath = country.path.copy(using: &transform) {
                             context.fill(
                                 Path(transformedPath),
                                 with: .color(.gray.opacity(0.2))
                             )
-                            context.stroke(
-                                Path(transformedPath),
-                                with: .color(.gray.opacity(0.4)),
-                                lineWidth: 0.5
-                            )
                         }
                     }
                 }
+                .frame(
+                    width: GeoProjection.svgWidth * effectiveScale,
+                    height: GeoProjection.svgHeight * effectiveScale
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 
                 // Weather markers
                 ForEach(cities) { cityWeather in
@@ -72,7 +70,7 @@ struct SVGMapView: View {
                         latitude: cityWeather.city.latitude,
                         longitude: cityWeather.city.longitude,
                         scale: effectiveScale,
-                        offset: offset
+                        offset: .zero
                     )
                     
                     WeatherMarker(
@@ -96,7 +94,9 @@ struct SVGMapView: View {
                         }
                     }
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
+            .offset(offset)
             .gesture(
                 SimultaneousGesture(
                     DragGesture()
@@ -106,16 +106,42 @@ struct SVGMapView: View {
                                 height: lastOffset.height + value.translation.height
                             )
                         }
-                        .onEnded { _ in
-                            lastOffset = offset
+                        .onEnded { value in
+                            let velocity = value.predictedEndTranslation
+                            let momentumX = velocity.width - value.translation.width
+                            let momentumY = velocity.height - value.translation.height
+                            let target = CGSize(
+                                width: offset.width + momentumX,
+                                height: offset.height + momentumY
+                            )
+                            withAnimation(.spring(response: 0.6, dampingFraction: 1.0)) {
+                                offset = target
+                            }
+                            lastOffset = target
                         },
                     MagnifyGesture()
                         .onChanged { value in
-                            let newScale = lastScale * value.magnification
-                            scale = min(max(newScale, minScale), maxScale)
+                            let newScale = min(max(lastScale * value.magnification, minScale), maxScale)
+                            let anchor = value.startAnchor
+                            let anchorPt = CGPoint(
+                                x: anchor.x * viewSize.width,
+                                y: anchor.y * viewSize.height
+                            )
+                            // SVG point under the anchor at gesture start
+                            let startEffective = baseScale * lastScale
+                            let svgX = (anchorPt.x - lastOffset.width) / startEffective
+                            let svgY = (anchorPt.y - lastOffset.height) / startEffective
+                            // New offset keeps that SVG point under the same screen anchor
+                            let newEffective = baseScale * newScale
+                            offset = CGSize(
+                                width: anchorPt.x - svgX * newEffective,
+                                height: anchorPt.y - svgY * newEffective
+                            )
+                            scale = newScale
                         }
                         .onEnded { _ in
                             lastScale = scale
+                            lastOffset = offset
                         }
                 )
             )
@@ -130,7 +156,7 @@ struct SVGMapView: View {
                 }
             }
             .onChange(of: scale) { _, newScale in
-                isZoomedOut = newScale < 2.0
+                isZoomedOut = newScale < 15.0
             }
             .onChange(of: centerOnCity?.id) { _, _ in
                 if let city = centerOnCity {
@@ -144,7 +170,7 @@ struct SVGMapView: View {
     
     private func centerOnEurope(viewSize: CGSize, baseScale: CGFloat) {
         let europeCenter = GeoProjection.geoToSVG(latitude: 50.0, longitude: 10.0)
-        let initialScale: CGFloat = 2.5
+        let initialScale: CGFloat = 10.0
         scale = initialScale
         lastScale = initialScale
         let effective = baseScale * initialScale
@@ -153,7 +179,7 @@ struct SVGMapView: View {
             height: viewSize.height / 2 - europeCenter.y * effective
         )
         lastOffset = offset
-        isZoomedOut = initialScale < 2.0
+        isZoomedOut = initialScale < 15.0
     }
     
     private func animateToCity(_ cityWeather: CityWeather, viewSize: CGSize, baseScale: CGFloat) {
