@@ -198,4 +198,15 @@ struct AddCitySearchView: View {
         }
     }
 }
+
+#Preview("Add City Search") {
+    NavigationStack {
+        AddCitySearchView(
+            cities: [],
+            citySearchManager: CitySearchManager(),
+            weatherService: WeatherService(),
+            onCitySelected: { _ in }
+        )
+    }
+}
 #endif
