@@ -18,6 +18,7 @@ struct WeatherDetailView: View {
     let onRevealOnMap: (() -> Void)?
     let isInSidebar: Bool
     let showCloudCover: Bool
+    var previewCurrentHour: Int? = nil
     
     @Environment(\.colorScheme) private var colorScheme
     @State private var internalSelectedDay: Int
@@ -32,7 +33,7 @@ struct WeatherDetailView: View {
     }
     
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false) {
+    init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil) {
         self.cityWeather = cityWeather
         self.selectedDayOffset = selectedDayOffset
         self.namespace = namespace
@@ -42,6 +43,7 @@ struct WeatherDetailView: View {
         self.onRevealOnMap = onRevealOnMap
         self.isInSidebar = isInSidebar
         self.showCloudCover = showCloudCover
+        self.previewCurrentHour = previewCurrentHour
         self._internalSelectedDay = State(initialValue: selectedDayOffset)
         self._previousDay = State(initialValue: selectedDayOffset)
     }
@@ -129,7 +131,7 @@ struct WeatherDetailView: View {
                     .padding(.vertical, 14)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                            .stroke(Color.gray.opacity(0.5), lineWidth: 1)
                     )
                     
                     VStack(spacing: 4) {
@@ -144,7 +146,7 @@ struct WeatherDetailView: View {
                     .padding(.vertical, 14)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                            .stroke(Color.gray.opacity(0.5), lineWidth: 1)
                     )
                 }
                 .padding(.horizontal, 8)
@@ -153,7 +155,10 @@ struct WeatherDetailView: View {
                 ZStack {
                     HourlyTimelineChart(
                         hourlyForecasts: forecast.hourlyForecasts,
-                        showCloudCover: effectiveShowCloudCover
+                        showCloudCover: effectiveShowCloudCover,
+                        dayOffset: internalSelectedDay,
+                        cityTimeZone: cityWeather.timeZone,
+                        previewCurrentHour: previewCurrentHour
                     )
                     .id("hourly-\(internalSelectedDay)")
                     .transition(.asymmetric(
@@ -168,7 +173,7 @@ struct WeatherDetailView: View {
                 .background(Color.black, in: RoundedRectangle(cornerRadius: 12))
                 .overlay {
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                        .stroke(Color.gray.opacity(0.5), lineWidth: 1)
                 }
                 .padding(.horizontal, 8)
                 .contentShape(Rectangle())
@@ -532,11 +537,27 @@ struct HourlyChartLineShape: Shape {
 struct HourlyTimelineChart: View {
     let hourlyForecasts: [HourlyForecast]
     let showCloudCover: Bool
+    var dayOffset: Int = 0
+    var cityTimeZone: TimeZone = .current
+    var previewCurrentHour: Int? = nil
     
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     
     private var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
+    
+    private var currentCityHour: Int? {
+        guard dayOffset == 0 else { return nil }
+        if let override = previewCurrentHour { return override }
+        var calendar = Calendar.current
+        calendar.timeZone = cityTimeZone
+        return calendar.component(.hour, from: Date())
+    }
+    
+    private func isPastHour(_ hour: Int) -> Bool {
+        guard let currentHour = currentCityHour else { return false }
+        return hour < currentHour
     }
     
     #if os(macOS)
@@ -608,6 +629,7 @@ struct HourlyTimelineChart: View {
                     ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, forecast in
                         let pointY = lineYPositions[index]
                         
+                        let pastHour = isPastHour(forecast.hour)
                         ZStack {
                             // Hour label — fixed near top
                             Text(forecast.shortFormattedHour)
@@ -615,6 +637,7 @@ struct HourlyTimelineChart: View {
                                 .foregroundStyle(.secondary)
                                 .frame(height: hourLabelHeight)
                                 .position(x: columnWidth / 2, y: hourLabelHeight / 2 + 10)
+                                .opacity(pastHour ? 0.3 : 1.0)
                             
                             // Icon — above the value
                             Image(systemName: forecast.weatherIcon)
@@ -623,6 +646,7 @@ struct HourlyTimelineChart: View {
                                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                                 .frame(height: iconHeight)
                                 .position(x: columnWidth / 2, y: pointY - iconToValue - iconHeight / 2)
+                                .opacity(pastHour ? 0.3 : 1.0)
                             
                             // Value text — centered on the line point, offset right so numbers align with icon
                             Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.temperature))
@@ -630,6 +654,7 @@ struct HourlyTimelineChart: View {
                                 .contentTransition(.numericText())
                                 .frame(height: valueHeight)
                                 .position(x: columnWidth / 2 + 2 , y: pointY)
+                                .opacity(pastHour ? 0.3 : 1.0)
                         }
                         .frame(width: columnWidth, height: totalHeight)
                     }
@@ -842,7 +867,8 @@ struct DayForecastBox: View {
                 onAddCity: {
                     print("Add London to sidebar")
                 },
-                isInSidebar: false
+                isInSidebar: false,
+                previewCurrentHour: 14
             )
         }
     }
