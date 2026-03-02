@@ -708,6 +708,7 @@ struct ContentView: View {
                 .font(.title2)
                 .symbolRenderingMode(.multicolor)
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                .frame(height: 30)
 
             Text("\(Int(forecast.daytimeHigh))°")
                 .font(.avenir(.title2, weight: .medium))
@@ -814,6 +815,27 @@ struct ContentView: View {
         }
     }
 
+    private func swipeDayGesture() -> some Gesture {
+        DragGesture(minimumDistance: 30, coordinateSpace: .local)
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                guard abs(horizontal) > abs(vertical) else { return }
+                let maxDay = max(weatherService.forecastDays.count - 1, 0)
+                if horizontal < 0 && selectedDayOffset < maxDay {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        iOSPreviousDayOffset = selectedDayOffset
+                        selectedDayOffset += 1
+                    }
+                } else if horizontal > 0 && selectedDayOffset > 0 {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        iOSPreviousDayOffset = selectedDayOffset
+                        selectedDayOffset -= 1
+                    }
+                }
+            }
+    }
+    
     private var iOSListView: some View {
         Group {
             if weatherService.cityWeatherData.isEmpty && weatherService.isLoading {
@@ -849,6 +871,7 @@ struct ContentView: View {
                     .padding(.horizontal, 16)
                     .opacity(listContentOpacity)
                 }
+                .gesture(swipeDayGesture())
                 .transition(.opacity)
             } else {
                 List {
@@ -949,6 +972,7 @@ struct ContentView: View {
                     get: { isEditMode ? .active : .inactive },
                     set: { newValue in isEditMode = (newValue == .active) }
                 ))
+                .gesture(swipeDayGesture())
                 .transition(.opacity)
             }
         }
