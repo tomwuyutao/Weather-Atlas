@@ -341,7 +341,8 @@ struct WeatherDetailView: View {
                                     topLeading: index == 0 ? 8 : 0,
                                     topTrailing: index == 4 ? 8 : 0
                                 ),
-                                showCloudCover: effectiveShowCloudCover
+                                showCloudCover: effectiveShowCloudCover,
+                                cityTimeZone: cityWeather.timeZone
                             )
                             .onTapGesture {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -361,7 +362,8 @@ struct WeatherDetailView: View {
                                     bottomLeading: index == 0 ? 8 : 0,
                                     bottomTrailing: index == 4 ? 8 : 0
                                 ),
-                                showCloudCover: effectiveShowCloudCover
+                                showCloudCover: effectiveShowCloudCover,
+                                cityTimeZone: cityWeather.timeZone
                             )
                             .onTapGesture {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -392,10 +394,12 @@ struct WeatherDetailView: View {
     }
     
     private var forecastDateText: String {
-        let calendar = Calendar.current
-        let today = Date()
+        // Use the city's timezone so day labels match the city's local date
+        var cityCalendar = Calendar.current
+        cityCalendar.timeZone = cityWeather.timeZone
+        let cityToday = cityCalendar.startOfDay(for: Date())
         
-        if let date = calendar.date(byAdding: .day, value: internalSelectedDay, to: today) {
+        if let date = cityCalendar.date(byAdding: .day, value: internalSelectedDay, to: cityToday) {
             if internalSelectedDay == 0 {
                 return "Today"
             } else if internalSelectedDay == 1 {
@@ -403,6 +407,7 @@ struct WeatherDetailView: View {
             } else {
                 let formatter = DateFormatter()
                 formatter.dateFormat = "EEEE, MMMM d"
+                formatter.timeZone = cityWeather.timeZone
                 return formatter.string(from: date)
             }
         }
@@ -630,26 +635,31 @@ struct DayForecastBox: View {
     let isSelected: Bool
     let cornerRadius: RectangleCornerRadii
     let showCloudCover: Bool
+    let cityTimeZone: TimeZone
     
     @Environment(\.colorScheme) private var colorScheme
     
-    init(dailyForecast: DailyForecast, isSelected: Bool, cornerRadius: RectangleCornerRadii = .init(), showCloudCover: Bool = false) {
+    init(dailyForecast: DailyForecast, isSelected: Bool, cornerRadius: RectangleCornerRadii = .init(), showCloudCover: Bool = false, cityTimeZone: TimeZone = .current) {
         self.dailyForecast = dailyForecast
         self.isSelected = isSelected
         self.cornerRadius = cornerRadius
         self.showCloudCover = showCloudCover
+        self.cityTimeZone = cityTimeZone
     }
     
     private var dayOfWeek: String {
-        let calendar = Calendar.current
-        let today = Date()
+        // Use the city's timezone to determine "today" and day-of-week labels
+        var cityCalendar = Calendar.current
+        cityCalendar.timeZone = cityTimeZone
+        let cityToday = cityCalendar.startOfDay(for: Date())
         
-        if let date = calendar.date(byAdding: .day, value: dailyForecast.dayOffset, to: today) {
+        if let date = cityCalendar.date(byAdding: .day, value: dailyForecast.dayOffset, to: cityToday) {
             if dailyForecast.dayOffset == 0 {
                 return "Today"
             } else {
                 let formatter = DateFormatter()
                 formatter.dateFormat = "EEE"
+                formatter.timeZone = cityTimeZone
                 return formatter.string(from: date)
             }
         }
@@ -803,7 +813,8 @@ struct DayForecastBox: View {
         condition: .partlyCloudy,
         temperature: 15,
         symbolName: "cloud.sun",
-        dailyForecasts: dailyForecasts
+        dailyForecasts: dailyForecasts,
+        timeZone: TimeZone(identifier: "Europe/London")!
     )
     
     ZStack {

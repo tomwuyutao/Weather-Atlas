@@ -356,7 +356,8 @@ class WeatherService {
             condition: currentCondition,
             temperature: currentTemp,
             symbolName: currentSymbol,
-            dailyForecasts: Array(dailyForecasts)
+            dailyForecasts: Array(dailyForecasts),
+            timeZone: timeZone
         )
     }
     
@@ -535,6 +536,7 @@ struct CityWeather: Identifiable, Hashable {
     let temperature: Double
     let symbolName: String
     let dailyForecasts: [DailyForecast]
+    let timeZone: TimeZone
     
     // Hashable conformance
     static func == (lhs: CityWeather, rhs: CityWeather) -> Bool {
@@ -861,6 +863,7 @@ struct CachedCityWeather: Codable {
     let temperature: Double
     let symbolName: String
     let dailyForecasts: [CachedDailyForecast]
+    let timeZoneIdentifier: String?
     
     init(from cityWeather: CityWeather) {
         self.cityId = cityWeather.city.id
@@ -871,19 +874,22 @@ struct CachedCityWeather: Codable {
         self.temperature = cityWeather.temperature
         self.symbolName = cityWeather.symbolName
         self.dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
+        self.timeZoneIdentifier = cityWeather.timeZone.identifier
     }
     
     func toCityWeather() -> CityWeather {
         let city = City(id: cityId, name: cityName, latitude: cityLatitude, longitude: cityLongitude)
         let appCondition = AppWeatherCondition.fromDisplayName(condition)
         let forecasts = dailyForecasts.map { $0.toDailyForecast() }
+        let tz = timeZoneIdentifier.flatMap { TimeZone(identifier: $0) } ?? TimeZone.current
         
         return CityWeather(
             city: city,
             condition: appCondition,
             temperature: temperature,
             symbolName: symbolName,
-            dailyForecasts: forecasts
+            dailyForecasts: forecasts,
+            timeZone: tz
         )
     }
 }
