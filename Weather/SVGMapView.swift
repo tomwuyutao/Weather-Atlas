@@ -37,6 +37,8 @@ struct SVGMapView: View {
     @State private var zoomAnchorSVG: CGPoint = .zero
     // Whether a zoom or drag gesture is active — disables marker taps
     @State private var isGesturing: Bool = false
+    // Briefly highlight tapped marker before navigating
+    @State private var tappedMarkerID: UUID?
     
     // The scale at which the Canvas is actually rasterized.
     // Only updated when gestures end so the Canvas doesn't re-render mid-gesture.
@@ -166,7 +168,8 @@ struct SVGMapView: View {
                 isPlaying: isPlaying,
                 showAsDot: showDots
             )
-            .scaleEffect(1.0 / liveZoom, anchor: .center)
+            .scaleEffect((tappedMarkerID == cityWeather.id ? 1.5 : 1.0) / liveZoom, anchor: .center)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: tappedMarkerID)
             .position(
                 x: svgPos.x * canvasEffective,
                 y: svgPos.y * canvasEffective
@@ -176,8 +179,14 @@ struct SVGMapView: View {
             .allowsHitTesting(passesFilter && !isGesturing)
             .onTapGesture {
                 tappedCity = cityWeather
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                    showingCityDetail = true
+                tappedMarkerID = cityWeather.id
+                Task {
+                    try? await Task.sleep(for: .milliseconds(300))
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                        showingCityDetail = true
+                    }
+                    try? await Task.sleep(for: .milliseconds(200))
+                    tappedMarkerID = nil
                 }
             }
         }
