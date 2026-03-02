@@ -64,6 +64,7 @@ struct DesktopSidebar: View {
     let onRefresh: () async -> Void
     let lastFetchDate: Date?
     let isRefreshing: Bool
+    @Binding var detailOpenedFromList: Bool
     
     @State private var isLoadingSearchedCity = false
     @State private var showingAddCityView = false
@@ -112,6 +113,7 @@ struct DesktopSidebar: View {
                 .tag(cityWeather)
                 .contentShape(Rectangle())
                 .onTapGesture {
+                    detailOpenedFromList = true
                     tappedCity = cityWeather
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                         showingCityDetail = true
@@ -120,6 +122,7 @@ struct DesktopSidebar: View {
                 }
                 .contextMenu {
                     Button {
+                        detailOpenedFromList = true
                         tappedCity = cityWeather
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                             showingCityDetail = true
@@ -276,6 +279,7 @@ struct DesktopSidebar: View {
                 let cityName = result.title
                 
                 if let existingCity = cities.first(where: { $0.city.name == cityName }) {
+                    detailOpenedFromList = false
                     tappedCity = existingCity
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                         showingCityDetail = true
@@ -291,6 +295,7 @@ struct DesktopSidebar: View {
                     return
                 }
                 
+                detailOpenedFromList = false
                 tappedCity = tempCityWeather
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                     showingCityDetail = true

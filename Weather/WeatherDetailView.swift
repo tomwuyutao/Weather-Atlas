@@ -15,6 +15,7 @@ struct WeatherDetailView: View {
     let onDismiss: () -> Void
     let onAddCity: (() -> Void)?
     let onDeleteCity: (() -> Void)?
+    let onRevealOnMap: (() -> Void)?
     let isInSidebar: Bool
     let showCloudCover: Bool
     
@@ -26,13 +27,14 @@ struct WeatherDetailView: View {
     @State private var showingDetailMenu: Bool = false
     
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onDeleteCity: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false) {
+    init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false) {
         self.cityWeather = cityWeather
         self.selectedDayOffset = selectedDayOffset
         self.namespace = namespace
         self.onDismiss = onDismiss
         self.onAddCity = onAddCity
         self.onDeleteCity = onDeleteCity
+        self.onRevealOnMap = onRevealOnMap
         self.isInSidebar = isInSidebar
         self.showCloudCover = showCloudCover
         self._internalSelectedDay = State(initialValue: selectedDayOffset)
@@ -272,7 +274,7 @@ struct WeatherDetailView: View {
             .overlay(alignment: .topTrailing) {
                 if isPopup {
                     HStack(spacing: 8) {
-                        if isInSidebar, let deleteAction = onDeleteCity {
+                        if isInSidebar, onDeleteCity != nil || onRevealOnMap != nil {
                             Button {
                                 showingDetailMenu = true
                             } label: {
@@ -284,13 +286,26 @@ struct WeatherDetailView: View {
                             }
                             .buttonStyle(.plain)
                             .popover(isPresented: $showingDetailMenu) {
-                                Button(role: .destructive) {
-                                    showingDetailMenu = false
-                                    deleteAction()
-                                } label: {
-                                    Label("Delete City", systemImage: "trash")
+                                VStack(spacing: 0) {
+                                    if let revealAction = onRevealOnMap {
+                                        Button {
+                                            showingDetailMenu = false
+                                            revealAction()
+                                        } label: {
+                                            Label("Reveal on Map", systemImage: "map")
+                                        }
+                                        .padding(12)
+                                    }
+                                    if let deleteAction = onDeleteCity {
+                                        Button(role: .destructive) {
+                                            showingDetailMenu = false
+                                            deleteAction()
+                                        } label: {
+                                            Label("Delete City", systemImage: "trash")
+                                        }
+                                        .padding(12)
+                                    }
                                 }
-                                .padding(12)
                                 .presentationCompactAdaptation(.popover)
                             }
                         }

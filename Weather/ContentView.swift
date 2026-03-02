@@ -41,6 +41,7 @@ struct ContentView: View {
     @State private var mapLastOffset: CGSize = .zero
     @State private var mapHasInitialized: Bool = false
     @State private var recenterOnAllCities: Bool = false
+    @State private var detailOpenedFromList: Bool = false
 
     private func timeSinceRefreshText() -> String {
         guard let lastFetch = weatherService.lastFetchDate else {
@@ -103,7 +104,8 @@ struct ContentView: View {
                     await weatherService.refreshWeather()
                 },
                 lastFetchDate: weatherService.lastFetchDate,
-                isRefreshing: weatherService.isLoading
+                isRefreshing: weatherService.isLoading,
+                detailOpenedFromList: $detailOpenedFromList
             )
         } detail: {
             // Map view with bottom date bar
@@ -417,6 +419,16 @@ struct ContentView: View {
                         if cityIsInSidebar(city) {
                             ToolbarItem(placement: .topBarTrailing) {
                                 Menu {
+                                    Button {
+                                        showingCityDetail = false
+                                        centerOnCityTrigger = city
+                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                            selectedTab = 1
+                                        }
+                                    } label: {
+                                        Label("Reveal on Map", systemImage: "map")
+                                    }
+                                    
                                     Button(role: .destructive) {
                                         weatherService.removeCity(city)
                                         showingCityDetail = false
@@ -637,6 +649,7 @@ struct ContentView: View {
         
         .onTapGesture {
             if !isEditMode {
+                detailOpenedFromList = true
                 tappedCity = cityWeather
                 showingCityDetail = true
             }
@@ -754,6 +767,7 @@ struct ContentView: View {
                     ForEach(iOSFilteredCities) { cityWeather in
                         Button {
                             if !isEditMode {
+                                detailOpenedFromList = true
                                 tappedCity = cityWeather
                                 showingCityDetail = true
                             }
@@ -916,6 +930,12 @@ struct ContentView: View {
                         }
                         recenterOnAllCities = true
                     } : nil,
+                    onRevealOnMap: detailOpenedFromList ? {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            showingCityDetail = false
+                        }
+                        centerOnCityTrigger = city
+                    } : nil,
                     isInSidebar: cityIsInSidebar(city),
                     showCloudCover: showCloudCover
                 )
@@ -956,6 +976,12 @@ struct ContentView: View {
                                 showingCityDetail = false
                             }
                             recenterOnAllCities = true
+                        } : nil,
+                        onRevealOnMap: detailOpenedFromList ? {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                showingCityDetail = false
+                            }
+                            centerOnCityTrigger = city
                         } : nil,
                         isInSidebar: cityIsInSidebar(city),
                         showCloudCover: showCloudCover
