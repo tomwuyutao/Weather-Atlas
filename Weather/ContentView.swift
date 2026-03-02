@@ -29,6 +29,8 @@ struct ContentView: View {
     @State private var selectedDetent: PresentationDetent = .height(80)
     @State private var lastRefreshText: String = ""
     @State private var showingAddCityView: Bool = false
+    @State private var showingAddCityDetail: Bool = false
+    @State private var addCityDetailCity: CityWeather?
     @State private var showCloudCover: Bool = false
     @State private var filterSunny: Bool = false
     @State private var isPlaying: Bool = false
@@ -438,14 +440,65 @@ struct ContentView: View {
                     citySearchManager: CitySearchManager(),
                     weatherService: weatherService,
                     onCitySelected: { cityWeather in
-                        selectedCity = cityWeather
-                        tappedCity = cityWeather
-                        centerOnCityTrigger = cityWeather
-                        // Replace the add city view with the detail view directly
-                        showingAddCityView = false
-                        showingCityDetail = true
+                        addCityDetailCity = cityWeather
+                        showingAddCityDetail = true
                     }
                 )
+                .navigationDestination(isPresented: $showingAddCityDetail) {
+                    if let city = addCityDetailCity {
+                        WeatherDetailView(
+                            cityWeather: city,
+                            selectedDayOffset: selectedDayOffset,
+                            namespace: popupNamespace,
+                            onDismiss: {
+                                showingAddCityDetail = false
+                            },
+                            onAddCity: cityIsInSidebar(city) ? nil : {
+                                Task {
+                                    await addCityToSidebar(city)
+                                    showingAddCityView = false
+                                    showingAddCityDetail = false
+                                    if selectedTab == 1 {
+                                        recenterOnAllCities = true
+                                    }
+                                }
+                            },
+                            isInSidebar: cityIsInSidebar(city),
+                            showCloudCover: showCloudCover
+                        )
+                        .navigationBarBackButtonHidden(true)
+                        .toolbar {
+                            ToolbarItem(placement: .topBarLeading) {
+                                Button {
+                                    showingAddCityDetail = false
+                                } label: {
+                                    Image(systemName: "chevron.left")
+                                }
+                            }
+                            ToolbarItem(placement: .principal) {
+                                Text(city.city.name)
+                                    .font(.avenir(.title3, weight: .semibold))
+                            }
+                            if !cityIsInSidebar(city) {
+                                ToolbarItem(placement: .topBarTrailing) {
+                                    Button {
+                                        Task {
+                                            await addCityToSidebar(city)
+                                            showingAddCityView = false
+                                            showingAddCityDetail = false
+                                            if selectedTab == 1 {
+                                                recenterOnAllCities = true
+                                            }
+                                        }
+                                    } label: {
+                                        Image(systemName: "plus")
+                                            .foregroundStyle(.blue)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
         .task {
@@ -468,7 +521,9 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             menuRow(icon: "plus", title: "Add City") {
                 showingMenuPopover = false
-                showingAddCityView = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    showingAddCityView = true
+                }
             }
 
             if selectedTab == 0 {
