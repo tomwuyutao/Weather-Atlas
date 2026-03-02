@@ -268,6 +268,20 @@ class WeatherService {
         await fetchWeatherForAllCities()
     }
     
+    func resetAllLists() async {
+        // Clear saved cities for all lists
+        for listID in CityListID.allCases {
+            let citiesKey = "savedCitiesList_\(listID.rawValue)"
+            let cacheKey = "cachedWeatherData_\(listID.rawValue)"
+            let timestampKey = "weatherCacheTimestamp_\(listID.rawValue)"
+            UserDefaults.standard.removeObject(forKey: citiesKey)
+            UserDefaults.standard.removeObject(forKey: cacheKey)
+            UserDefaults.standard.removeObject(forKey: timestampKey)
+        }
+        cityWeatherData = []
+        await fetchWeatherForAllCities()
+    }
+    
     func switchList(to listID: CityListID) async {
         guard listID != activeListID else { return }
         cityWeatherData = []

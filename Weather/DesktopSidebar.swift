@@ -14,6 +14,11 @@ struct CityRow: View {
     let showCloudCover: Bool
     
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    
+    private var tempUnit: TemperatureUnit {
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
     
     private var forecast: DailyForecast {
         cityWeather.forecast(for: dayOffset)
@@ -35,7 +40,7 @@ struct CityRow: View {
             Spacer()
             
             // Temperature or cloud cover
-            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.daytimeHigh))°")
+            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.daytimeHigh))
                 .font(.headline)
                 .foregroundStyle(.secondary)
                 .contentTransition(.numericText())

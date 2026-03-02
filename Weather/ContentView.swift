@@ -42,6 +42,12 @@ struct ContentView: View {
     @State private var mapHasInitialized: Bool = false
     @State private var recenterOnAllCities: Bool = false
     @State private var detailOpenedFromList: Bool = false
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    @State private var showingSettings: Bool = false
+    
+    private var tempUnit: TemperatureUnit {
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
 
     private func timeSinceRefreshText() -> String {
         guard let lastFetch = weatherService.lastFetchDate else {
@@ -319,7 +325,28 @@ struct ContentView: View {
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar { }
+            .toolbar {
+                if selectedTab == 1 {
+                    ToolbarItem(placement: .principal) {
+                        Button {
+                            showingListSwitcher = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(weatherService.activeListID.displayName)
+                                    .font(.avenir(.subheadline, weight: .semibold))
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 10, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .popover(isPresented: $showingListSwitcher) {
+                            iOSListSwitcherMenu
+                                .presentationCompactAdaptation(.popover)
+                        }
+                    }
+                }
+            }
             .toolbar {
                 if isEditMode {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -550,6 +577,16 @@ struct ContentView: View {
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
         }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView(
+                weatherService: weatherService,
+                onResetLists: {
+                    Task {
+                        await weatherService.resetAllLists()
+                    }
+                }
+            )
+        }
     }
 
     private var iOSListSwitcher: some View {
@@ -674,6 +711,9 @@ struct ContentView: View {
 
             menuRow(icon: "gearshape", title: "Settings") {
                 showingMenuPopover = false
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    showingSettings = true
+                }
             }
         }
         .padding(.vertical, 8)
@@ -710,7 +750,7 @@ struct ContentView: View {
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 .frame(height: 30)
 
-            Text("\(Int(forecast.daytimeHigh))°")
+            Text(tempUnit.display(forecast.daytimeHigh))
                 .font(.avenir(.title2, weight: .medium))
                 .contentTransition(.numericText())
 
@@ -892,7 +932,7 @@ struct ContentView: View {
                             Text(cityWeather.city.name)
                                 .font(.avenir(.body, weight: .medium))
                             Spacer()
-                            Text("\(Int(cityWeather.forecast(for: selectedDayOffset).daytimeHigh))°")
+                            Text(tempUnit.display(cityWeather.forecast(for: selectedDayOffset).daytimeHigh))
                                 .font(.avenir(.title2, weight: .medium))
                                 .foregroundStyle(.secondary)
                                 .contentTransition(.numericText())
@@ -1203,6 +1243,11 @@ struct WeatherMarker: View {
     var showAsDot: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    
+    private var tempUnit: TemperatureUnit {
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
 
     private var forecast: DailyForecast {
         cityWeather.forecast(for: dayOffset)
@@ -1256,33 +1301,33 @@ struct WeatherMarker: View {
                 if isCompact {
                     Image(systemName: displayIcon)
                         .id(isPlaying ? "playing" : "filter-\(filterSunny)")
-                        .font(.title)
+                        .font(.title3)
                         .symbolRenderingMode(.multicolor)
                         .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                        .frame(width: 40, height: 40)
+                        .frame(width: 30, height: 30)
                         .background(alignment: .top) {
-                            WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 40)
+                            WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 30)
                         }
                 } else {
-                    VStack(spacing: 2) {
+                    VStack(spacing: 1) {
                         Image(systemName: displayIcon)
                             .id(isPlaying ? "playing" : "filter-\(filterSunny)")
-                            .font(.title)
+                            .font(.title3)
                             .symbolRenderingMode(.multicolor)
                             .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                             .background(alignment: .top) {
-                                WeatherEffectOverlay(condition: displayCondition, isCompact: false, iconHeight: 36)
+                                WeatherEffectOverlay(condition: displayCondition, isCompact: false, iconHeight: 26)
                             }
 
-                        Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.daytimeHigh))°")
-                            .font(.avenir(.caption, weight: .medium))
+                        Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.daytimeHigh))
+                            .font(.avenir(.caption2, weight: .medium))
                             .foregroundStyle(.primary)
                             .offset(x: 2)
                             .contentTransition(.numericText())
                             .animation(.smooth(duration: 0.4), value: dayOffset)
                             .animation(.smooth(duration: 0.4), value: showCloudCover)
                     }
-                    .frame(width: 40, height: 56)
+                    .frame(width: 34, height: 44)
                 }
             }
             .scaleEffect(showAsDot ? 0.01 : 1, anchor: .center)

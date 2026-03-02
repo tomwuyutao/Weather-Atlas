@@ -25,6 +25,11 @@ struct WeatherDetailView: View {
     @State private var chartDragOffset: CGFloat = 0
     @State private var showingCloudCover: Bool = false
     @State private var showingDetailMenu: Bool = false
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    
+    private var tempUnit: TemperatureUnit {
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
     
     // Initialize with the day from the map slider
     init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false) {
@@ -101,7 +106,7 @@ struct WeatherDetailView: View {
                         }
                         .padding(.top, 28)
                     
-                    Text("\(Int(forecast.daytimeHigh))°")
+                    Text(tempUnit.display(forecast.daytimeHigh))
                         .font(.avenir(.largeTitle, weight: .bold))
                         .contentTransition(.numericText())
                         .padding(.top, 14)
@@ -528,6 +533,12 @@ struct HourlyTimelineChart: View {
     let hourlyForecasts: [HourlyForecast]
     let showCloudCover: Bool
     
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    
+    private var tempUnit: TemperatureUnit {
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
+    
     #if os(macOS)
     private let totalHeight: CGFloat = 156
     #else
@@ -614,7 +625,7 @@ struct HourlyTimelineChart: View {
                                 .position(x: columnWidth / 2, y: pointY - iconToValue - iconHeight / 2)
                             
                             // Value text — centered on the line point, offset right so numbers align with icon
-                            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.temperature))°")
+                            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.temperature))
                                 .font(.avenir(.caption, weight: .semibold))
                                 .contentTransition(.numericText())
                                 .frame(height: valueHeight)
