@@ -39,9 +39,11 @@ struct SVGMapView: View {
                 viewSize.height / GeoProjection.svgHeight
             )
             let effectiveScale = baseScale * mapScale
+            let contentWidth = GeoProjection.svgWidth * effectiveScale
+            let contentHeight = GeoProjection.svgHeight * effectiveScale
             
-            ZStack {
-                // Country shapes — drawn at origin, offset applied to container
+            ZStack(alignment: .topLeading) {
+                // Country shapes — rendered at full effective scale for sharpness
                 Canvas { context, size in
                     for country in countries {
                         var transform = CGAffineTransform(
@@ -55,21 +57,15 @@ struct SVGMapView: View {
                         }
                     }
                 }
-                .frame(
-                    width: GeoProjection.svgWidth * effectiveScale,
-                    height: GeoProjection.svgHeight * effectiveScale
-                )
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(width: contentWidth, height: contentHeight)
                 
                 // Weather markers
                 ForEach(cities) { cityWeather in
                     let forecast = cityWeather.forecast(for: selectedDayOffset)
                     let passesFilter = !filterSunny || (forecast.condition == .clear && forecast.cloudCover < 0.30)
-                    let screenPos = GeoProjection.geoToScreen(
+                    let svgPos = GeoProjection.geoToSVG(
                         latitude: cityWeather.city.latitude,
-                        longitude: cityWeather.city.longitude,
-                        scale: effectiveScale,
-                        offset: .zero
+                        longitude: cityWeather.city.longitude
                     )
                     
                     WeatherMarker(
@@ -82,7 +78,10 @@ struct SVGMapView: View {
                         passesFilter: passesFilter,
                         isPlaying: isPlaying
                     )
-                    .position(x: screenPos.x, y: screenPos.y)
+                    .position(
+                        x: svgPos.x * effectiveScale,
+                        y: svgPos.y * effectiveScale
+                    )
                     .opacity(passesFilter ? 1 : 0)
                     .animation(.easeInOut(duration: 0.3), value: passesFilter)
                     .allowsHitTesting(passesFilter)
@@ -93,54 +92,53 @@ struct SVGMapView: View {
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .frame(width: contentWidth, height: contentHeight)
             }
+            .frame(width: contentWidth, height: contentHeight)
             .offset(mapOffset)
             .gesture(
-                SimultaneousGesture(
-                    DragGesture()
-                        .onChanged { value in
-                            mapOffset = CGSize(
-                                width: mapLastOffset.width + value.translation.width,
-                                height: mapLastOffset.height + value.translation.height
-                            )
+                DragGesture()
+                    .onChanged { value in
+                        mapOffset = CGSize(
+                            width: mapLastOffset.width + value.translation.width,
+                            height: mapLastOffset.height + value.translation.height
+                        )
+                    }
+                    .onEnded { value in
+                        let velocity = value.predictedEndTranslation
+                        let momentumX = velocity.width - value.translation.width
+                        let momentumY = velocity.height - value.translation.height
+                        let target = CGSize(
+                            width: mapOffset.width + momentumX,
+                            height: mapOffset.height + momentumY
+                        )
+                        withAnimation(.spring(response: 0.6, dampingFraction: 1.0)) {
+                            mapOffset = target
                         }
-                        .onEnded { value in
-                            let velocity = value.predictedEndTranslation
-                            let momentumX = velocity.width - value.translation.width
-                            let momentumY = velocity.height - value.translation.height
-                            let target = CGSize(
-                                width: mapOffset.width + momentumX,
-                                height: mapOffset.height + momentumY
-                            )
-                            withAnimation(.spring(response: 0.6, dampingFraction: 1.0)) {
-                                mapOffset = target
-                            }
-                            mapLastOffset = target
-                        },
-                    MagnifyGesture()
-                        .onChanged { value in
-                            let newScale = min(max(mapLastScale * value.magnification, minScale), maxScale)
-                            let anchor = value.startAnchor
-                            let anchorPt = CGPoint(
-                                x: anchor.x * viewSize.width,
-                                y: anchor.y * viewSize.height
-                            )
-                            let startEffective = baseScale * mapLastScale
-                            let svgX = (anchorPt.x - mapLastOffset.width) / startEffective
-                            let svgY = (anchorPt.y - mapLastOffset.height) / startEffective
-                            let newEffective = baseScale * newScale
-                            mapOffset = CGSize(
-                                width: anchorPt.x - svgX * newEffective,
-                                height: anchorPt.y - svgY * newEffective
-                            )
-                            mapScale = newScale
-                        }
-                        .onEnded { _ in
-                            mapLastScale = mapScale
-                            mapLastOffset = mapOffset
-                        }
-                )
+                        mapLastOffset = target
+                    }
+            )
+            .gesture(
+                MagnifyGesture()
+                    .onChanged { value in
+                        let newScale = min(max(mapLastScale * value.magnification, minScale), maxScale)
+                        // Zoom anchored at view center
+                        let viewCenter = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2)
+                        // SVG point at view center: screenPos = svgPt * effectiveScale + offset
+                        let startEffective = baseScale * mapLastScale
+                        let svgX = (viewCenter.x - mapLastOffset.width) / startEffective
+                        let svgY = (viewCenter.y - mapLastOffset.height) / startEffective
+                        let newEffective = baseScale * newScale
+                        mapOffset = CGSize(
+                            width: viewCenter.x - svgX * newEffective,
+                            height: viewCenter.y - svgY * newEffective
+                        )
+                        mapScale = newScale
+                    }
+                    .onEnded { _ in
+                        mapLastScale = mapScale
+                        mapLastOffset = mapOffset
+                    }
             )
             .onChange(of: viewSize) { _, newSize in
                 if !mapHasInitialized && newSize.width > 0 && newSize.height > 0 {
