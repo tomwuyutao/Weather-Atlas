@@ -154,6 +154,7 @@ struct ContentView: View {
     @State private var gridDragItem: CityWeather?
     @State private var showingListSwitcher: Bool = false
     @State private var listContentOpacity: Double = 1.0
+    @State private var longPressedCity: CityWeather?
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -858,47 +859,73 @@ struct ContentView: View {
                         .padding(.top, 8)
 
                     ForEach(iOSFilteredCities) { cityWeather in
-                        Button {
+                        HStack {
+                            Text(cityWeather.city.name)
+                                .font(.avenir(.body, weight: .medium))
+                            Spacer()
+                            Text("\(Int(cityWeather.forecast(for: selectedDayOffset).daytimeHigh))°")
+                                .font(.avenir(.title2, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .contentTransition(.numericText())
+                            Image(systemName: cityWeather.forecast(for: selectedDayOffset).weatherIcon)
+                                .font(.title3)
+                                .symbolRenderingMode(.multicolor)
+                                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                                .frame(width: 32)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 18)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                        )
+                        .contentShape(Rectangle())
+                        .onTapGesture {
                             if !isEditMode {
                                 detailOpenedFromList = true
                                 tappedCity = cityWeather
                                 showingCityDetail = true
                             }
-                        } label: {
-                            HStack {
-                                Text(cityWeather.city.name)
-                                    .font(.avenir(.body, weight: .medium))
-                                Spacer()
-                                Text("\(Int(cityWeather.forecast(for: selectedDayOffset).daytimeHigh))°")
-                                    .font(.avenir(.title2, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                                    .contentTransition(.numericText())
-                                Image(systemName: cityWeather.forecast(for: selectedDayOffset).weatherIcon)
-                                    .font(.title3)
-                                    .symbolRenderingMode(.multicolor)
-                                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                                    .frame(width: 32)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 18)
-                            .background(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-                            )
                         }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button(role: .destructive) {
-                                weatherService.removeCity(cityWeather)
-                                if selectedCity?.id == cityWeather.id {
-                                    selectedCity = nil
+                        .onLongPressGesture {
+                            longPressedCity = cityWeather
+                        }
+                        .popover(isPresented: Binding(
+                            get: { longPressedCity?.id == cityWeather.id },
+                            set: { if !$0 { longPressedCity = nil } }
+                        )) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                menuRow(icon: "map", title: "Reveal on Map") {
+                                    let revealCity = cityWeather
+                                    longPressedCity = nil
+                                    showingCityDetail = false
+                                    centerOnCityTrigger = nil
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                        selectedTab = 1
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        centerOnCityTrigger = revealCity
+                                    }
                                 }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                                
+                                Divider().padding(.horizontal, 12).padding(.vertical, 4)
+                                
+                                menuRow(icon: "trash", title: "Delete City") {
+                                    longPressedCity = nil
+                                    weatherService.removeCity(cityWeather)
+                                    if selectedCity?.id == cityWeather.id {
+                                        selectedCity = nil
+                                    }
+                                }
+                                .foregroundStyle(.red)
                             }
+                            .padding(.vertical, 8)
+                            .frame(width: 220)
+                            .presentationCompactAdaptation(.popover)
+                            .presentationBackground(.ultraThinMaterial)
                         }
                     }
-                    .onDelete { indexSet in
+                    .onDelete(perform: isEditMode ? { indexSet in
                         for index in indexSet {
                             let cityToDelete = iOSFilteredCities[index]
                             weatherService.removeCity(cityToDelete)
@@ -906,10 +933,10 @@ struct ContentView: View {
                                 selectedCity = nil
                             }
                         }
-                    }
-                    .onMove { source, destination in
+                    } : nil)
+                    .onMove(perform: isEditMode ? { source, destination in
                         weatherService.moveCity(from: source, to: destination)
-                    }
+                    } : nil)
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
