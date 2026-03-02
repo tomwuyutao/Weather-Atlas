@@ -877,8 +877,10 @@ struct ContentView: View {
                         .padding(.vertical, 18)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                .stroke(longPressedCity?.id == cityWeather.id ? Color.white.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: 1)
                         )
+                        .scaleEffect(longPressedCity?.id == cityWeather.id ? 0.97 : 1.0)
+                        .animation(.easeOut(duration: 0.2), value: longPressedCity?.id)
                         .contentShape(Rectangle())
                         .onTapGesture {
                             if !isEditMode {
