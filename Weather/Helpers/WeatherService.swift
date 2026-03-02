@@ -307,7 +307,8 @@ class WeatherService {
                 symbolName: daySymbol,
                 condition: dayCondition,
                 hourlyForecasts: hourlyForecasts,
-                cloudCover: daytimeForecast.cloudCover
+                cloudCover: daytimeForecast.cloudCover,
+                precipitationChance: day.precipitationChance
             )
         }
         
@@ -598,6 +599,7 @@ struct DailyForecast: Identifiable {
     let condition: AppWeatherCondition
     let hourlyForecasts: [HourlyForecast]
     let cloudCover: Double  // 0.0 to 1.0
+    let precipitationChance: Double  // 0.0 to 1.0
     
     var weatherIcon: String {
         if symbolName.contains("sun") && !symbolName.contains("cloud") {
@@ -854,6 +856,7 @@ struct CachedDailyForecast: Codable {
     let condition: String
     let hourlyForecasts: [CachedHourlyForecast]
     let cloudCover: Double
+    let precipitationChance: Double
     
     init(from forecast: DailyForecast) {
         self.dayOffset = forecast.dayOffset
@@ -863,6 +866,7 @@ struct CachedDailyForecast: Codable {
         self.condition = forecast.condition.displayName
         self.hourlyForecasts = forecast.hourlyForecasts.map { CachedHourlyForecast(from: $0) }
         self.cloudCover = forecast.cloudCover
+        self.precipitationChance = forecast.precipitationChance
     }
     
     init(from decoder: Decoder) throws {
@@ -883,11 +887,12 @@ struct CachedDailyForecast: Codable {
         hourlyForecasts = try container.decode([CachedHourlyForecast].self, forKey: .hourlyForecasts)
         cloudCover = try container.decodeIfPresent(Double.self, forKey: .cloudCover)
             ?? Double(AppWeatherCondition.fromDisplayName(condition).estimatedCloudCover) / 100.0
+        precipitationChance = try container.decodeIfPresent(Double.self, forKey: .precipitationChance) ?? 0.0
     }
     
     // Keep the old key for migration during decoding
     private enum CodingKeys: String, CodingKey {
-        case dayOffset, daytimeLow, daytimeHigh, symbolName, condition, hourlyForecasts, cloudCover, temperature
+        case dayOffset, daytimeLow, daytimeHigh, symbolName, condition, hourlyForecasts, cloudCover, precipitationChance, temperature
     }
     
     func encode(to encoder: Encoder) throws {
@@ -899,6 +904,7 @@ struct CachedDailyForecast: Codable {
         try container.encode(condition, forKey: .condition)
         try container.encode(hourlyForecasts, forKey: .hourlyForecasts)
         try container.encode(cloudCover, forKey: .cloudCover)
+        try container.encode(precipitationChance, forKey: .precipitationChance)
     }
     
     func toDailyForecast() -> DailyForecast {
@@ -912,7 +918,8 @@ struct CachedDailyForecast: Codable {
             symbolName: symbolName,
             condition: appCondition,
             hourlyForecasts: forecasts,
-            cloudCover: cloudCover
+            cloudCover: cloudCover,
+            precipitationChance: precipitationChance
         )
     }
 }

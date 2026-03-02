@@ -21,6 +21,7 @@ struct WeatherDetailView: View {
     @State private var internalSelectedDay: Int
     @State private var previousDay: Int
     @State private var chartDragOffset: CGFloat = 0
+    @State private var showingCloudCover: Bool = false
     
     // Initialize with the day from the map slider
     init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false) {
@@ -43,6 +44,10 @@ struct WeatherDetailView: View {
         internalSelectedDay >= previousDay
     }
     
+    private var effectiveShowCloudCover: Bool {
+        isPopup ? showCloudCover : showingCloudCover
+    }
+    
     private var isPopup: Bool {
         #if os(macOS)
         return true
@@ -54,28 +59,80 @@ struct WeatherDetailView: View {
     var body: some View {
         ZStack {
             // Main content card
-            VStack(spacing: 16) {
+            VStack(spacing: 24) {
                 // Header
-                VStack(alignment: .center, spacing: 7) {
-                    Text(cityWeather.city.name)
-                        .font(.avenir(.title, weight: .semibold))
+                VStack(alignment: .center, spacing: 0) {
+                    if isPopup {
+                        Text(cityWeather.city.name)
+                            .font(.avenir(.title3, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .padding(.bottom, 4)
+                    }
                     
                     Text(forecastDateText)
-                        .font(.avenir(.subheadline))
+                        .font(.avenir(.body, weight: .medium))
                         .foregroundStyle(.secondary)
                         .id("date-\(internalSelectedDay)")
                         .transition(.asymmetric(
                             insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
                             removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity)
                         ))
+                    
+                    Image(systemName: forecast.weatherIcon)
+                        .font(.system(size: 48))
+                        .symbolRenderingMode(.multicolor)
+                        .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                        .frame(height: 56)
+                        .padding(.top, 28)
+                    
+                    Text("\(Int(forecast.daytimeHigh))°")
+                        .font(.avenir(.largeTitle, weight: .bold))
+                        .contentTransition(.numericText())
+                        .padding(.top, 14)
+                        .offset(x: 5)
                 }
+                .padding(.bottom, 0)
                 .clipped()
+                
+                // Info boxes
+                HStack(spacing: 12) {
+                    VStack(spacing: 4) {
+                        Text("Cloud Cover")
+                            .font(.avenir(.caption, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Text("\(Int(forecast.cloudCover * 100))%")
+                            .font(.avenir(.title3, weight: .semibold))
+                            .contentTransition(.numericText())
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                    )
+                    
+                    VStack(spacing: 4) {
+                        Text("Precipitation")
+                            .font(.avenir(.caption, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Text("\(Int(forecast.precipitationChance * 100))%")
+                            .font(.avenir(.title3, weight: .semibold))
+                            .contentTransition(.numericText())
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                    )
+                }
+                .padding(.horizontal, 8)
                 
                 // Chart container — box stays fixed, content slides inside
                 ZStack {
                     HourlyTimelineChart(
                         hourlyForecasts: forecast.hourlyForecasts,
-                        showCloudCover: showCloudCover
+                        showCloudCover: effectiveShowCloudCover
                     )
                     .id("hourly-\(internalSelectedDay)")
                     .transition(.asymmetric(
@@ -86,11 +143,11 @@ struct WeatherDetailView: View {
                 .offset(x: chartDragOffset)
                 .opacity(Double(1.0 - min(abs(chartDragOffset) / 200.0, 0.4)))
                 .padding(.top, 12)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 8))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .background(Color.black, in: RoundedRectangle(cornerRadius: 12))
                 .overlay {
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
                 }
                 .padding(.horizontal, 8)
                 .contentShape(Rectangle())
@@ -130,53 +187,47 @@ struct WeatherDetailView: View {
                         }
                 )
                 
-                // 10-day forecast grid
-                VStack(spacing: 0) {
-                    // First row - 5 days
-                    HStack(spacing: 0) {
-                        ForEach(Array(cityWeather.dailyForecasts.prefix(5).enumerated()), id: \.element.id) { index, dailyForecast in
-                            DayForecastBox(
-                                dailyForecast: dailyForecast,
-                                isSelected: internalSelectedDay == dailyForecast.dayOffset,
-                                cornerRadius: .init(
-                                    topLeading: index == 0 ? 8 : 0,
-                                    topTrailing: index == 4 ? 8 : 0
-                                ),
-                                showCloudCover: showCloudCover
-                            )
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    internalSelectedDay = dailyForecast.dayOffset
-                                }
-                            }
+                // Temperature / Cloud Cover switcher
+                if !isPopup {
+                    HStack(spacing: 8) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.25)) { showingCloudCover = false }
+                        } label: {
+                            Text("Temperature")
+                                .font(.avenir(.footnote, weight: showingCloudCover ? .regular : .semibold))
+                                .foregroundStyle(showingCloudCover ? .secondary : .primary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(showingCloudCover ? Color.clear : Color.gray.opacity(0.5), lineWidth: 1)
+                                )
                         }
-                    }
-                    
-                    // Second row - 5 days
-                    HStack(spacing: 0) {
-                        ForEach(Array(cityWeather.dailyForecasts.dropFirst(5).prefix(5).enumerated()), id: \.element.id) { index, dailyForecast in
-                            DayForecastBox(
-                                dailyForecast: dailyForecast,
-                                isSelected: internalSelectedDay == dailyForecast.dayOffset,
-                                cornerRadius: .init(
-                                    bottomLeading: index == 0 ? 8 : 0,
-                                    bottomTrailing: index == 4 ? 8 : 0
-                                ),
-                                showCloudCover: showCloudCover
-                            )
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    internalSelectedDay = dailyForecast.dayOffset
-                                }
-                            }
+                        .buttonStyle(.plain)
+                        
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.25)) { showingCloudCover = true }
+                        } label: {
+                            Text("Cloud Cover")
+                                .font(.avenir(.footnote, weight: showingCloudCover ? .semibold : .regular))
+                                .foregroundStyle(showingCloudCover ? .primary : .secondary)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 8)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 8)
+                                        .stroke(showingCloudCover ? Color.gray.opacity(0.5) : Color.clear, lineWidth: 1)
+                                )
                         }
+                        .buttonStyle(.plain)
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.top, -12)
+                    .padding(.bottom, 12)
                 }
-                .padding(.horizontal, 8)
             }
             .padding(.horizontal, isPopup ? 20 : 16)
             .padding(.top, isPopup ? 36 : 0)
-            .padding(.bottom, 24)
+            .padding(.bottom, isPopup ? 24 : 8)
             .frame(maxWidth: isPopup ? 340 : .infinity)
             .onChange(of: internalSelectedDay) { oldValue, _ in
                 previousDay = oldValue
@@ -222,6 +273,54 @@ struct WeatherDetailView: View {
             }
         }
         .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)
+        .safeAreaInset(edge: .bottom) {
+            if !isPopup {
+                // 10-day forecast grid pinned to bottom
+                VStack(spacing: 0) {
+                    // First row - 5 days
+                    HStack(spacing: 0) {
+                        ForEach(Array(cityWeather.dailyForecasts.prefix(5).enumerated()), id: \.element.id) { index, dailyForecast in
+                            DayForecastBox(
+                                dailyForecast: dailyForecast,
+                                isSelected: internalSelectedDay == dailyForecast.dayOffset,
+                                cornerRadius: .init(
+                                    topLeading: index == 0 ? 8 : 0,
+                                    topTrailing: index == 4 ? 8 : 0
+                                ),
+                                showCloudCover: effectiveShowCloudCover
+                            )
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    internalSelectedDay = dailyForecast.dayOffset
+                                }
+                            }
+                        }
+                    }
+                    
+                    // Second row - 5 days
+                    HStack(spacing: 0) {
+                        ForEach(Array(cityWeather.dailyForecasts.dropFirst(5).prefix(5).enumerated()), id: \.element.id) { index, dailyForecast in
+                            DayForecastBox(
+                                dailyForecast: dailyForecast,
+                                isSelected: internalSelectedDay == dailyForecast.dayOffset,
+                                cornerRadius: .init(
+                                    bottomLeading: index == 0 ? 8 : 0,
+                                    bottomTrailing: index == 4 ? 8 : 0
+                                ),
+                                showCloudCover: effectiveShowCloudCover
+                            )
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    internalSelectedDay = dailyForecast.dayOffset
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 24)
+                .padding(.bottom, 8)
+            }
+        }
         .contentShape(Rectangle())
         .gesture(
             isPopup ? nil : DragGesture(minimumDistance: 50, coordinateSpace: .global)
@@ -512,14 +611,6 @@ struct DayForecastBox: View {
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 .frame(height: 22)
             
-            // Temperature range or cloud cover percentage
-            Text(showCloudCover ? "\(dailyForecast.cloudCoverPercent)%" : "\(Int(dailyForecast.daytimeHigh))°")
-                .font(.avenir(.caption2, weight: .medium))
-                .foregroundStyle(.secondary)
-                .offset(x: 2)
-                .contentTransition(.numericText())
-                .animation(.smooth(duration: 0.3), value: showCloudCover)
-            
             // Day of week
             Text(dayOfWeek)
                 .font(.avenir(.caption, weight: isSelected ? .semibold : .medium))
@@ -648,7 +739,8 @@ struct DayForecastBox: View {
             symbolName: symbol,
             condition: condition,
             hourlyForecasts: dayOffset == 0 ? hourlyForecasts : dayHourlyForecasts,
-            cloudCover: Double(condition.estimatedCloudCover) / 100.0
+            cloudCover: Double(condition.estimatedCloudCover) / 100.0,
+            precipitationChance: condition == .rain || condition == .drizzle ? 0.7 : 0.1
         )
     }
     
@@ -662,11 +754,7 @@ struct DayForecastBox: View {
     
     ZStack {
         // Background
-        LinearGradient(
-            colors: [.blue.opacity(0.6), .cyan.opacity(0.3)],
-            startPoint: .topLeading,
-            endPoint: .bottomTrailing
-        )
+        Color.black
         .ignoresSafeArea()
         
         if showDetail {

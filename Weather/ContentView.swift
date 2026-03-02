@@ -134,6 +134,7 @@ struct ContentView: View {
     @State private var showingDatePopover: Bool = false
     @State private var playbackTask: Task<Void, Never>?
     @State private var showingMenuPopover: Bool = false
+    @State private var isGridView: Bool = false
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -175,7 +176,9 @@ struct ContentView: View {
 
                         Text(iOSDateText)
                             .font(.avenir(.subheadline, weight: .medium))
-                            .frame(width: 80)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(minWidth: 80)
                             .id("ios-date-\(selectedDayOffset)")
                             .transition(.asymmetric(
                                 insertion: .move(edge: selectedDayOffset >= iOSPreviousDayOffset ? .trailing : .leading).combined(with: .opacity),
@@ -310,6 +313,16 @@ struct ContentView: View {
                     }
                 }
 
+                if isEditMode {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            withAnimation { isEditMode = false }
+                        } label: {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showingMenuPopover = true
@@ -347,6 +360,10 @@ struct ContentView: View {
                             } label: {
                                 Image(systemName: "chevron.left")
                             }
+                        }
+                        ToolbarItem(placement: .principal) {
+                            Text(city.city.name)
+                                .font(.avenir(.title3, weight: .semibold))
                         }
                         if !cityIsInSidebar(city) {
                             ToolbarItem(placement: .topBarTrailing) {
@@ -408,9 +425,14 @@ struct ContentView: View {
                     showingMenuPopover = false
                     withAnimation { isEditMode.toggle() }
                 }
+
+                menuRow(icon: isGridView ? "list.bullet" : "square.grid.3x3", title: isGridView ? "List View" : "Grid View") {
+                    showingMenuPopover = false
+                    withAnimation(.easeInOut(duration: 0.25)) { isGridView.toggle() }
+                }
             }
 
-            Divider().padding(.horizontal, 12)
+            Divider().padding(.horizontal, 12).padding(.vertical, 4)
 
             menuRow(icon: filterSunny ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle", title: filterSunny ? "Clear Filter" : "Filter") {
                 showingMenuPopover = false
@@ -431,7 +453,7 @@ struct ContentView: View {
             .opacity(weatherService.isLoading ? 0.4 : 1.0)
             .disabled(weatherService.isLoading)
 
-            Divider().padding(.horizontal, 12)
+            Divider().padding(.horizontal, 12).padding(.vertical, 4)
 
             menuRow(icon: "gearshape", title: "Settings") {
                 showingMenuPopover = false
@@ -490,6 +512,58 @@ struct ContentView: View {
         Group {
             if weatherService.cityWeatherData.isEmpty {
                 ContentUnavailableView("No Cities", systemImage: "cloud.sun", description: Text("Tap + to add a city"))
+            } else if isGridView {
+                ScrollView {
+                    Text("My Cities")
+                        .font(.avenir(.title, weight: .bold))
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, 16)
+                        .padding(.bottom, 20)
+
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                        ForEach(iOSFilteredCities) { cityWeather in
+                            Button {
+                                tappedCity = cityWeather
+                                showingCityDetail = true
+                            } label: {
+                                VStack(spacing: 8) {
+                                    Image(systemName: cityWeather.forecast(for: selectedDayOffset).weatherIcon)
+                                        .font(.title2)
+                                        .symbolRenderingMode(.multicolor)
+                                        .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+
+                                    Text("\(Int(cityWeather.forecast(for: selectedDayOffset).daytimeHigh))°")
+                                        .font(.avenir(.title2, weight: .medium))
+                                        .contentTransition(.numericText())
+
+                                    Text(cityWeather.city.name)
+                                        .font(.avenir(.footnote, weight: .medium))
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.7)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 16)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    weatherService.removeCity(cityWeather)
+                                    if selectedCity?.id == cityWeather.id {
+                                        selectedCity = nil
+                                    }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .transition(.opacity)
             } else {
                 List {
                     Text("My Cities")
@@ -557,7 +631,11 @@ struct ContentView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 }
                 .listStyle(.plain)
-                .environment(\.editMode, .constant(isEditMode ? .active : .inactive))
+                .environment(\.editMode, Binding(
+                    get: { isEditMode ? .active : .inactive },
+                    set: { newValue in isEditMode = (newValue == .active) }
+                ))
+                .transition(.opacity)
             }
         }
     }
