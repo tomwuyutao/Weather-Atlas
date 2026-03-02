@@ -126,6 +126,8 @@ struct ContentView: View {
     @State private var iOSPreviousDayOffset: Int = 0
     @State private var showingDatePopover: Bool = false
     @State private var playbackTask: Task<Void, Never>?
+    @State private var showPlaybackButton: Bool = false
+    @State private var playbackButtonHideTask: Task<Void, Never>?
     @State private var showingMenuPopover: Bool = false
     @AppStorage("isGridView") private var isGridView: Bool = false
     @State private var gridDragItem: CityWeather?
@@ -278,36 +280,6 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { }
             .toolbar {
-                if weatherService.isLoading {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                }
-
-                if filterSunny {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            withAnimation {
-                                filterSunny = false
-                            }
-                        } label: {
-                            Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                                .foregroundStyle(.blue)
-                        }
-                    }
-                }
-
-                if isPlaying {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            iOSStopPlayback()
-                        } label: {
-                            Image(systemName: "stop.fill")
-                        }
-                    }
-                }
-
                 if isEditMode {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
@@ -316,17 +288,52 @@ struct ContentView: View {
                             Image(systemName: "checkmark")
                         }
                     }
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showingMenuPopover = true
-                    } label: {
-                        Image(systemName: "ellipsis.circle")
+                } else {
+                    if weatherService.isLoading {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
                     }
-                    .popover(isPresented: $showingMenuPopover) {
-                        iOSCustomMenu
-                            .presentationCompactAdaptation(.popover)
+
+                    if filterSunny {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                withAnimation {
+                                    filterSunny = false
+                                }
+                            } label: {
+                                Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                                    .foregroundStyle(.blue)
+                            }
+                        }
+                    }
+
+                    if showPlaybackButton {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                if isPlaying {
+                                    iOSStopPlayback()
+                                } else {
+                                    iOSStartPlayback()
+                                }
+                            } label: {
+                                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                    .contentTransition(.symbolEffect(.replace))
+                            }
+                        }
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            showingMenuPopover = true
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                        .popover(isPresented: $showingMenuPopover) {
+                            iOSCustomMenu
+                                .presentationCompactAdaptation(.popover)
+                        }
                     }
                 }
             }
@@ -552,6 +559,8 @@ struct ContentView: View {
     }
 
     private func iOSStartPlayback() {
+        playbackButtonHideTask?.cancel()
+        withAnimation { showPlaybackButton = true }
         isPlaying = true
         if selectedDayOffset >= 9 {
             selectedDayOffset = 0
@@ -565,7 +574,7 @@ struct ContentView: View {
                 }
             }
             if !Task.isCancelled {
-                isPlaying = false
+                iOSStopPlayback()
             }
         }
     }
@@ -574,6 +583,13 @@ struct ContentView: View {
         playbackTask?.cancel()
         playbackTask = nil
         isPlaying = false
+        // Auto-hide button after 10 seconds
+        playbackButtonHideTask?.cancel()
+        playbackButtonHideTask = Task {
+            try? await Task.sleep(for: .seconds(10))
+            guard !Task.isCancelled else { return }
+            withAnimation { showPlaybackButton = false }
+        }
     }
 
     private var iOSListView: some View {
