@@ -43,6 +43,8 @@ struct SVGMapView: View {
     // The scale at which the Canvas is actually rasterized.
     // Only updated when gestures end so the Canvas doesn't re-render mid-gesture.
     @State private var renderScale: CGFloat = 10.0
+    // Whether we have centered on the actual city data (not just fallback)
+    @State private var hasCenteredOnCities: Bool = false
     
     var body: some View {
         GeometryReader { geometry in
@@ -53,18 +55,33 @@ struct SVGMapView: View {
             )
             
             mapContent(viewSize: viewSize, baseScale: baseScale)
+                .onAppear {
+                    if !mapHasInitialized && viewSize.width > 0 && viewSize.height > 0 {
+                        centerOnCities(viewSize: viewSize, baseScale: baseScale)
+                        mapHasInitialized = !cities.isEmpty
+                        hasCenteredOnCities = !cities.isEmpty
+                    }
+                }
                 .onChange(of: viewSize) { _, newSize in
                     if !mapHasInitialized && newSize.width > 0 && newSize.height > 0 {
                         let newBaseScale = min(
                             newSize.width / GeoProjection.svgWidth,
                             newSize.height / GeoProjection.svgHeight
                         )
-                        centerOnEurope(viewSize: newSize, baseScale: newBaseScale)
-                        mapHasInitialized = true
+                        centerOnCities(viewSize: newSize, baseScale: newBaseScale)
+                        mapHasInitialized = !cities.isEmpty
+                        hasCenteredOnCities = !cities.isEmpty
                     }
                 }
                 .onChange(of: mapScale) { _, newScale in
                     isZoomedOut = newScale < 15.0
+                }
+                .onChange(of: cities.count) { _, newCount in
+                    if newCount > 0 && !hasCenteredOnCities && viewSize.width > 0 {
+                        centerOnCities(viewSize: viewSize, baseScale: baseScale)
+                        mapHasInitialized = true
+                        hasCenteredOnCities = true
+                    }
                 }
                 .onChange(of: centerOnCity?.id) { _, _ in
                     if let city = centerOnCity {
@@ -291,19 +308,69 @@ struct SVGMapView: View {
             }
     }
     
-    private func centerOnEurope(viewSize: CGSize, baseScale: CGFloat) {
-        let europeCenter = GeoProjection.geoToSVG(latitude: 50.0, longitude: 10.0)
-        let initialScale: CGFloat = 10.0
-        mapScale = initialScale
-        mapLastScale = initialScale
-        renderScale = initialScale
-        let effective = baseScale * initialScale
+    private func centerOnCities(viewSize: CGSize, baseScale: CGFloat) {
+        guard !cities.isEmpty else {
+            // Fallback: center on world mid-point
+            let worldCenter = GeoProjection.geoToSVG(latitude: 35.0, longitude: 105.0)
+            let initialScale: CGFloat = 10.0
+            mapScale = initialScale
+            mapLastScale = initialScale
+            renderScale = initialScale
+            let effective = baseScale * initialScale
+            mapOffset = CGSize(
+                width: viewSize.width / 2 - worldCenter.x * effective,
+                height: viewSize.height / 2 - worldCenter.y * effective
+            )
+            mapLastOffset = mapOffset
+            isZoomedOut = initialScale < 15.0
+            return
+        }
+        
+        // Compute bounding box of all cities in SVG coordinates
+        var minX = CGFloat.greatestFiniteMagnitude
+        var maxX = -CGFloat.greatestFiniteMagnitude
+        var minY = CGFloat.greatestFiniteMagnitude
+        var maxY = -CGFloat.greatestFiniteMagnitude
+        
+        for city in cities {
+            let svgPos = GeoProjection.geoToSVG(
+                latitude: city.city.latitude,
+                longitude: city.city.longitude
+            )
+            minX = min(minX, svgPos.x)
+            maxX = max(maxX, svgPos.x)
+            minY = min(minY, svgPos.y)
+            maxY = max(maxY, svgPos.y)
+        }
+        
+        let centerSVG = CGPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2)
+        let svgSpanX = maxX - minX
+        let svgSpanY = maxY - minY
+        
+        // Compute scale to fit all cities with some padding
+        let padding: CGFloat = 1.4
+        let minScale: CGFloat = viewSize.height / (GeoProjection.svgHeight * baseScale)
+        var fitScale: CGFloat
+        if svgSpanX < 0.001 && svgSpanY < 0.001 {
+            // Single city or all same location
+            fitScale = 10.0
+        } else {
+            let scaleX = viewSize.width / (svgSpanX * baseScale * padding)
+            let scaleY = viewSize.height / (svgSpanY * baseScale * padding)
+            fitScale = min(scaleX, scaleY)
+            fitScale = min(max(fitScale, minScale), maxScale)
+        }
+        
+        mapScale = fitScale
+        mapLastScale = fitScale
+        renderScale = fitScale
+        let effective = baseScale * fitScale
         mapOffset = CGSize(
-            width: viewSize.width / 2 - europeCenter.x * effective,
-            height: viewSize.height / 2 - europeCenter.y * effective
+            width: viewSize.width / 2 - centerSVG.x * effective,
+            height: viewSize.height / 2 - centerSVG.y * effective
         )
         mapLastOffset = mapOffset
-        isZoomedOut = initialScale < 15.0
+        isZoomedOut = fitScale < 15.0
     }
     
     private func animateToCity(_ cityWeather: CityWeather, viewSize: CGSize, baseScale: CGFloat) {

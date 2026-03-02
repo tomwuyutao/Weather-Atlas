@@ -608,15 +608,9 @@ struct ContentView: View {
                         .symbolRenderingMode(.multicolor)
                     Text("Loading Weather")
                         .font(.avenir(.title2, weight: .semibold))
-                    Text("Fetching forecasts for your cities…")
-                        .font(.avenir(.subheadline, weight: .regular))
-                        .foregroundStyle(.secondary)
                     Text("This only happens the first time you open the app")
                         .font(.avenir(.footnote, weight: .regular))
                         .foregroundStyle(.tertiary)
-                    ProgressView()
-                        .controlSize(.regular)
-                        .padding(.top, 4)
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
@@ -915,6 +909,8 @@ struct WeatherMarker: View {
                 .fill(displayCondition.dotColor)
                 .frame(width: 10, height: 10)
                 .shadow(color: displayCondition.dotColor.opacity(0.5), radius: 4)
+                .padding(15)
+                .contentShape(Circle())
                 .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
         } else if isCompact {
             // Compact mode: just the weather icon, no text
