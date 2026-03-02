@@ -31,6 +31,41 @@ struct SVGMapView: View {
     
     private let maxScale: CGFloat = 60.0
     private let rubberBandMaxScale: CGFloat = 75.0
+    private let citiesPadding: CGFloat = 1.4
+    
+    /// Computes the scale that fits all cities on screen
+    private func citiesFitScale(viewSize: CGSize, baseScale: CGFloat) -> CGFloat {
+        guard !cities.isEmpty else { return 10.0 }
+        var minX = CGFloat.greatestFiniteMagnitude
+        var maxX = -CGFloat.greatestFiniteMagnitude
+        var minY = CGFloat.greatestFiniteMagnitude
+        var maxY = -CGFloat.greatestFiniteMagnitude
+        for city in cities {
+            let p = GeoProjection.geoToSVG(latitude: city.city.latitude, longitude: city.city.longitude)
+            minX = min(minX, p.x); maxX = max(maxX, p.x)
+            minY = min(minY, p.y); maxY = max(maxY, p.y)
+        }
+        let spanX = maxX - minX, spanY = maxY - minY
+        if spanX < 0.001 && spanY < 0.001 { return 10.0 }
+        let scaleX = viewSize.width / (spanX * baseScale * citiesPadding)
+        let scaleY = viewSize.height / (spanY * baseScale * citiesPadding)
+        return min(scaleX, scaleY)
+    }
+    
+    /// Computes the SVG center point of all cities
+    private func citiesCenterSVG() -> CGPoint {
+        guard !cities.isEmpty else { return GeoProjection.geoToSVG(latitude: 35.0, longitude: 105.0) }
+        var minX = CGFloat.greatestFiniteMagnitude
+        var maxX = -CGFloat.greatestFiniteMagnitude
+        var minY = CGFloat.greatestFiniteMagnitude
+        var maxY = -CGFloat.greatestFiniteMagnitude
+        for city in cities {
+            let p = GeoProjection.geoToSVG(latitude: city.city.latitude, longitude: city.city.longitude)
+            minX = min(minX, p.x); maxX = max(maxX, p.x)
+            minY = min(minY, p.y); maxY = max(maxY, p.y)
+        }
+        return CGPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2)
+    }
     
     // Magnification samples used for per-frame rate limiting
     @State private var magnificationSamples: [(magnification: CGFloat, time: Date)] = []
@@ -104,7 +139,7 @@ struct SVGMapView: View {
     private func mapContent(viewSize: CGSize, baseScale: CGFloat) -> some View {
         let svgWidth = GeoProjection.svgWidth
         let svgHeight = GeoProjection.svgHeight
-        let minScale = viewSize.height / (svgHeight * baseScale)
+        let minScale = citiesFitScale(viewSize: viewSize, baseScale: baseScale)
         let rubberBandMinScale = minScale * 0.7
         let canvasEffective = baseScale * renderScale
         let canvasWidth = svgWidth * canvasEffective
@@ -130,7 +165,7 @@ struct SVGMapView: View {
         }
         .scaleEffect(liveZoom, anchor: .topLeading)
         .offset(mapOffset)
-        .gesture(dragGesture())
+        .gesture(dragGesture(viewSize: viewSize, baseScale: baseScale))
         .gesture(magnifyGesture(viewSize: viewSize, baseScale: baseScale, minScale: minScale, rubberBandMinScale: rubberBandMinScale, svgWidth: svgWidth, svgHeight: svgHeight))
     }
     
@@ -223,23 +258,64 @@ struct SVGMapView: View {
         }
     }
     
-    private func dragGesture() -> some Gesture {
+    /// Clamps the offset so the user can only pan within the region visible at the initial fit-all-cities view.
+    /// At minimum zoom (fit scale), panning is completely locked.
+    /// When zoomed in, panning is allowed only enough to see the area that was visible at fit scale.
+    private func clampOffset(_ offset: CGSize, viewSize: CGSize, baseScale: CGFloat, scale: CGFloat? = nil) -> CGSize {
+        let currentScale = scale ?? mapScale
+        guard !cities.isEmpty else { return offset }
+        
+        let center = citiesCenterSVG()
+        let fitScale = citiesFitScale(viewSize: viewSize, baseScale: baseScale)
+        let effective = baseScale * currentScale
+        
+        // The offset that perfectly centers all cities
+        let idealX = viewSize.width / 2 - center.x * effective
+        let idealY = viewSize.height / 2 - center.y * effective
+        
+        // How much of the SVG (in points) was visible at the fit-all-cities zoom level
+        let fitEffective = baseScale * fitScale
+        let visibleSVGWidth = viewSize.width / fitEffective
+        let visibleSVGHeight = viewSize.height / fitEffective
+        
+        // How much of the SVG (in points) is visible at the current zoom level
+        let currentSVGWidth = viewSize.width / effective
+        let currentSVGHeight = viewSize.height / effective
+        
+        // The max drift in SVG coordinates is the difference between what was visible and what is now visible
+        // divided by 2 (since we can drift in either direction from center)
+        let maxDriftSVGX = max(0, (visibleSVGWidth - currentSVGWidth) / 2)
+        let maxDriftSVGY = max(0, (visibleSVGHeight - currentSVGHeight) / 2)
+        
+        // Convert SVG drift to screen-space drift
+        let maxDriftX = maxDriftSVGX * effective
+        let maxDriftY = maxDriftSVGY * effective
+        
+        return CGSize(
+            width: min(max(offset.width, idealX - maxDriftX), idealX + maxDriftX),
+            height: min(max(offset.height, idealY - maxDriftY), idealY + maxDriftY)
+        )
+    }
+    
+    private func dragGesture(viewSize: CGSize, baseScale: CGFloat) -> some Gesture {
         DragGesture()
             .onChanged { value in
                 isGesturing = true
-                mapOffset = CGSize(
+                let raw = CGSize(
                     width: mapLastOffset.width + value.translation.width,
                     height: mapLastOffset.height + value.translation.height
                 )
+                mapOffset = clampOffset(raw, viewSize: viewSize, baseScale: baseScale)
             }
             .onEnded { value in
                 let velocity = value.predictedEndTranslation
                 let momentumX = velocity.width - value.translation.width
                 let momentumY = velocity.height - value.translation.height
-                let target = CGSize(
+                var target = CGSize(
                     width: mapOffset.width + momentumX,
                     height: mapOffset.height + momentumY
                 )
+                target = clampOffset(target, viewSize: viewSize, baseScale: baseScale)
                 withAnimation(.spring(response: 0.6, dampingFraction: 1.0)) {
                     mapOffset = target
                 }
@@ -298,13 +374,15 @@ struct SVGMapView: View {
                 )
                 
                 if finalScale <= minScale {
-                    let contentW = svgWidth * baseScale * minScale
-                    let contentH = svgHeight * baseScale * minScale
+                    let center = citiesCenterSVG()
                     targetOffset = CGSize(
-                        width: (viewSize.width - contentW) / 2,
-                        height: (viewSize.height - contentH) / 2
+                        width: viewSize.width / 2 - center.x * targetEffective,
+                        height: viewSize.height / 2 - center.y * targetEffective
                     )
                 }
+                
+                // Clamp offset so cities stay on screen
+                targetOffset = clampOffset(targetOffset, viewSize: viewSize, baseScale: baseScale, scale: finalScale)
                 
                 if finalScale != mapScale {
                     // Rubber-band snap back
