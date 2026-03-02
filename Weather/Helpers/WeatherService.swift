@@ -150,6 +150,7 @@ enum CityListID: String, CaseIterable, Identifiable {
 class WeatherService {
     var cityWeatherData: [CityWeather] = []
     var isLoading = false
+    var loadingProgress: Double = 0
     var forecastDays: [ForecastDay] = []
     var lastFetchDate: Date?
     var activeListID: CityListID = .europe
@@ -197,6 +198,7 @@ class WeatherService {
         
         print("🌐 [DEBUG] No valid cache, will fetch from WeatherKit...")
         isLoading = true
+        loadingProgress = 0
         defer {
             isLoading = false
             print("🏁 [DEBUG] isLoading set to false")
@@ -225,6 +227,9 @@ class WeatherService {
                 weatherData.append(cityWeather)
                 
                 print("✅ [\(index + 1)/\(citiesToFetch.count)] Fetched REAL weather for \(city.name): \(Int(cityWeather.temperature))°C, cloud cover: \(cityWeather.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", "))")
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
+                }
             } catch let error as NSError {
                 print("❌ [DEBUG] Error for \(city.name): domain=\(error.domain), code=\(error.code), desc=\(error.localizedDescription)")
                 // Check if this is a WeatherKit authentication error
@@ -239,8 +244,14 @@ class WeatherService {
                 
                 // Skip city — no mock data, will retry on next refresh
                 print("⚠️ Skipping \(city.name) — no data available")
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
+                }
             } catch {
                 print("❌ [DEBUG] Unexpected error for \(city.name): \(error)")
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
+                }
             }
         }
         

@@ -841,16 +841,22 @@ struct ContentView: View {
             if weatherService.cityWeatherData.isEmpty && weatherService.isLoading {
                 // First launch loading state
                 VStack(spacing: 20) {
-                    Spacer()
+                    Spacer().frame(maxHeight: .infinity)
                     Image(systemName: "cloud.sun.fill")
                         .font(.system(size: 56))
                         .symbolRenderingMode(.multicolor)
                     Text("Loading Weather")
                         .font(.avenir(.title2, weight: .semibold))
-                    Text("This only happens the first time you open the app")
-                        .font(.avenir(.footnote, weight: .regular))
-                        .foregroundStyle(.tertiary)
-                    Spacer()
+                    Capsule()
+                        .fill(Color.white.opacity(0.15))
+                        .frame(width: 140, height: 4)
+                        .overlay(alignment: .leading) {
+                            Capsule()
+                                .fill(.white)
+                                .frame(width: 140 * weatherService.loadingProgress, height: 4)
+                        }
+                    Spacer().frame(maxHeight: .infinity)
+                    Spacer().frame(maxHeight: .infinity)
                 }
                 .frame(maxWidth: .infinity)
             } else if weatherService.cityWeatherData.isEmpty && weatherService.hasSavedCities {
@@ -1162,6 +1168,27 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+}
+
+#Preview("Loading") {
+    VStack(spacing: 20) {
+        Spacer()
+        Image(systemName: "cloud.sun.fill")
+            .font(.system(size: 56))
+            .symbolRenderingMode(.multicolor)
+        Text("Loading Weather")
+            .font(.avenir(.title2, weight: .semibold))
+        Capsule()
+            .fill(Color.white.opacity(0.15))
+            .frame(width: 140, height: 4)
+            .overlay(alignment: .leading) {
+                Capsule()
+                    .fill(.white)
+                    .frame(width: 140 * 0.4, height: 4)
+            }
+        Spacer()
+    }
+    .frame(maxWidth: .infinity)
 }
 
 struct WeatherMarker: View {
