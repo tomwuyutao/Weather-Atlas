@@ -367,6 +367,10 @@ struct ContentView: View {
                         onAddCity: cityIsInSidebar(city) ? nil : {
                             Task {
                                 await addCityToSidebar(city)
+                                showingCityDetail = false
+                                if selectedTab == 1 {
+                                    recenterOnAllCities = true
+                                }
                             }
                         },
                         isInSidebar: cityIsInSidebar(city),
@@ -390,6 +394,10 @@ struct ContentView: View {
                                 Button {
                                     Task {
                                         await addCityToSidebar(city)
+                                        showingCityDetail = false
+                                        if selectedTab == 1 {
+                                            recenterOnAllCities = true
+                                        }
                                     }
                                 } label: {
                                     Image(systemName: "plus")
@@ -814,6 +822,10 @@ struct ContentView: View {
                     onAddCity: cityIsInSidebar(city) ? nil : {
                         Task {
                             await addCityToSidebar(city)
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                showingCityDetail = false
+                            }
+                            recenterOnAllCities = true
                         }
                     },
                     isInSidebar: cityIsInSidebar(city),
@@ -844,6 +856,10 @@ struct ContentView: View {
                         onAddCity: cityIsInSidebar(city) ? nil : {
                             Task {
                                 await addCityToSidebar(city)
+                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                    showingCityDetail = false
+                                }
+                                recenterOnAllCities = true
                             }
                         },
                         isInSidebar: cityIsInSidebar(city),
