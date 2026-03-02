@@ -78,6 +78,10 @@ class WeatherService {
     var forecastDays: [ForecastDay] = []
     var lastFetchDate: Date?
     
+    var hasSavedCities: Bool {
+        UserDefaults.standard.data(forKey: citiesListKey) != nil
+    }
+    
     private let weatherService = WeatherKit.WeatherService.shared
     private let cacheKey = "cachedWeatherData"
     private let cacheTimestampKey = "weatherCacheTimestamp"

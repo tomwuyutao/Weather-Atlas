@@ -620,6 +620,8 @@ struct ContentView: View {
                     Spacer()
                 }
                 .frame(maxWidth: .infinity)
+            } else if weatherService.cityWeatherData.isEmpty && weatherService.hasSavedCities {
+                ContentUnavailableView("Loading Weather", systemImage: "cloud.sun", description: Text("Fetching forecasts for your cities…"))
             } else if weatherService.cityWeatherData.isEmpty {
                 ContentUnavailableView("No Cities", systemImage: "cloud.sun", description: Text("Tap + to add a city"))
             } else if isGridView {
