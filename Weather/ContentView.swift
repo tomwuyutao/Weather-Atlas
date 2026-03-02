@@ -420,10 +420,14 @@ struct ContentView: View {
                             ToolbarItem(placement: .topBarTrailing) {
                                 Menu {
                                     Button {
+                                        let revealCity = city
                                         showingCityDetail = false
-                                        centerOnCityTrigger = city
+                                        centerOnCityTrigger = nil
                                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                             selectedTab = 1
+                                        }
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                            centerOnCityTrigger = revealCity
                                         }
                                     } label: {
                                         Label("Reveal on Map", systemImage: "map")
@@ -931,10 +935,14 @@ struct ContentView: View {
                         recenterOnAllCities = true
                     } : nil,
                     onRevealOnMap: detailOpenedFromList ? {
+                        let revealCity = city
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             showingCityDetail = false
                         }
-                        centerOnCityTrigger = city
+                        centerOnCityTrigger = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            centerOnCityTrigger = revealCity
+                        }
                     } : nil,
                     isInSidebar: cityIsInSidebar(city),
                     showCloudCover: showCloudCover
@@ -978,10 +986,14 @@ struct ContentView: View {
                             recenterOnAllCities = true
                         } : nil,
                         onRevealOnMap: detailOpenedFromList ? {
+                            let revealCity = city
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                                 showingCityDetail = false
                             }
-                            centerOnCityTrigger = city
+                            centerOnCityTrigger = nil
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                centerOnCityTrigger = revealCity
+                            }
                         } : nil,
                         isInSidebar: cityIsInSidebar(city),
                         showCloudCover: showCloudCover

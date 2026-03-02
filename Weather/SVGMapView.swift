@@ -81,6 +81,8 @@ struct SVGMapView: View {
     @State private var renderScale: CGFloat = 10.0
     // Whether we have centered on the actual city data (not just fallback)
     @State private var hasCenteredOnCities: Bool = false
+    // Briefly highlight a marker after "Reveal on Map"
+    @State private var highlightedMarkerID: UUID?
     
     var body: some View {
         GeometryReader { geometry in
@@ -128,6 +130,13 @@ struct SVGMapView: View {
                 .onChange(of: centerOnCity?.id) { _, _ in
                     if let city = centerOnCity {
                         animateToCity(city, viewSize: viewSize, baseScale: baseScale)
+                        highlightedMarkerID = city.id
+                        Task {
+                            try? await Task.sleep(for: .seconds(2))
+                            withAnimation(.easeOut(duration: 0.5)) {
+                                highlightedMarkerID = nil
+                            }
+                        }
                     }
                 }
         }
@@ -234,6 +243,12 @@ struct SVGMapView: View {
                 isPlaying: isPlaying,
                 showAsDot: showDots
             )
+            .overlay {
+                if highlightedMarkerID == cityWeather.id {
+                    RevealPulseRing()
+                        .scaleEffect(1 / liveZoom, anchor: .center)
+                }
+            }
             .scaleEffect((tappedMarkerID == cityWeather.id ? 1.5 : 1.0) / liveZoom, anchor: .center)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: tappedMarkerID)
             .position(
@@ -531,5 +546,21 @@ struct SVGMapView: View {
             mapLastOffset = mapOffset
         }
         renderScale = targetScale
+    }
+}
+
+// MARK: - Pulsing ring for "Reveal on Map"
+
+private struct RevealPulseRing: View {
+    @State private var isPulsing = false
+    
+    var body: some View {
+        Circle()
+            .stroke(Color.accentColor, lineWidth: 2)
+            .frame(width: 44, height: 44)
+            .scaleEffect(isPulsing ? 1.3 : 0.9)
+            .opacity(isPulsing ? 0.4 : 1.0)
+            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: isPulsing)
+            .onAppear { isPulsing = true }
     }
 }
