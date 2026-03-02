@@ -38,28 +38,20 @@ struct SVGMapView: View {
                 viewSize.width / GeoProjection.svgWidth,
                 viewSize.height / GeoProjection.svgHeight
             )
-            let effectiveScale = baseScale * mapScale
-            let contentWidth = GeoProjection.svgWidth * effectiveScale
-            let contentHeight = GeoProjection.svgHeight * effectiveScale
+            let svgWidth = GeoProjection.svgWidth
+            let svgHeight = GeoProjection.svgHeight
             
-            ZStack(alignment: .topLeading) {
-                // Country shapes — rendered at full effective scale for sharpness
-                Canvas { context, size in
-                    for country in countries {
-                        var transform = CGAffineTransform(
-                            scaleX: effectiveScale, y: effectiveScale
-                        )
-                        if let transformedPath = country.path.copy(using: &transform) {
-                            context.fill(
-                                Path(transformedPath),
-                                with: .color(.gray.opacity(0.2))
-                            )
-                        }
-                    }
+            // Render map + icons at fixed SVG size, then transform as a unit
+            Canvas { context, size in
+                for country in countries {
+                    context.fill(
+                        Path(country.path),
+                        with: .color(.gray.opacity(0.2))
+                    )
                 }
-                .frame(width: contentWidth, height: contentHeight)
-                
-                // Weather markers
+            }
+            .frame(width: svgWidth, height: svgHeight)
+            .overlay {
                 ForEach(cities) { cityWeather in
                     let forecast = cityWeather.forecast(for: selectedDayOffset)
                     let passesFilter = !filterSunny || (forecast.condition == .clear && forecast.cloudCover < 0.30)
@@ -78,10 +70,8 @@ struct SVGMapView: View {
                         passesFilter: passesFilter,
                         isPlaying: isPlaying
                     )
-                    .position(
-                        x: svgPos.x * effectiveScale,
-                        y: svgPos.y * effectiveScale
-                    )
+                    .scaleEffect(1.0 / (baseScale * mapScale), anchor: .center)
+                    .position(x: svgPos.x, y: svgPos.y)
                     .opacity(passesFilter ? 1 : 0)
                     .animation(.easeInOut(duration: 0.3), value: passesFilter)
                     .allowsHitTesting(passesFilter)
@@ -92,9 +82,9 @@ struct SVGMapView: View {
                         }
                     }
                 }
-                .frame(width: contentWidth, height: contentHeight)
             }
-            .frame(width: contentWidth, height: contentHeight)
+            // Scale + translate the entire map+markers as one layer
+            .scaleEffect(baseScale * mapScale, anchor: .topLeading)
             .offset(mapOffset)
             .gesture(
                 DragGesture()
@@ -122,9 +112,7 @@ struct SVGMapView: View {
                 MagnifyGesture()
                     .onChanged { value in
                         let newScale = min(max(mapLastScale * value.magnification, minScale), maxScale)
-                        // Zoom anchored at view center
                         let viewCenter = CGPoint(x: viewSize.width / 2, y: viewSize.height / 2)
-                        // SVG point at view center: screenPos = svgPt * effectiveScale + offset
                         let startEffective = baseScale * mapLastScale
                         let svgX = (viewCenter.x - mapLastOffset.width) / startEffective
                         let svgY = (viewCenter.y - mapLastOffset.height) / startEffective
