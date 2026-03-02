@@ -521,8 +521,10 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             menuRow(icon: "plus", title: "Add City") {
                 showingMenuPopover = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    showingAddCityView = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    withAnimation {
+                        showingAddCityView = true
+                    }
                 }
             }
 
