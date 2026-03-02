@@ -816,14 +816,34 @@ struct WeatherMarker: View {
     private var displayIcon: String {
         if filterSunny {
             if isPlaying {
-                // During playback: always sun so no icon transitions
                 return "sun.max.fill"
             } else {
-                // Not playing: only sun for passing cities, others keep real icon for clean fade out
                 return passesFilter ? "sun.max.fill" : forecast.weatherIcon
             }
         }
+        // Use plain cloud for rain/drizzle/snow — the animation shows the precipitation
+        if forecast.condition == .rain || forecast.condition == .drizzle || forecast.condition == .snow {
+            return "cloud.fill"
+        }
         return forecast.weatherIcon
+    }
+
+    private var displayCondition: AppWeatherCondition {
+        if filterSunny && passesFilter {
+            return .clear
+        }
+        // Match animation to the displayed icon, not raw condition
+        // e.g. mostlyCloudy maps to .partlyCloudy but shows cloud.fill (no sun)
+        let icon = displayIcon
+        if icon == "cloud.fill" {
+            switch forecast.condition {
+            case .rain: return .rain
+            case .drizzle: return .drizzle
+            case .snow: return .snow
+            default: return .cloudy
+            }
+        }
+        return forecast.condition
     }
 
     var body: some View {
@@ -835,6 +855,9 @@ struct WeatherMarker: View {
                 .symbolRenderingMode(.multicolor)
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 .frame(width: 32, height: 32)
+                .background(alignment: .top) {
+                    WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 32)
+                }
                 .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
         } else {
             // Full mode: weather icon + temperature or cloud cover
@@ -844,6 +867,9 @@ struct WeatherMarker: View {
                     .font(.title2)
                     .symbolRenderingMode(.multicolor)
                     .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                    .background(alignment: .top) {
+                        WeatherEffectOverlay(condition: displayCondition, isCompact: false, iconHeight: 28)
+                    }
 
                 Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.daytimeHigh))°")
                     .font(.avenir(.caption2, weight: .medium))
