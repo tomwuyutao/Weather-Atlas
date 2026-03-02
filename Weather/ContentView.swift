@@ -921,49 +921,55 @@ struct WeatherMarker: View {
     }
 
     var body: some View {
-        if showAsDot {
+        ZStack {
+            // Dot layer
             Circle()
                 .fill(displayCondition.dotColor)
                 .frame(width: 10, height: 10)
                 .shadow(color: displayCondition.dotColor.opacity(0.5), radius: 4)
-                .padding(15)
-                .contentShape(Circle())
-                .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
-        } else if isCompact {
-            // Compact mode: just the weather icon, no text
-            Image(systemName: displayIcon)
-                .id(isPlaying ? "playing" : "filter-\(filterSunny)")
-                .font(.title)
-                .symbolRenderingMode(.multicolor)
-                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                .frame(width: 40, height: 40)
-                .background(alignment: .top) {
-                    WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 40)
-                }
-                .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
-        } else {
-            // Full mode: weather icon + temperature or cloud cover
-            VStack(spacing: 2) {
-                Image(systemName: displayIcon)
-                    .id(isPlaying ? "playing" : "filter-\(filterSunny)")
-                    .font(.title)
-                    .symbolRenderingMode(.multicolor)
-                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                    .background(alignment: .top) {
-                        WeatherEffectOverlay(condition: displayCondition, isCompact: false, iconHeight: 36)
-                    }
+                .scaleEffect(showAsDot ? 1 : 0.01)
+                .opacity(showAsDot ? 1 : 0)
 
-                Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.daytimeHigh))°")
-                    .font(.avenir(.caption, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .offset(x: 2)
-                    .contentTransition(.numericText())
-                    .animation(.smooth(duration: 0.4), value: dayOffset)
-                    .animation(.smooth(duration: 0.4), value: showCloudCover)
+            // Icon layer
+            Group {
+                if isCompact {
+                    Image(systemName: displayIcon)
+                        .id(isPlaying ? "playing" : "filter-\(filterSunny)")
+                        .font(.title)
+                        .symbolRenderingMode(.multicolor)
+                        .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                        .frame(width: 40, height: 40)
+                        .background(alignment: .top) {
+                            WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 40)
+                        }
+                } else {
+                    VStack(spacing: 2) {
+                        Image(systemName: displayIcon)
+                            .id(isPlaying ? "playing" : "filter-\(filterSunny)")
+                            .font(.title)
+                            .symbolRenderingMode(.multicolor)
+                            .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                            .background(alignment: .top) {
+                                WeatherEffectOverlay(condition: displayCondition, isCompact: false, iconHeight: 36)
+                            }
+
+                        Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.daytimeHigh))°")
+                            .font(.avenir(.caption, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .offset(x: 2)
+                            .contentTransition(.numericText())
+                            .animation(.smooth(duration: 0.4), value: dayOffset)
+                            .animation(.smooth(duration: 0.4), value: showCloudCover)
+                    }
+                    .frame(width: 40, height: 56)
+                }
             }
-            .frame(width: 40, height: 56)
-            .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
+            .scaleEffect(showAsDot ? 0.01 : 1)
+            .opacity(showAsDot ? 0 : 1)
         }
+        .padding(showAsDot ? 15 : 0)
+        .contentShape(Circle())
+        .animation(.easeInOut(duration: 0.3), value: showAsDot)
     }
 }
 #if !os(macOS)

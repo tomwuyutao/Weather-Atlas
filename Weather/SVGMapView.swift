@@ -139,8 +139,6 @@ struct SVGMapView: View {
         let threshold: CGFloat = 36.0
         let canvasThreshold = threshold / liveZoom
         let canvasThresholdSq = canvasThreshold * canvasThreshold
-        
-        // Margin so markers near the edge are included
         let margin: CGFloat = 40.0
         
         struct Pos {
@@ -159,15 +157,10 @@ struct SVGMapView: View {
             )
             let canvasX = svgPos.x * canvasEffective
             let canvasY = svgPos.y * canvasEffective
-            
-            // Convert to screen coordinates
             let screenX = canvasX * liveZoom + mapOffset.width
             let screenY = canvasY * liveZoom + mapOffset.height
-            
-            // Only include markers visible on screen
             guard screenX > -margin && screenX < viewSize.width + margin &&
                   screenY > -margin && screenY < viewSize.height + margin else { continue }
-            
             onScreen.append(Pos(x: canvasX, y: canvasY))
         }
         
