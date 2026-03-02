@@ -24,7 +24,7 @@ struct ContentView: View {
     @Namespace private var popupNamespace
     @State private var searchText: String = ""
     @State private var citySearchManager = CitySearchManager()
-    @State private var selectedTab: Int = 1
+    @State private var selectedTab: Int = 0
     @State private var showingSearchSheet: Bool = true
     @State private var selectedDetent: PresentationDetent = .height(80)
     @State private var lastRefreshText: String = ""
@@ -399,10 +399,15 @@ struct ContentView: View {
             }
         }
         .task {
+            print("📱 [DEBUG] iOS .task started")
             if countries.isEmpty {
+                print("📱 [DEBUG] Parsing SVG map...")
                 countries = SVGMapParser.parse()
+                print("📱 [DEBUG] SVG map parsed, \(countries.count) countries")
             }
+            print("📱 [DEBUG] About to call fetchWeatherForAllCities()...")
             await weatherService.fetchWeatherForAllCities()
+            print("📱 [DEBUG] fetchWeatherForAllCities() returned, cityWeatherData.count = \(weatherService.cityWeatherData.count)")
         }
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
@@ -594,7 +599,28 @@ struct ContentView: View {
 
     private var iOSListView: some View {
         Group {
-            if weatherService.cityWeatherData.isEmpty {
+            if weatherService.cityWeatherData.isEmpty && weatherService.isLoading {
+                // First launch loading state
+                VStack(spacing: 20) {
+                    Spacer()
+                    Image(systemName: "cloud.sun.fill")
+                        .font(.system(size: 56))
+                        .symbolRenderingMode(.multicolor)
+                    Text("Loading Weather")
+                        .font(.avenir(.title2, weight: .semibold))
+                    Text("Fetching forecasts for your cities…")
+                        .font(.avenir(.subheadline, weight: .regular))
+                        .foregroundStyle(.secondary)
+                    Text("This only happens the first time you open the app")
+                        .font(.avenir(.footnote, weight: .regular))
+                        .foregroundStyle(.tertiary)
+                    ProgressView()
+                        .controlSize(.regular)
+                        .padding(.top, 4)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            } else if weatherService.cityWeatherData.isEmpty {
                 ContentUnavailableView("No Cities", systemImage: "cloud.sun", description: Text("Tap + to add a city"))
             } else if isGridView {
                 ScrollView {
@@ -711,6 +737,24 @@ struct ContentView: View {
 
     private var mapView: some View {
         ZStack {
+            if weatherService.cityWeatherData.isEmpty && weatherService.isLoading {
+                // First launch: show loading overlay on map
+                Color.black
+                    .ignoresSafeArea()
+                    .overlay {
+                        VStack(spacing: 16) {
+                            Image(systemName: "globe.europe.africa.fill")
+                                .font(.system(size: 48))
+                                .foregroundStyle(.secondary)
+                            Text("Loading Map Data…")
+                                .font(.avenir(.headline, weight: .medium))
+                                .foregroundStyle(.secondary)
+                            ProgressView()
+                                .controlSize(.regular)
+                        }
+                    }
+            }
+
             SVGMapView(
                 countries: countries,
                 cities: weatherService.cityWeatherData,

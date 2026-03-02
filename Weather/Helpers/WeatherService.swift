@@ -123,41 +123,57 @@ class WeatherService {
     ]
     
     func fetchWeatherForAllCities() async {
+        print("🚀 [DEBUG] fetchWeatherForAllCities() CALLED")
+        
         // Check if we have valid cached data
-        if let cachedData = loadCachedData(), isCacheValid() {
+        print("🔍 [DEBUG] Checking cache...")
+        let cachedData = loadCachedData()
+        let cacheValid = isCacheValid()
+        print("🔍 [DEBUG] cachedData=\(cachedData != nil ? "\(cachedData!.count) cities" : "nil"), cacheValid=\(cacheValid)")
+        
+        if let cachedData = cachedData, cacheValid {
             print("📦 Using CACHED weather data")
             for cw in cachedData {
                 print("📦 CACHED \(cw.city.name): temp=\(Int(cw.temperature))°C, icon=\(cw.symbolName), cloud cover=\(cw.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", ")) [from cache — may be ESTIMATED if old cache]")
             }
             self.cityWeatherData = cachedData
             generateForecastDays()
+            print("🏁 [DEBUG] Returned from cache, done.")
             return
         }
         
+        print("🌐 [DEBUG] No valid cache, will fetch from WeatherKit...")
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            print("🏁 [DEBUG] isLoading set to false")
+        }
         
         // Generate 10 days of forecast data
         generateForecastDays()
         
         // Load the saved cities list, or use default European cities if none saved
         let citiesToFetch = loadSavedCities() ?? europeanCities
-        print("📍 Fetching weather for \(citiesToFetch.count) cities")
+        print("📍 [DEBUG] Fetching weather for \(citiesToFetch.count) cities: \(citiesToFetch.map { $0.name }.joined(separator: ", "))")
         
         var weatherData: [CityWeather] = []
         
-        for city in citiesToFetch {
+        for (index, city) in citiesToFetch.enumerated() {
+            print("🌤️ [DEBUG] [\(index + 1)/\(citiesToFetch.count)] Fetching \(city.name)...")
             do {
                 // Fetch real weather data from WeatherKit
                 let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
+                print("🌤️ [DEBUG] Calling weatherService.weather(for: \(city.name))...")
                 let weather = try await weatherService.weather(for: location)
+                print("🌤️ [DEBUG] Got WeatherKit response for \(city.name)")
                 
                 // Convert WeatherKit data to our model
                 let cityWeather = await convertWeatherKitData(weather: weather, for: city)
                 weatherData.append(cityWeather)
                 
-                print("✅ Fetched REAL weather for \(city.name): \(Int(cityWeather.temperature))°C, cloud cover: \(cityWeather.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", "))")
+                print("✅ [\(index + 1)/\(citiesToFetch.count)] Fetched REAL weather for \(city.name): \(Int(cityWeather.temperature))°C, cloud cover: \(cityWeather.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", "))")
             } catch let error as NSError {
+                print("❌ [DEBUG] Error for \(city.name): domain=\(error.domain), code=\(error.code), desc=\(error.localizedDescription)")
                 // Check if this is a WeatherKit authentication error
                 if error.domain == "WeatherDaemon.WDSJWTAuthenticatorServiceListener.Errors" && error.code == 2 {
                     print("⚠️ WeatherKit authentication failed for \(city.name). Make sure WeatherKit capability is enabled.")
@@ -170,10 +186,12 @@ class WeatherService {
                 
                 // Skip city — no mock data, will retry on next refresh
                 print("⚠️ Skipping \(city.name) — no data available")
+            } catch {
+                print("❌ [DEBUG] Unexpected error for \(city.name): \(error)")
             }
         }
         
-        print("📊 Total cities loaded: \(weatherData.count)")
+        print("📊 [DEBUG] Total cities loaded: \(weatherData.count) out of \(citiesToFetch.count)")
         self.cityWeatherData = weatherData
         
         // Cache the fetched data

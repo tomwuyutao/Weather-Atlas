@@ -194,6 +194,22 @@ struct DesktopSidebar: View {
                     } else {
                         cityListContent
                     }
+                } else if cities.isEmpty && isRefreshing {
+                    // First launch loading state
+                    Section {
+                        VStack(spacing: 12) {
+                            Image(systemName: "cloud.sun.fill")
+                                .font(.system(size: 36))
+                                .symbolRenderingMode(.multicolor)
+                            Text("Loading Weather…")
+                                .font(.headline)
+                                .foregroundStyle(.secondary)
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 40)
+                    }
                 }
             }
             #if os(macOS)
