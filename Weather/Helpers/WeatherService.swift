@@ -55,6 +55,19 @@ enum AppWeatherCondition {
         case .wind: return 20
         }
     }
+    
+    var dotColor: Color {
+        switch self {
+        case .clear: return .yellow
+        case .partlyCloudy: return Color.yellow.opacity(0.6)
+        case .cloudy: return .white
+        case .rain: return .blue
+        case .drizzle: return Color(red: 0.4, green: 0.55, blue: 0.9)
+        case .snow: return Color(red: 0.55, green: 0.65, blue: 0.85)
+        case .fog: return .gray
+        case .wind: return .white
+        }
+    }
 }
 
 @Observable

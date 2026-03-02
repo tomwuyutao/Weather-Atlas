@@ -108,8 +108,45 @@ struct SVGMapView: View {
         .gesture(magnifyGesture(viewSize: viewSize, baseScale: baseScale, minScale: minScale, rubberBandMinScale: rubberBandMinScale, svgWidth: svgWidth, svgHeight: svgHeight))
     }
     
+    /// Returns true if any two visible markers overlap — all switch to dots
+    private func anyMarkersColliding(canvasEffective: CGFloat, liveZoom: CGFloat) -> Bool {
+        let threshold: CGFloat = 36.0
+        let canvasThreshold = threshold / liveZoom
+        let canvasThresholdSq = canvasThreshold * canvasThreshold
+        
+        struct Pos {
+            let x: CGFloat
+            let y: CGFloat
+        }
+        
+        var visible: [Pos] = []
+        for cityWeather in cities {
+            let forecast = cityWeather.forecast(for: selectedDayOffset)
+            let passesFilter = !filterSunny || (forecast.condition == .clear && forecast.cloudCover < 0.30)
+            guard passesFilter else { continue }
+            let svgPos = GeoProjection.geoToSVG(
+                latitude: cityWeather.city.latitude,
+                longitude: cityWeather.city.longitude
+            )
+            visible.append(Pos(x: svgPos.x * canvasEffective, y: svgPos.y * canvasEffective))
+        }
+        
+        for i in 0..<visible.count {
+            for j in (i + 1)..<visible.count {
+                let dx = visible[i].x - visible[j].x
+                let dy = visible[i].y - visible[j].y
+                if dx * dx + dy * dy < canvasThresholdSq {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+    
     @ViewBuilder
     private func markersOverlay(canvasEffective: CGFloat, liveZoom: CGFloat, isGesturing: Bool) -> some View {
+        let showDots = anyMarkersColliding(canvasEffective: canvasEffective, liveZoom: liveZoom)
+        
         ForEach(cities) { cityWeather in
             let forecast = cityWeather.forecast(for: selectedDayOffset)
             let passesFilter = !filterSunny || (forecast.condition == .clear && forecast.cloudCover < 0.30)
@@ -126,7 +163,8 @@ struct SVGMapView: View {
                 showCloudCover: showCloudCover,
                 filterSunny: filterSunny,
                 passesFilter: passesFilter,
-                isPlaying: isPlaying
+                isPlaying: isPlaying,
+                showAsDot: showDots
             )
             .scaleEffect(1.0 / liveZoom, anchor: .center)
             .position(

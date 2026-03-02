@@ -300,6 +300,11 @@ struct WeatherEffectOverlay: View {
     VStack(spacing: 32) {
         ForEach(Array(conditions.enumerated()), id: \.offset) { _, item in
             HStack(spacing: 16) {
+                // Colored dot
+                Circle()
+                    .fill(item.2.dotColor)
+                    .frame(width: 12, height: 12)
+                
                 Image(systemName: item.0)
                     .font(.system(size: 48))
                     .symbolRenderingMode(.multicolor)

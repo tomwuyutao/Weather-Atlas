@@ -822,6 +822,7 @@ struct WeatherMarker: View {
     var filterSunny: Bool = false
     var passesFilter: Bool = true
     var isPlaying: Bool = false
+    var showAsDot: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -863,7 +864,13 @@ struct WeatherMarker: View {
     }
 
     var body: some View {
-        if isCompact {
+        if showAsDot {
+            Circle()
+                .fill(displayCondition.dotColor)
+                .frame(width: 10, height: 10)
+                .shadow(color: displayCondition.dotColor.opacity(0.5), radius: 4)
+                .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
+        } else if isCompact {
             // Compact mode: just the weather icon, no text
             Image(systemName: displayIcon)
                 .id(isPlaying ? "playing" : "filter-\(filterSunny)")
