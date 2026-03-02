@@ -126,7 +126,7 @@ struct SVGMapView: View {
         }
         .frame(width: canvasWidth, height: canvasHeight)
         .overlay {
-            markersOverlay(canvasEffective: canvasEffective, liveZoom: liveZoom, isGesturing: isGesturing)
+            markersOverlay(canvasEffective: canvasEffective, liveZoom: liveZoom, isGesturing: isGesturing, viewSize: viewSize)
         }
         .scaleEffect(liveZoom, anchor: .topLeading)
         .offset(mapOffset)
@@ -134,18 +134,21 @@ struct SVGMapView: View {
         .gesture(magnifyGesture(viewSize: viewSize, baseScale: baseScale, minScale: minScale, rubberBandMinScale: rubberBandMinScale, svgWidth: svgWidth, svgHeight: svgHeight))
     }
     
-    /// Returns true if any two visible markers overlap — all switch to dots
-    private func anyMarkersColliding(canvasEffective: CGFloat, liveZoom: CGFloat) -> Bool {
+    /// Returns true if any two on-screen markers overlap — all switch to dots
+    private func anyMarkersColliding(canvasEffective: CGFloat, liveZoom: CGFloat, viewSize: CGSize) -> Bool {
         let threshold: CGFloat = 36.0
         let canvasThreshold = threshold / liveZoom
         let canvasThresholdSq = canvasThreshold * canvasThreshold
+        
+        // Margin so markers near the edge are included
+        let margin: CGFloat = 40.0
         
         struct Pos {
             let x: CGFloat
             let y: CGFloat
         }
         
-        var visible: [Pos] = []
+        var onScreen: [Pos] = []
         for cityWeather in cities {
             let forecast = cityWeather.forecast(for: selectedDayOffset)
             let passesFilter = !filterSunny || (forecast.condition == .clear && forecast.cloudCover < 0.30)
@@ -154,13 +157,24 @@ struct SVGMapView: View {
                 latitude: cityWeather.city.latitude,
                 longitude: cityWeather.city.longitude
             )
-            visible.append(Pos(x: svgPos.x * canvasEffective, y: svgPos.y * canvasEffective))
+            let canvasX = svgPos.x * canvasEffective
+            let canvasY = svgPos.y * canvasEffective
+            
+            // Convert to screen coordinates
+            let screenX = canvasX * liveZoom + mapOffset.width
+            let screenY = canvasY * liveZoom + mapOffset.height
+            
+            // Only include markers visible on screen
+            guard screenX > -margin && screenX < viewSize.width + margin &&
+                  screenY > -margin && screenY < viewSize.height + margin else { continue }
+            
+            onScreen.append(Pos(x: canvasX, y: canvasY))
         }
         
-        for i in 0..<visible.count {
-            for j in (i + 1)..<visible.count {
-                let dx = visible[i].x - visible[j].x
-                let dy = visible[i].y - visible[j].y
+        for i in 0..<onScreen.count {
+            for j in (i + 1)..<onScreen.count {
+                let dx = onScreen[i].x - onScreen[j].x
+                let dy = onScreen[i].y - onScreen[j].y
                 if dx * dx + dy * dy < canvasThresholdSq {
                     return true
                 }
@@ -170,8 +184,8 @@ struct SVGMapView: View {
     }
     
     @ViewBuilder
-    private func markersOverlay(canvasEffective: CGFloat, liveZoom: CGFloat, isGesturing: Bool) -> some View {
-        let showDots = anyMarkersColliding(canvasEffective: canvasEffective, liveZoom: liveZoom)
+    private func markersOverlay(canvasEffective: CGFloat, liveZoom: CGFloat, isGesturing: Bool, viewSize: CGSize) -> some View {
+        let showDots = anyMarkersColliding(canvasEffective: canvasEffective, liveZoom: liveZoom, viewSize: viewSize)
         
         ForEach(cities) { cityWeather in
             let forecast = cityWeather.forecast(for: selectedDayOffset)
