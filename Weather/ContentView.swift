@@ -38,6 +38,7 @@ struct ContentView: View {
     @State private var mapLastScale: CGFloat = 10.0
     @State private var mapLastOffset: CGSize = .zero
     @State private var mapHasInitialized: Bool = false
+    @State private var recenterOnAllCities: Bool = false
 
     private func timeSinceRefreshText() -> String {
         guard let lastFetch = weatherService.lastFetchDate else {
@@ -154,7 +155,7 @@ struct ContentView: View {
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
 
                 // Floating bottom toolbar
-                HStack(spacing: 12) {
+                HStack(alignment: .bottom, spacing: 12) {
                     // Date switcher capsule
                     HStack(spacing: 0) {
                         Image(systemName: "chevron.left")
@@ -231,47 +232,62 @@ struct ContentView: View {
 
                     Spacer()
 
-                    // View switcher capsule
-                    HStack(spacing: 8) {
-                        Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
-                            .contentTransition(.symbolEffect(.replace))
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
-                            .frame(width: 42, height: 36)
-                            .background {
-                                if selectedTab == 0 {
-                                    Capsule()
-                                        .fill(.ultraThinMaterial)
-                                        .transition(.scale.combined(with: .opacity))
+                    // View switcher capsule with optional re-center button above map icon
+                    VStack(alignment: .trailing, spacing: 10) {
+                        if selectedTab == 1 {
+                            Image(systemName: "location.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .frame(width: 42, height: 36)
+                                .glassEffect(.regular.interactive(), in: .capsule)
+                                .offset(x: -6)
+                                .onTapGesture {
+                                    recenterOnAllCities = true
                                 }
-                            }
-                            .contentShape(Capsule())
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    selectedTab = 0
-                                }
-                            }
+                                .transition(.scale.combined(with: .opacity))
+                        }
 
-                        Image(systemName: selectedTab == 1 ? "map.fill" : "map")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(selectedTab == 1 ? .primary : .secondary)
-                            .frame(width: 42, height: 36)
-                            .background {
-                                if selectedTab == 1 {
-                                    Capsule()
-                                        .fill(.ultraThinMaterial)
-                                        .transition(.scale.combined(with: .opacity))
+                        HStack(spacing: 8) {
+                            Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
+                                .contentTransition(.symbolEffect(.replace))
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
+                                .frame(width: 42, height: 36)
+                                .background {
+                                    if selectedTab == 0 {
+                                        Capsule()
+                                            .fill(.ultraThinMaterial)
+                                            .transition(.scale.combined(with: .opacity))
+                                    }
                                 }
-                            }
-                            .contentShape(Capsule())
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    selectedTab = 1
+                                .contentShape(Capsule())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                        selectedTab = 0
+                                    }
                                 }
-                            }
+
+                            Image(systemName: selectedTab == 1 ? "map.fill" : "map")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(selectedTab == 1 ? .primary : .secondary)
+                                .frame(width: 42, height: 36)
+                                .background {
+                                    if selectedTab == 1 {
+                                        Capsule()
+                                            .fill(.ultraThinMaterial)
+                                            .transition(.scale.combined(with: .opacity))
+                                    }
+                                }
+                                .contentShape(Capsule())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                        selectedTab = 1
+                                    }
+                                }
+                        }
+                        .padding(6)
+                        .glassEffect(.regular.interactive(), in: .capsule)
                     }
-                    .padding(6)
-                    .glassEffect(.regular.interactive(), in: .capsule)
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
@@ -767,7 +783,8 @@ struct ContentView: View {
                 mapLastScale: $mapLastScale,
                 mapLastOffset: $mapLastOffset,
                 mapHasInitialized: $mapHasInitialized,
-                centerOnCity: centerOnCityTrigger
+                centerOnCity: centerOnCityTrigger,
+                recenterOnAllCities: $recenterOnAllCities
             )
             .ignoresSafeArea()
 
@@ -916,12 +933,12 @@ struct WeatherMarker: View {
             // Compact mode: just the weather icon, no text
             Image(systemName: displayIcon)
                 .id(isPlaying ? "playing" : "filter-\(filterSunny)")
-                .font(.title2)
+                .font(.title)
                 .symbolRenderingMode(.multicolor)
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                .frame(width: 32, height: 32)
+                .frame(width: 40, height: 40)
                 .background(alignment: .top) {
-                    WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 32)
+                    WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 40)
                 }
                 .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
         } else {
@@ -929,22 +946,22 @@ struct WeatherMarker: View {
             VStack(spacing: 2) {
                 Image(systemName: displayIcon)
                     .id(isPlaying ? "playing" : "filter-\(filterSunny)")
-                    .font(.title2)
+                    .font(.title)
                     .symbolRenderingMode(.multicolor)
                     .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                     .background(alignment: .top) {
-                        WeatherEffectOverlay(condition: displayCondition, isCompact: false, iconHeight: 28)
+                        WeatherEffectOverlay(condition: displayCondition, isCompact: false, iconHeight: 36)
                     }
 
                 Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : "\(Int(forecast.daytimeHigh))°")
-                    .font(.avenir(.caption2, weight: .medium))
+                    .font(.avenir(.caption, weight: .medium))
                     .foregroundStyle(.primary)
                     .offset(x: 2)
                     .contentTransition(.numericText())
                     .animation(.smooth(duration: 0.4), value: dayOffset)
                     .animation(.smooth(duration: 0.4), value: showCloudCover)
             }
-            .frame(width: 32, height: 46)
+            .frame(width: 40, height: 56)
             .matchedGeometryEffect(id: "marker-\(cityWeather.id)", in: namespace)
         }
     }

@@ -27,9 +27,10 @@ struct SVGMapView: View {
     @Binding var mapHasInitialized: Bool
     
     var centerOnCity: CityWeather?
+    @Binding var recenterOnAllCities: Bool
     
-    private let maxScale: CGFloat = 30.0
-    private let rubberBandMaxScale: CGFloat = 40.0
+    private let maxScale: CGFloat = 60.0
+    private let rubberBandMaxScale: CGFloat = 75.0
     
     // Magnification samples used for per-frame rate limiting
     @State private var magnificationSamples: [(magnification: CGFloat, time: Date)] = []
@@ -81,6 +82,12 @@ struct SVGMapView: View {
                         centerOnCities(viewSize: viewSize, baseScale: baseScale)
                         mapHasInitialized = true
                         hasCenteredOnCities = true
+                    }
+                }
+                .onChange(of: recenterOnAllCities) { _, newValue in
+                    if newValue {
+                        animateToCities(viewSize: viewSize, baseScale: baseScale)
+                        recenterOnAllCities = false
                     }
                 }
                 .onChange(of: centerOnCity?.id) { _, _ in
@@ -371,6 +378,54 @@ struct SVGMapView: View {
         )
         mapLastOffset = mapOffset
         isZoomedOut = fitScale < 15.0
+    }
+    
+    private func animateToCities(viewSize: CGSize, baseScale: CGFloat) {
+        guard !cities.isEmpty else { return }
+        
+        var minX = CGFloat.greatestFiniteMagnitude
+        var maxX = -CGFloat.greatestFiniteMagnitude
+        var minY = CGFloat.greatestFiniteMagnitude
+        var maxY = -CGFloat.greatestFiniteMagnitude
+        
+        for city in cities {
+            let svgPos = GeoProjection.geoToSVG(
+                latitude: city.city.latitude,
+                longitude: city.city.longitude
+            )
+            minX = min(minX, svgPos.x)
+            maxX = max(maxX, svgPos.x)
+            minY = min(minY, svgPos.y)
+            maxY = max(maxY, svgPos.y)
+        }
+        
+        let centerSVG = CGPoint(x: (minX + maxX) / 2, y: (minY + maxY) / 2)
+        let svgSpanX = maxX - minX
+        let svgSpanY = maxY - minY
+        
+        let padding: CGFloat = 1.4
+        let minScale: CGFloat = viewSize.height / (GeoProjection.svgHeight * baseScale)
+        var fitScale: CGFloat
+        if svgSpanX < 0.001 && svgSpanY < 0.001 {
+            fitScale = 10.0
+        } else {
+            let scaleX = viewSize.width / (svgSpanX * baseScale * padding)
+            let scaleY = viewSize.height / (svgSpanY * baseScale * padding)
+            fitScale = min(scaleX, scaleY)
+            fitScale = min(max(fitScale, minScale), maxScale)
+        }
+        
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            mapScale = fitScale
+            mapLastScale = fitScale
+            let effective = baseScale * fitScale
+            mapOffset = CGSize(
+                width: viewSize.width / 2 - centerSVG.x * effective,
+                height: viewSize.height / 2 - centerSVG.y * effective
+            )
+            mapLastOffset = mapOffset
+        }
+        renderScale = fitScale
     }
     
     private func animateToCity(_ cityWeather: CityWeather, viewSize: CGSize, baseScale: CGFloat) {

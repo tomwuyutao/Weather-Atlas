@@ -10,6 +10,15 @@ import SwiftUI
 @main
 struct WeatherApp: App {
     init() {
+        // One-time migration: clear old city data so new defaults take effect
+        let migrationKey = "defaultCitiesMigrationV2"
+        if !UserDefaults.standard.bool(forKey: migrationKey) {
+            UserDefaults.standard.removeObject(forKey: "savedCitiesList")
+            UserDefaults.standard.removeObject(forKey: "cachedWeatherData")
+            UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp")
+            UserDefaults.standard.set(true, forKey: migrationKey)
+        }
+        
         #if !os(macOS)
         // Set Avenir Next for navigation bar titles
         let navBarAppearance = UINavigationBarAppearance()
