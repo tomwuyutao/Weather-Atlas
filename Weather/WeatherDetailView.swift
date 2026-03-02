@@ -40,6 +40,14 @@ struct WeatherDetailView: View {
         cityWeather.forecast(for: internalSelectedDay)
     }
     
+    /// Use plain cloud icon when animation shows precipitation
+    private var detailDisplayIcon: String {
+        if forecast.condition == .rain || forecast.condition == .drizzle || forecast.condition == .snow {
+            return "cloud.fill"
+        }
+        return forecast.weatherIcon
+    }
+    
     private var goingForward: Bool {
         internalSelectedDay >= previousDay
     }
@@ -78,11 +86,14 @@ struct WeatherDetailView: View {
                             removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity)
                         ))
                     
-                    Image(systemName: forecast.weatherIcon)
+                    Image(systemName: detailDisplayIcon)
                         .font(.system(size: 48))
                         .symbolRenderingMode(.multicolor)
                         .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                         .frame(height: 56)
+                        .background(alignment: .top) {
+                            WeatherEffectOverlay(condition: forecast.condition, isCompact: false, iconHeight: 56)
+                        }
                         .padding(.top, 28)
                     
                     Text("\(Int(forecast.daytimeHigh))°")
