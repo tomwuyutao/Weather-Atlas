@@ -31,6 +31,12 @@ struct ContentView: View {
     @State private var showCloudCover: Bool = false
     @State private var filterSunny: Bool = false
     @State private var isPlaying: Bool = false
+    
+    @State private var mapScale: CGFloat = 10.0
+    @State private var mapOffset: CGSize = .zero
+    @State private var mapLastScale: CGFloat = 10.0
+    @State private var mapLastOffset: CGSize = .zero
+    @State private var mapHasInitialized: Bool = false
 
     private func timeSinceRefreshText() -> String {
         guard let lastFetch = weatherService.lastFetchDate else {
@@ -120,7 +126,7 @@ struct ContentView: View {
     @State private var showingDatePopover: Bool = false
     @State private var playbackTask: Task<Void, Never>?
     @State private var showingMenuPopover: Bool = false
-    @State private var isGridView: Bool = false
+    @AppStorage("isGridView") private var isGridView: Bool = false
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -223,7 +229,8 @@ struct ContentView: View {
 
                     // View switcher capsule
                     HStack(spacing: 8) {
-                        Image(systemName: "list.bullet")
+                        Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
+                            .contentTransition(.symbolEffect(.replace))
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
                             .frame(width: 42, height: 36)
@@ -401,12 +408,12 @@ struct ContentView: View {
             }
 
             if selectedTab == 0 {
-                menuRow(icon: isEditMode ? "checkmark" : "pencil", title: isEditMode ? "Done Editing" : "Edit List") {
+                menuRow(icon: isEditMode ? "checkmark" : "pencil", title: isEditMode ? "Done Editing" : (isGridView ? "Edit Grid" : "Edit List")) {
                     showingMenuPopover = false
                     withAnimation { isEditMode.toggle() }
                 }
 
-                menuRow(icon: isGridView ? "list.bullet" : "square.grid.3x3", title: isGridView ? "List View" : "Grid View") {
+                menuRow(icon: isGridView ? "list.bullet" : "square.grid.2x2", title: isGridView ? "List View" : "Grid View") {
                     showingMenuPopover = false
                     withAnimation(.easeInOut(duration: 0.25)) { isGridView.toggle() }
                 }
@@ -654,6 +661,11 @@ struct ContentView: View {
                 isZoomedOut: $isZoomedOut,
                 showingCityDetail: $showingCityDetail,
                 tappedCity: $tappedCity,
+                mapScale: $mapScale,
+                mapOffset: $mapOffset,
+                mapLastScale: $mapLastScale,
+                mapLastOffset: $mapLastOffset,
+                mapHasInitialized: $mapHasInitialized,
                 centerOnCity: centerOnCityTrigger
             )
             .ignoresSafeArea()

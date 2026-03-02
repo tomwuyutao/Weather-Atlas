@@ -20,14 +20,13 @@ struct SVGMapView: View {
     @Binding var showingCityDetail: Bool
     @Binding var tappedCity: CityWeather?
     
-    var centerOnCity: CityWeather?
+    @Binding var mapScale: CGFloat
+    @Binding var mapOffset: CGSize
+    @Binding var mapLastScale: CGFloat
+    @Binding var mapLastOffset: CGSize
+    @Binding var mapHasInitialized: Bool
     
-    @State private var scale: CGFloat = 10.0
-    @State private var offset: CGSize = .zero
-    @State private var lastScale: CGFloat = 10.0
-    @State private var lastOffset: CGSize = .zero
-    @State private var hasInitialized: Bool = false
-    @State private var pinchAnchor: CGPoint = .zero
+    var centerOnCity: CityWeather?
     
     private let minScale: CGFloat = 0.8
     private let maxScale: CGFloat = 30.0
@@ -39,7 +38,7 @@ struct SVGMapView: View {
                 viewSize.width / GeoProjection.svgWidth,
                 viewSize.height / GeoProjection.svgHeight
             )
-            let effectiveScale = baseScale * scale
+            let effectiveScale = baseScale * mapScale
             
             ZStack {
                 // Country shapes — drawn at origin, offset applied to container
@@ -96,14 +95,14 @@ struct SVGMapView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .offset(offset)
+            .offset(mapOffset)
             .gesture(
                 SimultaneousGesture(
                     DragGesture()
                         .onChanged { value in
-                            offset = CGSize(
-                                width: lastOffset.width + value.translation.width,
-                                height: lastOffset.height + value.translation.height
+                            mapOffset = CGSize(
+                                width: mapLastOffset.width + value.translation.width,
+                                height: mapLastOffset.height + value.translation.height
                             )
                         }
                         .onEnded { value in
@@ -111,51 +110,49 @@ struct SVGMapView: View {
                             let momentumX = velocity.width - value.translation.width
                             let momentumY = velocity.height - value.translation.height
                             let target = CGSize(
-                                width: offset.width + momentumX,
-                                height: offset.height + momentumY
+                                width: mapOffset.width + momentumX,
+                                height: mapOffset.height + momentumY
                             )
                             withAnimation(.spring(response: 0.6, dampingFraction: 1.0)) {
-                                offset = target
+                                mapOffset = target
                             }
-                            lastOffset = target
+                            mapLastOffset = target
                         },
                     MagnifyGesture()
                         .onChanged { value in
-                            let newScale = min(max(lastScale * value.magnification, minScale), maxScale)
+                            let newScale = min(max(mapLastScale * value.magnification, minScale), maxScale)
                             let anchor = value.startAnchor
                             let anchorPt = CGPoint(
                                 x: anchor.x * viewSize.width,
                                 y: anchor.y * viewSize.height
                             )
-                            // SVG point under the anchor at gesture start
-                            let startEffective = baseScale * lastScale
-                            let svgX = (anchorPt.x - lastOffset.width) / startEffective
-                            let svgY = (anchorPt.y - lastOffset.height) / startEffective
-                            // New offset keeps that SVG point under the same screen anchor
+                            let startEffective = baseScale * mapLastScale
+                            let svgX = (anchorPt.x - mapLastOffset.width) / startEffective
+                            let svgY = (anchorPt.y - mapLastOffset.height) / startEffective
                             let newEffective = baseScale * newScale
-                            offset = CGSize(
+                            mapOffset = CGSize(
                                 width: anchorPt.x - svgX * newEffective,
                                 height: anchorPt.y - svgY * newEffective
                             )
-                            scale = newScale
+                            mapScale = newScale
                         }
                         .onEnded { _ in
-                            lastScale = scale
-                            lastOffset = offset
+                            mapLastScale = mapScale
+                            mapLastOffset = mapOffset
                         }
                 )
             )
             .onChange(of: viewSize) { _, newSize in
-                if !hasInitialized && newSize.width > 0 && newSize.height > 0 {
+                if !mapHasInitialized && newSize.width > 0 && newSize.height > 0 {
                     let newBaseScale = min(
                         newSize.width / GeoProjection.svgWidth,
                         newSize.height / GeoProjection.svgHeight
                     )
                     centerOnEurope(viewSize: newSize, baseScale: newBaseScale)
-                    hasInitialized = true
+                    mapHasInitialized = true
                 }
             }
-            .onChange(of: scale) { _, newScale in
+            .onChange(of: mapScale) { _, newScale in
                 isZoomedOut = newScale < 15.0
             }
             .onChange(of: centerOnCity?.id) { _, _ in
@@ -171,14 +168,14 @@ struct SVGMapView: View {
     private func centerOnEurope(viewSize: CGSize, baseScale: CGFloat) {
         let europeCenter = GeoProjection.geoToSVG(latitude: 50.0, longitude: 10.0)
         let initialScale: CGFloat = 10.0
-        scale = initialScale
-        lastScale = initialScale
+        mapScale = initialScale
+        mapLastScale = initialScale
         let effective = baseScale * initialScale
-        offset = CGSize(
+        mapOffset = CGSize(
             width: viewSize.width / 2 - europeCenter.x * effective,
             height: viewSize.height / 2 - europeCenter.y * effective
         )
-        lastOffset = offset
+        mapLastOffset = mapOffset
         isZoomedOut = initialScale < 15.0
     }
     
@@ -189,14 +186,14 @@ struct SVGMapView: View {
         )
         let targetScale: CGFloat = 4.0
         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-            scale = targetScale
-            lastScale = targetScale
+            mapScale = targetScale
+            mapLastScale = targetScale
             let effective = baseScale * targetScale
-            offset = CGSize(
+            mapOffset = CGSize(
                 width: viewSize.width / 2 - svgPoint.x * effective,
                 height: viewSize.height / 2 - svgPoint.y * effective
             )
-            lastOffset = offset
+            mapLastOffset = mapOffset
         }
     }
 }
