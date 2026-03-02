@@ -103,10 +103,26 @@ struct ContentView: View {
                 onRefresh: {
                     await weatherService.refreshWeather()
                 },
+                onSwitchList: { listID in
+                    mapHasInitialized = false
+                    recenterOnAllCities = false
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        listContentOpacity = 0
+                    }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(150))
+                        await weatherService.switchList(to: listID)
+                        withAnimation(.easeIn(duration: 0.2)) {
+                            listContentOpacity = 1
+                        }
+                        recenterOnAllCities = true
+                    }
+                },
                 lastFetchDate: weatherService.lastFetchDate,
                 isRefreshing: weatherService.isLoading,
                 detailOpenedFromList: $detailOpenedFromList
             )
+            .opacity(listContentOpacity)
         } detail: {
             // Map view with bottom date bar
             mapView
@@ -136,6 +152,8 @@ struct ContentView: View {
     @State private var showingMenuPopover: Bool = false
     @AppStorage("isGridView") private var isGridView: Bool = false
     @State private var gridDragItem: CityWeather?
+    @State private var showingListSwitcher: Bool = false
+    @State private var listContentOpacity: Double = 1.0
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -533,6 +551,72 @@ struct ContentView: View {
         }
     }
 
+    private var iOSListSwitcher: some View {
+        Button {
+            showingListSwitcher = true
+        } label: {
+            Text(weatherService.activeListID.displayName)
+                .font(.avenir(.title, weight: .bold))
+                .overlay(alignment: .trailing) {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .offset(x: 20)
+                }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .popover(isPresented: $showingListSwitcher) {
+            iOSListSwitcherMenu
+                .presentationCompactAdaptation(.popover)
+        }
+    }
+    
+    private var iOSListSwitcherMenu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(CityListID.allCases) { listID in
+                Button {
+                    showingListSwitcher = false
+                    guard listID != weatherService.activeListID else { return }
+                    mapHasInitialized = false
+                    recenterOnAllCities = false
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        listContentOpacity = 0
+                    }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(150))
+                        await weatherService.switchList(to: listID)
+                        withAnimation(.easeIn(duration: 0.2)) {
+                            listContentOpacity = 1
+                        }
+                        recenterOnAllCities = true
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Text(listID.displayName)
+                            .font(.avenir(.body, weight: listID == weatherService.activeListID ? .bold : .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if listID == weatherService.activeListID {
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                    .padding(.leading, 24)
+                    .padding(.trailing, 16)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(width: 170)
+        .presentationBackground(.ultraThinMaterial)
+    }
+    
     private var iOSCustomMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
             menuRow(icon: "plus", title: "Add City") {
@@ -552,7 +636,15 @@ struct ContentView: View {
 
                 menuRow(icon: isGridView ? "list.bullet" : "square.grid.2x2", title: isGridView ? "List View" : "Grid View") {
                     showingMenuPopover = false
-                    withAnimation(.easeInOut(duration: 0.25)) { isGridView.toggle() }
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        listContentOpacity = 0
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        isGridView.toggle()
+                        withAnimation(.easeIn(duration: 0.2)) {
+                            listContentOpacity = 1
+                        }
+                    }
                 }
             }
 
@@ -744,9 +836,7 @@ struct ContentView: View {
                 ContentUnavailableView("No Cities", systemImage: "cloud.sun", description: Text("Tap + to add a city"))
             } else if isGridView {
                 ScrollView {
-                    Text("My Cities")
-                        .font(.avenir(.title, weight: .bold))
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    iOSListSwitcher
                         .padding(.top, 16)
                         .padding(.bottom, 20)
 
@@ -756,13 +846,12 @@ struct ContentView: View {
                         }
                     }
                     .padding(.horizontal, 16)
+                    .opacity(listContentOpacity)
                 }
                 .transition(.opacity)
             } else {
                 List {
-                    Text("My Cities")
-                        .font(.avenir(.title, weight: .bold))
-                        .frame(maxWidth: .infinity, alignment: .center)
+                    iOSListSwitcher
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 20, trailing: 16))
@@ -824,6 +913,7 @@ struct ContentView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .opacity(listContentOpacity)
                 }
                 .listStyle(.plain)
                 .environment(\.editMode, Binding(

@@ -62,12 +62,14 @@ struct DesktopSidebar: View {
     let onDeleteCity: (CityWeather) -> Void
     let onMoveCity: (IndexSet, Int) -> Void
     let onRefresh: () async -> Void
+    let onSwitchList: (CityListID) -> Void
     let lastFetchDate: Date?
     let isRefreshing: Bool
     @Binding var detailOpenedFromList: Bool
     
     @State private var isLoadingSearchedCity = false
     @State private var showingAddCityView = false
+    @State private var showingListSwitcher = false
     
     private var filteredCities: [CityWeather] {
         if searchText.isEmpty {
@@ -191,7 +193,7 @@ struct DesktopSidebar: View {
                 // Show existing cities
                 if !filteredCities.isEmpty {
                     if shouldShowSearchResults {
-                        Section("My Cities") {
+                        Section(weatherService.activeListID.displayName) {
                             cityListContent
                         }
                     } else {
@@ -258,11 +260,62 @@ struct DesktopSidebar: View {
                 .background(.ultraThinMaterial)
             }
         }
-        .navigationTitle("My Cities")
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Button {
+                    showingListSwitcher = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(weatherService.activeListID.displayName)
+                            .font(.headline)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showingListSwitcher) {
+                    desktopListSwitcherMenu
+                        .presentationCompactAdaptation(.popover)
+                }
+            }
+        }
         
         #if os(macOS)
         .navigationSplitViewColumnWidth(min: 200, ideal: 250, max: 300)
         #endif
+    }
+    
+    private var desktopListSwitcherMenu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(CityListID.allCases) { listID in
+                Button {
+                    showingListSwitcher = false
+                    onSwitchList(listID)
+                } label: {
+                    HStack(spacing: 12) {
+                        Text(listID.displayName)
+                            .font(.body)
+                            .fontWeight(listID == weatherService.activeListID ? .bold : .regular)
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if listID == weatherService.activeListID {
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                    .padding(.leading, 24)
+                    .padding(.trailing, 16)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(width: 170)
+        .presentationBackground(.ultraThinMaterial)
     }
     
     private func selectSearchResult(_ result: MKLocalSearchCompletion) async {

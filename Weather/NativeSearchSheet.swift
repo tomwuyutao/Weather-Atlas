@@ -323,7 +323,7 @@ struct NativeSearchSheet: View {
                             }
                             
                             ToolbarItem(placement: .principal) {
-                                Text("My Cities")
+                                Text(weatherService.activeListID.displayName)
                                     .font(.title2)
                                     .fontWeight(.bold)
                             }

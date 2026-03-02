@@ -70,6 +70,81 @@ enum AppWeatherCondition {
     }
 }
 
+enum CityListID: String, CaseIterable, Identifiable {
+    case china = "china"
+    case europe = "europe"
+    
+    var id: String { rawValue }
+    
+    var displayName: String {
+        switch self {
+        case .china: return "China"
+        case .europe: return "Europe"
+        }
+    }
+    
+    var defaultCities: [City] {
+        switch self {
+        case .china:
+            return [
+                City(name: "Beijing", latitude: 39.9042, longitude: 116.4074),
+                City(name: "Shanghai", latitude: 31.2304, longitude: 121.4737),
+                City(name: "Chongqing", latitude: 29.4316, longitude: 106.9123),
+                City(name: "Tianjin", latitude: 39.3434, longitude: 117.3616),
+                City(name: "Guangzhou", latitude: 23.1291, longitude: 113.2644),
+                City(name: "Shenzhen", latitude: 22.5431, longitude: 114.0579),
+                City(name: "Hangzhou", latitude: 30.2741, longitude: 120.1551),
+                City(name: "Nanjing", latitude: 32.0603, longitude: 118.7969),
+                City(name: "Suzhou", latitude: 31.2990, longitude: 120.5853),
+                City(name: "Xiamen", latitude: 24.4798, longitude: 118.0894),
+                City(name: "Wuhan", latitude: 30.5928, longitude: 114.3055),
+                City(name: "Changsha", latitude: 28.2282, longitude: 112.9388),
+                City(name: "Zhengzhou", latitude: 34.7466, longitude: 113.6253),
+                City(name: "Xi'an", latitude: 34.3416, longitude: 108.9398),
+                City(name: "Harbin", latitude: 45.8038, longitude: 126.5350),
+                City(name: "Dalian", latitude: 38.9140, longitude: 121.6147),
+                City(name: "Qingdao", latitude: 36.0671, longitude: 120.3826),
+                City(name: "Chengdu", latitude: 30.5728, longitude: 104.0668),
+                City(name: "Kunming", latitude: 25.0389, longitude: 102.7183),
+                City(name: "Guiyang", latitude: 26.6470, longitude: 106.6302),
+                City(name: "Sanya", latitude: 18.2528, longitude: 109.5120),
+                City(name: "Fuzhou", latitude: 26.0745, longitude: 119.2965),
+                City(name: "Lhasa", latitude: 29.6500, longitude: 91.1000),
+                City(name: "Urumqi", latitude: 43.8256, longitude: 87.6168),
+                City(name: "Lanzhou", latitude: 36.0611, longitude: 103.8343),
+            ]
+        case .europe:
+            return [
+                City(name: "London", latitude: 51.5074, longitude: -0.1278),
+                City(name: "Paris", latitude: 48.8566, longitude: 2.3522),
+                City(name: "Berlin", latitude: 52.5200, longitude: 13.4050),
+                City(name: "Madrid", latitude: 40.4168, longitude: -3.7038),
+                City(name: "Rome", latitude: 41.9028, longitude: 12.4964),
+                City(name: "Amsterdam", latitude: 52.3676, longitude: 4.9041),
+                City(name: "Vienna", latitude: 48.2082, longitude: 16.3738),
+                City(name: "Prague", latitude: 50.0755, longitude: 14.4378),
+                City(name: "Barcelona", latitude: 41.3874, longitude: 2.1686),
+                City(name: "Munich", latitude: 48.1351, longitude: 11.5820),
+                City(name: "Milan", latitude: 45.4642, longitude: 9.1900),
+                City(name: "Stockholm", latitude: 59.3293, longitude: 18.0686),
+                City(name: "Copenhagen", latitude: 55.6761, longitude: 12.5683),
+                City(name: "Oslo", latitude: 59.9139, longitude: 10.7522),
+                City(name: "Helsinki", latitude: 60.1699, longitude: 24.9384),
+                City(name: "Warsaw", latitude: 52.2297, longitude: 21.0122),
+                City(name: "Budapest", latitude: 47.4979, longitude: 19.0402),
+                City(name: "Lisbon", latitude: 38.7223, longitude: -9.1393),
+                City(name: "Athens", latitude: 37.9838, longitude: 23.7275),
+                City(name: "Dublin", latitude: 53.3498, longitude: -6.2603),
+                City(name: "Brussels", latitude: 50.8503, longitude: 4.3517),
+                City(name: "Zurich", latitude: 47.3769, longitude: 8.5417),
+                City(name: "Istanbul", latitude: 41.0082, longitude: 28.9784),
+                City(name: "Bucharest", latitude: 44.4268, longitude: 26.1025),
+                City(name: "Edinburgh", latitude: 55.9533, longitude: -3.1883),
+            ]
+        }
+    }
+}
+
 @Observable
 @MainActor
 class WeatherService {
@@ -77,58 +152,28 @@ class WeatherService {
     var isLoading = false
     var forecastDays: [ForecastDay] = []
     var lastFetchDate: Date?
+    var activeListID: CityListID = .europe
     
     var hasSavedCities: Bool {
         UserDefaults.standard.data(forKey: citiesListKey) != nil
     }
     
     private let weatherService = WeatherKit.WeatherService.shared
-    private let cacheKey = "cachedWeatherData"
-    private let cacheTimestampKey = "weatherCacheTimestamp"
-    private let citiesListKey = "savedCitiesList"  // NEW: Key for persisting the city list
     private let cacheDuration: TimeInterval = 2 * 60 * 60 // 2 hours
     
-    // Chinese cities
-    let defaultCities: [City] = [
-        // Municipalities
-        City(name: "Beijing", latitude: 39.9042, longitude: 116.4074),
-        City(name: "Shanghai", latitude: 31.2304, longitude: 121.4737),
-        City(name: "Chongqing", latitude: 29.4316, longitude: 106.9123),
-        City(name: "Tianjin", latitude: 39.3434, longitude: 117.3616),
-        
-        // Eastern China
-        City(name: "Guangzhou", latitude: 23.1291, longitude: 113.2644),
-        City(name: "Shenzhen", latitude: 22.5431, longitude: 114.0579),
-        City(name: "Hangzhou", latitude: 30.2741, longitude: 120.1551),
-        City(name: "Nanjing", latitude: 32.0603, longitude: 118.7969),
-        City(name: "Suzhou", latitude: 31.2990, longitude: 120.5853),
-        City(name: "Xiamen", latitude: 24.4798, longitude: 118.0894),
-        
-        // Central China
-        City(name: "Wuhan", latitude: 30.5928, longitude: 114.3055),
-        City(name: "Changsha", latitude: 28.2282, longitude: 112.9388),
-        City(name: "Zhengzhou", latitude: 34.7466, longitude: 113.6253),
-        
-        // Northern China
-        City(name: "Xi'an", latitude: 34.3416, longitude: 108.9398),
-        City(name: "Harbin", latitude: 45.8038, longitude: 126.5350),
-        City(name: "Dalian", latitude: 38.9140, longitude: 121.6147),
-        City(name: "Qingdao", latitude: 36.0671, longitude: 120.3826),
-        
-        // Southwestern China
-        City(name: "Chengdu", latitude: 30.5728, longitude: 104.0668),
-        City(name: "Kunming", latitude: 25.0389, longitude: 102.7183),
-        City(name: "Guiyang", latitude: 26.6470, longitude: 106.6302),
-        
-        // Southern China
-        City(name: "Sanya", latitude: 18.2528, longitude: 109.5120),
-        City(name: "Fuzhou", latitude: 26.0745, longitude: 119.2965),
-        
-        // Western China
-        City(name: "Lhasa", latitude: 29.6500, longitude: 91.1000),
-        City(name: "Urumqi", latitude: 43.8256, longitude: 87.6168),
-        City(name: "Lanzhou", latitude: 36.0611, longitude: 103.8343)
-    ]
+    private static let activeListKey = "activeListID"
+    
+    // Per-list cache keys
+    private var cacheKey: String { "cachedWeatherData_\(activeListID.rawValue)" }
+    private var cacheTimestampKey: String { "weatherCacheTimestamp_\(activeListID.rawValue)" }
+    private var citiesListKey: String { "savedCitiesList_\(activeListID.rawValue)" }
+    
+    init() {
+        if let saved = UserDefaults.standard.string(forKey: Self.activeListKey),
+           let listID = CityListID(rawValue: saved) {
+            activeListID = listID
+        }
+    }
     
     func fetchWeatherForAllCities() async {
         print("🚀 [DEBUG] fetchWeatherForAllCities() CALLED")
@@ -160,8 +205,8 @@ class WeatherService {
         // Generate 10 days of forecast data
         generateForecastDays()
         
-        // Load the saved cities list, or use default European cities if none saved
-        let citiesToFetch = loadSavedCities() ?? defaultCities
+        // Load the saved cities list, or use defaults for active list
+        let citiesToFetch = loadSavedCities() ?? activeListID.defaultCities
         print("📍 [DEBUG] Fetching weather for \(citiesToFetch.count) cities: \(citiesToFetch.map { $0.name }.joined(separator: ", "))")
         
         var weatherData: [CityWeather] = []
@@ -209,6 +254,15 @@ class WeatherService {
     func refreshWeather() async {
         print("🔄 Forcing weather refresh")
         clearCache()
+        await fetchWeatherForAllCities()
+    }
+    
+    func switchList(to listID: CityListID) async {
+        guard listID != activeListID else { return }
+        cityWeatherData = []
+        activeListID = listID
+        UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
+        lastFetchDate = nil
         await fetchWeatherForAllCities()
     }
     
@@ -288,7 +342,7 @@ class WeatherService {
     /// Load the saved cities list (returns nil if no list was saved)
     private func loadSavedCities() -> [City]? {
         guard let data = UserDefaults.standard.data(forKey: citiesListKey) else {
-            print("📭 No saved cities list found, using default European cities")
+            print("📭 No saved cities list found for \(activeListID.rawValue), using defaults")
             return nil
         }
         

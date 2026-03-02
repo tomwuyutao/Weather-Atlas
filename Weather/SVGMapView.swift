@@ -121,6 +121,11 @@ struct SVGMapView: View {
                         hasCenteredOnCities = true
                     }
                 }
+                .onChange(of: mapHasInitialized) { _, newValue in
+                    if !newValue {
+                        hasCenteredOnCities = false
+                    }
+                }
                 .onChange(of: recenterOnAllCities) { _, newValue in
                     if newValue {
                         animateToCities(viewSize: viewSize, baseScale: baseScale)
