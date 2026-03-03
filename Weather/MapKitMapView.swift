@@ -26,93 +26,92 @@ struct MapKitMapView: View {
     @State private var position: MapCameraPosition = .automatic
     @State private var hasCenteredOnCities: Bool = false
     @State private var highlightedMarkerID: UUID?
-
-    // Track the visible map rect for SVG overlay transform
-    @State private var visibleMapRect: MKMapRect = .world
+    
+    // Incremented on every camera change to force overlay redraw
+    @State private var cameraChangeCounter: Int = 0
 
     var body: some View {
-        Map(position: $position, interactionModes: [.pan, .zoom]) {
-            ForEach(cities) { cityWeather in
-                let passes = passesFilter(cityWeather)
-                if passes {
-                    Annotation(
-                        cityWeather.city.name,
-                        coordinate: CLLocationCoordinate2D(
-                            latitude: cityWeather.city.latitude,
-                            longitude: cityWeather.city.longitude
-                        ),
-                        anchor: .center
-                    ) {
-                        WeatherMarker(
-                            cityWeather: cityWeather,
-                            dayOffset: selectedDayOffset,
-                            isCompact: false,
-                            namespace: namespace,
-                            showCloudCover: showCloudCover,
-                            filterSunny: filterSunny,
-                            passesFilter: true,
-                            isPlaying: isPlaying
-                        )
-                        .overlay {
-                            if highlightedMarkerID == cityWeather.id {
-                                MapRevealPulseRing()
+        MapReader { proxy in
+            Map(position: $position, interactionModes: [.pan, .zoom]) {
+                ForEach(cities) { cityWeather in
+                    let passes = passesFilter(cityWeather)
+                    if passes {
+                        Annotation(
+                            cityWeather.city.name,
+                            coordinate: CLLocationCoordinate2D(
+                                latitude: cityWeather.city.latitude,
+                                longitude: cityWeather.city.longitude
+                            ),
+                            anchor: .center
+                        ) {
+                            WeatherMarker(
+                                cityWeather: cityWeather,
+                                dayOffset: selectedDayOffset,
+                                isCompact: false,
+                                namespace: namespace,
+                                showCloudCover: showCloudCover,
+                                filterSunny: filterSunny,
+                                passesFilter: true,
+                                isPlaying: isPlaying
+                            )
+                            .overlay {
+                                if highlightedMarkerID == cityWeather.id {
+                                    MapRevealPulseRing()
+                                }
                             }
-                        }
-                        .onTapGesture {
-                            tappedCity = cityWeather
-                            Task {
-                                try? await Task.sleep(for: .milliseconds(150))
-                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                    showingCityDetail = true
+                            .onTapGesture {
+                                tappedCity = cityWeather
+                                Task {
+                                    try? await Task.sleep(for: .milliseconds(150))
+                                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                        showingCityDetail = true
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
-        }
-        .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
-        .mapControls { }
-        .onMapCameraChange(frequency: .continuous) { context in
-            visibleMapRect = context.rect
-        }
-        .overlay {
-            GeometryReader { geometry in
-                SVGCanvasOverlay(
+            .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
+            .mapControls { }
+            .onMapCameraChange(frequency: .continuous) { _ in
+                cameraChangeCounter += 1
+            }
+            .overlay {
+                SVGProxyOverlay(
                     countries: countries,
-                    viewSize: geometry.size,
-                    visibleMapRect: visibleMapRect
+                    proxy: proxy,
+                    cameraChangeCounter: cameraChangeCounter
                 )
+                .allowsHitTesting(false)
             }
-            .allowsHitTesting(false)
-            .ignoresSafeArea()
-        }
-        .onAppear {
-            if !cities.isEmpty && !hasCenteredOnCities {
-                fitAllCities(animated: false)
-                hasCenteredOnCities = true
+            .onAppear {
+                if !cities.isEmpty && !hasCenteredOnCities {
+                    fitAllCities(animated: false)
+                    hasCenteredOnCities = true
+                }
             }
-        }
-        .onChange(of: cities.count) { _, newCount in
-            if newCount > 0 && !hasCenteredOnCities {
-                fitAllCities(animated: false)
-                hasCenteredOnCities = true
+            .onChange(of: cities.count) { _, newCount in
+                if newCount > 0 && !hasCenteredOnCities {
+                    fitAllCities(animated: false)
+                    hasCenteredOnCities = true
+                }
             }
-        }
-        .onChange(of: recenterOnAllCities) { _, newValue in
-            if newValue {
-                fitAllCities(animated: true)
-                recenterOnAllCities = false
+            .onChange(of: recenterOnAllCities) { _, newValue in
+                if newValue {
+                    fitAllCities(animated: true)
+                    recenterOnAllCities = false
+                }
             }
-        }
-        .onChange(of: centerOnCity?.id) { _, _ in
-            if let city = centerOnCity {
-                animateToCity(city)
-                highlightedMarkerID = city.id
-                Task {
-                    try? await Task.sleep(for: .seconds(2))
-                    withAnimation(.easeOut(duration: 0.5)) {
-                        highlightedMarkerID = nil
+            .onChange(of: centerOnCity?.id) { _, _ in
+                if let city = centerOnCity {
+                    animateToCity(city)
+                    highlightedMarkerID = city.id
+                    Task {
+                        try? await Task.sleep(for: .seconds(2))
+                        withAnimation(.easeOut(duration: 0.5)) {
+                            highlightedMarkerID = nil
+                        }
                     }
                 }
             }
@@ -173,50 +172,34 @@ struct MapKitMapView: View {
     }
 }
 
-// MARK: - SVG Country Overlay
+// MARK: - SVG Overlay using MapProxy
 
-/// Draws SVG country shapes transformed from SVG space to screen space
-/// using two reference geo-points and the visible MKMapRect.
-/// Accounts for safe area difference between the map's rendering area and the overlay.
-private struct SVGCanvasOverlay: View {
+/// Uses MapProxy.convert to get exact screen positions of reference coordinates,
+/// then draws transformed SVG country paths in a Canvas.
+/// The cameraChangeCounter dependency forces re-evaluation on every pan/zoom.
+private struct SVGProxyOverlay: View {
     let countries: [CountryPath]
-    let viewSize: CGSize
-    let visibleMapRect: MKMapRect
+    let proxy: MapProxy
+    let cameraChangeCounter: Int
 
+    private static let refCoordA = CLLocationCoordinate2D(latitude: 0.0, longitude: 0.0)
+    private static let refCoordB = CLLocationCoordinate2D(latitude: 45.0, longitude: 90.0)
     private static let refSvgA = GeoProjection.geoToSVG(latitude: 0.0, longitude: 0.0)
     private static let refSvgB = GeoProjection.geoToSVG(latitude: 45.0, longitude: 90.0)
 
-    private static let refMapPtA = MKMapPoint(CLLocationCoordinate2D(latitude: 0.0, longitude: 0.0))
-    private static let refMapPtB = MKMapPoint(CLLocationCoordinate2D(latitude: 45.0, longitude: 90.0))
-
     var body: some View {
+        // Query proxy for screen positions of reference points.
+        // These calls happen during view body evaluation, which is triggered
+        // whenever cameraChangeCounter changes (on every pan/zoom).
+        let ptA = proxy.convert(Self.refCoordA, to: .local)
+        let ptB = proxy.convert(Self.refCoordB, to: .local)
+
         Canvas { context, size in
+            // Use cameraChangeCounter to ensure Canvas re-renders
+            let _ = cameraChangeCounter
+            
+            guard let screenA = ptA, let screenB = ptB else { return }
             guard size.width > 0, size.height > 0 else { return }
-            guard visibleMapRect.size.width > 0, visibleMapRect.size.height > 0 else { return }
-
-            // Use a single uniform scale derived from the X axis (horizontal alignment is correct).
-            // MKMapPoint uses Mercator which has equal scale in X and Y at every point.
-            // Map the center of the MKMapRect to the center of the canvas, so any tiny
-            // height discrepancy between the map rect and the overlay is distributed evenly.
-            let pxPerMap = size.width / visibleMapRect.size.width
-
-            // Map center in MKMapPoint space
-            let mapCenterX = visibleMapRect.origin.x + visibleMapRect.size.width / 2.0
-            let mapCenterY = visibleMapRect.origin.y + visibleMapRect.size.height / 2.0
-
-            // Screen center
-            let screenCenterX = size.width / 2.0
-            let screenCenterY = size.height / 2.0
-
-            // Convert reference MKMapPoints to screen via center-anchored transform
-            let screenA = CGPoint(
-                x: screenCenterX + (Self.refMapPtA.x - mapCenterX) * pxPerMap,
-                y: screenCenterY + (Self.refMapPtA.y - mapCenterY) * pxPerMap
-            )
-            let screenB = CGPoint(
-                x: screenCenterX + (Self.refMapPtB.x - mapCenterX) * pxPerMap,
-                y: screenCenterY + (Self.refMapPtB.y - mapCenterY) * pxPerMap
-            )
 
             let svgA = Self.refSvgA
             let svgB = Self.refSvgB
@@ -229,7 +212,9 @@ private struct SVGCanvasOverlay: View {
             guard scaleX.isFinite, scaleY.isFinite, scaleX != 0, scaleY != 0 else { return }
 
             let tx = screenA.x - Double(svgA.x) * scaleX
-            let ty = screenA.y - Double(svgA.y) * scaleY
+            // Zoom-proportional upward correction: the overlay drifts down more when zoomed in
+            let yCorrection = -0.5 * abs(scaleX)
+            let ty = screenA.y - Double(svgA.y) * scaleY + yCorrection
 
             var transform = CGAffineTransform(
                 a: scaleX, b: 0,
@@ -251,7 +236,6 @@ private struct SVGCanvasOverlay: View {
                 }
             }
         }
-        .frame(width: viewSize.width, height: viewSize.height)
     }
 }
 
