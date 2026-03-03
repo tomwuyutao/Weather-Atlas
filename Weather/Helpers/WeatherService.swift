@@ -59,7 +59,7 @@ enum AppWeatherCondition {
     var dotColor: Color {
         switch self {
         case .clear: return .yellow
-        case .partlyCloudy: return Color(hue: 0.13, saturation: 0.6, brightness: 1.0)
+        case .partlyCloudy: return Color(hue: 0.13, saturation: 0.3, brightness: 1.0)
         case .cloudy: return .white
         case .rain: return .blue
         case .drizzle: return Color(red: 0.55, green: 0.65, blue: 0.85)
@@ -70,22 +70,50 @@ enum AppWeatherCondition {
     }
 }
 
-enum CityListID: String, CaseIterable, Identifiable {
-    case china = "china"
-    case europe = "europe"
+struct CityListID: Identifiable, Equatable, Hashable, Codable {
+    let rawValue: String
+    let displayName: String
     
     var id: String { rawValue }
     
-    var displayName: String {
-        switch self {
-        case .china: return "China"
-        case .europe: return "Europe"
+    static let china = CityListID(rawValue: "china", displayName: "China")
+    static let europe = CityListID(rawValue: "europe", displayName: "Europe")
+    
+    static let builtInLists: [CityListID] = [.china, .europe]
+    
+    private static let userListsKey = "userCreatedLists"
+    
+    static var allLists: [CityListID] {
+        var lists = builtInLists
+        lists.append(contentsOf: loadUserLists())
+        return lists
+    }
+    
+    static func loadUserLists() -> [CityListID] {
+        guard let data = UserDefaults.standard.data(forKey: userListsKey),
+              let lists = try? JSONDecoder().decode([CityListID].self, from: data) else {
+            return []
+        }
+        return lists
+    }
+    
+    static func saveUserLists(_ lists: [CityListID]) {
+        if let data = try? JSONEncoder().encode(lists) {
+            UserDefaults.standard.set(data, forKey: userListsKey)
         }
     }
     
+    static func createList(name: String) -> CityListID {
+        let id = CityListID(rawValue: UUID().uuidString, displayName: name)
+        var userLists = loadUserLists()
+        userLists.append(id)
+        saveUserLists(userLists)
+        return id
+    }
+    
     var defaultCities: [City] {
-        switch self {
-        case .china:
+        switch rawValue {
+        case "china":
             return [
                 City(name: "Beijing", latitude: 39.9042, longitude: 116.4074),
                 City(name: "Shanghai", latitude: 31.2304, longitude: 121.4737),
@@ -113,7 +141,7 @@ enum CityListID: String, CaseIterable, Identifiable {
                 City(name: "Urumqi", latitude: 43.8256, longitude: 87.6168),
                 City(name: "Lanzhou", latitude: 36.0611, longitude: 103.8343),
             ]
-        case .europe:
+        case "europe":
             return [
                 City(name: "London", latitude: 51.5074, longitude: -0.1278),
                 City(name: "Paris", latitude: 48.8566, longitude: 2.3522),
@@ -141,6 +169,8 @@ enum CityListID: String, CaseIterable, Identifiable {
                 City(name: "Bucharest", latitude: 44.4268, longitude: 26.1025),
                 City(name: "Edinburgh", latitude: 55.9533, longitude: -3.1883),
             ]
+        default:
+            return [] // User-created lists start empty
         }
     }
 }
@@ -171,7 +201,7 @@ class WeatherService {
     
     init() {
         if let saved = UserDefaults.standard.string(forKey: Self.activeListKey),
-           let listID = CityListID(rawValue: saved) {
+           let listID = CityListID.allLists.first(where: { $0.rawValue == saved }) {
             activeListID = listID
         }
     }
@@ -270,7 +300,7 @@ class WeatherService {
     
     func resetAllLists() async {
         // Clear saved cities for all lists
-        for listID in CityListID.allCases {
+        for listID in CityListID.allLists {
             let citiesKey = "savedCitiesList_\(listID.rawValue)"
             let cacheKey = "cachedWeatherData_\(listID.rawValue)"
             let timestampKey = "weatherCacheTimestamp_\(listID.rawValue)"
@@ -289,6 +319,26 @@ class WeatherService {
         UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
         lastFetchDate = nil
         await fetchWeatherForAllCities()
+    }
+    
+    func addNewList(name: String) async {
+        let newList = CityListID.createList(name: name)
+        cityWeatherData = []
+        activeListID = newList
+        UserDefaults.standard.set(newList.rawValue, forKey: Self.activeListKey)
+        lastFetchDate = nil
+        // New list starts empty, no fetch needed
+    }
+    
+    func renameCurrentList(to newName: String) {
+        let renamed = CityListID(rawValue: activeListID.rawValue, displayName: newName)
+        // Update in user lists if it's a user-created list
+        var userLists = CityListID.loadUserLists()
+        if let index = userLists.firstIndex(where: { $0.rawValue == activeListID.rawValue }) {
+            userLists[index] = renamed
+            CityListID.saveUserLists(userLists)
+        }
+        activeListID = renamed
     }
     
     // MARK: - Caching Methods

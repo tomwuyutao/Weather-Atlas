@@ -293,7 +293,7 @@ struct DesktopSidebar: View {
     
     private var desktopListSwitcherMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(CityListID.allCases) { listID in
+            ForEach(CityListID.allLists) { listID in
                 Button {
                     showingListSwitcher = false
                     onSwitchList(listID)

@@ -161,6 +161,10 @@ struct ContentView: View {
     @State private var showingListSwitcher: Bool = false
     @State private var listContentOpacity: Double = 1.0
     @State private var longPressedCity: CityWeather?
+    @State private var showingAddListAlert: Bool = false
+    @State private var newListName: String = ""
+    @State private var showingRenameListAlert: Bool = false
+    @State private var renameListName: String = ""
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -341,7 +345,7 @@ struct ContentView: View {
                         }
                         .buttonStyle(.plain)
                         .popover(isPresented: $showingListSwitcher) {
-                            iOSListSwitcherMenu
+                            iOSListSwitcherMenuListsOnly
                                 .presentationCompactAdaptation(.popover)
                         }
                     }
@@ -587,6 +591,37 @@ struct ContentView: View {
                 }
             )
         }
+        .alert("New List", isPresented: $showingAddListAlert) {
+            TextField("List name", text: $newListName)
+            Button("Cancel", role: .cancel) { }
+            Button("Add") {
+                let name = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                withAnimation(.easeOut(duration: 0.15)) {
+                    listContentOpacity = 0
+                }
+                Task {
+                    try? await Task.sleep(for: .milliseconds(150))
+                    await weatherService.addNewList(name: name)
+                    withAnimation(.easeIn(duration: 0.2)) {
+                        listContentOpacity = 1
+                    }
+                }
+            }
+        } message: {
+            Text("Enter a name for the new list.")
+        }
+        .alert("Rename List", isPresented: $showingRenameListAlert) {
+            TextField("List name", text: $renameListName)
+            Button("Cancel", role: .cancel) { }
+            Button("Rename") {
+                let name = renameListName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                weatherService.renameCurrentList(to: name)
+            }
+        } message: {
+            Text("Enter a new name for this list.")
+        }
     }
 
     private var iOSListSwitcher: some View {
@@ -613,7 +648,98 @@ struct ContentView: View {
     
     private var iOSListSwitcherMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(CityListID.allCases) { listID in
+            ForEach(CityListID.allLists) { listID in
+                Button {
+                    showingListSwitcher = false
+                    guard listID != weatherService.activeListID else { return }
+                    mapHasInitialized = false
+                    recenterOnAllCities = false
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        listContentOpacity = 0
+                    }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(150))
+                        await weatherService.switchList(to: listID)
+                        withAnimation(.easeIn(duration: 0.2)) {
+                            listContentOpacity = 1
+                        }
+                        recenterOnAllCities = true
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Text(listID.displayName)
+                            .font(.avenir(.body, weight: listID == weatherService.activeListID ? .bold : .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if listID == weatherService.activeListID {
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 6, height: 6)
+                                .frame(width: 13)
+                        }
+                    }
+                    .padding(.leading, 24)
+                    .padding(.trailing, 16)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            
+            Divider()
+                .padding(.horizontal, 16)
+                .padding(.vertical, 4)
+            
+            Button {
+                showingListSwitcher = false
+                newListName = ""
+                showingAddListAlert = true
+            } label: {
+                HStack(spacing: 12) {
+                    Text("Add List")
+                        .font(.avenir(.body, weight: .medium))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "plus")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 24)
+                .padding(.trailing, 16)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            
+            Button {
+                showingListSwitcher = false
+                renameListName = weatherService.activeListID.displayName
+                showingRenameListAlert = true
+            } label: {
+                HStack(spacing: 12) {
+                    Text("Rename List")
+                        .font(.avenir(.body, weight: .medium))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    Image(systemName: "pencil")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 24)
+                .padding(.trailing, 16)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 8)
+        .frame(width: 190)
+        .presentationBackground(.ultraThinMaterial)
+    }
+    
+    private var iOSListSwitcherMenuListsOnly: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(CityListID.allLists) { listID in
                 Button {
                     showingListSwitcher = false
                     guard listID != weatherService.activeListID else { return }
@@ -651,7 +777,7 @@ struct ContentView: View {
             }
         }
         .padding(.vertical, 8)
-        .frame(width: 170)
+        .frame(width: 190)
         .presentationBackground(.ultraThinMaterial)
     }
     
