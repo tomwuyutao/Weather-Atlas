@@ -82,9 +82,11 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
     static let builtInLists: [CityListID] = [.china, .europe]
     
     private static let userListsKey = "userCreatedLists"
+    private static let deletedBuiltInListsKey = "deletedBuiltInLists"
     
     static var allLists: [CityListID] {
-        var lists = builtInLists
+        let deletedIDs = loadDeletedBuiltInIDs()
+        var lists = builtInLists.filter { !deletedIDs.contains($0.rawValue) }
         lists.append(contentsOf: loadUserLists())
         return lists
     }
@@ -101,6 +103,21 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         if let data = try? JSONEncoder().encode(lists) {
             UserDefaults.standard.set(data, forKey: userListsKey)
         }
+    }
+    
+    private static func loadDeletedBuiltInIDs() -> Set<String> {
+        let ids = UserDefaults.standard.stringArray(forKey: deletedBuiltInListsKey) ?? []
+        return Set(ids)
+    }
+    
+    static func deleteBuiltInList(_ listID: CityListID) {
+        var deleted = loadDeletedBuiltInIDs()
+        deleted.insert(listID.rawValue)
+        UserDefaults.standard.set(Array(deleted), forKey: deletedBuiltInListsKey)
+    }
+    
+    static func restoreBuiltInLists() {
+        UserDefaults.standard.removeObject(forKey: deletedBuiltInListsKey)
     }
     
     static func createList(name: String) -> CityListID {
@@ -299,7 +316,7 @@ class WeatherService {
     }
     
     func resetAllLists() async {
-        // Clear saved cities for all lists
+        // Clear saved cities for all lists (including user-created)
         for listID in CityListID.allLists {
             let citiesKey = "savedCitiesList_\(listID.rawValue)"
             let cacheKey = "cachedWeatherData_\(listID.rawValue)"
@@ -308,6 +325,12 @@ class WeatherService {
             UserDefaults.standard.removeObject(forKey: cacheKey)
             UserDefaults.standard.removeObject(forKey: timestampKey)
         }
+        // Restore built-in lists and clear user-created lists
+        CityListID.restoreBuiltInLists()
+        CityListID.saveUserLists([])
+        // Switch to first built-in list
+        activeListID = .europe
+        UserDefaults.standard.set(CityListID.europe.rawValue, forKey: Self.activeListKey)
         cityWeatherData = []
         await fetchWeatherForAllCities()
     }
@@ -339,6 +362,39 @@ class WeatherService {
             CityListID.saveUserLists(userLists)
         }
         activeListID = renamed
+    }
+    
+    func deleteCurrentList() async {
+        let listToDelete = activeListID
+        // Remove stored data for this list
+        UserDefaults.standard.removeObject(forKey: "savedCitiesList_\(listToDelete.rawValue)")
+        UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listToDelete.rawValue)")
+        UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listToDelete.rawValue)")
+        // Remove from user lists or mark built-in as deleted
+        if CityListID.builtInLists.contains(where: { $0.rawValue == listToDelete.rawValue }) {
+            CityListID.deleteBuiltInList(listToDelete)
+        } else {
+            var userLists = CityListID.loadUserLists()
+            userLists.removeAll { $0.rawValue == listToDelete.rawValue }
+            CityListID.saveUserLists(userLists)
+        }
+        // Switch to the first available list, or create a default one if none left
+        let remaining = CityListID.allLists
+        if remaining.isEmpty {
+            // All lists deleted — create a new empty list
+            let newList = CityListID.createList(name: "New List")
+            cityWeatherData = []
+            activeListID = newList
+            UserDefaults.standard.set(newList.rawValue, forKey: Self.activeListKey)
+            lastFetchDate = nil
+        } else {
+            let fallback = remaining.first ?? .europe
+            cityWeatherData = []
+            activeListID = fallback
+            UserDefaults.standard.set(fallback.rawValue, forKey: Self.activeListKey)
+            lastFetchDate = nil
+            await fetchWeatherForAllCities()
+        }
     }
     
     // MARK: - Caching Methods

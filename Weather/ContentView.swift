@@ -161,10 +161,10 @@ struct ContentView: View {
     @State private var showingListSwitcher: Bool = false
     @State private var listContentOpacity: Double = 1.0
     @State private var longPressedCity: CityWeather?
-    @State private var showingAddListAlert: Bool = false
-    @State private var newListName: String = ""
-    @State private var showingRenameListAlert: Bool = false
-    @State private var renameListName: String = ""
+    @State private var isEditingListName: Bool = false
+    @State private var editingListName: String = ""
+    @FocusState private var listNameFieldFocused: Bool
+    @State private var showingDeleteListConfirmation: Bool = false
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -591,58 +591,52 @@ struct ContentView: View {
                 }
             )
         }
-        .alert("New List", isPresented: $showingAddListAlert) {
-            TextField("List name", text: $newListName)
+        .alert("Delete List", isPresented: $showingDeleteListConfirmation) {
             Button("Cancel", role: .cancel) { }
-            Button("Add") {
-                let name = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !name.isEmpty else { return }
-                withAnimation(.easeOut(duration: 0.15)) {
-                    listContentOpacity = 0
-                }
-                Task {
-                    try? await Task.sleep(for: .milliseconds(150))
-                    await weatherService.addNewList(name: name)
-                    withAnimation(.easeIn(duration: 0.2)) {
-                        listContentOpacity = 1
-                    }
-                }
+            Button("Delete", role: .destructive) {
+                deleteCurrentList()
             }
         } message: {
-            Text("Enter a name for the new list.")
+            Text("Are you sure you want to delete \"\(weatherService.activeListID.displayName)\"? This cannot be undone.")
         }
-        .alert("Rename List", isPresented: $showingRenameListAlert) {
-            TextField("List name", text: $renameListName)
-            Button("Cancel", role: .cancel) { }
-            Button("Rename") {
-                let name = renameListName.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !name.isEmpty else { return }
-                weatherService.renameCurrentList(to: name)
-            }
-        } message: {
-            Text("Enter a new name for this list.")
-        }
+
     }
 
     private var iOSListSwitcher: some View {
-        Button {
-            showingListSwitcher = true
-        } label: {
-            Text(weatherService.activeListID.displayName)
-                .font(.avenir(.title, weight: .bold))
-                .overlay(alignment: .trailing) {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .offset(x: 20)
+        Group {
+            if isEditingListName {
+                TextField("List name", text: $editingListName)
+                    .font(.avenir(.title, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .submitLabel(.done)
+                    .focused($listNameFieldFocused)
+                    .onSubmit { commitListNameEdit() }
+                    .onChange(of: listNameFieldFocused) { _, focused in
+                        if !focused { commitListNameEdit() }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .onAppear { listNameFieldFocused = true }
+            } else {
+                Button {
+                    showingListSwitcher = true
+                } label: {
+                    Text(weatherService.activeListID.displayName)
+                        .font(.avenir(.title, weight: .bold))
+                        .overlay(alignment: .trailing) {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .offset(x: 20)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .popover(isPresented: $showingListSwitcher) {
-            iOSListSwitcherMenu
-                .presentationCompactAdaptation(.popover)
+                .buttonStyle(.plain)
+                .popover(isPresented: $showingListSwitcher) {
+                    iOSListSwitcherMenu
+                        .presentationCompactAdaptation(.popover)
+                }
+            }
         }
     }
     
@@ -692,8 +686,7 @@ struct ContentView: View {
             
             Button {
                 showingListSwitcher = false
-                newListName = ""
-                showingAddListAlert = true
+                startAddingNewList()
             } label: {
                 HStack(spacing: 12) {
                     Text("Add List")
@@ -713,8 +706,7 @@ struct ContentView: View {
             
             Button {
                 showingListSwitcher = false
-                renameListName = weatherService.activeListID.displayName
-                showingRenameListAlert = true
+                startEditingListName()
             } label: {
                 HStack(spacing: 12) {
                     Text("Rename List")
@@ -724,6 +716,26 @@ struct ContentView: View {
                     Image(systemName: "pencil")
                         .font(.system(size: 13))
                         .foregroundStyle(.secondary)
+                }
+                .padding(.leading, 24)
+                .padding(.trailing, 16)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            
+            Button {
+                showingListSwitcher = false
+                showingDeleteListConfirmation = true
+            } label: {
+                HStack(spacing: 12) {
+                    Text("Delete List")
+                        .font(.avenir(.body, weight: .medium))
+                        .foregroundStyle(.red)
+                    Spacer()
+                    Image(systemName: "trash")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.red)
                 }
                 .padding(.leading, 24)
                 .padding(.trailing, 16)
@@ -981,6 +993,57 @@ struct ContentView: View {
         }
     }
 
+    @State private var isAddingNewList: Bool = false
+    
+    private func startEditingListName() {
+        editingListName = weatherService.activeListID.displayName
+        isEditingListName = true
+    }
+    
+    private func startAddingNewList() {
+        isAddingNewList = true
+        withAnimation(.easeOut(duration: 0.15)) {
+            listContentOpacity = 0
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            await weatherService.addNewList(name: "")
+            withAnimation(.easeIn(duration: 0.2)) {
+                listContentOpacity = 1
+            }
+            editingListName = ""
+            isEditingListName = true
+        }
+    }
+    
+    private func deleteCurrentList() {
+        withAnimation(.easeOut(duration: 0.15)) {
+            listContentOpacity = 0
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            await weatherService.deleteCurrentList()
+            withAnimation(.easeIn(duration: 0.2)) {
+                listContentOpacity = 1
+            }
+            recenterOnAllCities = true
+        }
+    }
+    
+    private func commitListNameEdit() {
+        let name = editingListName.trimmingCharacters(in: .whitespacesAndNewlines)
+        isEditingListName = false
+        if name.isEmpty {
+            // Empty name: use "New List" for new lists, keep existing name for renames
+            if isAddingNewList {
+                weatherService.renameCurrentList(to: "New List")
+            }
+        } else {
+            weatherService.renameCurrentList(to: name)
+        }
+        isAddingNewList = false
+    }
+    
     private func swipeDayGesture() -> some Gesture {
         DragGesture(minimumDistance: 30, coordinateSpace: .local)
             .onEnded { value in
@@ -1026,13 +1089,27 @@ struct ContentView: View {
                 }
                 .frame(maxWidth: .infinity)
             } else if weatherService.cityWeatherData.isEmpty && weatherService.hasSavedCities {
-                ContentUnavailableView("Loading Weather", systemImage: "cloud.sun", description: Text("Fetching forecasts for your cities…"))
+                VStack(spacing: 0) {
+                    iOSListSwitcher
+                        .padding(.top, 24)
+                        .padding(.bottom, 20)
+                    Spacer()
+                    ContentUnavailableView("Loading Weather", systemImage: "cloud.sun", description: Text("Fetching forecasts for your cities…"))
+                    Spacer()
+                }
             } else if weatherService.cityWeatherData.isEmpty {
-                ContentUnavailableView("No Cities", systemImage: "cloud.sun", description: Text("Tap + to add a city"))
+                VStack(spacing: 0) {
+                    iOSListSwitcher
+                        .padding(.top, 24)
+                        .padding(.bottom, 20)
+                    Spacer()
+                    ContentUnavailableView("No Cities", systemImage: "cloud.sun", description: Text("Tap + to add a city"))
+                    Spacer()
+                }
             } else if isGridView {
                 ScrollView {
                     iOSListSwitcher
-                        .padding(.top, 16)
+                        .padding(.top, 24)
                         .padding(.bottom, 20)
 
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
@@ -1050,7 +1127,7 @@ struct ContentView: View {
                     iOSListSwitcher
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 20, trailing: 16))
+                        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 20, trailing: 16))
                         .padding(.top, 8)
 
                     ForEach(iOSFilteredCities) { cityWeather in
