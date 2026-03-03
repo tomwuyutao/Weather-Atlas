@@ -26,57 +26,23 @@ struct MapKitMapView: View {
     @State private var position: MapCameraPosition = .automatic
     @State private var hasCenteredOnCities: Bool = false
     @State private var highlightedMarkerID: UUID?
-    
+
     // Incremented on every camera change to force overlay redraw
     @State private var cameraChangeCounter: Int = 0
 
     var body: some View {
         MapReader { proxy in
             Map(position: $position, interactionModes: [.pan, .zoom]) {
-                ForEach(cities) { cityWeather in
-                    let passes = passesFilter(cityWeather)
-                    if passes {
-                        Annotation(
-                            cityWeather.city.name,
-                            coordinate: CLLocationCoordinate2D(
-                                latitude: cityWeather.city.latitude,
-                                longitude: cityWeather.city.longitude
-                            ),
-                            anchor: .center
-                        ) {
-                            WeatherMarker(
-                                cityWeather: cityWeather,
-                                dayOffset: selectedDayOffset,
-                                isCompact: false,
-                                namespace: namespace,
-                                showCloudCover: showCloudCover,
-                                filterSunny: filterSunny,
-                                passesFilter: true,
-                                isPlaying: isPlaying
-                            )
-                            .overlay {
-                                if highlightedMarkerID == cityWeather.id {
-                                    MapRevealPulseRing()
-                                }
-                            }
-                            .onTapGesture {
-                                tappedCity = cityWeather
-                                Task {
-                                    try? await Task.sleep(for: .milliseconds(150))
-                                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                        showingCityDetail = true
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                // Empty map content — annotations rendered manually above overlay
             }
             .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
             .mapControls { }
             .onMapCameraChange(frequency: .continuous) { _ in
                 cameraChangeCounter += 1
             }
+            // Black background for ocean areas
+            .background(Color.black)
+            // SVG country overlay
             .overlay {
                 SVGProxyOverlay(
                     countries: countries,
@@ -84,6 +50,22 @@ struct MapKitMapView: View {
                     cameraChangeCounter: cameraChangeCounter
                 )
                 .allowsHitTesting(false)
+            }
+            // Weather marker annotations on top of SVG overlay
+            .overlay {
+                AnnotationsOverlay(
+                    cities: cities,
+                    proxy: proxy,
+                    cameraChangeCounter: cameraChangeCounter,
+                    selectedDayOffset: selectedDayOffset,
+                    showCloudCover: showCloudCover,
+                    filterSunny: filterSunny,
+                    isPlaying: isPlaying,
+                    namespace: namespace,
+                    highlightedMarkerID: highlightedMarkerID,
+                    showingCityDetail: $showingCityDetail,
+                    tappedCity: $tappedCity
+                )
             }
             .onAppear {
                 if !cities.isEmpty && !hasCenteredOnCities {
@@ -172,11 +154,77 @@ struct MapKitMapView: View {
     }
 }
 
-// MARK: - SVG Overlay using MapProxy
+// MARK: - Annotations Overlay
+
+/// Renders weather markers above the SVG overlay using MapProxy to position them.
+private struct AnnotationsOverlay: View {
+    let cities: [CityWeather]
+    let proxy: MapProxy
+    let cameraChangeCounter: Int
+    let selectedDayOffset: Int
+    let showCloudCover: Bool
+    let filterSunny: Bool
+    let isPlaying: Bool
+    let namespace: Namespace.ID
+    let highlightedMarkerID: UUID?
+    @Binding var showingCityDetail: Bool
+    @Binding var tappedCity: CityWeather?
+
+    var body: some View {
+        // Use cameraChangeCounter to force re-evaluation on pan/zoom
+        let _ = cameraChangeCounter
+        
+        GeometryReader { geometry in
+            ForEach(cities) { cityWeather in
+                if passesFilter(cityWeather),
+                   let screenPt = proxy.convert(
+                    CLLocationCoordinate2D(
+                        latitude: cityWeather.city.latitude,
+                        longitude: cityWeather.city.longitude
+                    ),
+                    to: .local
+                   ) {
+                    WeatherMarker(
+                        cityWeather: cityWeather,
+                        dayOffset: selectedDayOffset,
+                        isCompact: false,
+                        namespace: namespace,
+                        showCloudCover: showCloudCover,
+                        filterSunny: filterSunny,
+                        passesFilter: true,
+                        isPlaying: isPlaying
+                    )
+                    .overlay {
+                        if highlightedMarkerID == cityWeather.id {
+                            MapRevealPulseRing()
+                        }
+                    }
+                    .onTapGesture {
+                        tappedCity = cityWeather
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(150))
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                showingCityDetail = true
+                            }
+                        }
+                    }
+                    .position(screenPt)
+                }
+            }
+        }
+    }
+
+    private func passesFilter(_ cityWeather: CityWeather) -> Bool {
+        guard filterSunny else { return true }
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        return forecast.condition == .clear && forecast.cloudCover < 0.30
+    }
+}
+
+// MARK: - SVG Country Overlay
 
 /// Uses MapProxy.convert to get exact screen positions of reference coordinates,
 /// then draws transformed SVG country paths in a Canvas.
-/// The cameraChangeCounter dependency forces re-evaluation on every pan/zoom.
 private struct SVGProxyOverlay: View {
     let countries: [CountryPath]
     let proxy: MapProxy
@@ -188,16 +236,12 @@ private struct SVGProxyOverlay: View {
     private static let refSvgB = GeoProjection.geoToSVG(latitude: 45.0, longitude: 90.0)
 
     var body: some View {
-        // Query proxy for screen positions of reference points.
-        // These calls happen during view body evaluation, which is triggered
-        // whenever cameraChangeCounter changes (on every pan/zoom).
         let ptA = proxy.convert(Self.refCoordA, to: .local)
         let ptB = proxy.convert(Self.refCoordB, to: .local)
 
         Canvas { context, size in
-            // Use cameraChangeCounter to ensure Canvas re-renders
             let _ = cameraChangeCounter
-            
+
             guard let screenA = ptA, let screenB = ptB else { return }
             guard size.width > 0, size.height > 0 else { return }
 
@@ -212,8 +256,8 @@ private struct SVGProxyOverlay: View {
             guard scaleX.isFinite, scaleY.isFinite, scaleX != 0, scaleY != 0 else { return }
 
             let tx = screenA.x - Double(svgA.x) * scaleX
-            // Zoom-proportional upward correction: the overlay drifts down more when zoomed in
-            let yCorrection = -0.5 * abs(scaleX)
+            // Zoom-proportional upward correction
+            let yCorrection = -0.8 * abs(scaleX)
             let ty = screenA.y - Double(svgA.y) * scaleY + yCorrection
 
             var transform = CGAffineTransform(
@@ -226,12 +270,7 @@ private struct SVGProxyOverlay: View {
                 if let transformed = country.path.copy(using: &transform) {
                     context.fill(
                         Path(transformed),
-                        with: .color(.red.opacity(0.4))
-                    )
-                    context.stroke(
-                        Path(transformed),
-                        with: .color(.red),
-                        lineWidth: 1.5
+                        with: .color(Color(red: 28/255.0, green: 28/255.0, blue: 30/255.0))
                     )
                 }
             }
