@@ -661,7 +661,7 @@ struct ContentView: View {
                     }
                     .padding(.leading, 24)
                     .padding(.trailing, 16)
-                    .frame(height: rowHeight)
+                    .padding(.vertical, 11)
                     .contentShape(Rectangle())
                     .opacity(draggingListID == listID ? 0.5 : 1.0)
                     .offset(y: draggingListID == listID ? dragOffset : 0)
