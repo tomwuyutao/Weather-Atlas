@@ -40,6 +40,19 @@ struct GeoProjection {
         return CGPoint(x: x, y: y)
     }
     
+    /// Inverse Web Mercator: convert mercator value back to latitude in degrees
+    static func inverseMercator(_ m: CGFloat) -> Double {
+        return Double((atan(exp(m)) - .pi / 4.0) * 360.0 / .pi)
+    }
+    
+    /// Convert SVG pixel coordinates back to geographic (lat, lon)
+    static func svgToGeo(svgPoint: CGPoint) -> (latitude: Double, longitude: Double) {
+        let lon = Double(svgPoint.x / svgWidth * lonRange + minLon)
+        let mercLat = mercMaxLat - (svgPoint.y / svgHeight * mercRange)
+        let lat = inverseMercator(mercLat)
+        return (latitude: lat, longitude: lon)
+    }
+    
     /// Convert SVG pixel coordinates to screen coordinates
     static func svgToScreen(svgPoint: CGPoint, scale: CGFloat, offset: CGSize) -> CGPoint {
         CGPoint(

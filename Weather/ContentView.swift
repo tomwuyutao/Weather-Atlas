@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import MapKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
@@ -1378,7 +1379,7 @@ struct ContentView: View {
                     }
             }
 
-            SVGMapView(
+            MapKitMapView(
                 countries: countries,
                 cities: weatherService.cityWeatherData,
                 selectedDayOffset: selectedDayOffset,
@@ -1386,14 +1387,8 @@ struct ContentView: View {
                 filterSunny: filterSunny,
                 isPlaying: isPlaying,
                 namespace: popupNamespace,
-                isZoomedOut: $isZoomedOut,
                 showingCityDetail: $showingCityDetail,
                 tappedCity: $tappedCity,
-                mapScale: $mapScale,
-                mapOffset: $mapOffset,
-                mapLastScale: $mapLastScale,
-                mapLastOffset: $mapLastOffset,
-                mapHasInitialized: $mapHasInitialized,
                 centerOnCity: centerOnCityTrigger,
                 recenterOnAllCities: $recenterOnAllCities
             )
