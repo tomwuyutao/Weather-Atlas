@@ -83,12 +83,36 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
     
     private static let userListsKey = "userCreatedLists"
     private static let deletedBuiltInListsKey = "deletedBuiltInLists"
+    private static let listOrderKey = "listOrder"
     
     static var allLists: [CityListID] {
         let deletedIDs = loadDeletedBuiltInIDs()
-        var lists = builtInLists.filter { !deletedIDs.contains($0.rawValue) }
-        lists.append(contentsOf: loadUserLists())
-        return lists
+        // Build the unordered pool of available lists
+        let availableBuiltIn = builtInLists.filter { !deletedIDs.contains($0.rawValue) }
+        let userLists = loadUserLists()
+        let allAvailable = availableBuiltIn + userLists
+        
+        // Apply custom order if saved
+        if let orderData = UserDefaults.standard.data(forKey: listOrderKey),
+           let orderedIDs = try? JSONDecoder().decode([String].self, from: orderData) {
+            let lookup = Dictionary(uniqueKeysWithValues: allAvailable.map { ($0.rawValue, $0) })
+            var ordered = orderedIDs.compactMap { lookup[$0] }
+            // Append any lists not in the saved order (newly created)
+            let orderedSet = Set(orderedIDs)
+            for list in allAvailable where !orderedSet.contains(list.rawValue) {
+                ordered.append(list)
+            }
+            return ordered
+        }
+        
+        return allAvailable
+    }
+    
+    static func saveListOrder(_ lists: [CityListID]) {
+        let ids = lists.map(\.rawValue)
+        if let data = try? JSONEncoder().encode(ids) {
+            UserDefaults.standard.set(data, forKey: listOrderKey)
+        }
     }
     
     static func loadUserLists() -> [CityListID] {
@@ -118,6 +142,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
     
     static func restoreBuiltInLists() {
         UserDefaults.standard.removeObject(forKey: deletedBuiltInListsKey)
+        UserDefaults.standard.removeObject(forKey: listOrderKey)
     }
     
     static func createList(name: String) -> CityListID {

@@ -165,6 +165,10 @@ struct ContentView: View {
     @State private var editingListName: String = ""
     @FocusState private var listNameFieldFocused: Bool
     @State private var showingDeleteListConfirmation: Bool = false
+    @State private var isReorderingLists: Bool = false
+    @State private var reorderableLists: [CityListID] = []
+    @State private var draggingListID: CityListID? = nil
+    @State private var dragOffset: CGFloat = 0
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -642,35 +646,198 @@ struct ContentView: View {
     
     private var iOSListSwitcherMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(CityListID.allLists) { listID in
-                Button {
-                    showingListSwitcher = false
-                    guard listID != weatherService.activeListID else { return }
-                    mapHasInitialized = false
-                    recenterOnAllCities = false
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        listContentOpacity = 0
-                    }
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(150))
-                        await weatherService.switchList(to: listID)
-                        withAnimation(.easeIn(duration: 0.2)) {
-                            listContentOpacity = 1
-                        }
-                        recenterOnAllCities = true
-                    }
-                } label: {
+            if isReorderingLists {
+                // Reorder mode: drag handle items
+                let rowHeight: CGFloat = 44
+                ForEach(Array(reorderableLists.enumerated()), id: \.element.id) { index, listID in
                     HStack(spacing: 12) {
                         Text(listID.displayName)
-                            .font(.avenir(.body, weight: listID == weatherService.activeListID ? .bold : .medium))
+                            .font(.avenir(.body, weight: .medium))
                             .foregroundStyle(.primary)
                         Spacer()
-                        if listID == weatherService.activeListID {
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 6, height: 6)
-                                .frame(width: 13)
+                        Image(systemName: "line.3.horizontal")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.leading, 24)
+                    .padding(.trailing, 16)
+                    .frame(height: rowHeight)
+                    .contentShape(Rectangle())
+                    .opacity(draggingListID == listID ? 0.5 : 1.0)
+                    .offset(y: draggingListID == listID ? dragOffset : 0)
+                    .zIndex(draggingListID == listID ? 1 : 0)
+                    .gesture(
+                        DragGesture()
+                            .onChanged { value in
+                                if draggingListID == nil {
+                                    draggingListID = listID
+                                }
+                                guard draggingListID == listID else { return }
+                                dragOffset = value.translation.height
+                                
+                                guard let fromIndex = reorderableLists.firstIndex(of: listID) else { return }
+                                let proposedOffset = Int(round(value.translation.height / rowHeight))
+                                let toIndex = min(max(fromIndex + proposedOffset, 0), reorderableLists.count - 1)
+                                if toIndex != fromIndex {
+                                    withAnimation(.easeInOut(duration: 0.15)) {
+                                        reorderableLists.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
+                                    }
+                                    // Reset offset after move so it stays near the finger
+                                    let moved = toIndex - fromIndex
+                                    dragOffset -= CGFloat(moved) * rowHeight
+                                }
+                            }
+                            .onEnded { _ in
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    dragOffset = 0
+                                    draggingListID = nil
+                                }
+                            }
+                    )
+                }
+                
+                Divider()
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+                
+                // Done button
+                Button {
+                    CityListID.saveListOrder(reorderableLists)
+                    isReorderingLists = false
+                } label: {
+                    HStack(spacing: 12) {
+                        Text("Done")
+                            .font(.avenir(.body, weight: .semibold))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.leading, 24)
+                    .padding(.trailing, 16)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            } else {
+                // Normal mode: tappable list items
+                ForEach(CityListID.allLists) { listID in
+                    Button {
+                        showingListSwitcher = false
+                        guard listID != weatherService.activeListID else { return }
+                        mapHasInitialized = false
+                        recenterOnAllCities = false
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            listContentOpacity = 0
                         }
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(150))
+                            await weatherService.switchList(to: listID)
+                            withAnimation(.easeIn(duration: 0.2)) {
+                                listContentOpacity = 1
+                            }
+                            recenterOnAllCities = true
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Text(listID.displayName)
+                                .font(.avenir(.body, weight: listID == weatherService.activeListID ? .bold : .medium))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if listID == weatherService.activeListID {
+                                Circle()
+                                    .fill(.white)
+                                    .frame(width: 6, height: 6)
+                                    .frame(width: 13)
+                            }
+                        }
+                        .padding(.leading, 24)
+                        .padding(.trailing, 16)
+                        .padding(.vertical, 11)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                Divider()
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+                
+                Button {
+                    showingListSwitcher = false
+                    startAddingNewList()
+                } label: {
+                    HStack(spacing: 12) {
+                        Text("Add List")
+                            .font(.avenir(.body, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "plus")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.leading, 24)
+                    .padding(.trailing, 16)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                
+                Button {
+                    showingListSwitcher = false
+                    startEditingListName()
+                } label: {
+                    HStack(spacing: 12) {
+                        Text("Rename List")
+                            .font(.avenir(.body, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "pencil")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.leading, 24)
+                    .padding(.trailing, 16)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                
+                Button {
+                    reorderableLists = CityListID.allLists
+                    isReorderingLists = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Text("Reorder Lists")
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .font(.avenir(.body, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "arrow.up.arrow.down")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.leading, 24)
+                    .padding(.trailing, 16)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                
+                Button {
+                    showingListSwitcher = false
+                    showingDeleteListConfirmation = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Text("Delete List")
+                            .font(.avenir(.body, weight: .medium))
+                            .foregroundStyle(.red)
+                        Spacer()
+                        Image(systemName: "trash")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.red)
                     }
                     .padding(.leading, 24)
                     .padding(.trailing, 16)
@@ -679,74 +846,17 @@ struct ContentView: View {
                 }
                 .buttonStyle(.plain)
             }
-            
-            Divider()
-                .padding(.horizontal, 16)
-                .padding(.vertical, 4)
-            
-            Button {
-                showingListSwitcher = false
-                startAddingNewList()
-            } label: {
-                HStack(spacing: 12) {
-                    Text("Add List")
-                        .font(.avenir(.body, weight: .medium))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "plus")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.leading, 24)
-                .padding(.trailing, 16)
-                .padding(.vertical, 11)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            
-            Button {
-                showingListSwitcher = false
-                startEditingListName()
-            } label: {
-                HStack(spacing: 12) {
-                    Text("Rename List")
-                        .font(.avenir(.body, weight: .medium))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    Image(systemName: "pencil")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.leading, 24)
-                .padding(.trailing, 16)
-                .padding(.vertical, 11)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            
-            Button {
-                showingListSwitcher = false
-                showingDeleteListConfirmation = true
-            } label: {
-                HStack(spacing: 12) {
-                    Text("Delete List")
-                        .font(.avenir(.body, weight: .medium))
-                        .foregroundStyle(.red)
-                    Spacer()
-                    Image(systemName: "trash")
-                        .font(.system(size: 13))
-                        .foregroundStyle(.red)
-                }
-                .padding(.leading, 24)
-                .padding(.trailing, 16)
-                .padding(.vertical, 11)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
         }
         .padding(.vertical, 8)
-        .frame(width: 190)
+        .frame(width: 210)
         .presentationBackground(.ultraThinMaterial)
+        .onChange(of: showingListSwitcher) { _, showing in
+            if !showing {
+                isReorderingLists = false
+                draggingListID = nil
+                dragOffset = 0
+            }
+        }
     }
     
     private var iOSListSwitcherMenuListsOnly: some View {
@@ -789,7 +899,7 @@ struct ContentView: View {
             }
         }
         .padding(.vertical, 8)
-        .frame(width: 190)
+        .frame(width: 210)
         .presentationBackground(.ultraThinMaterial)
     }
     
