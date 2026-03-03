@@ -40,9 +40,7 @@ struct MapKitMapView: View {
             .onMapCameraChange(frequency: .continuous) { _ in
                 cameraChangeCounter += 1
             }
-            // Black background for ocean areas
-            .background(Color.black)
-            // SVG country overlay
+            // SVG country overlay (draws black ocean + land shapes)
             .overlay {
                 SVGProxyOverlay(
                     countries: countries,
@@ -244,6 +242,9 @@ private struct SVGProxyOverlay: View {
 
             guard let screenA = ptA, let screenB = ptB else { return }
             guard size.width > 0, size.height > 0 else { return }
+
+            // Fill entire canvas with black (ocean)
+            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
 
             let svgA = Self.refSvgA
             let svgB = Self.refSvgB
