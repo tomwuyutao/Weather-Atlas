@@ -173,6 +173,23 @@ private struct AnnotationsOverlay: View {
         let _ = cameraChangeCounter
         
         GeometryReader { geometry in
+            // Collect on-screen marker positions for collision detection
+            let screenPositions: [(id: UUID, pt: CGPoint)] = cities.compactMap { cityWeather in
+                guard passesFilter(cityWeather) else { return nil }
+                guard let pt = proxy.convert(
+                    CLLocationCoordinate2D(
+                        latitude: cityWeather.city.latitude,
+                        longitude: cityWeather.city.longitude
+                    ),
+                    to: .local
+                ) else { return nil }
+                let margin: CGFloat = 40
+                guard pt.x > -margin && pt.x < geometry.size.width + margin &&
+                      pt.y > -margin && pt.y < geometry.size.height + margin else { return nil }
+                return (id: cityWeather.id, pt: pt)
+            }
+            let showDots = anyColliding(screenPositions)
+
             ForEach(cities) { cityWeather in
                 if passesFilter(cityWeather),
                    let screenPt = proxy.convert(
@@ -185,12 +202,13 @@ private struct AnnotationsOverlay: View {
                     WeatherMarker(
                         cityWeather: cityWeather,
                         dayOffset: selectedDayOffset,
-                        isCompact: false,
+                        isCompact: true,
                         namespace: namespace,
                         showCloudCover: showCloudCover,
                         filterSunny: filterSunny,
                         passesFilter: true,
-                        isPlaying: isPlaying
+                        isPlaying: isPlaying,
+                        showAsDot: showDots
                     )
                     .overlay {
                         if highlightedMarkerID == cityWeather.id {
@@ -216,6 +234,21 @@ private struct AnnotationsOverlay: View {
         guard filterSunny else { return true }
         let forecast = cityWeather.forecast(for: selectedDayOffset)
         return forecast.condition == .clear && forecast.cloudCover < 0.30
+    }
+
+    private func anyColliding(_ positions: [(id: UUID, pt: CGPoint)]) -> Bool {
+        let threshold: CGFloat = 36.0
+        let thresholdSq = threshold * threshold
+        for i in 0..<positions.count {
+            for j in (i + 1)..<positions.count {
+                let dx = positions[i].pt.x - positions[j].pt.x
+                let dy = positions[i].pt.y - positions[j].pt.y
+                if dx * dx + dy * dy < thresholdSq {
+                    return true
+                }
+            }
+        }
+        return false
     }
 }
 
