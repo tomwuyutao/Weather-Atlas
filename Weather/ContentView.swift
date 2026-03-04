@@ -1243,25 +1243,24 @@ struct ContentView: View {
         Group {
             if weatherService.cityWeatherData.isEmpty && weatherService.isLoading {
                 // First launch loading state
-                VStack(spacing: 20) {
-                    Spacer().frame(maxHeight: .infinity)
-                    Image(systemName: "cloud.sun.fill")
-                        .font(.system(size: 56))
-                        .symbolRenderingMode(.multicolor)
-                    Text("Loading Weather")
-                        .font(.avenir(.title2, weight: .semibold))
-                    Capsule()
-                        .fill(Color.white.opacity(0.15))
-                        .frame(width: 140, height: 4)
-                        .overlay(alignment: .leading) {
-                            Capsule()
-                                .fill(.white)
-                                .frame(width: 140 * weatherService.loadingProgress, height: 4)
-                        }
-                    Spacer().frame(maxHeight: .infinity)
-                    Spacer().frame(maxHeight: .infinity)
+                GeometryReader { geo in
+                    VStack(spacing: 20) {
+                        Image(systemName: "cloud.sun.fill")
+                            .font(.system(size: 56))
+                            .symbolRenderingMode(.multicolor)
+                        Text("Loading Weather")
+                            .font(.avenir(.title2, weight: .semibold))
+                        Capsule()
+                            .fill(Color.white.opacity(0.15))
+                            .frame(width: 140, height: 4)
+                            .overlay(alignment: .leading) {
+                                Capsule()
+                                    .fill(.white)
+                                    .frame(width: 140 * weatherService.loadingProgress, height: 4)
+                            }
+                    }
+                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
                 }
-                .frame(maxWidth: .infinity)
             } else if weatherService.cityWeatherData.isEmpty && weatherService.hasSavedCities {
                 VStack(spacing: 0) {
                     iOSListSwitcher
@@ -1437,24 +1436,6 @@ struct ContentView: View {
 
     private var mapView: some View {
         ZStack {
-            if weatherService.cityWeatherData.isEmpty && weatherService.isLoading {
-                // First launch: show loading overlay on map
-                Color.black
-                    .ignoresSafeArea()
-                    .overlay {
-                        VStack(spacing: 16) {
-                            Image(systemName: "globe.europe.africa.fill")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.secondary)
-                            Text("Loading Map Data…")
-                                .font(.avenir(.headline, weight: .medium))
-                                .foregroundStyle(.secondary)
-                            ProgressView()
-                                .controlSize(.regular)
-                        }
-                    }
-            }
-
             MapKitMapView(
                 countries: countries,
                 cities: weatherService.cityWeatherData,
@@ -1469,6 +1450,32 @@ struct ContentView: View {
                 recenterOnAllCities: $recenterOnAllCities
             )
             .ignoresSafeArea()
+
+            // Floating loading popup on map — positioned at 1/3 from top to match list view
+            if weatherService.isLoading {
+                GeometryReader { geo in
+                    VStack(spacing: 20) {
+                        Image(systemName: "cloud.sun.fill")
+                            .font(.system(size: 56))
+                            .symbolRenderingMode(.multicolor)
+                        Text("Loading Weather")
+                            .font(.avenir(.title2, weight: .semibold))
+                        Capsule()
+                            .fill(Color.white.opacity(0.15))
+                            .frame(width: 140, height: 4)
+                            .overlay(alignment: .leading) {
+                                Capsule()
+                                    .fill(.white)
+                                    .frame(width: 140 * weatherService.loadingProgress, height: 4)
+                            }
+                    }
+                    .padding(.horizontal, 32)
+                    .padding(.vertical, 28)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                }
+                .allowsHitTesting(false)
+            }
 
             // City detail popup (desktop/iPad only — iPhone uses navigation)
             #if os(macOS)
@@ -1592,27 +1599,6 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-}
-
-#Preview("Loading") {
-    VStack(spacing: 20) {
-        Spacer()
-        Image(systemName: "cloud.sun.fill")
-            .font(.system(size: 56))
-            .symbolRenderingMode(.multicolor)
-        Text("Loading Weather")
-            .font(.avenir(.title2, weight: .semibold))
-        Capsule()
-            .fill(Color.white.opacity(0.15))
-            .frame(width: 140, height: 4)
-            .overlay(alignment: .leading) {
-                Capsule()
-                    .fill(.white)
-                    .frame(width: 140 * 0.4, height: 4)
-            }
-        Spacer()
-    }
-    .frame(maxWidth: .infinity)
 }
 
 struct WeatherMarker: View {
