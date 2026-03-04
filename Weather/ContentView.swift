@@ -274,7 +274,7 @@ struct ContentView: View {
                     // View switcher capsule with optional re-center button above map icon
                     VStack(alignment: .trailing, spacing: 10) {
                         if selectedTab == 1 {
-                            Image(systemName: "location.fill")
+                            Image(systemName: "dot.squareshape.split.2x2")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(.primary)
                                 .frame(width: 42, height: 36)
