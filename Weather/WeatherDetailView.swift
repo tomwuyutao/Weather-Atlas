@@ -21,6 +21,7 @@ struct WeatherDetailView: View {
     var previewCurrentHour: Int? = nil
     
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var internalSelectedDay: Int
     @State private var previousDay: Int
     @State private var chartDragOffset: CGFloat = 0
@@ -90,8 +91,10 @@ struct WeatherDetailView: View {
                     }
                     
                     Text(forecastDateText)
+                        .padding(.top, dynamicTypeSize > .large ? 12 : 0)
                         .font(.avenir(.body, weight: .medium))
                         .foregroundStyle(.secondary)
+                        .dynamicTypeSize(...DynamicTypeSize.large)
                         .id("date-\(internalSelectedDay)")
                         .transition(.asymmetric(
                             insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
@@ -110,10 +113,12 @@ struct WeatherDetailView: View {
                     
                     Text(tempUnit.display(forecast.daytimeHigh))
                         .font(.avenir(.largeTitle, weight: .bold))
+                        .dynamicTypeSize(...DynamicTypeSize.large)
                         .contentTransition(.numericText())
                         .padding(.top, 14)
                         .offset(x: 5)
                 }
+                .dynamicTypeSize(...DynamicTypeSize.large)
                 .padding(.bottom, 0)
                 .clipped()
                 

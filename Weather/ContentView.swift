@@ -454,6 +454,9 @@ struct ContentView: View {
                         ToolbarItem(placement: .principal) {
                             Text(city.city.name)
                                 .font(.avenir(.title3, weight: .semibold))
+                                .dynamicTypeSize(...DynamicTypeSize.large)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.7)
                         }
                         if !cityIsInSidebar(city) {
                             ToolbarItem(placement: .topBarTrailing) {
@@ -549,6 +552,9 @@ struct ContentView: View {
                             ToolbarItem(placement: .principal) {
                                 Text(city.city.name)
                                     .font(.avenir(.title3, weight: .semibold))
+                                    .dynamicTypeSize(...DynamicTypeSize.large)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.7)
                             }
                             if !cityIsInSidebar(city) {
                                 ToolbarItem(placement: .topBarTrailing) {
