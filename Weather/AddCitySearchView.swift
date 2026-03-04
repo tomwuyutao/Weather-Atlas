@@ -63,27 +63,12 @@ struct AddCitySearchView: View {
                     Capsule()
                         .strokeBorder(.quaternary, lineWidth: 1)
                 )
-                
-                // Dismiss keyboard button (appears when focused)
-                if searchFieldFocus {
-                    Button {
-                        searchFieldFocus = false
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 44)
-                            .frame(height: 44)
-                            .background(.regularMaterial, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .transition(.scale.combined(with: .opacity))
-                }
+
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 16)
-            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: searchFieldFocus)
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: searchText.isEmpty)
             
             // Search results
             if shouldShowSearchResults {
