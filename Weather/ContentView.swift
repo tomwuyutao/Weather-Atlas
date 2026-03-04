@@ -173,6 +173,7 @@ struct ContentView: View {
     @State private var draggingListID: CityListID? = nil
     @State private var dragOffset: CGFloat = 0
     @State private var showingMapStylePopover: Bool = false
+    @State private var showingMapListSwitcher: Bool = false
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -406,7 +407,7 @@ struct ContentView: View {
                 if selectedTab == 1 {
                     ToolbarItem(placement: .principal) {
                         Button {
-                            showingListSwitcher = true
+                            showingMapListSwitcher = true
                         } label: {
                             HStack(spacing: 4) {
                                 Text(weatherService.activeListID.displayName)
@@ -417,8 +418,8 @@ struct ContentView: View {
                             }
                         }
                         .buttonStyle(.plain)
-                        .popover(isPresented: $showingListSwitcher) {
-                            iOSListSwitcherMenuListsOnly
+                        .popover(isPresented: $showingMapListSwitcher) {
+                            iOSMapListSwitcherMenu
                                 .presentationCompactAdaptation(.popover)
                         }
                     }
@@ -1005,6 +1006,50 @@ struct ContentView: View {
             ForEach(CityListID.allLists) { listID in
                 Button {
                     showingListSwitcher = false
+                    guard listID != weatherService.activeListID else { return }
+                    mapHasInitialized = false
+                    recenterOnAllCities = false
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        listContentOpacity = 0
+                    }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(150))
+                        await weatherService.switchList(to: listID)
+                        withAnimation(.easeIn(duration: 0.2)) {
+                            listContentOpacity = 1
+                        }
+                        recenterOnAllCities = true
+                    }
+                } label: {
+                    HStack(spacing: 12) {
+                        Text(listID.displayName)
+                            .font(.avenir(.body, weight: listID == weatherService.activeListID ? .bold : .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if listID == weatherService.activeListID {
+                            Circle()
+                                .fill(.white)
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                    .padding(.leading, 24)
+                    .padding(.trailing, 16)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(width: 210)
+        .presentationBackground(.ultraThinMaterial)
+    }
+
+    private var iOSMapListSwitcherMenu: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(CityListID.allLists) { listID in
+                Button {
+                    showingMapListSwitcher = false
                     guard listID != weatherService.activeListID else { return }
                     mapHasInitialized = false
                     recenterOnAllCities = false

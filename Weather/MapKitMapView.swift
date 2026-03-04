@@ -37,7 +37,7 @@ struct MapKitMapView: View {
             Map(position: $position, interactionModes: [.pan, .zoom]) {
                 // Empty map content — annotations rendered manually above overlay
             }
-            .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
+            .mapStyle(.standard(elevation: .flat, emphasis: useDetailedMap ? .muted : .automatic, pointsOfInterest: .excludingAll))
             .mapControls { }
             .environment(\.locale, Locale(identifier: "en"))
             .onMapCameraChange(frequency: .continuous) { _ in
