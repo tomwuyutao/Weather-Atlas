@@ -380,7 +380,7 @@ struct ContentView: View {
                                     filterSunny = false
                                 }
                             } label: {
-                                Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                                Image(systemName: "sun.max.circle.fill")
                                     .foregroundStyle(.blue)
                             }
                         }
@@ -999,7 +999,7 @@ struct ContentView: View {
 
             Divider().padding(.horizontal, 12).padding(.vertical, 4)
 
-            menuRow(icon: filterSunny ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle", title: filterSunny ? "Clear Filter" : "Filter") {
+            menuRow(icon: filterSunny ? "sun.max.circle.fill" : "sun.max.circle", title: filterSunny ? "Clear Filter" : "Filter Sunny") {
                 showingMenuPopover = false
                 withAnimation { filterSunny.toggle() }
             }
