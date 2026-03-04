@@ -25,6 +25,7 @@ struct ContentView: View {
     @Namespace private var popupNamespace
     @State private var searchText: String = ""
     @State private var citySearchManager = CitySearchManager()
+    @AppStorage("hasLaunchedBefore") private var hasLaunchedBefore: Bool = false
     @State private var selectedTab: Int = 0
     @State private var showingSearchSheet: Bool = true
     @State private var selectedDetent: PresentationDetent = .height(80)
@@ -45,6 +46,7 @@ struct ContentView: View {
     @State private var detailOpenedFromList: Bool = false
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @State private var showingSettings: Bool = false
+    @AppStorage("useDetailedMap") private var useDetailedMap: Bool = false
     
     private var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
@@ -170,6 +172,7 @@ struct ContentView: View {
     @State private var reorderableLists: [CityListID] = []
     @State private var draggingListID: CityListID? = nil
     @State private var dragOffset: CGFloat = 0
+    @State private var showingMapStylePopover: Bool = false
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -274,6 +277,70 @@ struct ContentView: View {
                     // View switcher capsule with optional re-center button above map icon
                     VStack(alignment: .trailing, spacing: 10) {
                         if selectedTab == 1 {
+                            Button {
+                                showingMapStylePopover = true
+                            } label: {
+                                Image(systemName: "gearshape")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 42, height: 36)
+                                    .glassEffect(.regular.interactive(), in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                            .popover(isPresented: $showingMapStylePopover) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Button {
+                                        showingMapStylePopover = false
+                                        withAnimation { useDetailedMap = false }
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Text("Minimal")
+                                                .font(.avenir(.body, weight: !useDetailedMap ? .bold : .medium))
+                                                .foregroundStyle(.primary)
+                                            Spacer()
+                                            if !useDetailedMap {
+                                                Circle()
+                                                    .fill(.white)
+                                                    .frame(width: 6, height: 6)
+                                            }
+                                        }
+                                        .padding(.leading, 24)
+                                        .padding(.trailing, 16)
+                                        .padding(.vertical, 11)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Button {
+                                        showingMapStylePopover = false
+                                        withAnimation { useDetailedMap = true }
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Text("Detailed")
+                                                .font(.avenir(.body, weight: useDetailedMap ? .bold : .medium))
+                                                .foregroundStyle(.primary)
+                                            Spacer()
+                                            if useDetailedMap {
+                                                Circle()
+                                                    .fill(.white)
+                                                    .frame(width: 6, height: 6)
+                                            }
+                                        }
+                                        .padding(.leading, 24)
+                                        .padding(.trailing, 16)
+                                        .padding(.vertical, 11)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.vertical, 8)
+                                .frame(width: 160)
+                                .presentationCompactAdaptation(.popover)
+                                .presentationBackground(.ultraThinMaterial)
+                            }
+                            .offset(x: -6)
+                            .transition(.scale.combined(with: .opacity))
+
                             Image(systemName: "dot.squareshape.split.2x2")
                                 .font(.system(size: 16, weight: .semibold))
                                 .foregroundStyle(.primary)
@@ -580,6 +647,11 @@ struct ContentView: View {
             }
         }
         .task {
+            if hasLaunchedBefore {
+                selectedTab = 1
+            } else {
+                hasLaunchedBefore = true
+            }
             print("📱 [DEBUG] iOS .task started")
             if countries.isEmpty {
                 print("📱 [DEBUG] Parsing SVG map...")
@@ -1330,6 +1402,7 @@ struct ContentView: View {
                                 .font(.avenir(.title2, weight: .medium))
                                 .foregroundStyle(.secondary)
                                 .contentTransition(.numericText())
+                                .padding(.trailing, 4)
                             Image(systemName: cityWeather.forecast(for: selectedDayOffset).weatherIcon)
                                 .font(.title3)
                                 .symbolRenderingMode(.multicolor)
@@ -1452,7 +1525,8 @@ struct ContentView: View {
                 showingCityDetail: $showingCityDetail,
                 tappedCity: $tappedCity,
                 centerOnCity: centerOnCityTrigger,
-                recenterOnAllCities: $recenterOnAllCities
+                recenterOnAllCities: $recenterOnAllCities,
+                useDetailedMap: useDetailedMap
             )
             .ignoresSafeArea()
 

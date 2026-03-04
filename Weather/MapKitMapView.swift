@@ -22,6 +22,7 @@ struct MapKitMapView: View {
 
     var centerOnCity: CityWeather?
     @Binding var recenterOnAllCities: Bool
+    var useDetailedMap: Bool = false
 
     @State private var position: MapCameraPosition = .automatic
     @State private var hasCenteredOnCities: Bool = false
@@ -38,17 +39,20 @@ struct MapKitMapView: View {
             }
             .mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
             .mapControls { }
+            .environment(\.locale, Locale(identifier: "en"))
             .onMapCameraChange(frequency: .continuous) { _ in
                 cameraChangeCounter += 1
             }
-            // SVG country overlay (draws black ocean + land shapes)
+            // SVG country overlay (draws black ocean + land shapes) — hidden in detailed mode
             .overlay {
-                SVGProxyOverlay(
-                    countries: countries,
-                    proxy: proxy,
-                    cameraChangeCounter: cameraChangeCounter
-                )
-                .allowsHitTesting(false)
+                if !useDetailedMap {
+                    SVGProxyOverlay(
+                        countries: countries,
+                        proxy: proxy,
+                        cameraChangeCounter: cameraChangeCounter
+                    )
+                    .allowsHitTesting(false)
+                }
             }
             // Weather marker annotations on top of SVG overlay (non-interactive so map gestures pass through)
             .overlay {

@@ -10,6 +10,9 @@ import SwiftUI
 @main
 struct WeatherApp: App {
     init() {
+        // Force MapKit and system frameworks to use English
+        UserDefaults.standard.set(["en"], forKey: "AppleLanguages")
+        
         // One-time migration: clear old city data so new defaults take effect
         let migrationKey = "defaultCitiesMigrationV2"
         if !UserDefaults.standard.bool(forKey: migrationKey) {
