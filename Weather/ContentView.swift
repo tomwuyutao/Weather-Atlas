@@ -593,6 +593,11 @@ struct ContentView: View {
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
         }
+        .onChange(of: weatherService.isLoading) { wasLoading, isLoading in
+            if wasLoading && !isLoading && selectedTab == 1 {
+                recenterOnAllCities = true
+            }
+        }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
                 weatherService: weatherService,
