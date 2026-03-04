@@ -25,6 +25,11 @@ struct WeatherDetailView: View {
     @State private var internalSelectedDay: Int
     @State private var previousDay: Int
     @State private var chartDragOffset: CGFloat = 0
+    @State private var swipeDirection: SwipeDirection = .forward
+    
+    private enum SwipeDirection {
+        case forward, backward
+    }
     @State private var showingCloudCover: Bool = false
     @State private var showingDetailMenu: Bool = false
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
@@ -95,26 +100,25 @@ struct WeatherDetailView: View {
                         .font(.avenir(.body, weight: .medium))
                         .foregroundStyle(.secondary)
                         .dynamicTypeSize(...DynamicTypeSize.large)
-                        .id("date-\(internalSelectedDay)")
-                        .transition(.asymmetric(
-                            insertion: .move(edge: goingForward ? .trailing : .leading).combined(with: .opacity),
-                            removal: .move(edge: goingForward ? .leading : .trailing).combined(with: .opacity)
-                        ))
+                        .contentTransition(.numericText())
+                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                     
                     Image(systemName: detailDisplayIcon)
                         .font(.system(size: 48))
                         .symbolRenderingMode(.multicolor)
-                        .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                        .contentTransition(.symbolEffect(.replace))
                         .frame(height: 56)
                         .background(alignment: .top) {
                             WeatherEffectOverlay(condition: forecast.condition, isCompact: false, iconHeight: 56)
                         }
+                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                         .padding(.top, 28)
                     
                     Text(tempUnit.display(forecast.daytimeHigh))
                         .font(.avenir(.largeTitle, weight: .bold))
                         .dynamicTypeSize(...DynamicTypeSize.large)
                         .contentTransition(.numericText())
+                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                         .padding(.top, 14)
                         .offset(x: 5)
                 }
@@ -158,6 +162,9 @@ struct WeatherDetailView: View {
                 
                 // Chart container — box stays fixed, content slides inside
                 ZStack {
+                    let insertEdge: Edge = swipeDirection == .forward ? .trailing : .leading
+                    let removeEdge: Edge = swipeDirection == .forward ? .leading : .trailing
+                    
                     HourlyTimelineChart(
                         hourlyForecasts: forecast.hourlyForecasts,
                         showCloudCover: effectiveShowCloudCover,
@@ -167,10 +174,11 @@ struct WeatherDetailView: View {
                     )
                     .id("hourly-\(internalSelectedDay)")
                     .transition(.asymmetric(
-                        insertion: .move(edge: goingForward ? .trailing : .leading),
-                        removal: .move(edge: goingForward ? .leading : .trailing)
+                        insertion: .move(edge: insertEdge).combined(with: .opacity),
+                        removal: .move(edge: removeEdge).combined(with: .opacity)
                     ))
                 }
+                .clipped()
                 .offset(x: chartDragOffset)
                 .opacity(Double(1.0 - min(abs(chartDragOffset) / 200.0, 0.4)))
                 .padding(.top, 12)
@@ -202,6 +210,12 @@ struct WeatherDetailView: View {
                             let vertical = value.translation.height
                             let threshold: CGFloat = 40
                             if abs(horizontal) > abs(vertical) && abs(horizontal) > threshold {
+                                // Set direction BEFORE changing internalSelectedDay
+                                if horizontal < 0 {
+                                    swipeDirection = .forward
+                                } else {
+                                    swipeDirection = .backward
+                                }
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     if horizontal < 0 && internalSelectedDay < 9 {
                                         internalSelectedDay += 1
@@ -360,6 +374,7 @@ struct WeatherDetailView: View {
                                 cityTimeZone: cityWeather.timeZone
                             )
                             .onTapGesture {
+                                swipeDirection = dailyForecast.dayOffset >= internalSelectedDay ? .forward : .backward
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     internalSelectedDay = dailyForecast.dayOffset
                                 }
@@ -381,6 +396,7 @@ struct WeatherDetailView: View {
                                 cityTimeZone: cityWeather.timeZone
                             )
                             .onTapGesture {
+                                swipeDirection = dailyForecast.dayOffset >= internalSelectedDay ? .forward : .backward
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     internalSelectedDay = dailyForecast.dayOffset
                                 }
