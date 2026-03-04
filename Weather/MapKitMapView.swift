@@ -26,6 +26,7 @@ struct MapKitMapView: View {
     @State private var position: MapCameraPosition = .automatic
     @State private var hasCenteredOnCities: Bool = false
     @State private var highlightedMarkerID: UUID?
+    @State private var tappedMarkerID: UUID?
 
     // Incremented on every camera change to force overlay redraw
     @State private var cameraChangeCounter: Int = 0
@@ -49,7 +50,7 @@ struct MapKitMapView: View {
                 )
                 .allowsHitTesting(false)
             }
-            // Weather marker annotations on top of SVG overlay
+            // Weather marker annotations on top of SVG overlay (non-interactive so map gestures pass through)
             .overlay {
                 AnnotationsOverlay(
                     cities: cities,
@@ -61,9 +62,47 @@ struct MapKitMapView: View {
                     isPlaying: isPlaying,
                     namespace: namespace,
                     highlightedMarkerID: highlightedMarkerID,
+                    tappedMarkerID: tappedMarkerID,
                     showingCityDetail: $showingCityDetail,
                     tappedCity: $tappedCity
                 )
+                .allowsHitTesting(false)
+            }
+            // Transparent tap detection layer — finds nearest marker on tap
+            .onTapGesture { location in
+                let _ = cameraChangeCounter
+                let tapRadius: CGFloat = 30.0
+                var closest: (city: CityWeather, dist: CGFloat)?
+                for cityWeather in cities {
+                    guard passesFilter(cityWeather) else { continue }
+                    guard let pt = proxy.convert(
+                        CLLocationCoordinate2D(
+                            latitude: cityWeather.city.latitude,
+                            longitude: cityWeather.city.longitude
+                        ),
+                        to: .local
+                    ) else { continue }
+                    let dx = pt.x - location.x
+                    let dy = pt.y - location.y
+                    let dist = sqrt(dx * dx + dy * dy)
+                    if dist < tapRadius {
+                        if closest == nil || dist < closest!.dist {
+                            closest = (city: cityWeather, dist: dist)
+                        }
+                    }
+                }
+                if let hit = closest {
+                    tappedCity = hit.city
+                    tappedMarkerID = hit.city.id
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(150))
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            showingCityDetail = true
+                        }
+                        try? await Task.sleep(for: .milliseconds(100))
+                        tappedMarkerID = nil
+                    }
+                }
             }
             .onAppear {
                 if !cities.isEmpty && !hasCenteredOnCities {
@@ -165,6 +204,7 @@ private struct AnnotationsOverlay: View {
     let isPlaying: Bool
     let namespace: Namespace.ID
     let highlightedMarkerID: UUID?
+    let tappedMarkerID: UUID?
     @Binding var showingCityDetail: Bool
     @Binding var tappedCity: CityWeather?
 
@@ -215,15 +255,8 @@ private struct AnnotationsOverlay: View {
                             MapRevealPulseRing()
                         }
                     }
-                    .onTapGesture {
-                        tappedCity = cityWeather
-                        Task {
-                            try? await Task.sleep(for: .milliseconds(150))
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                showingCityDetail = true
-                            }
-                        }
-                    }
+                    .scaleEffect(tappedMarkerID == cityWeather.id ? 1.5 : 1.0, anchor: .center)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: tappedMarkerID)
                     .position(screenPt)
                 }
             }

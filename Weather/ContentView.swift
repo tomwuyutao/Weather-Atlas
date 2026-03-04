@@ -596,14 +596,70 @@ struct ContentView: View {
                 }
             )
         }
-        .alert("Delete List", isPresented: $showingDeleteListConfirmation) {
-            Button("Cancel", role: .cancel) { }
-            Button("Delete", role: .destructive) {
-                deleteCurrentList()
+        .overlay {
+            if showingDeleteListConfirmation {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showingDeleteListConfirmation = false
+                        }
+                    }
+                
+                VStack(spacing: 0) {
+                    Text("Delete List")
+                        .font(.avenir(.headline, weight: .bold))
+                        .padding(.top, 20)
+                        .padding(.bottom, 8)
+                    
+                    Text("Are you sure you want to delete \"\(weatherService.activeListID.displayName)\"? This cannot be undone.")
+                        .font(.avenir(.subheadline, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 18)
+                    
+                    Divider()
+                    
+                    HStack(spacing: 0) {
+                        Button {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                showingDeleteListConfirmation = false
+                            }
+                        } label: {
+                            Text("Cancel")
+                                .font(.avenir(.body, weight: .medium))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Divider()
+                            .frame(height: 44)
+                        
+                        Button {
+                            withAnimation(.easeOut(duration: 0.2)) {
+                                showingDeleteListConfirmation = false
+                            }
+                            deleteCurrentList()
+                        } label: {
+                            Text("Delete")
+                                .font(.avenir(.body, weight: .semibold))
+                                .foregroundStyle(.red)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 14)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .frame(width: 280)
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
-        } message: {
-            Text("Are you sure you want to delete \"\(weatherService.activeListID.displayName)\"? This cannot be undone.")
         }
+        .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
 
     }
 
@@ -1214,7 +1270,20 @@ struct ContentView: View {
                         .padding(.top, 24)
                         .padding(.bottom, 20)
                     Spacer()
-                    ContentUnavailableView("No Cities", systemImage: "cloud.sun", description: Text("Tap + to add a city"))
+                    Button {
+                        showingAddCityView = true
+                    } label: {
+                        Label("Add City", systemImage: "plus")
+                            .font(.avenir(.body, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(.blue, in: Capsule())
+                            .glassEffect(.regular.interactive(), in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 40)
+                    Spacer()
                     Spacer()
                 }
             } else if isGridView {
