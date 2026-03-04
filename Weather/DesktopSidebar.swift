@@ -165,7 +165,7 @@ struct DesktopSidebar: View {
                 // Show search results if searching
                 if shouldShowSearchResults {
                     Section {
-                        ForEach(citySearchManager.searchResults, id: \.title) { result in
+                        ForEach(citySearchManager.searchResults) { result in
                             Button {
                                 Task {
                                     await selectSearchResult(result)
@@ -323,47 +323,37 @@ struct DesktopSidebar: View {
         .presentationBackground(.ultraThinMaterial)
     }
     
-    private func selectSearchResult(_ result: MKLocalSearchCompletion) async {
+    private func selectSearchResult(_ result: CitySearchResult) async {
         isLoadingSearchedCity = true
         defer { isLoadingSearchedCity = false }
         
-        let searchRequest = MKLocalSearch.Request(completion: result)
-        let search = MKLocalSearch(request: searchRequest)
+        let cityName = result.title
+        let coordinate = result.coordinate
         
-        do {
-            let response = try await search.start()
-            if let mapItem = response.mapItems.first {
-                let coordinate = mapItem.location.coordinate
-                let cityName = result.title
-                
-                if let existingCity = cities.first(where: { $0.city.name == cityName }) {
-                    detailOpenedFromList = false
-                    tappedCity = existingCity
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                        showingCityDetail = true
-                    }
-                    onCitySelected(existingCity)
-                    searchText = ""
-                    return
-                }
-                
-                let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
-                guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
-                    print("⚠️ Could not fetch weather for \(cityName)")
-                    return
-                }
-                
-                detailOpenedFromList = false
-                tappedCity = tempCityWeather
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                    showingCityDetail = true
-                }
-                onCitySelected(tempCityWeather)
-                
-                searchText = ""
+        if let existingCity = cities.first(where: { $0.city.name == cityName }) {
+            detailOpenedFromList = false
+            tappedCity = existingCity
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                showingCityDetail = true
             }
-        } catch {
-            print("Error searching for location: \(error.localizedDescription)")
+            onCitySelected(existingCity)
+            searchText = ""
+            return
         }
+        
+        let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
+        guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
+            print("⚠️ Could not fetch weather for \(cityName)")
+            return
+        }
+        
+        detailOpenedFromList = false
+        tappedCity = tempCityWeather
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            showingCityDetail = true
+        }
+        onCitySelected(tempCityWeather)
+        
+        searchText = ""
     }
 }

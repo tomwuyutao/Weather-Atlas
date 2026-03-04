@@ -88,7 +88,7 @@ struct AddCitySearchView: View {
             // Search results
             if shouldShowSearchResults {
                 List {
-                    ForEach(citySearchManager.searchResults, id: \.title) { result in
+                    ForEach(citySearchManager.searchResults) { result in
                         Button {
                             Task {
                                 await selectSearchResult(result)
@@ -164,38 +164,28 @@ struct AddCitySearchView: View {
         }
     }
     
-    private func selectSearchResult(_ result: MKLocalSearchCompletion) async {
+    private func selectSearchResult(_ result: CitySearchResult) async {
         isLoadingCity = true
         defer { isLoadingCity = false }
         
-        let searchRequest = MKLocalSearch.Request(completion: result)
-        let search = MKLocalSearch(request: searchRequest)
+        let cityName = result.title
+        let coordinate = result.coordinate
         
-        do {
-            let response = try await search.start()
-            if let mapItem = response.mapItems.first {
-                let coordinate = mapItem.location.coordinate
-                let cityName = result.title
-                
-                // Check if city already exists
-                if let existingCity = cities.first(where: { $0.city.name == cityName }) {
-                    print("City \(cityName) already exists")
-                    onCitySelected(existingCity)
-                    return
-                }
-                
-                // Create and fetch weather for new city
-                let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
-                guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
-                    print("⚠️ Could not fetch weather for \(cityName)")
-                    return
-                }
-                
-                onCitySelected(tempCityWeather)
-            }
-        } catch {
-            print("Error searching for location: \(error.localizedDescription)")
+        // Check if city already exists
+        if let existingCity = cities.first(where: { $0.city.name == cityName }) {
+            print("City \(cityName) already exists")
+            onCitySelected(existingCity)
+            return
         }
+        
+        // Create and fetch weather for new city
+        let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
+        guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
+            print("⚠️ Could not fetch weather for \(cityName)")
+            return
+        }
+        
+        onCitySelected(tempCityWeather)
     }
 }
 
