@@ -47,6 +47,41 @@ struct ContentView: View {
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @State private var showingSettings: Bool = false
     @AppStorage("useDetailedMap") private var useDetailedMap: Bool = false
+    @State private var mapVisibleListIDs: Set<String> = []
+    
+    /// Cities to display on the map — combined from all selected lists
+    private var mapCities: [CityWeather] {
+        if mapVisibleListIDs.isEmpty || mapVisibleListIDs == Set([weatherService.activeListID.rawValue]) {
+            return weatherService.cityWeatherData
+        }
+        var combined: [CityWeather] = []
+        var seenNames = Set<String>()
+        for listID in CityListID.allLists where mapVisibleListIDs.contains(listID.rawValue) {
+            let cities: [CityWeather]
+            if listID == weatherService.activeListID {
+                cities = weatherService.cityWeatherData
+            } else {
+                cities = weatherService.otherListData[listID.rawValue] ?? []
+            }
+            for city in cities {
+                if !seenNames.contains(city.city.name) {
+                    combined.append(city)
+                    seenNames.insert(city.city.name)
+                }
+            }
+        }
+        return combined
+    }
+    
+    private var mapToolbarTitle: String {
+        let selectedLists = CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }
+        let firstName = selectedLists.first?.displayName ?? weatherService.activeListID.displayName
+        let extra = selectedLists.count - 1
+        if extra > 0 {
+            return "\(firstName), +\(extra)"
+        }
+        return firstName
+    }
     
     private var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
@@ -86,7 +121,7 @@ struct ContentView: View {
         NavigationSplitView(columnVisibility: $columnVisibility) {
             // Sidebar - uses the same content as the iOS large sheet
             DesktopSidebar(
-                cities: weatherService.cityWeatherData,
+                cities: mapCities,
                 selectedCity: $selectedCity,
                 selectedDayOffset: $selectedDayOffset,
                 isEditMode: $isEditMode,
@@ -174,6 +209,9 @@ struct ContentView: View {
     @State private var dragOffset: CGFloat = 0
     @State private var showingMapStylePopover: Bool = false
     @State private var showingMapListSwitcher: Bool = false
+    @State private var showingRecenterPopover: Bool = false
+    @State private var focusSubsetCities: [CityWeather] = []
+    @State private var focusSubsetTrigger: Bool = false
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -342,16 +380,55 @@ struct ContentView: View {
                             .offset(x: -6)
                             .transition(.scale.combined(with: .opacity))
 
-                            Image(systemName: "dot.squareshape.split.2x2")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.primary)
-                                .frame(width: 42, height: 36)
-                                .glassEffect(.regular.interactive(), in: .capsule)
-                                .offset(x: -6)
-                                .onTapGesture {
+                            Button {
+                                if mapVisibleListIDs.count > 1 {
+                                    showingRecenterPopover = true
+                                } else {
                                     recenterOnAllCities = true
                                 }
-                                .transition(.scale.combined(with: .opacity))
+                            } label: {
+                                Image(systemName: "dot.squareshape.split.2x2")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 42, height: 36)
+                                    .glassEffect(.regular.interactive(), in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                            .popover(isPresented: $showingRecenterPopover) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
+                                        Button {
+                                            showingRecenterPopover = false
+                                            let cities: [CityWeather]
+                                            if listID == weatherService.activeListID {
+                                                cities = weatherService.cityWeatherData
+                                            } else {
+                                                cities = weatherService.otherListData[listID.rawValue] ?? []
+                                            }
+                                            focusSubsetCities = cities
+                                            focusSubsetTrigger = true
+                                        } label: {
+                                            HStack(spacing: 12) {
+                                                Text(listID.displayName)
+                                                    .font(.avenir(.body, weight: .medium))
+                                                    .foregroundStyle(.primary)
+                                                Spacer()
+                                            }
+                                            .padding(.leading, 24)
+                                            .padding(.trailing, 16)
+                                            .padding(.vertical, 11)
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                                .frame(width: 160)
+                                .presentationCompactAdaptation(.popover)
+                                .presentationBackground(.ultraThinMaterial)
+                            }
+                            .offset(x: -6)
+                            .transition(.scale.combined(with: .opacity))
                         }
 
                         HStack(spacing: 8) {
@@ -410,8 +487,9 @@ struct ContentView: View {
                             showingMapListSwitcher = true
                         } label: {
                             HStack(spacing: 4) {
-                                Text(weatherService.activeListID.displayName)
+                                Text(mapToolbarTitle)
                                     .font(.avenir(.subheadline, weight: .semibold))
+                                    .lineLimit(1)
                                 Image(systemName: "chevron.down")
                                     .font(.system(size: 10, weight: .semibold))
                                     .foregroundStyle(.secondary)
@@ -653,6 +731,9 @@ struct ContentView: View {
             } else {
                 hasLaunchedBefore = true
             }
+            if mapVisibleListIDs.isEmpty {
+                mapVisibleListIDs = [weatherService.activeListID.rawValue]
+            }
             print("📱 [DEBUG] iOS .task started")
             if countries.isEmpty {
                 print("📱 [DEBUG] Parsing SVG map...")
@@ -662,6 +743,9 @@ struct ContentView: View {
             print("📱 [DEBUG] About to call fetchWeatherForAllCities()...")
             await weatherService.fetchWeatherForAllCities()
             print("📱 [DEBUG] fetchWeatherForAllCities() returned, cityWeatherData.count = \(weatherService.cityWeatherData.count)")
+        }
+        .onChange(of: weatherService.activeListID) { _, newListID in
+            mapVisibleListIDs.insert(newListID.rawValue)
         }
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
@@ -1049,34 +1133,36 @@ struct ContentView: View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(CityListID.allLists) { listID in
                 Button {
-                    showingMapListSwitcher = false
-                    guard listID != weatherService.activeListID else { return }
-                    mapHasInitialized = false
-                    recenterOnAllCities = false
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        listContentOpacity = 0
-                    }
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(150))
-                        await weatherService.switchList(to: listID)
-                        withAnimation(.easeIn(duration: 0.2)) {
-                            listContentOpacity = 1
+                    let id = listID.rawValue
+                    if mapVisibleListIDs.contains(id) {
+                        // Don't allow deselecting the last list
+                        if mapVisibleListIDs.count > 1 {
+                            mapVisibleListIDs.remove(id)
+                            recenterOnAllCities = true
                         }
-                        recenterOnAllCities = true
+                    } else {
+                        mapVisibleListIDs.insert(id)
+                        // Fetch data for this list if not already loaded
+                        if listID != weatherService.activeListID {
+                            Task {
+                                await weatherService.fetchWeatherForList(listID)
+                                recenterOnAllCities = true
+                            }
+                        } else {
+                            recenterOnAllCities = true
+                        }
                     }
                 } label: {
                     HStack(spacing: 12) {
                         Text(listID.displayName)
-                            .font(.avenir(.body, weight: listID == weatherService.activeListID ? .bold : .medium))
+                            .font(.avenir(.body, weight: mapVisibleListIDs.contains(listID.rawValue) ? .bold : .medium))
                             .foregroundStyle(.primary)
                         Spacer()
-                        if listID == weatherService.activeListID {
-                            Circle()
-                                .fill(.white)
-                                .frame(width: 6, height: 6)
-                        }
+                        Image(systemName: mapVisibleListIDs.contains(listID.rawValue) ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 16))
+                            .foregroundStyle(mapVisibleListIDs.contains(listID.rawValue) ? .white : .secondary)
                     }
-                    .padding(.leading, 24)
+                    .padding(.leading, 16)
                     .padding(.trailing, 16)
                     .padding(.vertical, 11)
                     .contentShape(Rectangle())
@@ -1561,7 +1647,7 @@ struct ContentView: View {
         ZStack {
             MapKitMapView(
                 countries: countries,
-                cities: weatherService.cityWeatherData,
+                cities: mapCities,
                 selectedDayOffset: selectedDayOffset,
                 showCloudCover: showCloudCover,
                 filterSunny: filterSunny,
@@ -1571,6 +1657,8 @@ struct ContentView: View {
                 tappedCity: $tappedCity,
                 centerOnCity: centerOnCityTrigger,
                 recenterOnAllCities: $recenterOnAllCities,
+                focusOnSubsetCities: focusSubsetCities,
+                focusOnSubsetTrigger: $focusSubsetTrigger,
                 useDetailedMap: useDetailedMap
             )
             .ignoresSafeArea()

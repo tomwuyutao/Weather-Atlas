@@ -329,6 +329,7 @@ class WeatherService {
         
         print("📊 [DEBUG] Total cities loaded: \(weatherData.count) out of \(citiesToFetch.count)")
         self.cityWeatherData = weatherData
+        otherListData[activeListID.rawValue] = weatherData
         
         // Cache the fetched data
         cacheData(weatherData)
@@ -477,6 +478,59 @@ class WeatherService {
         UserDefaults.standard.removeObject(forKey: cacheTimestampKey)
         lastFetchDate = nil
         print("🗑️ Cache cleared")
+    }
+    
+    /// Load cached weather data for a specific list (without switching the active list)
+    func loadCachedData(for listID: CityListID) -> [CityWeather]? {
+        let key = "cachedWeatherData_\(listID.rawValue)"
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        do {
+            let cachedWeather = try JSONDecoder().decode([CachedCityWeather].self, from: data)
+            return cachedWeather.map { $0.toCityWeather() }
+        } catch {
+            return nil
+        }
+    }
+    
+    /// Stores fetched weather data for other lists (keyed by list rawValue)
+    var otherListData: [String: [CityWeather]] = [:]
+    
+    /// Fetch weather for a specific list without switching active list, storing in otherListData
+    func fetchWeatherForList(_ listID: CityListID) async {
+        // Already have data?
+        if let cached = loadCachedData(for: listID), !cached.isEmpty {
+            otherListData[listID.rawValue] = cached
+            return
+        }
+        // Load cities for this list
+        let citiesKey = "savedCitiesList_\(listID.rawValue)"
+        let citiesToFetch: [City]
+        if let data = UserDefaults.standard.data(forKey: citiesKey),
+           let cached = try? JSONDecoder().decode([CachedCity].self, from: data) {
+            citiesToFetch = cached.map { $0.toCity() }
+        } else {
+            citiesToFetch = listID.defaultCities
+        }
+        guard !citiesToFetch.isEmpty else { return }
+        
+        var weatherData: [CityWeather] = []
+        for city in citiesToFetch {
+            do {
+                let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
+                let weather = try await weatherService.weather(for: location)
+                let cityWeather = await convertWeatherKitData(weather: weather, for: city)
+                weatherData.append(cityWeather)
+            } catch {
+                // Skip failed cities
+            }
+        }
+        // Cache the data
+        let cacheKey = "cachedWeatherData_\(listID.rawValue)"
+        if let encoded = try? JSONEncoder().encode(weatherData.map { CachedCityWeather(from: $0) }) {
+            UserDefaults.standard.set(encoded, forKey: cacheKey)
+            UserDefaults.standard.set(Date(), forKey: "weatherCacheTimestamp_\(listID.rawValue)")
+        }
+        otherListData[listID.rawValue] = weatherData
     }
     
     // MARK: - Cities List Persistence

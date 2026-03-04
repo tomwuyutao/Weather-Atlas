@@ -22,6 +22,8 @@ struct MapKitMapView: View {
 
     var centerOnCity: CityWeather?
     @Binding var recenterOnAllCities: Bool
+    var focusOnSubsetCities: [CityWeather] = []
+    @Binding var focusOnSubsetTrigger: Bool
     var useDetailedMap: Bool = false
 
     @State private var position: MapCameraPosition = .automatic
@@ -126,6 +128,12 @@ struct MapKitMapView: View {
                     recenterOnAllCities = false
                 }
             }
+            .onChange(of: focusOnSubsetTrigger) { _, newValue in
+                if newValue && !focusOnSubsetCities.isEmpty {
+                    fitCities(focusOnSubsetCities, animated: true)
+                    focusOnSubsetTrigger = false
+                }
+            }
             .onChange(of: centerOnCity?.id) { _, _ in
                 if let city = centerOnCity {
                     animateToCity(city)
@@ -148,14 +156,18 @@ struct MapKitMapView: View {
     }
 
     private func fitAllCities(animated: Bool) {
-        guard !cities.isEmpty else { return }
+        fitCities(cities, animated: animated)
+    }
+
+    private func fitCities(_ citiesToFit: [CityWeather], animated: Bool) {
+        guard !citiesToFit.isEmpty else { return }
 
         var minLat = Double.greatestFiniteMagnitude
         var maxLat = -Double.greatestFiniteMagnitude
         var minLon = Double.greatestFiniteMagnitude
         var maxLon = -Double.greatestFiniteMagnitude
 
-        for city in cities {
+        for city in citiesToFit {
             minLat = min(minLat, city.city.latitude)
             maxLat = max(maxLat, city.city.latitude)
             minLon = min(minLon, city.city.longitude)
