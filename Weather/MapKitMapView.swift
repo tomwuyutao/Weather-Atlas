@@ -324,7 +324,7 @@ private struct SVGProxyOverlay: View {
 
             let tx = screenA.x - Double(svgA.x) * scaleX
             // Zoom-proportional upward correction
-            let yCorrection = -0.8 * abs(scaleX)
+            let yCorrection = -0.4 * abs(scaleX)
             let ty = screenA.y - Double(svgA.y) * scaleY + yCorrection
 
             var transform = CGAffineTransform(
