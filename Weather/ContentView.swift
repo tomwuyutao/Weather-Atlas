@@ -181,14 +181,15 @@ struct ContentView: View {
     private var iOSView: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
-                Group {
-                    if selectedTab == 0 {
-                        iOSListView
-                            .transition(.move(edge: .leading).combined(with: .opacity))
-                    } else {
-                        iOSMapView
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
+                ZStack {
+                    // Map always alive in background, hidden when not selected
+                    iOSMapView
+                        .opacity(selectedTab == 1 ? 1 : 0)
+                    
+                    // List slides out when switching to map
+                    iOSListView
+                        .background(Color(.systemBackground))
+                        .offset(x: selectedTab == 0 ? 0 : -UIScreen.main.bounds.width)
                 }
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
 
