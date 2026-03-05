@@ -108,6 +108,11 @@ struct MapKitMapView: View {
                         try? await Task.sleep(for: .milliseconds(100))
                         tappedMarkerID = nil
                     }
+                } else {
+                    // Tapped empty space — dismiss expanded card
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        showingCityDetail = false
+                    }
                 }
             }
             .onAppear {
@@ -264,7 +269,8 @@ private struct AnnotationsOverlay: View {
                         filterSunny: filterSunny,
                         passesFilter: true,
                         isPlaying: isPlaying,
-                        displayMode: markerMode
+                        displayMode: markerMode,
+                        isSelected: showingCityDetail && tappedCity?.id == cityWeather.id
                     )
                     .overlay {
                         if highlightedMarkerID == cityWeather.id {

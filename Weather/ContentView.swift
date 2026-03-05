@@ -22,6 +22,7 @@ struct ContentView: View {
     @State private var isZoomedOut: Bool = true
     @State private var showingCityDetail: Bool = false
     @State private var tappedCity: CityWeather?
+    @State private var showingMapExpandedCard: Bool = false
     @Namespace private var popupNamespace
     @State private var searchText: String = ""
     @State private var citySearchManager = CitySearchManager()
@@ -220,6 +221,61 @@ struct ContentView: View {
 
     // MARK: - Vertical Date Slider (Map Mode)
 
+    private func mapExpandedCard(for cityWeather: CityWeather) -> some View {
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+
+        return HStack(spacing: 14) {
+            // Weather icon
+            Image(systemName: forecast.weatherIcon)
+                .font(.system(size: 32))
+                .symbolRenderingMode(.multicolor)
+                .frame(width: 40)
+
+            // City info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(cityWeather.city.localizedName(locale: locale))
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text(forecast.condition.localizedDisplayName(locale: locale))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer()
+
+            // Temperature
+            Text(tempUnit.display(forecast.daytimeHigh))
+                .font(.system(size: 28, weight: .semibold, design: .rounded))
+                .foregroundStyle(.primary)
+                .contentTransition(.numericText())
+
+            // Arrow to detail
+            Button {
+                showingCityDetail = true
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 28, height: 28)
+                    .background(Circle().fill(.ultraThinMaterial))
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background {
+            RoundedRectangle(cornerRadius: 16)
+                .fill(.ultraThinMaterial)
+                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+        }
+        .onTapGesture {
+            showingCityDetail = true
+        }
+    }
+
     private func mapDateSlider(height: CGFloat) -> some View {
         let totalDays = 10
         let stepHeight = height / CGFloat(totalDays - 1)
@@ -351,6 +407,15 @@ struct ContentView: View {
                         .offset(x: selectedTab == 0 ? 0 : -UIScreen.main.bounds.width)
                 }
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
+
+                // Expanded city card on map
+                if selectedTab == 1, showingMapExpandedCard, let city = tappedCity {
+                    mapExpandedCard(for: city)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 60)
+                        .zIndex(1)
+                }
 
                 // Floating bottom toolbar
                 HStack(alignment: .bottom, spacing: 12) {
@@ -1782,7 +1847,7 @@ struct ContentView: View {
                 filterSunny: filterSunny,
                 isPlaying: isPlaying,
                 namespace: popupNamespace,
-                showingCityDetail: $showingCityDetail,
+                showingCityDetail: $showingMapExpandedCard,
                 tappedCity: $tappedCity,
                 centerOnCity: centerOnCityTrigger,
                 recenterOnAllCities: $recenterOnAllCities,
@@ -2022,6 +2087,29 @@ enum MarkerDisplayMode {
     case dot
 }
 
+private struct SelectedPulseRing: View {
+    enum Shape { case circle, roundedRect }
+    let shape: Shape
+    @State private var isPulsing = false
+
+    var body: some View {
+        Group {
+            switch shape {
+            case .circle:
+                Circle()
+                    .stroke(.white.opacity(isPulsing ? 0.3 : 0.8), lineWidth: isPulsing ? 1.5 : 2)
+                    .frame(width: 22, height: 22)
+                    .scaleEffect(isPulsing ? 1.3 : 1.0)
+            case .roundedRect:
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(.white.opacity(isPulsing ? 0.4 : 0.9), lineWidth: isPulsing ? 2.5 : 3)
+            }
+        }
+        .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: isPulsing)
+        .onAppear { isPulsing = true }
+    }
+}
+
 struct WeatherMarker: View {
     let cityWeather: CityWeather
     let dayOffset: Int
@@ -2032,6 +2120,7 @@ struct WeatherMarker: View {
     var passesFilter: Bool = true
     var isPlaying: Bool = false
     var displayMode: MarkerDisplayMode = .card
+    var isSelected: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
@@ -2088,18 +2177,29 @@ struct WeatherMarker: View {
                 .fill(displayCondition.dotColor)
                 .frame(width: 10, height: 10)
                 .shadow(color: displayCondition.dotColor.opacity(0.5), radius: 4)
+                .overlay {
+                    if isSelected {
+                        SelectedPulseRing(shape: .circle)
+                    }
+                }
                 .scaleEffect(showAsDot ? 1 : 0.01)
                 .opacity(showAsDot ? 1 : 0)
 
             // Card layer
             cardView
                 .fixedSize()
+                .overlay {
+                    if isSelected {
+                        SelectedPulseRing(shape: .roundedRect)
+                    }
+                }
                 .scaleEffect(showAsCard ? 1 : 0.01, anchor: .center)
                 .opacity(showAsCard ? 1 : 0)
         }
         .frame(width: 10, height: 10)
         .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.3), value: displayMode)
+        .animation(.easeInOut(duration: 0.2), value: isSelected)
         .animation(.smooth(duration: 0.4), value: dayOffset)
     }
 
