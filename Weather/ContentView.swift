@@ -212,6 +212,7 @@ struct ContentView: View {
     @State private var showingRecenterPopover: Bool = false
     @State private var focusSubsetCities: [CityWeather] = []
     @State private var focusSubsetTrigger: Bool = false
+    @State private var isLoadingMapList: Bool = false
 
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
@@ -513,7 +514,7 @@ struct ContentView: View {
                         }
                     }
                 } else {
-                    if weatherService.isLoading {
+                    if weatherService.isLoading || isLoadingMapList {
                         ToolbarItem(placement: .topBarTrailing) {
                             ProgressView()
                                 .controlSize(.small)
@@ -1145,7 +1146,9 @@ struct ContentView: View {
                         // Fetch data for this list if not already loaded
                         if listID != weatherService.activeListID {
                             Task {
+                                isLoadingMapList = true
                                 await weatherService.fetchWeatherForList(listID)
+                                isLoadingMapList = false
                                 recenterOnAllCities = true
                             }
                         } else {
@@ -1632,7 +1635,7 @@ struct ContentView: View {
         if filterSunny {
             cities = cities.filter {
                 let forecast = $0.forecast(for: selectedDayOffset)
-                return forecast.condition == .clear && forecast.cloudCover < 0.30
+                return forecast.condition == .clear
             }
         }
         return cities

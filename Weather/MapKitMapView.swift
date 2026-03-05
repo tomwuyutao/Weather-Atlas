@@ -152,7 +152,7 @@ struct MapKitMapView: View {
     private func passesFilter(_ cityWeather: CityWeather) -> Bool {
         guard filterSunny else { return true }
         let forecast = cityWeather.forecast(for: selectedDayOffset)
-        return forecast.condition == .clear && forecast.cloudCover < 0.30
+        return forecast.condition == .clear
     }
 
     private func fitAllCities(animated: Bool) {
@@ -282,7 +282,7 @@ private struct AnnotationsOverlay: View {
     private func passesFilter(_ cityWeather: CityWeather) -> Bool {
         guard filterSunny else { return true }
         let forecast = cityWeather.forecast(for: selectedDayOffset)
-        return forecast.condition == .clear && forecast.cloudCover < 0.30
+        return forecast.condition == .clear
     }
 
     private func anyColliding(_ positions: [(id: UUID, pt: CGPoint)]) -> Bool {
