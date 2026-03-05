@@ -297,7 +297,7 @@ struct ContentView: View {
     private func sliderEndpointLabel(text: String, isWhite: Bool) -> some View {
         HStack(spacing: 6) {
             Text(text)
-                .font(.avenir(.caption, weight: .medium))
+                .font(.avenir(.subheadline, weight: .medium))
                 .foregroundStyle(.white.opacity(0.7))
                 .shadow(color: .black.opacity(0.5), radius: 2)
                 .fixedSize()
@@ -339,7 +339,7 @@ struct ContentView: View {
                                     .overlay(alignment: .trailing) {
                                         mapDateSlider(height: 340)
                                     }
-                                    .padding(.bottom, 80)
+                                    .padding(.bottom, 120)
                                     .transition(.opacity)
                             }
                         }
