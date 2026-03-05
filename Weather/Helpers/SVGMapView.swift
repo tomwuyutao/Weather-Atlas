@@ -246,7 +246,7 @@ struct SVGMapView: View {
                 filterSunny: filterSunny,
                 passesFilter: passesFilter,
                 isPlaying: isPlaying,
-                showAsDot: showDots
+                displayMode: showDots ? .dot : .card
             )
             .overlay {
                 if highlightedMarkerID == cityWeather.id {

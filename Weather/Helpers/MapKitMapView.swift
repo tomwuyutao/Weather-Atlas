@@ -244,7 +244,7 @@ private struct AnnotationsOverlay: View {
                       pt.y > -margin && pt.y < geometry.size.height + margin else { return nil }
                 return (id: cityWeather.id, pt: pt)
             }
-            let showDots = anyColliding(screenPositions)
+            let markerMode = computeDisplayMode(screenPositions)
 
             ForEach(cities) { cityWeather in
                 if passesFilter(cityWeather),
@@ -264,7 +264,7 @@ private struct AnnotationsOverlay: View {
                         filterSunny: filterSunny,
                         passesFilter: true,
                         isPlaying: isPlaying,
-                        showAsDot: showDots
+                        displayMode: markerMode
                     )
                     .overlay {
                         if highlightedMarkerID == cityWeather.id {
@@ -285,14 +285,24 @@ private struct AnnotationsOverlay: View {
         return forecast.condition == .clear
     }
 
-    private func anyColliding(_ positions: [(id: UUID, pt: CGPoint)]) -> Bool {
-        let threshold: CGFloat = 36.0
-        let thresholdSq = threshold * threshold
+    private func computeDisplayMode(_ positions: [(id: UUID, pt: CGPoint)]) -> MarkerDisplayMode {
+        // Card size: 90×100, check with some padding
+        let cardWidth: CGFloat = 64
+        let cardHeight: CGFloat = 82
+        if !anyRectOverlapping(positions, width: cardWidth, height: cardHeight) {
+            return .card
+        }
+        return .dot
+    }
+
+    private func anyRectOverlapping(_ positions: [(id: UUID, pt: CGPoint)], width: CGFloat, height: CGFloat) -> Bool {
+        let halfW = width / 2
+        let halfH = height / 2
         for i in 0..<positions.count {
             for j in (i + 1)..<positions.count {
-                let dx = positions[i].pt.x - positions[j].pt.x
-                let dy = positions[i].pt.y - positions[j].pt.y
-                if dx * dx + dy * dy < thresholdSq {
+                let dx = abs(positions[i].pt.x - positions[j].pt.x)
+                let dy = abs(positions[i].pt.y - positions[j].pt.y)
+                if dx < halfW + halfW && dy < halfH + halfH {
                     return true
                 }
             }

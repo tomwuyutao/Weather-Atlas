@@ -1947,6 +1947,81 @@ struct ContentView: View {
         .environment(\.locale, Locale(identifier: "zh-Hans"))
 }
 
+#Preview("Cards") {
+    let sampleCities: [(String, AppWeatherCondition, Double, String)] = [
+        ("Beijing", .clear, 28, "sun.max.fill"),
+        ("London", .rain, 14, "cloud.rain.fill"),
+        ("Paris", .partlyCloudy, 22, "cloud.sun.fill"),
+        ("Shanghai", .cloudy, 19, "cloud.fill"),
+        ("Berlin", .snow, -2, "cloud.snow.fill"),
+        ("Rome", .clear, 30, "sun.max.fill"),
+    ]
+
+    let cityWeathers: [CityWeather] = sampleCities.map { name, condition, temp, symbol in
+        let forecast = DailyForecast(
+            dayOffset: 0,
+            daytimeLow: temp - 5,
+            daytimeHigh: temp,
+            symbolName: symbol,
+            condition: condition,
+            hourlyForecasts: [],
+            cloudCover: condition == .cloudy ? 0.8 : 0.2,
+            precipitationChance: condition == .rain ? 0.7 : 0.1
+        )
+        return CityWeather(
+            city: City(name: name, latitude: 0, longitude: 0),
+            condition: condition,
+            temperature: temp,
+            symbolName: symbol,
+            dailyForecasts: [forecast],
+            timeZone: .current
+        )
+    }
+
+    ScrollView {
+        VStack(spacing: 24) {
+            Text("Card Mode")
+                .font(.headline)
+            HStack(spacing: 40) {
+                ForEach(cityWeathers.prefix(3)) { cw in
+                    WeatherMarker(
+                        cityWeather: cw,
+                        dayOffset: 0,
+                        isCompact: true,
+                        namespace: Namespace().wrappedValue,
+                        showCloudCover: false,
+                        displayMode: .card
+                    )
+                }
+            }
+
+            Divider()
+
+            Text("Dot Mode")
+                .font(.headline)
+            HStack(spacing: 40) {
+                ForEach(cityWeathers.prefix(3)) { cw in
+                    WeatherMarker(
+                        cityWeather: cw,
+                        dayOffset: 0,
+                        isCompact: true,
+                        namespace: Namespace().wrappedValue,
+                        showCloudCover: false,
+                        displayMode: .dot
+                    )
+                }
+            }
+        }
+        .padding(32)
+    }
+    .preferredColorScheme(.dark)
+}
+
+enum MarkerDisplayMode {
+    case card
+    case dot
+}
+
 struct WeatherMarker: View {
     let cityWeather: CityWeather
     let dayOffset: Int
@@ -1956,9 +2031,10 @@ struct WeatherMarker: View {
     var filterSunny: Bool = false
     var passesFilter: Bool = true
     var isPlaying: Bool = false
-    var showAsDot: Bool = false
+    var displayMode: MarkerDisplayMode = .card
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.locale) private var locale
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     
     private var tempUnit: TemperatureUnit {
@@ -1968,6 +2044,9 @@ struct WeatherMarker: View {
     private var forecast: DailyForecast {
         cityWeather.forecast(for: dayOffset)
     }
+
+    private var showAsDot: Bool { displayMode == .dot }
+    private var showAsCard: Bool { displayMode == .card }
 
     private var displayIcon: String {
         if filterSunny {
@@ -2012,47 +2091,54 @@ struct WeatherMarker: View {
                 .scaleEffect(showAsDot ? 1 : 0.01)
                 .opacity(showAsDot ? 1 : 0)
 
-            // Icon layer
-            Group {
-                if isCompact {
-                    Image(systemName: displayIcon)
-                        .id(isPlaying ? "playing" : "filter-\(filterSunny)-day-\(dayOffset)")
-                        .font(.title3)
-                        .symbolRenderingMode(.multicolor)
-                        .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                        .frame(width: 30, height: 30)
-                        .background(alignment: .top) {
-                            WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 30)
-                        }
-                } else {
-                    VStack(spacing: 1) {
-                        Image(systemName: displayIcon)
-                            .id(isPlaying ? "playing" : "filter-\(filterSunny)-day-\(dayOffset)")
-                            .font(.title3)
-                            .symbolRenderingMode(.multicolor)
-                            .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                            .background(alignment: .top) {
-                                WeatherEffectOverlay(condition: displayCondition, isCompact: false, iconHeight: 26)
-                            }
-
-                        Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.daytimeHigh))
-                            .font(.avenir(.caption2, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .offset(x: 2)
-                            .contentTransition(.numericText())
-                            .animation(.smooth(duration: 0.4), value: dayOffset)
-                            .animation(.smooth(duration: 0.4), value: showCloudCover)
-                    }
-                    .frame(width: 34, height: 44)
-                }
-            }
-            .scaleEffect(showAsDot ? 0.01 : 1, anchor: .center)
-            .opacity(showAsDot ? 0 : 1)
+            // Card layer
+            cardView
+                .fixedSize()
+                .scaleEffect(showAsCard ? 1 : 0.01, anchor: .center)
+                .opacity(showAsCard ? 1 : 0)
         }
-        .frame(width: 40, height: 56)
+        .frame(width: 10, height: 10)
         .contentShape(Rectangle())
-        .animation(.easeInOut(duration: 0.3), value: showAsDot)
+        .animation(.easeInOut(duration: 0.3), value: displayMode)
         .animation(.smooth(duration: 0.4), value: dayOffset)
+    }
+
+    private var cardView: some View {
+        VStack(spacing: 4) {
+            Text(cityWeather.city.localizedName(locale: locale))
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .padding(.horizontal, 6)
+
+            Image(systemName: displayIcon)
+                .id(isPlaying ? "playing" : "filter-\(filterSunny)-day-\(dayOffset)")
+                .font(.system(size: 22))
+                .symbolRenderingMode(.multicolor)
+                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                .frame(height: 24)
+                .padding(.vertical, 3)
+                .background(alignment: .top) {
+                    WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 24)
+                }
+
+            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.daytimeHigh))
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .padding(.horizontal, 6)
+                .contentTransition(.numericText())
+                .animation(.smooth(duration: 0.4), value: dayOffset)
+                .animation(.smooth(duration: 0.4), value: showCloudCover)
+        }
+        .frame(width: 58, height: 76)
+        .background {
+            RoundedRectangle(cornerRadius: 12)
+                .fill(.ultraThinMaterial)
+                .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+        }
     }
 }
 #if !os(macOS)
