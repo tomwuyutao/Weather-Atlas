@@ -238,6 +238,168 @@ struct ContentView: View {
 
                 // Floating bottom toolbar
                 HStack(alignment: .bottom, spacing: 12) {
+                    // View switcher capsule with optional re-center button above list icon
+                    VStack(alignment: .leading, spacing: 10) {
+                        if selectedTab == 1 {
+                            Button {
+                                showingMapStylePopover = true
+                            } label: {
+                                Image(systemName: "gearshape")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 42, height: 36)
+                                    .glassEffect(.regular.interactive(), in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                            .popover(isPresented: $showingMapStylePopover) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Button {
+                                        showingMapStylePopover = false
+                                        withAnimation { useDetailedMap = false }
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Text("Minimal")
+                                                .font(.avenir(.body, weight: !useDetailedMap ? .bold : .medium))
+                                                .foregroundStyle(.primary)
+                                            Spacer()
+                                            if !useDetailedMap {
+                                                Circle()
+                                                    .fill(.white)
+                                                    .frame(width: 6, height: 6)
+                                            }
+                                        }
+                                        .padding(.leading, 24)
+                                        .padding(.trailing, 16)
+                                        .padding(.vertical, 11)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Button {
+                                        showingMapStylePopover = false
+                                        withAnimation { useDetailedMap = true }
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Text("Detailed")
+                                                .font(.avenir(.body, weight: useDetailedMap ? .bold : .medium))
+                                                .foregroundStyle(.primary)
+                                            Spacer()
+                                            if useDetailedMap {
+                                                Circle()
+                                                    .fill(.white)
+                                                    .frame(width: 6, height: 6)
+                                            }
+                                        }
+                                        .padding(.leading, 24)
+                                        .padding(.trailing, 16)
+                                        .padding(.vertical, 11)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.vertical, 8)
+                                .frame(width: 160)
+                                .presentationCompactAdaptation(.popover)
+                                .presentationBackground(.ultraThinMaterial)
+                            }
+                            .offset(x: 6)
+                            .transition(.scale.combined(with: .opacity))
+
+                            Button {
+                                if mapVisibleListIDs.count > 1 {
+                                    showingRecenterPopover = true
+                                } else {
+                                    recenterOnAllCities = true
+                                }
+                            } label: {
+                                Image(systemName: "dot.squareshape.split.2x2")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 42, height: 36)
+                                    .glassEffect(.regular.interactive(), in: .capsule)
+                            }
+                            .buttonStyle(.plain)
+                            .popover(isPresented: $showingRecenterPopover) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
+                                        Button {
+                                            showingRecenterPopover = false
+                                            let cities: [CityWeather]
+                                            if listID == weatherService.activeListID {
+                                                cities = weatherService.cityWeatherData
+                                            } else {
+                                                cities = weatherService.otherListData[listID.rawValue] ?? []
+                                            }
+                                            focusSubsetCities = cities
+                                            focusSubsetTrigger = true
+                                        } label: {
+                                            HStack(spacing: 12) {
+                                                Text(listID.displayName)
+                                                    .font(.avenir(.body, weight: .medium))
+                                                    .foregroundStyle(.primary)
+                                                Spacer()
+                                            }
+                                            .padding(.leading, 24)
+                                            .padding(.trailing, 16)
+                                            .padding(.vertical, 11)
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                                .frame(width: 160)
+                                .presentationCompactAdaptation(.popover)
+                                .presentationBackground(.ultraThinMaterial)
+                            }
+                            .offset(x: 6)
+                            .transition(.scale.combined(with: .opacity))
+                        }
+
+                        HStack(spacing: 8) {
+                            Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
+                                .contentTransition(.symbolEffect(.replace))
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
+                                .frame(width: 42, height: 36)
+                                .background {
+                                    if selectedTab == 0 {
+                                        Capsule()
+                                            .fill(.ultraThinMaterial)
+                                            .transition(.scale.combined(with: .opacity))
+                                    }
+                                }
+                                .contentShape(Capsule())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                        selectedTab = 0
+                                    }
+                                }
+
+                            Image(systemName: selectedTab == 1 ? "map.fill" : "map")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(selectedTab == 1 ? .primary : .secondary)
+                                .frame(width: 42, height: 36)
+                                .background {
+                                    if selectedTab == 1 {
+                                        Capsule()
+                                            .fill(.ultraThinMaterial)
+                                            .transition(.scale.combined(with: .opacity))
+                                    }
+                                }
+                                .contentShape(Capsule())
+                                .onTapGesture {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                        selectedTab = 1
+                                    }
+                                }
+                        }
+                        .padding(6)
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                    }
+
+                    Spacer()
+
                     // Date switcher capsule
                     HStack(spacing: 0) {
                         Image(systemName: "chevron.left")
@@ -311,168 +473,6 @@ struct ContentView: View {
                     }
                     .padding(6)
                     .glassEffect(.regular.interactive(), in: .capsule)
-
-                    Spacer()
-
-                    // View switcher capsule with optional re-center button above map icon
-                    VStack(alignment: .trailing, spacing: 10) {
-                        if selectedTab == 1 {
-                            Button {
-                                showingMapStylePopover = true
-                            } label: {
-                                Image(systemName: "gearshape")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 42, height: 36)
-                                    .glassEffect(.regular.interactive(), in: .capsule)
-                            }
-                            .buttonStyle(.plain)
-                            .popover(isPresented: $showingMapStylePopover) {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Button {
-                                        showingMapStylePopover = false
-                                        withAnimation { useDetailedMap = false }
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Text("Minimal")
-                                                .font(.avenir(.body, weight: !useDetailedMap ? .bold : .medium))
-                                                .foregroundStyle(.primary)
-                                            Spacer()
-                                            if !useDetailedMap {
-                                                Circle()
-                                                    .fill(.white)
-                                                    .frame(width: 6, height: 6)
-                                            }
-                                        }
-                                        .padding(.leading, 24)
-                                        .padding(.trailing, 16)
-                                        .padding(.vertical, 11)
-                                        .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-
-                                    Button {
-                                        showingMapStylePopover = false
-                                        withAnimation { useDetailedMap = true }
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Text("Detailed")
-                                                .font(.avenir(.body, weight: useDetailedMap ? .bold : .medium))
-                                                .foregroundStyle(.primary)
-                                            Spacer()
-                                            if useDetailedMap {
-                                                Circle()
-                                                    .fill(.white)
-                                                    .frame(width: 6, height: 6)
-                                            }
-                                        }
-                                        .padding(.leading, 24)
-                                        .padding(.trailing, 16)
-                                        .padding(.vertical, 11)
-                                        .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 160)
-                                .presentationCompactAdaptation(.popover)
-                                .presentationBackground(.ultraThinMaterial)
-                            }
-                            .offset(x: -6)
-                            .transition(.scale.combined(with: .opacity))
-
-                            Button {
-                                if mapVisibleListIDs.count > 1 {
-                                    showingRecenterPopover = true
-                                } else {
-                                    recenterOnAllCities = true
-                                }
-                            } label: {
-                                Image(systemName: "dot.squareshape.split.2x2")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 42, height: 36)
-                                    .glassEffect(.regular.interactive(), in: .capsule)
-                            }
-                            .buttonStyle(.plain)
-                            .popover(isPresented: $showingRecenterPopover) {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
-                                        Button {
-                                            showingRecenterPopover = false
-                                            let cities: [CityWeather]
-                                            if listID == weatherService.activeListID {
-                                                cities = weatherService.cityWeatherData
-                                            } else {
-                                                cities = weatherService.otherListData[listID.rawValue] ?? []
-                                            }
-                                            focusSubsetCities = cities
-                                            focusSubsetTrigger = true
-                                        } label: {
-                                            HStack(spacing: 12) {
-                                                Text(listID.displayName)
-                                                    .font(.avenir(.body, weight: .medium))
-                                                    .foregroundStyle(.primary)
-                                                Spacer()
-                                            }
-                                            .padding(.leading, 24)
-                                            .padding(.trailing, 16)
-                                            .padding(.vertical, 11)
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 160)
-                                .presentationCompactAdaptation(.popover)
-                                .presentationBackground(.ultraThinMaterial)
-                            }
-                            .offset(x: -6)
-                            .transition(.scale.combined(with: .opacity))
-                        }
-
-                        HStack(spacing: 8) {
-                            Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
-                                .contentTransition(.symbolEffect(.replace))
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
-                                .frame(width: 42, height: 36)
-                                .background {
-                                    if selectedTab == 0 {
-                                        Capsule()
-                                            .fill(.ultraThinMaterial)
-                                            .transition(.scale.combined(with: .opacity))
-                                    }
-                                }
-                                .contentShape(Capsule())
-                                .onTapGesture {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        selectedTab = 0
-                                    }
-                                }
-
-                            Image(systemName: selectedTab == 1 ? "map.fill" : "map")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(selectedTab == 1 ? .primary : .secondary)
-                                .frame(width: 42, height: 36)
-                                .background {
-                                    if selectedTab == 1 {
-                                        Capsule()
-                                            .fill(.ultraThinMaterial)
-                                            .transition(.scale.combined(with: .opacity))
-                                    }
-                                }
-                                .contentShape(Capsule())
-                                .onTapGesture {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        selectedTab = 1
-                                    }
-                                }
-                        }
-                        .padding(6)
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
