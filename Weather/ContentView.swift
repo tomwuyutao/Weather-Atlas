@@ -2076,7 +2076,7 @@ struct ContentView: View {
 
     ScrollView {
         VStack(spacing: 24) {
-            Text("Card Mode")
+            Text("Pin Mode")
                 .font(.headline)
             HStack(spacing: 40) {
                 ForEach(cityWeathers.prefix(3)) { cw in
@@ -2121,6 +2121,7 @@ enum MarkerDisplayMode {
 private struct SelectedPulseRing: View {
     enum Shape { case circle, roundedRect }
     let shape: Shape
+    var color: Color = .white
     @State private var isPulsing = false
 
     var body: some View {
@@ -2128,12 +2129,12 @@ private struct SelectedPulseRing: View {
             switch shape {
             case .circle:
                 Circle()
-                    .stroke(.white.opacity(isPulsing ? 0.3 : 0.8), lineWidth: isPulsing ? 1.5 : 2)
-                    .frame(width: 22, height: 22)
+                    .stroke(color.opacity(isPulsing ? 0.3 : 0.8), lineWidth: isPulsing ? 1.5 : 2.5)
+                    .frame(width: 30, height: 30)
                     .scaleEffect(isPulsing ? 1.3 : 1.0)
             case .roundedRect:
                 RoundedRectangle(cornerRadius: 10)
-                    .stroke(.white.opacity(isPulsing ? 0.4 : 0.9), lineWidth: isPulsing ? 2.5 : 3)
+                    .stroke(color.opacity(isPulsing ? 0.4 : 0.9), lineWidth: isPulsing ? 2.5 : 3)
             }
         }
         .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: isPulsing)
@@ -2202,74 +2203,55 @@ struct WeatherMarker: View {
     }
 
     var body: some View {
-        ZStack(alignment: .center) {
-            // Dot layer
+        ZStack(alignment: .bottom) {
+            // Pulse ring behind everything
+            if isSelected {
+                SelectedPulseRing(shape: .circle, color: displayCondition.dotColor)
+                    .frame(width: 10, height: 10)
+            }
+
+            // Dot layer — always present as anchor
             Circle()
                 .fill(displayCondition.dotColor)
                 .frame(width: 10, height: 10)
-                .shadow(color: displayCondition.dotColor.opacity(0.5), radius: 4)
-                .overlay {
-                    if isSelected {
-                        SelectedPulseRing(shape: .circle)
-                    }
-                }
-                .scaleEffect(showAsDot ? 1 : 0.01)
-                .opacity(showAsDot ? 1 : 0)
+                .shadow(color: displayCondition.dotColor.opacity(isSelected ? 0.8 : 0.5), radius: isSelected ? 12 : 4)
+                .scaleEffect(isSelected ? 1.5 : 1.0)
 
-            // Card layer
-            cardView
-                .fixedSize()
-                .overlay {
-                    if isSelected {
-                        SelectedPulseRing(shape: .roundedRect)
-                    }
-                }
-                .scaleEffect(showAsCard ? 1 : 0.01, anchor: .center)
-                .opacity(showAsCard ? 1 : 0)
+            // Pin label layer — floats above the dot
+            if showAsCard {
+                pinView
+                    .fixedSize()
+                    .transition(.scale(scale: 0.01, anchor: .bottom).combined(with: .opacity))
+            }
         }
-        .frame(width: 10, height: 10)
+        .frame(width: 10, height: 10, alignment: .bottom)
         .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.3), value: displayMode)
         .animation(.easeInOut(duration: 0.2), value: isSelected)
         .animation(.smooth(duration: 0.4), value: dayOffset)
     }
 
-    private var cardView: some View {
-        VStack(spacing: 4) {
-            Text(cityWeather.city.localizedName(locale: locale))
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .padding(.horizontal, 6)
-
-            Image(systemName: displayIcon)
-                .id(isPlaying ? "playing" : "filter-\(filterSunny)-day-\(dayOffset)")
-                .font(.system(size: 22))
-                .symbolRenderingMode(.multicolor)
-                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                .frame(height: 24)
-                .padding(.vertical, 3)
-                .background(alignment: .top) {
-                    WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 24, iconName: displayIcon)
-                }
-
+    private var pinView: some View {
+        VStack(spacing: 1) {
+            // Temperature — primary, largest
             Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.daytimeHigh))
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.primary)
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .padding(.horizontal, 6)
                 .contentTransition(.numericText())
                 .animation(.smooth(duration: 0.4), value: dayOffset)
+                .offset(x: 2)
                 .animation(.smooth(duration: 0.4), value: showCloudCover)
+
+            // City name — secondary, smaller
+            Text(cityWeather.city.localizedName(locale: locale))
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.white.opacity(0.75))
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
         }
-        .frame(width: 58, height: 76)
-        .background {
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-        }
+        .offset(y: -16)
     }
 }
 #if !os(macOS)

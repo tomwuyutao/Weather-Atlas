@@ -122,6 +122,7 @@ struct WeatherDetailView: View {
                         .contentTransition(.numericText())
                         .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                         .padding(.top, 14)
+                        .padding(.trailing, 4)
                         .offset(x: 5)
                 }
                 .dynamicTypeSize(...DynamicTypeSize.large)

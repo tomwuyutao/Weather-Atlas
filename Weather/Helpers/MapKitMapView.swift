@@ -297,9 +297,9 @@ private struct AnnotationsOverlay: View {
     }
 
     private func computeDisplayMode(_ positions: [(id: UUID, pt: CGPoint)]) -> MarkerDisplayMode {
-        // Card size: 90×100, check with some padding
-        let cardWidth: CGFloat = 64
-        let cardHeight: CGFloat = 82
+        // Pin size: label (~50 wide) + dot below, with padding
+        let cardWidth: CGFloat = 54
+        let cardHeight: CGFloat = 46
         if !anyRectOverlapping(positions, width: cardWidth, height: cardHeight) {
             return .card
         }
