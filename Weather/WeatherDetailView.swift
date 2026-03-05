@@ -110,6 +110,7 @@ struct WeatherDetailView: View {
                         .frame(height: 56)
                         .background(alignment: .top) {
                             WeatherEffectOverlay(condition: forecast.condition, isCompact: false, iconHeight: 56)
+                                .id("detail-effect-\(internalSelectedDay)-\(forecast.condition.displayName)")
                         }
                         .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                         .padding(.top, 28)
