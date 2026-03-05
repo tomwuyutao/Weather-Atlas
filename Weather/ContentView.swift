@@ -230,15 +230,34 @@ struct ContentView: View {
             default: return forecast.weatherIcon
             }
         }()
+        // Match effect condition to the displayed icon
+        let effectCondition: AppWeatherCondition = {
+            if icon == "cloud.fill" {
+                switch forecast.condition {
+                case .rain: return .rain
+                case .drizzle: return .drizzle
+                case .snow: return .snow
+                default: return .cloudy
+                }
+            }
+            return forecast.condition
+        }()
+        // Show "Partly Sunny" when condition is partlyCloudy but icon has sun
+        let conditionText: String = {
+            if forecast.condition == .partlyCloudy && icon.contains("sun") {
+                return localizedString("Partly Sunny", locale: locale)
+            }
+            return forecast.condition.localizedDisplayName(locale: locale)
+        }()
 
         return HStack(spacing: 14) {
             // Weather icon
             Image(systemName: icon)
                 .font(.system(size: 32))
                 .symbolRenderingMode(.multicolor)
-                .frame(width: 40, height: 36)
+                .frame(width: 52, height: 40)
                 .background(alignment: .top) {
-                    WeatherEffectOverlay(condition: forecast.condition, isCompact: true, iconHeight: 36)
+                    WeatherEffectOverlay(condition: effectCondition, isCompact: false, iconHeight: 40, iconName: icon)
                 }
 
             // City info
@@ -248,7 +267,7 @@ struct ContentView: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Text(forecast.condition.localizedDisplayName(locale: locale))
+                Text(conditionText)
                     .font(.avenir(.caption, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -422,7 +441,7 @@ struct ContentView: View {
                     mapExpandedCard(for: city)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 60)
+                        .padding(.bottom, 72)
                         .zIndex(1)
                 }
 
@@ -2229,7 +2248,7 @@ struct WeatherMarker: View {
                 .frame(height: 24)
                 .padding(.vertical, 3)
                 .background(alignment: .top) {
-                    WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 24)
+                    WeatherEffectOverlay(condition: displayCondition, isCompact: true, iconHeight: 24, iconName: displayIcon)
                 }
 
             Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.daytimeHigh))

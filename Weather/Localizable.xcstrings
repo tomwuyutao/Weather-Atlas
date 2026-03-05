@@ -434,6 +434,16 @@
         }
       }
     },
+    "Partly Sunny" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "局部晴朗"
+          }
+        }
+      }
+    },
     "Play Forecast" : {
       "localizations" : {
         "zh-Hans" : {

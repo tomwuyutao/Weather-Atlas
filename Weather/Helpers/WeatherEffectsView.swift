@@ -192,8 +192,8 @@ struct CloudDriftEffect: View {
             
             Canvas { context, size in
                 let center = CGPoint(x: size.width / 2 + drift, y: size.height / 2)
-                let w = size.width * 0.9
-                let h = size.height * 0.5
+                let w = size.width * 0.6
+                let h = size.height * 0.4
                 let rect = CGRect(x: center.x - w / 2, y: center.y - h / 2, width: w, height: h)
                 let path = Capsule().path(in: rect)
                 context.fill(path, with: .color(.white.opacity(opacity)))
@@ -254,11 +254,25 @@ struct WeatherEffectOverlay: View {
     let condition: AppWeatherCondition
     let isCompact: Bool
     let iconHeight: CGFloat
+    let iconName: String?
     
-    init(condition: AppWeatherCondition, isCompact: Bool, iconHeight: CGFloat = 32) {
+    init(condition: AppWeatherCondition, isCompact: Bool, iconHeight: CGFloat = 32, iconName: String? = nil) {
         self.condition = condition
         self.isCompact = isCompact
         self.iconHeight = iconHeight
+        self.iconName = iconName
+    }
+    
+    /// Whether the displayed icon contains a sun element (cloud.sun.fill, etc.)
+    private var iconHasSun: Bool {
+        if let iconName { return iconName.contains("sun") }
+        return condition == .clear || condition == .partlyCloudy
+    }
+    
+    /// Whether the displayed icon is a plain cloud (cloud.fill)
+    private var iconIsCloud: Bool {
+        if let iconName { return iconName.contains("cloud") && !iconName.contains("sun") }
+        return condition == .cloudy
     }
     
     var body: some View {
@@ -266,7 +280,11 @@ struct WeatherEffectOverlay: View {
         case .clear:
             SunGlowEffect()
         case .partlyCloudy:
-            SunGlowEffect(subtle: true)
+            if iconIsCloud {
+                CloudDriftEffect()
+            } else {
+                SunGlowEffect(subtle: true)
+            }
         case .cloudy:
             CloudDriftEffect()
         case .rain:
