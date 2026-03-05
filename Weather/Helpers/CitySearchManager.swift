@@ -5,7 +5,6 @@
 
 import Foundation
 import MapKit
-import CoreLocation
 
 // MARK: - Search Result
 
@@ -13,7 +12,7 @@ struct CitySearchResult: Identifiable {
     let id = UUID()
     let title: String
     let subtitle: String
-    let coordinate: CLLocationCoordinate2D
+    fileprivate let completion: MKLocalSearchCompletion
 }
 
 // MARK: - City Search Manager
@@ -23,8 +22,7 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     var searchResults: [CitySearchResult] = []
     private let completer: MKLocalSearchCompleter
     private var currentQuery: String = ""
-    private let englishLocale = Locale(identifier: "en_US")
-    
+
     override init() {
         completer = MKLocalSearchCompleter()
         super.init()
@@ -46,44 +44,25 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
         completer.queryFragment = query
     }
     
+    /// Resolve coordinates only when the user selects a result
+    func resolveCoordinate(for result: CitySearchResult) async -> CLLocationCoordinate2D? {
+        let request = MKLocalSearch.Request(completion: result.completion)
+        let search = MKLocalSearch(request: request)
+        do {
+            let response = try await search.start()
+            return response.mapItems.first?.placemark.coordinate
+        } catch {
+            return nil
+        }
+    }
+    
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
-        let completions = completer.results
-        let query = currentQuery
-        
-        Task { @MainActor in
-            var englishResults: [CitySearchResult] = []
-            
-            for completion in completions {
-                let searchRequest = MKLocalSearch.Request(completion: completion)
-                let search = MKLocalSearch(request: searchRequest)
-                
-                do {
-                    let response = try await search.start()
-                    if let mapItem = response.mapItems.first {
-                        let coordinate = mapItem.placemark.coordinate
-                        
-                        let geocoder = CLGeocoder()
-                        let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-                        let placemarks = try await geocoder.reverseGeocodeLocation(location, preferredLocale: englishLocale)
-                        
-                        if let placemark = placemarks.first {
-                            let city = placemark.locality ?? completion.title
-                            let country = placemark.country ?? completion.subtitle
-                            englishResults.append(CitySearchResult(title: city, subtitle: country, coordinate: coordinate))
-                        }
-                    }
-                } catch {
-                    // Skip failed results silently
-                }
-                
-                // If user typed something new, abort this batch
-                guard currentQuery == query else { return }
-            }
-            
-            // Only update if query hasn't changed
-            if currentQuery == query {
-                searchResults = englishResults
-            }
+        searchResults = completer.results.map { completion in
+            CitySearchResult(
+                title: completion.title,
+                subtitle: completion.subtitle,
+                completion: completion
+            )
         }
     }
     

@@ -22,6 +22,7 @@ struct WeatherDetailView: View {
     
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.locale) private var locale
     @State private var internalSelectedDay: Int
     @State private var previousDay: Int
     @State private var chartDragOffset: CGFloat = 0
@@ -89,7 +90,7 @@ struct WeatherDetailView: View {
                 // Header
                 VStack(alignment: .center, spacing: 0) {
                     if isPopup {
-                        Text(cityWeather.city.name)
+                        Text(cityWeather.city.localizedName(locale: locale))
                             .font(.avenir(.title3, weight: .medium))
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 4)
@@ -433,12 +434,13 @@ struct WeatherDetailView: View {
         
         if let date = cityCalendar.date(byAdding: .day, value: internalSelectedDay, to: cityToday) {
             if internalSelectedDay == 0 {
-                return "Today"
+                return localizedString("Today", locale: locale)
             } else if internalSelectedDay == 1 {
-                return "Tomorrow"
+                return localizedString("Tomorrow", locale: locale)
             } else {
                 let formatter = DateFormatter()
-                formatter.dateFormat = "EEEE, MMMM d"
+                formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "EEEEMMMMd", options: 0, locale: locale)
+                formatter.locale = locale
                 formatter.timeZone = cityWeather.timeZone
                 return formatter.string(from: date)
             }
@@ -563,6 +565,7 @@ struct HourlyTimelineChart: View {
     var cityTimeZone: TimeZone = .current
     var previewCurrentHour: Int? = nil
     
+    @Environment(\.locale) private var locale
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     
     private var tempUnit: TemperatureUnit {
@@ -654,7 +657,7 @@ struct HourlyTimelineChart: View {
                         let pastHour = isPastHour(forecast.hour)
                         ZStack {
                             // Hour label — fixed near top
-                            Text(forecast.shortFormattedHour)
+                            Text(forecast.shortFormattedHour(locale: locale))
                                 .font(.avenir(.caption))
                                 .foregroundStyle(.secondary)
                                 .frame(height: hourLabelHeight)
@@ -696,6 +699,7 @@ struct DayForecastBox: View {
     let cityTimeZone: TimeZone
     
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.locale) private var locale
     
     init(dailyForecast: DailyForecast, isSelected: Bool, cornerRadius: RectangleCornerRadii = .init(), showCloudCover: Bool = false, cityTimeZone: TimeZone = .current) {
         self.dailyForecast = dailyForecast
@@ -713,10 +717,11 @@ struct DayForecastBox: View {
         
         if let date = cityCalendar.date(byAdding: .day, value: dailyForecast.dayOffset, to: cityToday) {
             if dailyForecast.dayOffset == 0 {
-                return "Today"
+                return localizedString("Today", locale: locale)
             } else {
                 let formatter = DateFormatter()
-                formatter.dateFormat = "EEE"
+                formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "EEE", options: 0, locale: locale)
+                formatter.locale = locale
                 formatter.timeZone = cityTimeZone
                 return formatter.string(from: date)
             }

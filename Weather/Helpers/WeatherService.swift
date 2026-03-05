@@ -12,6 +12,13 @@ import CoreLocation
 import MapKit
 import Combine
 
+/// Look up a localized string for a specific locale (respects SwiftUI environment locale).
+func localizedString(_ key: String.LocalizationValue, locale: Locale) -> String {
+    var resource = LocalizedStringResource(key)
+    resource.locale = locale
+    return String(localized: resource)
+}
+
 enum AppWeatherCondition {
     case clear
     case partlyCloudy
@@ -22,6 +29,7 @@ enum AppWeatherCondition {
     case fog
     case wind
     
+    /// Internal name used for cache serialization — do NOT localize
     var displayName: String {
         switch self {
         case .clear:
@@ -40,6 +48,27 @@ enum AppWeatherCondition {
             return "Fog"
         case .wind:
             return "Windy"
+        }
+    }
+    
+    func localizedDisplayName(locale: Locale = .current) -> String {
+        switch self {
+        case .clear:
+            return localizedString("Clear", locale: locale)
+        case .partlyCloudy:
+            return localizedString("Partly Cloudy", locale: locale)
+        case .cloudy:
+            return localizedString("Cloudy", locale: locale)
+        case .rain:
+            return localizedString("Rain", locale: locale)
+        case .drizzle:
+            return localizedString("Drizzle", locale: locale)
+        case .snow:
+            return localizedString("Snow", locale: locale)
+        case .fog:
+            return localizedString("Fog", locale: locale)
+        case .wind:
+            return localizedString("Windy", locale: locale)
         }
     }
     
@@ -78,6 +107,14 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
     
     static let china = CityListID(rawValue: "china", displayName: "China")
     static let europe = CityListID(rawValue: "europe", displayName: "Europe")
+    
+    func localizedDisplayName(locale: Locale = .current) -> String {
+        switch rawValue {
+        case "china": return localizedString("China", locale: locale)
+        case "europe": return localizedString("Europe", locale: locale)
+        default: return displayName
+        }
+    }
     
     static let builtInLists: [CityListID] = [.china, .europe]
     
@@ -413,7 +450,7 @@ class WeatherService {
         let remaining = CityListID.allLists
         if remaining.isEmpty {
             // All lists deleted — create a new empty list
-            let newList = CityListID.createList(name: "New List")
+            let newList = CityListID.createList(name: String(localized: "New List"))
             cityWeatherData = []
             activeListID = newList
             UserDefaults.standard.set(newList.rawValue, forKey: Self.activeListKey)
@@ -796,6 +833,37 @@ struct City: Identifiable, Hashable, Codable {
     let name: String
     let latitude: Double
     let longitude: Double
+    
+    /// Returns the city name localized for the given locale.
+    /// For known default cities, returns a translated name; otherwise returns `name` as-is
+    /// (user-added cities already get localized names from MapKit search).
+    func localizedName(locale: Locale = .current) -> String {
+        guard locale.language.languageCode?.identifier == "zh" else { return name }
+        return Self.chineseNames[name] ?? name
+    }
+    
+    private static let chineseNames: [String: String] = [
+        // China
+        "Beijing": "北京", "Shanghai": "上海", "Chongqing": "重庆",
+        "Tianjin": "天津", "Guangzhou": "广州", "Shenzhen": "深圳",
+        "Hangzhou": "杭州", "Nanjing": "南京", "Suzhou": "苏州",
+        "Xiamen": "厦门", "Wuhan": "武汉", "Changsha": "长沙",
+        "Zhengzhou": "郑州", "Xi'an": "西安", "Harbin": "哈尔滨",
+        "Dalian": "大连", "Qingdao": "青岛", "Chengdu": "成都",
+        "Kunming": "昆明", "Guiyang": "贵阳", "Sanya": "三亚",
+        "Fuzhou": "福州", "Lhasa": "拉萨", "Urumqi": "乌鲁木齐",
+        "Lanzhou": "兰州",
+        // Europe
+        "London": "伦敦", "Paris": "巴黎", "Berlin": "柏林",
+        "Madrid": "马德里", "Rome": "罗马", "Amsterdam": "阿姆斯特丹",
+        "Vienna": "维也纳", "Prague": "布拉格", "Barcelona": "巴塞罗那",
+        "Munich": "慕尼黑", "Milan": "米兰", "Stockholm": "斯德哥尔摩",
+        "Copenhagen": "哥本哈根", "Oslo": "奥斯陆", "Helsinki": "赫尔辛基",
+        "Warsaw": "华沙", "Budapest": "布达佩斯", "Lisbon": "里斯本",
+        "Athens": "雅典", "Dublin": "都柏林", "Brussels": "布鲁塞尔",
+        "Zurich": "苏黎世", "Istanbul": "伊斯坦布尔", "Bucharest": "布加勒斯特",
+        "Edinburgh": "爱丁堡",
+    ]
 }
 
 struct CityWeather: Identifiable, Hashable {
@@ -859,42 +927,41 @@ struct ForecastDay: Identifiable {
     let date: Date
     let dayOffset: Int
     
-    var displayText: String {
+    func displayText(locale: Locale = .current) -> String {
         if dayOffset == 0 {
-            return "Today"
+            return localizedString("Today", locale: locale)
         } else if dayOffset == 1 {
-            return "Tomorrow"
+            return localizedString("Tomorrow", locale: locale)
         } else {
             let formatter = DateFormatter()
-            formatter.dateFormat = "EEE, MMM d"
+            formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "EEEMMMd", options: 0, locale: locale)
+            formatter.locale = locale
             return formatter.string(from: date)
         }
     }
     
-    var shortDisplayText: String {
+    func shortDisplayText(locale: Locale = .current) -> String {
         if dayOffset == 0 {
-            return "Today"
+            return localizedString("Today", locale: locale)
         } else if dayOffset == 1 {
-            return "Tomorrow"
+            return localizedString("Tomorrow", locale: locale)
         } else {
-            let calendar = Calendar.current
-            let day = calendar.component(.day, from: date)
-            let month = calendar.component(.month, from: date)
             let formatter = DateFormatter()
-            formatter.dateFormat = "EEE"
-            let weekday = formatter.string(from: date)
-            return "\(weekday), \(day)/\(month)"
+            formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "EEEdM", options: 0, locale: locale)
+            formatter.locale = locale
+            return formatter.string(from: date)
         }
     }
     
-    var veryShortDisplayText: String {
+    func veryShortDisplayText(locale: Locale = .current) -> String {
         if dayOffset == 0 {
-            return "Today"
+            return localizedString("Today", locale: locale)
         } else if dayOffset == 1 {
-            return "Tmrw"
+            return localizedString("Tmrw", locale: locale)
         } else {
             let formatter = DateFormatter()
-            formatter.dateFormat = "EEE"
+            formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "EEE", options: 0, locale: locale)
+            formatter.locale = locale
             return formatter.string(from: date)
         }
     }
@@ -1078,28 +1145,28 @@ struct HourlyForecast: Identifiable {
         Int(cloudCover * 100)
     }
     
-    var formattedHour: String {
-        if hour == 0 {
-            return "12 AM"
-        } else if hour < 12 {
-            return "\(hour) AM"
-        } else if hour == 12 {
-            return "12 PM"
-        } else {
-            return "\(hour - 12) PM"
+    func formattedHour(locale: Locale = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale)
+        formatter.locale = locale
+        var components = DateComponents()
+        components.hour = hour
+        if let date = Calendar.current.date(from: components) {
+            return formatter.string(from: date)
         }
+        return "\(hour)"
     }
     
-    var shortFormattedHour: String {
-        if hour == 0 {
-            return "12am"
-        } else if hour < 12 {
-            return "\(hour)am"
-        } else if hour == 12 {
-            return "12pm"
-        } else {
-            return "\(hour - 12)pm"
+    func shortFormattedHour(locale: Locale = .current) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale)
+        formatter.locale = locale
+        var components = DateComponents()
+        components.hour = hour
+        if let date = Calendar.current.date(from: components) {
+            return formatter.string(from: date).lowercased()
         }
+        return "\(hour)"
     }
 }
 

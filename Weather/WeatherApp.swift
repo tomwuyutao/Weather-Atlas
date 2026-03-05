@@ -9,10 +9,13 @@ import SwiftUI
 
 @main
 struct WeatherApp: App {
+    @AppStorage("appLanguage") private var appLanguage: String = "en"
+    
+    private var appLocale: Locale {
+        Locale(identifier: appLanguage)
+    }
+    
     init() {
-        // Force MapKit and system frameworks to use English
-        UserDefaults.standard.set(["en"], forKey: "AppleLanguages")
-        
         // One-time migration: clear old city data so new defaults take effect
         let migrationKey = "defaultCitiesMigrationV2"
         if !UserDefaults.standard.bool(forKey: migrationKey) {
@@ -35,6 +38,7 @@ struct WeatherApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .environment(\.locale, appLocale)
                 .defaultFont()
                 .preferredColorScheme(.dark)
         }

@@ -13,6 +13,7 @@ struct DesktopDateBar: View {
     @Binding var filterSunny: Bool
     @Binding var isPlaying: Bool
     
+    @Environment(\.locale) private var locale
     @State private var showingDatePopover = false
     @State private var previousDayOffset: Int = 0
     @State private var playbackTask: Task<Void, Never>?
@@ -26,9 +27,10 @@ struct DesktopDateBar: View {
     }
     
     private var shortDateWithDayText: String {
-        if selectedDayOffset == 0 { return "Today" }
+        if selectedDayOffset == 0 { return localizedString("Today", locale: locale) }
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, EEE"
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMdEEE", options: 0, locale: locale)
+        formatter.locale = locale
         return formatter.string(from: selectedDate)
     }
     

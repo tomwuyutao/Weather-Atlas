@@ -154,12 +154,17 @@ struct AddCitySearchView: View {
         defer { isLoadingCity = false }
         
         let cityName = result.title
-        let coordinate = result.coordinate
         
         // Check if city already exists
         if let existingCity = cities.first(where: { $0.city.name == cityName }) {
             print("City \(cityName) already exists")
             onCitySelected(existingCity)
+            return
+        }
+        
+        // Resolve coordinates
+        guard let coordinate = await citySearchManager.resolveCoordinate(for: result) else {
+            print("⚠️ Could not resolve coordinates for \(cityName)")
             return
         }
         

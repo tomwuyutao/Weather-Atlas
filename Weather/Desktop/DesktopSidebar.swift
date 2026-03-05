@@ -14,6 +14,7 @@ struct CityRow: View {
     let showCloudCover: Bool
     
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.locale) private var locale
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     
     private var tempUnit: TemperatureUnit {
@@ -34,7 +35,7 @@ struct CityRow: View {
                 .frame(width: 32, height: 28)
             
             // City name
-            Text(cityWeather.city.name)
+            Text(cityWeather.city.localizedName(locale: locale))
                 .font(.body)
             
             Spacer()
@@ -72,6 +73,7 @@ struct DesktopSidebar: View {
     let isRefreshing: Bool
     @Binding var detailOpenedFromList: Bool
     
+    @Environment(\.locale) private var locale
     @State private var isLoadingSearchedCity = false
     @State private var showingAddCityView = false
     @State private var showingListSwitcher = false
@@ -92,7 +94,7 @@ struct DesktopSidebar: View {
     
     private var cacheStatusText: String {
         guard let lastFetch = lastFetchDate else {
-            return "Loading…"
+            return localizedString("Loading…", locale: locale)
         }
         
         let now = Date()
@@ -100,7 +102,7 @@ struct DesktopSidebar: View {
         let minutes = Int(elapsed / 60)
         
         if minutes < 1 {
-            return "Now"
+            return localizedString("Now", locale: locale)
         } else if minutes < 60 {
             return "\(minutes)m"
         } else {
@@ -198,7 +200,7 @@ struct DesktopSidebar: View {
                 // Show existing cities
                 if !filteredCities.isEmpty {
                     if shouldShowSearchResults {
-                        Section(weatherService.activeListID.displayName) {
+                        Section(weatherService.activeListID.localizedDisplayName(locale: locale)) {
                             cityListContent
                         }
                     } else {
@@ -271,7 +273,7 @@ struct DesktopSidebar: View {
                     showingListSwitcher = true
                 } label: {
                     HStack(spacing: 4) {
-                        Text(weatherService.activeListID.displayName)
+                        Text(weatherService.activeListID.localizedDisplayName(locale: locale))
                             .font(.headline)
                         Image(systemName: "chevron.down")
                             .font(.system(size: 10, weight: .semibold))
@@ -299,7 +301,7 @@ struct DesktopSidebar: View {
                     onSwitchList(listID)
                 } label: {
                     HStack(spacing: 12) {
-                        Text(listID.displayName)
+                        Text(listID.localizedDisplayName(locale: locale))
                             .font(.body)
                             .fontWeight(listID == weatherService.activeListID ? .bold : .regular)
                             .foregroundStyle(.primary)
@@ -328,7 +330,6 @@ struct DesktopSidebar: View {
         defer { isLoadingSearchedCity = false }
         
         let cityName = result.title
-        let coordinate = result.coordinate
         
         if let existingCity = cities.first(where: { $0.city.name == cityName }) {
             detailOpenedFromList = false
@@ -338,6 +339,11 @@ struct DesktopSidebar: View {
             }
             onCitySelected(existingCity)
             searchText = ""
+            return
+        }
+        
+        guard let coordinate = await citySearchManager.resolveCoordinate(for: result) else {
+            print("⚠️ Could not resolve coordinates for \(cityName)")
             return
         }
         

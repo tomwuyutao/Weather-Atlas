@@ -48,6 +48,7 @@ struct ContentView: View {
     @State private var showingSettings: Bool = false
     @AppStorage("useDetailedMap") private var useDetailedMap: Bool = false
     @State private var mapVisibleListIDs: Set<String> = []
+    @Environment(\.locale) private var locale
     
     /// Cities to display on the map — combined from all selected lists
     private var mapCities: [CityWeather] {
@@ -75,7 +76,7 @@ struct ContentView: View {
     
     private var mapToolbarTitle: String {
         let selectedLists = CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }
-        let firstName = selectedLists.first?.displayName ?? weatherService.activeListID.displayName
+        let firstName = selectedLists.first?.localizedDisplayName(locale: locale) ?? weatherService.activeListID.localizedDisplayName(locale: locale)
         let extra = selectedLists.count - 1
         if extra > 0 {
             return "\(firstName), +\(extra)"
@@ -94,7 +95,7 @@ struct ContentView: View {
         let elapsed = Date().timeIntervalSince(lastFetch)
         let minutes = Int(elapsed / 60)
         if minutes < 1 {
-            return "Now"
+            return localizedString("Now", locale: locale)
         } else if minutes < 60 {
             return "\(minutes)m"
         } else {
@@ -226,7 +227,7 @@ struct ContentView: View {
         return ZStack(alignment: .topTrailing) {
             // Today endpoint (top)
             if isDraggingDateSlider && sliderDragFraction > 0.05 {
-                sliderEndpointLabel(text: "Today", isWhite: false)
+                sliderEndpointLabel(text: localizedString("Today", locale: locale), isWhite: false)
                     .offset(y: -4)
                     .transition(.opacity)
             }
@@ -309,16 +310,18 @@ struct ContentView: View {
     }
 
     private func sliderDateText(for day: Int) -> String {
-        if day == 0 { return "Today" }
+        if day == 0 { return localizedString("Today", locale: locale) }
         let formatter = DateFormatter()
-        formatter.dateFormat = "d MMM"
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "dMMM", options: 0, locale: locale)
+        formatter.locale = locale
         return formatter.string(from: Calendar.current.date(byAdding: .day, value: day, to: Date()) ?? Date())
     }
 
     private var iOSDateText: String {
-        if selectedDayOffset == 0 { return "Today" }
+        if selectedDayOffset == 0 { return localizedString("Today", locale: locale) }
         let formatter = DateFormatter()
-        formatter.dateFormat = "MMM d, EEE"
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMdEEE", options: 0, locale: locale)
+        formatter.locale = locale
         return formatter.string(from: Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date())
     }
 
@@ -504,7 +507,7 @@ struct ContentView: View {
                                             focusSubsetTrigger = true
                                         } label: {
                                             HStack(spacing: 12) {
-                                                Text(listID.displayName)
+                                                Text(listID.localizedDisplayName(locale: locale))
                                                     .font(.avenir(.body, weight: .medium))
                                                     .foregroundStyle(.primary)
                                                 Spacer()
@@ -715,7 +718,7 @@ struct ContentView: View {
                             }
                         }
                         ToolbarItem(placement: .principal) {
-                            Text(city.city.name)
+                            Text(city.city.localizedName(locale: locale))
                                 .font(.avenir(.title3, weight: .semibold))
                                 .dynamicTypeSize(...DynamicTypeSize.large)
                                 .lineLimit(1)
@@ -813,7 +816,7 @@ struct ContentView: View {
                                 }
                             }
                             ToolbarItem(placement: .principal) {
-                                Text(city.city.name)
+                                Text(city.city.localizedName(locale: locale))
                                     .font(.avenir(.title3, weight: .semibold))
                                     .dynamicTypeSize(...DynamicTypeSize.large)
                                     .lineLimit(1)
@@ -897,7 +900,7 @@ struct ContentView: View {
                         .padding(.top, 20)
                         .padding(.bottom, 8)
                     
-                    Text("Are you sure you want to delete \"\(weatherService.activeListID.displayName)\"? This cannot be undone.")
+                    Text("Are you sure you want to delete \"\(weatherService.activeListID.localizedDisplayName(locale: locale))\"? This cannot be undone.")
                         .font(.avenir(.subheadline, weight: .regular))
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -966,7 +969,7 @@ struct ContentView: View {
                 Button {
                     showingListSwitcher = true
                 } label: {
-                    Text(weatherService.activeListID.displayName)
+                    Text(weatherService.activeListID.localizedDisplayName(locale: locale))
                         .font(.avenir(.title, weight: .bold))
                         .overlay(alignment: .trailing) {
                             Image(systemName: "chevron.down")
@@ -993,7 +996,7 @@ struct ContentView: View {
                 let rowHeight: CGFloat = 44
                 ForEach(Array(reorderableLists.enumerated()), id: \.element.id) { index, listID in
                     HStack(spacing: 12) {
-                        Text(listID.displayName)
+                        Text(listID.localizedDisplayName(locale: locale))
                             .font(.avenir(.body, weight: .medium))
                             .foregroundStyle(.primary)
                         Spacer()
@@ -1083,7 +1086,7 @@ struct ContentView: View {
                         }
                     } label: {
                         HStack(spacing: 12) {
-                            Text(listID.displayName)
+                            Text(listID.localizedDisplayName(locale: locale))
                                 .font(.avenir(.body, weight: listID == weatherService.activeListID ? .bold : .medium))
                                 .foregroundStyle(.primary)
                             Spacer()
@@ -1222,7 +1225,7 @@ struct ContentView: View {
                     }
                 } label: {
                     HStack(spacing: 12) {
-                        Text(listID.displayName)
+                        Text(listID.localizedDisplayName(locale: locale))
                             .font(.avenir(.body, weight: listID == weatherService.activeListID ? .bold : .medium))
                             .foregroundStyle(.primary)
                         Spacer()
@@ -1272,7 +1275,7 @@ struct ContentView: View {
                     }
                 } label: {
                     HStack(spacing: 12) {
-                        Text(listID.displayName)
+                        Text(listID.localizedDisplayName(locale: locale))
                             .font(.avenir(.body, weight: mapVisibleListIDs.contains(listID.rawValue) ? .bold : .medium))
                             .foregroundStyle(.primary)
                         Spacer()
@@ -1296,7 +1299,7 @@ struct ContentView: View {
     private var iOSCustomMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
             if !isEditingListName {
-                menuRow(icon: "plus", title: "Add City") {
+                menuRow(icon: "plus", title: localizedString("Add City", locale: locale)) {
                     showingMenuPopover = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         withAnimation {
@@ -1307,12 +1310,12 @@ struct ContentView: View {
             }
 
             if selectedTab == 0 {
-                menuRow(icon: isEditMode ? "checkmark" : "pencil", title: isEditMode ? "Done Editing" : (isGridView ? "Edit Grid" : "Edit List")) {
+                menuRow(icon: isEditMode ? "checkmark" : "pencil", title: isEditMode ? localizedString("Done Editing", locale: locale) : (isGridView ? localizedString("Edit Grid", locale: locale) : localizedString("Edit List", locale: locale))) {
                     showingMenuPopover = false
                     withAnimation { isEditMode.toggle() }
                 }
 
-                menuRow(icon: isGridView ? "list.bullet" : "square.grid.2x2", title: isGridView ? "List View" : "Grid View") {
+                menuRow(icon: isGridView ? "list.bullet" : "square.grid.2x2", title: isGridView ? localizedString("List View", locale: locale) : localizedString("Grid View", locale: locale)) {
                     showingMenuPopover = false
                     withAnimation(.easeOut(duration: 0.15)) {
                         listContentOpacity = 0
@@ -1328,19 +1331,19 @@ struct ContentView: View {
 
             Divider().padding(.horizontal, 12).padding(.vertical, 4)
 
-            menuRow(icon: filterSunny ? "sun.max.circle.fill" : "sun.max.circle", title: filterSunny ? "Clear Filter" : "Filter Sunny") {
+            menuRow(icon: filterSunny ? "sun.max.circle.fill" : "sun.max.circle", title: filterSunny ? localizedString("Clear Filter", locale: locale) : localizedString("Filter Sunny", locale: locale)) {
                 showingMenuPopover = false
                 withAnimation { filterSunny.toggle() }
             }
 
             if selectedTab == 1 {
-                menuRow(icon: isPlaying ? "stop.fill" : "play.fill", title: isPlaying ? "Stop Playback" : "Play Forecast") {
+                menuRow(icon: isPlaying ? "stop.fill" : "play.fill", title: isPlaying ? localizedString("Stop Playback", locale: locale) : localizedString("Play Forecast", locale: locale)) {
                     showingMenuPopover = false
                     if isPlaying { iOSStopPlayback() } else { iOSStartPlayback() }
                 }
             }
 
-            menuRow(icon: "arrow.clockwise", title: "Refresh\(timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))")") {
+            menuRow(icon: "arrow.clockwise", title: localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))")) {
                 showingMenuPopover = false
                 Task { await weatherService.refreshWeather() }
             }
@@ -1349,7 +1352,7 @@ struct ContentView: View {
 
             Divider().padding(.horizontal, 12).padding(.vertical, 4)
 
-            menuRow(icon: "gearshape", title: "Settings") {
+            menuRow(icon: "gearshape", title: localizedString("Settings", locale: locale)) {
                 showingMenuPopover = false
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                     showingSettings = true
@@ -1394,7 +1397,7 @@ struct ContentView: View {
                 .font(.avenir(.title2, weight: .medium))
                 .contentTransition(.numericText())
 
-            Text(cityWeather.city.name)
+            Text(cityWeather.city.localizedName(locale: locale))
                 .font(.avenir(.footnote, weight: .medium))
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
@@ -1498,7 +1501,7 @@ struct ContentView: View {
     @State private var isAddingNewList: Bool = false
     
     private func startEditingListName() {
-        editingListName = weatherService.activeListID.displayName
+        editingListName = weatherService.activeListID.localizedDisplayName(locale: locale)
         isEditingListName = true
     }
     
@@ -1540,7 +1543,7 @@ struct ContentView: View {
         if name.isEmpty {
             // Empty name: use "New List" for new lists, keep existing name for renames
             if isAddingNewList {
-                weatherService.renameCurrentList(to: "New List")
+                weatherService.renameCurrentList(to: localizedString("New List", locale: locale))
             }
         } else {
             weatherService.renameCurrentList(to: name)
@@ -1637,6 +1640,7 @@ struct ContentView: View {
                         }
                     }
                     .padding(.horizontal, 16)
+                    .padding(.bottom, 80)
                 }
                 .gesture(swipeDayGesture())
                 .transition(.opacity)
@@ -1650,7 +1654,7 @@ struct ContentView: View {
 
                     ForEach(iOSFilteredCities) { cityWeather in
                         HStack {
-                            Text(cityWeather.city.name)
+                            Text(cityWeather.city.localizedName(locale: locale))
                                 .font(.avenir(.body, weight: .medium))
                             Spacer()
                             Text(tempUnit.display(cityWeather.forecast(for: selectedDayOffset).daytimeHigh))
@@ -1688,7 +1692,7 @@ struct ContentView: View {
                             set: { if !$0 { longPressedCity = nil } }
                         )) {
                             VStack(alignment: .leading, spacing: 0) {
-                                menuRow(icon: "map", title: "Reveal on Map") {
+                                menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
                                     let revealCity = cityWeather
                                     longPressedCity = nil
                                     showingCityDetail = false
@@ -1703,7 +1707,7 @@ struct ContentView: View {
                                 
                                 Divider().padding(.horizontal, 12).padding(.vertical, 4)
                                 
-                                menuRow(icon: "trash", title: "Delete City") {
+                                menuRow(icon: "trash", title: localizedString("Delete City", locale: locale)) {
                                     longPressedCity = nil
                                     weatherService.removeCity(cityWeather)
                                     if selectedCity?.id == cityWeather.id {
@@ -1735,6 +1739,7 @@ struct ContentView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 }
                 .listStyle(.plain)
+                .contentMargins(.bottom, 80)
                 .environment(\.editMode, Binding(
                     get: { isEditMode ? .active : .inactive },
                     set: { newValue in isEditMode = (newValue == .active) }
@@ -1935,6 +1940,11 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
+}
+
+#Preview("中文") {
+    ContentView()
+        .environment(\.locale, Locale(identifier: "zh-Hans"))
 }
 
 struct WeatherMarker: View {

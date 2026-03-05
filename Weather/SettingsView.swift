@@ -42,6 +42,7 @@ enum TemperatureUnit: String, CaseIterable {
 struct SettingsView: View {
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.celsius.rawValue
     @AppStorage("isGridView") private var isGridView: Bool = false
+    @AppStorage("appLanguage") private var appLanguage: String = "en"
     let weatherService: WeatherService
     let onResetLists: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -84,6 +85,21 @@ struct SettingsView: View {
                         }
                         .pickerStyle(.segmented)
                         .frame(width: 100)
+                        .tint(.primary)
+                    }
+                    
+                    // Language
+                    HStack {
+                        Label("Language", systemImage: "globe")
+                            .font(.avenir(.body, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Picker("", selection: $appLanguage) {
+                            Text("English").tag("en")
+                            Text("中文").tag("zh-Hans")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 140)
                         .tint(.primary)
                     }
                     
