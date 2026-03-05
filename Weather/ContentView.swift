@@ -235,12 +235,12 @@ struct ContentView: View {
             // City info
             VStack(alignment: .leading, spacing: 2) {
                 Text(cityWeather.city.localizedName(locale: locale))
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.avenir(.body, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
                 Text(forecast.condition.localizedDisplayName(locale: locale))
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.avenir(.caption, weight: .medium))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -249,7 +249,7 @@ struct ContentView: View {
 
             // Temperature
             Text(tempUnit.display(forecast.daytimeHigh))
-                .font(.system(size: 28, weight: .semibold, design: .rounded))
+                .font(.avenir(.title2, weight: .semibold))
                 .foregroundStyle(.primary)
                 .contentTransition(.numericText())
 
@@ -257,9 +257,9 @@ struct ContentView: View {
             Button {
                 showingCityDetail = true
             } label: {
-                Image(systemName: "chevron.right")
+                Image(systemName: "arrow.right")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white)
                     .frame(width: 28, height: 28)
                     .background(Circle().fill(.ultraThinMaterial))
             }
