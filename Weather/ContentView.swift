@@ -190,6 +190,9 @@ struct ContentView: View {
     @Namespace private var tabBarNamespace
     @State private var iOSPreviousDayOffset: Int = 0
     @State private var showingDatePopover: Bool = false
+    @State private var isDraggingDateSlider: Bool = false
+    @State private var sliderDragStartDay: Int = 0
+    @State private var sliderDragFraction: CGFloat = 0
     @State private var playbackTask: Task<Void, Never>?
     @State private var showPlaybackButton: Bool = false
     @State private var playbackButtonHideTask: Task<Void, Never>?
@@ -214,6 +217,104 @@ struct ContentView: View {
     @State private var focusSubsetTrigger: Bool = false
     @State private var isLoadingMapList: Bool = false
 
+    // MARK: - Vertical Date Slider (Map Mode)
+
+    private func mapDateSlider(height: CGFloat) -> some View {
+        let totalDays = 10
+        let stepHeight = height / CGFloat(totalDays - 1)
+
+        return ZStack(alignment: .topTrailing) {
+            // Today endpoint (top)
+            if isDraggingDateSlider && sliderDragFraction > 0.05 {
+                sliderEndpointLabel(text: "Today", isWhite: false)
+                    .offset(y: -4)
+                    .transition(.opacity)
+            }
+
+            // Final day endpoint (bottom)
+            if isDraggingDateSlider && sliderDragFraction < 0.95 {
+                sliderEndpointLabel(text: sliderDateText(for: totalDays - 1), isWhite: false)
+                    .offset(y: height - 4)
+                    .transition(.opacity)
+            }
+
+            // Selected day indicator
+            HStack(spacing: isDraggingDateSlider ? 6 : 3) {
+                let displayDay = isDraggingDateSlider
+                    ? Int(round(sliderDragFraction * CGFloat(totalDays - 1)))
+                    : selectedDayOffset
+
+                Text(sliderDateText(for: max(0, min(totalDays - 1, displayDay))))
+                    .font(.avenir(isDraggingDateSlider ? .body : .subheadline, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(minWidth: isDraggingDateSlider ? 64 : 52)
+                    .fixedSize()
+                    .padding(.horizontal, isDraggingDateSlider ? 14 : 12)
+                    .padding(.vertical, isDraggingDateSlider ? 9 : 7)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+
+                Capsule()
+                    .fill(.white)
+                    .frame(width: isDraggingDateSlider ? 30 : 24, height: isDraggingDateSlider ? 20 : 16)
+                    .offset(x: isDraggingDateSlider ? 12 : 9)
+                    .shadow(color: .black.opacity(0.25), radius: 4, x: -2)
+            }
+            .animation(.smooth(duration: 0.2), value: isDraggingDateSlider)
+            .offset(y: (isDraggingDateSlider ? sliderDragFraction * CGFloat(totalDays - 1) : CGFloat(selectedDayOffset)) * stepHeight - (isDraggingDateSlider ? 10 : 8))
+        }
+        .animation(.smooth(duration: 0.15), value: selectedDayOffset)
+        .frame(height: height)
+        .gesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { value in
+                    if !isDraggingDateSlider {
+                        sliderDragStartDay = selectedDayOffset
+                        sliderDragFraction = CGFloat(selectedDayOffset) / CGFloat(totalDays - 1)
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            isDraggingDateSlider = true
+                        }
+                    }
+                    let fractionalDelta = value.translation.height / height
+                    let startFraction = CGFloat(sliderDragStartDay) / CGFloat(totalDays - 1)
+                    sliderDragFraction = max(0, min(1, startFraction + fractionalDelta))
+                    let nearestDay = max(0, min(totalDays - 1, Int(round(sliderDragFraction * CGFloat(totalDays - 1)))))
+                    if nearestDay != selectedDayOffset {
+                        selectedDayOffset = nearestDay
+                    }
+                }
+                .onEnded { _ in
+                    let snappedDay = Int(round(sliderDragFraction * CGFloat(totalDays - 1)))
+                    let clamped = max(0, min(totalDays - 1, snappedDay))
+                    withAnimation(.smooth(duration: 0.15)) {
+                        selectedDayOffset = clamped
+                        isDraggingDateSlider = false
+                    }
+                }
+        )
+    }
+
+    private func sliderEndpointLabel(text: String, isWhite: Bool) -> some View {
+        HStack(spacing: 6) {
+            Text(text)
+                .font(.avenir(.caption, weight: .medium))
+                .foregroundStyle(.white.opacity(0.7))
+                .shadow(color: .black.opacity(0.5), radius: 2)
+                .fixedSize()
+
+            Capsule()
+                .fill(Color.gray.opacity(0.5))
+                .frame(width: 24, height: 16)
+                .offset(x: 9)
+        }
+    }
+
+    private func sliderDateText(for day: Int) -> String {
+        if day == 0 { return "Today" }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "d MMM"
+        return formatter.string(from: Calendar.current.date(byAdding: .day, value: day, to: Date()) ?? Date())
+    }
+
     private var iOSDateText: String {
         if selectedDayOffset == 0 { return "Today" }
         let formatter = DateFormatter()
@@ -227,6 +328,18 @@ struct ContentView: View {
                 ZStack {
                     // Map always alive in background, hidden when not selected
                     iOSMapView
+                        .overlay(alignment: .trailing) {
+                            if selectedTab == 1 {
+                                Color.clear
+                                    .frame(width: 60, height: 420)
+                                    .contentShape(Rectangle())
+                                    .overlay(alignment: .trailing) {
+                                        mapDateSlider(height: 340)
+                                    }
+                                    .padding(.bottom, 80)
+                                    .transition(.opacity)
+                            }
+                        }
                         .opacity(selectedTab == 1 ? 1 : 0)
                     
                     // List slides out when switching to map
@@ -238,124 +351,8 @@ struct ContentView: View {
 
                 // Floating bottom toolbar
                 HStack(alignment: .bottom, spacing: 12) {
-                    // View switcher capsule with optional re-center button above list icon
+                    // View switcher capsule
                     VStack(alignment: .leading, spacing: 10) {
-                        if selectedTab == 1 {
-                            Button {
-                                showingMapStylePopover = true
-                            } label: {
-                                Image(systemName: "gearshape")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 42, height: 36)
-                                    .glassEffect(.regular.interactive(), in: .capsule)
-                            }
-                            .buttonStyle(.plain)
-                            .popover(isPresented: $showingMapStylePopover) {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    Button {
-                                        showingMapStylePopover = false
-                                        withAnimation { useDetailedMap = false }
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Text("Minimal")
-                                                .font(.avenir(.body, weight: !useDetailedMap ? .bold : .medium))
-                                                .foregroundStyle(.primary)
-                                            Spacer()
-                                            if !useDetailedMap {
-                                                Circle()
-                                                    .fill(.white)
-                                                    .frame(width: 6, height: 6)
-                                            }
-                                        }
-                                        .padding(.leading, 24)
-                                        .padding(.trailing, 16)
-                                        .padding(.vertical, 11)
-                                        .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-
-                                    Button {
-                                        showingMapStylePopover = false
-                                        withAnimation { useDetailedMap = true }
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Text("Detailed")
-                                                .font(.avenir(.body, weight: useDetailedMap ? .bold : .medium))
-                                                .foregroundStyle(.primary)
-                                            Spacer()
-                                            if useDetailedMap {
-                                                Circle()
-                                                    .fill(.white)
-                                                    .frame(width: 6, height: 6)
-                                            }
-                                        }
-                                        .padding(.leading, 24)
-                                        .padding(.trailing, 16)
-                                        .padding(.vertical, 11)
-                                        .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 160)
-                                .presentationCompactAdaptation(.popover)
-                                .presentationBackground(.ultraThinMaterial)
-                            }
-                            .offset(x: 6)
-                            .transition(.scale.combined(with: .opacity))
-
-                            Button {
-                                if mapVisibleListIDs.count > 1 {
-                                    showingRecenterPopover = true
-                                } else {
-                                    recenterOnAllCities = true
-                                }
-                            } label: {
-                                Image(systemName: "dot.squareshape.split.2x2")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 42, height: 36)
-                                    .glassEffect(.regular.interactive(), in: .capsule)
-                            }
-                            .buttonStyle(.plain)
-                            .popover(isPresented: $showingRecenterPopover) {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
-                                        Button {
-                                            showingRecenterPopover = false
-                                            let cities: [CityWeather]
-                                            if listID == weatherService.activeListID {
-                                                cities = weatherService.cityWeatherData
-                                            } else {
-                                                cities = weatherService.otherListData[listID.rawValue] ?? []
-                                            }
-                                            focusSubsetCities = cities
-                                            focusSubsetTrigger = true
-                                        } label: {
-                                            HStack(spacing: 12) {
-                                                Text(listID.displayName)
-                                                    .font(.avenir(.body, weight: .medium))
-                                                    .foregroundStyle(.primary)
-                                                Spacer()
-                                            }
-                                            .padding(.leading, 24)
-                                            .padding(.trailing, 16)
-                                            .padding(.vertical, 11)
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 160)
-                                .presentationCompactAdaptation(.popover)
-                                .presentationBackground(.ultraThinMaterial)
-                            }
-                            .offset(x: 6)
-                            .transition(.scale.combined(with: .opacity))
-                        }
-
                         HStack(spacing: 8) {
                             Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
                                 .contentTransition(.symbolEffect(.replace))
@@ -400,6 +397,7 @@ struct ContentView: View {
 
                     Spacer()
 
+                    if selectedTab == 0 {
                     // Date switcher capsule
                     HStack(spacing: 0) {
                         Image(systemName: "chevron.left")
@@ -473,6 +471,123 @@ struct ContentView: View {
                     }
                     .padding(6)
                     .glassEffect(.regular.interactive(), in: .capsule)
+                    }
+
+                    if selectedTab == 1 {
+                        // Map controls capsule (recenter + map style)
+                        HStack(spacing: 8) {
+                            Button {
+                                if mapVisibleListIDs.count > 1 {
+                                    showingRecenterPopover = true
+                                } else {
+                                    recenterOnAllCities = true
+                                }
+                            } label: {
+                                Image(systemName: "dot.squareshape.split.2x2")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 42, height: 36)
+                            }
+                            .buttonStyle(.plain)
+                            .popover(isPresented: $showingRecenterPopover) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
+                                        Button {
+                                            showingRecenterPopover = false
+                                            let cities: [CityWeather]
+                                            if listID == weatherService.activeListID {
+                                                cities = weatherService.cityWeatherData
+                                            } else {
+                                                cities = weatherService.otherListData[listID.rawValue] ?? []
+                                            }
+                                            focusSubsetCities = cities
+                                            focusSubsetTrigger = true
+                                        } label: {
+                                            HStack(spacing: 12) {
+                                                Text(listID.displayName)
+                                                    .font(.avenir(.body, weight: .medium))
+                                                    .foregroundStyle(.primary)
+                                                Spacer()
+                                            }
+                                            .padding(.leading, 24)
+                                            .padding(.trailing, 16)
+                                            .padding(.vertical, 11)
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                                .frame(width: 160)
+                                .presentationCompactAdaptation(.popover)
+                                .presentationBackground(.ultraThinMaterial)
+                            }
+
+                            Button {
+                                showingMapStylePopover = true
+                            } label: {
+                                Image(systemName: "gearshape")
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                    .frame(width: 42, height: 36)
+                            }
+                            .buttonStyle(.plain)
+                            .popover(isPresented: $showingMapStylePopover) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    Button {
+                                        showingMapStylePopover = false
+                                        withAnimation { useDetailedMap = false }
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Text("Minimal")
+                                                .font(.avenir(.body, weight: !useDetailedMap ? .bold : .medium))
+                                                .foregroundStyle(.primary)
+                                            Spacer()
+                                            if !useDetailedMap {
+                                                Circle()
+                                                    .fill(.white)
+                                                    .frame(width: 6, height: 6)
+                                            }
+                                        }
+                                        .padding(.leading, 24)
+                                        .padding(.trailing, 16)
+                                        .padding(.vertical, 11)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    Button {
+                                        showingMapStylePopover = false
+                                        withAnimation { useDetailedMap = true }
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Text("Detailed")
+                                                .font(.avenir(.body, weight: useDetailedMap ? .bold : .medium))
+                                                .foregroundStyle(.primary)
+                                            Spacer()
+                                            if useDetailedMap {
+                                                Circle()
+                                                    .fill(.white)
+                                                    .frame(width: 6, height: 6)
+                                            }
+                                        }
+                                        .padding(.leading, 24)
+                                        .padding(.trailing, 16)
+                                        .padding(.vertical, 11)
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                }
+                                .padding(.vertical, 8)
+                                .frame(width: 160)
+                                .presentationCompactAdaptation(.popover)
+                                .presentationBackground(.ultraThinMaterial)
+                            }
+                        }
+                        .padding(6)
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .transition(.scale.combined(with: .opacity))
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
@@ -489,7 +604,7 @@ struct ContentView: View {
                         } label: {
                             HStack(spacing: 4) {
                                 Text(mapToolbarTitle)
-                                    .font(.avenir(.subheadline, weight: .semibold))
+                                    .font(.avenir(.headline, weight: .semibold))
                                     .lineLimit(1)
                                 Image(systemName: "chevron.down")
                                     .font(.system(size: 10, weight: .semibold))
@@ -1891,7 +2006,7 @@ struct WeatherMarker: View {
             Group {
                 if isCompact {
                     Image(systemName: displayIcon)
-                        .id(isPlaying ? "playing" : "filter-\(filterSunny)")
+                        .id(isPlaying ? "playing" : "filter-\(filterSunny)-day-\(dayOffset)")
                         .font(.title3)
                         .symbolRenderingMode(.multicolor)
                         .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
@@ -1902,7 +2017,7 @@ struct WeatherMarker: View {
                 } else {
                     VStack(spacing: 1) {
                         Image(systemName: displayIcon)
-                            .id(isPlaying ? "playing" : "filter-\(filterSunny)")
+                            .id(isPlaying ? "playing" : "filter-\(filterSunny)-day-\(dayOffset)")
                             .font(.title3)
                             .symbolRenderingMode(.multicolor)
                             .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
@@ -1927,6 +2042,7 @@ struct WeatherMarker: View {
         .frame(width: 40, height: 56)
         .contentShape(Rectangle())
         .animation(.easeInOut(duration: 0.3), value: showAsDot)
+        .animation(.smooth(duration: 0.4), value: dayOffset)
     }
 }
 #if !os(macOS)
