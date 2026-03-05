@@ -224,13 +224,22 @@ struct ContentView: View {
     private func mapExpandedCard(for cityWeather: CityWeather) -> some View {
         let forecast = cityWeather.forecast(for: selectedDayOffset)
         let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+        let icon: String = {
+            switch forecast.condition {
+            case .rain, .drizzle, .snow: return "cloud.fill"
+            default: return forecast.weatherIcon
+            }
+        }()
 
         return HStack(spacing: 14) {
             // Weather icon
-            Image(systemName: forecast.weatherIcon)
+            Image(systemName: icon)
                 .font(.system(size: 32))
                 .symbolRenderingMode(.multicolor)
-                .frame(width: 40)
+                .frame(width: 40, height: 36)
+                .background(alignment: .top) {
+                    WeatherEffectOverlay(condition: forecast.condition, isCompact: true, iconHeight: 36)
+                }
 
             // City info
             VStack(alignment: .leading, spacing: 2) {

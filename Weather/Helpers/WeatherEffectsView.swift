@@ -185,15 +185,15 @@ struct CloudDriftEffect: View {
     var body: some View {
         TimelineView(.animation) { timeline in
             let now = timeline.date.timeIntervalSinceReferenceDate
-            // Gentle horizontal drift: ±3pt over 4 seconds
-            let drift = sin(now * 2.0 * .pi / 4.0) * 3.0
+            // Horizontal drift: ±5pt over 4 seconds
+            let drift = sin(now * 2.0 * .pi / 4.0) * 5.0
             let pulse = sin(now * 2.0 * .pi / 3.0)
-            let opacity = 0.18 + 0.07 * pulse
+            let opacity = 0.3 + 0.1 * pulse
             
             Canvas { context, size in
                 let center = CGPoint(x: size.width / 2 + drift, y: size.height / 2)
-                let w = size.width * 0.75
-                let h = size.height * 0.4
+                let w = size.width * 0.9
+                let h = size.height * 0.5
                 let rect = CGRect(x: center.x - w / 2, y: center.y - h / 2, width: w, height: h)
                 let path = Capsule().path(in: rect)
                 context.fill(path, with: .color(.white.opacity(opacity)))
