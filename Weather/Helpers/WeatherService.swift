@@ -120,7 +120,12 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
               let lists = try? JSONDecoder().decode([CityListID].self, from: data) else {
             return []
         }
-        return lists
+        // Remove lists with empty names (caused by abandoned new-list creation)
+        let valid = lists.filter { !$0.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if valid.count != lists.count {
+            saveUserLists(valid)
+        }
+        return valid
     }
     
     static func saveUserLists(_ lists: [CityListID]) {

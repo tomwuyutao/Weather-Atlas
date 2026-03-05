@@ -825,7 +825,7 @@ struct ContentView: View {
                     }
                 }
                 .frame(width: 280)
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 16))
                 .transition(.scale(scale: 0.9).combined(with: .opacity))
             }
         }
@@ -1180,11 +1180,13 @@ struct ContentView: View {
     
     private var iOSCustomMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
-            menuRow(icon: "plus", title: "Add City") {
-                showingMenuPopover = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    withAnimation {
-                        showingAddCityView = true
+            if !isEditingListName {
+                menuRow(icon: "plus", title: "Add City") {
+                    showingMenuPopover = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        withAnimation {
+                            showingAddCityView = true
+                        }
                     }
                 }
             }
@@ -1417,7 +1419,9 @@ struct ContentView: View {
     
     private func commitListNameEdit() {
         let name = editingListName.trimmingCharacters(in: .whitespacesAndNewlines)
-        isEditingListName = false
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            isEditingListName = false
+        }
         if name.isEmpty {
             // Empty name: use "New List" for new lists, keep existing name for renames
             if isAddingNewList {
@@ -1487,19 +1491,22 @@ struct ContentView: View {
                         .padding(.top, 24)
                         .padding(.bottom, 20)
                     Spacer()
-                    Button {
-                        showingAddCityView = true
-                    } label: {
-                        Label("Add City", systemImage: "plus")
-                            .font(.avenir(.body, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 12)
-                            .background(.blue, in: Capsule())
-                            .glassEffect(.regular.interactive(), in: .capsule)
+                    if !isEditingListName {
+                        Button {
+                            showingAddCityView = true
+                        } label: {
+                            Label("Add City", systemImage: "plus")
+                                .font(.avenir(.body, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 24)
+                                .padding(.vertical, 12)
+                                .background(.blue, in: Capsule())
+                                .glassEffect(.regular.interactive(), in: .capsule)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.top, 40)
+                        .transition(.scale.combined(with: .opacity))
                     }
-                    .buttonStyle(.plain)
-                    .padding(.top, 40)
                     Spacer()
                     Spacer()
                 }
@@ -1515,7 +1522,6 @@ struct ContentView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .opacity(listContentOpacity)
                 }
                 .gesture(swipeDayGesture())
                 .transition(.opacity)
@@ -1612,7 +1618,6 @@ struct ContentView: View {
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
-                    .opacity(listContentOpacity)
                 }
                 .listStyle(.plain)
                 .environment(\.editMode, Binding(
@@ -1623,6 +1628,7 @@ struct ContentView: View {
                 .transition(.opacity)
             }
         }
+        .opacity(listContentOpacity)
     }
 
     private var iOSFilteredCities: [CityWeather] {
