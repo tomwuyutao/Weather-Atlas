@@ -423,7 +423,7 @@ struct ContentView: View {
                                     .overlay(alignment: .trailing) {
                                         mapDateSlider(height: 340)
                                     }
-                                    .padding(.bottom, 120)
+                                    .padding(.bottom, 350)
                                     .transition(.opacity)
                             }
                         }
@@ -1881,7 +1881,10 @@ struct ContentView: View {
                 recenterOnAllCities: $recenterOnAllCities,
                 focusOnSubsetCities: focusSubsetCities,
                 focusOnSubsetTrigger: $focusSubsetTrigger,
-                useDetailedMap: useDetailedMap
+                useDetailedMap: useDetailedMap,
+                onDoubleTapMarker: {
+                    showingCityDetail = true
+                }
             )
             .ignoresSafeArea()
 

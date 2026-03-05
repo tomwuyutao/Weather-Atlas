@@ -192,8 +192,8 @@ struct CloudDriftEffect: View {
             
             Canvas { context, size in
                 let center = CGPoint(x: size.width / 2 + drift, y: size.height / 2)
-                let w = size.width * 0.6
-                let h = size.height * 0.4
+                let w = size.width * 0.8
+                let h = size.height * 0.55
                 let rect = CGRect(x: center.x - w / 2, y: center.y - h / 2, width: w, height: h)
                 let path = Capsule().path(in: rect)
                 context.fill(path, with: .color(.white.opacity(opacity)))

@@ -25,6 +25,7 @@ struct MapKitMapView: View {
     var focusOnSubsetCities: [CityWeather] = []
     @Binding var focusOnSubsetTrigger: Bool
     var useDetailedMap: Bool = false
+    var onDoubleTapMarker: (() -> Void)?
 
     @State private var position: MapCameraPosition = .automatic
     @State private var hasCenteredOnCities: Bool = false
@@ -98,6 +99,11 @@ struct MapKitMapView: View {
                     }
                 }
                 if let hit = closest {
+                    // If tapping the already-selected marker, go to detail view
+                    if showingCityDetail && tappedCity?.id == hit.city.id {
+                        onDoubleTapMarker?()
+                        return
+                    }
                     tappedCity = hit.city
                     tappedMarkerID = hit.city.id
                     Task {
@@ -277,8 +283,7 @@ private struct AnnotationsOverlay: View {
                             MapRevealPulseRing()
                         }
                     }
-                    .scaleEffect(tappedMarkerID == cityWeather.id ? 1.5 : 1.0, anchor: .center)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: tappedMarkerID)
+
                     .position(screenPt)
                 }
             }
