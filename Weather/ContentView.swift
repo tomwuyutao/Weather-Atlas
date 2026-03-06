@@ -432,7 +432,7 @@ struct ContentView: View {
                     // List slides out when switching to map
                     iOSListView
                         .background(Color(.systemBackground))
-                        .offset(x: selectedTab == 0 ? 0 : -UIScreen.main.bounds.width)
+                        .offset(x: selectedTab == 0 ? 0 : -10000)
                 }
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
 
