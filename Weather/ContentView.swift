@@ -381,6 +381,7 @@ struct ContentView: View {
                     let nearestDay = max(0, min(totalDays - 1, Int(round(sliderDragFraction * CGFloat(totalDays - 1)))))
                     if nearestDay != selectedDayOffset {
                         selectedDayOffset = nearestDay
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                 }
                 .onEnded { _ in
@@ -613,8 +614,8 @@ struct ContentView: View {
                             filterSunny = false
                         }
                     } label: {
-                        Image(systemName: "sun.max.circle.fill")
-                            .foregroundStyle(.blue)
+                        Image(systemName: "sun.max.fill")
+                            .foregroundStyle(.yellow)
                     }
                 }
             }
@@ -638,7 +639,7 @@ struct ContentView: View {
                 Button {
                     showingMenuPopover = true
                 } label: {
-                    Image(systemName: "ellipsis.circle")
+                    Image(systemName: "ellipsis")
                 }
                 .popover(isPresented: $showingMenuPopover) {
                     iOSCustomMenu
@@ -1046,7 +1047,7 @@ struct ContentView: View {
                                 Label("Delete City", systemImage: "trash")
                             }
                         } label: {
-                            Image(systemName: "ellipsis.circle")
+                            Image(systemName: "ellipsis")
                         }
                     }
                 }
@@ -1566,6 +1567,26 @@ struct ContentView: View {
                         }
                     }
                 }
+
+                if let city = selectedTab == 1 ? tappedCity : selectedCity,
+                   cityIsInSidebar(city) {
+                    menuRow(icon: "trash", title: localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"") {
+                        showingMenuPopover = false
+                        weatherService.removeCity(city)
+                        if selectedTab == 1 {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                showingMapExpandedCard = false
+                                tappedCity = nil
+                                recenterOnAllCities = true
+                            }
+                        } else {
+                            if selectedCity?.id == city.id {
+                                selectedCity = nil
+                            }
+                        }
+                    }
+                    .foregroundStyle(.red)
+                }
             }
 
             if selectedTab == 0 {
@@ -1590,7 +1611,7 @@ struct ContentView: View {
 
             Divider().padding(.horizontal, 12).padding(.vertical, 4)
 
-            menuRow(icon: filterSunny ? "sun.max.circle.fill" : "sun.max.circle", title: filterSunny ? localizedString("Clear Filter", locale: locale) : localizedString("Filter Sunny", locale: locale)) {
+            menuRow(icon: filterSunny ? "sun.max.fill" : "sun.max", title: filterSunny ? localizedString("Clear Filter", locale: locale) : localizedString("Filter Sunny", locale: locale)) {
                 showingMenuPopover = false
                 withAnimation { filterSunny.toggle() }
             }
