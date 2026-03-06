@@ -107,10 +107,10 @@ struct ContentView: View {
         if minutes < 1 {
             return localizedString("Now", locale: locale)
         } else if minutes < 60 {
-            return "\(minutes)m"
+            return localizedString("\(minutes) m", locale: locale)
         } else {
             let hours = minutes / 60
-            return "\(hours)h"
+            return localizedString("\(hours) h", locale: locale)
         }
     }
 
@@ -264,7 +264,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 6) {
                 // Large temperature
                 Text(tempUnit.display(forecast.daytimeHigh))
-                    .font(.system(size: 38, weight: .medium, design: .rounded))
+                    .font(.custom("AvenirNext-Medium", size: 38, relativeTo: .largeTitle))
                     .foregroundStyle(.primary)
                     .contentTransition(.numericText())
 
@@ -444,7 +444,7 @@ struct ContentView: View {
                 .navigationDestination(isPresented: $showingCityDetail) {
                     iOSCityDetailDestination
                 }
-                .sheet(isPresented: $showingAddCityView) {
+                .fullScreenCover(isPresented: $showingAddCityView) {
                     iOSAddCitySheet
                 }
         }
@@ -569,7 +569,8 @@ struct ContentView: View {
             // Expanded city card on map
             if selectedTab == 1, showingMapExpandedCard, let city = tappedCity {
                 mapExpandedCard(for: city)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .id(city.city.id)
+                    .transition(.blurReplace)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 72)
                     .zIndex(1)
@@ -725,7 +726,7 @@ struct ContentView: View {
                         .contentTransition(.symbolEffect(.replace))
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
-                        .frame(width: 42, height: 36)
+                        .frame(width: 42, height: 44)
                         .background {
                             if selectedTab == 0 {
                                 Capsule()
@@ -743,7 +744,7 @@ struct ContentView: View {
                     Image(systemName: selectedTab == 1 ? "map.fill" : "map")
                         .font(.system(size: 16, weight: .semibold))
                         .foregroundStyle(selectedTab == 1 ? .primary : .secondary)
-                        .frame(width: 42, height: 36)
+                        .frame(width: 42, height: 44)
                         .background {
                             if selectedTab == 1 {
                                 Capsule()
@@ -760,6 +761,7 @@ struct ContentView: View {
                 }
                 .padding(6)
                 .glassEffect(.regular.interactive(), in: .capsule)
+                .fixedSize()
             }
 
             Spacer()
@@ -1109,6 +1111,9 @@ struct ContentView: View {
                 isInSidebar: cityIsInSidebar(city),
                 showCloudCover: showCloudCover
             )
+            .background(Color.black)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(Color.black, for: .navigationBar)
             .navigationBarBackButtonHidden(true)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -1517,7 +1522,17 @@ struct ContentView: View {
                         // Don't allow deselecting the last list
                         if mapVisibleListIDs.count > 1 {
                             mapVisibleListIDs.remove(id)
-                            recenterOnAllCities = true
+                            // If we deselected the active list, switch to one that's still visible
+                            if listID == weatherService.activeListID,
+                               let remainingID = mapVisibleListIDs.first,
+                               let newActiveList = CityListID.allLists.first(where: { $0.rawValue == remainingID }) {
+                                Task {
+                                    await weatherService.switchList(to: newActiveList)
+                                    recenterOnAllCities = true
+                                }
+                            } else {
+                                recenterOnAllCities = true
+                            }
                         }
                     } else {
                         mapVisibleListIDs.insert(id)
@@ -1559,7 +1574,7 @@ struct ContentView: View {
     private var iOSCustomMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
             if !isEditingListName {
-                menuRow(icon: "plus", title: localizedString("Add City", locale: locale)) {
+                menuRow(icon: "magnifyingglass", title: localizedString("Search", locale: locale)) {
                     showingMenuPopover = false
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                         withAnimation {
@@ -1893,7 +1908,7 @@ struct ContentView: View {
                         Button {
                             showingAddCityView = true
                         } label: {
-                            Label("Add City", systemImage: "plus")
+                            Label("Search", systemImage: "magnifyingglass")
                                 .font(.avenir(.body, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 24)
@@ -2216,13 +2231,13 @@ struct ContentView: View {
     }
 
     private func cityIsInSidebar(_ cityWeather: CityWeather) -> Bool {
-        weatherService.cityWeatherData.contains(where: { $0.city.name == cityWeather.city.name })
+        weatherService.cityWeatherData.contains(where: { $0.city.name == cityWeather.city.name && $0.city.country == cityWeather.city.country })
     }
 
     private func addCityToSidebar(_ cityWeather: CityWeather) async {
         await weatherService.addCity(cityWeather.city)
         // Update the tapped city to the newly added one from the sidebar
-        if let newCity = weatherService.cityWeatherData.first(where: { $0.city.name == cityWeather.city.name }) {
+        if let newCity = weatherService.cityWeatherData.first(where: { $0.city.name == cityWeather.city.name && $0.city.country == cityWeather.city.country }) {
             tappedCity = newCity
         }
     }
@@ -2259,7 +2274,7 @@ struct ContentView: View {
             precipitationChance: condition == .rain ? 0.7 : 0.1
         )
         return CityWeather(
-            city: City(name: name, latitude: 0, longitude: 0),
+            city: City(name: name, country: "", latitude: 0, longitude: 0),
             condition: condition,
             temperature: temp,
             symbolName: symbol,

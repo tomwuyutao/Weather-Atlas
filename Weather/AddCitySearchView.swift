@@ -25,6 +25,21 @@ struct AddCitySearchView: View {
         !searchText.isEmpty && !citySearchManager.searchResults.isEmpty
     }
     
+    private func isExistingCity(_ result: CitySearchResult) -> Bool {
+        let name = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
+        let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
+        return cities.contains(where: { $0.city.name == name && $0.city.country == country })
+    }
+    
+    private var sortedSearchResults: [CitySearchResult] {
+        citySearchManager.searchResults.sorted { a, b in
+            let aExists = isExistingCity(a)
+            let bExists = isExistingCity(b)
+            if aExists != bExists { return aExists }
+            return false
+        }
+    }
+    
     var body: some View {
         VStack(spacing: 0) {
             // Search bar with dismiss button
@@ -83,7 +98,8 @@ struct AddCitySearchView: View {
             // Search results
             if shouldShowSearchResults {
                 List {
-                    ForEach(citySearchManager.searchResults) { result in
+                    ForEach(sortedSearchResults) { result in
+                        let existing = isExistingCity(result)
                         Button {
                             Task {
                                 await selectSearchResult(result)
@@ -91,8 +107,17 @@ struct AddCitySearchView: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Text(result.title)
-                                    .font(.avenir(.body))
+                                    .font(.avenir(.body, weight: existing ? .semibold : .regular))
                                     .foregroundStyle(.primary)
+                                
+                                if existing {
+                                    Text("Added")
+                                        .font(.avenir(.caption2, weight: .medium))
+                                        .foregroundStyle(.blue)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(.blue.opacity(0.12), in: Capsule())
+                                }
                                 
                                 Spacer()
                                 
@@ -167,10 +192,11 @@ struct AddCitySearchView: View {
         defer { isLoadingCity = false }
         
         let cityName = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
+        let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
         
-        // Check if city already exists
-        if let existingCity = cities.first(where: { $0.city.name == cityName }) {
-            print("City \(cityName) already exists")
+        // Check if city already exists (match by name + country)
+        if let existingCity = cities.first(where: { $0.city.name == cityName && $0.city.country == country }) {
+            print("City \(cityName), \(country) already exists")
             onCitySelected(existingCity)
             return
         }
@@ -182,7 +208,7 @@ struct AddCitySearchView: View {
         }
         
         // Create and fetch weather for new city
-        let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let tempCity = City(name: cityName, country: country, latitude: coordinate.latitude, longitude: coordinate.longitude)
         guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
             print("⚠️ Could not fetch weather for \(cityName)")
             return

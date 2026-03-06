@@ -758,7 +758,7 @@ struct DayForecastBox: View {
     @Previewable @Namespace var namespace
     @Previewable @State var showDetail = true
     
-    let london = City(name: "London", latitude: 51.5074, longitude: -0.1278)
+    let london = City(name: "London", country: "England", latitude: 51.5074, longitude: -0.1278)
     
     // Generate hourly forecast for today
     let hourlyForecasts = (0..<24).map { hour -> HourlyForecast in

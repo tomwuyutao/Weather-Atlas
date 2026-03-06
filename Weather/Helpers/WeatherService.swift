@@ -199,59 +199,59 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         switch rawValue {
         case "china":
             return [
-                City(name: "Beijing", latitude: 39.9042, longitude: 116.4074),
-                City(name: "Shanghai", latitude: 31.2304, longitude: 121.4737),
-                City(name: "Chongqing", latitude: 29.4316, longitude: 106.9123),
-                City(name: "Tianjin", latitude: 39.3434, longitude: 117.3616),
-                City(name: "Guangzhou", latitude: 23.1291, longitude: 113.2644),
-                City(name: "Shenzhen", latitude: 22.5431, longitude: 114.0579),
-                City(name: "Hangzhou", latitude: 30.2741, longitude: 120.1551),
-                City(name: "Nanjing", latitude: 32.0603, longitude: 118.7969),
-                City(name: "Suzhou", latitude: 31.2990, longitude: 120.5853),
-                City(name: "Xiamen", latitude: 24.4798, longitude: 118.0894),
-                City(name: "Wuhan", latitude: 30.5928, longitude: 114.3055),
-                City(name: "Changsha", latitude: 28.2282, longitude: 112.9388),
-                City(name: "Zhengzhou", latitude: 34.7466, longitude: 113.6253),
-                City(name: "Xi'an", latitude: 34.3416, longitude: 108.9398),
-                City(name: "Harbin", latitude: 45.8038, longitude: 126.5350),
-                City(name: "Dalian", latitude: 38.9140, longitude: 121.6147),
-                City(name: "Qingdao", latitude: 36.0671, longitude: 120.3826),
-                City(name: "Chengdu", latitude: 30.5728, longitude: 104.0668),
-                City(name: "Kunming", latitude: 25.0389, longitude: 102.7183),
-                City(name: "Guiyang", latitude: 26.6470, longitude: 106.6302),
-                City(name: "Sanya", latitude: 18.2528, longitude: 109.5120),
-                City(name: "Fuzhou", latitude: 26.0745, longitude: 119.2965),
-                City(name: "Lhasa", latitude: 29.6500, longitude: 91.1000),
-                City(name: "Urumqi", latitude: 43.8256, longitude: 87.6168),
-                City(name: "Lanzhou", latitude: 36.0611, longitude: 103.8343),
+                City(name: "Beijing", country: "China", latitude: 39.9042, longitude: 116.4074),
+                City(name: "Shanghai", country: "China", latitude: 31.2304, longitude: 121.4737),
+                City(name: "Chongqing", country: "China", latitude: 29.4316, longitude: 106.9123),
+                City(name: "Tianjin", country: "China", latitude: 39.3434, longitude: 117.3616),
+                City(name: "Guangzhou", country: "China", latitude: 23.1291, longitude: 113.2644),
+                City(name: "Shenzhen", country: "China", latitude: 22.5431, longitude: 114.0579),
+                City(name: "Hangzhou", country: "China", latitude: 30.2741, longitude: 120.1551),
+                City(name: "Nanjing", country: "China", latitude: 32.0603, longitude: 118.7969),
+                City(name: "Suzhou", country: "China", latitude: 31.2990, longitude: 120.5853),
+                City(name: "Xiamen", country: "China", latitude: 24.4798, longitude: 118.0894),
+                City(name: "Wuhan", country: "China", latitude: 30.5928, longitude: 114.3055),
+                City(name: "Changsha", country: "China", latitude: 28.2282, longitude: 112.9388),
+                City(name: "Zhengzhou", country: "China", latitude: 34.7466, longitude: 113.6253),
+                City(name: "Xi'an", country: "China", latitude: 34.3416, longitude: 108.9398),
+                City(name: "Harbin", country: "China", latitude: 45.8038, longitude: 126.5350),
+                City(name: "Dalian", country: "China", latitude: 38.9140, longitude: 121.6147),
+                City(name: "Qingdao", country: "China", latitude: 36.0671, longitude: 120.3826),
+                City(name: "Chengdu", country: "China", latitude: 30.5728, longitude: 104.0668),
+                City(name: "Kunming", country: "China", latitude: 25.0389, longitude: 102.7183),
+                City(name: "Guiyang", country: "China", latitude: 26.6470, longitude: 106.6302),
+                City(name: "Sanya", country: "China", latitude: 18.2528, longitude: 109.5120),
+                City(name: "Fuzhou", country: "China", latitude: 26.0745, longitude: 119.2965),
+                City(name: "Lhasa", country: "China", latitude: 29.6500, longitude: 91.1000),
+                City(name: "Urumqi", country: "China", latitude: 43.8256, longitude: 87.6168),
+                City(name: "Lanzhou", country: "China", latitude: 36.0611, longitude: 103.8343),
             ]
         case "europe":
             return [
-                City(name: "London", latitude: 51.5074, longitude: -0.1278),
-                City(name: "Paris", latitude: 48.8566, longitude: 2.3522),
-                City(name: "Berlin", latitude: 52.5200, longitude: 13.4050),
-                City(name: "Madrid", latitude: 40.4168, longitude: -3.7038),
-                City(name: "Rome", latitude: 41.9028, longitude: 12.4964),
-                City(name: "Amsterdam", latitude: 52.3676, longitude: 4.9041),
-                City(name: "Vienna", latitude: 48.2082, longitude: 16.3738),
-                City(name: "Prague", latitude: 50.0755, longitude: 14.4378),
-                City(name: "Barcelona", latitude: 41.3874, longitude: 2.1686),
-                City(name: "Munich", latitude: 48.1351, longitude: 11.5820),
-                City(name: "Milan", latitude: 45.4642, longitude: 9.1900),
-                City(name: "Stockholm", latitude: 59.3293, longitude: 18.0686),
-                City(name: "Copenhagen", latitude: 55.6761, longitude: 12.5683),
-                City(name: "Oslo", latitude: 59.9139, longitude: 10.7522),
-                City(name: "Helsinki", latitude: 60.1699, longitude: 24.9384),
-                City(name: "Warsaw", latitude: 52.2297, longitude: 21.0122),
-                City(name: "Budapest", latitude: 47.4979, longitude: 19.0402),
-                City(name: "Lisbon", latitude: 38.7223, longitude: -9.1393),
-                City(name: "Athens", latitude: 37.9838, longitude: 23.7275),
-                City(name: "Dublin", latitude: 53.3498, longitude: -6.2603),
-                City(name: "Brussels", latitude: 50.8503, longitude: 4.3517),
-                City(name: "Zurich", latitude: 47.3769, longitude: 8.5417),
-                City(name: "Istanbul", latitude: 41.0082, longitude: 28.9784),
-                City(name: "Bucharest", latitude: 44.4268, longitude: 26.1025),
-                City(name: "Edinburgh", latitude: 55.9533, longitude: -3.1883),
+                City(name: "London", country: "England", latitude: 51.5074, longitude: -0.1278),
+                City(name: "Paris", country: "France", latitude: 48.8566, longitude: 2.3522),
+                City(name: "Berlin", country: "Germany", latitude: 52.5200, longitude: 13.4050),
+                City(name: "Madrid", country: "Spain", latitude: 40.4168, longitude: -3.7038),
+                City(name: "Rome", country: "Italy", latitude: 41.9028, longitude: 12.4964),
+                City(name: "Amsterdam", country: "Netherlands", latitude: 52.3676, longitude: 4.9041),
+                City(name: "Vienna", country: "Austria", latitude: 48.2082, longitude: 16.3738),
+                City(name: "Prague", country: "Czechia", latitude: 50.0755, longitude: 14.4378),
+                City(name: "Barcelona", country: "Spain", latitude: 41.3874, longitude: 2.1686),
+                City(name: "Munich", country: "Germany", latitude: 48.1351, longitude: 11.5820),
+                City(name: "Milan", country: "Italy", latitude: 45.4642, longitude: 9.1900),
+                City(name: "Stockholm", country: "Sweden", latitude: 59.3293, longitude: 18.0686),
+                City(name: "Copenhagen", country: "Denmark", latitude: 55.6761, longitude: 12.5683),
+                City(name: "Oslo", country: "Norway", latitude: 59.9139, longitude: 10.7522),
+                City(name: "Helsinki", country: "Finland", latitude: 60.1699, longitude: 24.9384),
+                City(name: "Warsaw", country: "Poland", latitude: 52.2297, longitude: 21.0122),
+                City(name: "Budapest", country: "Hungary", latitude: 47.4979, longitude: 19.0402),
+                City(name: "Lisbon", country: "Portugal", latitude: 38.7223, longitude: -9.1393),
+                City(name: "Athens", country: "Greece", latitude: 37.9838, longitude: 23.7275),
+                City(name: "Dublin", country: "Ireland", latitude: 53.3498, longitude: -6.2603),
+                City(name: "Brussels", country: "Belgium", latitude: 50.8503, longitude: 4.3517),
+                City(name: "Zurich", country: "Switzerland", latitude: 47.3769, longitude: 8.5417),
+                City(name: "Istanbul", country: "Turkey", latitude: 41.0082, longitude: 28.9784),
+                City(name: "Bucharest", country: "Romania", latitude: 44.4268, longitude: 26.1025),
+                City(name: "Edinburgh", country: "Scotland", latitude: 55.9533, longitude: -3.1883),
             ]
         default:
             return [] // User-created lists start empty
@@ -549,7 +549,15 @@ class WeatherService {
         let citiesToFetch: [City]
         if let data = UserDefaults.standard.data(forKey: citiesKey),
            let cached = try? JSONDecoder().decode([CachedCity].self, from: data) {
-            citiesToFetch = cached.map { $0.toCity() }
+            // Migrate: fill in empty country from default city lists
+            let defaults = CityListID.builtInLists.flatMap { $0.defaultCities }
+            citiesToFetch = cached.map { c -> City in
+                var city = c.toCity()
+                if city.country.isEmpty, let match = defaults.first(where: { $0.name == city.name }) {
+                    city = City(id: city.id, name: city.name, country: match.country, latitude: city.latitude, longitude: city.longitude)
+                }
+                return city
+            }
         } else {
             citiesToFetch = listID.defaultCities
         }
@@ -601,7 +609,16 @@ class WeatherService {
         do {
             let decoder = JSONDecoder()
             let cachedCities = try decoder.decode([CachedCity].self, from: data)
-            let cities = cachedCities.map { $0.toCity() }
+            // Migrate: fill in empty country from default city lists
+            let defaults = CityListID.builtInLists.flatMap { $0.defaultCities }
+            let cities = cachedCities.map { cached -> City in
+                var city = cached.toCity()
+                if city.country.isEmpty,
+                   let match = defaults.first(where: { $0.name == city.name }) {
+                    city = City(id: city.id, name: city.name, country: match.country, latitude: city.latitude, longitude: city.longitude)
+                }
+                return city
+            }
             print("📍 Loaded \(cities.count) saved cities: \(cities.map { $0.name }.joined(separator: ", "))")
             return cities
         } catch {
@@ -831,8 +848,26 @@ class WeatherService {
 struct City: Identifiable, Hashable, Codable {
     var id = UUID()
     let name: String
+    let country: String
     let latitude: Double
     let longitude: Double
+    
+    init(id: UUID = UUID(), name: String, country: String = "", latitude: Double, longitude: Double) {
+        self.id = id
+        self.name = name
+        self.country = country
+        self.latitude = latitude
+        self.longitude = longitude
+    }
+    
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        name = try container.decode(String.self, forKey: .name)
+        country = try container.decodeIfPresent(String.self, forKey: .country) ?? ""
+        latitude = try container.decode(Double.self, forKey: .latitude)
+        longitude = try container.decode(Double.self, forKey: .longitude)
+    }
     
     /// Returns the city name localized for the given locale.
     /// For known default cities, returns a translated name; otherwise returns `name` as-is
@@ -1175,24 +1210,36 @@ struct HourlyForecast: Identifiable {
 struct CachedCity: Codable {
     let id: UUID
     let name: String
+    let country: String
     let latitude: Double
     let longitude: Double
     
     init(from city: City) {
         self.id = city.id
         self.name = city.name
+        self.country = city.country
         self.latitude = city.latitude
         self.longitude = city.longitude
     }
     
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decode(String.self, forKey: .name)
+        country = try container.decodeIfPresent(String.self, forKey: .country) ?? ""
+        latitude = try container.decode(Double.self, forKey: .latitude)
+        longitude = try container.decode(Double.self, forKey: .longitude)
+    }
+    
     func toCity() -> City {
-        return City(id: id, name: name, latitude: latitude, longitude: longitude)
+        return City(id: id, name: name, country: country, latitude: latitude, longitude: longitude)
     }
 }
 
 struct CachedCityWeather: Codable {
     let cityId: UUID
     let cityName: String
+    let cityCountry: String
     let cityLatitude: Double
     let cityLongitude: Double
     let condition: String
@@ -1204,6 +1251,7 @@ struct CachedCityWeather: Codable {
     init(from cityWeather: CityWeather) {
         self.cityId = cityWeather.city.id
         self.cityName = cityWeather.city.name
+        self.cityCountry = cityWeather.city.country
         self.cityLatitude = cityWeather.city.latitude
         self.cityLongitude = cityWeather.city.longitude
         self.condition = cityWeather.condition.displayName
@@ -1213,8 +1261,22 @@ struct CachedCityWeather: Codable {
         self.timeZoneIdentifier = cityWeather.timeZone.identifier
     }
     
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        cityId = try container.decode(UUID.self, forKey: .cityId)
+        cityName = try container.decode(String.self, forKey: .cityName)
+        cityCountry = try container.decodeIfPresent(String.self, forKey: .cityCountry) ?? ""
+        cityLatitude = try container.decode(Double.self, forKey: .cityLatitude)
+        cityLongitude = try container.decode(Double.self, forKey: .cityLongitude)
+        condition = try container.decode(String.self, forKey: .condition)
+        temperature = try container.decode(Double.self, forKey: .temperature)
+        symbolName = try container.decode(String.self, forKey: .symbolName)
+        dailyForecasts = try container.decode([CachedDailyForecast].self, forKey: .dailyForecasts)
+        timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
+    }
+    
     func toCityWeather() -> CityWeather {
-        let city = City(id: cityId, name: cityName, latitude: cityLatitude, longitude: cityLongitude)
+        let city = City(id: cityId, name: cityName, country: cityCountry, latitude: cityLatitude, longitude: cityLongitude)
         let appCondition = AppWeatherCondition.fromDisplayName(condition)
         let forecasts = dailyForecasts.map { $0.toDailyForecast() }
         let tz = timeZoneIdentifier.flatMap { TimeZone(identifier: $0) } ?? TimeZone.current

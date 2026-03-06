@@ -113,7 +113,9 @@ struct MapKitMapView: View {
                         onDoubleTapMarker?()
                         return
                     }
-                    tappedCity = hit.city
+                    withAnimation(.smooth(duration: 0.3)) {
+                        tappedCity = hit.city
+                    }
                     tappedMarkerID = hit.city.id
                     Task {
                         try? await Task.sleep(for: .milliseconds(150))

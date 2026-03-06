@@ -104,10 +104,10 @@ struct DesktopSidebar: View {
         if minutes < 1 {
             return localizedString("Now", locale: locale)
         } else if minutes < 60 {
-            return "\(minutes)m"
+            return localizedString("\(minutes) m", locale: locale)
         } else {
             let hours = minutes / 60
-            return "\(hours)h"
+            return localizedString("\(hours) h", locale: locale)
         }
     }
     
@@ -330,8 +330,9 @@ struct DesktopSidebar: View {
         defer { isLoadingSearchedCity = false }
         
         let cityName = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
+        let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
         
-        if let existingCity = cities.first(where: { $0.city.name == cityName }) {
+        if let existingCity = cities.first(where: { $0.city.name == cityName && $0.city.country == country }) {
             detailOpenedFromList = false
             tappedCity = existingCity
             withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
@@ -347,7 +348,7 @@ struct DesktopSidebar: View {
             return
         }
         
-        let tempCity = City(name: cityName, latitude: coordinate.latitude, longitude: coordinate.longitude)
+        let tempCity = City(name: cityName, country: country, latitude: coordinate.latitude, longitude: coordinate.longitude)
         guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
             print("⚠️ Could not fetch weather for \(cityName)")
             return

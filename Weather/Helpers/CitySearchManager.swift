@@ -28,7 +28,6 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
         super.init()
         completer.delegate = self
         completer.resultTypes = .address
-        completer.addressFilter = MKAddressFilter(including: .locality)
         completer.region = MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: 0, longitude: 0),
             span: MKCoordinateSpan(latitudeDelta: 180, longitudeDelta: 360)
