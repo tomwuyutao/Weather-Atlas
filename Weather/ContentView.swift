@@ -47,7 +47,7 @@ struct ContentView: View {
     @State private var detailOpenedFromList: Bool = false
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @State private var showingSettings: Bool = false
-    @AppStorage("useDetailedMap") private var useDetailedMap: Bool = false
+    @AppStorage("mapMode") private var mapMode: String = "minimal"
     @State private var mapVisibleListIDs: Set<String> = []
     @Environment(\.locale) private var locale
     
@@ -630,49 +630,29 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .popover(isPresented: $showingMapStylePopover) {
                                 VStack(alignment: .leading, spacing: 0) {
-                                    Button {
-                                        showingMapStylePopover = false
-                                        withAnimation { useDetailedMap = false }
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Text("Minimal")
-                                                .font(.avenir(.body, weight: !useDetailedMap ? .bold : .medium))
-                                                .foregroundStyle(.primary)
-                                            Spacer()
-                                            if !useDetailedMap {
-                                                Circle()
-                                                    .fill(.white)
-                                                    .frame(width: 6, height: 6)
+                                    ForEach(["minimal", "detailed"], id: \.self) { mode in
+                                        Button {
+                                            showingMapStylePopover = false
+                                            withAnimation { mapMode = mode }
+                                        } label: {
+                                            HStack(spacing: 12) {
+                                                Text(mode.capitalized)
+                                                    .font(.avenir(.body, weight: mapMode == mode ? .bold : .medium))
+                                                    .foregroundStyle(.primary)
+                                                Spacer()
+                                                if mapMode == mode {
+                                                    Circle()
+                                                        .fill(.white)
+                                                        .frame(width: 6, height: 6)
+                                                }
                                             }
+                                            .padding(.leading, 24)
+                                            .padding(.trailing, 16)
+                                            .padding(.vertical, 11)
+                                            .contentShape(Rectangle())
                                         }
-                                        .padding(.leading, 24)
-                                        .padding(.trailing, 16)
-                                        .padding(.vertical, 11)
-                                        .contentShape(Rectangle())
+                                        .buttonStyle(.plain)
                                     }
-                                    .buttonStyle(.plain)
-
-                                    Button {
-                                        showingMapStylePopover = false
-                                        withAnimation { useDetailedMap = true }
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Text("Detailed")
-                                                .font(.avenir(.body, weight: useDetailedMap ? .bold : .medium))
-                                                .foregroundStyle(.primary)
-                                            Spacer()
-                                            if useDetailedMap {
-                                                Circle()
-                                                    .fill(.white)
-                                                    .frame(width: 6, height: 6)
-                                            }
-                                        }
-                                        .padding(.leading, 24)
-                                        .padding(.trailing, 16)
-                                        .padding(.vertical, 11)
-                                        .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
                                 }
                                 .padding(.vertical, 8)
                                 .frame(width: 160)
@@ -1881,7 +1861,7 @@ struct ContentView: View {
                 recenterOnAllCities: $recenterOnAllCities,
                 focusOnSubsetCities: focusSubsetCities,
                 focusOnSubsetTrigger: $focusSubsetTrigger,
-                useDetailedMap: useDetailedMap,
+                mapMode: mapMode,
                 onDoubleTapMarker: {
                     showingCityDetail = true
                 }

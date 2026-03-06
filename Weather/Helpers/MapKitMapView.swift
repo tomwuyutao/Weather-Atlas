@@ -24,7 +24,7 @@ struct MapKitMapView: View {
     @Binding var recenterOnAllCities: Bool
     var focusOnSubsetCities: [CityWeather] = []
     @Binding var focusOnSubsetTrigger: Bool
-    var useDetailedMap: Bool = false
+    var mapMode: String = "minimal"
     var onDoubleTapMarker: (() -> Void)?
 
     @State private var position: MapCameraPosition = .automatic
@@ -40,19 +40,28 @@ struct MapKitMapView: View {
             Map(position: $position, interactionModes: [.pan, .zoom]) {
                 // Empty map content — annotations rendered manually above overlay
             }
-            .mapStyle(.standard(elevation: .flat, emphasis: useDetailedMap ? .muted : .automatic, pointsOfInterest: .excludingAll))
+            .mapStyle(.standard(elevation: .flat, emphasis: mapMode == "detailed" ? .muted : .automatic, pointsOfInterest: .excludingAll))
             .mapControls { }
             .environment(\.locale, Locale(identifier: "en"))
             .onMapCameraChange(frequency: .continuous) { _ in
                 cameraChangeCounter += 1
             }
-            // SVG country overlay (draws black ocean + land shapes) — hidden in detailed mode
+            // SVG country overlay — minimal: filled shapes on black ocean, calibration: red outlines on MapKit
             .overlay {
-                if !useDetailedMap {
+                if mapMode == "minimal" {
                     SVGProxyOverlay(
                         countries: countries,
                         proxy: proxy,
-                        cameraChangeCounter: cameraChangeCounter
+                        cameraChangeCounter: cameraChangeCounter,
+                        style: .filled
+                    )
+                    .allowsHitTesting(false)
+                } else if mapMode == "calibration" {
+                    SVGProxyOverlay(
+                        countries: countries,
+                        proxy: proxy,
+                        cameraChangeCounter: cameraChangeCounter,
+                        style: .calibration
                     )
                     .allowsHitTesting(false)
                 }
@@ -327,9 +336,12 @@ private struct AnnotationsOverlay: View {
 /// Uses MapProxy.convert to get exact screen positions of reference coordinates,
 /// then draws transformed SVG country paths in a Canvas.
 private struct SVGProxyOverlay: View {
+    enum Style { case filled, calibration }
+
     let countries: [CountryPath]
     let proxy: MapProxy
     let cameraChangeCounter: Int
+    var style: Style = .filled
 
     private static let refCoordA = CLLocationCoordinate2D(latitude: 0.0, longitude: 0.0)
     private static let refCoordB = CLLocationCoordinate2D(latitude: 45.0, longitude: 90.0)
@@ -346,8 +358,10 @@ private struct SVGProxyOverlay: View {
             guard let screenA = ptA, let screenB = ptB else { return }
             guard size.width > 0, size.height > 0 else { return }
 
-            // Fill entire canvas with black (ocean)
-            context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+            // Fill entire canvas with black ocean only in filled mode
+            if style == .filled {
+                context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+            }
 
             let svgA = Self.refSvgA
             let svgB = Self.refSvgB
@@ -356,13 +370,14 @@ private struct SVGProxyOverlay: View {
             guard abs(svgDx) > 0.001, abs(svgDy) > 0.001 else { return }
 
             let scaleX = (screenB.x - screenA.x) / svgDx
-            let scaleY = (screenB.y - screenA.y) / svgDy
-            guard scaleX.isFinite, scaleY.isFinite, scaleX != 0, scaleY != 0 else { return }
+            let baseScaleY = (screenB.y - screenA.y) / svgDy
+            guard scaleX.isFinite, baseScaleY.isFinite, scaleX != 0, baseScaleY != 0 else { return }
 
+            // Stretch vertically by a small factor, anchored at the equator (refA)
+            let yStretch = 1.0032
+            let scaleY = baseScaleY * yStretch
             let tx = screenA.x - Double(svgA.x) * scaleX
-            // Zoom-proportional upward correction
-            let yCorrection = -0.4 * abs(scaleX)
-            let ty = screenA.y - Double(svgA.y) * scaleY + yCorrection
+            let ty = screenA.y - Double(svgA.y) * scaleY
 
             var transform = CGAffineTransform(
                 a: scaleX, b: 0,
@@ -372,10 +387,13 @@ private struct SVGProxyOverlay: View {
 
             for country in countries {
                 if let transformed = country.path.copy(using: &transform) {
-                    context.fill(
-                        Path(transformed),
-                        with: .color(Color(red: 28/255.0, green: 28/255.0, blue: 30/255.0))
-                    )
+                    let path = Path(transformed)
+                    switch style {
+                    case .filled:
+                        context.fill(path, with: .color(Color(red: 28/255.0, green: 28/255.0, blue: 30/255.0)))
+                    case .calibration:
+                        context.stroke(path, with: .color(.red), lineWidth: 1)
+                    }
                 }
             }
         }
