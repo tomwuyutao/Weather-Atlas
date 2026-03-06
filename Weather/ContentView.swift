@@ -862,13 +862,17 @@ struct ContentView: View {
                 if mapVisibleListIDs.count > 1 {
                     showingRecenterPopover = true
                 } else {
-                    recenterOnAllCities = true
+                    recenterOnAllCities = false
+                    DispatchQueue.main.async {
+                        recenterOnAllCities = true
+                    }
                 }
             } label: {
                 Image(systemName: "dot.squareshape.split.2x2")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 42, height: 36)
+                    .frame(width: 42, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showingRecenterPopover) {
@@ -911,7 +915,8 @@ struct ContentView: View {
                 Image(systemName: "gearshape")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 42, height: 36)
+                    .frame(width: 42, height: 44)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .popover(isPresented: $showingMapStylePopover) {
