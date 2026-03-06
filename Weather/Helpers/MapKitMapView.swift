@@ -298,7 +298,7 @@ private struct AnnotationsOverlay: View {
                         isSelected: showingCityDetail && tappedCity?.id == cityWeather.id
                     )
                     .overlay {
-                        if highlightedMarkerID == cityWeather.id {
+                        if highlightedMarkerID == cityWeather.id && !(showingCityDetail && tappedCity?.id == cityWeather.id) {
                             MapRevealPulseRing()
                         }
                     }
