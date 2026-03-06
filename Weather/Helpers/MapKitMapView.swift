@@ -26,6 +26,7 @@ struct MapKitMapView: View {
     @Binding var focusOnSubsetTrigger: Bool
     var mapMode: String = "minimal"
     var countrySelectionMode: Bool = false
+    var forceDotsOnly: Bool = false
     @Binding var mapCenterCoordinate: CLLocationCoordinate2D?
     var onDoubleTapMarker: (() -> Void)?
 
@@ -86,6 +87,7 @@ struct MapKitMapView: View {
                         namespace: namespace,
                         highlightedMarkerID: highlightedMarkerID,
                         tappedMarkerID: tappedMarkerID,
+                        forceDotsOnly: forceDotsOnly,
                         showingCityDetail: $showingCityDetail,
                         tappedCity: $tappedCity
                     )
@@ -262,6 +264,7 @@ private struct AnnotationsOverlay: View {
     let namespace: Namespace.ID
     let highlightedMarkerID: UUID?
     let tappedMarkerID: UUID?
+    var forceDotsOnly: Bool = false
     @Binding var showingCityDetail: Bool
     @Binding var tappedCity: CityWeather?
 
@@ -285,7 +288,7 @@ private struct AnnotationsOverlay: View {
                       pt.y > -margin && pt.y < geometry.size.height + margin else { return nil }
                 return (id: cityWeather.id, pt: pt)
             }
-            let markerMode = computeDisplayMode(screenPositions)
+            let markerMode: MarkerDisplayMode = forceDotsOnly ? .dot : computeDisplayMode(screenPositions)
 
             ForEach(cities) { cityWeather in
                 if passesFilter(cityWeather),

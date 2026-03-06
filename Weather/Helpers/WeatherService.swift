@@ -825,6 +825,27 @@ class WeatherService {
         }
     }
     
+    /// Fetch weather for a grid of points (used by Country Overview).
+    /// Returns results progressively via the callback, and the full array at the end.
+    func fetchWeatherForGrid(_ gridCities: [City], onProgress: @escaping (Double) -> Void) async -> [CityWeather] {
+        var results: [CityWeather] = []
+        let total = gridCities.count
+        
+        for (index, city) in gridCities.enumerated() {
+            do {
+                let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
+                let weather = try await weatherService.weather(for: location)
+                let cityWeather = await convertWeatherKitData(weather: weather, for: city)
+                results.append(cityWeather)
+            } catch {
+                print("⚠️ Grid fetch skipped (\(index + 1)/\(total)): \(error.localizedDescription)")
+            }
+            onProgress(Double(index + 1) / Double(total))
+        }
+        
+        return results
+    }
+    
     func moveCity(from source: IndexSet, to destination: Int) {
         cityWeatherData.move(fromOffsets: source, toOffset: destination)
         // Update cache after reordering cities

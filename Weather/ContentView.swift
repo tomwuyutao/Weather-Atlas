@@ -55,6 +55,9 @@ struct ContentView: View {
     
     /// Cities to display on the map — combined from all selected lists + preview city
     private var mapCities: [CityWeather] {
+        if countryOverviewActive {
+            return countryOverviewData
+        }
         var result: [CityWeather]
         if mapVisibleListIDs.isEmpty || mapVisibleListIDs == Set([weatherService.activeListID.rawValue]) {
             result = weatherService.cityWeatherData
@@ -228,6 +231,11 @@ struct ContentView: View {
     @State private var countryUnderPin: String = ""
     @State private var showCountrySelectedAlert: Bool = false
     @State private var selectedCountryName: String = ""
+    @State private var countryOverviewData: [CityWeather] = []
+    @State private var countryOverviewActive: Bool = false
+    @State private var countryOverviewCountryName: String = ""
+    @State private var isLoadingCountryOverview: Bool = false
+    @State private var countryOverviewProgress: Double = 0
     @State private var showingMapListSwitcher: Bool = false
     @State private var showingRecenterPopover: Bool = false
     @State private var focusSubsetCities: [CityWeather] = []
@@ -539,9 +547,51 @@ struct ContentView: View {
         }
     }
 
+    private func generateCountryGrid(for country: CountryPath, maxPoints: Int = 150) -> [City] {
+        let bbox = country.path.boundingBox
+        let topLeft = GeoProjection.svgToGeo(svgPoint: CGPoint(x: bbox.minX, y: bbox.minY))
+        let bottomRight = GeoProjection.svgToGeo(svgPoint: CGPoint(x: bbox.maxX, y: bbox.maxY))
+        
+        let minLat = min(topLeft.latitude, bottomRight.latitude)
+        let maxLat = max(topLeft.latitude, bottomRight.latitude)
+        let minLon = min(topLeft.longitude, bottomRight.longitude)
+        let maxLon = max(topLeft.longitude, bottomRight.longitude)
+        
+        let midLat = (minLat + maxLat) / 2
+        
+        // Try increasing spacing until we're under maxPoints
+        for spacing in [1.0, 1.5, 2.0, 3.0] {
+            // Adjust longitude spacing so the grid appears square on Mercator projection
+            let lonSpacing = spacing / max(cos(midLat * .pi / 180), 0.3)
+            var gridCities: [City] = []
+            var lat = minLat + spacing / 2
+            while lat <= maxLat {
+                var lon = minLon + lonSpacing / 2
+                while lon <= maxLon {
+                    let svgPoint = GeoProjection.geoToSVG(latitude: lat, longitude: lon)
+                    if country.path.contains(svgPoint) {
+                        let city = City(
+                            name: "\(country.title) \(gridCities.count + 1)",
+                            country: country.title,
+                            latitude: lat,
+                            longitude: lon
+                        )
+                        gridCities.append(city)
+                    }
+                    lon += lonSpacing
+                }
+                lat += spacing
+            }
+            if gridCities.count <= maxPoints {
+                return gridCities
+            }
+        }
+        return []
+    }
+
     @ToolbarContentBuilder
     private var iOSPrincipalToolbarItem: some ToolbarContent {
-        if selectedTab == 1, !countrySelectionMode {
+        if selectedTab == 1, !isMapSpecialMode {
             ToolbarItem(placement: .principal) {
                 Button {
                     showingMapListSwitcher = true
@@ -564,13 +614,18 @@ struct ContentView: View {
         }
     }
 
+    /// Whether the map is in a special full-screen mode (country selection, loading overview, or showing overview results)
+    private var isMapSpecialMode: Bool {
+        countrySelectionMode || isLoadingCountryOverview || countryOverviewActive
+    }
+
     private var iOSMainZStack: some View {
         ZStack(alignment: .bottom) {
             ZStack {
                 // Map always alive in background, hidden when not selected
                 iOSMapView
                     .overlay(alignment: .trailing) {
-                        if selectedTab == 1, !countrySelectionMode {
+                        if selectedTab == 1, !isMapSpecialMode {
                             Color.clear
                                 .frame(width: 60, height: 420)
                                 .contentShape(Rectangle())
@@ -584,7 +639,7 @@ struct ContentView: View {
                     .opacity(selectedTab == 1 ? 1 : 0)
 
                 // List slides over map
-                if !countrySelectionMode {
+                if !isMapSpecialMode {
                     iOSListView
                         .background(Color(.systemBackground))
                         .offset(x: selectedTab == 0 ? 0 : -10000)
@@ -593,7 +648,7 @@ struct ContentView: View {
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
 
             // Expanded city card on map
-            if selectedTab == 1, !countrySelectionMode, showingMapExpandedCard, let city = tappedCity {
+            if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
                 mapExpandedCard(for: city)
                     .id(city.city.id)
                     .transition(.blurReplace)
@@ -603,7 +658,7 @@ struct ContentView: View {
             }
 
             // Preview toolbar when inspecting a searched city
-            if selectedTab == 1, !countrySelectionMode, previewCity != nil {
+            if selectedTab == 1, !isMapSpecialMode, previewCity != nil {
                 iOSPreviewToolbar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(2)
@@ -616,8 +671,22 @@ struct ContentView: View {
                     .zIndex(3)
             }
 
+            // Country overview loading overlay
+            if isLoadingCountryOverview {
+                countryOverviewLoadingOverlay
+                    .transition(.opacity)
+                    .zIndex(3)
+            }
+
+            // Country overview exit button
+            if countryOverviewActive {
+                countryOverviewExitOverlay
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(3)
+            }
+
             // Floating bottom toolbar
-            if previewCity == nil, !countrySelectionMode {
+            if previewCity == nil, !isMapSpecialMode {
                 iOSFloatingBottomToolbar
             }
         }
@@ -625,7 +694,7 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var iOSTrailingToolbarItems: some ToolbarContent {
-        if !countrySelectionMode && isEditMode {
+        if !isMapSpecialMode && isEditMode {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     withAnimation { isEditMode = false }
@@ -633,7 +702,7 @@ struct ContentView: View {
                     Image(systemName: "checkmark")
                 }
             }
-        } else if !countrySelectionMode {
+        } else if !isMapSpecialMode {
             if weatherService.isLoading || isLoadingMapList {
                 ToolbarItem(placement: .topBarTrailing) {
                     ProgressView()
@@ -1131,8 +1200,31 @@ struct ContentView: View {
 
                     // Confirm
                     Button {
-                        selectedCountryName = countryUnderPin
-                        showCountrySelectedAlert = true
+                        let name = countryUnderPin
+                        guard let country = countries.first(where: { $0.title == name }) else { return }
+                        let gridCities = generateCountryGrid(for: country)
+                        guard !gridCities.isEmpty else { return }
+                        
+                        countryOverviewCountryName = name
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            countrySelectionMode = false
+                            countryUnderPin = ""
+                            isLoadingCountryOverview = true
+                        }
+                        
+                        Task {
+                            let results = await weatherService.fetchWeatherForGrid(gridCities) { progress in
+                                Task { @MainActor in
+                                    countryOverviewProgress = progress
+                                }
+                            }
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                countryOverviewData = results
+                                countryOverviewActive = true
+                                isLoadingCountryOverview = false
+                                countryOverviewProgress = 0
+                            }
+                        }
                     } label: {
                         Image(systemName: "checkmark")
                             .font(.system(size: 16, weight: .semibold))
@@ -1145,16 +1237,68 @@ struct ContentView: View {
                 .padding(.bottom, 40)
             }
         }
-        .alert(localizedString("Country Selected", locale: locale), isPresented: $showCountrySelectedAlert) {
-            Button(localizedString("OK", locale: locale)) {
+    }
+
+    private var countryOverviewLoadingOverlay: some View {
+        VStack {
+            Spacer()
+
+            VStack(spacing: 16) {
+                Text(String(format: localizedString("Loading weather for %@", locale: locale), countryOverviewCountryName))
+                    .font(.avenir(.headline, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .multilineTextAlignment(.center)
+
+                Capsule()
+                    .fill(Color.white.opacity(0.15))
+                    .frame(width: 200, height: 4)
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(.white)
+                            .frame(width: 200 * countryOverviewProgress, height: 4)
+                            .animation(.easeInOut(duration: 0.15), value: countryOverviewProgress)
+                    }
+
+                Text("\(Int(countryOverviewProgress * 100))%")
+                    .font(.avenir(.caption, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+            }
+            .padding(.horizontal, 28)
+            .padding(.vertical, 24)
+            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+
+            Spacer()
+        }
+    }
+
+    private var countryOverviewExitOverlay: some View {
+        VStack {
+            Spacer()
+
+            HStack(spacing: 12) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                Text(String(format: localizedString("Viewing %@", locale: locale), countryOverviewCountryName))
+                    .font(.avenir(.subheadline, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .contentShape(Capsule())
+            .onTapGesture {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    countrySelectionMode = false
-                    countryUnderPin = ""
+                    countryOverviewActive = false
+                    countryOverviewData = []
+                    countryOverviewCountryName = ""
                     recenterOnAllCities = true
                 }
             }
-        } message: {
-            Text(selectedCountryName)
+            .padding(.bottom, 40)
         }
     }
 
@@ -2284,6 +2428,7 @@ struct ContentView: View {
                 focusOnSubsetTrigger: $focusSubsetTrigger,
                 mapMode: mapMode,
                 countrySelectionMode: countrySelectionMode,
+                forceDotsOnly: countryOverviewActive,
                 mapCenterCoordinate: $mapCenterCoordinate,
                 onDoubleTapMarker: {
                     if previewCity != nil {
