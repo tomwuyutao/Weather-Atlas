@@ -410,7 +410,8 @@ private struct SVGProxyOverlay: View {
                     case .borders:
                         context.fill(path, with: .color(landColor))
                         if borderedIDs.contains(country.id) {
-                            context.stroke(path, with: .color(borderColor), lineWidth: 2)
+                            let borderWidth = min(max(abs(scaleX) * 0.6, 2), 4.0)
+                                context.stroke(path, with: .color(borderColor), lineWidth: borderWidth)
                         }
                     case .calibration:
                         context.stroke(path, with: .color(.red), lineWidth: 1)
