@@ -630,7 +630,7 @@ struct ContentView: View {
                             .buttonStyle(.plain)
                             .popover(isPresented: $showingMapStylePopover) {
                                 VStack(alignment: .leading, spacing: 0) {
-                                    ForEach(["minimal", "detailed"], id: \.self) { mode in
+                                    ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
                                         Button {
                                             showingMapStylePopover = false
                                             withAnimation { mapMode = mode }

@@ -46,22 +46,15 @@ struct MapKitMapView: View {
             .onMapCameraChange(frequency: .continuous) { _ in
                 cameraChangeCounter += 1
             }
-            // SVG country overlay — minimal: filled shapes on black ocean, calibration: red outlines on MapKit
+            // SVG country overlay
             .overlay {
-                if mapMode == "minimal" {
+                if mapMode == "minimal" || mapMode == "borders" || mapMode == "calibration" {
                     SVGProxyOverlay(
                         countries: countries,
                         proxy: proxy,
                         cameraChangeCounter: cameraChangeCounter,
-                        style: .filled
-                    )
-                    .allowsHitTesting(false)
-                } else if mapMode == "calibration" {
-                    SVGProxyOverlay(
-                        countries: countries,
-                        proxy: proxy,
-                        cameraChangeCounter: cameraChangeCounter,
-                        style: .calibration
+                        style: mapMode == "borders" ? .borders : (mapMode == "calibration" ? .calibration : .filled),
+                        cities: mapMode == "borders" ? cities : []
                     )
                     .allowsHitTesting(false)
                 }
@@ -336,17 +329,36 @@ private struct AnnotationsOverlay: View {
 /// Uses MapProxy.convert to get exact screen positions of reference coordinates,
 /// then draws transformed SVG country paths in a Canvas.
 private struct SVGProxyOverlay: View {
-    enum Style { case filled, calibration }
+    enum Style { case filled, borders, calibration }
 
     let countries: [CountryPath]
     let proxy: MapProxy
     let cameraChangeCounter: Int
     var style: Style = .filled
+    var cities: [CityWeather] = []
 
     private static let refCoordA = CLLocationCoordinate2D(latitude: 0.0, longitude: 0.0)
     private static let refCoordB = CLLocationCoordinate2D(latitude: 45.0, longitude: 90.0)
     private static let refSvgA = GeoProjection.geoToSVG(latitude: 0.0, longitude: 0.0)
     private static let refSvgB = GeoProjection.geoToSVG(latitude: 45.0, longitude: 90.0)
+
+    /// Returns the set of country IDs that contain at least one city
+    private var countriesWithCities: Set<String> {
+        guard !cities.isEmpty else { return [] }
+        let svgPoints = cities.map { city in
+            GeoProjection.geoToSVG(latitude: city.city.latitude, longitude: city.city.longitude)
+        }
+        var ids = Set<String>()
+        for country in countries {
+            for pt in svgPoints {
+                if country.path.contains(pt) {
+                    ids.insert(country.id)
+                    break
+                }
+            }
+        }
+        return ids
+    }
 
     var body: some View {
         let ptA = proxy.convert(Self.refCoordA, to: .local)
@@ -358,8 +370,8 @@ private struct SVGProxyOverlay: View {
             guard let screenA = ptA, let screenB = ptB else { return }
             guard size.width > 0, size.height > 0 else { return }
 
-            // Fill entire canvas with black ocean only in filled mode
-            if style == .filled {
+            // Fill entire canvas with black ocean (not in calibration mode)
+            if style != .calibration {
                 context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
             }
 
@@ -385,12 +397,21 @@ private struct SVGProxyOverlay: View {
                 tx: tx, ty: ty
             )
 
+            let landColor = Color(red: 28/255.0, green: 28/255.0, blue: 30/255.0)
+            let borderColor = Color(red: 45/255.0, green: 45/255.0, blue: 47/255.0)
+            let borderedIDs = style == .borders ? countriesWithCities : []
+
             for country in countries {
                 if let transformed = country.path.copy(using: &transform) {
                     let path = Path(transformed)
                     switch style {
                     case .filled:
-                        context.fill(path, with: .color(Color(red: 28/255.0, green: 28/255.0, blue: 30/255.0)))
+                        context.fill(path, with: .color(landColor))
+                    case .borders:
+                        context.fill(path, with: .color(landColor))
+                        if borderedIDs.contains(country.id) {
+                            context.stroke(path, with: .color(borderColor), lineWidth: 2)
+                        }
                     case .calibration:
                         context.stroke(path, with: .color(.red), lineWidth: 1)
                     }
