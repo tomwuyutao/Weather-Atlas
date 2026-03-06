@@ -64,6 +64,16 @@ struct AddCitySearchView: View {
                         .strokeBorder(.quaternary, lineWidth: 1)
                 )
 
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 44, height: 44)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, 16)
             .padding(.top, 12)
@@ -138,14 +148,17 @@ struct AddCitySearchView: View {
                 }
             }
         }
-        .navigationTitle("Add City")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.visible, for: .navigationBar)
+        .navigationBarHidden(true)
         .onChange(of: searchText) { oldValue, newValue in
             citySearchManager.search(query: newValue)
         }
         .onChange(of: searchFieldFocus) { oldValue, newValue in
             isSearchFieldFocused = newValue
+        }
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                searchFieldFocus = true
+            }
         }
     }
     

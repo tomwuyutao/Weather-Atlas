@@ -412,29 +412,27 @@ struct ContentView: View {
     private var iOSView: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
-                GeometryReader { geo in
-                    ZStack {
-                        // Map always alive in background, hidden when not selected
-                        iOSMapView
-                            .overlay(alignment: .trailing) {
-                                if selectedTab == 1 {
-                                    Color.clear
-                                        .frame(width: 60, height: 420)
-                                        .contentShape(Rectangle())
-                                        .overlay(alignment: .trailing) {
-                                            mapDateSlider(height: 340)
-                                        }
-                                        .padding(.bottom, 350)
-                                        .transition(.opacity)
-                                }
+                ZStack {
+                    // Map always alive in background, hidden when not selected
+                    iOSMapView
+                        .overlay(alignment: .trailing) {
+                            if selectedTab == 1 {
+                                Color.clear
+                                    .frame(width: 60, height: 420)
+                                    .contentShape(Rectangle())
+                                    .overlay(alignment: .trailing) {
+                                        mapDateSlider(height: 340)
+                                    }
+                                    .padding(.bottom, 350)
+                                    .transition(.opacity)
                             }
-                            .offset(x: selectedTab == 1 ? 0 : geo.size.width)
-                        
-                        // List slides out when switching to map
-                        iOSListView
-                            .background(Color(.systemBackground))
-                            .offset(x: selectedTab == 0 ? 0 : -geo.size.width)
-                    }
+                        }
+                        .opacity(selectedTab == 1 ? 1 : 0)
+                    
+                    // List slides over map
+                    iOSListView
+                        .background(Color(.systemBackground))
+                        .offset(x: selectedTab == 0 ? 0 : -10000)
                 }
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
 
@@ -853,68 +851,70 @@ struct ContentView: View {
                     }
                 }
             }
-            .navigationDestination(isPresented: $showingAddCityView) {
-                AddCitySearchView(
-                    cities: weatherService.cityWeatherData,
-                    citySearchManager: CitySearchManager(),
-                    weatherService: weatherService,
-                    onCitySelected: { cityWeather in
-                        addCityDetailCity = cityWeather
-                        showingAddCityDetail = true
-                    }
-                )
-                .navigationDestination(isPresented: $showingAddCityDetail) {
-                    if let city = addCityDetailCity {
-                        WeatherDetailView(
-                            cityWeather: city,
-                            selectedDayOffset: selectedDayOffset,
-                            namespace: popupNamespace,
-                            onDismiss: {
-                                showingAddCityDetail = false
-                            },
-                            onAddCity: cityIsInSidebar(city) ? nil : {
-                                Task {
-                                    await addCityToSidebar(city)
-                                    showingAddCityView = false
+            .sheet(isPresented: $showingAddCityView) {
+                NavigationStack {
+                    AddCitySearchView(
+                        cities: weatherService.cityWeatherData,
+                        citySearchManager: CitySearchManager(),
+                        weatherService: weatherService,
+                        onCitySelected: { cityWeather in
+                            addCityDetailCity = cityWeather
+                            showingAddCityDetail = true
+                        }
+                    )
+                    .navigationDestination(isPresented: $showingAddCityDetail) {
+                        if let city = addCityDetailCity {
+                            WeatherDetailView(
+                                cityWeather: city,
+                                selectedDayOffset: selectedDayOffset,
+                                namespace: popupNamespace,
+                                onDismiss: {
                                     showingAddCityDetail = false
-                                    if selectedTab == 1 {
-                                        recenterOnAllCities = true
+                                },
+                                onAddCity: cityIsInSidebar(city) ? nil : {
+                                    Task {
+                                        await addCityToSidebar(city)
+                                        showingAddCityView = false
+                                        showingAddCityDetail = false
+                                        if selectedTab == 1 {
+                                            recenterOnAllCities = true
+                                        }
+                                    }
+                                },
+                                isInSidebar: cityIsInSidebar(city),
+                                showCloudCover: showCloudCover
+                            )
+                            .navigationBarBackButtonHidden(true)
+                            .toolbar {
+                                ToolbarItem(placement: .topBarLeading) {
+                                    Button {
+                                        showingAddCityDetail = false
+                                    } label: {
+                                        Image(systemName: "chevron.left")
                                     }
                                 }
-                            },
-                            isInSidebar: cityIsInSidebar(city),
-                            showCloudCover: showCloudCover
-                        )
-                        .navigationBarBackButtonHidden(true)
-                        .toolbar {
-                            ToolbarItem(placement: .topBarLeading) {
-                                Button {
-                                    showingAddCityDetail = false
-                                } label: {
-                                    Image(systemName: "chevron.left")
+                                ToolbarItem(placement: .principal) {
+                                    Text(city.city.localizedName(locale: locale))
+                                        .font(.avenir(.title3, weight: .semibold))
+                                        .dynamicTypeSize(...DynamicTypeSize.large)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.7)
                                 }
-                            }
-                            ToolbarItem(placement: .principal) {
-                                Text(city.city.localizedName(locale: locale))
-                                    .font(.avenir(.title3, weight: .semibold))
-                                    .dynamicTypeSize(...DynamicTypeSize.large)
-                                    .lineLimit(1)
-                                    .minimumScaleFactor(0.7)
-                            }
-                            if !cityIsInSidebar(city) {
-                                ToolbarItem(placement: .topBarTrailing) {
-                                    Button {
-                                        Task {
-                                            await addCityToSidebar(city)
-                                            showingAddCityView = false
-                                            showingAddCityDetail = false
-                                            if selectedTab == 1 {
-                                                recenterOnAllCities = true
+                                if !cityIsInSidebar(city) {
+                                    ToolbarItem(placement: .topBarTrailing) {
+                                        Button {
+                                            Task {
+                                                await addCityToSidebar(city)
+                                                showingAddCityView = false
+                                                showingAddCityDetail = false
+                                                if selectedTab == 1 {
+                                                    recenterOnAllCities = true
+                                                }
                                             }
+                                        } label: {
+                                            Image(systemName: "plus")
+                                                .foregroundStyle(.blue)
                                         }
-                                    } label: {
-                                        Image(systemName: "plus")
-                                            .foregroundStyle(.blue)
                                     }
                                 }
                             }
