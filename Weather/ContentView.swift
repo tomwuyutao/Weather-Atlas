@@ -412,27 +412,29 @@ struct ContentView: View {
     private var iOSView: some View {
         NavigationStack {
             ZStack(alignment: .bottom) {
-                ZStack {
-                    // Map always alive in background, hidden when not selected
-                    iOSMapView
-                        .overlay(alignment: .trailing) {
-                            if selectedTab == 1 {
-                                Color.clear
-                                    .frame(width: 60, height: 420)
-                                    .contentShape(Rectangle())
-                                    .overlay(alignment: .trailing) {
-                                        mapDateSlider(height: 340)
-                                    }
-                                    .padding(.bottom, 350)
-                                    .transition(.opacity)
+                GeometryReader { geo in
+                    ZStack {
+                        // Map always alive in background, hidden when not selected
+                        iOSMapView
+                            .overlay(alignment: .trailing) {
+                                if selectedTab == 1 {
+                                    Color.clear
+                                        .frame(width: 60, height: 420)
+                                        .contentShape(Rectangle())
+                                        .overlay(alignment: .trailing) {
+                                            mapDateSlider(height: 340)
+                                        }
+                                        .padding(.bottom, 350)
+                                        .transition(.opacity)
+                                }
                             }
-                        }
-                        .opacity(selectedTab == 1 ? 1 : 0)
-                    
-                    // List slides out when switching to map
-                    iOSListView
-                        .background(Color(.systemBackground))
-                        .offset(x: selectedTab == 0 ? 0 : -10000)
+                            .offset(x: selectedTab == 1 ? 0 : geo.size.width)
+                        
+                        // List slides out when switching to map
+                        iOSListView
+                            .background(Color(.systemBackground))
+                            .offset(x: selectedTab == 0 ? 0 : -geo.size.width)
+                    }
                 }
                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
 
@@ -668,7 +670,11 @@ struct ContentView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
                 .padding(.top, 20)
-                .contentShape(Rectangle())
+                .background {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { }
+                }
             }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
@@ -1713,7 +1719,7 @@ struct ContentView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 80)
+                    .padding(.bottom, 100)
                 }
                 .gesture(swipeDayGesture())
                 .transition(.opacity)
@@ -1812,7 +1818,7 @@ struct ContentView: View {
                     .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 }
                 .listStyle(.plain)
-                .contentMargins(.bottom, 80)
+                .contentMargins(.bottom, 100)
                 .environment(\.editMode, Binding(
                     get: { isEditMode ? .active : .inactive },
                     set: { newValue in isEditMode = (newValue == .active) }

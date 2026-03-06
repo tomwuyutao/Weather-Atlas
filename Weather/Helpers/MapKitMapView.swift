@@ -46,6 +46,13 @@ struct MapKitMapView: View {
             .onMapCameraChange(frequency: .continuous) { _ in
                 cameraChangeCounter += 1
             }
+            // Black underlay to prevent MapKit tiles flashing during transitions
+            .overlay {
+                if mapMode != "detailed" {
+                    Color.black
+                        .allowsHitTesting(false)
+                }
+            }
             // SVG country overlay
             .overlay {
                 if mapMode == "minimal" || mapMode == "borders" || mapMode == "calibration" {
@@ -128,6 +135,10 @@ struct MapKitMapView: View {
                     fitAllCities(animated: false)
                     hasCenteredOnCities = true
                 }
+                // Trigger overlay redraw after map has laid out
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    cameraChangeCounter += 1
+                }
             }
             .onChange(of: cities.count) { _, newCount in
                 if newCount > 0 && !hasCenteredOnCities {
@@ -145,6 +156,12 @@ struct MapKitMapView: View {
                 if newValue && !focusOnSubsetCities.isEmpty {
                     fitCities(focusOnSubsetCities, animated: true)
                     focusOnSubsetTrigger = false
+                }
+            }
+            .onChange(of: mapMode) { _, _ in
+                // Force overlay redraw when map mode changes
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                    cameraChangeCounter += 1
                 }
             }
             .onChange(of: centerOnCity?.id) { _, _ in
@@ -401,24 +418,154 @@ private struct SVGProxyOverlay: View {
             let borderColor = Color(red: 45/255.0, green: 45/255.0, blue: 47/255.0)
             let borderedIDs = style == .borders ? countriesWithCities : []
 
+            // Corner rounding radius in screen points
+            let cornerRadius: CGFloat = min(max(abs(scaleX) * 1.5, 1.5), 8.0)
+
+            // First pass: fill all countries
             for country in countries {
                 if let transformed = country.path.copy(using: &transform) {
-                    let path = Path(transformed)
+                    let smoothed = Path(Self.roundCorners(transformed, radius: cornerRadius))
                     switch style {
-                    case .filled:
-                        context.fill(path, with: .color(landColor))
-                    case .borders:
-                        context.fill(path, with: .color(landColor))
-                        if borderedIDs.contains(country.id) {
-                            let borderWidth = min(max(abs(scaleX) * 0.6, 2), 4.0)
-                                context.stroke(path, with: .color(borderColor), lineWidth: borderWidth)
-                        }
+                    case .filled, .borders:
+                        context.fill(smoothed, with: .color(landColor))
                     case .calibration:
-                        context.stroke(path, with: .color(.red), lineWidth: 1)
+                        context.stroke(smoothed, with: .color(.red), lineWidth: 1)
+                    }
+                }
+            }
+
+            // Second pass: stroke borders on top of all fills
+            if style == .borders {
+                let borderWidth = min(max(abs(scaleX) * 0.4, 1.5), 3)
+                for country in countries {
+                    if borderedIDs.contains(country.id),
+                       let transformed = country.path.copy(using: &transform) {
+                        let smoothed = Path(Self.roundCorners(transformed, radius: cornerRadius))
+                        context.stroke(smoothed, with: .color(borderColor), lineWidth: borderWidth)
                     }
                 }
             }
         }
+    }
+
+    // MARK: - Corner rounding
+
+    /// Rounds sharp corners in a CGPath by replacing each vertex with a
+    /// quadratic curve that cuts the corner. The `radius` controls how
+    /// far from each corner the curve begins/ends (in screen points).
+    private static func roundCorners(_ cgPath: CGPath, radius: CGFloat) -> CGPath {
+        // Extract subpaths
+        var subpaths: [[CGPoint]] = []
+        var current: [CGPoint] = []
+        var closedFlags: [Bool] = []
+
+        cgPath.applyWithBlock { elementPtr in
+            let element = elementPtr.pointee
+            switch element.type {
+            case .moveToPoint:
+                if !current.isEmpty {
+                    subpaths.append(current)
+                    closedFlags.append(false)
+                }
+                current = [element.points[0]]
+            case .addLineToPoint:
+                current.append(element.points[0])
+            case .addCurveToPoint:
+                // Keep curve endpoints — these are already smooth
+                current.append(element.points[2])
+            case .addQuadCurveToPoint:
+                current.append(element.points[1])
+            case .closeSubpath:
+                if !current.isEmpty {
+                    subpaths.append(current)
+                    closedFlags.append(true)
+                    current = []
+                }
+            @unknown default:
+                break
+            }
+        }
+        if !current.isEmpty {
+            subpaths.append(current)
+            closedFlags.append(false)
+        }
+
+        let result = CGMutablePath()
+
+        for (i, points) in subpaths.enumerated() {
+            guard points.count >= 3 else {
+                // Too few points to round — draw as-is
+                if let first = points.first {
+                    result.move(to: first)
+                    for j in 1..<points.count { result.addLine(to: points[j]) }
+                    if closedFlags[i] { result.closeSubpath() }
+                }
+                continue
+            }
+
+            let closed = closedFlags[i]
+            let n = points.count
+
+            if closed {
+                // For closed subpaths, round every corner including first/last
+                let prev = points[n - 1]
+                let curr = points[0]
+                let next = points[1]
+                let (start, _) = Self.cornerOffsets(prev: prev, curr: curr, next: next, radius: radius)
+                result.move(to: start)
+
+                for j in 0..<n {
+                    let p0 = points[(j + n - 1) % n]
+                    let p1 = points[j]
+                    let p2 = points[(j + 1) % n]
+                    let (startPt, endPt) = Self.cornerOffsets(prev: p0, curr: p1, next: p2, radius: radius)
+                    result.addLine(to: startPt)
+                    result.addQuadCurve(to: endPt, control: p1)
+                }
+                result.closeSubpath()
+            } else {
+                // Open subpath — keep first and last points, round interior corners
+                result.move(to: points[0])
+                for j in 1..<(n - 1) {
+                    let (startPt, endPt) = Self.cornerOffsets(prev: points[j - 1], curr: points[j], next: points[j + 1], radius: radius)
+                    result.addLine(to: startPt)
+                    result.addQuadCurve(to: endPt, control: points[j])
+                }
+                result.addLine(to: points[n - 1])
+            }
+        }
+
+        return result
+    }
+
+    /// Computes the two offset points where rounding begins and ends around a corner vertex.
+    private static func cornerOffsets(prev: CGPoint, curr: CGPoint, next: CGPoint, radius: CGFloat) -> (CGPoint, CGPoint) {
+        let dx1 = curr.x - prev.x
+        let dy1 = curr.y - prev.y
+        let len1 = sqrt(dx1 * dx1 + dy1 * dy1)
+
+        let dx2 = next.x - curr.x
+        let dy2 = next.y - curr.y
+        let len2 = sqrt(dx2 * dx2 + dy2 * dy2)
+
+        // Clamp radius so it doesn't exceed half of either segment
+        let r = min(radius, len1 * 0.5, len2 * 0.5)
+
+        let start: CGPoint
+        if len1 > 0.001 {
+            start = CGPoint(x: curr.x - dx1 / len1 * r, y: curr.y - dy1 / len1 * r)
+        } else {
+            start = curr
+        }
+
+        let end: CGPoint
+        if len2 > 0.001 {
+            end = CGPoint(x: curr.x + dx2 / len2 * r, y: curr.y + dy2 / len2 * r)
+        } else {
+            end = curr
+        }
+
+        return (start, end)
     }
 }
 

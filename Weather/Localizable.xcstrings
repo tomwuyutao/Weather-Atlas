@@ -182,6 +182,7 @@
       }
     },
     "Detailed" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -385,6 +386,7 @@
       }
     },
     "Minimal" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
