@@ -25,6 +25,8 @@ struct MapKitMapView: View {
     var focusOnSubsetCities: [CityWeather] = []
     @Binding var focusOnSubsetTrigger: Bool
     var mapMode: String = "minimal"
+    var countrySelectionMode: Bool = false
+    @Binding var mapCenterCoordinate: CLLocationCoordinate2D?
     var onDoubleTapMarker: (() -> Void)?
 
     @State private var position: MapCameraPosition = .automatic
@@ -43,8 +45,11 @@ struct MapKitMapView: View {
             .mapStyle(.standard(elevation: .flat, emphasis: mapMode == "detailed" ? .muted : .automatic, pointsOfInterest: .excludingAll))
             .mapControls { }
             .environment(\.locale, Locale(identifier: "en"))
-            .onMapCameraChange(frequency: .continuous) { _ in
+            .onMapCameraChange(frequency: .continuous) { context in
                 cameraChangeCounter += 1
+                if countrySelectionMode {
+                    mapCenterCoordinate = context.camera.centerCoordinate
+                }
             }
             // Black underlay to prevent MapKit tiles flashing during transitions
             .overlay {
@@ -60,32 +65,36 @@ struct MapKitMapView: View {
                         countries: countries,
                         proxy: proxy,
                         cameraChangeCounter: cameraChangeCounter,
-                        style: mapMode == "borders" ? .borders : (mapMode == "calibration" ? .calibration : .filled),
-                        cities: mapMode == "borders" ? cities : []
+                        style: countrySelectionMode ? .borders : (mapMode == "borders" ? .borders : (mapMode == "calibration" ? .calibration : .filled)),
+                        cities: (countrySelectionMode || mapMode == "borders") ? cities : [],
+                        borderAllCountries: countrySelectionMode
                     )
                     .allowsHitTesting(false)
                 }
             }
             // Weather marker annotations on top of SVG overlay (non-interactive so map gestures pass through)
             .overlay {
-                AnnotationsOverlay(
-                    cities: cities,
-                    proxy: proxy,
-                    cameraChangeCounter: cameraChangeCounter,
-                    selectedDayOffset: selectedDayOffset,
-                    showCloudCover: showCloudCover,
-                    filterSunny: filterSunny,
-                    isPlaying: isPlaying,
-                    namespace: namespace,
-                    highlightedMarkerID: highlightedMarkerID,
-                    tappedMarkerID: tappedMarkerID,
-                    showingCityDetail: $showingCityDetail,
-                    tappedCity: $tappedCity
-                )
-                .allowsHitTesting(false)
+                if !countrySelectionMode {
+                    AnnotationsOverlay(
+                        cities: cities,
+                        proxy: proxy,
+                        cameraChangeCounter: cameraChangeCounter,
+                        selectedDayOffset: selectedDayOffset,
+                        showCloudCover: showCloudCover,
+                        filterSunny: filterSunny,
+                        isPlaying: isPlaying,
+                        namespace: namespace,
+                        highlightedMarkerID: highlightedMarkerID,
+                        tappedMarkerID: tappedMarkerID,
+                        showingCityDetail: $showingCityDetail,
+                        tappedCity: $tappedCity
+                    )
+                    .allowsHitTesting(false)
+                }
             }
             // Transparent tap detection layer — finds nearest marker on tap
             .onTapGesture { location in
+                guard !countrySelectionMode else { return }
                 let _ = cameraChangeCounter
                 let tapRadius: CGFloat = 30.0
                 var closest: (city: CityWeather, dist: CGFloat)?
@@ -355,6 +364,7 @@ private struct SVGProxyOverlay: View {
     let cameraChangeCounter: Int
     var style: Style = .filled
     var cities: [CityWeather] = []
+    var borderAllCountries: Bool = false
 
     private static let refCoordA = CLLocationCoordinate2D(latitude: 0.0, longitude: 0.0)
     private static let refCoordB = CLLocationCoordinate2D(latitude: 45.0, longitude: 90.0)
@@ -418,7 +428,7 @@ private struct SVGProxyOverlay: View {
 
             let landColor = Color(red: 28/255.0, green: 28/255.0, blue: 30/255.0)
             let borderColor = Color(red: 45/255.0, green: 45/255.0, blue: 47/255.0)
-            let borderedIDs = style == .borders ? countriesWithCities : []
+            let borderedIDs: Set<String> = style == .borders ? (borderAllCountries ? Set(countries.map(\.id)) : countriesWithCities) : []
 
             // Corner rounding radius in screen points
             let cornerRadius: CGFloat = min(max(abs(scaleX) * 1.5, 1.5), 8.0)

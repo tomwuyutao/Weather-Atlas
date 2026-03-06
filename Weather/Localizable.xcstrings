@@ -131,6 +131,46 @@
         }
       }
     },
+    "Country Overview" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "国家概览"
+          }
+        }
+      }
+    },
+    "Country Selected" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已选择国家"
+          }
+        }
+      }
+    },
+    "Move map to select a country" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "移动地图以选择国家"
+          }
+        }
+      }
+    },
+    "OK" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "确定"
+          }
+        }
+      }
+    },
     "Clear" : {
       "localizations" : {
         "zh-Hans" : {
@@ -291,6 +331,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在获取城市天气预报…"
+          }
+        }
+      }
+    },
+    "Find Sun" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "寻找阳光"
           }
         }
       }
@@ -632,6 +682,16 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "停止播放"
+          }
+        }
+      }
+    },
+    "Sunny Nearby" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "附近晴天"
           }
         }
       }

@@ -222,6 +222,12 @@ struct ContentView: View {
     @State private var draggingListID: CityListID? = nil
     @State private var dragOffset: CGFloat = 0
     @State private var showingMapStylePopover: Bool = false
+    @State private var showingDiscoverPopover: Bool = false
+    @State private var countrySelectionMode: Bool = false
+    @State private var mapCenterCoordinate: CLLocationCoordinate2D?
+    @State private var countryUnderPin: String = ""
+    @State private var showCountrySelectedAlert: Bool = false
+    @State private var selectedCountryName: String = ""
     @State private var showingMapListSwitcher: Bool = false
     @State private var showingRecenterPopover: Bool = false
     @State private var focusSubsetCities: [CityWeather] = []
@@ -471,6 +477,12 @@ struct ContentView: View {
         .onChange(of: showingCityDetail) { _, showing in
             iOSHandleCityDetailDismiss(showing: showing)
         }
+        .onChange(of: mapCenterCoordinate?.latitude) { _, _ in
+            updateCountryUnderPin()
+        }
+        .onChange(of: mapCenterCoordinate?.longitude) { _, _ in
+            updateCountryUnderPin()
+        }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
                 weatherService: weatherService,
@@ -515,9 +527,21 @@ struct ContentView: View {
         }
     }
 
+    private func updateCountryUnderPin() {
+        guard countrySelectionMode, let coord = mapCenterCoordinate else { return }
+        let svgPoint = GeoProjection.geoToSVG(latitude: coord.latitude, longitude: coord.longitude)
+        let found = countries.first(where: { $0.path.contains(svgPoint) })
+        let name = found?.title ?? ""
+        if name != countryUnderPin {
+            withAnimation(.easeOut(duration: 0.15)) {
+                countryUnderPin = name
+            }
+        }
+    }
+
     @ToolbarContentBuilder
     private var iOSPrincipalToolbarItem: some ToolbarContent {
-        if selectedTab == 1 {
+        if selectedTab == 1, !countrySelectionMode {
             ToolbarItem(placement: .principal) {
                 Button {
                     showingMapListSwitcher = true
@@ -546,7 +570,7 @@ struct ContentView: View {
                 // Map always alive in background, hidden when not selected
                 iOSMapView
                     .overlay(alignment: .trailing) {
-                        if selectedTab == 1 {
+                        if selectedTab == 1, !countrySelectionMode {
                             Color.clear
                                 .frame(width: 60, height: 420)
                                 .contentShape(Rectangle())
@@ -560,14 +584,16 @@ struct ContentView: View {
                     .opacity(selectedTab == 1 ? 1 : 0)
 
                 // List slides over map
-                iOSListView
-                    .background(Color(.systemBackground))
-                    .offset(x: selectedTab == 0 ? 0 : -10000)
+                if !countrySelectionMode {
+                    iOSListView
+                        .background(Color(.systemBackground))
+                        .offset(x: selectedTab == 0 ? 0 : -10000)
+                }
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
 
             // Expanded city card on map
-            if selectedTab == 1, showingMapExpandedCard, let city = tappedCity {
+            if selectedTab == 1, !countrySelectionMode, showingMapExpandedCard, let city = tappedCity {
                 mapExpandedCard(for: city)
                     .id(city.city.id)
                     .transition(.blurReplace)
@@ -577,14 +603,21 @@ struct ContentView: View {
             }
 
             // Preview toolbar when inspecting a searched city
-            if selectedTab == 1, previewCity != nil {
+            if selectedTab == 1, !countrySelectionMode, previewCity != nil {
                 iOSPreviewToolbar
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(2)
             }
 
+            // Country selection overlay
+            if countrySelectionMode {
+                countrySelectionOverlay
+                    .transition(.opacity)
+                    .zIndex(3)
+            }
+
             // Floating bottom toolbar
-            if previewCity == nil {
+            if previewCity == nil, !countrySelectionMode {
                 iOSFloatingBottomToolbar
             }
         }
@@ -592,7 +625,7 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var iOSTrailingToolbarItems: some ToolbarContent {
-        if isEditMode {
+        if !countrySelectionMode && isEditMode {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     withAnimation { isEditMode = false }
@@ -600,7 +633,7 @@ struct ContentView: View {
                     Image(systemName: "checkmark")
                 }
             }
-        } else {
+        } else if !countrySelectionMode {
             if weatherService.isLoading || isLoadingMapList {
                 ToolbarItem(placement: .topBarTrailing) {
                     ProgressView()
@@ -862,6 +895,90 @@ struct ContentView: View {
     private var iOSMapControlsCapsule: some View {
         HStack(spacing: 8) {
             Button {
+                showingDiscoverPopover = true
+            } label: {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 42, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingDiscoverPopover) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Button {
+                        showingDiscoverPopover = false
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = 1
+                            showingMapExpandedCard = false
+                            tappedCity = nil
+                            previewCity = nil
+                            countrySelectionMode = true
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "globe.desk")
+                                .font(.system(size: 14))
+                                .frame(width: 20)
+                            Text(localizedString("Country Overview", locale: locale))
+                                .font(.avenir(.body, weight: .medium))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
+                        .padding(.leading, 16)
+                        .padding(.trailing, 16)
+                        .padding(.vertical, 11)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        showingDiscoverPopover = false
+                        // TODO: Find nearest sunny place
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "sun.max.trianglebadge.exclamationmark")
+                                .font(.system(size: 14))
+                                .frame(width: 20)
+                            Text(localizedString("Find Sun", locale: locale))
+                                .font(.avenir(.body, weight: .medium))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
+                        .padding(.leading, 16)
+                        .padding(.trailing, 16)
+                        .padding(.vertical, 11)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        showingDiscoverPopover = false
+                        // TODO: Sunny places within radius
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "sun.and.horizon.circle")
+                                .font(.system(size: 14))
+                                .frame(width: 20)
+                            Text(localizedString("Sunny Nearby", locale: locale))
+                                .font(.avenir(.body, weight: .medium))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
+                        .padding(.leading, 16)
+                        .padding(.trailing, 16)
+                        .padding(.vertical, 11)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.vertical, 8)
+                .frame(width: 220)
+                .presentationCompactAdaptation(.popover)
+                .presentationBackground(.ultraThinMaterial)
+            }
+
+            Button {
                 if mapVisibleListIDs.count > 1 {
                     showingRecenterPopover = true
                 } else {
@@ -957,6 +1074,88 @@ struct ContentView: View {
         .padding(6)
         .glassEffect(.regular.interactive(), in: .capsule)
         .transition(.scale.combined(with: .opacity))
+    }
+
+    private var countrySelectionOverlay: some View {
+        ZStack {
+            // Center pin
+            VStack(spacing: 0) {
+                Image(systemName: "mappin")
+                    .font(.system(size: 40, weight: .bold))
+                    .foregroundStyle(.red)
+                    .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+            }
+
+            // Top capsule with country name
+            VStack {
+                if !countryUnderPin.isEmpty {
+                    Text(countryUnderPin)
+                        .font(.avenir(.headline, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .transition(.scale.combined(with: .opacity))
+                } else {
+                    Text(localizedString("Move map to select a country", locale: locale))
+                        .font(.avenir(.subheadline, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                }
+
+                Spacer()
+            }
+            .padding(.top, 60)
+
+            // Bottom bar with cancel and confirm
+            VStack {
+                Spacer()
+
+                HStack(spacing: 20) {
+                    // Cancel
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            countrySelectionMode = false
+                            countryUnderPin = ""
+                            recenterOnAllCities = true
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 50, height: 50)
+                    }
+                    .glassEffect(.regular.interactive(), in: .circle)
+
+                    // Confirm
+                    Button {
+                        selectedCountryName = countryUnderPin
+                        showCountrySelectedAlert = true
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 50, height: 50)
+                            .background(Circle().fill(countryUnderPin.isEmpty ? Color.gray : Color.blue))
+                    }
+                    .disabled(countryUnderPin.isEmpty)
+                }
+                .padding(.bottom, 40)
+            }
+        }
+        .alert(localizedString("Country Selected", locale: locale), isPresented: $showCountrySelectedAlert) {
+            Button(localizedString("OK", locale: locale)) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    countrySelectionMode = false
+                    countryUnderPin = ""
+                    recenterOnAllCities = true
+                }
+            }
+        } message: {
+            Text(selectedCountryName)
+        }
     }
 
     @ViewBuilder
@@ -2084,6 +2283,8 @@ struct ContentView: View {
                 focusOnSubsetCities: focusSubsetCities,
                 focusOnSubsetTrigger: $focusSubsetTrigger,
                 mapMode: mapMode,
+                countrySelectionMode: countrySelectionMode,
+                mapCenterCoordinate: $mapCenterCoordinate,
                 onDoubleTapMarker: {
                     if previewCity != nil {
                         previewCity = nil
