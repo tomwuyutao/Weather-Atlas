@@ -34,6 +34,8 @@ struct ContentView: View {
     @State private var showingAddCityView: Bool = false
     @State private var showingAddCityDetail: Bool = false
     @State private var addCityDetailCity: CityWeather?
+    @State private var previewCity: CityWeather?
+    @State private var previewSearchText: String = ""
     @State private var showCloudCover: Bool = false
     @State private var filterSunny: Bool = false
     @State private var isPlaying: Bool = false
@@ -51,28 +53,35 @@ struct ContentView: View {
     @State private var mapVisibleListIDs: Set<String> = []
     @Environment(\.locale) private var locale
     
-    /// Cities to display on the map — combined from all selected lists
+    /// Cities to display on the map — combined from all selected lists + preview city
     private var mapCities: [CityWeather] {
+        var result: [CityWeather]
         if mapVisibleListIDs.isEmpty || mapVisibleListIDs == Set([weatherService.activeListID.rawValue]) {
-            return weatherService.cityWeatherData
-        }
-        var combined: [CityWeather] = []
-        var seenNames = Set<String>()
-        for listID in CityListID.allLists where mapVisibleListIDs.contains(listID.rawValue) {
-            let cities: [CityWeather]
-            if listID == weatherService.activeListID {
-                cities = weatherService.cityWeatherData
-            } else {
-                cities = weatherService.otherListData[listID.rawValue] ?? []
-            }
-            for city in cities {
-                if !seenNames.contains(city.city.name) {
-                    combined.append(city)
-                    seenNames.insert(city.city.name)
+            result = weatherService.cityWeatherData
+        } else {
+            var combined: [CityWeather] = []
+            var seenNames = Set<String>()
+            for listID in CityListID.allLists where mapVisibleListIDs.contains(listID.rawValue) {
+                let cities: [CityWeather]
+                if listID == weatherService.activeListID {
+                    cities = weatherService.cityWeatherData
+                } else {
+                    cities = weatherService.otherListData[listID.rawValue] ?? []
+                }
+                for city in cities {
+                    if !seenNames.contains(city.city.name) {
+                        combined.append(city)
+                        seenNames.insert(city.city.name)
+                    }
                 }
             }
+            result = combined
         }
-        return combined
+        // Include temporary preview city from search
+        if let preview = previewCity, !result.contains(where: { $0.city.name == preview.city.name }) {
+            result.append(preview)
+        }
+        return result
     }
     
     private var mapToolbarTitle: String {
@@ -250,52 +259,59 @@ struct ContentView: View {
             return forecast.condition.localizedDisplayName(locale: locale)
         }()
 
-        return HStack(spacing: 14) {
-            // Weather icon
-            Image(systemName: icon)
-                .font(.system(size: 32))
-                .symbolRenderingMode(.multicolor)
-                .frame(width: 52, height: 40)
-                .background(alignment: .top) {
-                    WeatherEffectOverlay(condition: effectCondition, isCompact: false, iconHeight: 40, iconName: icon)
-                }
+        return HStack(alignment: .center, spacing: 0) {
+            // Left: temperature, city, details
+            VStack(alignment: .leading, spacing: 6) {
+                // Large temperature
+                Text(tempUnit.display(forecast.daytimeHigh))
+                    .font(.system(size: 38, weight: .medium, design: .rounded))
+                    .foregroundStyle(.primary)
+                    .contentTransition(.numericText())
 
-            // City info
-            VStack(alignment: .leading, spacing: 2) {
+                // City name
                 Text(cityWeather.city.localizedName(locale: locale))
                     .font(.avenir(.body, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                Text(conditionText)
-                    .font(.avenir(.caption, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                // Cloud cover & precipitation
+                HStack(spacing: 12) {
+                    HStack(spacing: 4) {
+                        Image(systemName: "cloud.fill")
+                            .font(.system(size: 11))
+                        Text("\(forecast.cloudCoverPercent)%")
+                            .font(.avenir(.caption, weight: .medium))
+                    }
+
+                    HStack(spacing: 4) {
+                        Image(systemName: "drop.fill")
+                            .font(.system(size: 11))
+                        Text("\(Int(forecast.precipitationChance * 100))%")
+                            .font(.avenir(.caption, weight: .medium))
+                    }
+
+                    Text(conditionText)
+                        .font(.avenir(.caption, weight: .medium))
+                }
+                .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            // Temperature
-            Text(tempUnit.display(forecast.daytimeHigh))
-                .font(.avenir(.title2, weight: .semibold))
-                .foregroundStyle(.primary)
-                .contentTransition(.numericText())
-
-            // Arrow to detail
-            Button {
-                showingCityDetail = true
-            } label: {
-                Image(systemName: "arrow.right")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 28, height: 28)
-                    .background(Circle().fill(.ultraThinMaterial))
-            }
+            // Right: weather icon, centered vertically
+            Image(systemName: icon)
+                .font(.system(size: 40))
+                .symbolRenderingMode(.multicolor)
+                .frame(width: 56, height: 48)
+                .background(alignment: .top) {
+                    WeatherEffectOverlay(condition: effectCondition, isCompact: false, iconHeight: 48, iconName: icon)
+                }
+                .padding(.trailing, 10)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 16)
         .background {
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 20)
                 .fill(.ultraThinMaterial)
                 .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
         }
@@ -410,538 +426,28 @@ struct ContentView: View {
     }
 
     private var iOSView: some View {
+        iOSNavigationContent
+            .overlay {
+                iOSDeleteListConfirmationOverlay
+            }
+            .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
+    }
+
+    private var iOSNavigationContent: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
-                ZStack {
-                    // Map always alive in background, hidden when not selected
-                    iOSMapView
-                        .overlay(alignment: .trailing) {
-                            if selectedTab == 1 {
-                                Color.clear
-                                    .frame(width: 60, height: 420)
-                                    .contentShape(Rectangle())
-                                    .overlay(alignment: .trailing) {
-                                        mapDateSlider(height: 340)
-                                    }
-                                    .padding(.bottom, 350)
-                                    .transition(.opacity)
-                            }
-                        }
-                        .opacity(selectedTab == 1 ? 1 : 0)
-                    
-                    // List slides over map
-                    iOSListView
-                        .background(Color(.systemBackground))
-                        .offset(x: selectedTab == 0 ? 0 : -10000)
+            iOSMainZStack
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar { iOSPrincipalToolbarItem }
+                .toolbar { iOSTrailingToolbarItems }
+                .navigationDestination(isPresented: $showingCityDetail) {
+                    iOSCityDetailDestination
                 }
-                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
-
-                // Expanded city card on map
-                if selectedTab == 1, showingMapExpandedCard, let city = tappedCity {
-                    mapExpandedCard(for: city)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 72)
-                        .zIndex(1)
+                .sheet(isPresented: $showingAddCityView) {
+                    iOSAddCitySheet
                 }
-
-                // Floating bottom toolbar
-                HStack(alignment: .bottom, spacing: 12) {
-                    // View switcher capsule
-                    VStack(alignment: .leading, spacing: 10) {
-                        HStack(spacing: 8) {
-                            Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
-                                .contentTransition(.symbolEffect(.replace))
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
-                                .frame(width: 42, height: 36)
-                                .background {
-                                    if selectedTab == 0 {
-                                        Capsule()
-                                            .fill(.ultraThinMaterial)
-                                            .transition(.scale.combined(with: .opacity))
-                                    }
-                                }
-                                .contentShape(Capsule())
-                                .onTapGesture {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        selectedTab = 0
-                                    }
-                                }
-
-                            Image(systemName: selectedTab == 1 ? "map.fill" : "map")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(selectedTab == 1 ? .primary : .secondary)
-                                .frame(width: 42, height: 36)
-                                .background {
-                                    if selectedTab == 1 {
-                                        Capsule()
-                                            .fill(.ultraThinMaterial)
-                                            .transition(.scale.combined(with: .opacity))
-                                    }
-                                }
-                                .contentShape(Capsule())
-                                .onTapGesture {
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        selectedTab = 1
-                                    }
-                                }
-                        }
-                        .padding(6)
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                    }
-
-                    Spacer()
-
-                    if selectedTab == 0 {
-                    // Date switcher capsule
-                    HStack(spacing: 0) {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Circle())
-                            .onTapGesture {
-                                if selectedDayOffset > 0 {
-                                    withAnimation(.smooth(duration: 0.2)) {
-                                        selectedDayOffset -= 1
-                                    }
-                                }
-                            }
-
-                        Text(iOSDateText)
-                            .font(.avenir(.subheadline, weight: .medium))
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .frame(minWidth: 80)
-                            .id("ios-date-\(selectedDayOffset)")
-                            .transition(.asymmetric(
-                                insertion: .move(edge: selectedDayOffset >= iOSPreviousDayOffset ? .trailing : .leading).combined(with: .opacity),
-                                removal: .move(edge: selectedDayOffset >= iOSPreviousDayOffset ? .leading : .trailing).combined(with: .opacity)
-                            ))
-                            .clipped()
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                showingDatePopover = true
-                            }
-                            .popover(isPresented: $showingDatePopover) {
-                                DatePicker(
-                                    "",
-                                    selection: Binding(
-                                        get: {
-                                            Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
-                                        },
-                                        set: { newDate in
-                                            let calendar = Calendar.current
-                                            let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
-                                            if let days = components.day {
-                                                withAnimation(.smooth(duration: 0.2)) {
-                                                    selectedDayOffset = max(0, min(9, days))
-                                                }
-                                            }
-                                        }
-                                    ),
-                                    in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
-                                    displayedComponents: .date
-                                )
-                                .datePickerStyle(.graphical)
-                                .labelsHidden()
-                                .frame(width: 280, height: 300)
-                                .padding(8)
-                                .presentationCompactAdaptation(.popover)
-                                .presentationBackground(.thickMaterial)
-                            }
-
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Circle())
-                            .onTapGesture {
-                                if selectedDayOffset < 9 {
-                                    withAnimation(.smooth(duration: 0.2)) {
-                                        selectedDayOffset += 1
-                                    }
-                                }
-                            }
-                    }
-                    .padding(6)
-                    .glassEffect(.regular.interactive(), in: .capsule)
-                    }
-
-                    if selectedTab == 1 {
-                        // Map controls capsule (recenter + map style)
-                        HStack(spacing: 8) {
-                            Button {
-                                if mapVisibleListIDs.count > 1 {
-                                    showingRecenterPopover = true
-                                } else {
-                                    recenterOnAllCities = true
-                                }
-                            } label: {
-                                Image(systemName: "dot.squareshape.split.2x2")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.primary)
-                                    .frame(width: 42, height: 36)
-                            }
-                            .buttonStyle(.plain)
-                            .popover(isPresented: $showingRecenterPopover) {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
-                                        Button {
-                                            showingRecenterPopover = false
-                                            let cities: [CityWeather]
-                                            if listID == weatherService.activeListID {
-                                                cities = weatherService.cityWeatherData
-                                            } else {
-                                                cities = weatherService.otherListData[listID.rawValue] ?? []
-                                            }
-                                            focusSubsetCities = cities
-                                            focusSubsetTrigger = true
-                                        } label: {
-                                            HStack(spacing: 12) {
-                                                Text(listID.localizedDisplayName(locale: locale))
-                                                    .font(.avenir(.body, weight: .medium))
-                                                    .foregroundStyle(.primary)
-                                                Spacer()
-                                            }
-                                            .padding(.leading, 24)
-                                            .padding(.trailing, 16)
-                                            .padding(.vertical, 11)
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 160)
-                                .presentationCompactAdaptation(.popover)
-                                .presentationBackground(.ultraThinMaterial)
-                            }
-
-                            Button {
-                                showingMapStylePopover = true
-                            } label: {
-                                Image(systemName: "gearshape")
-                                    .font(.system(size: 16, weight: .semibold))
-                                    .foregroundStyle(.primary)
-                                    .frame(width: 42, height: 36)
-                            }
-                            .buttonStyle(.plain)
-                            .popover(isPresented: $showingMapStylePopover) {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
-                                        Button {
-                                            showingMapStylePopover = false
-                                            withAnimation { mapMode = mode }
-                                        } label: {
-                                            HStack(spacing: 12) {
-                                                Text(mode.capitalized)
-                                                    .font(.avenir(.body, weight: mapMode == mode ? .bold : .medium))
-                                                    .foregroundStyle(.primary)
-                                                Spacer()
-                                                if mapMode == mode {
-                                                    Circle()
-                                                        .fill(.white)
-                                                        .frame(width: 6, height: 6)
-                                                }
-                                            }
-                                            .padding(.leading, 24)
-                                            .padding(.trailing, 16)
-                                            .padding(.vertical, 11)
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 160)
-                                .presentationCompactAdaptation(.popover)
-                                .presentationBackground(.ultraThinMaterial)
-                            }
-                        }
-                        .padding(6)
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                        .transition(.scale.combined(with: .opacity))
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 4)
-                .padding(.top, 20)
-                .background {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture { }
-                }
-            }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                if selectedTab == 1 {
-                    ToolbarItem(placement: .principal) {
-                        Button {
-                            showingMapListSwitcher = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(mapToolbarTitle)
-                                    .font(.avenir(.headline, weight: .semibold))
-                                    .lineLimit(1)
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .popover(isPresented: $showingMapListSwitcher) {
-                            iOSMapListSwitcherMenu
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    }
-                }
-            }
-            .toolbar {
-                if isEditMode {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            withAnimation { isEditMode = false }
-                        } label: {
-                            Image(systemName: "checkmark")
-                        }
-                    }
-                } else {
-                    if weatherService.isLoading || isLoadingMapList {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            ProgressView()
-                                .controlSize(.small)
-                        }
-                    }
-
-                    if filterSunny {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button {
-                                withAnimation {
-                                    filterSunny = false
-                                }
-                            } label: {
-                                Image(systemName: "sun.max.circle.fill")
-                                    .foregroundStyle(.blue)
-                            }
-                        }
-                    }
-
-                    if showPlaybackButton {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Button {
-                                if isPlaying {
-                                    iOSStopPlayback()
-                                } else {
-                                    iOSStartPlayback()
-                                }
-                            } label: {
-                                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                                    .contentTransition(.symbolEffect(.replace))
-                            }
-                        }
-                    }
-
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showingMenuPopover = true
-                        } label: {
-                            Image(systemName: "ellipsis.circle")
-                        }
-                        .popover(isPresented: $showingMenuPopover) {
-                            iOSCustomMenu
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    }
-                }
-            }
-            .navigationDestination(isPresented: $showingCityDetail) {
-                if let city = tappedCity {
-                    WeatherDetailView(
-                        cityWeather: city,
-                        selectedDayOffset: selectedDayOffset,
-                        namespace: popupNamespace,
-                        onDismiss: {
-                            showingCityDetail = false
-                        },
-                        onAddCity: cityIsInSidebar(city) ? nil : {
-                            Task {
-                                await addCityToSidebar(city)
-                                showingCityDetail = false
-                                if selectedTab == 1 {
-                                    recenterOnAllCities = true
-                                }
-                            }
-                        },
-                        onDeleteCity: cityIsInSidebar(city) ? {
-                            weatherService.removeCity(city)
-                            showingCityDetail = false
-                            if selectedTab == 1 {
-                                recenterOnAllCities = true
-                            }
-                        } : nil,
-                        isInSidebar: cityIsInSidebar(city),
-                        showCloudCover: showCloudCover
-                    )
-                    .navigationBarBackButtonHidden(true)
-                    .toolbar {
-                        ToolbarItem(placement: .topBarLeading) {
-                            Button {
-                                showingCityDetail = false
-                            } label: {
-                                Image(systemName: "chevron.left")
-                            }
-                        }
-                        ToolbarItem(placement: .principal) {
-                            Text(city.city.localizedName(locale: locale))
-                                .font(.avenir(.title3, weight: .semibold))
-                                .dynamicTypeSize(...DynamicTypeSize.large)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.7)
-                        }
-                        if !cityIsInSidebar(city) {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Button {
-                                    Task {
-                                        await addCityToSidebar(city)
-                                        showingCityDetail = false
-                                        if selectedTab == 1 {
-                                            recenterOnAllCities = true
-                                        }
-                                    }
-                                } label: {
-                                    Image(systemName: "plus")
-                                        .foregroundStyle(.blue)
-                                }
-                            }
-                        }
-                        if cityIsInSidebar(city) {
-                            ToolbarItem(placement: .topBarTrailing) {
-                                Menu {
-                                    Button {
-                                        let revealCity = city
-                                        showingCityDetail = false
-                                        centerOnCityTrigger = nil
-                                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                            selectedTab = 1
-                                        }
-                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                            centerOnCityTrigger = revealCity
-                                        }
-                                    } label: {
-                                        Label("Reveal on Map", systemImage: "map")
-                                    }
-                                    
-                                    Button(role: .destructive) {
-                                        weatherService.removeCity(city)
-                                        showingCityDetail = false
-                                        if selectedTab == 1 {
-                                            recenterOnAllCities = true
-                                        }
-                                    } label: {
-                                        Label("Delete City", systemImage: "trash")
-                                    }
-                                } label: {
-                                    Image(systemName: "ellipsis.circle")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .sheet(isPresented: $showingAddCityView) {
-                NavigationStack {
-                    AddCitySearchView(
-                        cities: weatherService.cityWeatherData,
-                        citySearchManager: CitySearchManager(),
-                        weatherService: weatherService,
-                        onCitySelected: { cityWeather in
-                            addCityDetailCity = cityWeather
-                            showingAddCityDetail = true
-                        }
-                    )
-                    .navigationDestination(isPresented: $showingAddCityDetail) {
-                        if let city = addCityDetailCity {
-                            WeatherDetailView(
-                                cityWeather: city,
-                                selectedDayOffset: selectedDayOffset,
-                                namespace: popupNamespace,
-                                onDismiss: {
-                                    showingAddCityDetail = false
-                                },
-                                onAddCity: cityIsInSidebar(city) ? nil : {
-                                    Task {
-                                        await addCityToSidebar(city)
-                                        showingAddCityView = false
-                                        showingAddCityDetail = false
-                                        if selectedTab == 1 {
-                                            recenterOnAllCities = true
-                                        }
-                                    }
-                                },
-                                isInSidebar: cityIsInSidebar(city),
-                                showCloudCover: showCloudCover
-                            )
-                            .navigationBarBackButtonHidden(true)
-                            .toolbar {
-                                ToolbarItem(placement: .topBarLeading) {
-                                    Button {
-                                        showingAddCityDetail = false
-                                    } label: {
-                                        Image(systemName: "chevron.left")
-                                    }
-                                }
-                                ToolbarItem(placement: .principal) {
-                                    Text(city.city.localizedName(locale: locale))
-                                        .font(.avenir(.title3, weight: .semibold))
-                                        .dynamicTypeSize(...DynamicTypeSize.large)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.7)
-                                }
-                                if !cityIsInSidebar(city) {
-                                    ToolbarItem(placement: .topBarTrailing) {
-                                        Button {
-                                            Task {
-                                                await addCityToSidebar(city)
-                                                showingAddCityView = false
-                                                showingAddCityDetail = false
-                                                if selectedTab == 1 {
-                                                    recenterOnAllCities = true
-                                                }
-                                            }
-                                        } label: {
-                                            Image(systemName: "plus")
-                                                .foregroundStyle(.blue)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
         }
-        .task {
-            if hasLaunchedBefore {
-                selectedTab = 1
-            } else {
-                hasLaunchedBefore = true
-            }
-            if mapVisibleListIDs.isEmpty {
-                mapVisibleListIDs = [weatherService.activeListID.rawValue]
-            }
-            print("📱 [DEBUG] iOS .task started")
-            if countries.isEmpty {
-                print("📱 [DEBUG] Parsing SVG map...")
-                countries = SVGMapParser.parse()
-                print("📱 [DEBUG] SVG map parsed, \(countries.count) countries")
-            }
-            print("📱 [DEBUG] About to call fetchWeatherForAllCities()...")
-            await weatherService.fetchWeatherForAllCities()
-            print("📱 [DEBUG] fetchWeatherForAllCities() returned, cityWeatherData.count = \(weatherService.cityWeatherData.count)")
-        }
+        .task { await iOSOnAppear() }
         .onChange(of: weatherService.activeListID) { _, newListID in
             mapVisibleListIDs.insert(newListID.rawValue)
         }
@@ -953,6 +459,17 @@ struct ContentView: View {
                 recenterOnAllCities = true
             }
         }
+        .onChange(of: showingMapExpandedCard) { _, showing in
+            if !showing {
+                if previewCity != nil {
+                    previewCity = nil
+                    recenterOnAllCities = true
+                }
+            }
+        }
+        .onChange(of: showingCityDetail) { _, showing in
+            iOSHandleCityDetailDismiss(showing: showing)
+        }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
                 weatherService: weatherService,
@@ -963,71 +480,729 @@ struct ContentView: View {
                 }
             )
         }
-        .overlay {
-            if showingDeleteListConfirmation {
-                Color.black.opacity(0.4)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            showingDeleteListConfirmation = false
+    }
+
+    private func iOSOnAppear() async {
+        if hasLaunchedBefore {
+            selectedTab = 1
+        } else {
+            hasLaunchedBefore = true
+        }
+        if mapVisibleListIDs.isEmpty {
+            mapVisibleListIDs = [weatherService.activeListID.rawValue]
+        }
+        print("📱 [DEBUG] iOS .task started")
+        if countries.isEmpty {
+            print("📱 [DEBUG] Parsing SVG map...")
+            countries = SVGMapParser.parse()
+            print("📱 [DEBUG] SVG map parsed, \(countries.count) countries")
+        }
+        print("📱 [DEBUG] About to call fetchWeatherForAllCities()...")
+        await weatherService.fetchWeatherForAllCities()
+        print("📱 [DEBUG] fetchWeatherForAllCities() returned, cityWeatherData.count = \(weatherService.cityWeatherData.count)")
+    }
+
+    private func iOSHandleCityDetailDismiss(showing: Bool) {
+        if !showing, showingMapExpandedCard, let city = tappedCity {
+            if !weatherService.cityWeatherData.contains(where: { $0.city.name == city.city.name }) {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showingMapExpandedCard = false
+                    tappedCity = nil
+                    recenterOnAllCities = true
+                }
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var iOSPrincipalToolbarItem: some ToolbarContent {
+        if selectedTab == 1 {
+            ToolbarItem(placement: .principal) {
+                Button {
+                    showingMapListSwitcher = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(mapToolbarTitle)
+                            .font(.avenir(.headline, weight: .semibold))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .buttonStyle(.plain)
+                .popover(isPresented: $showingMapListSwitcher) {
+                    iOSMapListSwitcherMenu
+                        .presentationCompactAdaptation(.popover)
+                }
+            }
+        }
+    }
+
+    private var iOSMainZStack: some View {
+        ZStack(alignment: .bottom) {
+            ZStack {
+                // Map always alive in background, hidden when not selected
+                iOSMapView
+                    .overlay(alignment: .trailing) {
+                        if selectedTab == 1 {
+                            Color.clear
+                                .frame(width: 60, height: 420)
+                                .contentShape(Rectangle())
+                                .overlay(alignment: .trailing) {
+                                    mapDateSlider(height: 340)
+                                }
+                                .padding(.bottom, 350)
+                                .transition(.opacity)
                         }
                     }
-                
-                VStack(spacing: 0) {
-                    Text("Delete List")
-                        .font(.avenir(.headline, weight: .bold))
-                        .padding(.top, 20)
-                        .padding(.bottom, 8)
-                    
-                    Text("Are you sure you want to delete \"\(weatherService.activeListID.localizedDisplayName(locale: locale))\"? This cannot be undone.")
-                        .font(.avenir(.subheadline, weight: .regular))
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 20)
-                        .padding(.bottom, 18)
-                    
-                    Divider()
-                    
-                    HStack(spacing: 0) {
-                        Button {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                showingDeleteListConfirmation = false
-                            }
-                        } label: {
-                            Text("Cancel")
-                                .font(.avenir(.body, weight: .medium))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .contentShape(Rectangle())
+                    .opacity(selectedTab == 1 ? 1 : 0)
+
+                // List slides over map
+                iOSListView
+                    .background(Color(.systemBackground))
+                    .offset(x: selectedTab == 0 ? 0 : -10000)
+            }
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
+
+            // Expanded city card on map
+            if selectedTab == 1, showingMapExpandedCard, let city = tappedCity {
+                mapExpandedCard(for: city)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 72)
+                    .zIndex(1)
+            }
+
+            // Preview toolbar when inspecting a searched city
+            if selectedTab == 1, previewCity != nil {
+                iOSPreviewToolbar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(2)
+            }
+
+            // Floating bottom toolbar
+            if previewCity == nil {
+                iOSFloatingBottomToolbar
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var iOSTrailingToolbarItems: some ToolbarContent {
+        if isEditMode {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    withAnimation { isEditMode = false }
+                } label: {
+                    Image(systemName: "checkmark")
+                }
+            }
+        } else {
+            if weatherService.isLoading || isLoadingMapList {
+                ToolbarItem(placement: .topBarTrailing) {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+
+            if filterSunny {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        withAnimation {
+                            filterSunny = false
                         }
-                        .buttonStyle(.plain)
-                        
-                        Divider()
-                            .frame(height: 44)
-                        
-                        Button {
-                            withAnimation(.easeOut(duration: 0.2)) {
-                                showingDeleteListConfirmation = false
+                    } label: {
+                        Image(systemName: "sun.max.circle.fill")
+                            .foregroundStyle(.blue)
+                    }
+                }
+            }
+
+            if showPlaybackButton {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        if isPlaying {
+                            iOSStopPlayback()
+                        } else {
+                            iOSStartPlayback()
+                        }
+                    } label: {
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                }
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingMenuPopover = true
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .popover(isPresented: $showingMenuPopover) {
+                    iOSCustomMenu
+                        .presentationCompactAdaptation(.popover)
+                }
+            }
+        }
+    }
+
+    private var iOSPreviewToolbar: some View {
+        HStack(spacing: 12) {
+            // Dismiss button
+            Image(systemName: "xmark")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 36, height: 36)
+                .padding(6)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(Circle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        showingMapExpandedCard = false
+                        previewCity = nil
+                        recenterOnAllCities = true
+                    }
+                }
+
+            // Search bar — tap to reopen search
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                Text(previewSearchText)
+                    .font(.avenir(.subheadline, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer()
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 36)
+            .padding(6)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .contentShape(Capsule())
+            .onTapGesture {
+                showingAddCityView = true
+            }
+
+            // Add button
+            Image(systemName: "plus")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.blue)
+                .frame(width: 36, height: 36)
+                .padding(6)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(Circle())
+                .onTapGesture {
+                    if let city = previewCity {
+                        Task {
+                            await addCityToSidebar(city)
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                previewCity = nil
                             }
-                            deleteCurrentList()
+                        }
+                    }
+                }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+        .padding(.top, 20)
+        .background {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { }
+        }
+    }
+
+    private var iOSFloatingBottomToolbar: some View {
+        HStack(alignment: .bottom, spacing: 12) {
+            // View switcher capsule
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
+                        .contentTransition(.symbolEffect(.replace))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
+                        .frame(width: 42, height: 36)
+                        .background {
+                            if selectedTab == 0 {
+                                Capsule()
+                                    .fill(.ultraThinMaterial)
+                                    .transition(.scale.combined(with: .opacity))
+                            }
+                        }
+                        .contentShape(Capsule())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                selectedTab = 0
+                            }
+                        }
+
+                    Image(systemName: selectedTab == 1 ? "map.fill" : "map")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(selectedTab == 1 ? .primary : .secondary)
+                        .frame(width: 42, height: 36)
+                        .background {
+                            if selectedTab == 1 {
+                                Capsule()
+                                    .fill(.ultraThinMaterial)
+                                    .transition(.scale.combined(with: .opacity))
+                            }
+                        }
+                        .contentShape(Capsule())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                selectedTab = 1
+                            }
+                        }
+                }
+                .padding(6)
+                .glassEffect(.regular.interactive(), in: .capsule)
+            }
+
+            Spacer()
+
+            if selectedTab == 0 {
+                iOSDateSwitcherCapsule
+            }
+
+            if selectedTab == 1 {
+                iOSMapControlsCapsule
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+        .padding(.top, 20)
+        .background {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture { }
+        }
+    }
+
+    private var iOSDateSwitcherCapsule: some View {
+        HStack(spacing: 0) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
+                .frame(width: 36, height: 36)
+                .contentShape(Circle())
+                .onTapGesture {
+                    if selectedDayOffset > 0 {
+                        withAnimation(.smooth(duration: 0.2)) {
+                            selectedDayOffset -= 1
+                        }
+                    }
+                }
+
+            Text(iOSDateText)
+                .font(.avenir(.subheadline, weight: .medium))
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: 80)
+                .id("ios-date-\(selectedDayOffset)")
+                .transition(.asymmetric(
+                    insertion: .move(edge: selectedDayOffset >= iOSPreviousDayOffset ? .trailing : .leading).combined(with: .opacity),
+                    removal: .move(edge: selectedDayOffset >= iOSPreviousDayOffset ? .leading : .trailing).combined(with: .opacity)
+                ))
+                .clipped()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    showingDatePopover = true
+                }
+                .popover(isPresented: $showingDatePopover) {
+                    DatePicker(
+                        "",
+                        selection: Binding(
+                            get: {
+                                Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
+                            },
+                            set: { newDate in
+                                let calendar = Calendar.current
+                                let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
+                                if let days = components.day {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        selectedDayOffset = max(0, min(9, days))
+                                    }
+                                }
+                            }
+                        ),
+                        in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
+                        displayedComponents: .date
+                    )
+                    .datePickerStyle(.graphical)
+                    .labelsHidden()
+                    .frame(width: 280, height: 300)
+                    .padding(8)
+                    .presentationCompactAdaptation(.popover)
+                    .presentationBackground(.thickMaterial)
+                }
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
+                .frame(width: 36, height: 36)
+                .contentShape(Circle())
+                .onTapGesture {
+                    if selectedDayOffset < 9 {
+                        withAnimation(.smooth(duration: 0.2)) {
+                            selectedDayOffset += 1
+                        }
+                    }
+                }
+        }
+        .padding(6)
+        .glassEffect(.regular.interactive(), in: .capsule)
+    }
+
+    private var iOSMapControlsCapsule: some View {
+        HStack(spacing: 8) {
+            Button {
+                if mapVisibleListIDs.count > 1 {
+                    showingRecenterPopover = true
+                } else {
+                    recenterOnAllCities = true
+                }
+            } label: {
+                Image(systemName: "dot.squareshape.split.2x2")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 42, height: 36)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingRecenterPopover) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
+                        Button {
+                            showingRecenterPopover = false
+                            let cities: [CityWeather]
+                            if listID == weatherService.activeListID {
+                                cities = weatherService.cityWeatherData
+                            } else {
+                                cities = weatherService.otherListData[listID.rawValue] ?? []
+                            }
+                            focusSubsetCities = cities
+                            focusSubsetTrigger = true
                         } label: {
-                            Text("Delete")
-                                .font(.avenir(.body, weight: .semibold))
-                                .foregroundStyle(.red)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 14)
-                                .contentShape(Rectangle())
+                            HStack(spacing: 12) {
+                                Text(listID.localizedDisplayName(locale: locale))
+                                    .font(.avenir(.body, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                            }
+                            .padding(.leading, 24)
+                            .padding(.trailing, 16)
+                            .padding(.vertical, 11)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .frame(width: 280)
-                .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 16))
-                .transition(.scale(scale: 0.9).combined(with: .opacity))
+                .padding(.vertical, 8)
+                .frame(width: 160)
+                .presentationCompactAdaptation(.popover)
+                .presentationBackground(.ultraThinMaterial)
+            }
+
+            Button {
+                showingMapStylePopover = true
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 42, height: 36)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingMapStylePopover) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
+                        Button {
+                            showingMapStylePopover = false
+                            withAnimation { mapMode = mode }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(mode.capitalized)
+                                    .font(.avenir(.body, weight: mapMode == mode ? .bold : .medium))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                if mapMode == mode {
+                                    Circle()
+                                        .fill(.white)
+                                        .frame(width: 6, height: 6)
+                                }
+                            }
+                            .padding(.leading, 24)
+                            .padding(.trailing, 16)
+                            .padding(.vertical, 11)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 8)
+                .frame(width: 160)
+                .presentationCompactAdaptation(.popover)
+                .presentationBackground(.ultraThinMaterial)
             }
         }
-        .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
+        .padding(6)
+        .glassEffect(.regular.interactive(), in: .capsule)
+        .transition(.scale.combined(with: .opacity))
+    }
 
+    @ViewBuilder
+    private var iOSCityDetailDestination: some View {
+        if let city = tappedCity {
+            WeatherDetailView(
+                cityWeather: city,
+                selectedDayOffset: selectedDayOffset,
+                namespace: popupNamespace,
+                onDismiss: {
+                    showingCityDetail = false
+                },
+                onAddCity: cityIsInSidebar(city) ? nil : {
+                    Task {
+                        await addCityToSidebar(city)
+                        showingCityDetail = false
+                        if selectedTab == 1 {
+                            recenterOnAllCities = true
+                        }
+                    }
+                },
+                onDeleteCity: cityIsInSidebar(city) ? {
+                    weatherService.removeCity(city)
+                    showingCityDetail = false
+                    showingMapExpandedCard = false
+                    tappedCity = nil
+                    if selectedTab == 1 {
+                        recenterOnAllCities = true
+                    }
+                } : nil,
+                isInSidebar: cityIsInSidebar(city),
+                showCloudCover: showCloudCover
+            )
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingCityDetail = false
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    Text(city.city.localizedName(locale: locale))
+                        .font(.avenir(.title3, weight: .semibold))
+                        .dynamicTypeSize(...DynamicTypeSize.large)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                if !cityIsInSidebar(city) {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            Task {
+                                await addCityToSidebar(city)
+                                showingCityDetail = false
+                                if selectedTab == 1 {
+                                    recenterOnAllCities = true
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "plus")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                }
+                if cityIsInSidebar(city) {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Button {
+                                let revealCity = city
+                                showingCityDetail = false
+                                centerOnCityTrigger = nil
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    selectedTab = 1
+                                }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    centerOnCityTrigger = revealCity
+                                }
+                            } label: {
+                                Label("Reveal on Map", systemImage: "map")
+                            }
+                            
+                            Button(role: .destructive) {
+                                weatherService.removeCity(city)
+                                showingCityDetail = false
+                                if selectedTab == 1 {
+                                    recenterOnAllCities = true
+                                }
+                            } label: {
+                                Label("Delete City", systemImage: "trash")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var iOSAddCitySheet: some View {
+        NavigationStack {
+            AddCitySearchView(
+                cities: weatherService.cityWeatherData,
+                citySearchManager: CitySearchManager(),
+                weatherService: weatherService,
+                onCitySelected: { cityWeather in
+                    if selectedTab == 1 {
+                        // On map: show as preview marker with expanded card
+                        previewCity = cityWeather
+                        previewSearchText = cityWeather.city.name
+                        tappedCity = cityWeather
+                        showingAddCityView = false
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            centerOnCityTrigger = cityWeather
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                showingMapExpandedCard = true
+                            }
+                        }
+                    } else {
+                        addCityDetailCity = cityWeather
+                        showingAddCityDetail = true
+                    }
+                }
+            )
+            .navigationDestination(isPresented: $showingAddCityDetail) {
+                iOSAddCityDetailDestination
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var iOSAddCityDetailDestination: some View {
+        if let city = addCityDetailCity {
+            WeatherDetailView(
+                cityWeather: city,
+                selectedDayOffset: selectedDayOffset,
+                namespace: popupNamespace,
+                onDismiss: {
+                    showingAddCityDetail = false
+                },
+                onAddCity: cityIsInSidebar(city) ? nil : {
+                    Task {
+                        await addCityToSidebar(city)
+                        showingAddCityView = false
+                        showingAddCityDetail = false
+                        if selectedTab == 1 {
+                            recenterOnAllCities = true
+                        }
+                    }
+                },
+                isInSidebar: cityIsInSidebar(city),
+                showCloudCover: showCloudCover
+            )
+            .navigationBarBackButtonHidden(true)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingAddCityDetail = false
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                }
+                ToolbarItem(placement: .principal) {
+                    Text(city.city.localizedName(locale: locale))
+                        .font(.avenir(.title3, weight: .semibold))
+                        .dynamicTypeSize(...DynamicTypeSize.large)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                }
+                if !cityIsInSidebar(city) {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            Task {
+                                await addCityToSidebar(city)
+                                showingAddCityView = false
+                                showingAddCityDetail = false
+                                if selectedTab == 1 {
+                                    recenterOnAllCities = true
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "plus")
+                                .foregroundStyle(.blue)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var iOSDeleteListConfirmationOverlay: some View {
+        if showingDeleteListConfirmation {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showingDeleteListConfirmation = false
+                    }
+                }
+            
+            VStack(spacing: 0) {
+                Text("Delete List")
+                    .font(.avenir(.headline, weight: .bold))
+                    .padding(.top, 20)
+                    .padding(.bottom, 8)
+                
+                Text("Are you sure you want to delete \"\(weatherService.activeListID.localizedDisplayName(locale: locale))\"? This cannot be undone.")
+                    .font(.avenir(.subheadline, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 18)
+                
+                Divider()
+                
+                HStack(spacing: 0) {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showingDeleteListConfirmation = false
+                        }
+                    } label: {
+                        Text("Cancel")
+                            .font(.avenir(.body, weight: .medium))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    
+                    Divider()
+                        .frame(height: 44)
+                    
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showingDeleteListConfirmation = false
+                        }
+                        deleteCurrentList()
+                    } label: {
+                        Text("Delete")
+                            .font(.avenir(.body, weight: .semibold))
+                            .foregroundStyle(.red)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .frame(width: 280)
+            .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 16))
+            .transition(.scale(scale: 0.9).combined(with: .opacity))
+        }
     }
 
     private var iOSListSwitcher: some View {
@@ -1869,6 +2044,9 @@ struct ContentView: View {
                 focusOnSubsetTrigger: $focusSubsetTrigger,
                 mapMode: mapMode,
                 onDoubleTapMarker: {
+                    if previewCity != nil {
+                        previewCity = nil
+                    }
                     showingCityDetail = true
                 }
             )
@@ -1934,6 +2112,8 @@ struct ContentView: View {
                         weatherService.removeCity(city)
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                             showingCityDetail = false
+                            showingMapExpandedCard = false
+                            tappedCity = nil
                         }
                         recenterOnAllCities = true
                     } : nil,
@@ -1985,6 +2165,8 @@ struct ContentView: View {
                             weatherService.removeCity(city)
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                                 showingCityDetail = false
+                                showingMapExpandedCard = false
+                                tappedCity = nil
                             }
                             recenterOnAllCities = true
                         } : nil,

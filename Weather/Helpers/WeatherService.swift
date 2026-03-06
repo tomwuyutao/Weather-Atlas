@@ -653,7 +653,7 @@ class WeatherService {
                 condition: dayCondition,
                 hourlyForecasts: hourlyForecasts,
                 cloudCover: daytimeForecast.cloudCover,
-                precipitationChance: day.precipitationChance
+                precipitationChance: daytimeForecast.precipitationChance
             )
         }
         

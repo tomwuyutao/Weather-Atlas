@@ -329,7 +329,7 @@ struct DesktopSidebar: View {
         isLoadingSearchedCity = true
         defer { isLoadingSearchedCity = false }
         
-        let cityName = result.title
+        let cityName = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
         
         if let existingCity = cities.first(where: { $0.city.name == cityName }) {
             detailOpenedFromList = false

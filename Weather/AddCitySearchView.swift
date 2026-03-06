@@ -166,7 +166,7 @@ struct AddCitySearchView: View {
         isLoadingCity = true
         defer { isLoadingCity = false }
         
-        let cityName = result.title
+        let cityName = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
         
         // Check if city already exists
         if let existingCity = cities.first(where: { $0.city.name == cityName }) {
