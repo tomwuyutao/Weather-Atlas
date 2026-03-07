@@ -699,7 +699,11 @@ struct ContentView: View {
 
         let centerLocation = CLLocation(latitude: center.latitude, longitude: center.longitude)
 
-        for spacing in [0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0] {
+        // Finer spacing tiers for smaller circles
+        let spacings: [Double] = radiusMeters < 100_000 ? [0.25, 0.4, 0.5, 0.75, 1.0, 1.5, 2.0] :
+                                  radiusMeters < 200_000 ? [0.5, 0.75, 1.0, 1.5, 2.0, 3.0] :
+                                  [0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0]
+        for spacing in spacings {
             let lonSpacing = spacing / max(cos(center.latitude * .pi / 180), 0.3)
             var gridCities: [City] = []
             var lat = minLat + spacing / 2
