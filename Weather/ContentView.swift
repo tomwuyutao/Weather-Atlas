@@ -1991,7 +1991,7 @@ struct ContentView: View {
                                     centerOnCityTrigger = revealCity
                                 }
                             } label: {
-                                Label("Reveal on Map", systemImage: "map")
+                                Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
                             }
                             
                             Button(role: .destructive) {
@@ -2001,7 +2001,7 @@ struct ContentView: View {
                                     recenterOnAllCities = true
                                 }
                             } label: {
-                                Label("Delete City", systemImage: "trash")
+                                Label(localizedString("Delete City", locale: locale), systemImage: "trash")
                             }
                         } label: {
                             Image(systemName: "ellipsis")
@@ -2118,12 +2118,12 @@ struct ContentView: View {
                 }
             
             VStack(spacing: 0) {
-                Text("Delete List")
+                Text(localizedString("Delete List", locale: locale))
                     .font(.avenir(.headline, weight: .bold))
                     .padding(.top, 20)
                     .padding(.bottom, 8)
                 
-                Text("Are you sure you want to delete \"\(weatherService.activeListID.localizedDisplayName(locale: locale))\"? This cannot be undone.")
+                Text(String(format: localizedString("Are you sure you want to delete \"%@\"? This cannot be undone.", locale: locale), weatherService.activeListID.localizedDisplayName(locale: locale)))
                     .font(.avenir(.subheadline, weight: .regular))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -2138,7 +2138,7 @@ struct ContentView: View {
                             showingDeleteListConfirmation = false
                         }
                     } label: {
-                        Text("Cancel")
+                        Text(localizedString("Cancel", locale: locale))
                             .font(.avenir(.body, weight: .medium))
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
@@ -2155,7 +2155,7 @@ struct ContentView: View {
                         }
                         deleteCurrentList()
                     } label: {
-                        Text("Delete")
+                        Text(localizedString("Delete", locale: locale))
                             .font(.avenir(.body, weight: .semibold))
                             .foregroundStyle(.red)
                             .frame(maxWidth: .infinity)
@@ -2183,12 +2183,12 @@ struct ContentView: View {
                 }
             
             VStack(spacing: 0) {
-                Text("Location Unavailable")
+                Text(localizedString("Location Unavailable", locale: locale))
                     .font(.avenir(.headline, weight: .bold))
                     .padding(.top, 20)
                     .padding(.bottom, 8)
                 
-                Text("Could not determine the city name for this location. Please try another point.")
+                Text(localizedString("Could not determine the city name for this location. Please try another point.", locale: locale))
                     .font(.avenir(.subheadline, weight: .regular))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -2202,7 +2202,7 @@ struct ContentView: View {
                         showingGeocodingError = false
                     }
                 } label: {
-                    Text("OK")
+                    Text(localizedString("OK", locale: locale))
                         .font(.avenir(.body, weight: .semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 14)
@@ -2441,7 +2441,7 @@ struct ContentView: View {
                     showingDeleteListConfirmation = true
                 } label: {
                     HStack(spacing: 12) {
-                        Text("Delete List")
+                        Text(localizedString("Delete List", locale: locale))
                             .font(.avenir(.body, weight: .medium))
                             .foregroundStyle(.red)
                         Spacer()
@@ -2753,7 +2753,7 @@ struct ContentView: View {
                         selectedCity = nil
                     }
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label(localizedString("Delete", locale: locale), systemImage: "trash")
                 }
             }
         }
@@ -2876,7 +2876,7 @@ struct ContentView: View {
                         Image(systemName: "cloud.sun.fill")
                             .font(.system(size: 56))
                             .symbolRenderingMode(.multicolor)
-                        Text("Loading Weather")
+                        Text(localizedString("Loading Weather", locale: locale))
                             .font(.avenir(.title2, weight: .semibold))
                         Capsule()
                             .fill(Color.white.opacity(0.15))
@@ -2895,7 +2895,7 @@ struct ContentView: View {
                         .padding(.top, 24)
                         .padding(.bottom, 20)
                     Spacer()
-                    ContentUnavailableView("Loading Weather", systemImage: "cloud.sun", description: Text("Fetching forecasts for your cities…"))
+                    ContentUnavailableView(localizedString("Loading Weather", locale: locale), systemImage: "cloud.sun", description: Text(localizedString("Fetching forecasts for your cities…", locale: locale)))
                     Spacer()
                 }
             } else if weatherService.cityWeatherData.isEmpty {
@@ -2908,7 +2908,7 @@ struct ContentView: View {
                         Button {
                             showingAddCityView = true
                         } label: {
-                            Label("Search", systemImage: "magnifyingglass")
+                            Label(localizedString("Search", locale: locale), systemImage: "magnifyingglass")
                                 .font(.avenir(.body, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 24)
@@ -3114,7 +3114,7 @@ struct ContentView: View {
                         Image(systemName: "cloud.sun.fill")
                             .font(.system(size: 56))
                             .symbolRenderingMode(.multicolor)
-                        Text("Loading Weather")
+                        Text(localizedString("Loading Weather", locale: locale))
                             .font(.avenir(.title2, weight: .semibold))
                         Capsule()
                             .fill(Color.white.opacity(0.15))
