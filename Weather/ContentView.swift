@@ -236,11 +236,13 @@ struct ContentView: View {
     @State private var countryOverviewCountryName: String = ""
     @State private var isLoadingCountryOverview: Bool = false
     @State private var countryOverviewProgress: Double = 0
+    @State private var countryOverviewCache: [String: (data: [CityWeather], date: Date)] = [:]
     @State private var showingMapListSwitcher: Bool = false
     @State private var showingRecenterPopover: Bool = false
     @State private var focusSubsetCities: [CityWeather] = []
     @State private var focusSubsetTrigger: Bool = false
     @State private var isLoadingMapList: Bool = false
+    @State private var gridPreviewPoints: [CLLocationCoordinate2D] = []
 
     // MARK: - Vertical Date Slider (Map Mode)
 
@@ -535,14 +537,37 @@ struct ContentView: View {
         }
     }
 
+    @State private var gridPreviewTask: Task<Void, Never>?
+
     private func updateCountryUnderPin() {
         guard countrySelectionMode, let coord = mapCenterCoordinate else { return }
+        updateCountryUnderPinDirect(coord)
+    }
+
+    private func updateCountryUnderPinDirect(_ coord: CLLocationCoordinate2D) {
         let svgPoint = GeoProjection.geoToSVG(latitude: coord.latitude, longitude: coord.longitude)
-        let found = countries.first(where: { $0.path.contains(svgPoint) })
+        let found = countries.first(where: { $0.path.boundingBox.contains(svgPoint) && $0.path.contains(svgPoint) })
         let name = found?.title ?? ""
         if name != countryUnderPin {
             withAnimation(.easeOut(duration: 0.15)) {
                 countryUnderPin = name
+            }
+            gridPreviewTask?.cancel()
+            gridPreviewPoints = []
+            if let country = found {
+                let title = country.title
+                gridPreviewTask = Task {
+                    // Small delay so rapid panning doesn't trigger expensive computation
+                    try? await Task.sleep(for: .milliseconds(300))
+                    guard !Task.isCancelled else { return }
+                    // Recheck that the country is still the same
+                    guard countryUnderPin == title else { return }
+                    let grid = generateCountryGrid(for: country)
+                    guard !Task.isCancelled, countryUnderPin == title else { return }
+                    gridPreviewPoints = grid.map {
+                        CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+                    }
+                }
             }
         }
     }
@@ -625,7 +650,7 @@ struct ContentView: View {
                 // Map always alive in background, hidden when not selected
                 iOSMapView
                     .overlay(alignment: .trailing) {
-                        if selectedTab == 1, !isMapSpecialMode {
+                        if selectedTab == 1, (!isMapSpecialMode || countryOverviewActive) {
                             Color.clear
                                 .frame(width: 60, height: 420)
                                 .contentShape(Rectangle())
@@ -678,8 +703,8 @@ struct ContentView: View {
                     .zIndex(3)
             }
 
-            // Country overview exit button
-            if countryOverviewActive {
+            // Country overview exit button (only after loading completes)
+            if countryOverviewActive, !isLoadingCountryOverview {
                 countryOverviewExitOverlay
                     .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(3)
@@ -694,7 +719,16 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var iOSTrailingToolbarItems: some ToolbarContent {
-        if !isMapSpecialMode && isEditMode {
+        if countryOverviewActive || isLoadingCountryOverview {
+            iOSCountryOverviewToolbarItems
+        } else if !isMapSpecialMode {
+            iOSDefaultTrailingToolbarItems
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var iOSDefaultTrailingToolbarItems: some ToolbarContent {
+        if isEditMode {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     withAnimation { isEditMode = false }
@@ -702,52 +736,82 @@ struct ContentView: View {
                     Image(systemName: "checkmark")
                 }
             }
-        } else if !isMapSpecialMode {
-            if weatherService.isLoading || isLoadingMapList {
-                ToolbarItem(placement: .topBarTrailing) {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
+        } else {
+            iOSNormalToolbarItems
+        }
+    }
 
-            if filterSunny {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        withAnimation {
-                            filterSunny = false
-                        }
-                    } label: {
-                        Image(systemName: "sun.max.fill")
-                            .foregroundStyle(.yellow)
-                    }
-                }
+    @ToolbarContentBuilder
+    private var iOSCountryOverviewToolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                withAnimation { filterSunny.toggle() }
+            } label: {
+                Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
+                    .foregroundStyle(filterSunny ? .yellow : .primary)
             }
+        }
 
-            if showPlaybackButton {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        if isPlaying {
-                            iOSStopPlayback()
-                        } else {
-                            iOSStartPlayback()
-                        }
-                    } label: {
-                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .contentTransition(.symbolEffect(.replace))
-                    }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                if isPlaying {
+                    iOSStopPlayback()
+                } else {
+                    iOSStartPlayback()
                 }
+            } label: {
+                Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .contentTransition(.symbolEffect(.replace))
             }
+        }
+    }
 
+    @ToolbarContentBuilder
+    private var iOSNormalToolbarItems: some ToolbarContent {
+        if weatherService.isLoading || isLoadingMapList {
+            ToolbarItem(placement: .topBarTrailing) {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+
+        if filterSunny {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showingMenuPopover = true
+                    withAnimation {
+                        filterSunny = false
+                    }
                 } label: {
-                    Image(systemName: "ellipsis")
+                    Image(systemName: "sun.max.fill")
+                        .foregroundStyle(.yellow)
                 }
-                .popover(isPresented: $showingMenuPopover) {
-                    iOSCustomMenu
-                        .presentationCompactAdaptation(.popover)
+            }
+        }
+
+        if showPlaybackButton {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    if isPlaying {
+                        iOSStopPlayback()
+                    } else {
+                        iOSStartPlayback()
+                    }
+                } label: {
+                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .contentTransition(.symbolEffect(.replace))
                 }
+            }
+        }
+
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                showingMenuPopover = true
+            } label: {
+                Image(systemName: "ellipsis")
+            }
+            .popover(isPresented: $showingMenuPopover) {
+                iOSCustomMenu
+                    .presentationCompactAdaptation(.popover)
             }
         }
     }
@@ -1147,13 +1211,12 @@ struct ContentView: View {
 
     private var countrySelectionOverlay: some View {
         ZStack {
-            // Center pin
-            VStack(spacing: 0) {
-                Image(systemName: "mappin")
-                    .font(.system(size: 40, weight: .bold))
-                    .foregroundStyle(.red)
-                    .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-            }
+            // Center pin — offset upward so the tip points at the map center
+            Image(systemName: "mappin")
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(.red)
+                .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                .offset(y: -14)
 
             // Top capsule with country name
             VStack {
@@ -1188,6 +1251,7 @@ struct ContentView: View {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             countrySelectionMode = false
                             countryUnderPin = ""
+                            gridPreviewPoints = []
                             recenterOnAllCities = true
                         }
                     } label: {
@@ -1202,27 +1266,51 @@ struct ContentView: View {
                     Button {
                         let name = countryUnderPin
                         guard let country = countries.first(where: { $0.title == name }) else { return }
+                        
+                        countryOverviewCountryName = name
+                        gridPreviewPoints = []
+                        
+                        // Check cache (2 hour validity)
+                        if let cached = countryOverviewCache[name],
+                           Date().timeIntervalSince(cached.date) < 7200 {
+                            countryOverviewData = cached.data
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                countrySelectionMode = false
+                                countryUnderPin = ""
+                                countryOverviewActive = true
+                            }
+                            return
+                        }
+                        
                         let gridCities = generateCountryGrid(for: country)
                         guard !gridCities.isEmpty else { return }
                         
-                        countryOverviewCountryName = name
+                        countryOverviewData = []
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             countrySelectionMode = false
                             countryUnderPin = ""
                             isLoadingCountryOverview = true
+                            countryOverviewActive = true
                         }
                         
                         Task {
-                            let results = await weatherService.fetchWeatherForGrid(gridCities) { progress in
+                            let results = await weatherService.fetchWeatherForGrid(gridCities, onProgress: { progress in
                                 Task { @MainActor in
                                     countryOverviewProgress = progress
                                 }
-                            }
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                countryOverviewData = results
-                                countryOverviewActive = true
-                                isLoadingCountryOverview = false
-                                countryOverviewProgress = 0
+                            }, onResult: { cityWeather in
+                                Task { @MainActor in
+                                    withAnimation(.easeOut(duration: 0.2)) {
+                                        countryOverviewData.append(cityWeather)
+                                    }
+                                }
+                            })
+                            await MainActor.run {
+                                countryOverviewCache[name] = (data: results, date: Date())
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    isLoadingCountryOverview = false
+                                    countryOverviewProgress = 0
+                                }
                             }
                         }
                     } label: {
@@ -1243,32 +1331,24 @@ struct ContentView: View {
         VStack {
             Spacer()
 
-            VStack(spacing: 16) {
-                Text(String(format: localizedString("Loading weather for %@", locale: locale), countryOverviewCountryName))
-                    .font(.avenir(.headline, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .multilineTextAlignment(.center)
+            HStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.small)
 
-                Capsule()
-                    .fill(Color.white.opacity(0.15))
-                    .frame(width: 200, height: 4)
-                    .overlay(alignment: .leading) {
-                        Capsule()
-                            .fill(.white)
-                            .frame(width: 200 * countryOverviewProgress, height: 4)
-                            .animation(.easeInOut(duration: 0.15), value: countryOverviewProgress)
-                    }
+                Text(String(format: localizedString("Loading %@…", locale: locale), countryOverviewCountryName))
+                    .font(.avenir(.subheadline, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
 
                 Text("\(Int(countryOverviewProgress * 100))%")
-                    .font(.avenir(.caption, weight: .medium))
+                    .font(.avenir(.subheadline, weight: .medium))
                     .foregroundStyle(.secondary)
                     .contentTransition(.numericText())
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, 24)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
-
-            Spacer()
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .padding(.bottom, 40)
         }
     }
 
@@ -2429,12 +2509,16 @@ struct ContentView: View {
                 mapMode: mapMode,
                 countrySelectionMode: countrySelectionMode,
                 forceDotsOnly: countryOverviewActive,
+                gridPreviewPoints: gridPreviewPoints,
                 mapCenterCoordinate: $mapCenterCoordinate,
                 onDoubleTapMarker: {
                     if previewCity != nil {
                         previewCity = nil
                     }
                     showingCityDetail = true
+                },
+                onCameraMove: { coord in
+                    updateCountryUnderPinDirect(coord)
                 }
             )
             .ignoresSafeArea()

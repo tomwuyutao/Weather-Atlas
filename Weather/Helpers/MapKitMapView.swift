@@ -27,8 +27,10 @@ struct MapKitMapView: View {
     var mapMode: String = "minimal"
     var countrySelectionMode: Bool = false
     var forceDotsOnly: Bool = false
+    var gridPreviewPoints: [CLLocationCoordinate2D] = []
     @Binding var mapCenterCoordinate: CLLocationCoordinate2D?
     var onDoubleTapMarker: (() -> Void)?
+    var onCameraMove: ((CLLocationCoordinate2D) -> Void)?
 
     @State private var position: MapCameraPosition = .automatic
     @State private var hasCenteredOnCities: Bool = false
@@ -49,7 +51,9 @@ struct MapKitMapView: View {
             .onMapCameraChange(frequency: .continuous) { context in
                 cameraChangeCounter += 1
                 if countrySelectionMode {
-                    mapCenterCoordinate = context.camera.centerCoordinate
+                    let coord = context.camera.centerCoordinate
+                    mapCenterCoordinate = coord
+                    onCameraMove?(coord)
                 }
             }
             // Black underlay to prevent MapKit tiles flashing during transitions
@@ -90,6 +94,17 @@ struct MapKitMapView: View {
                         forceDotsOnly: forceDotsOnly,
                         showingCityDetail: $showingCityDetail,
                         tappedCity: $tappedCity
+                    )
+                    .allowsHitTesting(false)
+                }
+            }
+            // Grid preview dots during country selection
+            .overlay {
+                if countrySelectionMode, !gridPreviewPoints.isEmpty {
+                    GridPreviewOverlay(
+                        points: gridPreviewPoints,
+                        proxy: proxy,
+                        cameraChangeCounter: cameraChangeCounter
                     )
                     .allowsHitTesting(false)
                 }
@@ -597,5 +612,28 @@ private struct MapRevealPulseRing: View {
             .opacity(isPulsing ? 0.4 : 1.0)
             .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: isPulsing)
             .onAppear { isPulsing = true }
+    }
+}
+
+// MARK: - Grid Preview Overlay (country selection)
+
+private struct GridPreviewOverlay: View {
+    let points: [CLLocationCoordinate2D]
+    let proxy: MapProxy
+    let cameraChangeCounter: Int
+
+    var body: some View {
+        let _ = cameraChangeCounter
+        Canvas { context, size in
+            for coord in points {
+                if let pt = proxy.convert(coord, to: .local) {
+                    let margin: CGFloat = 20
+                    guard pt.x > -margin && pt.x < size.width + margin &&
+                          pt.y > -margin && pt.y < size.height + margin else { continue }
+                    let rect = CGRect(x: pt.x - 3, y: pt.y - 3, width: 6, height: 6)
+                    context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.5)))
+                }
+            }
+        }
     }
 }

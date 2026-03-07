@@ -644,14 +644,16 @@ class WeatherService {
     }
     
     private func convertWeatherKitData(weather: Weather, for city: City) async -> CityWeather {
+        let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
+        let timeZone = await getTimeZone(for: location)
+        return convertWeatherKitData(weather: weather, for: city, timeZone: timeZone)
+    }
+    
+    private func convertWeatherKitData(weather: Weather, for city: City, timeZone: TimeZone) -> CityWeather {
         // Current weather
         let currentTemp = weather.currentWeather.temperature.value
         let currentCondition = mapWeatherKitCondition(weather.currentWeather.condition)
         let currentSymbol = weather.currentWeather.symbolName
-        
-        // Get timezone for the city location
-        let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
-        let timeZone = await getTimeZone(for: location)
         
         // Daily forecasts
         let dailyForecasts = weather.dailyForecast.forecast.prefix(10).enumerated().map { (index, day) -> DailyForecast in
@@ -826,17 +828,28 @@ class WeatherService {
     }
     
     /// Fetch weather for a grid of points (used by Country Overview).
-    /// Returns results progressively via the callback, and the full array at the end.
-    func fetchWeatherForGrid(_ gridCities: [City], onProgress: @escaping (Double) -> Void) async -> [CityWeather] {
+    /// Reports each result progressively via `onResult` and progress via `onProgress`.
+    /// Looks up the timezone once from the first grid point and reuses it for all.
+    func fetchWeatherForGrid(_ gridCities: [City], onProgress: @escaping (Double) -> Void, onResult: ((CityWeather) -> Void)? = nil) async -> [CityWeather] {
         var results: [CityWeather] = []
         let total = gridCities.count
+        
+        // Resolve timezone once from the first point to avoid rate-limiting
+        var gridTimeZone: TimeZone?
         
         for (index, city) in gridCities.enumerated() {
             do {
                 let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
                 let weather = try await weatherService.weather(for: location)
-                let cityWeather = await convertWeatherKitData(weather: weather, for: city)
+                
+                // Look up timezone only for the first point
+                if gridTimeZone == nil {
+                    gridTimeZone = await getTimeZone(for: location)
+                }
+                
+                let cityWeather = convertWeatherKitData(weather: weather, for: city, timeZone: gridTimeZone ?? .current)
                 results.append(cityWeather)
+                onResult?(cityWeather)
             } catch {
                 print("⚠️ Grid fetch skipped (\(index + 1)/\(total)): \(error.localizedDescription)")
             }
