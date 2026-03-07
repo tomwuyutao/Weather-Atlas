@@ -257,7 +257,7 @@ struct ContentView: View {
     @State private var isLoadingRadialSearch: Bool = false
     @State private var radialSearchProgress: Double = 0
     @State private var radialSearchData: [CityWeather] = []
-    @State private var radialSearchRadius: Double = 160_000
+    @State private var radialSearchRadius: Double = 250_000
 
     // MARK: - Vertical Date Slider (Map Mode)
 
@@ -687,7 +687,7 @@ struct ContentView: View {
 
     // MARK: - Radial Grid Generation
 
-    private func generateRadialGrid(center: CLLocationCoordinate2D, radiusMeters: Double, maxPoints: Int = 150) -> [City] {
+    private func generateRadialGrid(center: CLLocationCoordinate2D, radiusMeters: Double, maxPoints: Int = 100) -> [City] {
         let latDegreesPerMeter = 1.0 / 111_320.0
         let radiusDegLat = radiusMeters * latDegreesPerMeter
         let radiusDegLon = radiusDegLat / max(cos(center.latitude * .pi / 180), 0.1)
@@ -699,7 +699,7 @@ struct ContentView: View {
 
         let centerLocation = CLLocation(latitude: center.latitude, longitude: center.longitude)
 
-        for spacing in [0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0] {
+        for spacing in [0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0] {
             let lonSpacing = spacing / max(cos(center.latitude * .pi / 180), 0.3)
             var gridCities: [City] = []
             var lat = minLat + spacing / 2
@@ -826,6 +826,7 @@ struct ContentView: View {
             // Country selection overlay
             if countrySelectionMode {
                 countrySelectionOverlay
+                    .ignoresSafeArea()
                     .transition(.opacity)
                     .zIndex(3)
             }
@@ -847,6 +848,7 @@ struct ContentView: View {
             // Radial search selection overlay
             if radialSearchMode {
                 radialSelectionOverlay
+                    .ignoresSafeArea()
                     .transition(.opacity)
                     .zIndex(3)
             }
@@ -1228,7 +1230,7 @@ struct ContentView: View {
                             tappedCity = nil
                             previewCity = nil
                             radialSearchMode = true
-                            radialSearchRadius = 160_000
+                            radialSearchRadius = 250_000
                         }
                     } label: {
                         HStack(spacing: 12) {
@@ -1599,13 +1601,6 @@ struct ContentView: View {
 
     private var radialSelectionOverlay: some View {
         ZStack {
-            // Center pin
-            Image(systemName: "mappin")
-                .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(.red)
-                .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-                .offset(y: -18)
-
             // Top capsule showing radius
             VStack {
                 Text(formatRadius(radialSearchRadius))
@@ -1672,11 +1667,9 @@ struct ContentView: View {
         guard !gridCities.isEmpty else { return }
 
         radialSearchData = []
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-            radialSearchMode = false
-            isLoadingRadialSearch = true
-            radialSearchActive = true
-        }
+        radialSearchActive = true
+        isLoadingRadialSearch = true
+        radialSearchMode = false
 
         Task {
             let results = await weatherService.fetchWeatherForGrid(gridCities, onProgress: { progress in
@@ -3047,7 +3040,9 @@ struct ContentView: View {
                     showingCityDetail = true
                 },
                 onCameraMove: { coord in
-                    updateCountryUnderPinDirect(coord)
+                    if countrySelectionMode {
+                        updateCountryUnderPinDirect(coord)
+                    }
                 }
             )
             .ignoresSafeArea()

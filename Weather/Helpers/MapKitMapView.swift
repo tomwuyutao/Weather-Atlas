@@ -30,7 +30,7 @@ struct MapKitMapView: View {
     var gridPreviewPoints: [CLLocationCoordinate2D] = []
     @Binding var mapCenterCoordinate: CLLocationCoordinate2D?
     var radialSearchMode: Bool = false
-    var radialSearchRadius: Double = 160_000
+    var radialSearchRadius: Double = 250_000
     var onRadiusChange: ((Double) -> Void)? = nil
     var onDoubleTapMarker: (() -> Void)?
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)?
@@ -53,9 +53,9 @@ struct MapKitMapView: View {
             .environment(\.locale, Locale(identifier: "en"))
             .onMapCameraChange(frequency: .continuous) { context in
                 cameraChangeCounter += 1
+                let coord = context.camera.centerCoordinate
+                mapCenterCoordinate = coord
                 if countrySelectionMode || radialSearchMode {
-                    let coord = context.camera.centerCoordinate
-                    mapCenterCoordinate = coord
                     onCameraMove?(coord)
                 }
             }
@@ -646,7 +646,7 @@ private struct GridPreviewOverlay: View {
                     guard pt.x > -margin && pt.x < size.width + margin &&
                           pt.y > -margin && pt.y < size.height + margin else { continue }
                     let rect = CGRect(x: pt.x - 3, y: pt.y - 3, width: 6, height: 6)
-                    context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.5)))
+                    context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.3)))
                 }
             }
         }
@@ -665,39 +665,38 @@ private struct RadialSearchCircleOverlay: View {
     var body: some View {
         let _ = cameraChangeCounter
         GeometryReader { geometry in
-            if let centerPt = proxy.convert(center, to: .local) {
-                let edgeCoord = center.coordinate(at: radiusMeters, bearing: 90)
-                if let edgePt = proxy.convert(edgeCoord, to: .local) {
-                    let screenRadius = sqrt(pow(edgePt.x - centerPt.x, 2) + pow(edgePt.y - centerPt.y, 2))
+            let screenCenter = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
+            let edgeCoord = center.coordinate(at: radiusMeters, bearing: 90)
+            if let centerPt = proxy.convert(center, to: .local),
+               let edgePt = proxy.convert(edgeCoord, to: .local) {
+                let screenRadius = abs(edgePt.x - centerPt.x)
 
-                    // Circle fill + stroke
-                    Circle()
-                        .fill(Color.blue.opacity(0.08))
-                        .stroke(Color.blue.opacity(0.4), style: StrokeStyle(lineWidth: 2, dash: [8, 4]))
-                        .frame(width: screenRadius * 2, height: screenRadius * 2)
-                        .position(centerPt)
-                        .allowsHitTesting(false)
+                // Circle stroke — always at screen center
+                Circle()
+                    .stroke(Color.white.opacity(0.6), lineWidth: 4)
+                    .frame(width: screenRadius * 2, height: screenRadius * 2)
+                    .position(screenCenter)
+                    .allowsHitTesting(false)
 
-                    // Drag handle at right edge
-                    Circle()
-                        .fill(Color.blue)
-                        .frame(width: 24, height: 24)
-                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                        .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-                        .position(x: centerPt.x + screenRadius, y: centerPt.y)
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    if let dragCoord = proxy.convert(value.location, from: .local) {
-                                        let centerLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-                                        let dragLoc = CLLocation(latitude: dragCoord.latitude, longitude: dragCoord.longitude)
-                                        let newRadius = centerLoc.distance(from: dragLoc)
-                                        let clamped = min(max(newRadius, 50_000), 500_000)
-                                        onRadiusChange?(clamped)
-                                    }
+                // Drag handle at right edge
+                Circle()
+                    .fill(Color.blue)
+                    .frame(width: 24, height: 24)
+                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                    .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                    .position(x: screenCenter.x + screenRadius, y: screenCenter.y)
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                if let dragCoord = proxy.convert(value.location, from: .local) {
+                                    let centerLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+                                    let dragLoc = CLLocation(latitude: dragCoord.latitude, longitude: dragCoord.longitude)
+                                    let newRadius = centerLoc.distance(from: dragLoc)
+                                    let clamped = min(max(newRadius, 50_000), 500_000)
+                                    onRadiusChange?(clamped)
                                 }
-                        )
-                }
+                            }
+                    )
             }
         }
     }
