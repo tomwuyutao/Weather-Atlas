@@ -807,6 +807,53 @@ class WeatherService {
         }
     }
     
+    func addCityToList(_ city: City, listID: CityListID) async {
+        let listKey = "savedCitiesList_\(listID.rawValue)"
+        let cacheKey = "cachedWeatherData_\(listID.rawValue)"
+        let cacheTimestampKey = "weatherCacheTimestamp_\(listID.rawValue)"
+        
+        do {
+            let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
+            let weather = try await weatherService.weather(for: location)
+            let cityWeather = await convertWeatherKitData(weather: weather, for: city)
+            
+            // Load existing cities for the target list
+            var existingCities: [City] = []
+            if let data = UserDefaults.standard.data(forKey: listKey),
+               let cached = try? JSONDecoder().decode([CachedCity].self, from: data) {
+                existingCities = cached.map { $0.toCity() }
+            }
+            existingCities.insert(city, at: 0)
+            
+            // Save updated cities list
+            let encoded = try JSONEncoder().encode(existingCities.map { CachedCity(from: $0) })
+            UserDefaults.standard.set(encoded, forKey: listKey)
+            
+            // Update cache for the target list
+            var existingWeather: [CityWeather] = []
+            if let cacheData = UserDefaults.standard.data(forKey: cacheKey),
+               let cached = try? JSONDecoder().decode([CachedCityWeather].self, from: cacheData) {
+                existingWeather = cached.map { $0.toCityWeather() }
+            }
+            existingWeather.insert(cityWeather, at: 0)
+            let encodedWeather = try JSONEncoder().encode(existingWeather.map { CachedCityWeather(from: $0) })
+            UserDefaults.standard.set(encodedWeather, forKey: cacheKey)
+            UserDefaults.standard.set(Date(), forKey: cacheTimestampKey)
+            
+            // If this is the active list, also update in-memory data
+            if listID == activeListID {
+                cityWeatherData.insert(cityWeather, at: 0)
+            } else {
+                // Update otherListData if loaded
+                otherListData[listID.rawValue]?.insert(cityWeather, at: 0)
+            }
+            
+            print("✅ Added \(city.name) to list \(listID.displayName)")
+        } catch {
+            print("❌ Error adding city to list: \(error.localizedDescription)")
+        }
+    }
+    
     func fetchWeatherForCity(_ city: City) async -> CityWeather? {
         print("🔍 Fetching weather for \(city.name) (temporary)")
         

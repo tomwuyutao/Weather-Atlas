@@ -237,6 +237,10 @@ struct ContentView: View {
     @State private var isLoadingCountryOverview: Bool = false
     @State private var countryOverviewProgress: Double = 0
     @State private var countryOverviewCache: [String: (data: [CityWeather], date: Date)] = [:]
+    @State private var resolvedGridCityName: String?
+    @State private var resolvedGridCityNames: [UUID: String] = [:]
+    @State private var showingAddToListPopover: Bool = false
+    @State private var showingGeocodingError: Bool = false
     @State private var showingMapListSwitcher: Bool = false
     @State private var showingRecenterPopover: Bool = false
     @State private var focusSubsetCities: [CityWeather] = []
@@ -285,7 +289,7 @@ struct ContentView: View {
                     .contentTransition(.numericText())
 
                 // City name
-                Text(cityWeather.city.localizedName(locale: locale))
+                Text(countryOverviewActive ? (resolvedGridCityName ?? "…") : cityWeather.city.localizedName(locale: locale))
                     .font(.avenir(.body, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -448,6 +452,10 @@ struct ContentView: View {
                 iOSDeleteListConfirmationOverlay
             }
             .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
+            .overlay {
+                iOSGeocodingErrorOverlay
+            }
+            .animation(.easeOut(duration: 0.2), value: showingGeocodingError)
     }
 
     private var iOSNavigationContent: some View {
@@ -482,6 +490,46 @@ struct ContentView: View {
                     previewCity = nil
                     recenterOnAllCities = true
                 }
+                resolvedGridCityName = nil
+            }
+        }
+        .onChange(of: tappedCity) { _, newCity in
+            if countryOverviewActive, let city = newCity {
+                // Check cache first
+                if let cached = resolvedGridCityNames[city.id] {
+                    resolvedGridCityName = cached
+                    return
+                }
+                resolvedGridCityName = nil
+                Task {
+                    let location = CLLocation(latitude: city.city.latitude, longitude: city.city.longitude)
+                    if let request = MKReverseGeocodingRequest(location: location) {
+                        if let items = try? await request.mapItems, let item = items.first {
+                            let name = item.addressRepresentations?.cityName
+                                ?? item.addressRepresentations?.cityWithContext(.short)
+                                ?? item.name
+                            let resolved = name ?? city.city.country
+                            resolvedGridCityNames[city.id] = resolved
+                            // Only update if this is still the tapped city
+                            if tappedCity?.id == city.id {
+                                resolvedGridCityName = resolved
+                            }
+                        } else {
+                            // Rate limited or error
+                            if tappedCity?.id == city.id {
+                                withAnimation { showingMapExpandedCard = false }
+                                tappedCity = nil
+                                showingGeocodingError = true
+                            }
+                        }
+                    } else {
+                        if tappedCity?.id == city.id {
+                            withAnimation { showingMapExpandedCard = false }
+                            tappedCity = nil
+                            showingGeocodingError = true
+                        }
+                    }
+                }
             }
         }
         .onChange(of: showingCityDetail) { _, showing in
@@ -513,6 +561,9 @@ struct ContentView: View {
         }
         if mapVisibleListIDs.isEmpty {
             mapVisibleListIDs = [weatherService.activeListID.rawValue]
+        }
+        if countryOverviewCache.isEmpty {
+            countryOverviewCache = CountryOverviewCacheManager.load()
         }
         print("📱 [DEBUG] iOS .task started")
         if countries.isEmpty {
@@ -572,7 +623,7 @@ struct ContentView: View {
         }
     }
 
-    private func generateCountryGrid(for country: CountryPath, maxPoints: Int = 200) -> [City] {
+    private func generateCountryGrid(for country: CountryPath, maxPoints: Int = 150) -> [City] {
         let bbox = country.path.boundingBox
         let topLeft = GeoProjection.svgToGeo(svgPoint: CGPoint(x: bbox.minX, y: bbox.minY))
         let bottomRight = GeoProjection.svgToGeo(svgPoint: CGPoint(x: bbox.maxX, y: bbox.maxY))
@@ -654,7 +705,7 @@ struct ContentView: View {
                 // Map always alive in background, hidden when not selected
                 iOSMapView
                     .overlay(alignment: .trailing) {
-                        if selectedTab == 1, (!isMapSpecialMode || countryOverviewActive) {
+                        if selectedTab == 1, (!isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview)) {
                             Color.clear
                                 .frame(width: 60, height: 420)
                                 .contentShape(Rectangle())
@@ -677,7 +728,7 @@ struct ContentView: View {
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
 
             // Expanded city card on map
-            if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
+            if selectedTab == 1, (!isMapSpecialMode || countryOverviewActive), showingMapExpandedCard, let city = tappedCity {
                 mapExpandedCard(for: city)
                     .id(city.city.id)
                     .transition(.blurReplace)
@@ -723,7 +774,7 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var iOSTrailingToolbarItems: some ToolbarContent {
-        if countryOverviewActive || isLoadingCountryOverview {
+        if countryOverviewActive, !isLoadingCountryOverview {
             iOSCountryOverviewToolbarItems
         } else if !isMapSpecialMode {
             iOSDefaultTrailingToolbarItems
@@ -1071,33 +1122,13 @@ struct ContentView: View {
 
                     Button {
                         showingDiscoverPopover = false
-                        // TODO: Find nearest sunny place
+                        // TODO: Radial search
                     } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: "sun.max.trianglebadge.exclamationmark")
+                            Image(systemName: "circle.dotted.circle")
                                 .font(.system(size: 14))
                                 .frame(width: 20)
-                            Text(localizedString("Find Sun", locale: locale))
-                                .font(.avenir(.body, weight: .medium))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                        }
-                        .padding(.leading, 16)
-                        .padding(.trailing, 16)
-                        .padding(.vertical, 11)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        showingDiscoverPopover = false
-                        // TODO: Sunny places within radius
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "sun.and.horizon.circle")
-                                .font(.system(size: 14))
-                                .frame(width: 20)
-                            Text(localizedString("Sunny Nearby", locale: locale))
+                            Text(localizedString("Radial Search", locale: locale))
                                 .font(.avenir(.body, weight: .medium))
                                 .foregroundStyle(.primary)
                             Spacer()
@@ -1110,7 +1141,7 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                 }
                 .padding(.vertical, 8)
-                .frame(width: 220)
+                .frame(width: 240)
                 .presentationCompactAdaptation(.popover)
                 .presentationBackground(.ultraThinMaterial)
             }
@@ -1311,6 +1342,7 @@ struct ContentView: View {
                             })
                             await MainActor.run {
                                 countryOverviewCache[name] = (data: results, date: Date())
+                                CountryOverviewCacheManager.save(countryOverviewCache)
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     isLoadingCountryOverview = false
                                     countryOverviewProgress = 0
@@ -1352,7 +1384,8 @@ struct ContentView: View {
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
             .glassEffect(.regular.interactive(), in: .capsule)
-            .padding(.bottom, 40)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 4)
         }
     }
 
@@ -1360,29 +1393,98 @@ struct ContentView: View {
         VStack {
             Spacer()
 
-            HStack(spacing: 12) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
+            HStack(alignment: .bottom, spacing: 12) {
+                // Exit capsule — left aligned
+                HStack(spacing: 12) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
 
-                Text(String(format: localizedString("Viewing %@", locale: locale), countryOverviewCountryName))
-                    .font(.avenir(.subheadline, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-            }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .glassEffect(.regular.interactive(), in: .capsule)
-            .contentShape(Capsule())
-            .onTapGesture {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    countryOverviewActive = false
-                    countryOverviewData = []
-                    countryOverviewCountryName = ""
-                    recenterOnAllCities = true
+                    Text(countryOverviewCountryName)
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
                 }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .contentShape(Capsule())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        showingMapExpandedCard = false
+                        tappedCity = nil
+                        countryOverviewActive = false
+                        countryOverviewData = []
+                        countryOverviewCountryName = ""
+                        resolvedGridCityNames = [:]
+                        resolvedGridCityName = nil
+                        recenterOnAllCities = true
+                    }
+                }
+
+                Spacer()
+
+                // Recenter + map settings — right aligned
+                HStack(spacing: 8) {
+                    Button {
+                        focusSubsetCities = countryOverviewData
+                        focusSubsetTrigger = true
+                    } label: {
+                        Image(systemName: "dot.squareshape.split.2x2")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 42, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        showingMapStylePopover = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 42, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showingMapStylePopover) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
+                                Button {
+                                    showingMapStylePopover = false
+                                    withAnimation { mapMode = mode }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Text(mode.capitalized)
+                                            .font(.avenir(.body, weight: mapMode == mode ? .bold : .medium))
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                        if mapMode == mode {
+                                            Circle()
+                                                .fill(.white)
+                                                .frame(width: 6, height: 6)
+                                        }
+                                    }
+                                    .padding(.leading, 24)
+                                    .padding(.trailing, 16)
+                                    .padding(.vertical, 11)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                        .frame(width: 160)
+                        .presentationCompactAdaptation(.popover)
+                        .presentationBackground(.ultraThinMaterial)
+                    }
+                }
+                .padding(6)
+                .glassEffect(.regular.interactive(), in: .capsule)
             }
-            .padding(.bottom, 40)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 4)
         }
     }
 
@@ -1427,7 +1529,7 @@ struct ContentView: View {
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Text(city.city.localizedName(locale: locale))
+                    Text(countryOverviewActive ? (resolvedGridCityName ?? "…") : city.city.localizedName(locale: locale))
                         .font(.avenir(.title3, weight: .semibold))
                         .dynamicTypeSize(...DynamicTypeSize.large)
                         .lineLimit(1)
@@ -1435,17 +1537,54 @@ struct ContentView: View {
                 }
                 if !cityIsInSidebar(city) {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            Task {
-                                await addCityToSidebar(city)
-                                showingCityDetail = false
-                                if selectedTab == 1 {
-                                    recenterOnAllCities = true
-                                }
+                        if countryOverviewActive {
+                            Button {
+                                showingAddToListPopover = true
+                            } label: {
+                                Image(systemName: "plus")
+                                    .foregroundStyle(.blue)
                             }
-                        } label: {
-                            Image(systemName: "plus")
-                                .foregroundStyle(.blue)
+                            .popover(isPresented: $showingAddToListPopover) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(CityListID.allLists) { list in
+                                        Button {
+                                            showingAddToListPopover = false
+                                            let cityName = resolvedGridCityName ?? city.city.country
+                                            let namedCity = City(name: cityName, country: city.city.country, latitude: city.city.latitude, longitude: city.city.longitude)
+                                            Task {
+                                                await weatherService.addCityToList(namedCity, listID: list)
+                                                showingCityDetail = false
+                                            }
+                                        } label: {
+                                            HStack(spacing: 12) {
+                                                Text(list.localizedDisplayName(locale: locale))
+                                                    .font(.avenir(.body, weight: .medium))
+                                                    .foregroundStyle(.primary)
+                                                Spacer()
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 11)
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .frame(minWidth: 180)
+                                .presentationCompactAdaptation(.popover)
+                            }
+                        } else {
+                            Button {
+                                Task {
+                                    await addCityToSidebar(city)
+                                    showingCityDetail = false
+                                    if selectedTab == 1 {
+                                        recenterOnAllCities = true
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: "plus")
+                                    .foregroundStyle(.blue)
+                            }
                         }
                     }
                 }
@@ -1636,6 +1775,51 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
                 }
+            }
+            .frame(width: 280)
+            .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 16))
+            .transition(.scale(scale: 0.9).combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder
+    private var iOSGeocodingErrorOverlay: some View {
+        if showingGeocodingError {
+            Color.black.opacity(0.4)
+                .ignoresSafeArea()
+                .onTapGesture {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showingGeocodingError = false
+                    }
+                }
+            
+            VStack(spacing: 0) {
+                Text("Location Unavailable")
+                    .font(.avenir(.headline, weight: .bold))
+                    .padding(.top, 20)
+                    .padding(.bottom, 8)
+                
+                Text("Could not determine the city name for this location. Please try another point.")
+                    .font(.avenir(.subheadline, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 18)
+                
+                Divider()
+                
+                Button {
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        showingGeocodingError = false
+                    }
+                } label: {
+                    Text("OK")
+                        .font(.avenir(.body, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 14)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
             .frame(width: 280)
             .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 16))
@@ -2927,4 +3111,44 @@ struct GridDropDelegate: DropDelegate {
     }
 }
 #endif
+
+private struct CachedCountryOverviewEntry: Codable {
+    let countryName: String
+    let data: [CachedCityWeather]
+    let date: Date
+}
+private enum CountryOverviewCacheManager {
+    private static let cacheKey = "countryOverviewCache"
+    
+    static func load() -> [String: (data: [CityWeather], date: Date)] {
+        guard let data = UserDefaults.standard.data(forKey: cacheKey),
+              let entries = try? JSONDecoder().decode([CachedCountryOverviewEntry].self, from: data) else {
+            return [:]
+        }
+        var result: [String: (data: [CityWeather], date: Date)] = [:]
+        for entry in entries {
+            // Skip entries older than 2 hours
+            if Date().timeIntervalSince(entry.date) < 7200 {
+                result[entry.countryName] = (data: entry.data.map { $0.toCityWeather() }, date: entry.date)
+            }
+        }
+        return result
+    }
+    
+    static func save(_ cache: [String: (data: [CityWeather], date: Date)]) {
+        let entries = cache.compactMap { name, value -> CachedCountryOverviewEntry? in
+            // Only persist entries less than 2 hours old
+            guard Date().timeIntervalSince(value.date) < 7200 else { return nil }
+            return CachedCountryOverviewEntry(
+                countryName: name,
+                data: value.data.map { CachedCityWeather(from: $0) },
+                date: value.date
+            )
+        }
+        if let encoded = try? JSONEncoder().encode(entries) {
+            UserDefaults.standard.set(encoded, forKey: cacheKey)
+        }
+    }
+}
+
 
