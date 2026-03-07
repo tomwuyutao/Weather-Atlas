@@ -29,6 +29,9 @@ struct MapKitMapView: View {
     var forceDotsOnly: Bool = false
     var gridPreviewPoints: [CLLocationCoordinate2D] = []
     @Binding var mapCenterCoordinate: CLLocationCoordinate2D?
+    var radialSearchMode: Bool = false
+    var radialSearchRadius: Double = 160_000
+    var onRadiusChange: ((Double) -> Void)? = nil
     var onDoubleTapMarker: (() -> Void)?
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)?
 
@@ -50,7 +53,7 @@ struct MapKitMapView: View {
             .environment(\.locale, Locale(identifier: "en"))
             .onMapCameraChange(frequency: .continuous) { context in
                 cameraChangeCounter += 1
-                if countrySelectionMode {
+                if countrySelectionMode || radialSearchMode {
                     let coord = context.camera.centerCoordinate
                     mapCenterCoordinate = coord
                     onCameraMove?(coord)
@@ -70,16 +73,16 @@ struct MapKitMapView: View {
                         countries: countries,
                         proxy: proxy,
                         cameraChangeCounter: cameraChangeCounter,
-                        style: countrySelectionMode ? .borders : (mapMode == "borders" ? .borders : (mapMode == "calibration" ? .calibration : .filled)),
-                        cities: (countrySelectionMode || mapMode == "borders") ? cities : [],
-                        borderAllCountries: countrySelectionMode
+                        style: (countrySelectionMode || radialSearchMode) ? .borders : (mapMode == "borders" ? .borders : (mapMode == "calibration" ? .calibration : .filled)),
+                        cities: (countrySelectionMode || radialSearchMode || mapMode == "borders") ? cities : [],
+                        borderAllCountries: countrySelectionMode || radialSearchMode
                     )
                     .allowsHitTesting(false)
                 }
             }
             // Weather marker annotations on top of SVG overlay (non-interactive so map gestures pass through)
             .overlay {
-                if !countrySelectionMode {
+                if !countrySelectionMode && !radialSearchMode {
                     AnnotationsOverlay(
                         cities: cities,
                         proxy: proxy,
@@ -100,7 +103,7 @@ struct MapKitMapView: View {
             }
             // Grid preview dots during country selection
             .overlay {
-                if countrySelectionMode, !gridPreviewPoints.isEmpty {
+                if (countrySelectionMode || radialSearchMode), !gridPreviewPoints.isEmpty {
                     GridPreviewOverlay(
                         points: gridPreviewPoints,
                         proxy: proxy,
@@ -109,9 +112,21 @@ struct MapKitMapView: View {
                     .allowsHitTesting(false)
                 }
             }
+            // Radial search circle overlay
+            .overlay {
+                if radialSearchMode, let center = mapCenterCoordinate {
+                    RadialSearchCircleOverlay(
+                        center: center,
+                        radiusMeters: radialSearchRadius,
+                        proxy: proxy,
+                        cameraChangeCounter: cameraChangeCounter,
+                        onRadiusChange: onRadiusChange
+                    )
+                }
+            }
             // Transparent tap detection layer — finds nearest marker on tap
             .onTapGesture { location in
-                guard !countrySelectionMode else { return }
+                guard !countrySelectionMode && !radialSearchMode else { return }
                 let _ = cameraChangeCounter
                 let tapRadius: CGFloat = 30.0
                 var closest: (city: CityWeather, dist: CGFloat)?
@@ -635,5 +650,73 @@ private struct GridPreviewOverlay: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Radial Search Circle Overlay
+
+private struct RadialSearchCircleOverlay: View {
+    let center: CLLocationCoordinate2D
+    let radiusMeters: Double
+    let proxy: MapProxy
+    let cameraChangeCounter: Int
+    var onRadiusChange: ((Double) -> Void)?
+
+    var body: some View {
+        let _ = cameraChangeCounter
+        GeometryReader { geometry in
+            if let centerPt = proxy.convert(center, to: .local) {
+                let edgeCoord = center.coordinate(at: radiusMeters, bearing: 90)
+                if let edgePt = proxy.convert(edgeCoord, to: .local) {
+                    let screenRadius = sqrt(pow(edgePt.x - centerPt.x, 2) + pow(edgePt.y - centerPt.y, 2))
+
+                    // Circle fill + stroke
+                    Circle()
+                        .fill(Color.blue.opacity(0.08))
+                        .stroke(Color.blue.opacity(0.4), style: StrokeStyle(lineWidth: 2, dash: [8, 4]))
+                        .frame(width: screenRadius * 2, height: screenRadius * 2)
+                        .position(centerPt)
+                        .allowsHitTesting(false)
+
+                    // Drag handle at right edge
+                    Circle()
+                        .fill(Color.blue)
+                        .frame(width: 24, height: 24)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                        .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                        .position(x: centerPt.x + screenRadius, y: centerPt.y)
+                        .gesture(
+                            DragGesture(minimumDistance: 0)
+                                .onChanged { value in
+                                    if let dragCoord = proxy.convert(value.location, from: .local) {
+                                        let centerLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
+                                        let dragLoc = CLLocation(latitude: dragCoord.latitude, longitude: dragCoord.longitude)
+                                        let newRadius = centerLoc.distance(from: dragLoc)
+                                        let clamped = min(max(newRadius, 50_000), 500_000)
+                                        onRadiusChange?(clamped)
+                                    }
+                                }
+                        )
+                }
+            }
+        }
+    }
+}
+
+// MARK: - CLLocationCoordinate2D Bearing Extension
+
+extension CLLocationCoordinate2D {
+    /// Returns a coordinate at a given distance (meters) and bearing (degrees) from this coordinate.
+    func coordinate(at distanceMeters: Double, bearing bearingDegrees: Double) -> CLLocationCoordinate2D {
+        let R = 6_371_000.0
+        let d = distanceMeters / R
+        let brng = bearingDegrees * .pi / 180
+        let lat1 = latitude * .pi / 180
+        let lon1 = longitude * .pi / 180
+
+        let lat2 = asin(sin(lat1) * cos(d) + cos(lat1) * sin(d) * cos(brng))
+        let lon2 = lon1 + atan2(sin(brng) * sin(d) * cos(lat1), cos(d) - sin(lat1) * sin(lat2))
+
+        return CLLocationCoordinate2D(latitude: lat2 * 180 / .pi, longitude: lon2 * 180 / .pi)
     }
 }

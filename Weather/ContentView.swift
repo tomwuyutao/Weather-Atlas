@@ -58,6 +58,9 @@ struct ContentView: View {
         if countryOverviewActive {
             return countryOverviewData
         }
+        if radialSearchActive {
+            return radialSearchData
+        }
         var result: [CityWeather]
         if mapVisibleListIDs.isEmpty || mapVisibleListIDs == Set([weatherService.activeListID.rawValue]) {
             result = weatherService.cityWeatherData
@@ -248,6 +251,14 @@ struct ContentView: View {
     @State private var isLoadingMapList: Bool = false
     @State private var gridPreviewPoints: [CLLocationCoordinate2D] = []
 
+    // MARK: - Radial Search State
+    @State private var radialSearchMode: Bool = false
+    @State private var radialSearchActive: Bool = false
+    @State private var isLoadingRadialSearch: Bool = false
+    @State private var radialSearchProgress: Double = 0
+    @State private var radialSearchData: [CityWeather] = []
+    @State private var radialSearchRadius: Double = 160_000
+
     // MARK: - Vertical Date Slider (Map Mode)
 
     private func mapExpandedCard(for cityWeather: CityWeather) -> some View {
@@ -289,7 +300,7 @@ struct ContentView: View {
                     .contentTransition(.numericText())
 
                 // City name
-                Text(countryOverviewActive ? (resolvedGridCityName ?? "…") : cityWeather.city.localizedName(locale: locale))
+                Text((countryOverviewActive || radialSearchActive) ? (resolvedGridCityName ?? "…") : cityWeather.city.localizedName(locale: locale))
                     .font(.avenir(.body, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -494,7 +505,7 @@ struct ContentView: View {
             }
         }
         .onChange(of: tappedCity) { _, newCity in
-            if countryOverviewActive, let city = newCity {
+            if (countryOverviewActive || radialSearchActive), let city = newCity {
                 // Check cache first
                 if let cached = resolvedGridCityNames[city.id] {
                     resolvedGridCityName = cached
@@ -537,9 +548,14 @@ struct ContentView: View {
         }
         .onChange(of: mapCenterCoordinate?.latitude) { _, _ in
             updateCountryUnderPin()
+            updateRadialGridPreview()
         }
         .onChange(of: mapCenterCoordinate?.longitude) { _, _ in
             updateCountryUnderPin()
+            updateRadialGridPreview()
+        }
+        .onChange(of: radialSearchRadius) { _, _ in
+            updateRadialGridPreview()
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
@@ -669,6 +685,68 @@ struct ContentView: View {
         return []
     }
 
+    // MARK: - Radial Grid Generation
+
+    private func generateRadialGrid(center: CLLocationCoordinate2D, radiusMeters: Double, maxPoints: Int = 150) -> [City] {
+        let latDegreesPerMeter = 1.0 / 111_320.0
+        let radiusDegLat = radiusMeters * latDegreesPerMeter
+        let radiusDegLon = radiusDegLat / max(cos(center.latitude * .pi / 180), 0.1)
+
+        let minLat = center.latitude - radiusDegLat
+        let maxLat = center.latitude + radiusDegLat
+        let minLon = center.longitude - radiusDegLon
+        let maxLon = center.longitude + radiusDegLon
+
+        let centerLocation = CLLocation(latitude: center.latitude, longitude: center.longitude)
+
+        for spacing in [0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0] {
+            let lonSpacing = spacing / max(cos(center.latitude * .pi / 180), 0.3)
+            var gridCities: [City] = []
+            var lat = minLat + spacing / 2
+            while lat <= maxLat {
+                var lon = minLon + lonSpacing / 2
+                while lon <= maxLon {
+                    let pointLocation = CLLocation(latitude: lat, longitude: lon)
+                    if centerLocation.distance(from: pointLocation) <= radiusMeters {
+                        var normalizedLon = lon
+                        if normalizedLon > 180 { normalizedLon -= 360 }
+                        if normalizedLon < -180 { normalizedLon += 360 }
+                        let city = City(
+                            name: "Radial \(gridCities.count + 1)",
+                            country: "Radial Search",
+                            latitude: lat,
+                            longitude: normalizedLon
+                        )
+                        gridCities.append(city)
+                    }
+                    lon += lonSpacing
+                }
+                lat += spacing
+            }
+            if gridCities.count <= maxPoints {
+                return gridCities
+            }
+        }
+        return []
+    }
+
+    @State private var radialGridPreviewTask: Task<Void, Never>?
+
+    private func updateRadialGridPreview() {
+        guard radialSearchMode, let coord = mapCenterCoordinate else { return }
+        radialGridPreviewTask?.cancel()
+        gridPreviewPoints = []
+        radialGridPreviewTask = Task {
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled, radialSearchMode else { return }
+            let grid = generateRadialGrid(center: coord, radiusMeters: radialSearchRadius)
+            guard !Task.isCancelled, radialSearchMode else { return }
+            gridPreviewPoints = grid.map {
+                CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude)
+            }
+        }
+    }
+
     @ToolbarContentBuilder
     private var iOSPrincipalToolbarItem: some ToolbarContent {
         if selectedTab == 1, !isMapSpecialMode {
@@ -697,6 +775,7 @@ struct ContentView: View {
     /// Whether the map is in a special full-screen mode (country selection, loading overview, or showing overview results)
     private var isMapSpecialMode: Bool {
         countrySelectionMode || isLoadingCountryOverview || countryOverviewActive
+        || radialSearchMode || isLoadingRadialSearch || radialSearchActive
     }
 
     private var iOSMainZStack: some View {
@@ -705,7 +784,7 @@ struct ContentView: View {
                 // Map always alive in background, hidden when not selected
                 iOSMapView
                     .overlay(alignment: .trailing) {
-                        if selectedTab == 1, (!isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview)) {
+                        if selectedTab == 1, (!isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch)) {
                             Color.clear
                                 .frame(width: 60, height: 420)
                                 .contentShape(Rectangle())
@@ -728,7 +807,7 @@ struct ContentView: View {
             .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
 
             // Expanded city card on map
-            if selectedTab == 1, (!isMapSpecialMode || countryOverviewActive), showingMapExpandedCard, let city = tappedCity {
+            if selectedTab == 1, (!isMapSpecialMode || countryOverviewActive || radialSearchActive), showingMapExpandedCard, let city = tappedCity {
                 mapExpandedCard(for: city)
                     .id(city.city.id)
                     .transition(.blurReplace)
@@ -765,6 +844,27 @@ struct ContentView: View {
                     .zIndex(3)
             }
 
+            // Radial search selection overlay
+            if radialSearchMode {
+                radialSelectionOverlay
+                    .transition(.opacity)
+                    .zIndex(3)
+            }
+
+            // Radial search loading overlay
+            if isLoadingRadialSearch {
+                radialSearchLoadingOverlay
+                    .transition(.opacity)
+                    .zIndex(3)
+            }
+
+            // Radial search exit button (only after loading completes)
+            if radialSearchActive, !isLoadingRadialSearch {
+                radialSearchExitOverlay
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(3)
+            }
+
             // Floating bottom toolbar
             if previewCity == nil, !isMapSpecialMode {
                 iOSFloatingBottomToolbar
@@ -774,7 +874,7 @@ struct ContentView: View {
 
     @ToolbarContentBuilder
     private var iOSTrailingToolbarItems: some ToolbarContent {
-        if countryOverviewActive, !isLoadingCountryOverview {
+        if (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
             iOSCountryOverviewToolbarItems
         } else if !isMapSpecialMode {
             iOSDefaultTrailingToolbarItems
@@ -1122,7 +1222,14 @@ struct ContentView: View {
 
                     Button {
                         showingDiscoverPopover = false
-                        // TODO: Radial search
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = 1
+                            showingMapExpandedCard = false
+                            tappedCity = nil
+                            previewCity = nil
+                            radialSearchMode = true
+                            radialSearchRadius = 160_000
+                        }
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "circle.dotted.circle")
@@ -1488,6 +1595,235 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Radial Search Overlays
+
+    private var radialSelectionOverlay: some View {
+        ZStack {
+            // Center pin
+            Image(systemName: "mappin")
+                .font(.system(size: 28, weight: .bold))
+                .foregroundStyle(.red)
+                .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                .offset(y: -18)
+
+            // Top capsule showing radius
+            VStack {
+                Text(formatRadius(radialSearchRadius))
+                    .font(.avenir(.headline, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .contentTransition(.numericText())
+
+                Spacer()
+            }
+            .padding(.top, 60)
+
+            // Bottom bar: cancel + confirm
+            VStack {
+                Spacer()
+
+                HStack(spacing: 20) {
+                    // Cancel
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            radialSearchMode = false
+                            gridPreviewPoints = []
+                            radialSearchRadius = 160_000
+                            recenterOnAllCities = true
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 50, height: 50)
+                    }
+                    .glassEffect(.regular.interactive(), in: .circle)
+
+                    // Confirm
+                    Button {
+                        confirmRadialSearch()
+                    } label: {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 50, height: 50)
+                            .background(Circle().fill(Color.blue))
+                    }
+                }
+                .padding(.bottom, 40)
+            }
+        }
+    }
+
+    private func formatRadius(_ meters: Double) -> String {
+        if meters >= 1000 {
+            return String(format: "%.0f km", meters / 1000)
+        }
+        return String(format: "%.0f m", meters)
+    }
+
+    private func confirmRadialSearch() {
+        guard let center = mapCenterCoordinate else { return }
+        gridPreviewPoints = []
+
+        let gridCities = generateRadialGrid(center: center, radiusMeters: radialSearchRadius)
+        guard !gridCities.isEmpty else { return }
+
+        radialSearchData = []
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            radialSearchMode = false
+            isLoadingRadialSearch = true
+            radialSearchActive = true
+        }
+
+        Task {
+            let results = await weatherService.fetchWeatherForGrid(gridCities, onProgress: { progress in
+                Task { @MainActor in
+                    radialSearchProgress = progress
+                }
+            }, onResult: { cityWeather in
+                Task { @MainActor in
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        radialSearchData.append(cityWeather)
+                    }
+                }
+            })
+            await MainActor.run {
+                _ = results
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isLoadingRadialSearch = false
+                    radialSearchProgress = 0
+                }
+            }
+        }
+    }
+
+    private var radialSearchLoadingOverlay: some View {
+        VStack {
+            Spacer()
+
+            HStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.small)
+
+                Text(localizedString("Radial Search…", locale: locale))
+                    .font(.avenir(.subheadline, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text("\(Int(radialSearchProgress * 100))%")
+                    .font(.avenir(.subheadline, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .contentTransition(.numericText())
+            }
+            .padding(.horizontal, 20)
+            .padding(.vertical, 12)
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 4)
+        }
+    }
+
+    private var radialSearchExitOverlay: some View {
+        VStack {
+            Spacer()
+
+            HStack(alignment: .bottom, spacing: 12) {
+                // Exit capsule — left aligned
+                HStack(spacing: 12) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    Text(localizedString("Radial Search", locale: locale))
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .contentShape(Capsule())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        showingMapExpandedCard = false
+                        tappedCity = nil
+                        radialSearchActive = false
+                        radialSearchData = []
+                        resolvedGridCityNames = [:]
+                        resolvedGridCityName = nil
+                        recenterOnAllCities = true
+                    }
+                }
+
+                Spacer()
+
+                // Recenter + map settings — right aligned
+                HStack(spacing: 8) {
+                    Button {
+                        focusSubsetCities = radialSearchData
+                        focusSubsetTrigger = true
+                    } label: {
+                        Image(systemName: "dot.squareshape.split.2x2")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 42, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        showingMapStylePopover = true
+                    } label: {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 42, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showingMapStylePopover) {
+                        VStack(alignment: .leading, spacing: 0) {
+                            ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
+                                Button {
+                                    showingMapStylePopover = false
+                                    withAnimation { mapMode = mode }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Text(mode.capitalized)
+                                            .font(.avenir(.body, weight: mapMode == mode ? .bold : .medium))
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                        if mapMode == mode {
+                                            Circle()
+                                                .fill(.white)
+                                                .frame(width: 6, height: 6)
+                                        }
+                                    }
+                                    .padding(.leading, 24)
+                                    .padding(.trailing, 16)
+                                    .padding(.vertical, 11)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                        .frame(width: 160)
+                        .presentationCompactAdaptation(.popover)
+                        .presentationBackground(.ultraThinMaterial)
+                    }
+                }
+                .padding(6)
+                .glassEffect(.regular.interactive(), in: .capsule)
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 4)
+        }
+    }
+
     @ViewBuilder
     private var iOSCityDetailDestination: some View {
         if let city = tappedCity {
@@ -1529,7 +1865,7 @@ struct ContentView: View {
                     }
                 }
                 ToolbarItem(placement: .principal) {
-                    Text(countryOverviewActive ? (resolvedGridCityName ?? "…") : city.city.localizedName(locale: locale))
+                    Text((countryOverviewActive || radialSearchActive) ? (resolvedGridCityName ?? "…") : city.city.localizedName(locale: locale))
                         .font(.avenir(.title3, weight: .semibold))
                         .dynamicTypeSize(...DynamicTypeSize.large)
                         .lineLimit(1)
@@ -1537,7 +1873,7 @@ struct ContentView: View {
                 }
                 if !cityIsInSidebar(city) {
                     ToolbarItem(placement: .topBarTrailing) {
-                        if countryOverviewActive {
+                        if countryOverviewActive || radialSearchActive {
                             Button {
                                 showingAddToListPopover = true
                             } label: {
@@ -2696,9 +3032,14 @@ struct ContentView: View {
                 focusOnSubsetTrigger: $focusSubsetTrigger,
                 mapMode: mapMode,
                 countrySelectionMode: countrySelectionMode,
-                forceDotsOnly: countryOverviewActive,
+                forceDotsOnly: countryOverviewActive || radialSearchActive,
                 gridPreviewPoints: gridPreviewPoints,
                 mapCenterCoordinate: $mapCenterCoordinate,
+                radialSearchMode: radialSearchMode,
+                radialSearchRadius: radialSearchRadius,
+                onRadiusChange: { newRadius in
+                    radialSearchRadius = newRadius
+                },
                 onDoubleTapMarker: {
                     if previewCity != nil {
                         previewCity = nil
