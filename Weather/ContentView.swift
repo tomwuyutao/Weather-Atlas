@@ -572,7 +572,7 @@ struct ContentView: View {
         }
     }
 
-    private func generateCountryGrid(for country: CountryPath, maxPoints: Int = 150) -> [City] {
+    private func generateCountryGrid(for country: CountryPath, maxPoints: Int = 200) -> [City] {
         let bbox = country.path.boundingBox
         let topLeft = GeoProjection.svgToGeo(svgPoint: CGPoint(x: bbox.minX, y: bbox.minY))
         let bottomRight = GeoProjection.svgToGeo(svgPoint: CGPoint(x: bbox.maxX, y: bbox.maxY))
@@ -585,7 +585,7 @@ struct ContentView: View {
         let midLat = (minLat + maxLat) / 2
         
         // Try increasing spacing until we're under maxPoints
-        for spacing in [1.0, 1.5, 2.0, 3.0] {
+        for spacing in [0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 7.0] {
             // Adjust longitude spacing so the grid appears square on Mercator projection
             let lonSpacing = spacing / max(cos(midLat * .pi / 180), 0.3)
             var gridCities: [City] = []
@@ -595,11 +595,15 @@ struct ContentView: View {
                 while lon <= maxLon {
                     let svgPoint = GeoProjection.geoToSVG(latitude: lat, longitude: lon)
                     if country.path.contains(svgPoint) {
+                        // Normalize longitude to -180...180 for WeatherKit
+                        var normalizedLon = lon
+                        if normalizedLon > 180 { normalizedLon -= 360 }
+                        if normalizedLon < -180 { normalizedLon += 360 }
                         let city = City(
                             name: "\(country.title) \(gridCities.count + 1)",
                             country: country.title,
                             latitude: lat,
-                            longitude: lon
+                            longitude: normalizedLon
                         )
                         gridCities.append(city)
                     }
@@ -1216,7 +1220,7 @@ struct ContentView: View {
                 .font(.system(size: 28, weight: .bold))
                 .foregroundStyle(.red)
                 .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-                .offset(y: -14)
+                .offset(y: -18)
 
             // Top capsule with country name
             VStack {
