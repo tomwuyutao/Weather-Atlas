@@ -205,6 +205,8 @@ struct ContentView: View {
 
     #if !os(macOS)
     @Namespace private var tabBarNamespace
+    @Namespace private var countryBarNS
+    @Namespace private var radialBarNS
     @State private var iOSPreviousDayOffset: Int = 0
     @State private var showingDatePopover: Bool = false
     @State private var isDraggingDateSlider: Bool = false
@@ -837,18 +839,18 @@ struct ContentView: View {
                     .zIndex(2)
             }
 
-            // Country selection overlay
+            // Country selection overlay (top part: pin + country name)
             if countrySelectionMode {
-                countrySelectionOverlay
+                countrySelectionTopOverlay
                     .ignoresSafeArea()
                     .transition(.opacity)
                     .zIndex(3)
             }
 
-            // Country overview loading overlay
-            if isLoadingCountryOverview {
-                countryOverviewLoadingOverlay
-                    .transition(.opacity)
+            // Country selection + loading bottom bar (unified with morphing animation)
+            if countrySelectionMode || isLoadingCountryOverview {
+                countrySearchBottomBar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(3)
             }
 
@@ -859,18 +861,18 @@ struct ContentView: View {
                     .zIndex(3)
             }
 
-            // Radial search selection overlay
+            // Radial search selection overlay (top part: radius label)
             if radialSearchMode {
-                radialSelectionOverlay
+                radialSelectionTopOverlay
                     .ignoresSafeArea()
                     .transition(.opacity)
                     .zIndex(3)
             }
 
-            // Radial search loading overlay
-            if isLoadingRadialSearch {
-                radialSearchLoadingOverlay
-                    .transition(.opacity)
+            // Radial selection + loading bottom bar (unified with morphing animation)
+            if radialSearchMode || isLoadingRadialSearch {
+                radialSearchBottomBar
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                     .zIndex(3)
             }
 
@@ -1367,7 +1369,7 @@ struct ContentView: View {
         .transition(.scale.combined(with: .opacity))
     }
 
-    private var countrySelectionOverlay: some View {
+    private var countrySelectionTopOverlay: some View {
         ZStack {
             // Center pin — offset upward so the tip points at the map center
             Image(systemName: "mappin")
@@ -1398,140 +1400,142 @@ struct ContentView: View {
                 Spacer()
             }
             .padding(.top, 60)
+        }
+    }
 
-            // Bottom bar with cancel and confirm
-            VStack {
-                Spacer()
+    private func confirmCountryOverview() {
+        let name = countryUnderPin
+        guard let country = countries.first(where: { $0.title == name }) else { return }
+        
+        countryOverviewCountryName = name
+        gridPreviewPoints = []
+        
+        // Check cache (2 hour validity)
+        if let cached = countryOverviewCache[name],
+           Date().timeIntervalSince(cached.date) < 7200 {
+            countryOverviewData = cached.data
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                countrySelectionMode = false
+                countryUnderPin = ""
+                countryOverviewActive = true
+            }
+            return
+        }
+        
+        let gridCities = generateCountryGrid(for: country)
+        guard !gridCities.isEmpty else { return }
+        
+        countryOverviewData = []
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            countrySelectionMode = false
+            countryUnderPin = ""
+            isLoadingCountryOverview = true
+            countryOverviewActive = true
+        }
+        
+        countryOverviewLoadingTask = Task {
+            let results = await weatherService.fetchWeatherForGrid(gridCities, onProgress: { progress in
+                Task { @MainActor in
+                    countryOverviewProgress = progress
+                }
+            }, onResult: { cityWeather in
+                Task { @MainActor in
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        countryOverviewData.append(cityWeather)
+                    }
+                }
+            })
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                countryOverviewCache[name] = (data: results, date: Date())
+                CountryOverviewCacheManager.save(countryOverviewCache)
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isLoadingCountryOverview = false
+                    countryOverviewProgress = 0
+                }
+            }
+        }
+    }
 
-                HStack(spacing: 20) {
-                    // Cancel
+    @ViewBuilder
+    private var countrySearchBottomBar: some View {
+        VStack {
+            Spacer()
+
+            GlassEffectContainer(spacing: 20) {
+                HStack(spacing: countrySelectionMode ? 20 : 12) {
+                    if countrySelectionMode {
+                        // Confirm button
+                        Button {
+                            confirmCountryOverview()
+                        } label: {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                        }
+                        .glassEffect(.regular.tint(countryUnderPin.isEmpty ? .gray : .blue).interactive(), in: .circle)
+                        .glassEffectID("cConfirm", in: countryBarNS)
+                        .disabled(countryUnderPin.isEmpty)
+                    } else {
+                        // Loading capsule
+                        HStack(spacing: 12) {
+                            ProgressView()
+                                .controlSize(.small)
+
+                            Text(String(format: localizedString("Loading %@…", locale: locale), countryOverviewCountryName))
+                                .font(.avenir(.subheadline, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
+
+                            Text("\(Int(countryOverviewProgress * 100))%")
+                                .font(.avenir(.subheadline, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .contentTransition(.numericText())
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .glassEffectID("cConfirm", in: countryBarNS)
+                    }
+
+                    if !countrySelectionMode {
+                        Spacer()
+                    }
+
+                    // Cancel button
                     Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            countrySelectionMode = false
-                            countryUnderPin = ""
-                            gridPreviewPoints = []
-                            recenterOnAllCities = true
+                        if isLoadingCountryOverview {
+                            countryOverviewLoadingTask?.cancel()
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isLoadingCountryOverview = false
+                                countryOverviewActive = false
+                                countryOverviewData = []
+                                countryOverviewCountryName = ""
+                                countryOverviewProgress = 0
+                                recenterOnAllCities = true
+                            }
+                        } else {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                countrySelectionMode = false
+                                countryUnderPin = ""
+                                gridPreviewPoints = []
+                                recenterOnAllCities = true
+                            }
                         }
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.primary)
-                            .frame(width: 50, height: 50)
+                            .frame(width: 44, height: 44)
                     }
                     .glassEffect(.regular.interactive(), in: .circle)
-
-                    // Confirm
-                    Button {
-                        let name = countryUnderPin
-                        guard let country = countries.first(where: { $0.title == name }) else { return }
-                        
-                        countryOverviewCountryName = name
-                        gridPreviewPoints = []
-                        
-                        // Check cache (2 hour validity)
-                        if let cached = countryOverviewCache[name],
-                           Date().timeIntervalSince(cached.date) < 7200 {
-                            countryOverviewData = cached.data
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                countrySelectionMode = false
-                                countryUnderPin = ""
-                                countryOverviewActive = true
-                            }
-                            return
-                        }
-                        
-                        let gridCities = generateCountryGrid(for: country)
-                        guard !gridCities.isEmpty else { return }
-                        
-                        countryOverviewData = []
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            countrySelectionMode = false
-                            countryUnderPin = ""
-                            isLoadingCountryOverview = true
-                            countryOverviewActive = true
-                        }
-                        
-                        countryOverviewLoadingTask = Task {
-                            let results = await weatherService.fetchWeatherForGrid(gridCities, onProgress: { progress in
-                                Task { @MainActor in
-                                    countryOverviewProgress = progress
-                                }
-                            }, onResult: { cityWeather in
-                                Task { @MainActor in
-                                    withAnimation(.easeOut(duration: 0.2)) {
-                                        countryOverviewData.append(cityWeather)
-                                    }
-                                }
-                            })
-                            guard !Task.isCancelled else { return }
-                            await MainActor.run {
-                                countryOverviewCache[name] = (data: results, date: Date())
-                                CountryOverviewCacheManager.save(countryOverviewCache)
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    isLoadingCountryOverview = false
-                                    countryOverviewProgress = 0
-                                }
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 50, height: 50)
-                            .background(Circle().fill(countryUnderPin.isEmpty ? Color.gray : Color.blue))
-                    }
-                    .disabled(countryUnderPin.isEmpty)
+                    .glassEffectID("cCancel", in: countryBarNS)
                 }
-                .padding(.bottom, 40)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: countrySelectionMode)
             }
-        }
-    }
-
-    private var countryOverviewLoadingOverlay: some View {
-        VStack {
-            Spacer()
-
-            HStack(alignment: .bottom, spacing: 12) {
-                HStack(spacing: 12) {
-                    ProgressView()
-                        .controlSize(.small)
-
-                    Text(String(format: localizedString("Loading %@…", locale: locale), countryOverviewCountryName))
-                        .font(.avenir(.subheadline, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
-
-                    Text("\(Int(countryOverviewProgress * 100))%")
-                        .font(.avenir(.subheadline, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .glassEffect(.regular.interactive(), in: .capsule)
-
-                Spacer()
-
-                Button {
-                    countryOverviewLoadingTask?.cancel()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        isLoadingCountryOverview = false
-                        countryOverviewActive = false
-                        countryOverviewData = []
-                        countryOverviewCountryName = ""
-                        countryOverviewProgress = 0
-                        recenterOnAllCities = true
-                    }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 44, height: 44)
-                }
-                .glassEffect(.regular.interactive(), in: .circle)
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 4)
         }
     }
 
@@ -1636,57 +1640,19 @@ struct ContentView: View {
 
     // MARK: - Radial Search Overlays
 
-    private var radialSelectionOverlay: some View {
-        ZStack {
-            // Top capsule showing radius
-            VStack {
-                Text(formatRadius(radialSearchRadius))
-                    .font(.avenir(.headline, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 10)
-                    .glassEffect(.regular.interactive(), in: .capsule)
-                    .contentTransition(.numericText())
+    private var radialSelectionTopOverlay: some View {
+        VStack {
+            Text(formatRadius(radialSearchRadius))
+                .font(.avenir(.headline, weight: .semibold))
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .contentTransition(.numericText())
 
-                Spacer()
-            }
-            .padding(.top, 60)
-
-            // Bottom bar: cancel + confirm
-            VStack {
-                Spacer()
-
-                HStack(spacing: 20) {
-                    // Cancel
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            radialSearchMode = false
-                            gridPreviewPoints = []
-                            radialSearchRadius = 160_000
-                            recenterOnAllCities = true
-                        }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 50, height: 50)
-                    }
-                    .glassEffect(.regular.interactive(), in: .circle)
-
-                    // Confirm
-                    Button {
-                        confirmRadialSearch()
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 50, height: 50)
-                            .background(Circle().fill(Color.blue))
-                    }
-                }
-                .padding(.bottom, 40)
-            }
+            Spacer()
         }
+        .padding(.top, 60)
     }
 
     private func formatRadius(_ meters: Double) -> String {
@@ -1704,9 +1670,11 @@ struct ContentView: View {
         guard !gridCities.isEmpty else { return }
 
         radialSearchData = []
-        radialSearchActive = true
-        isLoadingRadialSearch = true
-        radialSearchMode = false
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            radialSearchActive = true
+            isLoadingRadialSearch = true
+            radialSearchMode = false
+        }
 
         radialSearchLoadingTask = Task {
             let results = await weatherService.fetchWeatherForGrid(gridCities, onProgress: { progress in
@@ -1731,50 +1699,83 @@ struct ContentView: View {
         }
     }
 
-    private var radialSearchLoadingOverlay: some View {
+    @ViewBuilder
+    private var radialSearchBottomBar: some View {
         VStack {
             Spacer()
 
-            HStack(alignment: .bottom, spacing: 12) {
-                HStack(spacing: 12) {
-                    ProgressView()
-                        .controlSize(.small)
+            GlassEffectContainer(spacing: 20) {
+                HStack(spacing: radialSearchMode ? 20 : 12) {
+                    if radialSearchMode {
+                        // Confirm button
+                        Button {
+                            confirmRadialSearch()
+                        } label: {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                        }
+                        .glassEffect(.regular.tint(.blue).interactive(), in: .circle)
+                        .glassEffectID("rConfirm", in: radialBarNS)
+                    } else {
+                        // Loading capsule
+                        HStack(spacing: 12) {
+                            ProgressView()
+                                .controlSize(.small)
 
-                    Text(localizedString("Radial Search…", locale: locale))
-                        .font(.avenir(.subheadline, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+                            Text(localizedString("Radial Search…", locale: locale))
+                                .font(.avenir(.subheadline, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(1)
 
-                    Text("\(Int(radialSearchProgress * 100))%")
-                        .font(.avenir(.subheadline, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .contentTransition(.numericText())
-                }
-                .padding(.horizontal, 20)
-                .padding(.vertical, 12)
-                .glassEffect(.regular.interactive(), in: .capsule)
-
-                Spacer()
-
-                Button {
-                    radialSearchLoadingTask?.cancel()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        isLoadingRadialSearch = false
-                        radialSearchActive = false
-                        radialSearchData = []
-                        radialSearchProgress = 0
-                        recenterOnAllCities = true
+                            Text("\(Int(radialSearchProgress * 100))%")
+                                .font(.avenir(.subheadline, weight: .medium))
+                                .foregroundStyle(.secondary)
+                                .contentTransition(.numericText())
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 12)
+                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .glassEffectID("rConfirm", in: radialBarNS)
                     }
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 44, height: 44)
+
+                    if !radialSearchMode {
+                        Spacer()
+                    }
+
+                    // Cancel button
+                    Button {
+                        if isLoadingRadialSearch {
+                            radialSearchLoadingTask?.cancel()
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isLoadingRadialSearch = false
+                                radialSearchActive = false
+                                radialSearchData = []
+                                radialSearchProgress = 0
+                                recenterOnAllCities = true
+                            }
+                        } else {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                radialSearchMode = false
+                                gridPreviewPoints = []
+                                radialSearchRadius = 160_000
+                                recenterOnAllCities = true
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                    }
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .glassEffectID("rCancel", in: radialBarNS)
                 }
-                .glassEffect(.regular.interactive(), in: .circle)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 4)
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: radialSearchMode)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 4)
         }
     }
 
