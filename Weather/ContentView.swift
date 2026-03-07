@@ -239,6 +239,7 @@ struct ContentView: View {
     @State private var countryOverviewCountryName: String = ""
     @State private var isLoadingCountryOverview: Bool = false
     @State private var countryOverviewProgress: Double = 0
+    @State private var countryOverviewLoadingTask: Task<Void, Never>?
     @State private var countryOverviewCache: [String: (data: [CityWeather], date: Date)] = [:]
     @State private var resolvedGridCityName: String?
     @State private var resolvedGridCityNames: [UUID: String] = [:]
@@ -256,6 +257,7 @@ struct ContentView: View {
     @State private var radialSearchActive: Bool = false
     @State private var isLoadingRadialSearch: Bool = false
     @State private var radialSearchProgress: Double = 0
+    @State private var radialSearchLoadingTask: Task<Void, Never>?
     @State private var radialSearchData: [CityWeather] = []
     @State private var radialSearchRadius: Double = 250_000
 
@@ -715,13 +717,21 @@ struct ContentView: View {
                         var normalizedLon = lon
                         if normalizedLon > 180 { normalizedLon -= 360 }
                         if normalizedLon < -180 { normalizedLon += 360 }
-                        let city = City(
-                            name: "Radial \(gridCities.count + 1)",
-                            country: "Radial Search",
-                            latitude: lat,
-                            longitude: normalizedLon
-                        )
-                        gridCities.append(city)
+
+                        // Clip to land: check if point falls on any country SVG path
+                        let svgPoint = GeoProjection.geoToSVG(latitude: lat, longitude: normalizedLon)
+                        let isOnLand = countries.contains { country in
+                            country.path.boundingBox.contains(svgPoint) && country.path.contains(svgPoint)
+                        }
+                        if isOnLand {
+                            let city = City(
+                                name: "Radial \(gridCities.count + 1)",
+                                country: "Radial Search",
+                                latitude: lat,
+                                longitude: normalizedLon
+                            )
+                            gridCities.append(city)
+                        }
                     }
                     lon += lonSpacing
                 }
@@ -1441,7 +1451,7 @@ struct ContentView: View {
                             countryOverviewActive = true
                         }
                         
-                        Task {
+                        countryOverviewLoadingTask = Task {
                             let results = await weatherService.fetchWeatherForGrid(gridCities, onProgress: { progress in
                                 Task { @MainActor in
                                     countryOverviewProgress = progress
@@ -1453,6 +1463,7 @@ struct ContentView: View {
                                     }
                                 }
                             })
+                            guard !Task.isCancelled else { return }
                             await MainActor.run {
                                 countryOverviewCache[name] = (data: results, date: Date())
                                 CountryOverviewCacheManager.save(countryOverviewCache)
@@ -1480,23 +1491,45 @@ struct ContentView: View {
         VStack {
             Spacer()
 
-            HStack(spacing: 12) {
-                ProgressView()
-                    .controlSize(.small)
+            HStack(alignment: .bottom, spacing: 12) {
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.small)
 
-                Text(String(format: localizedString("Loading %@…", locale: locale), countryOverviewCountryName))
-                    .font(.avenir(.subheadline, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    Text(String(format: localizedString("Loading %@…", locale: locale), countryOverviewCountryName))
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
 
-                Text("\(Int(countryOverviewProgress * 100))%")
-                    .font(.avenir(.subheadline, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
+                    Text("\(Int(countryOverviewProgress * 100))%")
+                        .font(.avenir(.subheadline, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .glassEffect(.regular.interactive(), in: .capsule)
+
+                Spacer()
+
+                Button {
+                    countryOverviewLoadingTask?.cancel()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isLoadingCountryOverview = false
+                        countryOverviewActive = false
+                        countryOverviewData = []
+                        countryOverviewCountryName = ""
+                        countryOverviewProgress = 0
+                        recenterOnAllCities = true
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                }
+                .glassEffect(.regular.interactive(), in: .circle)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .glassEffect(.regular.interactive(), in: .capsule)
             .padding(.horizontal, 16)
             .padding(.bottom, 4)
         }
@@ -1675,7 +1708,7 @@ struct ContentView: View {
         isLoadingRadialSearch = true
         radialSearchMode = false
 
-        Task {
+        radialSearchLoadingTask = Task {
             let results = await weatherService.fetchWeatherForGrid(gridCities, onProgress: { progress in
                 Task { @MainActor in
                     radialSearchProgress = progress
@@ -1687,6 +1720,7 @@ struct ContentView: View {
                     }
                 }
             })
+            guard !Task.isCancelled else { return }
             await MainActor.run {
                 _ = results
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -1701,23 +1735,44 @@ struct ContentView: View {
         VStack {
             Spacer()
 
-            HStack(spacing: 12) {
-                ProgressView()
-                    .controlSize(.small)
+            HStack(alignment: .bottom, spacing: 12) {
+                HStack(spacing: 12) {
+                    ProgressView()
+                        .controlSize(.small)
 
-                Text(localizedString("Radial Search…", locale: locale))
-                    .font(.avenir(.subheadline, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                    Text(localizedString("Radial Search…", locale: locale))
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
 
-                Text("\(Int(radialSearchProgress * 100))%")
-                    .font(.avenir(.subheadline, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .contentTransition(.numericText())
+                    Text("\(Int(radialSearchProgress * 100))%")
+                        .font(.avenir(.subheadline, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                }
+                .padding(.horizontal, 20)
+                .padding(.vertical, 12)
+                .glassEffect(.regular.interactive(), in: .capsule)
+
+                Spacer()
+
+                Button {
+                    radialSearchLoadingTask?.cancel()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isLoadingRadialSearch = false
+                        radialSearchActive = false
+                        radialSearchData = []
+                        radialSearchProgress = 0
+                        recenterOnAllCities = true
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                }
+                .glassEffect(.regular.interactive(), in: .circle)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 12)
-            .glassEffect(.regular.interactive(), in: .capsule)
             .padding(.horizontal, 16)
             .padding(.bottom, 4)
         }
