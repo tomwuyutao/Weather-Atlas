@@ -79,7 +79,7 @@ struct WeatherDetailView: View {
         #if os(macOS)
         return true
         #else
-        return UIDevice.current.userInterfaceIdiom == .pad
+        return false
         #endif
     }
 
@@ -589,7 +589,7 @@ struct HourlyTimelineChart: View {
     #if os(macOS)
     private let totalHeight: CGFloat = 156
     #else
-    private let totalHeight: CGFloat = UIDevice.current.userInterfaceIdiom == .pad ? 156 : 220
+    private let totalHeight: CGFloat = 220
     #endif
     private let hourLabelHeight: CGFloat = 18  // fixed hour label at top
     private let topPadding: CGFloat = 6        // space below hour label
