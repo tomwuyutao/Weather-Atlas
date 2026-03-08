@@ -775,34 +775,33 @@ struct ContentView: View {
     private var iOSLeadingToolbarItems: some ToolbarContent {
         if isIPad {
             ToolbarItem(placement: .navigationBarLeading) {
-                HStack(spacing: 12) {
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            showingSidebar.toggle()
-                        }
-                    } label: {
-                        Image(systemName: "sidebar.left")
-                            .font(.system(size: 16, weight: .semibold))
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showingSidebar.toggle()
                     }
+                } label: {
+                    Image(systemName: "sidebar.left")
+                }
+            }
 
-                    if !isMapSpecialMode {
-                        Button {
-                            showingMapListSwitcher = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Text(mapToolbarTitle)
-                                    .font(.avenir(.headline, weight: .semibold))
-                                    .lineLimit(1)
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                            }
+            ToolbarSpacer(.fixed, placement: .navigationBarLeading)
+
+            if !isMapSpecialMode, !showingSidebar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showingMapListSwitcher = true
+                    } label: {
+                        HStack(spacing: 4) {
+                            Text(mapToolbarTitle)
+                                .lineLimit(1)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
                         }
-                        .buttonStyle(.plain)
-                        .popover(isPresented: $showingMapListSwitcher) {
-                            iOSMapListSwitcherMenu
-                                .presentationCompactAdaptation(.popover)
-                        }
+                    }
+                    .popover(isPresented: $showingMapListSwitcher) {
+                        iOSMapListSwitcherMenu
+                            .presentationCompactAdaptation(.popover)
                     }
                 }
             }
@@ -991,204 +990,6 @@ struct ContentView: View {
         }
     }
 
-    // MARK: - iPad Floating Map Controls
-
-    private var iPadMapFloatingControls: some View {
-        HStack(spacing: 10) {
-            // Date switcher
-            iPadDateSwitcherToolbarContent
-                .padding(.horizontal, 6)
-                .padding(.vertical, 6)
-                .glassEffect(.regular.interactive(), in: .capsule)
-
-            // Discover
-            Button {
-                showingDiscoverPopover = true
-            } label: {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-            }
-            .buttonStyle(.plain)
-            .padding(4)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .popover(isPresented: $showingDiscoverPopover) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Button {
-                        showingDiscoverPopover = false
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selectedTab = 1
-                            showingMapExpandedCard = false
-                            tappedCity = nil
-                            previewCity = nil
-                            countrySelectionMode = true
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "globe.desk")
-                                .font(.system(size: 14))
-                                .frame(width: 20)
-                            Text(localizedString("Country Overview", locale: locale))
-                                .font(.avenir(.body, weight: .medium))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                        }
-                        .padding(.leading, 16)
-                        .padding(.trailing, 16)
-                        .padding(.vertical, 11)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        showingDiscoverPopover = false
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selectedTab = 1
-                            showingMapExpandedCard = false
-                            tappedCity = nil
-                            previewCity = nil
-                            radialSearchMode = true
-                            radialSearchRadius = 250_000
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "circle.dotted.circle")
-                                .font(.system(size: 14))
-                                .frame(width: 20)
-                            Text(localizedString("Radial Search", locale: locale))
-                                .font(.avenir(.body, weight: .medium))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                        }
-                        .padding(.leading, 16)
-                        .padding(.trailing, 16)
-                        .padding(.vertical, 11)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.vertical, 8)
-                .frame(width: 240)
-                .presentationCompactAdaptation(.popover)
-                .presentationBackground(.ultraThinMaterial)
-            }
-
-            // Center on map
-            Button {
-                if mapVisibleListIDs.count > 1 {
-                    showingRecenterPopover = true
-                } else {
-                    recenterOnAllCities = false
-                    DispatchQueue.main.async {
-                        recenterOnAllCities = true
-                    }
-                }
-            } label: {
-                Image(systemName: "dot.squareshape.split.2x2")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-            }
-            .buttonStyle(.plain)
-            .padding(4)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .popover(isPresented: $showingRecenterPopover) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
-                        Button {
-                            showingRecenterPopover = false
-                            let cities: [CityWeather]
-                            if listID == weatherService.activeListID {
-                                cities = weatherService.cityWeatherData
-                            } else {
-                                cities = weatherService.otherListData[listID.rawValue] ?? []
-                            }
-                            focusSubsetCities = cities
-                            focusSubsetTrigger = true
-                        } label: {
-                            HStack(spacing: 12) {
-                                Text(listID.localizedDisplayName(locale: locale))
-                                    .font(.avenir(.body, weight: .medium))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                            }
-                            .padding(.leading, 24)
-                            .padding(.trailing, 16)
-                            .padding(.vertical, 11)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 8)
-                .frame(width: 160)
-                .presentationCompactAdaptation(.popover)
-                .presentationBackground(.ultraThinMaterial)
-            }
-
-            // Map settings
-            Button {
-                showingMapStylePopover = true
-            } label: {
-                Image(systemName: "map")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-            }
-            .buttonStyle(.plain)
-            .padding(4)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .popover(isPresented: $showingMapStylePopover) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
-                        Button {
-                            showingMapStylePopover = false
-                            withAnimation { mapMode = mode }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Text(mode.capitalized)
-                                    .font(.avenir(.body, weight: mapMode == mode ? .bold : .medium))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                if mapMode == mode {
-                                    Circle()
-                                        .fill(.white)
-                                        .frame(width: 6, height: 6)
-                                }
-                            }
-                            .padding(.leading, 24)
-                            .padding(.trailing, 16)
-                            .padding(.vertical, 11)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 8)
-                .frame(width: 160)
-                .presentationCompactAdaptation(.popover)
-                .presentationBackground(.ultraThinMaterial)
-            }
-
-            // Menu
-            Button {
-                showingMenuPopover = true
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-            }
-            .buttonStyle(.plain)
-            .padding(4)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .popover(isPresented: $showingMenuPopover) {
-                iOSCustomMenu
-                    .presentationCompactAdaptation(.popover)
-            }
-        }
-    }
 
     @ToolbarContentBuilder
     private var iOSTrailingToolbarItems: some ToolbarContent {
@@ -1289,7 +1090,6 @@ struct ContentView: View {
                         Button {
                             showingDiscoverPopover = false
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                selectedTab = 1
                                 showingMapExpandedCard = false
                                 tappedCity = nil
                                 previewCity = nil
@@ -1315,7 +1115,6 @@ struct ContentView: View {
                         Button {
                             showingDiscoverPopover = false
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                selectedTab = 1
                                 showingMapExpandedCard = false
                                 tappedCity = nil
                                 previewCity = nil
@@ -1346,10 +1145,12 @@ struct ContentView: View {
                 }
             }
 
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
             // Center on map
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                        if mapVisibleListIDs.count > 1 {
+                    if mapVisibleListIDs.count > 1 {
                         showingRecenterPopover = true
                     } else {
                         recenterOnAllCities = false
@@ -1395,10 +1196,10 @@ struct ContentView: View {
                 }
             }
 
-            // Map settings
+            // Map style
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                        showingMapStylePopover = true
+                    showingMapStylePopover = true
                 } label: {
                     Image(systemName: "map")
                 }
@@ -1435,10 +1236,12 @@ struct ContentView: View {
                 }
             }
 
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
             // Menu
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                        showingMenuPopover = true
+                    showingMenuPopover = true
                 } label: {
                     Image(systemName: "ellipsis")
                 }
@@ -3113,7 +2916,6 @@ struct ContentView: View {
         .frame(width: 210)
         .presentationBackground(.ultraThinMaterial)
     }
-    
     private var iOSCustomMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
             if !isEditingListName {
