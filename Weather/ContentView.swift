@@ -913,6 +913,8 @@ struct ContentView: View {
             if previewCity == nil, !isMapSpecialMode, !isIPad {
                 iOSFloatingBottomToolbar
             }
+
+
         }
     }
 
@@ -975,12 +977,212 @@ struct ContentView: View {
                             .transition(.opacity)
                     }
                 }
-                .overlay(alignment: .bottom) {
-                    if previewCity == nil, !isMapSpecialMode {
-                        iOSDateSwitcherCapsule
-                            .padding(.bottom, 12)
+                .overlay(alignment: .topTrailing) {
+                    if !isMapSpecialMode {
+                        iPadMapFloatingControls
+                            .padding(.trailing, 12)
+                            .offset(y: -50)
                     }
                 }
+        }
+    }
+
+    // MARK: - iPad Floating Map Controls
+
+    private var iPadMapFloatingControls: some View {
+        HStack(spacing: 10) {
+            // Date switcher
+            iPadDateSwitcherToolbarContent
+                .padding(.horizontal, 6)
+                .padding(.vertical, 6)
+                .glassEffect(.regular.interactive(), in: .capsule)
+
+            // Discover
+            Button {
+                showingDiscoverPopover = true
+            } label: {
+                Image(systemName: "wand.and.stars")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .padding(4)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .popover(isPresented: $showingDiscoverPopover) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Button {
+                        showingDiscoverPopover = false
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = 1
+                            showingMapExpandedCard = false
+                            tappedCity = nil
+                            previewCity = nil
+                            countrySelectionMode = true
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "globe.desk")
+                                .font(.system(size: 14))
+                                .frame(width: 20)
+                            Text(localizedString("Country Overview", locale: locale))
+                                .font(.avenir(.body, weight: .medium))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
+                        .padding(.leading, 16)
+                        .padding(.trailing, 16)
+                        .padding(.vertical, 11)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        showingDiscoverPopover = false
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = 1
+                            showingMapExpandedCard = false
+                            tappedCity = nil
+                            previewCity = nil
+                            radialSearchMode = true
+                            radialSearchRadius = 250_000
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "circle.dotted.circle")
+                                .font(.system(size: 14))
+                                .frame(width: 20)
+                            Text(localizedString("Radial Search", locale: locale))
+                                .font(.avenir(.body, weight: .medium))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                        }
+                        .padding(.leading, 16)
+                        .padding(.trailing, 16)
+                        .padding(.vertical, 11)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.vertical, 8)
+                .frame(width: 240)
+                .presentationCompactAdaptation(.popover)
+                .presentationBackground(.ultraThinMaterial)
+            }
+
+            // Center on map
+            Button {
+                if mapVisibleListIDs.count > 1 {
+                    showingRecenterPopover = true
+                } else {
+                    recenterOnAllCities = false
+                    DispatchQueue.main.async {
+                        recenterOnAllCities = true
+                    }
+                }
+            } label: {
+                Image(systemName: "dot.squareshape.split.2x2")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .padding(4)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .popover(isPresented: $showingRecenterPopover) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
+                        Button {
+                            showingRecenterPopover = false
+                            let cities: [CityWeather]
+                            if listID == weatherService.activeListID {
+                                cities = weatherService.cityWeatherData
+                            } else {
+                                cities = weatherService.otherListData[listID.rawValue] ?? []
+                            }
+                            focusSubsetCities = cities
+                            focusSubsetTrigger = true
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(listID.localizedDisplayName(locale: locale))
+                                    .font(.avenir(.body, weight: .medium))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                            }
+                            .padding(.leading, 24)
+                            .padding(.trailing, 16)
+                            .padding(.vertical, 11)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 8)
+                .frame(width: 160)
+                .presentationCompactAdaptation(.popover)
+                .presentationBackground(.ultraThinMaterial)
+            }
+
+            // Map settings
+            Button {
+                showingMapStylePopover = true
+            } label: {
+                Image(systemName: "map")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .padding(4)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .popover(isPresented: $showingMapStylePopover) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
+                        Button {
+                            showingMapStylePopover = false
+                            withAnimation { mapMode = mode }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(mode.capitalized)
+                                    .font(.avenir(.body, weight: mapMode == mode ? .bold : .medium))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                if mapMode == mode {
+                                    Circle()
+                                        .fill(.white)
+                                        .frame(width: 6, height: 6)
+                                }
+                            }
+                            .padding(.leading, 24)
+                            .padding(.trailing, 16)
+                            .padding(.vertical, 11)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 8)
+                .frame(width: 160)
+                .presentationCompactAdaptation(.popover)
+                .presentationBackground(.ultraThinMaterial)
+            }
+
+            // Menu
+            Button {
+                showingMenuPopover = true
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.plain)
+            .padding(4)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .popover(isPresented: $showingMenuPopover) {
+                iOSCustomMenu
+                    .presentationCompactAdaptation(.popover)
+            }
         }
     }
 
@@ -1070,133 +1272,17 @@ struct ContentView: View {
             }
         }
 
-        if isIPad {
+        if !isIPad {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showingDiscoverPopover = true
+                    showingMenuPopover = true
                 } label: {
-                    Image(systemName: "wand.and.stars")
+                    Image(systemName: "ellipsis")
                 }
-                .popover(isPresented: $showingDiscoverPopover) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Button {
-                            showingDiscoverPopover = false
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                selectedTab = 1
-                                showingMapExpandedCard = false
-                                tappedCity = nil
-                                previewCity = nil
-                                countrySelectionMode = true
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "globe.desk")
-                                    .font(.system(size: 14))
-                                    .frame(width: 20)
-                                Text(localizedString("Country Overview", locale: locale))
-                                    .font(.avenir(.body, weight: .medium))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                            }
-                            .padding(.leading, 16)
-                            .padding(.trailing, 16)
-                            .padding(.vertical, 11)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            showingDiscoverPopover = false
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                selectedTab = 1
-                                showingMapExpandedCard = false
-                                tappedCity = nil
-                                previewCity = nil
-                                radialSearchMode = true
-                                radialSearchRadius = 250_000
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "circle.dotted.circle")
-                                    .font(.system(size: 14))
-                                    .frame(width: 20)
-                                Text(localizedString("Radial Search", locale: locale))
-                                    .font(.avenir(.body, weight: .medium))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                            }
-                            .padding(.leading, 16)
-                            .padding(.trailing, 16)
-                            .padding(.vertical, 11)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.vertical, 8)
-                    .frame(width: 240)
-                    .presentationCompactAdaptation(.popover)
-                    .presentationBackground(.ultraThinMaterial)
+                .popover(isPresented: $showingMenuPopover) {
+                    iOSCustomMenu
+                        .presentationCompactAdaptation(.popover)
                 }
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    if mapVisibleListIDs.count > 1 {
-                        showingRecenterPopover = true
-                    } else {
-                        recenterOnAllCities = false
-                        DispatchQueue.main.async {
-                            recenterOnAllCities = true
-                        }
-                    }
-                } label: {
-                    Image(systemName: "dot.squareshape.split.2x2")
-                }
-                .popover(isPresented: $showingRecenterPopover) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
-                            Button {
-                                showingRecenterPopover = false
-                                let cities: [CityWeather]
-                                if listID == weatherService.activeListID {
-                                    cities = weatherService.cityWeatherData
-                                } else {
-                                    cities = weatherService.otherListData[listID.rawValue] ?? []
-                                }
-                                focusSubsetCities = cities
-                                focusSubsetTrigger = true
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Text(listID.localizedDisplayName(locale: locale))
-                                        .font(.avenir(.body, weight: .medium))
-                                        .foregroundStyle(.primary)
-                                    Spacer()
-                                }
-                                .padding(.leading, 24)
-                                .padding(.trailing, 16)
-                                .padding(.vertical, 11)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    .frame(width: 160)
-                    .presentationCompactAdaptation(.popover)
-                    .presentationBackground(.ultraThinMaterial)
-                }
-            }
-        }
-
-        ToolbarItem(placement: .topBarTrailing) {
-            Button {
-                showingMenuPopover = true
-            } label: {
-                Image(systemName: "ellipsis")
-            }
-            .popover(isPresented: $showingMenuPopover) {
-                iOSCustomMenu
-                    .presentationCompactAdaptation(.popover)
             }
         }
     }
@@ -1332,6 +1418,74 @@ struct ContentView: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture { }
+        }
+    }
+
+    private var iPadDateSwitcherToolbarContent: some View {
+        HStack(spacing: 2) {
+            Button {
+                if selectedDayOffset > 0 {
+                    withAnimation(.smooth(duration: 0.2)) {
+                        selectedDayOffset -= 1
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                showingDatePopover = true
+            } label: {
+                Text(iOSDateText)
+                    .font(.avenir(.subheadline, weight: .medium))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(minWidth: 70)
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingDatePopover) {
+                DatePicker(
+                    "",
+                    selection: Binding(
+                        get: {
+                            Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
+                        },
+                        set: { newDate in
+                            let calendar = Calendar.current
+                            let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
+                            if let days = components.day {
+                                withAnimation(.smooth(duration: 0.2)) {
+                                    selectedDayOffset = max(0, min(9, days))
+                                }
+                            }
+                        }
+                    ),
+                    in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+                .frame(width: 280, height: 300)
+                .padding(8)
+                .presentationCompactAdaptation(.popover)
+                .presentationBackground(.thickMaterial)
+            }
+
+            Button {
+                if selectedDayOffset < 9 {
+                    withAnimation(.smooth(duration: 0.2)) {
+                        selectedDayOffset += 1
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
+            }
+            .buttonStyle(.plain)
         }
     }
 
