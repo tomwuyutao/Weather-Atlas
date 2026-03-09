@@ -248,14 +248,9 @@ struct SVGMapView: View {
                 isPlaying: isPlaying,
                 displayMode: showDots ? .dot : .card
             )
-            .overlay {
-                if highlightedMarkerID == cityWeather.id {
-                    RevealPulseRing()
-                        .scaleEffect(1 / liveZoom, anchor: .center)
-                }
-            }
-            .scaleEffect((tappedMarkerID == cityWeather.id ? 1.5 : 1.0) / liveZoom, anchor: .center)
+            .scaleEffect(((tappedMarkerID == cityWeather.id || highlightedMarkerID == cityWeather.id) ? 1.5 : 1.0) / liveZoom, anchor: .center)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: tappedMarkerID)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: highlightedMarkerID)
             .position(
                 x: svgPos.x * canvasEffective,
                 y: svgPos.y * canvasEffective
@@ -554,18 +549,4 @@ struct SVGMapView: View {
     }
 }
 
-// MARK: - Pulsing ring for "Reveal on Map"
 
-private struct RevealPulseRing: View {
-    @State private var isPulsing = false
-    
-    var body: some View {
-        Circle()
-            .stroke(Color.accentColor, lineWidth: 2)
-            .frame(width: 44, height: 44)
-            .scaleEffect(isPulsing ? 1.3 : 0.9)
-            .opacity(isPulsing ? 0.4 : 1.0)
-            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: isPulsing)
-            .onAppear { isPulsing = true }
-    }
-}

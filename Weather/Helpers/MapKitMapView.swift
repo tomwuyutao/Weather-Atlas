@@ -341,11 +341,11 @@ private struct AnnotationsOverlay: View {
                         displayMode: markerMode,
                         isSelected: showingCityDetail && tappedCity?.id == cityWeather.id
                     )
-                    .overlay {
-                        if highlightedMarkerID == cityWeather.id && !(showingCityDetail && tappedCity?.id == cityWeather.id) {
-                            MapRevealPulseRing()
-                        }
-                    }
+                    .scaleEffect(
+                        (tappedMarkerID == cityWeather.id || highlightedMarkerID == cityWeather.id) ? 1.5 : 1.0
+                    )
+                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: tappedMarkerID)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: highlightedMarkerID)
 
                     .position(screenPt)
                 }
@@ -611,22 +611,6 @@ private struct SVGProxyOverlay: View {
         }
 
         return (start, end)
-    }
-}
-
-// MARK: - Pulsing ring for "Reveal on Map"
-
-private struct MapRevealPulseRing: View {
-    @State private var isPulsing = false
-
-    var body: some View {
-        Circle()
-            .stroke(Color.accentColor, lineWidth: 2)
-            .frame(width: 44, height: 44)
-            .scaleEffect(isPulsing ? 1.3 : 0.9)
-            .opacity(isPulsing ? 0.4 : 1.0)
-            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: isPulsing)
-            .onAppear { isPulsing = true }
     }
 }
 

@@ -719,7 +719,7 @@ struct ContentView: View {
     }
 
     private func iOSHandleCityDetailDismiss(showing: Bool) {
-        if showing, isIPad, detailOpenedFromList, let city = tappedCity {
+        if showing, isIPad, let city = tappedCity {
             centerOnCityTrigger = city
         }
         if !showing, showingMapExpandedCard, let city = tappedCity {
