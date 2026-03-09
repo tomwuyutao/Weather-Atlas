@@ -351,13 +351,28 @@ struct ContentView: View {
         }
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
+        .frame(maxWidth: isIPad ? 420 : .infinity)
         .background {
             RoundedRectangle(cornerRadius: 20)
                 .fill(.ultraThinMaterial)
                 .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
         }
         .onTapGesture {
-            showingCityDetail = true
+            if isIPad {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    showingMapExpandedCard = false
+                }
+                if sidebarVisibility != .all {
+                    withAnimation {
+                        sidebarVisibility = .all
+                    }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    showingCityDetail = true
+                }
+            } else {
+                showingCityDetail = true
+            }
         }
     }
 
@@ -490,68 +505,74 @@ struct ContentView: View {
 
     private var iPadNavigationSplitView: some View {
         NavigationSplitView(columnVisibility: $sidebarVisibility) {
-            iOSListView
-                .background(Color(.systemGray6))
-                .overlay {
-                    if weatherService.isLoading, !weatherService.cityWeatherData.isEmpty {
-                        VStack(spacing: 16) {
-                            Image(systemName: "cloud.sun.fill")
-                                .font(.system(size: 40))
-                                .symbolRenderingMode(.multicolor)
-                            Text(localizedString("Loading Weather", locale: locale))
-                                .font(.avenir(.headline, weight: .semibold))
-                            Capsule()
-                                .fill(Color.white.opacity(0.15))
-                                .frame(width: 120, height: 4)
-                                .overlay(alignment: .leading) {
-                                    Capsule()
-                                        .fill(.white)
-                                        .frame(width: 120 * weatherService.loadingProgress, height: 4)
+            NavigationStack {
+                iOSListView
+                    .background(.thinMaterial)
+                    .overlay {
+                        if weatherService.isLoading, !weatherService.cityWeatherData.isEmpty {
+                            VStack(spacing: 16) {
+                                Image(systemName: "cloud.sun.fill")
+                                    .font(.system(size: 40))
+                                    .symbolRenderingMode(.multicolor)
+                                Text(localizedString("Loading Weather", locale: locale))
+                                    .font(.avenir(.headline, weight: .semibold))
+                                Capsule()
+                                    .fill(Color.white.opacity(0.15))
+                                    .frame(width: 120, height: 4)
+                                    .overlay(alignment: .leading) {
+                                        Capsule()
+                                            .fill(.white)
+                                            .frame(width: 120 * weatherService.loadingProgress, height: 4)
+                                    }
+                            }
+                            .padding(24)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                            .allowsHitTesting(false)
+                            .transition(.opacity)
+                        }
+                    }
+                    .toolbar(removing: .sidebarToggle)
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button {
+                                withAnimation {
+                                    sidebarVisibility = .detailOnly
                                 }
-                        }
-                        .padding(24)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-                        .allowsHitTesting(false)
-                        .transition(.opacity)
-                    }
-                }
-                .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 400)
-                .toolbar(removing: .sidebarToggle)
-                .toolbar {
-                    ToolbarItem(placement: .navigationBarLeading) {
-                        Button {
-                            withAnimation {
-                                sidebarVisibility = .detailOnly
+                            } label: {
+                                Image(systemName: "sidebar.left")
                             }
-                        } label: {
-                            Image(systemName: "sidebar.left")
                         }
                     }
-                }
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            withAnimation(.easeOut(duration: 0.15)) {
-                                listContentOpacity = 0
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                                isGridView.toggle()
-                                withAnimation(.easeIn(duration: 0.2)) {
-                                    listContentOpacity = 1
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                withAnimation(.easeOut(duration: 0.15)) {
+                                    listContentOpacity = 0
                                 }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                                    isGridView.toggle()
+                                    withAnimation(.easeIn(duration: 0.2)) {
+                                        listContentOpacity = 1
+                                    }
+                                }
+                            } label: {
+                                Image(systemName: isGridView ? "list.bullet" : "square.grid.2x2")
                             }
-                        } label: {
-                            Image(systemName: isGridView ? "list.bullet" : "square.grid.2x2")
+                        }
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                withAnimation { isEditMode.toggle() }
+                            } label: {
+                                Image(systemName: isEditMode ? "checkmark" : "pencil")
+                            }
                         }
                     }
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            withAnimation { isEditMode.toggle() }
-                        } label: {
-                            Image(systemName: isEditMode ? "checkmark" : "pencil")
-                        }
+                    .navigationDestination(isPresented: $showingCityDetail) {
+                        iOSCityDetailDestination
                     }
-                }
+            }
+            .toolbar(removing: .sidebarToggle)
+            .navigationSplitViewColumnWidth(min: 300, ideal: 340, max: 400)
         } detail: {
             iPadDetailContent
                 .navigationTitle("")
@@ -560,9 +581,6 @@ struct ContentView: View {
                 .toolbar { iOSPrincipalToolbarItem }
                 .toolbar { iOSTrailingToolbarItems }
                 .toolbar(removing: .sidebarToggle)
-                .navigationDestination(isPresented: $showingCityDetail) {
-                    iOSCityDetailDestination
-                }
                 .fullScreenCover(isPresented: $showingAddCityView) {
                     iOSAddCitySheet
                 }
@@ -701,6 +719,9 @@ struct ContentView: View {
     }
 
     private func iOSHandleCityDetailDismiss(showing: Bool) {
+        if showing, isIPad, detailOpenedFromList, let city = tappedCity {
+            centerOnCityTrigger = city
+        }
         if !showing, showingMapExpandedCard, let city = tappedCity {
             if !weatherService.cityWeatherData.contains(where: { $0.city.name == city.city.name }) {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -1052,6 +1073,7 @@ struct ContentView: View {
     private var iPadDetailContent: some View {
         ZStack(alignment: .bottom) {
             iOSMapView
+                
                 .overlay(alignment: .trailing) {
                     if showDateSlider, !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
                         Color.clear
@@ -1071,7 +1093,6 @@ struct ContentView: View {
                     .id(city.city.id)
                     .transition(.blurReplace)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 72)
                     .zIndex(1)
             }
 
@@ -2412,7 +2433,19 @@ struct ContentView: View {
                 showCloudCover: showCloudCover
             )
             .navigationBarBackButtonHidden(true)
+            .toolbar(removing: .sidebarToggle)
             .toolbar {
+                if isIPad {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            withAnimation {
+                                sidebarVisibility = sidebarVisibility == .all ? .detailOnly : .all
+                            }
+                        } label: {
+                            Image(systemName: "sidebar.left")
+                        }
+                    }
+                }
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         showingCityDetail = false
@@ -2480,7 +2513,7 @@ struct ContentView: View {
                         }
                     }
                 }
-                if cityIsInSidebar(city) {
+                if cityIsInSidebar(city), !isIPad {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Button {

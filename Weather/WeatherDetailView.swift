@@ -186,7 +186,7 @@ struct WeatherDetailView: View {
                 .opacity(Double(1.0 - min(abs(chartDragOffset) / 200.0, 0.4)))
                 .padding(.top, 12)
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .background(Color.black, in: RoundedRectangle(cornerRadius: 12))
+                .background(.clear)
                 .overlay {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.gray.opacity(0.5), lineWidth: 1)
