@@ -297,7 +297,7 @@ struct WeatherDetailView: View {
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(.white)
                             .frame(width: 32, height: 32)
-                            .glassEffect(.regular.tint(.accentColor).interactive(), in: .circle)
+                            .glassEffect(.regular.tint(AppTheme.shared.colors.accent).interactive(), in: .circle)
                     }
                     .buttonStyle(.plain)
                     .padding(14)
@@ -747,10 +747,10 @@ struct DayForecastBox: View {
         .frame(minWidth: 50)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(isSelected ? Color.accentColor.opacity(0.15) : Color.primary.opacity(0.05), in: UnevenRoundedRectangle(cornerRadii: cornerRadius))
+        .background(isSelected ? AppTheme.shared.colors.accent.opacity(0.15) : Color.primary.opacity(0.05), in: UnevenRoundedRectangle(cornerRadii: cornerRadius))
         .overlay {
             UnevenRoundedRectangle(cornerRadii: cornerRadius)
-                .stroke(isSelected ? Color.accentColor.opacity(0.3) : Color.primary.opacity(0.1), lineWidth: isSelected ? 1.5 : 0.5)
+                .stroke(isSelected ? AppTheme.shared.colors.accent.opacity(0.3) : Color.primary.opacity(0.1), lineWidth: isSelected ? 1.5 : 0.5)
         }
     }
 }
@@ -883,7 +883,7 @@ struct DayForecastBox: View {
     
     ZStack {
         // Background
-        Color.black
+        AppTheme.shared.colors.background
         .ignoresSafeArea()
         
         if showDetail {

@@ -34,8 +34,8 @@ struct SunGlowEffect: View {
                 let radius = min(size.width, size.height) * 0.5
                 
                 let gradient = Gradient(colors: [
-                    Color.yellow.opacity(glowOpacity),
-                    Color.orange.opacity(glowOpacity * 0.5),
+                    AppTheme.shared.colors.sunIconColor.opacity(glowOpacity),
+                    AppTheme.shared.colors.sunIconColor.opacity(glowOpacity * 0.3),
                     Color.clear
                 ])
                 
@@ -115,7 +115,7 @@ struct RainDropsEffect: View {
                     let dropH = 4.0 * scale
                     let dropRect = CGRect(x: x - dropW / 2, y: y - dropH / 2, width: dropW, height: dropH)
                     let dropPath = Capsule().path(in: dropRect)
-                    context.fill(dropPath, with: .color(.cyan.opacity(0.55 * opacity)))
+                    context.fill(dropPath, with: .color(AppTheme.shared.colors.rainEffect.opacity(opacity)))
                 }
             }
         }
@@ -170,7 +170,7 @@ struct SnowflakesEffect: View {
                     let flakeSize = 2.5 * scale
                     let flakeRect = CGRect(x: x - flakeSize / 2, y: y - flakeSize / 2, width: flakeSize, height: flakeSize)
                     let flakePath = Circle().path(in: flakeRect)
-                    context.fill(flakePath, with: .color(.white.opacity(0.6 * opacity)))
+                    context.fill(flakePath, with: .color(AppTheme.shared.colors.snowEffect.opacity(opacity)))
                 }
             }
         }
@@ -196,7 +196,7 @@ struct CloudDriftEffect: View {
                 let h = size.height * 0.55
                 let rect = CGRect(x: center.x - w / 2, y: center.y - h / 2, width: w, height: h)
                 let path = Capsule().path(in: rect)
-                context.fill(path, with: .color(.white.opacity(opacity)))
+                context.fill(path, with: .color(AppTheme.shared.colors.cloudEffect.opacity(opacity)))
             }
         }
         .allowsHitTesting(false)
@@ -240,7 +240,7 @@ struct WindStreaksEffect: View {
                     let streakH = 1.2 * scale
                     let rect = CGRect(x: startX, y: y - streakH / 2, width: streakW, height: streakH)
                     let path = Capsule().path(in: rect)
-                    context.fill(path, with: .color(.white.opacity(0.3 * opacity)))
+                    context.fill(path, with: .color(AppTheme.shared.colors.windEffect.opacity(opacity)))
                 }
             }
         }
@@ -338,7 +338,7 @@ struct WeatherEffectOverlay: View {
     }
     .padding(40)
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(Color.black)
+    .background(AppTheme.shared.colors.background)
     .preferredColorScheme(.dark)
 }
 

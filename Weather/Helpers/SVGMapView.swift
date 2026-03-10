@@ -146,7 +146,7 @@ struct SVGMapView: View {
                 }
         }
         .clipped()
-        .background(Color.black)
+        .background(AppTheme.shared.colors.mapOcean)
     }
     
     @ViewBuilder
@@ -168,7 +168,7 @@ struct SVGMapView: View {
                 if let transformedPath = country.path.copy(using: &transform) {
                     context.fill(
                         Path(transformedPath),
-                        with: .color(.gray.opacity(0.2))
+                        with: .color(AppTheme.shared.colors.svgCountryFill)
                     )
                 }
             }

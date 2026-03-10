@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @State private var weatherService = WeatherService()
+    @Environment(\.appTheme) private var theme
 
     @State private var countries: [CountryPath] = []
     @State private var centerOnCityTrigger: CityWeather?
@@ -408,7 +409,7 @@ struct ContentView: View {
 
                 Text(sliderDateText(for: max(0, min(totalDays - 1, displayDay))))
                     .font(.avenir(isDraggingDateSlider ? .body : .subheadline, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(theme.colors.primaryText)
                     .frame(minWidth: isDraggingDateSlider ? 64 : 52)
                     .fixedSize()
                     .padding(.horizontal, isDraggingDateSlider ? 14 : 12)
@@ -416,7 +417,7 @@ struct ContentView: View {
                     .glassEffect(.regular.interactive(), in: .capsule)
 
                 Capsule()
-                    .fill(.white)
+                    .fill(Color.gray.opacity(0.6))
                     .frame(width: isDraggingDateSlider ? 30 : 24, height: isDraggingDateSlider ? 20 : 16)
                     .offset(x: isDraggingDateSlider ? 12 : 9)
                     .shadow(color: .black.opacity(0.25), radius: 4, x: -2)
@@ -460,7 +461,7 @@ struct ContentView: View {
         HStack(spacing: 6) {
             Text(text)
                 .font(.avenir(.subheadline, weight: .medium))
-                .foregroundStyle(.white.opacity(0.7))
+                .foregroundStyle(AppTheme.shared.colors.primaryText.opacity(0.7))
                 .shadow(color: .black.opacity(0.5), radius: 2)
                 .fixedSize()
 
@@ -519,11 +520,11 @@ struct ContentView: View {
                                 Text(localizedString("Loading Weather", locale: locale))
                                     .font(.avenir(.headline, weight: .semibold))
                                 Capsule()
-                                    .fill(Color.white.opacity(0.15))
+                                    .fill(theme.colors.primaryText.opacity(0.15))
                                     .frame(width: 120, height: 4)
                                     .overlay(alignment: .leading) {
                                         Capsule()
-                                            .fill(.white)
+                                            .fill(theme.colors.primaryText)
                                             .frame(width: 120 * weatherService.loadingProgress, height: 4)
                                     }
                             }
@@ -1067,7 +1068,7 @@ struct ContentView: View {
 
             if !isMapSpecialMode {
                 iOSListView
-                    .background(Color(.systemBackground))
+                    .background(theme.colors.background)
                     .offset(x: selectedTab == 0 ? 0 : -10000)
             }
         }
@@ -1180,7 +1181,7 @@ struct ContentView: View {
                 withAnimation { filterSunny.toggle() }
             } label: {
                 Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
-                    .foregroundStyle(filterSunny ? .yellow : .primary)
+                    .foregroundStyle(filterSunny ? theme.colors.filterSunny : .primary)
             }
         }
 
@@ -1215,7 +1216,7 @@ struct ContentView: View {
                     }
                 } label: {
                     Image(systemName: "sun.max.fill")
-                        .foregroundStyle(.yellow)
+                        .foregroundStyle(theme.colors.filterSunny)
                 }
             }
         }
@@ -1394,7 +1395,7 @@ struct ContentView: View {
                                     Spacer()
                                     if mapMode == mode {
                                         Circle()
-                                            .fill(.white)
+                                            .fill(Color.primary)
                                             .frame(width: 6, height: 6)
                                     }
                                 }
@@ -1739,7 +1740,7 @@ struct ContentView: View {
                                 Spacer()
                                 if mapMode == mode {
                                     Circle()
-                                        .fill(.white)
+                                        .fill(Color.primary)
                                         .frame(width: 6, height: 6)
                                 }
                             }
@@ -1767,7 +1768,7 @@ struct ContentView: View {
             // Center pin — offset upward so the tip points at the map center
             Image(systemName: "mappin")
                 .font(.system(size: 28, weight: .bold))
-                .foregroundStyle(.red)
+                .foregroundStyle(theme.colors.destructive)
                 .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
                 .offset(y: -18)
 
@@ -1867,7 +1868,7 @@ struct ContentView: View {
                                 .foregroundStyle(.white)
                                 .frame(width: 44, height: 44)
                         }
-                        .glassEffect(.regular.tint(countryUnderPin.isEmpty ? .gray : .blue).interactive(), in: .circle)
+                        .glassEffect(.regular.tint(countryUnderPin.isEmpty ? .gray : theme.colors.accent).interactive(), in: .circle)
                         .glassEffectID("cConfirm", in: countryBarNS)
                         .disabled(countryUnderPin.isEmpty)
                     } else {
@@ -2005,7 +2006,7 @@ struct ContentView: View {
                                         Spacer()
                                         if mapMode == mode {
                                             Circle()
-                                                .fill(.white)
+                                                .fill(Color.primary)
                                                 .frame(width: 6, height: 6)
                                         }
                                     }
@@ -2109,7 +2110,7 @@ struct ContentView: View {
                                 .foregroundStyle(.white)
                                 .frame(width: 44, height: 44)
                         }
-                        .glassEffect(.regular.tint(.blue).interactive(), in: .circle)
+                        .glassEffect(.regular.tint(theme.colors.accent).interactive(), in: .circle)
                         .glassEffectID("rConfirm", in: radialBarNS)
                     } else {
                         // Loading capsule
@@ -2244,7 +2245,7 @@ struct ContentView: View {
                                         Spacer()
                                         if mapMode == mode {
                                             Circle()
-                                                .fill(.white)
+                                                .fill(Color.primary)
                                                 .frame(width: 6, height: 6)
                                         }
                                     }
@@ -2301,6 +2302,9 @@ struct ContentView: View {
                 isInSidebar: cityIsInSidebar(city),
                 showCloudCover: showCloudCover
             )
+            .background(theme.colors.background)
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(theme.colors.background, for: .navigationBar)
             .navigationBarBackButtonHidden(true)
             .toolbar(removing: .sidebarToggle)
             .toolbar {
@@ -2342,7 +2346,7 @@ struct ContentView: View {
                                 showingAddToListPopover = true
                             } label: {
                                 Image(systemName: "plus")
-                                    .foregroundStyle(.blue)
+                                    .foregroundStyle(theme.colors.accent)
                             }
                             .popover(isPresented: $showingAddToListPopover) {
                                 VStack(alignment: .leading, spacing: 0) {
@@ -2383,7 +2387,7 @@ struct ContentView: View {
                                 }
                             } label: {
                                 Image(systemName: "plus")
-                                    .foregroundStyle(.blue)
+                                    .foregroundStyle(theme.colors.accent)
                             }
                         }
                     }
@@ -2476,7 +2480,7 @@ struct ContentView: View {
                 // PREVIEW STATE: + button + search bar (city name) + x button
                 Image(systemName: "plus")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(theme.colors.accent)
                     .frame(width: 36, height: 36)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
@@ -2639,10 +2643,10 @@ struct ContentView: View {
                                 if existing {
                                     Text(localizedString("Added", locale: locale))
                                         .font(.avenir(.caption2, weight: .medium))
-                                        .foregroundStyle(.blue)
+                                        .foregroundStyle(theme.colors.accent)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
-                                        .background(.blue.opacity(0.12), in: Capsule())
+                                        .background(theme.colors.accent.opacity(0.12), in: Capsule())
                                 }
 
                                 Spacer()
@@ -2688,7 +2692,7 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(.black.opacity(0.95))
+        .background(theme.colors.searchOverlayBackground)
         .ignoresSafeArea(edges: .bottom)
     }
 
@@ -2818,9 +2822,9 @@ struct ContentView: View {
                 isInSidebar: cityIsInSidebar(city),
                 showCloudCover: showCloudCover
             )
-            .background(Color.black)
+            .background(theme.colors.background)
             .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(Color.black, for: .navigationBar)
+            .toolbarBackground(theme.colors.background, for: .navigationBar)
             .navigationBarBackButtonHidden(true)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -2850,7 +2854,7 @@ struct ContentView: View {
                             }
                         } label: {
                             Image(systemName: "plus")
-                                .foregroundStyle(.blue)
+                                .foregroundStyle(theme.colors.accent)
                         }
                     }
                 }
@@ -2861,7 +2865,7 @@ struct ContentView: View {
     @ViewBuilder
     private var iOSDeleteListConfirmationOverlay: some View {
         if showingDeleteListConfirmation {
-            Color.black.opacity(0.4)
+            theme.colors.modalOverlay
                 .ignoresSafeArea()
                 .onTapGesture {
                     withAnimation(.easeOut(duration: 0.2)) {
@@ -2909,7 +2913,7 @@ struct ContentView: View {
                     } label: {
                         Text(localizedString("Delete", locale: locale))
                             .font(.avenir(.body, weight: .semibold))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.colors.destructive)
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 14)
                             .contentShape(Rectangle())
@@ -2918,7 +2922,7 @@ struct ContentView: View {
                 }
             }
             .frame(width: 280)
-            .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 16))
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
             .transition(.scale(scale: 0.9).combined(with: .opacity))
         }
     }
@@ -3066,7 +3070,7 @@ struct ContentView: View {
                             Spacer()
                             if listID == weatherService.activeListID {
                                 Circle()
-                                    .fill(.white)
+                                    .fill(Color.primary)
                                     .frame(width: 6, height: 6)
                                     .frame(width: 13)
                             }
@@ -3152,11 +3156,11 @@ struct ContentView: View {
                     HStack(spacing: 12) {
                         Text(localizedString("Delete List", locale: locale))
                             .font(.avenir(.body, weight: .medium))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.colors.destructive)
                         Spacer()
                         Image(systemName: "trash")
                             .font(.system(size: 13))
-                            .foregroundStyle(.red)
+                            .foregroundStyle(theme.colors.destructive)
                     }
                     .padding(.leading, 24)
                     .padding(.trailing, 16)
@@ -3205,7 +3209,7 @@ struct ContentView: View {
                         Spacer()
                         if listID == weatherService.activeListID {
                             Circle()
-                                .fill(.white)
+                                .fill(Color.primary)
                                 .frame(width: 6, height: 6)
                         }
                     }
@@ -3308,7 +3312,7 @@ struct ContentView: View {
                             }
                         }
                     }
-                    .foregroundStyle(.red)
+                    .foregroundStyle(theme.colors.destructive)
                 }
             }
 
@@ -3431,7 +3435,7 @@ struct ContentView: View {
                     Image(systemName: "minus.circle.fill")
                         .font(.title3)
                         .symbolRenderingMode(.palette)
-                        .foregroundStyle(.white, .red)
+                        .foregroundStyle(.white, theme.colors.destructive)
                 }
                 .offset(x: -6, y: -6)
                 .transition(.scale.combined(with: .opacity))
@@ -3594,11 +3598,11 @@ struct ContentView: View {
                         Text(localizedString("Loading Weather", locale: locale))
                             .font(.avenir(.title2, weight: .semibold))
                         Capsule()
-                            .fill(Color.white.opacity(0.15))
+                            .fill(theme.colors.primaryText.opacity(0.15))
                             .frame(width: 140, height: 4)
                             .overlay(alignment: .leading) {
                                 Capsule()
-                                    .fill(.white)
+                                    .fill(theme.colors.primaryText)
                                     .frame(width: 140 * weatherService.loadingProgress, height: 4)
                             }
                     }
@@ -3634,7 +3638,7 @@ struct ContentView: View {
                                 .foregroundStyle(.white)
                                 .padding(.horizontal, 24)
                                 .padding(.vertical, 12)
-                                .background(.blue, in: Capsule())
+                                .background(theme.colors.accent, in: Capsule())
                                 .glassEffect(.regular.interactive(), in: .capsule)
                         }
                         .buttonStyle(.plain)
@@ -3688,7 +3692,7 @@ struct ContentView: View {
                         .padding(.vertical, 18)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .stroke(longPressedCity?.id == cityWeather.id ? Color.white.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: 1)
+                                .stroke(longPressedCity?.id == cityWeather.id ? Color.primary.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: 1)
                         )
                         .scaleEffect(longPressedCity?.id == cityWeather.id ? 0.97 : 1.0)
                         .animation(.easeOut(duration: 0.2), value: longPressedCity?.id)
@@ -3730,7 +3734,7 @@ struct ContentView: View {
                                         selectedCity = nil
                                     }
                                 }
-                                .foregroundStyle(.red)
+                                .foregroundStyle(theme.colors.destructive)
                             }
                             .padding(.vertical, 8)
                             .frame(width: 220)
@@ -3841,11 +3845,11 @@ struct ContentView: View {
                         Text(localizedString("Loading Weather", locale: locale))
                             .font(.avenir(.title2, weight: .semibold))
                         Capsule()
-                            .fill(Color.white.opacity(0.15))
+                            .fill(theme.colors.primaryText.opacity(0.15))
                             .frame(width: 140, height: 4)
                             .overlay(alignment: .leading) {
                                 Capsule()
-                                    .fill(.white)
+                                    .fill(theme.colors.primaryText)
                                     .frame(width: 140 * weatherService.loadingProgress, height: 4)
                             }
                     }
@@ -3860,7 +3864,7 @@ struct ContentView: View {
             // City detail popup (desktop/iPad only — iPhone uses navigation)
             #if os(macOS)
             if showingCityDetail, let city = tappedCity {
-                Color.black.opacity(0.3)
+                theme.colors.modalOverlay
                     .ignoresSafeArea()
                     .onTapGesture {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
@@ -4129,7 +4133,7 @@ struct WeatherMarker: View {
             // Temperature — primary, largest
             Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.daytimeHigh))
                 .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(.white)
+                .foregroundStyle(AppTheme.shared.colors.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .contentTransition(.numericText())
@@ -4140,7 +4144,7 @@ struct WeatherMarker: View {
             // City name — secondary, smaller
             Text(cityWeather.city.localizedName(locale: locale))
                 .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.white.opacity(0.75))
+                .foregroundStyle(AppTheme.shared.colors.primaryText.opacity(0.75))
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
         }

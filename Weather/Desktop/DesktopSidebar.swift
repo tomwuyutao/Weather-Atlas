@@ -308,7 +308,7 @@ struct DesktopSidebar: View {
                         Spacer()
                         if listID == weatherService.activeListID {
                             Circle()
-                                .fill(.white)
+                                .fill(Color.primary)
                                 .frame(width: 6, height: 6)
                         }
                     }

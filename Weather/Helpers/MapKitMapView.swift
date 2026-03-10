@@ -62,7 +62,7 @@ struct MapKitMapView: View {
             // Black underlay to prevent MapKit tiles flashing during transitions
             .overlay {
                 if mapMode != "detailed" {
-                    Color.black
+                    AppTheme.shared.colors.mapOcean
                         .allowsHitTesting(false)
                 }
             }
@@ -435,7 +435,7 @@ private struct SVGProxyOverlay: View {
 
             // Fill entire canvas with black ocean (not in calibration mode)
             if style != .calibration {
-                context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(.black))
+                context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(AppTheme.shared.colors.mapOcean))
             }
 
             let svgA = Self.refSvgA
@@ -460,8 +460,8 @@ private struct SVGProxyOverlay: View {
                 tx: tx, ty: ty
             )
 
-            let landColor = Color(red: 28/255.0, green: 28/255.0, blue: 30/255.0)
-            let borderColor = Color(red: 45/255.0, green: 45/255.0, blue: 47/255.0)
+            let landColor = AppTheme.shared.colors.mapLand
+            let borderColor = AppTheme.shared.colors.mapBorder
             let borderedIDs: Set<String> = style == .borders ? (borderAllCountries ? Set(countries.map(\.id)) : countriesWithCities) : []
 
             // Corner rounding radius in screen points
@@ -665,7 +665,7 @@ private struct RadialSearchCircleOverlay: View {
 
                 // Drag handle at right edge
                 Circle()
-                    .fill(Color.blue)
+                    .fill(AppTheme.shared.colors.accent)
                     .frame(width: 24, height: 24)
                     .overlay(Circle().stroke(Color.white, lineWidth: 2))
                     .shadow(color: .black.opacity(0.3), radius: 4, y: 2)

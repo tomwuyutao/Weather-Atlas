@@ -86,15 +86,19 @@ enum AppWeatherCondition {
     }
     
     var dotColor: Color {
+        dotColor(for: AppTheme.shared.colors)
+    }
+    
+    func dotColor(for theme: ThemeColors) -> Color {
         switch self {
-        case .clear: return .yellow
-        case .partlyCloudy: return Color(hue: 0.13, saturation: 0.3, brightness: 1.0)
-        case .cloudy: return .white
-        case .rain: return .blue
-        case .drizzle: return Color(red: 0.55, green: 0.65, blue: 0.85)
-        case .snow: return Color(red: 0.55, green: 0.65, blue: 0.85)
-        case .fog: return .gray
-        case .wind: return .white
+        case .clear: return theme.dotSun
+        case .partlyCloudy: return theme.dotPartlyCloudy
+        case .cloudy: return theme.dotCloudy
+        case .rain: return theme.dotRain
+        case .drizzle: return theme.dotDrizzle
+        case .snow: return theme.dotSnow
+        case .fog: return theme.dotFog
+        case .wind: return theme.dotWind
         }
     }
 }
@@ -1040,10 +1044,11 @@ struct CityWeather: Identifiable, Hashable {
     }
     
     var weatherColor: Color {
+        let theme = AppTheme.shared.colors
         if symbolName.contains("sun") && !symbolName.contains("cloud") {
-            return .yellow
+            return theme.sunIconColor
         } else {
-            return .white
+            return theme.cloudIconColor
         }
     }
 }
@@ -1124,44 +1129,29 @@ struct DailyForecast: Identifiable {
     }
     
     var weatherColor: Color {
+        let theme = AppTheme.shared.colors
         if symbolName.contains("sun") && !symbolName.contains("cloud") {
-            return .yellow
+            return theme.sunIconColor
         } else {
-            return .white
+            return theme.cloudIconColor
         }
     }
     
-    // Light mode high-contrast color
+    // Themed color variant
     func weatherColor(for colorScheme: ColorScheme) -> Color {
-        if colorScheme == .light {
-            // Subtle contrast increase for light mode
-            if symbolName.contains("sun") && !symbolName.contains("cloud") {
-                return Color(red: 1.0, green: 0.8, blue: 0.0)  // Slightly more orange than yellow
-            } else {
-                return .white  // Keep original cloud color
-            }
-        } else {
-            // Keep original colors for dark mode
-            return weatherColor
-        }
+        return weatherColor
     }
     
-    // Palette colors for rain icons in light mode
+    // Palette colors for rain icons
     func rainPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
-        if colorScheme == .light {
-            return (.white, Color(red: 0.0, green: 0.48, blue: 1.0))  // Original cloud, slightly deeper blue rain
-        } else {
-            return (.white, .blue)  // Original for dark mode
-        }
+        let theme = AppTheme.shared.colors
+        return (theme.cloudIconColor, theme.rainIconColor)
     }
     
-    // Palette colors for partially sunny icons in light mode
+    // Palette colors for partially sunny icons
     func partlySunnyPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
-        if colorScheme == .light {
-            return (.white, Color(red: 1.0, green: 0.8, blue: 0.0))  // Original cloud, slightly more orange sun
-        } else {
-            return (.white, .yellow)  // Original for dark mode
-        }
+        let theme = AppTheme.shared.colors
+        return (theme.cloudIconColor, theme.sunIconColor)
     }
     
     var isRainIcon: Bool {
@@ -1213,47 +1203,29 @@ struct HourlyForecast: Identifiable {
     }
     
     func weatherColor(for colorScheme: ColorScheme) -> Color {
-        if colorScheme == .light {
-            if symbolName.contains("sun") && !symbolName.contains("cloud") {
-                return Color(red: 1.0, green: 0.8, blue: 0.0)
-            } else if symbolName.contains("moon") && !symbolName.contains("cloud") {
-                return .indigo
-            } else {
-                return .white
-            }
+        let theme = AppTheme.shared.colors
+        if symbolName.contains("sun") && !symbolName.contains("cloud") {
+            return theme.sunIconColor
+        } else if symbolName.contains("moon") && !symbolName.contains("cloud") {
+            return colorScheme == .light ? .indigo : .white
         } else {
-            if symbolName.contains("sun") && !symbolName.contains("cloud") {
-                return .yellow
-            } else if symbolName.contains("moon") && !symbolName.contains("cloud") {
-                return .white
-            } else {
-                return .white
-            }
+            return theme.cloudIconColor
         }
     }
     
     func rainPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
-        if colorScheme == .light {
-            return (.white, Color(red: 0.0, green: 0.48, blue: 1.0))
-        } else {
-            return (.white, .blue)
-        }
+        let theme = AppTheme.shared.colors
+        return (theme.cloudIconColor, theme.rainIconColor)
     }
     
     func partlySunnyPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
-        if colorScheme == .light {
-            return (.white, Color(red: 1.0, green: 0.8, blue: 0.0))
-        } else {
-            return (.white, .yellow)
-        }
+        let theme = AppTheme.shared.colors
+        return (theme.cloudIconColor, theme.sunIconColor)
     }
     
     func partlyMoonPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
-        if colorScheme == .light {
-            return (.white, .indigo)
-        } else {
-            return (.white, .white)
-        }
+        let theme = AppTheme.shared.colors
+        return (theme.cloudIconColor, colorScheme == .light ? .indigo : .white)
     }
     
     var isRainIcon: Bool {

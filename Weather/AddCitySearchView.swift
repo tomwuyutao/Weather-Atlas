@@ -113,10 +113,10 @@ struct AddCitySearchView: View {
                                 if existing {
                                     Text("Added")
                                         .font(.avenir(.caption2, weight: .medium))
-                                        .foregroundStyle(.blue)
+                                        .foregroundStyle(AppTheme.shared.colors.accent)
                                         .padding(.horizontal, 6)
                                         .padding(.vertical, 2)
-                                        .background(.blue.opacity(0.12), in: Capsule())
+                                        .background(AppTheme.shared.colors.accent.opacity(0.12), in: Capsule())
                                 }
                                 
                                 Spacer()

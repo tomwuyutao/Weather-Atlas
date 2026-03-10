@@ -46,6 +46,7 @@ struct SettingsView: View {
     let weatherService: WeatherService
     let onResetLists: () -> Void
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.appTheme) private var theme
     
     @State private var showingResetConfirmation = false
     
@@ -103,6 +104,25 @@ struct SettingsView: View {
                         .tint(.primary)
                     }
                     
+                    // Theme
+                    HStack {
+                        Label("Theme", systemImage: "paintbrush")
+                            .font(.avenir(.body, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Picker("", selection: Binding(
+                            get: { theme.style.rawValue },
+                            set: { theme.style = AppThemeStyle(rawValue: $0) ?? .basic }
+                        )) {
+                            ForEach(AppThemeStyle.allCases, id: \.rawValue) { style in
+                                Text(style.displayName).tag(style.rawValue)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 120)
+                        .tint(.primary)
+                    }
+                    
                     Button {
                         showingResetConfirmation = true
                     } label: {
@@ -157,7 +177,7 @@ struct SettingsView: View {
             }
             .overlay {
                 if showingResetConfirmation {
-                    Color.black.opacity(0.4)
+                    theme.colors.modalOverlay
                         .ignoresSafeArea()
                         .onTapGesture {
                             withAnimation(.easeOut(duration: 0.2)) {
@@ -206,7 +226,7 @@ struct SettingsView: View {
                             } label: {
                                 Text("Reset")
                                     .font(.avenir(.body, weight: .semibold))
-                                    .foregroundStyle(.red)
+                                    .foregroundStyle(theme.colors.destructive)
                                     .frame(maxWidth: .infinity)
                                     .padding(.vertical, 14)
                                     .contentShape(Rectangle())

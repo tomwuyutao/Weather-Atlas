@@ -173,6 +173,7 @@
       }
     },
     "Could not determine the city name for this location. Please try another point." : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -440,6 +441,7 @@
       }
     },
     "Location Unavailable" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -490,6 +492,7 @@
       }
     },
     "OK" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -510,6 +513,7 @@
       }
     },
     "Partly Sunny" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
@@ -712,6 +716,9 @@
           }
         }
       }
+    },
+    "Theme" : {
+
     },
     "This will reset all city lists back to their defaults. Any cities you added or removed will be lost." : {
       "localizations" : {

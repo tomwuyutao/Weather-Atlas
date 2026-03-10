@@ -42,7 +42,7 @@ struct DesktopDateBar: View {
             } label: {
                 Image(systemName: "sun.max.fill")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(filterSunny ? .orange : .secondary)
+                    .foregroundStyle(filterSunny ? AppTheme.shared.colors.filterSunny : .secondary)
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
@@ -56,7 +56,7 @@ struct DesktopDateBar: View {
             } label: {
                 Image(systemName: "cloud.fill")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(showCloudCover ? .blue : .secondary)
+                    .foregroundStyle(showCloudCover ? AppTheme.shared.colors.accent : .secondary)
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
