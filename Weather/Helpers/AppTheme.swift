@@ -75,6 +75,9 @@ struct ThemeColors {
     let snowIconColor: Color
     let moonIconColor: Color
     
+    // List cards
+    let listCardFill: Color
+    
     // Filter
     let filterSunny: Color
     
@@ -148,6 +151,7 @@ extension ThemeColors {
         rainIconColor: .blue,
         snowIconColor: Color(red: 0.55, green: 0.65, blue: 0.85),
         moonIconColor: .yellow,
+        listCardFill: .clear,
         filterSunny: .yellow
     )
     
@@ -182,6 +186,7 @@ extension ThemeColors {
         rainIconColor: Color(hex: 0x57D3E5),
         snowIconColor: .white,
         moonIconColor: Color(hex: 0xBE9AED),
+        listCardFill: Color(hex: 0xE8E2D9),
         filterSunny: Color(hex: 0xFDA409)
     )
 }

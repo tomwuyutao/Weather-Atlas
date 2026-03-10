@@ -3297,12 +3297,12 @@ struct ContentView: View {
                 } label: {
                     HStack(spacing: 12) {
                         Text(listID.localizedDisplayName(locale: locale))
-                            .font(.avenir(.body, weight: mapVisibleListIDs.contains(listID.rawValue) ? .bold : .medium))
+                            .font(.avenir(.body, weight: .medium))
                             .foregroundStyle(.primary)
                         Spacer()
                         Image(systemName: mapVisibleListIDs.contains(listID.rawValue) ? "checkmark.circle.fill" : "circle")
                             .font(.system(size: 16))
-                            .foregroundStyle(mapVisibleListIDs.contains(listID.rawValue) ? .white : .secondary)
+                            .foregroundStyle(mapVisibleListIDs.contains(listID.rawValue) ? theme.colors.dotRain : .secondary)
                     }
                     .padding(.leading, 16)
                     .padding(.trailing, 16)
@@ -3451,10 +3451,15 @@ struct ContentView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-        )
+        .background {
+            if theme.colors.listCardFill == .clear {
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+            } else {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(theme.colors.listCardFill)
+            }
+        }
         .overlay(alignment: .topLeading) {
             if isEditMode {
                 Button {
@@ -3722,11 +3727,13 @@ struct ContentView: View {
                                 .frame(width: 32)
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 18)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12)
-                                .stroke(longPressedCity?.id == cityWeather.id ? Color.primary.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: 1)
-                        )
+                        .padding(.vertical, 22)
+                        .background {
+                            if theme.colors.listCardFill == .clear {
+                                RoundedRectangle(cornerRadius: 12)
+                                    .stroke(longPressedCity?.id == cityWeather.id ? Color.primary.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: 1)
+                            }
+                        }
                         .scaleEffect(longPressedCity?.id == cityWeather.id ? 0.97 : 1.0)
                         .animation(.easeOut(duration: 0.2), value: longPressedCity?.id)
                         .contentShape(Rectangle())
@@ -3788,8 +3795,10 @@ struct ContentView: View {
                         weatherService.moveCity(from: source, to: destination)
                     } : nil)
                     .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .listRowSeparator(theme.colors.listCardFill == .clear ? .hidden : .visible)
+                    .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] + 16 }
+                    .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] - 16 }
+                    .listRowInsets(EdgeInsets(top: theme.colors.listCardFill == .clear ? 4 : 0, leading: 16, bottom: theme.colors.listCardFill == .clear ? 4 : 0, trailing: 16))
                 }
                 .listStyle(.plain)
                 .contentMargins(.bottom, isIPad ? 20 : 100)
