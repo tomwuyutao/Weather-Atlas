@@ -1731,7 +1731,7 @@ struct ContentView: View {
             Button {
                 showingMapStylePopover = true
             } label: {
-                Image(systemName: "gearshape")
+                Image(systemName: "square.3.layers.3d")
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(.primary)
                     .frame(width: 42, height: 44)
@@ -1997,7 +1997,7 @@ struct ContentView: View {
                     Button {
                         showingMapStylePopover = true
                     } label: {
-                        Image(systemName: "gearshape")
+                        Image(systemName: "square.3.layers.3d")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.primary)
                             .frame(width: 42, height: 44)
@@ -2236,7 +2236,7 @@ struct ContentView: View {
                     Button {
                         showingMapStylePopover = true
                     } label: {
-                        Image(systemName: "gearshape")
+                        Image(systemName: "square.3.layers.3d")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.primary)
                             .frame(width: 42, height: 44)
@@ -2315,12 +2315,22 @@ struct ContentView: View {
                 showCloudCover: showCloudCover
             )
             .background(theme.colors.background)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(theme.colors.background, for: .navigationBar)
+            .toolbarBackground(.clear, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .navigationBarBackButtonHidden(true)
-            .toolbar(.hidden, for: .navigationBar)
             .toolbar(removing: .sidebarToggle)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingCityDetail = false
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .sharedBackgroundVisibility(.hidden)
                 if isIPad {
                     ToolbarItem(placement: .topBarLeading) {
                         Button {
@@ -2339,11 +2349,46 @@ struct ContentView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
-                if isIPad, cityIsInSidebar(city) {
+                if cityIsInSidebar(city) {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Color.clear
-                            .frame(width: 60, height: 1)
+                        Button {
+                            showingDetailMenuPopover = true
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.plain)
+                        .popover(isPresented: $showingDetailMenuPopover) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
+                                    showingDetailMenuPopover = false
+                                    let revealCity = city
+                                    showingCityDetail = false
+                                    centerOnCityTrigger = nil
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        centerOnCityTrigger = revealCity
+                                    }
+                                }
+                                menuRow(icon: "trash", title: localizedString("Delete City", locale: locale)) {
+                                    showingDetailMenuPopover = false
+                                    weatherService.removeCity(city)
+                                    showingCityDetail = false
+                                    showingMapExpandedCard = false
+                                    tappedCity = nil
+                                    if selectedTab == 1 {
+                                        recenterOnAllCities = true
+                                    }
+                                }
+                                .foregroundStyle(theme.colors.destructive)
+                            }
+                            .padding(.vertical, 8)
+                            .frame(width: 220)
+                            .themedPopoverBackground()
+                            .presentationCompactAdaptation(.popover)
+                        }
                     }
+                    .sharedBackgroundVisibility(.hidden)
                 }
                 if !cityIsInSidebar(city) {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -2397,51 +2442,6 @@ struct ContentView: View {
                             }
                         }
                     }
-                }
-                if cityIsInSidebar(city), !isIPad {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showingDetailMenuPopover = true
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(theme.colors.primaryText)
-                                .frame(width: 36, height: 36)
-                                .themedGlass(in: .circle)
-                        }
-                        .buttonStyle(.plain)
-                        .popover(isPresented: $showingDetailMenuPopover) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
-                                    showingDetailMenuPopover = false
-                                    let revealCity = city
-                                    showingCityDetail = false
-                                    centerOnCityTrigger = nil
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        selectedTab = 1
-                                    }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        centerOnCityTrigger = revealCity
-                                    }
-                                }
-                                
-                                menuRow(icon: "trash", title: localizedString("Delete City", locale: locale)) {
-                                    showingDetailMenuPopover = false
-                                    weatherService.removeCity(city)
-                                    showingCityDetail = false
-                                    if selectedTab == 1 {
-                                        recenterOnAllCities = true
-                                    }
-                                }
-                                .foregroundStyle(theme.colors.destructive)
-                            }
-                            .padding(.vertical, 8)
-                            .frame(width: 220)
-                            .themedPopoverBackground()
-                            .presentationCompactAdaptation(.popover)
-                        }
-                    }
-                    .sharedBackgroundVisibility(.hidden)
                 }
             }
         }
@@ -2843,11 +2843,21 @@ struct ContentView: View {
                 showCloudCover: showCloudCover
             )
             .background(theme.colors.background)
-            .toolbarBackground(.visible, for: .navigationBar)
-            .toolbarBackground(theme.colors.background, for: .navigationBar)
+            .toolbarBackground(.clear, for: .navigationBar)
+            .toolbarColorScheme(.dark, for: .navigationBar)
             .navigationBarBackButtonHidden(true)
-            .toolbar(.hidden, for: .navigationBar)
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        showingAddCityDetail = false
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.white)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .principal) {
                     Text(city.city.localizedName(locale: locale))
                         .font(.avenir(.title3, weight: .semibold))

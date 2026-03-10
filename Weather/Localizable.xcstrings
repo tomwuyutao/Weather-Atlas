@@ -544,6 +544,7 @@
       }
     },
     "Precipitation" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

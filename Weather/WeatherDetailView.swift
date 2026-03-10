@@ -85,83 +85,124 @@ struct WeatherDetailView: View {
 
     var body: some View {
         ZStack {
+            // Weather condition color block — top half background
+            if !isPopup {
+                GeometryReader { geo in
+                    forecast.condition.dotColor
+                        .frame(height: 320 + geo.safeAreaInsets.top)
+                        .frame(maxWidth: .infinity)
+                        .ignoresSafeArea(edges: .top)
+                }
+            }
+
             // Main content card
-            VStack(spacing: 24) {
+            VStack(spacing: isPopup ? 24 : 16) {
                 // Header
-                VStack(alignment: .center, spacing: 0) {
-                    if isPopup {
+                if !isPopup {
+                    GeometryReader { geo in
+                        ZStack(alignment: .topLeading) {
+                            // Large decorative icon — right, slightly cropped
+                            Image(systemName: detailDisplayIcon)
+                                .font(.system(size: 140))
+                                .foregroundStyle(.white)
+                                .contentTransition(.symbolEffect(.replace))
+                                .opacity(0.35)
+                                .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                                .padding(.trailing, -20)
+
+                            // Temperature + condition — top left, below back button
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(tempUnit.display(forecast.daytimeHigh))
+                                    .font(.avenir(.largeTitle, weight: .bold))
+                                    .dynamicTypeSize(...DynamicTypeSize.large)
+                                    .contentTransition(.numericText())
+                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+
+                                Text(forecast.condition.localizedDisplayName(locale: locale))
+                                    .font(.avenir(.title3, weight: .medium))
+                                    .dynamicTypeSize(...DynamicTypeSize.large)
+                                    .contentTransition(.opacity)
+                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                            }
+                            .foregroundStyle(.white)
+                            .padding(.leading, 28)
+                            .padding(.top, geo.safeAreaInsets.top + 110)
+                        }
+                    }
+                    // fill half the screen height (matches the color block)
+                    .frame(height: 320)
+                } else {
+                    VStack(alignment: .center, spacing: 0) {
                         Text(cityWeather.city.localizedName(locale: locale))
                             .font(.avenir(.title3, weight: .medium))
                             .foregroundStyle(.secondary)
                             .padding(.bottom, 4)
+
+                        Text(forecastDateText)
+                            .padding(.top, dynamicTypeSize > .large ? 24 : 16)
+                            .font(.avenir(.body, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .dynamicTypeSize(...DynamicTypeSize.large)
+                            .contentTransition(.numericText())
+                            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+
+                        Image(systemName: detailDisplayIcon)
+                            .font(.system(size: 48))
+                            .weatherIconStyle(for: detailDisplayIcon)
+                            .contentTransition(.symbolEffect(.replace))
+                            .frame(height: 56)
+                            .background(alignment: .top) {
+                                WeatherEffectOverlay(condition: forecast.condition, isCompact: false, iconHeight: 56)
+                                    .id("detail-effect-\(internalSelectedDay)-\(forecast.condition.displayName)")
+                            }
+                            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                            .padding(.top, 28)
+
+                        Text(tempUnit.display(forecast.daytimeHigh))
+                            .font(.avenir(.largeTitle, weight: .bold))
+                            .dynamicTypeSize(...DynamicTypeSize.large)
+                            .contentTransition(.numericText())
+                            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                            .padding(.top, 14)
+                            .padding(.trailing, 4)
+                            .offset(x: 5)
                     }
-                    
-                    Text(forecastDateText)
-                        .padding(.top, dynamicTypeSize > .large ? 24 : 16)
-                        .font(.avenir(.body, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .dynamicTypeSize(...DynamicTypeSize.large)
-                        .contentTransition(.numericText())
-                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                    
-                    Image(systemName: detailDisplayIcon)
-                        .font(.system(size: 48))
-                        .weatherIconStyle(for: detailDisplayIcon)
-                        .contentTransition(.symbolEffect(.replace))
-                        .frame(height: 56)
-                        .background(alignment: .top) {
-                            WeatherEffectOverlay(condition: forecast.condition, isCompact: false, iconHeight: 56)
-                                .id("detail-effect-\(internalSelectedDay)-\(forecast.condition.displayName)")
+                    .dynamicTypeSize(...DynamicTypeSize.large)
+                }
+
+                // 10-day forecast horizontal scroll
+                if !isPopup {
+                    let lastIndex = cityWeather.dailyForecasts.count - 1
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 0) {
+                            ForEach(Array(cityWeather.dailyForecasts.enumerated()), id: \.element.id) { index, dailyForecast in
+                                let r: CGFloat = 8
+                                let cr = RectangleCornerRadii(
+                                    topLeading: index == 0 ? r : 0,
+                                    bottomLeading: index == 0 ? r : 0,
+                                    bottomTrailing: index == lastIndex ? r : 0,
+                                    topTrailing: index == lastIndex ? r : 0
+                                )
+                                DayForecastBox(
+                                    dailyForecast: dailyForecast,
+                                    isSelected: internalSelectedDay == dailyForecast.dayOffset,
+                                    cornerRadius: cr,
+                                    showCloudCover: effectiveShowCloudCover,
+                                    cityTimeZone: cityWeather.timeZone
+                                )
+                                .onTapGesture {
+                                    swipeDirection = dailyForecast.dayOffset >= internalSelectedDay ? .forward : .backward
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        internalSelectedDay = dailyForecast.dayOffset
+                                    }
+                                }
+                            }
                         }
-                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                        .padding(.top, 28)
-                    
-                    Text(tempUnit.display(forecast.daytimeHigh))
-                        .font(.avenir(.largeTitle, weight: .bold))
-                        .dynamicTypeSize(...DynamicTypeSize.large)
-                        .contentTransition(.numericText())
-                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                        .padding(.top, 14)
-                        .padding(.trailing, 4)
-                        .offset(x: 5)
-                }
-                .dynamicTypeSize(...DynamicTypeSize.large)
-                .padding(.bottom, 0)
-                
-                // Info boxes
-                HStack(spacing: 12) {
-                    VStack(spacing: 4) {
-                        Text("Cloud Cover")
-                            .font(.avenir(.caption, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        Text("\(Int(forecast.cloudCover * 100))%")
-                            .font(.avenir(.title3, weight: .semibold))
-                            .contentTransition(.numericText())
+                        .padding(.horizontal, 8)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.gray.opacity(0.5), lineWidth: 1)
-                    )
-                    
-                    VStack(spacing: 4) {
-                        Text("Precipitation")
-                            .font(.avenir(.caption, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        Text("\(Int(forecast.precipitationChance * 100))%")
-                            .font(.avenir(.title3, weight: .semibold))
-                            .contentTransition(.numericText())
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.gray.opacity(0.5), lineWidth: 1)
-                    )
                 }
-                .padding(.horizontal, 8)
-                
+
                 // Chart container — box stays fixed, content slides inside
                 ZStack {
                     let insertEdge: Edge = swipeDirection == .forward ? .trailing : .leading
@@ -184,12 +225,8 @@ struct WeatherDetailView: View {
                 .offset(x: chartDragOffset)
                 .opacity(Double(1.0 - min(abs(chartDragOffset) / 200.0, 0.4)))
                 .padding(.top, 12)
+                .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
-                .background(.clear)
-                .overlay {
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color.gray.opacity(0.5), lineWidth: 1)
-                }
                 .padding(.horizontal, 8)
                 .contentShape(Rectangle())
                 .gesture(
@@ -245,10 +282,7 @@ struct WeatherDetailView: View {
                                 .foregroundStyle(showingCloudCover ? .secondary : .primary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(showingCloudCover ? Color.clear : Color.gray.opacity(0.5), lineWidth: 1)
-                                )
+                                .background(showingCloudCover ? Color.clear : AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
                         
@@ -260,10 +294,7 @@ struct WeatherDetailView: View {
                                 .foregroundStyle(showingCloudCover ? .primary : .secondary)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 8)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 8)
-                                        .stroke(showingCloudCover ? Color.gray.opacity(0.5) : Color.clear, lineWidth: 1)
-                                )
+                                .background(showingCloudCover ? AppTheme.shared.colors.listCardFill : Color.clear, in: RoundedRectangle(cornerRadius: 8))
                         }
                         .buttonStyle(.plain)
                     }
@@ -300,18 +331,6 @@ struct WeatherDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(14)
-                } else if !isPopup {
-                    Button {
-                        onDismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 32, height: 32)
-                            .themedGlass(in: .circle)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(14)
                 }
             }
             .overlay(alignment: .topTrailing) {
@@ -323,36 +342,62 @@ struct WeatherDetailView: View {
                             } label: {
                                 Image(systemName: "ellipsis")
                                     .font(.system(size: 15, weight: .medium))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(.white)
                                     .frame(width: 32, height: 32)
-                                    .themedGlass(in: .circle)
                             }
                             .buttonStyle(.plain)
                             .popover(isPresented: $showingDetailMenu) {
-                                VStack(spacing: 0) {
+                                VStack(alignment: .leading, spacing: 0) {
                                     if let revealAction = onRevealOnMap {
                                         Button {
                                             showingDetailMenu = false
                                             revealAction()
                                         } label: {
-                                            Label("Reveal on Map", systemImage: "map")
+                                            HStack(spacing: 12) {
+                                                Image(systemName: "map")
+                                                    .font(.system(size: 15))
+                                                    .frame(width: 24)
+                                                    .foregroundStyle(.primary)
+                                                Text("Reveal on Map")
+                                                    .font(.avenir(.body, weight: .medium))
+                                                    .foregroundStyle(.primary)
+                                                Spacer()
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 11)
+                                            .contentShape(Rectangle())
                                         }
-                                        .padding(12)
+                                        .buttonStyle(.plain)
                                     }
                                     if let deleteAction = onDeleteCity {
-                                        Button(role: .destructive) {
+                                        Button {
                                             showingDetailMenu = false
                                             deleteAction()
                                         } label: {
-                                            Label("Delete City", systemImage: "trash")
+                                            HStack(spacing: 12) {
+                                                Image(systemName: "trash")
+                                                    .font(.system(size: 15))
+                                                    .frame(width: 24)
+                                                    .foregroundStyle(AppTheme.shared.colors.destructive)
+                                                Text("Delete City")
+                                                    .font(.avenir(.body, weight: .medium))
+                                                    .foregroundStyle(AppTheme.shared.colors.destructive)
+                                                Spacer()
+                                            }
+                                            .padding(.horizontal, 16)
+                                            .padding(.vertical, 11)
+                                            .contentShape(Rectangle())
                                         }
-                                        .padding(12)
+                                        .buttonStyle(.plain)
                                     }
                                 }
+                                .padding(.vertical, 8)
+                                .frame(width: 220)
+                                .themedPopoverBackground()
                                 .presentationCompactAdaptation(.popover)
                             }
                         }
-                        
+
                         // X button in upper right corner (popup only)
                         Button {
                             onDismiss()
@@ -368,60 +413,10 @@ struct WeatherDetailView: View {
                     .padding(14)
                 }
             }
+
         }
         .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)
-        .safeAreaInset(edge: .bottom) {
-            if !isPopup {
-                // 10-day forecast grid pinned to bottom
-                VStack(spacing: 0) {
-                    // First row - 5 days
-                    HStack(spacing: 0) {
-                        ForEach(Array(cityWeather.dailyForecasts.prefix(5).enumerated()), id: \.element.id) { index, dailyForecast in
-                            DayForecastBox(
-                                dailyForecast: dailyForecast,
-                                isSelected: internalSelectedDay == dailyForecast.dayOffset,
-                                cornerRadius: .init(
-                                    topLeading: index == 0 ? 8 : 0,
-                                    topTrailing: index == 4 ? 8 : 0
-                                ),
-                                showCloudCover: effectiveShowCloudCover,
-                                cityTimeZone: cityWeather.timeZone
-                            )
-                            .onTapGesture {
-                                swipeDirection = dailyForecast.dayOffset >= internalSelectedDay ? .forward : .backward
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    internalSelectedDay = dailyForecast.dayOffset
-                                }
-                            }
-                        }
-                    }
-                    
-                    // Second row - 5 days
-                    HStack(spacing: 0) {
-                        ForEach(Array(cityWeather.dailyForecasts.dropFirst(5).prefix(5).enumerated()), id: \.element.id) { index, dailyForecast in
-                            DayForecastBox(
-                                dailyForecast: dailyForecast,
-                                isSelected: internalSelectedDay == dailyForecast.dayOffset,
-                                cornerRadius: .init(
-                                    bottomLeading: index == 0 ? 8 : 0,
-                                    bottomTrailing: index == 4 ? 8 : 0
-                                ),
-                                showCloudCover: effectiveShowCloudCover,
-                                cityTimeZone: cityWeather.timeZone
-                            )
-                            .onTapGesture {
-                                swipeDirection = dailyForecast.dayOffset >= internalSelectedDay ? .forward : .backward
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    internalSelectedDay = dailyForecast.dayOffset
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 24)
-                .padding(.bottom, 8)
-            }
-        }
+
         .contentShape(Rectangle())
         .gesture(
             isPopup ? nil : DragGesture(minimumDistance: 50, coordinateSpace: .global)
@@ -657,9 +652,9 @@ struct HourlyTimelineChart: View {
                 HourlyChartLineShape(
                     pointYValues: AnimatablePointList(values: lineYPositions.map { Double($0) }),
                     pointXPositions: xPositions,
-                    gapRadius: 12
+                    gapRadius: 15
                 )
-                .stroke(AppTheme.shared.colors.dotRain, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                .stroke(AppTheme.shared.colors.destructive, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                 
                 // Layer 3: Data columns
                 HStack(spacing: 0) {
@@ -758,10 +753,10 @@ struct DayForecastBox: View {
         .frame(minWidth: 50)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .overlay {
+        .background(
             UnevenRoundedRectangle(cornerRadii: cornerRadius)
-                .stroke(isSelected ? AppTheme.shared.colors.accent.opacity(0.3) : Color.primary.opacity(0.1), lineWidth: isSelected ? 1.5 : 0.5)
-        }
+                .fill(isSelected ? AppTheme.shared.colors.accent.opacity(0.25) : AppTheme.shared.colors.listCardFill)
+        )
     }
 }
 #Preview("Weather Detail - London", traits: .portrait) {
