@@ -300,6 +300,18 @@ struct WeatherDetailView: View {
                     }
                     .buttonStyle(.plain)
                     .padding(14)
+                } else if !isPopup {
+                    Button {
+                        onDismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32, height: 32)
+                            .themedGlass(in: .circle)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(14)
                 }
             }
             .overlay(alignment: .topTrailing) {

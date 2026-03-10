@@ -2318,6 +2318,7 @@ struct ContentView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(theme.colors.background, for: .navigationBar)
             .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
             .toolbar(removing: .sidebarToggle)
             .toolbar {
                 if isIPad {
@@ -2329,13 +2330,6 @@ struct ContentView: View {
                         } label: {
                             Image(systemName: "sidebar.left")
                         }
-                    }
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showingCityDetail = false
-                    } label: {
-                        Image(systemName: "chevron.left")
                     }
                 }
                 ToolbarItem(placement: .principal) {
@@ -2852,14 +2846,8 @@ struct ContentView: View {
             .toolbarBackground(.visible, for: .navigationBar)
             .toolbarBackground(theme.colors.background, for: .navigationBar)
             .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showingAddCityDetail = false
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                }
                 ToolbarItem(placement: .principal) {
                     Text(city.city.localizedName(locale: locale))
                         .font(.avenir(.title3, weight: .semibold))
