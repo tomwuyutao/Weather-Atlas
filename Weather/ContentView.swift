@@ -415,7 +415,7 @@ struct ContentView: View {
                     .fixedSize()
                     .padding(.horizontal, isDraggingDateSlider ? 14 : 12)
                     .padding(.vertical, isDraggingDateSlider ? 9 : 7)
-                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .themedGlass(in: .capsule)
 
                 Capsule()
                     .fill(Color.gray.opacity(0.6))
@@ -940,7 +940,7 @@ struct ContentView: View {
                 iPadDateSwitcherToolbarContent
                     .padding(.horizontal, 14)
                     .frame(height: 44)
-                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .themedGlass(in: .capsule)
             }
             .sharedBackgroundVisibility(.hidden)
         }
@@ -1320,7 +1320,7 @@ struct ContentView: View {
                     .padding(.vertical, 8)
                     .frame(width: 240)
                     .presentationCompactAdaptation(.popover)
-                    .presentationBackground(.ultraThinMaterial)
+                    .themedPopoverBackground()
                 }
             }
 
@@ -1371,7 +1371,7 @@ struct ContentView: View {
                     .padding(.vertical, 8)
                     .frame(width: 160)
                     .presentationCompactAdaptation(.popover)
-                    .presentationBackground(.ultraThinMaterial)
+                    .themedPopoverBackground()
                 }
             }
 
@@ -1411,7 +1411,7 @@ struct ContentView: View {
                     .padding(.vertical, 8)
                     .frame(width: 160)
                     .presentationCompactAdaptation(.popover)
-                    .presentationBackground(.ultraThinMaterial)
+                    .themedPopoverBackground()
                 }
             }
 
@@ -1423,12 +1423,18 @@ struct ContentView: View {
                     showingMenuPopover = true
                 } label: {
                     Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 36, height: 36)
+                        .themedGlass(in: .circle)
                 }
+                .buttonStyle(.plain)
                 .popover(isPresented: $showingMenuPopover) {
                     iOSCustomMenu
                         .presentationCompactAdaptation(.popover)
                 }
             }
+            .sharedBackgroundVisibility(.hidden)
         }
 
         if !isIPad {
@@ -1437,12 +1443,18 @@ struct ContentView: View {
                     showingMenuPopover = true
                 } label: {
                     Image(systemName: "ellipsis")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 36, height: 36)
+                        .themedGlass(in: .circle)
                 }
+                .buttonStyle(.plain)
                 .popover(isPresented: $showingMenuPopover) {
                     iOSCustomMenu
                         .presentationCompactAdaptation(.popover)
                 }
             }
+            .sharedBackgroundVisibility(.hidden)
         }
     }
 
@@ -1500,7 +1512,7 @@ struct ContentView: View {
                 .frame(width: 280, height: 300)
                 .padding(8)
                 .presentationCompactAdaptation(.popover)
-                .presentationBackground(.thickMaterial)
+                .themedPopoverBackground()
             }
 
             Button {
@@ -1573,7 +1585,7 @@ struct ContentView: View {
                     .frame(width: 280, height: 300)
                     .padding(8)
                     .presentationCompactAdaptation(.popover)
-                    .presentationBackground(.thickMaterial)
+                    .themedPopoverBackground()
                 }
 
             Image(systemName: "chevron.right")
@@ -1590,7 +1602,7 @@ struct ContentView: View {
                 }
         }
         .padding(6)
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .themedGlass(in: .capsule)
     }
 
     private var iOSMapControlsCapsule: some View {
@@ -1663,7 +1675,7 @@ struct ContentView: View {
                 .padding(.vertical, 8)
                 .frame(width: 240)
                 .presentationCompactAdaptation(.popover)
-                .presentationBackground(.ultraThinMaterial)
+                .themedPopoverBackground()
             }
 
             Button {
@@ -1714,7 +1726,7 @@ struct ContentView: View {
                 .padding(.vertical, 8)
                 .frame(width: 160)
                 .presentationCompactAdaptation(.popover)
-                .presentationBackground(.ultraThinMaterial)
+                .themedPopoverBackground()
             }
 
             Button {
@@ -1756,11 +1768,11 @@ struct ContentView: View {
                 .padding(.vertical, 8)
                 .frame(width: 160)
                 .presentationCompactAdaptation(.popover)
-                .presentationBackground(.ultraThinMaterial)
+                .themedPopoverBackground()
             }
         }
         .padding(6)
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .themedGlass(in: .capsule)
         .transition(.scale.combined(with: .opacity))
     }
 
@@ -1781,7 +1793,7 @@ struct ContentView: View {
                         .foregroundStyle(.primary)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
-                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .themedGlass(in: .capsule)
                         .transition(.scale.combined(with: .opacity))
                 } else {
                     Text(localizedString("Move map to select a country", locale: locale))
@@ -1789,7 +1801,7 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 20)
                         .padding(.vertical, 10)
-                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .themedGlass(in: .capsule)
                 }
 
                 Spacer()
@@ -1869,7 +1881,7 @@ struct ContentView: View {
                                 .foregroundStyle(.white)
                                 .frame(width: 44, height: 44)
                         }
-                        .glassEffect(.regular.tint(countryUnderPin.isEmpty ? .gray : theme.colors.accent).interactive(), in: .circle)
+                        .themedAccentGlass(tint: countryUnderPin.isEmpty ? .gray : theme.colors.accent, in: .circle)
                         .glassEffectID("cConfirm", in: countryBarNS)
                         .disabled(countryUnderPin.isEmpty)
                     } else {
@@ -1890,7 +1902,7 @@ struct ContentView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
-                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .themedGlass(in: .capsule)
                         .glassEffectID("cConfirm", in: countryBarNS)
                     }
 
@@ -1924,7 +1936,7 @@ struct ContentView: View {
                             .foregroundStyle(.primary)
                             .frame(width: 44, height: 44)
                     }
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .themedGlass(in: .circle)
                     .glassEffectID("cCancel", in: countryBarNS)
                 }
                 .padding(.horizontal, 16)
@@ -1952,7 +1964,7 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .themedGlass(in: .capsule)
                 .contentShape(Capsule())
                 .onTapGesture {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -2022,11 +2034,11 @@ struct ContentView: View {
                         .padding(.vertical, 8)
                         .frame(width: 160)
                         .presentationCompactAdaptation(.popover)
-                        .presentationBackground(.ultraThinMaterial)
+                        .themedPopoverBackground()
                     }
                 }
                 .padding(6)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .themedGlass(in: .capsule)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 4)
@@ -2042,7 +2054,7 @@ struct ContentView: View {
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 10)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .themedGlass(in: .capsule)
                 .contentTransition(.numericText())
 
             Spacer()
@@ -2111,7 +2123,7 @@ struct ContentView: View {
                                 .foregroundStyle(.white)
                                 .frame(width: 44, height: 44)
                         }
-                        .glassEffect(.regular.tint(theme.colors.accent).interactive(), in: .circle)
+                        .themedAccentGlass(tint: theme.colors.accent, in: .circle)
                         .glassEffectID("rConfirm", in: radialBarNS)
                     } else {
                         // Loading capsule
@@ -2131,7 +2143,7 @@ struct ContentView: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.vertical, 12)
-                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .themedGlass(in: .capsule)
                         .glassEffectID("rConfirm", in: radialBarNS)
                     }
 
@@ -2164,7 +2176,7 @@ struct ContentView: View {
                             .foregroundStyle(.primary)
                             .frame(width: 44, height: 44)
                     }
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .themedGlass(in: .circle)
                     .glassEffectID("rCancel", in: radialBarNS)
                 }
                 .padding(.horizontal, 16)
@@ -2192,7 +2204,7 @@ struct ContentView: View {
                 }
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .themedGlass(in: .capsule)
                 .contentShape(Capsule())
                 .onTapGesture {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -2261,11 +2273,11 @@ struct ContentView: View {
                         .padding(.vertical, 8)
                         .frame(width: 160)
                         .presentationCompactAdaptation(.popover)
-                        .presentationBackground(.ultraThinMaterial)
+                        .themedPopoverBackground()
                     }
                 }
                 .padding(6)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .themedGlass(in: .capsule)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 4)
@@ -2399,7 +2411,12 @@ struct ContentView: View {
                             showingDetailMenuPopover = true
                         } label: {
                             Image(systemName: "ellipsis")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(theme.colors.primaryText)
+                                .frame(width: 36, height: 36)
+                                .themedGlass(in: .circle)
                         }
+                        .buttonStyle(.plain)
                         .popover(isPresented: $showingDetailMenuPopover) {
                             VStack(alignment: .leading, spacing: 0) {
                                 menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
@@ -2427,10 +2444,11 @@ struct ContentView: View {
                             }
                             .padding(.vertical, 8)
                             .frame(width: 220)
-                            .presentationBackground(.ultraThinMaterial)
+                            .themedPopoverBackground()
                             .presentationCompactAdaptation(.popover)
                         }
                     }
+                    .sharedBackgroundVisibility(.hidden)
                 }
             }
         }
@@ -2466,7 +2484,7 @@ struct ContentView: View {
                 .frame(height: 36)
                 .padding(6)
                 .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .themedGlass(in: .capsule)
                 .animation(.spring(response: 0.3, dampingFraction: 0.75), value: inlineSearchText.isEmpty)
 
                 Image(systemName: "xmark")
@@ -2475,7 +2493,7 @@ struct ContentView: View {
                     .frame(width: 36, height: 36)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .themedGlass(in: .circle)
                     .contentShape(Circle())
                     .onTapGesture {
                         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
@@ -2493,7 +2511,7 @@ struct ContentView: View {
                     .frame(width: 36, height: 36)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .themedGlass(in: .circle)
                     .contentShape(Circle())
                     .onTapGesture {
                         if let city = previewCity {
@@ -2520,7 +2538,7 @@ struct ContentView: View {
                 .frame(height: 36)
                 .padding(6)
                 .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .themedGlass(in: .capsule)
                 .contentShape(Capsule())
                 .onTapGesture {
                     if isIPad {
@@ -2539,7 +2557,7 @@ struct ContentView: View {
                     .frame(width: 36, height: 36)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .themedGlass(in: .circle)
                     .contentShape(Circle())
                     .onTapGesture {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -2591,7 +2609,7 @@ struct ContentView: View {
                 }
                 .padding(6)
                 .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
-                .glassEffect(.regular.interactive(), in: .capsule)
+                .themedGlass(in: .capsule)
                 .fixedSize()
 
                 Spacer()
@@ -3181,7 +3199,7 @@ struct ContentView: View {
         }
         .padding(.vertical, 8)
         .frame(width: 210)
-        .presentationBackground(.ultraThinMaterial)
+        .themedPopoverBackground()
         .onChange(of: showingListSwitcher) { _, showing in
             if !showing {
                 isReorderingLists = false
@@ -3232,7 +3250,7 @@ struct ContentView: View {
         }
         .padding(.vertical, 8)
         .frame(width: 210)
-        .presentationBackground(.ultraThinMaterial)
+        .themedPopoverBackground()
     }
 
     private var iOSMapListSwitcherMenu: some View {
@@ -3290,7 +3308,7 @@ struct ContentView: View {
         }
         .padding(.vertical, 8)
         .frame(width: 210)
-        .presentationBackground(.ultraThinMaterial)
+        .themedPopoverBackground()
     }
     private var iOSCustomMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -3384,7 +3402,7 @@ struct ContentView: View {
         }
         .padding(.vertical, 8)
         .frame(width: 220)
-        .presentationBackground(.ultraThinMaterial)
+        .themedPopoverBackground()
     }
 
     private func menuRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
@@ -3648,7 +3666,7 @@ struct ContentView: View {
                                 .padding(.horizontal, 24)
                                 .padding(.vertical, 12)
                                 .background(theme.colors.accent, in: Capsule())
-                                .glassEffect(.regular.interactive(), in: .capsule)
+                                .themedGlass(in: .capsule)
                         }
                         .buttonStyle(.plain)
                         .padding(.top, 40)
@@ -3748,7 +3766,7 @@ struct ContentView: View {
                             .padding(.vertical, 8)
                             .frame(width: 220)
                             .presentationCompactAdaptation(.popover)
-                            .presentationBackground(.ultraThinMaterial)
+                            .themedPopoverBackground()
                         }
                     }
                     .onDelete(perform: isEditMode ? { indexSet in

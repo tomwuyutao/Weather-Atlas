@@ -296,7 +296,7 @@ struct WeatherDetailView: View {
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(.white)
                             .frame(width: 32, height: 32)
-                            .glassEffect(.regular.tint(AppTheme.shared.colors.accent).interactive(), in: .circle)
+                            .themedAccentGlass(tint: AppTheme.shared.colors.accent, in: .circle)
                     }
                     .buttonStyle(.plain)
                     .padding(14)
@@ -313,7 +313,7 @@ struct WeatherDetailView: View {
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundStyle(.secondary)
                                     .frame(width: 32, height: 32)
-                                    .glassEffect(.regular.interactive(), in: .circle)
+                                    .themedGlass(in: .circle)
                             }
                             .buttonStyle(.plain)
                             .popover(isPresented: $showingDetailMenu) {
@@ -349,7 +349,7 @@ struct WeatherDetailView: View {
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(.secondary)
                                 .frame(width: 32, height: 32)
-                                .glassEffect(.regular.interactive(), in: .circle)
+                                .themedGlass(in: .circle)
                         }
                         .buttonStyle(.plain)
                     }
@@ -647,7 +647,7 @@ struct HourlyTimelineChart: View {
                     pointXPositions: xPositions,
                     gapRadius: 12
                 )
-                .stroke(Color.primary.opacity(0.2), style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                .stroke(AppTheme.shared.colors.dotRain, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                 
                 // Layer 3: Data columns
                 HStack(spacing: 0) {

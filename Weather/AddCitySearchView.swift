@@ -86,7 +86,7 @@ struct AddCitySearchView: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: 44, height: 44)
-                        .glassEffect(.regular.interactive(), in: .circle)
+                        .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
             }

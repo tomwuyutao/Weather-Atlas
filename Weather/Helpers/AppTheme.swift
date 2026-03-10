@@ -39,6 +39,8 @@ struct ThemeColors {
     let background: Color
     let searchOverlayBackground: Color
     let modalOverlay: Color
+    let glassTint: Color
+    let popoverBackground: Color
     
     // Map
     let mapOcean: Color
@@ -121,6 +123,8 @@ extension ThemeColors {
         background: .black,
         searchOverlayBackground: Color.black.opacity(0.95),
         modalOverlay: Color.black.opacity(0.4),
+        glassTint: .clear,
+        popoverBackground: .clear,
         mapOcean: .black,
         mapLand: Color(red: 28/255.0, green: 28/255.0, blue: 30/255.0),
         mapBorder: Color(red: 45/255.0, green: 45/255.0, blue: 47/255.0),
@@ -153,10 +157,12 @@ extension ThemeColors {
         background: Color(hex: 0xEDE7DE),
         searchOverlayBackground: Color(hex: 0xEDE7DE).opacity(0.97),
         modalOverlay: Color.black.opacity(0.3),
+        glassTint: Color(hex: 0xEDE7DE).opacity(0.4),
+        popoverBackground: Color(hex: 0xE3DDD4).opacity(0.7),
         mapOcean: Color(hex: 0xEDE7DE),
-        mapLand: Color(hex: 0xE6E0D7),
+        mapLand: Color(hex: 0xE0DAD1),
         mapBorder: Color(hex: 0xD5CFC6),
-        svgCountryFill: Color(hex: 0xE6E0D7),
+        svgCountryFill: Color(hex: 0xE0DAD1),
         accent: Color(hex: 0x1579C7),
         destructive: Color(hex: 0xFB4368),
         dotSun: Color(hex: 0xFDA409),
@@ -175,7 +181,7 @@ extension ThemeColors {
         cloudIconColor: .white,
         rainIconColor: Color(hex: 0x57D3E5),
         snowIconColor: .white,
-        moonIconColor: Color(hex: 0xFDA409),
+        moonIconColor: Color(hex: 0xBE9AED),
         filterSunny: Color(hex: 0xFDA409)
     )
 }
@@ -230,6 +236,39 @@ extension View {
         return self
             .symbolRenderingMode(.palette)
             .foregroundStyle(palette.primary, palette.secondary)
+    }
+    
+    /// Themed popover/presentation background.
+    func themedPopoverBackground() -> some View {
+        let theme = AppTheme.shared
+        if theme.style == .basic {
+            return AnyView(self.presentationBackground(.ultraThinMaterial))
+        } else {
+            return AnyView(self.presentationBackground(theme.colors.popoverBackground))
+        }
+    }
+    
+    /// Themed glass/material background for capsule-shaped UI elements.
+    @ViewBuilder
+    func themedGlass(in shape: some InsettableShape) -> some View {
+        let theme = AppTheme.shared
+        if theme.style == .basic {
+            self.glassEffect(.regular.interactive(), in: shape)
+        } else {
+            self.background(.ultraThinMaterial, in: shape)
+        }
+    }
+    
+    /// Themed glass/material background with accent tint (for confirm buttons etc.)
+    @ViewBuilder
+    func themedAccentGlass(tint: Color, in shape: some InsettableShape) -> some View {
+        let theme = AppTheme.shared
+        if theme.style == .basic {
+            self.glassEffect(.regular.tint(tint).interactive(), in: shape)
+        } else {
+            self.background(tint.opacity(0.15), in: shape)
+                .overlay(shape.stroke(tint.opacity(0.3), lineWidth: 0.5))
+        }
     }
 }
 
