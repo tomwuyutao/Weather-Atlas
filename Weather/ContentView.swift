@@ -2460,6 +2460,12 @@ struct ContentView: View {
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                 }
+                if isIPad, cityIsInSidebar(city) {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Color.clear
+                            .frame(width: 60, height: 1)
+                    }
+                }
                 if !cityIsInSidebar(city) {
                     ToolbarItem(placement: .topBarTrailing) {
                         if countryOverviewActive || radialSearchActive {
@@ -3610,7 +3616,10 @@ struct ContentView: View {
                 filterSunny: filterSunny,
                 isPlaying: isPlaying,
                 namespace: popupNamespace,
-                showingCityDetail: $showingMapExpandedCard,
+                showingCityDetail: Binding(
+                    get: { showingMapExpandedCard || (isIPad && showingCityDetail) },
+                    set: { showingMapExpandedCard = $0 }
+                ),
                 tappedCity: $tappedCity,
                 centerOnCity: centerOnCityTrigger,
                 recenterOnAllCities: $recenterOnAllCities,

@@ -342,10 +342,11 @@ private struct AnnotationsOverlay: View {
                         isSelected: showingCityDetail && tappedCity?.id == cityWeather.id
                     )
                     .scaleEffect(
-                        (tappedMarkerID == cityWeather.id || highlightedMarkerID == cityWeather.id) ? 1.5 : 1.0
+                        (tappedMarkerID == cityWeather.id || highlightedMarkerID == cityWeather.id || (showingCityDetail && tappedCity?.id == cityWeather.id)) ? 1.5 : 1.0
                     )
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: tappedMarkerID)
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: highlightedMarkerID)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: showingCityDetail)
 
                     .position(screenPt)
                 }

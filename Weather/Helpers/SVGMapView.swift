@@ -248,9 +248,10 @@ struct SVGMapView: View {
                 isPlaying: isPlaying,
                 displayMode: showDots ? .dot : .card
             )
-            .scaleEffect(((tappedMarkerID == cityWeather.id || highlightedMarkerID == cityWeather.id) ? 1.5 : 1.0) / liveZoom, anchor: .center)
+            .scaleEffect(((tappedMarkerID == cityWeather.id || highlightedMarkerID == cityWeather.id || (showingCityDetail && tappedCity?.id == cityWeather.id)) ? 1.5 : 1.0) / liveZoom, anchor: .center)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: tappedMarkerID)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: highlightedMarkerID)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: showingCityDetail)
             .position(
                 x: svgPos.x * canvasEffective,
                 y: svgPos.y * canvasEffective

@@ -157,12 +157,17 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
               let lists = try? JSONDecoder().decode([CityListID].self, from: data) else {
             return []
         }
-        // Remove lists with empty names (caused by abandoned new-list creation)
-        let valid = lists.filter { !$0.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-        if valid.count != lists.count {
-            saveUserLists(valid)
+        // Give empty-named lists a fallback name instead of deleting them
+        let fixed = lists.map { list in
+            if list.displayName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                return CityListID(rawValue: list.rawValue, displayName: String(localized: "New List"))
+            }
+            return list
         }
-        return valid
+        if fixed != lists {
+            saveUserLists(fixed)
+        }
+        return fixed
     }
     
     static func saveUserLists(_ lists: [CityListID]) {
@@ -423,8 +428,14 @@ class WeatherService {
     
     func renameCurrentList(to newName: String) {
         let renamed = CityListID(rawValue: activeListID.rawValue, displayName: newName)
-        // Update in user lists if it's a user-created list
-        var userLists = CityListID.loadUserLists()
+        // Load raw user lists without filtering to find lists with empty names
+        var userLists: [CityListID] = {
+            guard let data = UserDefaults.standard.data(forKey: "userCreatedLists"),
+                  let lists = try? JSONDecoder().decode([CityListID].self, from: data) else {
+                return []
+            }
+            return lists
+        }()
         if let index = userLists.firstIndex(where: { $0.rawValue == activeListID.rawValue }) {
             userLists[index] = renamed
             CityListID.saveUserLists(userLists)
