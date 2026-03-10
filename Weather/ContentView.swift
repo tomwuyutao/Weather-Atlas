@@ -39,6 +39,10 @@ struct ContentView: View {
     @State private var showCloudCover: Bool = false
     @State private var filterSunny: Bool = false
     @State private var isPlaying: Bool = false
+    @State private var showingInlineSearch: Bool = false
+    @State private var inlineSearchText: String = ""
+    @FocusState private var inlineSearchFocused: Bool
+    @State private var inlineSearchManager = CitySearchManager()
     
     @State private var mapScale: CGFloat = 10.0
     @State private var mapOffset: CGSize = .zero
@@ -213,6 +217,7 @@ struct ContentView: View {
     @Namespace private var tabBarNamespace
     @Namespace private var countryBarNS
     @Namespace private var radialBarNS
+    @Namespace private var bottomBarNS
     @State private var iOSPreviousDayOffset: Int = 0
     @State private var showingDatePopover: Bool = false
     @State private var isDraggingDateSlider: Bool = false
@@ -577,6 +582,7 @@ struct ContentView: View {
             iPadDetailContent
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
+                .toolbar(showingInlineSearch && !inlineSearchText.isEmpty ? .hidden : .visible, for: .navigationBar)
                 .toolbar { iOSLeadingToolbarItems }
                 .toolbar { iOSPrincipalToolbarItem }
                 .toolbar { iOSTrailingToolbarItems }
@@ -593,14 +599,15 @@ struct ContentView: View {
             iOSMainZStack
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
+                
                 .toolbar { iOSLeadingToolbarItems }
                 .toolbar { iOSPrincipalToolbarItem }
                 .toolbar { iOSTrailingToolbarItems }
                 .navigationDestination(isPresented: $showingCityDetail) {
                     iOSCityDetailDestination
                 }
-                .fullScreenCover(isPresented: $showingAddCityView) {
-                    iOSAddCitySheet
+                .navigationDestination(isPresented: $showingAddCityDetail) {
+                    iOSAddCityDetailDestination
                 }
         }
     }
@@ -930,7 +937,7 @@ struct ContentView: View {
     @ToolbarContentBuilder
     private var iOSPrincipalToolbarItem: some ToolbarContent {
         if isIPad, !isMapSpecialMode {
-            ToolbarItem(placement: .principal) {
+            ToolbarItem(placement: .topBarLeading) {
                 iPadDateSwitcherToolbarContent
                     .padding(.horizontal, 14)
                     .frame(height: 44)
@@ -982,13 +989,6 @@ struct ContentView: View {
                     .zIndex(1)
             }
 
-            // Preview toolbar when inspecting a searched city
-            if selectedTab == 1, !isMapSpecialMode, previewCity != nil {
-                iOSPreviewToolbar
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(2)
-            }
-
             // Country selection overlay (top part: pin + country name)
             if countrySelectionMode {
                 countrySelectionTopOverlay
@@ -1033,10 +1033,19 @@ struct ContentView: View {
                     .zIndex(3)
             }
 
-            // Floating bottom toolbar
-            if previewCity == nil, !isMapSpecialMode {
-                iOSFloatingBottomToolbar
+            // Search results overlay (only when typing)
+            if showingInlineSearch, !inlineSearchText.isEmpty {
+                iOSInlineSearchResults
+                    .transition(.opacity)
+                    .zIndex(10)
             }
+
+            // Floating bottom toolbar / inline search bar / preview toolbar
+            if !isMapSpecialMode {
+                iOSUnifiedBottomBar
+                    .zIndex(11)
+            }
+
         }
     }
 
@@ -1094,13 +1103,6 @@ struct ContentView: View {
                     .transition(.blurReplace)
                     .padding(.horizontal, 16)
                     .zIndex(1)
-            }
-
-            // Preview toolbar when inspecting a searched city
-            if !isMapSpecialMode, previewCity != nil {
-                iOSPreviewToolbar
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(2)
             }
 
             // Country selection overlay (top part: pin + country name)
@@ -1445,139 +1447,9 @@ struct ContentView: View {
         }
     }
 
-    private var iOSPreviewToolbar: some View {
-        HStack(spacing: 12) {
-            // Dismiss button
-            Image(systemName: "xmark")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 36, height: 36)
-                .padding(6)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .contentShape(Circle())
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        showingMapExpandedCard = false
-                        previewCity = nil
-                        recenterOnAllCities = true
-                    }
-                }
 
-            // Search bar — tap to reopen search
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.tertiary)
-                Text(previewSearchText)
-                    .font(.avenir(.subheadline, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-                Spacer()
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 36)
-            .padding(6)
-            .glassEffect(.regular.interactive(), in: .capsule)
-            .contentShape(Capsule())
-            .onTapGesture {
-                showingAddCityView = true
-            }
 
-            // Add button
-            Image(systemName: "plus")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(.blue)
-                .frame(width: 36, height: 36)
-                .padding(6)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .contentShape(Circle())
-                .onTapGesture {
-                    if let city = previewCity {
-                        Task {
-                            await addCityToSidebar(city)
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                previewCity = nil
-                            }
-                        }
-                    }
-                }
-        }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 4)
-        .padding(.top, 20)
-        .background {
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { }
-        }
-    }
 
-    private var iOSFloatingBottomToolbar: some View {
-        HStack(alignment: .bottom, spacing: 12) {
-            // View switcher capsule
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
-                        .contentTransition(.symbolEffect(.replace))
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
-                        .frame(width: 42, height: 44)
-                        .background {
-                            if selectedTab == 0 {
-                                Capsule()
-                                    .fill(.ultraThinMaterial)
-                                    .transition(.scale.combined(with: .opacity))
-                            }
-                        }
-                        .contentShape(Capsule())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                selectedTab = 0
-                            }
-                        }
-
-                    Image(systemName: selectedTab == 1 ? "map.fill" : "map")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(selectedTab == 1 ? .primary : .secondary)
-                        .frame(width: 42, height: 44)
-                        .background {
-                            if selectedTab == 1 {
-                                Capsule()
-                                    .fill(.ultraThinMaterial)
-                                    .transition(.scale.combined(with: .opacity))
-                            }
-                        }
-                        .contentShape(Capsule())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                selectedTab = 1
-                            }
-                        }
-                }
-                .padding(6)
-                .glassEffect(.regular.interactive(), in: .capsule)
-                .fixedSize()
-            }
-
-            Spacer()
-
-            if selectedTab == 0 {
-                iOSDateSwitcherCapsule
-            }
-
-            if selectedTab == 1 {
-                iOSMapControlsCapsule
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 4)
-        .padding(.top, 20)
-        .background {
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { }
-        }
-    }
 
     private var iPadDateSwitcherToolbarContent: some View {
         HStack(spacing: 6) {
@@ -2554,6 +2426,347 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Inline Search Overlay (iPhone)
+
+    // MARK: - Unified Bottom Bar (morphs between toolbar and search)
+
+    private var iOSUnifiedBottomBar: some View {
+        HStack(spacing: 12) {
+            if showingInlineSearch {
+                // SEARCH STATE: search bar (full width) + x button
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                    TextField(localizedString("Search for a city", locale: locale), text: $inlineSearchText)
+                        .textFieldStyle(.plain)
+                        .font(.avenir(.subheadline, weight: .medium))
+                        .autocorrectionDisabled()
+                        .focused($inlineSearchFocused)
+                    if !inlineSearchText.isEmpty {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                            .font(.system(size: 14, weight: .medium))
+                            .contentShape(Circle())
+                            .onTapGesture { inlineSearchText = "" }
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 36)
+                .padding(6)
+                .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .animation(.spring(response: 0.3, dampingFraction: 0.75), value: inlineSearchText.isEmpty)
+
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            showingInlineSearch = false
+                            inlineSearchText = ""
+                            inlineSearchFocused = false
+                        }
+                    }
+
+            } else if previewCity != nil {
+                // PREVIEW STATE: + button + search bar (city name) + x button
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.blue)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        if let city = previewCity {
+                            Task {
+                                await addCityToSidebar(city)
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                    previewCity = nil
+                                }
+                            }
+                        }
+                    }
+
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                    Text(previewSearchText)
+                        .font(.avenir(.subheadline, weight: .medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 36)
+                .padding(6)
+                .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .contentShape(Capsule())
+                .onTapGesture {
+                    if isIPad {
+                        showingAddCityView = true
+                    } else {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            showingInlineSearch = true
+                            inlineSearchText = previewSearchText
+                        }
+                    }
+                }
+
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            showingMapExpandedCard = false
+                            previewCity = nil
+                            recenterOnAllCities = true
+                        }
+                    }
+
+            } else {
+                // NORMAL STATE: tab switcher + spacer + date/map controls
+                HStack(spacing: 8) {
+                    Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
+                        .contentTransition(.symbolEffect(.replace))
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
+                        .frame(width: 42, height: 44)
+                        .background {
+                            if selectedTab == 0 {
+                                Capsule()
+                                    .fill(.ultraThinMaterial)
+                                    .transition(.scale.combined(with: .opacity))
+                            }
+                        }
+                        .contentShape(Capsule())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                selectedTab = 0
+                            }
+                        }
+
+                    Image(systemName: selectedTab == 1 ? "map.fill" : "map")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(selectedTab == 1 ? .primary : .secondary)
+                        .frame(width: 42, height: 44)
+                        .background {
+                            if selectedTab == 1 {
+                                Capsule()
+                                    .fill(.ultraThinMaterial)
+                                    .transition(.scale.combined(with: .opacity))
+                            }
+                        }
+                        .contentShape(Capsule())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                selectedTab = 1
+                            }
+                        }
+                }
+                .padding(6)
+                .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .fixedSize()
+
+                Spacer()
+
+                Group {
+                    if selectedTab == 0 {
+                        iOSDateSwitcherCapsule
+                    } else {
+                        iOSMapControlsCapsule
+                    }
+                }
+                .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+        .padding(.top, showingInlineSearch || previewCity != nil ? 0 : 20)
+        .background {
+            if !showingInlineSearch && previewCity == nil {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { }
+            }
+        }
+        .onChange(of: inlineSearchText) { _, newValue in
+            inlineSearchManager.search(query: newValue)
+        }
+        .onChange(of: showingInlineSearch) { _, newValue in
+            if newValue {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    inlineSearchFocused = true
+                }
+            } else {
+                inlineSearchManager.search(query: "")
+                inlineSearchFocused = false
+            }
+        }
+    }
+
+    // MARK: - Inline Search Results (shown when typing)
+
+    private var iOSInlineSearchResults: some View {
+        VStack(spacing: 0) {
+            if !inlineSearchManager.searchResults.isEmpty {
+                List {
+                    ForEach(inlineSortedSearchResults) { result in
+                        let existing = inlineIsExistingCity(result)
+                        Button {
+                            Task {
+                                await inlineSelectSearchResult(result)
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(result.title)
+                                    .font(.avenir(.body, weight: existing ? .semibold : .regular))
+                                    .foregroundStyle(.primary)
+
+                                if existing {
+                                    Text(localizedString("Added", locale: locale))
+                                        .font(.avenir(.caption2, weight: .medium))
+                                        .foregroundStyle(.blue)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(.blue.opacity(0.12), in: Capsule())
+                                }
+
+                                Spacer()
+
+                                if inlineIsLoadingCity {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    Text(result.subtitle)
+                                        .font(.avenir(.headline, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(inlineIsLoadingCity)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowSeparator(.visible)
+                        .listRowBackground(Color.clear)
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .contentMargins(.bottom, 80)
+            } else {
+                VStack(spacing: 16) {
+                    Spacer()
+
+                    Image(systemName: "map")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.tertiary)
+
+                    Text(localizedString("No results", locale: locale))
+                        .font(.avenir(.title3, weight: .medium))
+
+                    Text(localizedString("Try a different search term", locale: locale))
+                        .font(.avenir(.body))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.black.opacity(0.95))
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    @State private var inlineIsLoadingCity = false
+
+    private func inlineIsExistingCity(_ result: CitySearchResult) -> Bool {
+        let name = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
+        let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
+        return weatherService.cityWeatherData.contains(where: { $0.city.name == name && $0.city.country == country })
+    }
+
+    private var inlineSortedSearchResults: [CitySearchResult] {
+        inlineSearchManager.searchResults.sorted { a, b in
+            let aExists = inlineIsExistingCity(a)
+            let bExists = inlineIsExistingCity(b)
+            if aExists != bExists { return aExists }
+            return false
+        }
+    }
+
+    private func inlineSelectSearchResult(_ result: CitySearchResult) async {
+        inlineIsLoadingCity = true
+        defer { inlineIsLoadingCity = false }
+
+        let cityName = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
+        let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
+
+        // Check if city already exists
+        if let existingCity = weatherService.cityWeatherData.first(where: { $0.city.name == cityName && $0.city.country == country }) {
+            handleInlineSearchCitySelected(existingCity)
+            return
+        }
+
+        // Resolve coordinates
+        guard let coordinate = await inlineSearchManager.resolveCoordinate(for: result) else {
+            return
+        }
+
+        // Create and fetch weather for new city
+        let tempCity = City(name: cityName, country: country, latitude: coordinate.latitude, longitude: coordinate.longitude)
+        guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
+            return
+        }
+
+        handleInlineSearchCitySelected(tempCityWeather)
+    }
+
+    private func handleInlineSearchCitySelected(_ cityWeather: CityWeather) {
+        if selectedTab == 1 || isIPad {
+            // On map: show as preview marker with expanded card
+            previewCity = cityWeather
+            previewSearchText = cityWeather.city.name
+            tappedCity = cityWeather
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                showingInlineSearch = false
+                inlineSearchText = ""
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                centerOnCityTrigger = cityWeather
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    showingMapExpandedCard = true
+                }
+            }
+        } else {
+            addCityDetailCity = cityWeather
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                showingInlineSearch = false
+                inlineSearchText = ""
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                showingAddCityDetail = true
+            }
+        }
+    }
+
     private var iOSAddCitySheet: some View {
         NavigationStack {
             AddCitySearchView(
@@ -3114,6 +3327,15 @@ struct ContentView: View {
     }
     private var iOSCustomMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
+            if !isIPad {
+                menuRow(icon: "magnifyingglass", title: localizedString("Search", locale: locale)) {
+                    showingMenuPopover = false
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                        showingInlineSearch = true
+                    }
+                }
+            }
+
             if !isEditingListName {
                 if let city = selectedTab == 1 ? tappedCity : selectedCity,
                    cityIsInSidebar(city) {
@@ -3445,7 +3667,13 @@ struct ContentView: View {
                     Spacer()
                     if !isEditingListName {
                         Button {
-                            showingAddCityView = true
+                            if isIPad {
+                                showingAddCityView = true
+                            } else {
+                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                    showingInlineSearch = true
+                                }
+                            }
                         } label: {
                             Label(localizedString("Search", locale: locale), systemImage: "magnifyingglass")
                                 .font(.avenir(.body, weight: .semibold))
