@@ -257,7 +257,7 @@ struct ContentView: View {
     @State private var resolvedGridCityName: String?
     @State private var resolvedGridCityNames: [UUID: String] = [:]
     @State private var showingAddToListPopover: Bool = false
-    @State private var showingGeocodingError: Bool = false
+
     @State private var showingMapListSwitcher: Bool = false
     @State private var showingRecenterPopover: Bool = false
     @State private var focusSubsetCities: [CityWeather] = []
@@ -297,14 +297,6 @@ struct ContentView: View {
             }
             return forecast.condition
         }()
-        // Show "Partly Sunny" when condition is partlyCloudy but icon has sun
-        let conditionText: String = {
-            if forecast.condition == .partlyCloudy && icon.contains("sun") {
-                return localizedString("Partly Sunny", locale: locale)
-            }
-            return forecast.condition.localizedDisplayName(locale: locale)
-        }()
-
         return HStack(alignment: .center, spacing: 0) {
             // Left: temperature, city, details
             VStack(alignment: .leading, spacing: 6) {
@@ -320,7 +312,7 @@ struct ContentView: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                // Cloud cover & precipitation
+                // Cloud cover, precipitation & 7-day forecast dots
                 HStack(spacing: 12) {
                     HStack(spacing: 4) {
                         Image(systemName: "cloud.fill")
@@ -336,8 +328,16 @@ struct ContentView: View {
                             .font(.avenir(.caption, weight: .medium))
                     }
 
-                    Text(conditionText)
-                        .font(.avenir(.caption, weight: .medium))
+                    HStack(spacing: 5) {
+                        ForEach(0..<min(7, cityWeather.dailyForecasts.count), id: \.self) { i in
+                            let dayForecast = cityWeather.dailyForecasts[i]
+                            Circle()
+                                .fill(dayForecast.condition.dotColor)
+                                .frame(width: i == selectedDayOffset ? 8 : 6, height: i == selectedDayOffset ? 8 : 6)
+                                .shadow(color: dayForecast.condition.dotColor.opacity(0.6), radius: 3)
+                                .opacity(i == selectedDayOffset ? 1 : 0.6)
+                        }
+                    }
                 }
                 .foregroundStyle(.secondary)
             }
@@ -493,10 +493,7 @@ struct ContentView: View {
                 iOSDeleteListConfirmationOverlay
             }
             .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
-            .overlay {
-                iOSGeocodingErrorOverlay
-            }
-            .animation(.easeOut(duration: 0.2), value: showingGeocodingError)
+
     }
 
     @ViewBuilder
@@ -657,18 +654,18 @@ struct ContentView: View {
                                 resolvedGridCityName = resolved
                             }
                         } else {
-                            // Rate limited or error
+                            // Rate limited or error — fall back to country name
                             if tappedCity?.id == city.id {
-                                withAnimation { showingMapExpandedCard = false }
-                                tappedCity = nil
-                                showingGeocodingError = true
+                                let fallback = city.city.country
+                                resolvedGridCityNames[city.id] = fallback
+                                resolvedGridCityName = fallback
                             }
                         }
                     } else {
                         if tappedCity?.id == city.id {
-                            withAnimation { showingMapExpandedCard = false }
-                            tappedCity = nil
-                            showingGeocodingError = true
+                            let fallback = city.city.country
+                            resolvedGridCityNames[city.id] = fallback
+                            resolvedGridCityName = fallback
                         }
                     }
                 }
@@ -2926,50 +2923,7 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder
-    private var iOSGeocodingErrorOverlay: some View {
-        if showingGeocodingError {
-            Color.black.opacity(0.4)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        showingGeocodingError = false
-                    }
-                }
-            
-            VStack(spacing: 0) {
-                Text(localizedString("Location Unavailable", locale: locale))
-                    .font(.avenir(.headline, weight: .bold))
-                    .padding(.top, 20)
-                    .padding(.bottom, 8)
-                
-                Text(localizedString("Could not determine the city name for this location. Please try another point.", locale: locale))
-                    .font(.avenir(.subheadline, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 18)
-                
-                Divider()
-                
-                Button {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        showingGeocodingError = false
-                    }
-                } label: {
-                    Text(localizedString("OK", locale: locale))
-                        .font(.avenir(.body, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-            .frame(width: 280)
-            .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 16))
-            .transition(.scale(scale: 0.9).combined(with: .opacity))
-        }
-    }
+
 
     private var iOSListSwitcher: some View {
         Group {
@@ -3337,7 +3291,7 @@ struct ContentView: View {
             }
 
             if !isEditingListName {
-                if let city = selectedTab == 1 ? tappedCity : selectedCity,
+                if let city = selectedTab == 1 ? (showingMapExpandedCard ? tappedCity : nil) : selectedCity,
                    cityIsInSidebar(city) {
                     menuRow(icon: "trash", title: localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"") {
                         showingMenuPopover = false
