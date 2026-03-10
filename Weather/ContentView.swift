@@ -3745,6 +3745,7 @@ struct ContentView: View {
                             }
                         }
                         .onLongPressGesture {
+                            print("[DEBUG] Long press OPENED for: \(cityWeather.city.name)")
                             longPressedCity = cityWeather
                         }
                         .popover(isPresented: Binding(
@@ -3753,6 +3754,7 @@ struct ContentView: View {
                         )) {
                             VStack(alignment: .leading, spacing: 0) {
                                 menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
+                                    print("[DEBUG] REVEAL tapped for: \(cityWeather.city.name)")
                                     let revealCity = cityWeather
                                     longPressedCity = nil
                                     showingCityDetail = false
@@ -3768,8 +3770,10 @@ struct ContentView: View {
                                 Divider().padding(.horizontal, 12).padding(.vertical, 4)
                                 
                                 menuRow(icon: "trash", title: localizedString("Delete City", locale: locale)) {
+                                    print("[DEBUG] DELETE tapped for: \(cityWeather.city.name)")
                                     longPressedCity = nil
                                     weatherService.removeCity(cityWeather)
+                                    print("[DEBUG] removeCity called for: \(cityWeather.city.name)")
                                     if selectedCity?.id == cityWeather.id {
                                         selectedCity = nil
                                     }
@@ -3974,6 +3978,8 @@ struct ContentView: View {
 }
 
 #Preview {
+    let _ = UserDefaults.standard.set(false, forKey: "isGridView")
+    let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
     ContentView()
 }
 
