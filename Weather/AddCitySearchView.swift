@@ -196,21 +196,18 @@ struct AddCitySearchView: View {
         
         // Check if city already exists (match by name + country)
         if let existingCity = cities.first(where: { $0.city.name == cityName && $0.city.country == country }) {
-            print("City \(cityName), \(country) already exists")
             onCitySelected(existingCity)
             return
         }
         
         // Resolve coordinates
         guard let coordinate = await citySearchManager.resolveCoordinate(for: result) else {
-            print("⚠️ Could not resolve coordinates for \(cityName)")
             return
         }
         
         // Create and fetch weather for new city
         let tempCity = City(name: cityName, country: country, latitude: coordinate.latitude, longitude: coordinate.longitude)
         guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
-            print("⚠️ Could not fetch weather for \(cityName)")
             return
         }
         

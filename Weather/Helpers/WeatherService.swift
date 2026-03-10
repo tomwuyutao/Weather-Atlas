@@ -300,31 +300,21 @@ class WeatherService {
     }
     
     func fetchWeatherForAllCities() async {
-        print("🚀 [DEBUG] fetchWeatherForAllCities() CALLED")
-        
         // Check if we have valid cached data
-        print("🔍 [DEBUG] Checking cache...")
         let cachedData = loadCachedData()
         let cacheValid = isCacheValid()
-        print("🔍 [DEBUG] cachedData=\(cachedData != nil ? "\(cachedData!.count) cities" : "nil"), cacheValid=\(cacheValid)")
         
         if let cachedData = cachedData, cacheValid {
-            print("📦 Using CACHED weather data")
-            for cw in cachedData {
-                print("📦 CACHED \(cw.city.name): temp=\(Int(cw.temperature))°C, icon=\(cw.symbolName), cloud cover=\(cw.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", ")) [from cache — may be ESTIMATED if old cache]")
-            }
             self.cityWeatherData = cachedData
             generateForecastDays()
-            print("🏁 [DEBUG] Returned from cache, done.")
+            print("\(cachedData.count) cities loaded from cache")
             return
         }
         
-        print("🌐 [DEBUG] No valid cache, will fetch from WeatherKit...")
         isLoading = true
         loadingProgress = 0
         defer {
             isLoading = false
-            print("🏁 [DEBUG] isLoading set to false")
         }
         
         // Generate 10 days of forecast data
@@ -332,53 +322,26 @@ class WeatherService {
         
         // Load the saved cities list, or use defaults for active list
         let citiesToFetch = loadSavedCities() ?? activeListID.defaultCities
-        print("📍 [DEBUG] Fetching weather for \(citiesToFetch.count) cities: \(citiesToFetch.map { $0.name }.joined(separator: ", "))")
         
         var weatherData: [CityWeather] = []
         
         for (index, city) in citiesToFetch.enumerated() {
-            print("🌤️ [DEBUG] [\(index + 1)/\(citiesToFetch.count)] Fetching \(city.name)...")
             do {
-                // Fetch real weather data from WeatherKit
                 let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
-                print("🌤️ [DEBUG] Calling weatherService.weather(for: \(city.name))...")
                 let weather = try await weatherService.weather(for: location)
-                print("🌤️ [DEBUG] Got WeatherKit response for \(city.name)")
-                
-                // Convert WeatherKit data to our model
                 let cityWeather = await convertWeatherKitData(weather: weather, for: city)
                 weatherData.append(cityWeather)
-                
-                print("✅ [\(index + 1)/\(citiesToFetch.count)] Fetched REAL weather for \(city.name): \(Int(cityWeather.temperature))°C, cloud cover: \(cityWeather.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", "))")
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
-                }
-            } catch let error as NSError {
-                print("❌ [DEBUG] Error for \(city.name): domain=\(error.domain), code=\(error.code), desc=\(error.localizedDescription)")
-                // Check if this is a WeatherKit authentication error
-                if error.domain == "WeatherDaemon.WDSJWTAuthenticatorServiceListener.Errors" && error.code == 2 {
-                    print("⚠️ WeatherKit authentication failed for \(city.name). Make sure WeatherKit capability is enabled.")
-                    print("   Using mock data instead. To fix:")
-                    print("   1. Add WeatherKit capability in Signing & Capabilities")
-                    print("   2. Enable WeatherKit for your App ID in Developer Portal")
-                } else {
-                    print("❌ Error fetching weather for \(city.name): \(error.localizedDescription)")
-                }
-                
-                // Skip city — no mock data, will retry on next refresh
-                print("⚠️ Skipping \(city.name) — no data available")
                 withAnimation(.easeInOut(duration: 0.15)) {
                     loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
                 }
             } catch {
-                print("❌ [DEBUG] Unexpected error for \(city.name): \(error)")
                 withAnimation(.easeInOut(duration: 0.15)) {
                     loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
                 }
             }
         }
         
-        print("📊 [DEBUG] Total cities loaded: \(weatherData.count) out of \(citiesToFetch.count)")
+        print("\(weatherData.count)/\(citiesToFetch.count) cities fetched")
         self.cityWeatherData = weatherData
         otherListData[activeListID.rawValue] = weatherData
         
@@ -387,7 +350,6 @@ class WeatherService {
     }
     
     func refreshWeather() async {
-        print("🔄 Forcing weather refresh")
         clearCache()
         await fetchWeatherForAllCities()
     }
@@ -491,12 +453,6 @@ class WeatherService {
         let elapsed = now.timeIntervalSince(timestamp)
         let isValid = elapsed < cacheDuration
         
-        if isValid {
-            print("✅ Cache is valid (age: \(Int(elapsed/60)) minutes)")
-        } else {
-            print("⏰ Cache expired (age: \(Int(elapsed/60)) minutes)")
-        }
-        
         return isValid
     }
     
@@ -507,15 +463,12 @@ class WeatherService {
             UserDefaults.standard.set(encoded, forKey: cacheKey)
             UserDefaults.standard.set(Date(), forKey: cacheTimestampKey)
             lastFetchDate = Date()
-            print("💾 Cached weather data for \(data.count) cities")
         } catch {
-            print("❌ Failed to cache weather data: \(error)")
         }
     }
     
     private func loadCachedData() -> [CityWeather]? {
         guard let data = UserDefaults.standard.data(forKey: cacheKey) else {
-            print("📭 No cached data found")
             return nil
         }
         
@@ -525,7 +478,6 @@ class WeatherService {
             lastFetchDate = UserDefaults.standard.object(forKey: cacheTimestampKey) as? Date
             return cachedWeather.map { $0.toCityWeather() }
         } catch {
-            print("❌ Failed to decode cached data: \(error)")
             return nil
         }
     }
@@ -534,7 +486,6 @@ class WeatherService {
         UserDefaults.standard.removeObject(forKey: cacheKey)
         UserDefaults.standard.removeObject(forKey: cacheTimestampKey)
         lastFetchDate = nil
-        print("🗑️ Cache cleared")
     }
     
     /// Load cached weather data for a specific list (without switching the active list)
@@ -608,16 +559,13 @@ class WeatherService {
             let encoder = JSONEncoder()
             let encoded = try encoder.encode(cities.map { CachedCity(from: $0) })
             UserDefaults.standard.set(encoded, forKey: citiesListKey)
-            print("💾 Saved cities list: \(cities.map { $0.name }.joined(separator: ", "))")
         } catch {
-            print("❌ Failed to save cities list: \(error)")
         }
     }
     
     /// Load the saved cities list (returns nil if no list was saved)
     private func loadSavedCities() -> [City]? {
         guard let data = UserDefaults.standard.data(forKey: citiesListKey) else {
-            print("📭 No saved cities list found for \(activeListID.rawValue), using defaults")
             return nil
         }
         
@@ -634,10 +582,8 @@ class WeatherService {
                 }
                 return city
             }
-            print("📍 Loaded \(cities.count) saved cities: \(cities.map { $0.name }.joined(separator: ", "))")
             return cities
         } catch {
-            print("❌ Failed to decode saved cities: \(error)")
             return nil
         }
     }
@@ -651,7 +597,7 @@ class WeatherService {
                     return timeZone
                 }
             } catch {
-                print("⚠️ Could not determine timezone for location: \(error.localizedDescription)")
+
             }
         }
         // Fallback to UTC if we can't determine the timezone
@@ -731,7 +677,7 @@ class WeatherService {
         }
         
         // Fallback: Generate 24 hours based on the daily forecast
-        print("⚠️ No real hourly data for day \(dayOffset), using fallback hourly from daily forecast")
+
         let daytime = day.daytimeForecast
         let fallbackCloudCover = daytime.cloudCover
         let baseTemp = (daytime.lowTemperature.value + daytime.highTemperature.value) / 2.0
@@ -796,8 +742,6 @@ class WeatherService {
     }
     
     func addCity(_ city: City) async {
-        print("📍 Adding city: \(city.name)")
-        
         do {
             // Fetch weather for the new city
             let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
@@ -815,10 +759,7 @@ class WeatherService {
             // Save the updated cities list
             saveCitiesList()
             
-            print("✅ Added REAL weather for \(city.name): \(Int(cityWeather.temperature))°C, cloud cover: \(cityWeather.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", "))")
         } catch {
-            print("❌ Error fetching weather for \(city.name): \(error.localizedDescription)")
-            print("⚠️ City \(city.name) not added — no data available")
         }
     }
     
@@ -863,15 +804,11 @@ class WeatherService {
                 otherListData[listID.rawValue]?.insert(cityWeather, at: 0)
             }
             
-            print("✅ Added \(city.name) to list \(listID.displayName)")
         } catch {
-            print("❌ Error adding city to list: \(error.localizedDescription)")
         }
     }
     
     func fetchWeatherForCity(_ city: City) async -> CityWeather? {
-        print("🔍 Fetching weather for \(city.name) (temporary)")
-        
         do {
             // Fetch weather for the city
             let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
@@ -880,11 +817,8 @@ class WeatherService {
             // Convert to our model
             let cityWeather = await convertWeatherKitData(weather: weather, for: city)
             
-            print("✅ Fetched REAL weather for \(city.name): \(Int(cityWeather.temperature))°C, cloud cover: \(cityWeather.dailyForecasts.map { "\(Int($0.cloudCover * 100))%" }.joined(separator: ", "))")
             return cityWeather
         } catch {
-            print("❌ Error fetching weather for \(city.name): \(error.localizedDescription)")
-            print("⚠️ No data available for \(city.name)")
             return nil
         }
     }
@@ -913,7 +847,6 @@ class WeatherService {
                 results.append(cityWeather)
                 onResult?(cityWeather)
             } catch {
-                print("⚠️ Grid fetch skipped (\(index + 1)/\(total)): \(error.localizedDescription)")
             }
             onProgress(Double(index + 1) / Double(total))
         }

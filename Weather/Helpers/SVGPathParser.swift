@@ -21,13 +21,11 @@ class SVGMapParser: NSObject, XMLParserDelegate {
     
     static func parse() -> [CountryPath] {
         guard let url = Bundle.main.url(forResource: "world", withExtension: "svg") else {
-            print("⚠️ world.svg not found in bundle")
             return []
         }
         
         let parser = SVGMapParser()
         guard let xmlParser = XMLParser(contentsOf: url) else {
-            print("⚠️ Failed to create XML parser for world.svg")
             return []
         }
         xmlParser.delegate = parser

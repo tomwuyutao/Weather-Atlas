@@ -890,9 +890,7 @@ struct DayForecastBox: View {
                 selectedDayOffset: 0,
                 namespace: namespace,
                 onDismiss: { },
-                onAddCity: {
-                    print("Add London to sidebar")
-                },
+                onAddCity: { },
                 isInSidebar: false,
                 previewCurrentHour: 14
             )

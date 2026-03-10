@@ -344,13 +344,11 @@ struct DesktopSidebar: View {
         }
         
         guard let coordinate = await citySearchManager.resolveCoordinate(for: result) else {
-            print("⚠️ Could not resolve coordinates for \(cityName)")
             return
         }
         
         let tempCity = City(name: cityName, country: country, latitude: coordinate.latitude, longitude: coordinate.longitude)
         guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
-            print("⚠️ Could not fetch weather for \(cityName)")
             return
         }
         

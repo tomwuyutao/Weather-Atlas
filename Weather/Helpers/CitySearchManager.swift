@@ -66,6 +66,5 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     }
     
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-        print("Search error: \(error.localizedDescription)")
     }
 }
