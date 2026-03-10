@@ -598,7 +598,6 @@ struct ContentView: View {
             iOSMainZStack
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
-                
                 .toolbar { iOSLeadingToolbarItems }
                 .toolbar { iOSPrincipalToolbarItem }
                 .toolbar { iOSTrailingToolbarItems }
@@ -957,6 +956,9 @@ struct ContentView: View {
                             .font(.system(size: 10, weight: .semibold))
                             .foregroundStyle(.secondary)
                     }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .themedGlass(in: .capsule)
                 }
                 .buttonStyle(.plain)
                 .popover(isPresented: $showingMapListSwitcher) {
@@ -964,6 +966,7 @@ struct ContentView: View {
                         .presentationCompactAdaptation(.popover)
                 }
             }
+            .sharedBackgroundVisibility(.hidden)
         }
     }
 
@@ -1206,7 +1209,10 @@ struct ContentView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 ProgressView()
                     .controlSize(.small)
+                    .frame(width: 36, height: 36)
+                    .themedGlass(in: .circle)
             }
+            .sharedBackgroundVisibility(.hidden)
         }
 
         if filterSunny {
@@ -2573,7 +2579,7 @@ struct ContentView: View {
                     Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
                         .contentTransition(.symbolEffect(.replace))
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(selectedTab == 0 ? .primary : .secondary)
+                        .foregroundStyle(selectedTab == 0 ? theme.colors.dotRain : .secondary)
                         .frame(width: 42, height: 44)
                         .background {
                             if selectedTab == 0 {
@@ -2591,7 +2597,7 @@ struct ContentView: View {
 
                     Image(systemName: selectedTab == 1 ? "map.fill" : "map")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(selectedTab == 1 ? .primary : .secondary)
+                        .foregroundStyle(selectedTab == 1 ? theme.colors.dotRain : .secondary)
                         .frame(width: 42, height: 44)
                         .background {
                             if selectedTab == 1 {
