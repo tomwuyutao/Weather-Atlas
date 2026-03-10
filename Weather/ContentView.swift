@@ -357,10 +357,11 @@ struct ContentView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .frame(maxWidth: isIPad ? 420 : .infinity)
-        .background {
+        .themedGlass(in: RoundedRectangle(cornerRadius: 20))
+        .overlay {
             RoundedRectangle(cornerRadius: 20)
-                .fill(.ultraThinMaterial)
-                .shadow(color: .black.opacity(0.3), radius: 8, y: 4)
+                .fill(.white.opacity(0.08))
+                .allowsHitTesting(false)
         }
         .onTapGesture {
             if isIPad {
@@ -1145,7 +1146,6 @@ struct ContentView: View {
             }
         }
     }
-
 
     @ToolbarContentBuilder
     private var iOSTrailingToolbarItems: some ToolbarContent {
@@ -3494,4 +3494,9 @@ private enum CountryOverviewCacheManager {
     }
 }
 
+#Preview {
+    let _ = UserDefaults.standard.set(false, forKey: "isGridView")
+    let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
+    ContentView()
+}
 
