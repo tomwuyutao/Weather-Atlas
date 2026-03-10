@@ -325,7 +325,7 @@ struct WeatherEffectOverlay: View {
                 
                 Image(systemName: item.0)
                     .font(.system(size: 48))
-                    .symbolRenderingMode(.multicolor)
+                    .weatherIconStyle(for: item.0)
                     .frame(width: 64, height: 64)
                     .background(alignment: .top) {
                         WeatherEffectOverlay(condition: item.2, isCompact: false, iconHeight: 64)

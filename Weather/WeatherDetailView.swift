@@ -97,7 +97,7 @@ struct WeatherDetailView: View {
                     }
                     
                     Text(forecastDateText)
-                        .padding(.top, dynamicTypeSize > .large ? 12 : 0)
+                        .padding(.top, dynamicTypeSize > .large ? 24 : 16)
                         .font(.avenir(.body, weight: .medium))
                         .foregroundStyle(.secondary)
                         .dynamicTypeSize(...DynamicTypeSize.large)
@@ -106,7 +106,7 @@ struct WeatherDetailView: View {
                     
                     Image(systemName: detailDisplayIcon)
                         .font(.system(size: 48))
-                        .symbolRenderingMode(.multicolor)
+                        .weatherIconStyle(for: detailDisplayIcon)
                         .contentTransition(.symbolEffect(.replace))
                         .frame(height: 56)
                         .background(alignment: .top) {
@@ -127,7 +127,6 @@ struct WeatherDetailView: View {
                 }
                 .dynamicTypeSize(...DynamicTypeSize.large)
                 .padding(.bottom, 0)
-                .clipped()
                 
                 // Info boxes
                 HStack(spacing: 12) {
@@ -668,7 +667,7 @@ struct HourlyTimelineChart: View {
                             // Icon — above the value
                             Image(systemName: forecast.weatherIcon)
                                 .font(.title3)
-                                .symbolRenderingMode(.multicolor)
+                                .weatherIconStyle(for: forecast.weatherIcon)
                                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                                 .frame(height: iconHeight)
                                 .position(x: columnWidth / 2, y: pointY - iconToValue - iconHeight / 2)
@@ -735,7 +734,7 @@ struct DayForecastBox: View {
             // Weather icon - always shown
             Image(systemName: dailyForecast.weatherIcon)
                 .font(.body)
-                .symbolRenderingMode(.multicolor)
+                .weatherIconStyle(for: dailyForecast.weatherIcon)
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 .frame(height: 22)
             
@@ -747,7 +746,6 @@ struct DayForecastBox: View {
         .frame(minWidth: 50)
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(isSelected ? AppTheme.shared.colors.accent.opacity(0.15) : Color.primary.opacity(0.05), in: UnevenRoundedRectangle(cornerRadii: cornerRadius))
         .overlay {
             UnevenRoundedRectangle(cornerRadii: cornerRadius)
                 .stroke(isSelected ? AppTheme.shared.colors.accent.opacity(0.3) : Color.primary.opacity(0.1), lineWidth: isSelected ? 1.5 : 0.5)

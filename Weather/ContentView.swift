@@ -228,6 +228,7 @@ struct ContentView: View {
     @State private var showPlaybackButton: Bool = false
     @State private var playbackButtonHideTask: Task<Void, Never>?
     @State private var showingMenuPopover: Bool = false
+    @State private var showingDetailMenuPopover: Bool = false
     @AppStorage("isGridView") private var isGridView: Bool = false
     @State private var gridDragItem: CityWeather?
     @State private var showingListSwitcher: Bool = false
@@ -348,7 +349,7 @@ struct ContentView: View {
             // Right: weather icon, centered vertically
             Image(systemName: icon)
                 .font(.system(size: 40))
-                .symbolRenderingMode(.multicolor)
+                .weatherIconStyle(for: icon)
                 .frame(width: 56, height: 48)
                 .background(alignment: .top) {
                     WeatherEffectOverlay(condition: effectCondition, isCompact: false, iconHeight: 48, iconName: icon)
@@ -516,7 +517,7 @@ struct ContentView: View {
                             VStack(spacing: 16) {
                                 Image(systemName: "cloud.sun.fill")
                                     .font(.system(size: 40))
-                                    .symbolRenderingMode(.multicolor)
+                                    .weatherIconStyle(for: "cloud.sun.fill")
                                 Text(localizedString("Loading Weather", locale: locale))
                                     .font(.avenir(.headline, weight: .semibold))
                                 Capsule()
@@ -2394,32 +2395,40 @@ struct ContentView: View {
                 }
                 if cityIsInSidebar(city), !isIPad {
                     ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button {
-                                let revealCity = city
-                                showingCityDetail = false
-                                centerOnCityTrigger = nil
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    selectedTab = 1
-                                }
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                    centerOnCityTrigger = revealCity
-                                }
-                            } label: {
-                                Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
-                            }
-                            
-                            Button(role: .destructive) {
-                                weatherService.removeCity(city)
-                                showingCityDetail = false
-                                if selectedTab == 1 {
-                                    recenterOnAllCities = true
-                                }
-                            } label: {
-                                Label(localizedString("Delete City", locale: locale), systemImage: "trash")
-                            }
+                        Button {
+                            showingDetailMenuPopover = true
                         } label: {
                             Image(systemName: "ellipsis")
+                        }
+                        .popover(isPresented: $showingDetailMenuPopover) {
+                            VStack(alignment: .leading, spacing: 0) {
+                                menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
+                                    showingDetailMenuPopover = false
+                                    let revealCity = city
+                                    showingCityDetail = false
+                                    centerOnCityTrigger = nil
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                        selectedTab = 1
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        centerOnCityTrigger = revealCity
+                                    }
+                                }
+                                
+                                menuRow(icon: "trash", title: localizedString("Delete City", locale: locale)) {
+                                    showingDetailMenuPopover = false
+                                    weatherService.removeCity(city)
+                                    showingCityDetail = false
+                                    if selectedTab == 1 {
+                                        recenterOnAllCities = true
+                                    }
+                                }
+                                .foregroundStyle(theme.colors.destructive)
+                            }
+                            .padding(.vertical, 8)
+                            .frame(width: 220)
+                            .presentationBackground(.ultraThinMaterial)
+                            .presentationCompactAdaptation(.popover)
                         }
                     }
                 }
@@ -3403,7 +3412,7 @@ struct ContentView: View {
         VStack(spacing: 8) {
             Image(systemName: forecast.weatherIcon)
                 .font(.title2)
-                .symbolRenderingMode(.multicolor)
+                .weatherIconStyle(for: forecast.weatherIcon)
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 .frame(height: 30)
 
@@ -3594,7 +3603,7 @@ struct ContentView: View {
                     VStack(spacing: 20) {
                         Image(systemName: "cloud.sun.fill")
                             .font(.system(size: 56))
-                            .symbolRenderingMode(.multicolor)
+                            .weatherIconStyle(for: "cloud.sun.fill")
                         Text(localizedString("Loading Weather", locale: locale))
                             .font(.avenir(.title2, weight: .semibold))
                         Capsule()
@@ -3684,7 +3693,7 @@ struct ContentView: View {
                                 .padding(.trailing, 4)
                             Image(systemName: cityWeather.forecast(for: selectedDayOffset).weatherIcon)
                                 .font(.title3)
-                                .symbolRenderingMode(.multicolor)
+                                .weatherIconStyle(for: cityWeather.forecast(for: selectedDayOffset).weatherIcon)
                                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                                 .frame(width: 32)
                         }
@@ -3841,7 +3850,7 @@ struct ContentView: View {
                     VStack(spacing: 20) {
                         Image(systemName: "cloud.sun.fill")
                             .font(.system(size: 56))
-                            .symbolRenderingMode(.multicolor)
+                            .weatherIconStyle(for: "cloud.sun.fill")
                         Text(localizedString("Loading Weather", locale: locale))
                             .font(.avenir(.title2, weight: .semibold))
                         Capsule()

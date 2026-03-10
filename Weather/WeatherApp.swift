@@ -42,6 +42,7 @@ struct WeatherApp: App {
                 .environment(\.locale, appLocale)
                 .environment(\.appTheme, theme)
                 .defaultFont()
+                .tint(theme.colors.primaryText)
                 .preferredColorScheme(theme.colorScheme)
         }
     }

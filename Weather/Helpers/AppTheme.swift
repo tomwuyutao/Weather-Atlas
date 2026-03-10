@@ -70,9 +70,46 @@ struct ThemeColors {
     let sunIconColor: Color
     let cloudIconColor: Color
     let rainIconColor: Color
+    let snowIconColor: Color
+    let moonIconColor: Color
     
     // Filter
     let filterSunny: Color
+    
+    /// Returns palette foreground styles for a weather SF Symbol icon name.
+    /// Use with `.symbolRenderingMode(.palette)` and `.foregroundStyle(primary, secondary)`.
+    func weatherIconPalette(for iconName: String) -> (primary: Color, secondary: Color) {
+        if iconName.contains("sun") && iconName.contains("cloud") {
+            // cloud.sun.fill — primary: cloud, secondary: sun
+            return (cloudIconColor, sunIconColor)
+        } else if iconName.contains("moon") && iconName.contains("cloud") {
+            // cloud.moon.fill — primary: cloud, secondary: moon
+            return (cloudIconColor, moonIconColor)
+        } else if iconName.contains("rain") || iconName.contains("drizzle") {
+            // cloud.rain.fill / cloud.drizzle.fill — primary: cloud, secondary: rain
+            return (cloudIconColor, rainIconColor)
+        } else if iconName.contains("snow") {
+            // cloud.snow.fill — primary: cloud, secondary: snow
+            return (cloudIconColor, snowIconColor)
+        } else if iconName.contains("fog") {
+            // cloud.fog.fill — primary: cloud, secondary: fog (use secondary text)
+            return (cloudIconColor, cloudIconColor.opacity(0.6))
+        } else if iconName.contains("sun") {
+            // sun.max.fill — primary: sun
+            return (sunIconColor, sunIconColor)
+        } else if iconName.contains("moon") {
+            // moon.fill — primary: moon
+            return (moonIconColor, moonIconColor)
+        } else if iconName.contains("cloud") {
+            // cloud.fill — primary: cloud
+            return (cloudIconColor, cloudIconColor)
+        } else if iconName.contains("wind") {
+            // wind — primary: cloud color
+            return (cloudIconColor, cloudIconColor)
+        } else {
+            return (cloudIconColor, cloudIconColor)
+        }
+    }
 }
 
 // MARK: - Predefined Themes
@@ -105,6 +142,8 @@ extension ThemeColors {
         sunIconColor: .yellow,
         cloudIconColor: .white,
         rainIconColor: .blue,
+        snowIconColor: Color(red: 0.55, green: 0.65, blue: 0.85),
+        moonIconColor: .yellow,
         filterSunny: .yellow
     )
     
@@ -120,8 +159,8 @@ extension ThemeColors {
         svgCountryFill: Color(hex: 0xE6E0D7),
         accent: Color(hex: 0x1579C7),
         destructive: Color(hex: 0xFB4368),
-        dotSun: Color(hex: 0xFFB200),
-        dotPartlyCloudy: Color(hex: 0xFFC664),
+        dotSun: Color(hex: 0xFDA409),
+        dotPartlyCloudy: Color(hex: 0xFFD999),
         dotCloudy: .white,
         dotRain: Color(hex: 0x1579C7),
         dotDrizzle: Color(hex: 0x57D3E5),
@@ -132,10 +171,12 @@ extension ThemeColors {
         snowEffect: Color.white.opacity(0.6),
         cloudEffect: .white,
         windEffect: Color(hex: 0x313131).opacity(0.15),
-        sunIconColor: Color(hex: 0xFFB200),
-        cloudIconColor: Color(hex: 0x313131),
+        sunIconColor: Color(hex: 0xFDA409),
+        cloudIconColor: .white,
         rainIconColor: Color(hex: 0x57D3E5),
-        filterSunny: Color(hex: 0xFFB200)
+        snowIconColor: .white,
+        moonIconColor: Color(hex: 0xFDA409),
+        filterSunny: Color(hex: 0xFDA409)
     )
 }
 
@@ -176,6 +217,19 @@ extension Color {
         let g = Double((hex >> 8) & 0xFF) / 255.0
         let b = Double(hex & 0xFF) / 255.0
         self.init(red: r, green: g, blue: b)
+    }
+}
+
+// MARK: - Weather Icon Modifier
+
+extension View {
+    /// Applies themed palette rendering to a weather SF Symbol icon.
+    func weatherIconStyle(for iconName: String) -> some View {
+        let theme = AppTheme.shared.colors
+        let palette = theme.weatherIconPalette(for: iconName)
+        return self
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(palette.primary, palette.secondary)
     }
 }
 

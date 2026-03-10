@@ -30,7 +30,7 @@ struct CityRow: View {
             // Weather icon - always shown
             Image(systemName: forecast.weatherIcon)
                 .font(.title3)
-                .symbolRenderingMode(.multicolor)
+                .weatherIconStyle(for: forecast.weatherIcon)
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 .frame(width: 32, height: 28)
             
@@ -212,7 +212,7 @@ struct DesktopSidebar: View {
                         VStack(spacing: 12) {
                             Image(systemName: "cloud.sun.fill")
                                 .font(.system(size: 36))
-                                .symbolRenderingMode(.multicolor)
+                                .weatherIconStyle(for: "cloud.sun.fill")
                             Text("Loading Weather…")
                                 .font(.headline)
                                 .foregroundStyle(.secondary)
