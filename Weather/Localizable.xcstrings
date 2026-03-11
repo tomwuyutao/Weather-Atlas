@@ -153,6 +153,7 @@
       }
     },
     "Cloud Cover" : {
+      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {

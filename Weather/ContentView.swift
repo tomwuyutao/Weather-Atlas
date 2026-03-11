@@ -2290,7 +2290,7 @@ struct ContentView: View {
         if let city = tappedCity {
             WeatherDetailView(
                 cityWeather: city,
-                selectedDayOffset: selectedDayOffset,
+                selectedDayOffset: $selectedDayOffset,
                 namespace: popupNamespace,
                 onDismiss: {
                     showingCityDetail = false
@@ -2368,7 +2368,10 @@ struct ContentView: View {
                                     let revealCity = city
                                     showingCityDetail = false
                                     centerOnCityTrigger = nil
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                        selectedTab = 1
+                                    }
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                         centerOnCityTrigger = revealCity
                                     }
                                 }
@@ -2826,7 +2829,7 @@ struct ContentView: View {
         if let city = addCityDetailCity {
             WeatherDetailView(
                 cityWeather: city,
-                selectedDayOffset: selectedDayOffset,
+                selectedDayOffset: $selectedDayOffset,
                 namespace: popupNamespace,
                 onDismiss: {
                     showingAddCityDetail = false
@@ -3256,7 +3259,7 @@ struct ContentView: View {
 
                 WeatherDetailView(
                     cityWeather: city,
-                    selectedDayOffset: selectedDayOffset,
+                    selectedDayOffset: $selectedDayOffset,
                     namespace: popupNamespace,
                     onDismiss: {
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {

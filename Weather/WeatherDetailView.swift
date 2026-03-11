@@ -10,7 +10,7 @@ import WeatherKit
 
 struct WeatherDetailView: View {
     let cityWeather: CityWeather
-    let selectedDayOffset: Int
+    @Binding var selectedDayOffset: Int
     let namespace: Namespace.ID
     let onDismiss: () -> Void
     let onAddCity: (() -> Void)?
@@ -41,9 +41,9 @@ struct WeatherDetailView: View {
     }
     
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Int, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil) {
+    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil) {
         self.cityWeather = cityWeather
-        self.selectedDayOffset = selectedDayOffset
+        self._selectedDayOffset = selectedDayOffset
         self.namespace = namespace
         self.onDismiss = onDismiss
         self.onAddCity = onAddCity
@@ -52,8 +52,8 @@ struct WeatherDetailView: View {
         self.isInSidebar = isInSidebar
         self.showCloudCover = showCloudCover
         self.previewCurrentHour = previewCurrentHour
-        self._internalSelectedDay = State(initialValue: selectedDayOffset)
-        self._previousDay = State(initialValue: selectedDayOffset)
+        self._internalSelectedDay = State(initialValue: selectedDayOffset.wrappedValue)
+        self._previousDay = State(initialValue: selectedDayOffset.wrappedValue)
     }
     
     private var forecast: DailyForecast {
@@ -330,8 +330,9 @@ struct WeatherDetailView: View {
             .padding(.top, isPopup ? 36 : 0)
             .padding(.bottom, isPopup ? 24 : 8)
             .frame(maxWidth: isPopup ? 340 : .infinity)
-            .onChange(of: internalSelectedDay) { oldValue, _ in
+            .onChange(of: internalSelectedDay) { oldValue, newValue in
                 previousDay = oldValue
+                selectedDayOffset = newValue
             }
             .background {
                 if isPopup {
@@ -918,7 +919,7 @@ struct DayForecastBox: View {
         if showDetail {
             WeatherDetailView(
                 cityWeather: londonWeather,
-                selectedDayOffset: 0,
+                selectedDayOffset: .constant(0),
                 namespace: namespace,
                 onDismiss: { },
                 onAddCity: { },
