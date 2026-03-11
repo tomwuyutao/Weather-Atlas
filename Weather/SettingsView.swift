@@ -351,7 +351,7 @@ struct SettingsView: View {
                     .foregroundStyle(colors.primaryText.opacity(0.3))
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 13)
+            .padding(.vertical, 16)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

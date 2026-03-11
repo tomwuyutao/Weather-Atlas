@@ -36,7 +36,7 @@ extension ContentView {
                         Image(systemName: "sidebar.left")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 36, height: 36)
+                            .frame(width: 44, height: 44)
                             .themedGlass(in: .circle)
                     }
                     .buttonStyle(.plain)
@@ -136,7 +136,7 @@ extension ContentView {
                     Image(systemName: "checkmark")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .background(theme.colors.accent, in: .circle)
                 }
                 .buttonStyle(.plain)
@@ -156,7 +156,7 @@ extension ContentView {
                 Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(filterSunny ? theme.colors.filterSunny : theme.colors.primaryText)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .themedGlass(in: .circle)
             }
             .buttonStyle(.plain)
@@ -174,7 +174,7 @@ extension ContentView {
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .themedGlass(in: .circle)
                     .contentTransition(.symbolEffect(.replace))
             }
@@ -189,7 +189,7 @@ extension ContentView {
             ToolbarItem(placement: .topBarTrailing) {
                 ProgressView()
                     .controlSize(.small)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .themedGlass(in: .circle)
             }
             .sharedBackgroundVisibility(.hidden)
@@ -205,7 +205,7 @@ extension ContentView {
                     Image(systemName: "sun.max.fill")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(theme.colors.filterSunny)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
@@ -225,7 +225,7 @@ extension ContentView {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .themedGlass(in: .circle)
                         .contentTransition(.symbolEffect(.replace))
                 }
@@ -253,7 +253,7 @@ extension ContentView {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
@@ -268,7 +268,7 @@ extension ContentView {
                     Image(systemName: "wand.and.stars")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
@@ -350,7 +350,7 @@ extension ContentView {
                     Image(systemName: "dot.squareshape.split.2x2")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
@@ -398,7 +398,7 @@ extension ContentView {
                     Image(systemName: "map")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
@@ -446,7 +446,7 @@ extension ContentView {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
@@ -466,7 +466,7 @@ extension ContentView {
                     Image(systemName: "ellipsis")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
@@ -556,7 +556,7 @@ extension ContentView {
             Image(systemName: "chevron.left")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
-                .frame(width: 36, height: 36)
+                .frame(width: 44, height: 44)
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset > 0 {
@@ -612,7 +612,7 @@ extension ContentView {
             Image(systemName: "chevron.right")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
-                .frame(width: 36, height: 36)
+                .frame(width: 44, height: 44)
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset < 9 {

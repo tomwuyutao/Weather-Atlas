@@ -36,6 +36,7 @@ struct WeatherDetailView: View {
     @State private var dayScrollHasMore: Bool = true
     @State private var isHeaderCollapsed: Bool = false
     @State private var headerDragOffset: CGFloat = 0
+    @State private var scrollAtTop: Bool = true
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     
     private var tempUnit: TemperatureUnit {
@@ -125,61 +126,56 @@ struct WeatherDetailView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .allowsHitTesting(false)
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
+                .zIndex(2)
             }
 
             // Floating header (iOS only) — outside ScrollView so scroll doesn't move it
             if !isPopup {
                 ZStack(alignment: .bottom) {
                     // ── EXPANDED content ────────────────────────────────────
-                    if !isHeaderCollapsed {
-                        GeometryReader { geo in
-                            ZStack(alignment: .topLeading) {
-                                // Large decorative icon — right, slightly cropped
-                                Image(systemName: detailDisplayIcon)
-                                    .font(.system(size: 180))
-                                    .foregroundStyle(.white)
-                                    .contentTransition(.symbolEffect(.replace))
-                                    .opacity(0.35)
-                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                                    .background(alignment: .top) {
-                                        WeatherEffectOverlay(
-                                            condition: forecast.condition,
-                                            isCompact: false,
-                                            iconHeight: 220,
-                                            iconName: detailDisplayIcon,
-                                            dropColor: forecast.condition == .drizzle ? AppTheme.shared.colors.dotRain : nil
-                                        )
-                                        .id("detail-header-effect-\(internalSelectedDay)-\(forecast.condition.displayName)")
-                                    }
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                                    .padding(.trailing, -40)
-                                    .offset(y: -36)
-
-                                // Temperature + condition — top left, below back button
-                                VStack(alignment: .leading, spacing: 6) {
-                                    Text(tempUnit.display(forecast.daytimeHigh))
-                                        .font(.avenir(.largeTitle, weight: .bold))
-                                        .dynamicTypeSize(...DynamicTypeSize.large)
-                                        .contentTransition(.numericText())
-                                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-
-                                    Text(forecast.condition.localizedDisplayName(locale: locale))
-                                        .font(.avenir(.title3, weight: .medium))
-                                        .dynamicTypeSize(...DynamicTypeSize.large)
-                                        .contentTransition(.opacity)
-                                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                                }
+                    GeometryReader { geo in
+                        ZStack(alignment: .topLeading) {
+                            // Large decorative icon — right, slightly cropped
+                            Image(systemName: detailDisplayIcon)
+                                .font(.system(size: 180))
                                 .foregroundStyle(.white)
-                                .padding(.leading, 28)
-                                .padding(.top, geo.safeAreaInsets.top)
+                                .contentTransition(.symbolEffect(.replace))
+                                .opacity(0.35)
+                                .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                                .background(alignment: .top) {
+                                    WeatherEffectOverlay(
+                                        condition: forecast.condition,
+                                        isCompact: false,
+                                        iconHeight: 220,
+                                        iconName: detailDisplayIcon,
+                                        dropColor: forecast.condition == .drizzle ? AppTheme.shared.colors.dotRain : nil
+                                    )
+                                    .id("detail-header-effect-\(internalSelectedDay)-\(forecast.condition.displayName)")
+                                }
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                                .padding(.trailing, -40)
+                                .offset(y: -36)
+
+                            // Temperature + condition — top left, below back button
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text(tempUnit.display(forecast.daytimeHigh))
+                                    .font(.avenir(.largeTitle, weight: .bold))
+                                    .dynamicTypeSize(...DynamicTypeSize.large)
+                                    .contentTransition(.numericText())
+                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+
+                                Text(forecast.condition.localizedDisplayName(locale: locale))
+                                    .font(.avenir(.title3, weight: .medium))
+                                    .dynamicTypeSize(...DynamicTypeSize.large)
+                                    .contentTransition(.opacity)
+                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                             }
+                            .foregroundStyle(.white)
+                            .padding(.leading, 28)
+                            .padding(.top, geo.safeAreaInsets.top)
                         }
-                        .transition(
-                            .asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .top)),
-                                removal: .opacity.combined(with: .move(edge: .top))
-                            )
-                        )
+                        .opacity(isHeaderCollapsed ? 0 : 1)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
                     }
 
                     // ── COLLAPSED content ────────────────────────────────────
@@ -191,7 +187,7 @@ struct WeatherDetailView: View {
                                     .foregroundStyle(.white)
                                     .contentTransition(.numericText())
                                 Text(forecast.condition.localizedDisplayName(locale: locale))
-                                    .font(.avenir(.subheadline, weight: .medium))
+                                    .font(.avenir(.subheadline, weight: .semibold))
                                     .foregroundStyle(.white.opacity(0.8))
                                     .contentTransition(.opacity)
                             }
@@ -217,7 +213,7 @@ struct WeatherDetailView: View {
                     RoundedRectangle(cornerRadius: 2.5)
                         .fill(.white.opacity(0.4))
                         .frame(width: 36, height: 5)
-                        .padding(.bottom, 10)
+
                         .frame(width: 80, height: 44)
                         .contentShape(Rectangle())
                         .gesture(
@@ -246,7 +242,7 @@ struct WeatherDetailView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .clipped()
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
-                .zIndex(1)
+                .zIndex(3)
             }
 
             // Main content card
@@ -256,6 +252,7 @@ struct WeatherDetailView: View {
                     Color.clear.frame(height: currentHeaderHeight + 20)
                         .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
                 }
+
                 if isPopup {
                     VStack(alignment: .center, spacing: 0) {
                         Text(cityWeather.city.localizedName(locale: locale))
@@ -421,6 +418,36 @@ struct WeatherDetailView: View {
                         }
                 )
 
+                // Stats grid: 2 rows × 2 columns
+                VStack(spacing: 16) {
+                    HStack(spacing: 8) {
+                        WeatherStatCard(
+                            label: "Temperature",
+                            value: tempUnit.display(forecast.daytimeHigh)
+                        )
+                        WeatherStatCard(
+                            label: "Cloud Cover",
+                            value: "\(Int(forecast.cloudCover * 100))%"
+                        )
+                    }
+                    HStack(spacing: 8) {
+                        WeatherStatCard(
+                            label: "Precipitation",
+                            value: "\(Int(forecast.precipitationChance * 100))%"
+                        )
+                        WeatherStatCard(
+                            label: "Visibility",
+                            value: {
+                                if let vis = forecast.visibility {
+                                    let rounded = (vis * 10).rounded() / 10
+                                    return rounded >= 10 ? "\(Int(rounded))km" : String(format: "%.1fkm", rounded)
+                                }
+                                return "—"
+                            }()
+                        )
+                    }
+                }
+
                 // Sun arc card — only show when sunrise/sunset data is available
                 if let sunrise = forecast.sunrise, let sunset = forecast.sunset {
                     SunArcCard(
@@ -428,7 +455,6 @@ struct WeatherDetailView: View {
                         sunset: sunset,
                         cityTimeZone: cityWeather.timeZone
                     )
-                    .padding(.top, 8)
                 }
 
             }
@@ -456,7 +482,7 @@ struct WeatherDetailView: View {
                         Image(systemName: "plus")
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(.white)
-                            .frame(width: 32, height: 32)
+                            .frame(width: 44, height: 44)
                             .themedAccentGlass(tint: AppTheme.shared.colors.accent, in: .circle)
                     }
                     .buttonStyle(.plain)
@@ -473,7 +499,7 @@ struct WeatherDetailView: View {
                                 Image(systemName: "ellipsis")
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundStyle(.white)
-                                    .frame(width: 32, height: 32)
+                                    .frame(width: 44, height: 44)
                             }
                             .buttonStyle(.plain)
                             .popover(isPresented: $showingDetailMenu) {
@@ -535,7 +561,7 @@ struct WeatherDetailView: View {
                             Image(systemName: "xmark")
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(.secondary)
-                                .frame(width: 32, height: 32)
+                                .frame(width: 44, height: 44)
                                 .themedGlass(in: .circle)
                         }
                         .buttonStyle(.plain)
@@ -543,16 +569,49 @@ struct WeatherDetailView: View {
                     .padding(14)
                 }
             }
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onChange(of: geo.frame(in: .named("detailScroll")).minY) { _, newY in
+                            scrollAtTop = newY >= -1
+                        }
+                }
+            )
             } // ScrollView
+            .coordinateSpace(name: "detailScroll")
             .contentMargins(.top, 0, for: .scrollContent)
             .scrollDisabled(!isPopup && !isHeaderCollapsed)
             .frame(maxWidth: isPopup ? 340 : .infinity)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 20, coordinateSpace: .global)
+                    .onEnded { value in
+                        guard !isPopup else { return }
+                        let dx = abs(value.translation.width)
+                        let dy = abs(value.translation.height)
+                        guard dy > dx else { return }  // vertical-dominant swipe only
+                        let vy = value.velocity.height
+                        let ty = value.translation.height
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                            if !isHeaderCollapsed && (ty < -40 || vy < -300) {
+                                isHeaderCollapsed = true
+                            } else if isHeaderCollapsed && scrollAtTop && (ty > 40 || vy > 300) {
+                                isHeaderCollapsed = false
+                            }
+                        }
+                    }
+            )
 
         }
         .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)
         .onAppear {
             isHeaderCollapsed = false
             headerDragOffset = 0
+            scrollAtTop = true
+        }
+        .onChange(of: cityWeather.city.name) {
+            isHeaderCollapsed = false
+            headerDragOffset = 0
+            scrollAtTop = true
         }
         .contentShape(Rectangle())
         .gesture(
@@ -833,7 +892,7 @@ struct HourlyTimelineChart: View {
                                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                                 .contentTransition(.numericText())
                                 .frame(height: valueHeight)
-                                .position(x: columnWidth / 2, y: pointY + valueHeight * 0.85)
+                                .position(x: columnWidth / 2 + 2, y: pointY + valueHeight * 0.85 + 2)
                                 .opacity(pastHour ? 0.3 : 1.0)
                         }
                         .frame(width: columnWidth, height: totalHeight)
@@ -908,6 +967,28 @@ struct DayForecastBox: View {
     }
 }
 
+// MARK: - Weather Stat Card
+
+struct WeatherStatCard: View {
+    let label: String
+    let value: String
+
+    var body: some View {
+        VStack(spacing: 4) {
+            Text(label)
+                .font(.avenir(.footnote, weight: .medium))
+                .foregroundStyle(AppTheme.shared.colors.secondaryText)
+            Text(value)
+                .font(.avenir(.title2, weight: .semibold))
+                .foregroundStyle(AppTheme.shared.colors.primaryText)
+                .contentTransition(.numericText())
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 110)
+        .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
 // MARK: - Sun Arc Card
 
 struct SunArcCard: View {
@@ -946,9 +1027,9 @@ struct SunArcCard: View {
             let startX = labelInset + labelWidth / 2
             let endX   = width - labelInset - labelWidth / 2
             // Baseline for arc endpoints — leaves room for labels below
-            let baseY: CGFloat = height - 34
+            let baseY: CGFloat = height - 50
             // Arc peak height — flat elliptical feel
-            let peakY: CGFloat = 18
+            let peakY: CGFloat = 6
             // Bézier control point: directly above the midpoint at peakY
             let ctrlX = width / 2
             let ctrlY = peakY
@@ -975,7 +1056,7 @@ struct SunArcCard: View {
                 ZStack {
                     Circle()
                         .fill(AppTheme.shared.colors.listCardFill)
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                     Image(systemName: "sun.max.fill")
                         .font(.system(size: 20))
                         .foregroundStyle(sunColor)
@@ -1003,7 +1084,7 @@ struct SunArcCard: View {
                     }
                 }
                 .padding(.horizontal, labelInset)
-                .padding(.bottom, 10)
+                .padding(.bottom, 24)
             }
         }
         .frame(height: 110)
@@ -1133,6 +1214,7 @@ struct SunArcCard: View {
             hourlyForecasts: dayOffset == 0 ? hourlyForecasts : dayHourlyForecasts,
             cloudCover: Double(condition.estimatedCloudCover) / 100.0,
             precipitationChance: condition == .rain || condition == .drizzle ? 0.7 : 0.1,
+            visibility: dayOffset == 0 ? 15.0 : nil,
             sunrise: mockSunrise,
             sunset: mockSunset
         )

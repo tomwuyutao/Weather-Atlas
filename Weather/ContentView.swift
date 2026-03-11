@@ -546,7 +546,7 @@ struct ContentView: View {
                                 Image(systemName: "sidebar.left")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(theme.colors.primaryText)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .themedGlass(in: .circle)
                             }
                             .buttonStyle(.plain)
@@ -569,7 +569,7 @@ struct ContentView: View {
                                 Image(systemName: isGridView ? "list.bullet" : "square.grid.2x2")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(theme.colors.primaryText)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .themedGlass(in: .circle)
                             }
                             .buttonStyle(.plain)
@@ -582,7 +582,7 @@ struct ContentView: View {
                                 Image(systemName: isEditMode ? "checkmark" : "pencil")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(isEditMode ? .white : theme.colors.primaryText)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .background(isEditMode ? theme.colors.accent : theme.colors.glassFill, in: .circle)
                             }
                             .buttonStyle(.plain)
@@ -1258,7 +1258,7 @@ struct ContentView: View {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .frame(width: 36, height: 36)
+                                .frame(width: 44, height: 44)
                                 .background(AppTheme.shared.colors.accent, in: .circle)
                         }
                         .buttonStyle(.plain)
@@ -1312,7 +1312,7 @@ struct ContentView: View {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 36, height: 36)
+                            .frame(width: 44, height: 44)
                             .themedGlass(in: .circle)
                     }
                     .buttonStyle(.plain)
@@ -1432,6 +1432,7 @@ struct ContentView: View {
                 namespace: popupNamespace,
                 onDismiss: {
                     showingCityDetail = false
+                    selectedDayOffset = 0
                 },
                 onAddCity: cityIsInSidebar(city) ? nil : {
                     Task {
@@ -1447,6 +1448,7 @@ struct ContentView: View {
                     showingCityDetail = false
                     showingMapExpandedCard = false
                     tappedCity = nil
+                    selectedDayOffset = 0
                     if selectedTab == 1 {
                         recenterOnAllCities = true
                     }
@@ -1463,10 +1465,13 @@ struct ContentView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         showingCityDetail = false
+                        selectedDayOffset = 0
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
@@ -1481,7 +1486,7 @@ struct ContentView: View {
                             Image(systemName: "sidebar.left")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(theme.colors.primaryText)
-                                .frame(width: 36, height: 36)
+                                .frame(width: 44, height: 44)
                                 .themedGlass(in: .circle)
                         }
                         .buttonStyle(.plain)
@@ -1503,6 +1508,8 @@ struct ContentView: View {
                             Image(systemName: "ellipsis")
                                 .font(.system(size: 15, weight: .medium))
                                 .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .popover(isPresented: $showingDetailMenuPopover) {
@@ -1548,7 +1555,7 @@ struct ContentView: View {
                                 Image(systemName: "plus")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .background(theme.colors.accent, in: .circle)
                             }
                             .buttonStyle(.plain)
@@ -1593,7 +1600,7 @@ struct ContentView: View {
                                 Image(systemName: "plus")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .background(theme.colors.accent, in: .circle)
                             }
                             .buttonStyle(.plain)
@@ -1641,7 +1648,7 @@ struct ContentView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
                     .themedGlass(in: .circle)
@@ -1659,7 +1666,7 @@ struct ContentView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(theme.colors.accent)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
                     .themedGlass(in: .circle)
@@ -1705,7 +1712,7 @@ struct ContentView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
                     .themedGlass(in: .circle)
@@ -2012,6 +2019,8 @@ struct ContentView: View {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 15, weight: .medium))
                             .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                 }
