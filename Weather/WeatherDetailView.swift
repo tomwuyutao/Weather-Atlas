@@ -174,36 +174,43 @@ struct WeatherDetailView: View {
                                 .padding(.top, geo.safeAreaInsets.top)
                             }
                         }
-                        .transition(.opacity)
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .top)),
+                                removal: .opacity.combined(with: .move(edge: .top))
+                            )
+                        )
                     }
 
                     // ── COLLAPSED content ────────────────────────────────────
                     if isHeaderCollapsed {
                         HStack(spacing: 14) {
-                            Image(systemName: detailDisplayIcon)
-                                .font(.system(size: 32))
-                                .foregroundStyle(.white)
-                                .contentTransition(.symbolEffect(.replace))
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(cityWeather.city.localizedName(locale: locale))
-                                    .font(.avenir(.subheadline, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.85))
                                 Text(tempUnit.display(forecast.daytimeHigh))
-                                    .font(.avenir(.title2, weight: .bold))
+                                    .font(.avenir(.title, weight: .bold))
                                     .foregroundStyle(.white)
                                     .contentTransition(.numericText())
                                 Text(forecast.condition.localizedDisplayName(locale: locale))
-                                    .font(.avenir(.footnote, weight: .medium))
+                                    .font(.avenir(.subheadline, weight: .medium))
                                     .foregroundStyle(.white.opacity(0.8))
                                     .contentTransition(.opacity)
                             }
                             .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                             Spacer()
+                            Image(systemName: detailDisplayIcon)
+                                .font(.system(size: 36))
+                                .foregroundStyle(.white)
+                                .contentTransition(.symbolEffect(.replace))
                         }
-                        .padding(.leading, 28)
-                        .padding(.bottom, 28)
+                        .padding(.horizontal, 28)
+                        .padding(.bottom, 50)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                        .transition(.opacity)
+                        .transition(
+                            .asymmetric(
+                                insertion: .opacity.combined(with: .move(edge: .bottom)),
+                                removal: .opacity.combined(with: .move(edge: .bottom))
+                            )
+                        )
                     }
 
                     // ── DRAG HANDLE ─────────────────────────────
@@ -246,7 +253,8 @@ struct WeatherDetailView: View {
             ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: isPopup ? 24 : 16) {
                 if !isPopup {
-                    Color.clear.frame(height: 20)
+                    Color.clear.frame(height: currentHeaderHeight + 20)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
                 }
                 if isPopup {
                     VStack(alignment: .center, spacing: 0) {
@@ -536,7 +544,7 @@ struct WeatherDetailView: View {
                 }
             }
             } // ScrollView
-            .contentMargins(.top, isPopup ? 0 : currentHeaderHeight, for: .scrollContent)
+            .contentMargins(.top, 0, for: .scrollContent)
             .scrollDisabled(!isPopup && !isHeaderCollapsed)
             .frame(maxWidth: isPopup ? 340 : .infinity)
 
