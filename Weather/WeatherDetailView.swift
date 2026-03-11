@@ -34,6 +34,8 @@ struct WeatherDetailView: View {
     @State private var showingCloudCover: Bool = false
     @State private var showingDetailMenu: Bool = false
     @State private var dayScrollHasMore: Bool = true
+    @State private var isHeaderCollapsed: Bool = false
+    @State private var headerDragOffset: CGFloat = 0
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     
     private var tempUnit: TemperatureUnit {
@@ -78,16 +80,16 @@ struct WeatherDetailView: View {
     
     private var headerBackgroundColor: Color {
         let theme = AppTheme.shared.colors
+        // cloud.fill icon means WeatherKit gave us a plain overcast — always use cloudy blue
+        if detailDisplayIcon == "cloud.fill" {
+            return Color(hex: 0x9ABCCE)
+        }
         switch forecast.condition {
         case .rain: return theme.dotRain
         case .drizzle: return theme.dotDrizzle
-        case .snow, .cloudy: return Color(red: 0xB8 / 255, green: 0xCC / 255, blue: 0xD8 / 255)
-        default:
-            // If the icon is a plain cloud (no sun), use the cloud color regardless of condition
-            if detailDisplayIcon == "cloud.fill" {
-                return Color(red: 0xB8 / 255, green: 0xCC / 255, blue: 0xD8 / 255)
-            }
-            return forecast.condition.dotColor
+        case .snow, .cloudy, .wind: return Color(hex: 0x9ABCCE)
+        case .partlyCloudy: return Color(hex: 0xF0B830)
+        default: return forecast.condition.dotColor
         }
     }
 
@@ -99,67 +101,154 @@ struct WeatherDetailView: View {
         #endif
     }
 
+    private let expandedHeaderHeight: CGFloat = 350
+    private let collapsedHeaderHeight: CGFloat = 120
+
+    private var currentHeaderHeight: CGFloat {
+        let base: CGFloat = isHeaderCollapsed ? collapsedHeaderHeight : expandedHeaderHeight
+        let clamped = max(collapsedHeaderHeight, base + headerDragOffset * 0.4)
+        return clamped
+    }
+
     var body: some View {
-        ZStack {
-            // Weather condition color block — top half background
+        ZStack(alignment: .top) {
+            // Weather condition color block — fixed at top, animates height
             if !isPopup {
                 GeometryReader { geo in
                     headerBackgroundColor
-                        .frame(height: 350 + geo.safeAreaInsets.top)
-                        .frame(maxWidth: .infinity)
+                        .frame(height: currentHeaderHeight + geo.safeAreaInsets.top)
+                        .frame(maxWidth: .infinity, alignment: .top)
                         .ignoresSafeArea(edges: .top)
+                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
                 }
+                .frame(height: currentHeaderHeight)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .allowsHitTesting(false)
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
+            }
+
+            // Floating header (iOS only) — outside ScrollView so scroll doesn't move it
+            if !isPopup {
+                ZStack(alignment: .bottom) {
+                    // ── EXPANDED content ────────────────────────────────────
+                    if !isHeaderCollapsed {
+                        GeometryReader { geo in
+                            ZStack(alignment: .topLeading) {
+                                // Large decorative icon — right, slightly cropped
+                                Image(systemName: detailDisplayIcon)
+                                    .font(.system(size: 180))
+                                    .foregroundStyle(.white)
+                                    .contentTransition(.symbolEffect(.replace))
+                                    .opacity(0.35)
+                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                                    .background(alignment: .top) {
+                                        WeatherEffectOverlay(
+                                            condition: forecast.condition,
+                                            isCompact: false,
+                                            iconHeight: 220,
+                                            iconName: detailDisplayIcon,
+                                            dropColor: forecast.condition == .drizzle ? AppTheme.shared.colors.dotRain : nil
+                                        )
+                                        .id("detail-header-effect-\(internalSelectedDay)-\(forecast.condition.displayName)")
+                                    }
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                                    .padding(.trailing, -40)
+                                    .offset(y: -36)
+
+                                // Temperature + condition — top left, below back button
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text(tempUnit.display(forecast.daytimeHigh))
+                                        .font(.avenir(.largeTitle, weight: .bold))
+                                        .dynamicTypeSize(...DynamicTypeSize.large)
+                                        .contentTransition(.numericText())
+                                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+
+                                    Text(forecast.condition.localizedDisplayName(locale: locale))
+                                        .font(.avenir(.title3, weight: .medium))
+                                        .dynamicTypeSize(...DynamicTypeSize.large)
+                                        .contentTransition(.opacity)
+                                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                                }
+                                .foregroundStyle(.white)
+                                .padding(.leading, 28)
+                                .padding(.top, geo.safeAreaInsets.top)
+                            }
+                        }
+                        .transition(.opacity)
+                    }
+
+                    // ── COLLAPSED content ────────────────────────────────────
+                    if isHeaderCollapsed {
+                        HStack(spacing: 14) {
+                            Image(systemName: detailDisplayIcon)
+                                .font(.system(size: 32))
+                                .foregroundStyle(.white)
+                                .contentTransition(.symbolEffect(.replace))
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(cityWeather.city.localizedName(locale: locale))
+                                    .font(.avenir(.subheadline, weight: .semibold))
+                                    .foregroundStyle(.white.opacity(0.85))
+                                Text(tempUnit.display(forecast.daytimeHigh))
+                                    .font(.avenir(.title2, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .contentTransition(.numericText())
+                                Text(forecast.condition.localizedDisplayName(locale: locale))
+                                    .font(.avenir(.footnote, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.8))
+                                    .contentTransition(.opacity)
+                            }
+                            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                            Spacer()
+                        }
+                        .padding(.leading, 28)
+                        .padding(.bottom, 28)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                        .transition(.opacity)
+                    }
+
+                    // ── DRAG HANDLE ─────────────────────────────
+                    RoundedRectangle(cornerRadius: 2.5)
+                        .fill(.white.opacity(0.4))
+                        .frame(width: 36, height: 5)
+                        .padding(.bottom, 10)
+                        .frame(width: 80, height: 44)
+                        .contentShape(Rectangle())
+                        .gesture(
+                            DragGesture(minimumDistance: 10, coordinateSpace: .global)
+                                .onChanged { value in
+                                    let h = abs(value.translation.width)
+                                    let v = abs(value.translation.height)
+                                    guard v > h else { return }
+                                    headerDragOffset = value.translation.height
+                                }
+                                .onEnded { value in
+                                    let translation = value.translation.height
+                                    let velocity = value.velocity.height
+                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                                        if !isHeaderCollapsed && (translation < -40 || velocity < -200) {
+                                            isHeaderCollapsed = true
+                                        } else if isHeaderCollapsed && (translation > 40 || velocity > 200) {
+                                            isHeaderCollapsed = false
+                                        }
+                                        headerDragOffset = 0
+                                    }
+                                }
+                        )
+                }
+                .frame(height: currentHeaderHeight)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .clipped()
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
+                .zIndex(1)
             }
 
             // Main content card
+            ScrollView(.vertical, showsIndicators: false) {
             VStack(spacing: isPopup ? 24 : 16) {
-                // Header
                 if !isPopup {
-                    GeometryReader { geo in
-                        ZStack(alignment: .topLeading) {
-                            // Large decorative icon — right, slightly cropped
-                            Image(systemName: detailDisplayIcon)
-                                .font(.system(size: 180))
-                                .foregroundStyle(.white)
-                                .contentTransition(.symbolEffect(.replace))
-                                .opacity(0.35)
-                                .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                                .background(alignment: .top) {
-                                    WeatherEffectOverlay(
-                                        condition: forecast.condition,
-                                        isCompact: false,
-                                        iconHeight: 220,
-                                        iconName: detailDisplayIcon,
-                                        dropColor: forecast.condition == .drizzle ? AppTheme.shared.colors.dotRain : nil
-                                    )
-                                    .id("detail-header-effect-\(internalSelectedDay)-\(forecast.condition.displayName)")
-                                }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                                .padding(.trailing, -40)
-                                .offset(y: -36)
-
-                            // Temperature + condition — top left, below back button
-                            VStack(alignment: .leading, spacing: 6) {
-                                Text(tempUnit.display(forecast.daytimeHigh))
-                                    .font(.avenir(.largeTitle, weight: .bold))
-                                    .dynamicTypeSize(...DynamicTypeSize.large)
-                                    .contentTransition(.numericText())
-                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-
-                                Text(forecast.condition.localizedDisplayName(locale: locale))
-                                    .font(.avenir(.title3, weight: .medium))
-                                    .dynamicTypeSize(...DynamicTypeSize.large)
-                                    .contentTransition(.opacity)
-                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                            }
-                            .foregroundStyle(.white)
-                            .padding(.leading, 28)
-                            .padding(.top, geo.safeAreaInsets.top + 76)
-                        }
-                    }
-                    // fill half the screen height (matches the color block)
-                    .frame(height: 350)
-                } else {
+                    Color.clear.frame(height: 20)
+                }
+                if isPopup {
                     VStack(alignment: .center, spacing: 0) {
                         Text(cityWeather.city.localizedName(locale: locale))
                             .font(.avenir(.title3, weight: .medium))
@@ -323,7 +412,16 @@ struct WeatherDetailView: View {
                             }
                         }
                 )
-                
+
+                // Sun arc card — only show when sunrise/sunset data is available
+                if let sunrise = forecast.sunrise, let sunset = forecast.sunset {
+                    SunArcCard(
+                        sunrise: sunrise,
+                        sunset: sunset,
+                        cityTimeZone: cityWeather.timeZone
+                    )
+                    .padding(.top, 8)
+                }
 
             }
             .padding(.horizontal, isPopup ? 20 : 16)
@@ -437,10 +535,17 @@ struct WeatherDetailView: View {
                     .padding(14)
                 }
             }
+            } // ScrollView
+            .contentMargins(.top, isPopup ? 0 : currentHeaderHeight, for: .scrollContent)
+            .scrollDisabled(!isPopup && !isHeaderCollapsed)
+            .frame(maxWidth: isPopup ? 340 : .infinity)
 
         }
         .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)
-
+        .onAppear {
+            isHeaderCollapsed = false
+            headerDragOffset = 0
+        }
         .contentShape(Rectangle())
         .gesture(
             isPopup ? nil : DragGesture(minimumDistance: 50, coordinateSpace: .global)
@@ -622,15 +727,15 @@ struct HourlyTimelineChart: View {
     #else
     private let totalHeight: CGFloat = 220
     #endif
-    private let hourLabelHeight: CGFloat = 18  // fixed hour label at top
-    private let topPadding: CGFloat = 6        // space below hour label
-    private let iconHeight: CGFloat = 24
-    private let iconToValue: CGFloat = 8       // gap between icon bottom and value center
-    private let valueHeight: CGFloat = 18      // height of value text (sits on line)
+    private let hourLabelHeight: CGFloat = 20  // fixed hour label at top
+    private let topPadding: CGFloat = 4        // space below hour label
+    private let iconHeight: CGFloat = 26       // icon sits just below hour label
+    private let iconBottomPadding: CGFloat = 8 // gap between icon bottom and chart top
+    private let valueHeight: CGFloat = 20      // height of value text (sits on line)
     
-    // Chart zone: area where the line center can move
-    private var chartTop: CGFloat { hourLabelHeight + topPadding + iconHeight + iconToValue + valueHeight / 2 }
-    private var chartBottom: CGFloat { totalHeight - valueHeight / 2 - 4 }
+    // Chart zone starts below the fixed header (hour + icon), value text straddles line
+    private var chartTop: CGFloat { hourLabelHeight + topPadding + iconHeight + iconBottomPadding }
+    private var chartBottom: CGFloat { totalHeight - valueHeight - 4 }
     private var chartZone: CGFloat { chartBottom - chartTop }
     
     private var dataPoints: [HourlyForecast] {
@@ -677,40 +782,50 @@ struct HourlyTimelineChart: View {
                 HourlyChartLineShape(
                     pointYValues: AnimatablePointList(values: lineYPositions.map { Double($0) }),
                     pointXPositions: xPositions,
-                    gapRadius: 15
+                    gapRadius: 0
                 )
-                .stroke(lineColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
-                
+                .stroke(lineColor, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+
+                // Layer 2: Dots on line points
+                ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, forecast in
+                    let pastHour = isPastHour(forecast.hour)
+                    Circle()
+                        .fill(lineColor)
+                        .frame(width: 10, height: 10)
+                        .position(x: xPositions[index], y: lineYPositions[index])
+                }
+
                 // Layer 3: Data columns
                 HStack(spacing: 0) {
                     ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, forecast in
                         let pointY = lineYPositions[index]
-                        
                         let pastHour = isPastHour(forecast.hour)
+                        let iconY = hourLabelHeight + topPadding + iconHeight / 2 + 10
                         ZStack {
-                            // Hour label — fixed near top
+                            // Hour label — fixed at top
                             Text(forecast.shortFormattedHour(locale: locale))
-                                .font(.avenir(.caption))
-                                .foregroundStyle(.secondary)
+                                .font(.avenir(.subheadline))
+                                .foregroundStyle(AppTheme.shared.colors.primaryText)
                                 .frame(height: hourLabelHeight)
                                 .position(x: columnWidth / 2, y: hourLabelHeight / 2 + 10)
                                 .opacity(pastHour ? 0.3 : 1.0)
-                            
-                            // Icon — above the value
+
+                            // Icon — fixed just below hour label
                             Image(systemName: forecast.weatherIcon)
-                                .font(.title3)
+                                .font(.system(size: 17))
                                 .weatherIconStyle(for: forecast.weatherIcon)
                                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                                 .frame(height: iconHeight)
-                                .position(x: columnWidth / 2, y: pointY - iconToValue - iconHeight / 2)
+                                .position(x: columnWidth / 2, y: iconY)
                                 .opacity(pastHour ? 0.3 : 1.0)
-                            
-                            // Value text — centered on the line point, offset right so numbers align with icon
+
+                            // Value text — sits below the dot on the line
                             Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.temperature))
-                                .font(.avenir(.caption, weight: .semibold))
+                                .font(.avenir(.footnote, weight: .semibold))
+                                .foregroundStyle(AppTheme.shared.colors.primaryText)
                                 .contentTransition(.numericText())
                                 .frame(height: valueHeight)
-                                .position(x: columnWidth / 2 + 2 , y: pointY)
+                                .position(x: columnWidth / 2, y: pointY + valueHeight * 0.85)
                                 .opacity(pastHour ? 0.3 : 1.0)
                         }
                         .frame(width: columnWidth, height: totalHeight)
@@ -780,10 +895,116 @@ struct DayForecastBox: View {
         .padding(.vertical, 14)
         .background(
             UnevenRoundedRectangle(cornerRadii: cornerRadius)
-                .fill(isSelected ? AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25) : AppTheme.shared.colors.listCardFill)
+                .fill(isSelected ? AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06) : AppTheme.shared.colors.listCardFill)
         )
     }
 }
+
+// MARK: - Sun Arc Card
+
+struct SunArcCard: View {
+    let sunrise: Date
+    let sunset: Date
+    let cityTimeZone: TimeZone
+    
+    private var now: Date { Date() }
+    
+    /// Progress 0...1 of current time between sunrise and sunset. Clamped to 0...1.
+    private var sunProgress: Double {
+        let total = sunset.timeIntervalSince(sunrise)
+        guard total > 0 else { return 0.5 }
+        return max(0, min(1, now.timeIntervalSince(sunrise) / total))
+    }
+    
+    private var timeFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        f.dateStyle = .none
+        f.timeZone = cityTimeZone
+        return f
+    }
+    
+    var body: some View {
+        let sunColor = AppTheme.shared.colors.dotSun
+
+        GeometryReader { geo in
+            let width = geo.size.width
+            let height = geo.size.height
+
+            // Label area: inset + label width determine arc span
+            let labelInset: CGFloat = 16
+            let labelWidth: CGFloat = 52  // approx width of "icon + time" side by side
+            // Arc endpoints at centre of each label
+            let startX = labelInset + labelWidth / 2
+            let endX   = width - labelInset - labelWidth / 2
+            // Baseline for arc endpoints — leaves room for labels below
+            let baseY: CGFloat = height - 34
+            // Arc peak height — flat elliptical feel
+            let peakY: CGFloat = 18
+            // Bézier control point: directly above the midpoint at peakY
+            let ctrlX = width / 2
+            let ctrlY = peakY
+
+            // Sun icon fixed at arc midpoint (t = 0.5)
+            let sunCentreX = 0.25 * startX + 0.5 * ctrlX + 0.25 * endX
+            let sunCentreY = 0.25 * baseY  + 0.5 * ctrlY  + 0.25 * baseY
+
+            ZStack(alignment: .bottom) {
+                // ---- Arc canvas (always full yellow) ----
+                Canvas { context, _ in
+                    let stroke = StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                    var arcPath = Path()
+                    arcPath.move(to: CGPoint(x: startX, y: baseY))
+                    arcPath.addQuadCurve(
+                        to: CGPoint(x: endX, y: baseY),
+                        control: CGPoint(x: ctrlX, y: ctrlY)
+                    )
+                    context.stroke(arcPath, with: .color(sunColor), style: stroke)
+                }
+                .frame(width: width, height: height)
+
+                // ---- Sun icon (fixed at arc centre, circle bg splits the line) ----
+                ZStack {
+                    Circle()
+                        .fill(AppTheme.shared.colors.listCardFill)
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "sun.max.fill")
+                        .font(.system(size: 20))
+                        .foregroundStyle(sunColor)
+                }
+                .position(x: sunCentreX, y: sunCentreY)
+
+                // ---- Time labels (icon + time horizontally, centred in bottom strip) ----
+                HStack {
+                    HStack(spacing: 5) {
+                        Image(systemName: "sunrise.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(sunColor)
+                        Text(timeFormatter.string(from: sunrise))
+                            .font(.avenir(.footnote, weight: .medium))
+                            .foregroundStyle(AppTheme.shared.colors.primaryText)
+                    }
+                    Spacer()
+                    HStack(spacing: 5) {
+                        Text(timeFormatter.string(from: sunset))
+                            .font(.avenir(.footnote, weight: .medium))
+                            .foregroundStyle(AppTheme.shared.colors.primaryText)
+                        Image(systemName: "sunset.fill")
+                            .font(.system(size: 13))
+                            .foregroundStyle(sunColor)
+                    }
+                }
+                .padding(.horizontal, labelInset)
+                .padding(.bottom, 10)
+            }
+        }
+        .frame(height: 110)
+        .padding(.horizontal, 8)
+        .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+}
+
 #Preview("Weather Detail - London", traits: .portrait) {
     @Previewable @Namespace var namespace
     @Previewable @State var showDetail = true
@@ -890,6 +1111,11 @@ struct DayForecastBox: View {
             )
         }
         
+        // Mock sunrise/sunset: 6:30 AM and 6:30 PM local time
+        let calendar = Calendar.current
+        let today = calendar.startOfDay(for: Date())
+        let mockSunrise = calendar.date(byAdding: .init(hour: 6, minute: 30), to: today)
+        let mockSunset = calendar.date(byAdding: .init(hour: 18, minute: 30), to: today)
         return DailyForecast(
             dayOffset: dayOffset,
             daytimeLow: baseTemp - 3.0,
@@ -898,7 +1124,9 @@ struct DayForecastBox: View {
             condition: condition,
             hourlyForecasts: dayOffset == 0 ? hourlyForecasts : dayHourlyForecasts,
             cloudCover: Double(condition.estimatedCloudCover) / 100.0,
-            precipitationChance: condition == .rain || condition == .drizzle ? 0.7 : 0.1
+            precipitationChance: condition == .rain || condition == .drizzle ? 0.7 : 0.1,
+            sunrise: mockSunrise,
+            sunset: mockSunset
         )
     }
     

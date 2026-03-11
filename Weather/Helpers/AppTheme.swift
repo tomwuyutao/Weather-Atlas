@@ -105,7 +105,7 @@ struct ThemeColors {
 
 extension ThemeColors {
     static let light = ThemeColors(
-        primaryText: Color(hex: 0x313131),
+        primaryText: Color(hex: 0x282828),
         secondaryText: .secondary,
         background: Color(hex: 0xEDE7DE),
         searchOverlayBackground: Color(hex: 0xEDE7DE).opacity(0.97),
