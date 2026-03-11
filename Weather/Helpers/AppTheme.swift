@@ -193,20 +193,25 @@ class AppTheme {
         }
     }
 
-    /// Resolved colors for the current style, given the current system color scheme.
-    func colors(for systemScheme: ColorScheme) -> ThemeColors {
-        switch resolvedScheme(for: systemScheme) {
+    /// The current system color scheme, kept in sync by ThemeContent.
+    /// Allows non-view code (e.g. view modifiers) to reactively read the correct colors.
+    var systemScheme: ColorScheme = .light
+
+    /// Resolved colors using the stored system scheme — reactive, used everywhere.
+    var colors: ThemeColors {
+        switch style {
+        case .light: return .light
         case .dark: return .dark
-        default: return .light
+        case .automatic: return systemScheme == .dark ? .dark : .light
         }
     }
 
-    /// Resolved colors without a system color scheme — used in non-view contexts.
-    /// `.automatic` resolves to `.light`; views should use `themeColors` from the environment instead.
-    var colors: ThemeColors {
+    /// Resolved colors for an explicit color scheme (used by ThemeContent during environment setup).
+    func colors(for scheme: ColorScheme) -> ThemeColors {
         switch style {
+        case .light: return .light
         case .dark: return .dark
-        default: return .light
+        case .automatic: return scheme == .dark ? .dark : .light
         }
     }
 

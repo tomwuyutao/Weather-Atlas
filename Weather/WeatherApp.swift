@@ -42,9 +42,22 @@ struct WeatherApp: App {
         }
     }
 }
-/// Resolves the active theme and injects it into the environment.
-/// Uses a nested view so it can read `colorScheme` after `preferredColorScheme` takes effect.
+/// Outer layer: sets the preferred color scheme so the inner layer reads the correct one.
 private struct ThemeRoot: View {
+    let theme: AppTheme
+    let appLocale: Locale
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        ThemeContent(theme: theme, appLocale: appLocale)
+            .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
+    }
+}
+
+/// Inner layer: reads `colorScheme` *after* `preferredColorScheme` has been applied,
+/// so automatic mode sees the correct system value and forced modes see their override.
+/// Also keeps `AppTheme.shared.systemScheme` in sync so view modifiers update reactively.
+private struct ThemeContent: View {
     let theme: AppTheme
     let appLocale: Locale
     @Environment(\.colorScheme) private var colorScheme
@@ -56,7 +69,9 @@ private struct ThemeRoot: View {
             .defaultFont()
             .environment(\.appTheme, theme)
             .environment(\.themeColors, resolvedColors)
-            .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
+            .onChange(of: colorScheme, initial: true) { _, newScheme in
+                theme.systemScheme = newScheme
+            }
     }
 }
 
