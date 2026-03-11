@@ -780,7 +780,7 @@ struct DayForecastBox: View {
         .padding(.vertical, 14)
         .background(
             UnevenRoundedRectangle(cornerRadii: cornerRadius)
-                .fill(isSelected ? AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.04) : AppTheme.shared.colors.listCardFill)
+                .fill(isSelected ? AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25) : AppTheme.shared.colors.listCardFill)
         )
     }
 }

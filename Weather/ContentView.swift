@@ -544,8 +544,14 @@ struct ContentView: View {
                                 }
                             } label: {
                                 Image(systemName: "sidebar.left")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(theme.colors.primaryText)
+                                    .frame(width: 36, height: 36)
+                                    .themedGlass(in: .circle)
                             }
+                            .buttonStyle(.plain)
                         }
+                        .sharedBackgroundVisibility(.hidden)
                     }
                     .toolbar {
                         ToolbarItem(placement: .topBarTrailing) {
@@ -561,15 +567,27 @@ struct ContentView: View {
                                 }
                             } label: {
                                 Image(systemName: isGridView ? "list.bullet" : "square.grid.2x2")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(theme.colors.primaryText)
+                                    .frame(width: 36, height: 36)
+                                    .themedGlass(in: .circle)
                             }
+                            .buttonStyle(.plain)
                         }
+                        .sharedBackgroundVisibility(.hidden)
                         ToolbarItem(placement: .topBarTrailing) {
                             Button {
                                 withAnimation { isEditMode.toggle() }
                             } label: {
                                 Image(systemName: isEditMode ? "checkmark" : "pencil")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(isEditMode ? .white : theme.colors.primaryText)
+                                    .frame(width: 36, height: 36)
+                                    .background(isEditMode ? theme.colors.accent : theme.colors.glassFill, in: .circle)
                             }
+                            .buttonStyle(.plain)
                         }
+                        .sharedBackgroundVisibility(.hidden)
                     }
                     .navigationDestination(isPresented: $showingCityDetail) {
                         iOSCityDetailDestination
@@ -895,7 +913,7 @@ struct ContentView: View {
                             .overlay(alignment: .trailing) {
                                 mapDateSlider(height: 340)
                             }
-                            .padding(.bottom, 350)
+                            .padding(.bottom, 480)
                             .padding(.trailing, 1)
                             .transition(.opacity)
                     }
@@ -925,7 +943,7 @@ struct ContentView: View {
                             .overlay(alignment: .trailing) {
                                 mapDateSlider(height: 340)
                             }
-                            .padding(.bottom, 350)
+                            .padding(.bottom, 480)
                             .padding(.trailing, 1)
                             .transition(.opacity)
                     }
@@ -1232,11 +1250,12 @@ struct ContentView: View {
                             confirmRadialSearch()
                         } label: {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
+                                .frame(width: 36, height: 36)
+                                .background(AppTheme.shared.colors.accent, in: .circle)
                         }
-                        .themedAccentGlass(tint: theme.colors.accent, in: .circle)
+                        .buttonStyle(.plain)
                         .glassEffectID("rConfirm", in: radialBarNS)
                     } else {
                         // Loading capsule
@@ -1285,11 +1304,12 @@ struct ContentView: View {
                         }
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 44, height: 44)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 36, height: 36)
+                            .themedGlass(in: .circle)
                     }
-                    .themedGlass(in: .circle)
+                    .buttonStyle(.plain)
                     .glassEffectID("rCancel", in: radialBarNS)
                 }
                 .padding(.horizontal, 16)
@@ -1453,8 +1473,14 @@ struct ContentView: View {
                             }
                         } label: {
                             Image(systemName: "sidebar.left")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(theme.colors.primaryText)
+                                .frame(width: 36, height: 36)
+                                .themedGlass(in: .circle)
                         }
+                        .buttonStyle(.plain)
                     }
+                    .sharedBackgroundVisibility(.hidden)
                 }
                 ToolbarItem(placement: .principal) {
                     Text((countryOverviewActive || radialSearchActive) ? (resolvedGridCityName ?? "…") : city.city.localizedName(locale: locale))
@@ -1514,8 +1540,12 @@ struct ContentView: View {
                                 showingAddToListPopover = true
                             } label: {
                                 Image(systemName: "plus")
-                                    .foregroundStyle(theme.colors.accent)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 36, height: 36)
+                                    .background(theme.colors.accent, in: .circle)
                             }
+                            .buttonStyle(.plain)
                             .popover(isPresented: $showingAddToListPopover) {
                                 VStack(alignment: .leading, spacing: 0) {
                                     ForEach(CityListID.allLists) { list in
@@ -1555,10 +1585,15 @@ struct ContentView: View {
                                 }
                             } label: {
                                 Image(systemName: "plus")
-                                    .foregroundStyle(theme.colors.accent)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 36, height: 36)
+                                    .background(theme.colors.accent, in: .circle)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
+                    .sharedBackgroundVisibility(.hidden)
                 }
             }
         }

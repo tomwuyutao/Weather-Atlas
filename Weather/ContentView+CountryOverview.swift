@@ -200,11 +200,12 @@ extension ContentView {
                             confirmCountryOverview()
                         } label: {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
+                                .frame(width: 36, height: 36)
+                                .background(countryUnderPin.isEmpty ? .gray : AppTheme.shared.colors.accent, in: .circle)
                         }
-                        .themedAccentGlass(tint: countryUnderPin.isEmpty ? .gray : theme.colors.accent, in: .circle)
+                        .buttonStyle(.plain)
                         .glassEffectID("cConfirm", in: countryBarNS)
                         .disabled(countryUnderPin.isEmpty)
                     } else {
@@ -255,11 +256,12 @@ extension ContentView {
                         }
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 44, height: 44)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 36, height: 36)
+                            .themedGlass(in: .circle)
                     }
-                    .themedGlass(in: .circle)
+                    .buttonStyle(.plain)
                     .glassEffectID("cCancel", in: countryBarNS)
                 }
                 .padding(.horizontal, 16)

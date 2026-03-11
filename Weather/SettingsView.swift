@@ -177,9 +177,24 @@ struct SettingsView: View {
                             rowDivider()
 
                             // Reset
-                            menuRow(icon: "arrow.counterclockwise", label: "Reset Lists to Defaults", tint: colors.accent) {
+                            Button {
                                 showingResetConfirmation = true
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(systemName: "arrow.counterclockwise")
+                                        .font(.system(size: 15, weight: .medium))
+                                        .foregroundStyle(colors.accent)
+                                        .frame(width: 24)
+                                    Text("Reset Lists to Defaults")
+                                        .font(.avenir(.body, weight: .medium))
+                                        .foregroundStyle(colors.accent)
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 11)
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                         }
 
                         // MARK: About
@@ -204,10 +219,14 @@ struct SettingsView: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(colors.primaryText.opacity(0.45))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(colors.primaryText)
+                            .frame(width: 36, height: 36)
+                            .themedGlass(in: .circle)
                     }
+                    .buttonStyle(.plain)
                 }
+                .sharedBackgroundVisibility(.hidden)
             }
             .toolbarBackground(colors.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)

@@ -33,8 +33,14 @@ extension ContentView {
                         }
                     } label: {
                         Image(systemName: "sidebar.left")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 36, height: 36)
+                            .themedGlass(in: .circle)
                     }
+                    .buttonStyle(.plain)
                 }
+                .sharedBackgroundVisibility(.hidden)
 
                 ToolbarSpacer(.fixed, placement: .navigationBarLeading)
             }
@@ -46,17 +52,24 @@ extension ContentView {
                     } label: {
                         HStack(spacing: 4) {
                             Text(mapToolbarTitle)
+                                .font(.avenir(.subheadline, weight: .semibold))
+                                .foregroundStyle(theme.colors.primaryText)
                                 .lineLimit(1)
                             Image(systemName: "chevron.down")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(theme.colors.primaryText.opacity(0.6))
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
+                        .themedGlass(in: .capsule)
                     }
+                    .buttonStyle(.plain)
                     .popover(isPresented: $showingMapListSwitcher) {
                         iOSMapListSwitcherMenu
                             .presentationCompactAdaptation(.popover)
                     }
                 }
+                .sharedBackgroundVisibility(.hidden)
             }
         }
     }
@@ -120,8 +133,14 @@ extension ContentView {
                     withAnimation { isEditMode = false }
                 } label: {
                     Image(systemName: "checkmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 36, height: 36)
+                        .background(theme.colors.accent, in: .circle)
                 }
+                .buttonStyle(.plain)
             }
+            .sharedBackgroundVisibility(.hidden)
         } else {
             iOSNormalToolbarItems
         }
@@ -134,9 +153,14 @@ extension ContentView {
                 withAnimation { filterSunny.toggle() }
             } label: {
                 Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
-                    .foregroundStyle(filterSunny ? theme.colors.filterSunny : .primary)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(filterSunny ? theme.colors.filterSunny : theme.colors.primaryText)
+                    .frame(width: 36, height: 36)
+                    .themedGlass(in: .circle)
             }
+            .buttonStyle(.plain)
         }
+        .sharedBackgroundVisibility(.hidden)
 
         ToolbarItem(placement: .topBarTrailing) {
             Button {
@@ -147,9 +171,15 @@ extension ContentView {
                 }
             } label: {
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .frame(width: 36, height: 36)
+                    .themedGlass(in: .circle)
                     .contentTransition(.symbolEffect(.replace))
             }
+            .buttonStyle(.plain)
         }
+        .sharedBackgroundVisibility(.hidden)
     }
 
     @ToolbarContentBuilder
@@ -172,9 +202,14 @@ extension ContentView {
                     }
                 } label: {
                     Image(systemName: "sun.max.fill")
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(theme.colors.filterSunny)
+                        .frame(width: 36, height: 36)
+                        .themedGlass(in: .circle)
                 }
+                .buttonStyle(.plain)
             }
+            .sharedBackgroundVisibility(.hidden)
         }
 
         if showPlaybackButton {
@@ -187,9 +222,15 @@ extension ContentView {
                     }
                 } label: {
                     Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 36, height: 36)
+                        .themedGlass(in: .circle)
                         .contentTransition(.symbolEffect(.replace))
                 }
+                .buttonStyle(.plain)
             }
+            .sharedBackgroundVisibility(.hidden)
         }
 
         if isIPad {
@@ -209,8 +250,14 @@ extension ContentView {
                     showingAddCityView = true
                 } label: {
                     Image(systemName: "magnifyingglass")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 36, height: 36)
+                        .themedGlass(in: .circle)
                 }
+                .buttonStyle(.plain)
             }
+            .sharedBackgroundVisibility(.hidden)
 
             // Discover
             ToolbarItem(placement: .topBarTrailing) {
@@ -218,7 +265,12 @@ extension ContentView {
                     showingDiscoverPopover = true
                 } label: {
                     Image(systemName: "wand.and.stars")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 36, height: 36)
+                        .themedGlass(in: .circle)
                 }
+                .buttonStyle(.plain)
                 .popover(isPresented: $showingDiscoverPopover) {
                     VStack(alignment: .leading, spacing: 0) {
                         Button {
@@ -278,6 +330,7 @@ extension ContentView {
                     .themedPopoverBackground()
                 }
             }
+            .sharedBackgroundVisibility(.hidden)
 
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
 
@@ -294,7 +347,12 @@ extension ContentView {
                     }
                 } label: {
                     Image(systemName: "dot.squareshape.split.2x2")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 36, height: 36)
+                        .themedGlass(in: .circle)
                 }
+                .buttonStyle(.plain)
                 .popover(isPresented: $showingRecenterPopover) {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
@@ -329,6 +387,7 @@ extension ContentView {
                     .themedPopoverBackground()
                 }
             }
+            .sharedBackgroundVisibility(.hidden)
 
             // Map style
             ToolbarItem(placement: .topBarTrailing) {
@@ -336,7 +395,12 @@ extension ContentView {
                     showingMapStylePopover = true
                 } label: {
                     Image(systemName: "map")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 36, height: 36)
+                        .themedGlass(in: .circle)
                 }
+                .buttonStyle(.plain)
                 .popover(isPresented: $showingMapStylePopover) {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
@@ -369,6 +433,7 @@ extension ContentView {
                     .themedPopoverBackground()
                 }
             }
+            .sharedBackgroundVisibility(.hidden)
 
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
 
