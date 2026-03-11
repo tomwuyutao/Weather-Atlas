@@ -197,6 +197,9 @@ class AppTheme {
     /// Allows non-view code (e.g. view modifiers) to reactively read the correct colors.
     var systemScheme: ColorScheme = .light
 
+    /// True when the detailed MapKit map is active — toolbar buttons use material glass.
+    var isDetailedMapMode: Bool = false
+
     /// Resolved colors using the stored system scheme — reactive, used everywhere.
     var colors: ThemeColors {
         switch style {
@@ -293,11 +296,19 @@ extension View {
     }
 
     /// Themed glass/material background for capsule-shaped UI elements.
+    /// Uses ultraThinMaterial in detailed map mode so buttons stay legible on the light map.
     @ViewBuilder
     func themedGlass(in shape: some InsettableShape) -> some View {
-        self.background(AppTheme.shared.colors.glassFill, in: shape)
+        if AppTheme.shared.isDetailedMapMode {
+            self.background(AppTheme.shared.colors.glassFill.opacity(0.3), in: shape)
+        } else {
+            self.background(AppTheme.shared.colors.glassFill, in: shape)
+        }
     }
 
+}
+
+extension View {
     /// Themed glass/material background with accent tint (for confirm buttons etc.)
     @ViewBuilder
     func themedAccentGlass(tint: Color, in shape: some InsettableShape) -> some View {

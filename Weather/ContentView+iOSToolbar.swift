@@ -20,6 +20,7 @@ extension ContentView {
         || radialSearchMode || isLoadingRadialSearch || radialSearchActive
     }
 
+
     // MARK: - Leading Toolbar
 
     @ToolbarContentBuilder

@@ -634,6 +634,12 @@ struct ContentView: View {
         .onChange(of: weatherService.activeListID) { _, newListID in
             mapVisibleListIDs.insert(newListID.rawValue)
         }
+        .onChange(of: mapMode, initial: true) { _, _ in
+            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && mapMode == "detailed"
+        }
+        .onChange(of: selectedTab) { _, _ in
+            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && mapMode == "detailed"
+        }
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
         }
