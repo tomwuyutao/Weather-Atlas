@@ -10,7 +10,6 @@ import SwiftUI
 @main
 struct WeatherApp: App {
     @AppStorage("appLanguage") private var appLanguage: String = "en"
-    @State private var theme = AppTheme.shared
     
     private var appLocale: Locale {
         Locale(identifier: appLanguage)
@@ -40,10 +39,8 @@ struct WeatherApp: App {
         WindowGroup {
             ContentView()
                 .environment(\.locale, appLocale)
-                .environment(\.appTheme, theme)
                 .defaultFont()
-                .tint(theme.colors.primaryText)
-                .preferredColorScheme(theme.colorScheme)
+                .preferredColorScheme(.light)
         }
     }
 }

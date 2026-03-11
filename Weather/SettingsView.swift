@@ -104,25 +104,6 @@ struct SettingsView: View {
                         .tint(.primary)
                     }
                     
-                    // Theme
-                    HStack {
-                        Label("Theme", systemImage: "paintbrush")
-                            .font(.avenir(.body, weight: .medium))
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        Picker("", selection: Binding(
-                            get: { theme.style.rawValue },
-                            set: { theme.style = AppThemeStyle(rawValue: $0) ?? .basic }
-                        )) {
-                            ForEach(AppThemeStyle.allCases, id: \.rawValue) { style in
-                                Text(style.displayName).tag(style.rawValue)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 120)
-                        .tint(.primary)
-                    }
-                    
                     Button {
                         showingResetConfirmation = true
                     } label: {

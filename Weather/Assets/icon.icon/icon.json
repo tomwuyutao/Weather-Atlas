@@ -1,24 +1,14 @@
 {
-  "fill" : "system-dark",
+  "fill" : {
+    "solid" : "srgb:0.92941,0.90588,0.86667,1.00000"
+  },
   "groups" : [
     {
       "layers" : [
         {
           "glass" : false,
-          "image-name" : "Image.png",
-          "name" : "Image",
-          "position-specializations" : [
-            {
-              "idiom" : "square",
-              "value" : {
-                "scale" : 1.15,
-                "translation-in-points" : [
-                  0,
-                  0
-                ]
-              }
-            }
-          ]
+          "image-name" : "Image 2.png",
+          "name" : "Image 2"
         }
       ],
       "shadow" : {
