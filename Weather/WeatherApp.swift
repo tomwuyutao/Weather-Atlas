@@ -10,7 +10,8 @@ import SwiftUI
 @main
 struct WeatherApp: App {
     @AppStorage("appLanguage") private var appLanguage: String = "en"
-    
+    @State private var theme = AppTheme.shared
+
     private var appLocale: Locale {
         Locale(identifier: appLanguage)
     }
@@ -37,13 +38,28 @@ struct WeatherApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(\.locale, appLocale)
-                .defaultFont()
-                .preferredColorScheme(.light)
+            ThemeRoot(theme: theme, appLocale: appLocale)
         }
     }
 }
+/// Resolves the active theme and injects it into the environment.
+/// Uses a nested view so it can read `colorScheme` after `preferredColorScheme` takes effect.
+private struct ThemeRoot: View {
+    let theme: AppTheme
+    let appLocale: Locale
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let resolvedColors = theme.colors(for: colorScheme)
+        ContentView()
+            .environment(\.locale, appLocale)
+            .defaultFont()
+            .environment(\.appTheme, theme)
+            .environment(\.themeColors, resolvedColors)
+            .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
+    }
+}
+
 extension View {
     func defaultFont() -> some View {
         self.environment(\.font, .custom("AvenirNext-Regular", size: 17, relativeTo: .body))

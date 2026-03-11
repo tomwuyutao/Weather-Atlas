@@ -104,6 +104,23 @@ struct SettingsView: View {
                         .tint(.primary)
                     }
                     
+                    // Theme
+                    HStack {
+                        Label("Theme", systemImage: "circle.lefthalf.filled")
+                            .font(.avenir(.body, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        let themeBinding = Bindable(theme)
+                        Picker("", selection: themeBinding.style) {
+                            ForEach(AppThemeStyle.allCases, id: \.self) { style in
+                                Text(style.displayName).tag(style)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 180)
+                        .tint(.primary)
+                    }
+                    
                     Button {
                         showingResetConfirmation = true
                     } label: {

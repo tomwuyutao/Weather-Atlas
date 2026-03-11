@@ -7,6 +7,22 @@
 
 import SwiftUI
 
+// MARK: - Theme Style
+
+enum AppThemeStyle: String, CaseIterable {
+    case light = "light"
+    case dark = "dark"
+    case automatic = "automatic"
+
+    var displayName: String {
+        switch self {
+        case .light: return "Light"
+        case .dark: return "Dark"
+        case .automatic: return "Auto"
+        }
+    }
+}
+
 // MARK: - Theme Colors
 
 struct ThemeColors {
@@ -57,11 +73,13 @@ struct ThemeColors {
     // List cards
     let listCardFill: Color
 
+    // Glass fill for capsule/circle backgrounds
+    let glassFill: Color
+
     // Filter
     let filterSunny: Color
 
     /// Returns palette foreground styles for a weather SF Symbol icon name.
-    /// Use with `.symbolRenderingMode(.palette)` and `.foregroundStyle(primary, secondary)`.
     func weatherIconPalette(for iconName: String) -> (primary: Color, secondary: Color) {
         if iconName.contains("sun") && iconName.contains("cloud") {
             return (cloudIconColor, sunIconColor)
@@ -118,6 +136,47 @@ extension ThemeColors {
         snowIconColor: .white,
         moonIconColor: Color(hex: 0xBE9AED),
         listCardFill: Color(hex: 0xE8E2D9),
+        glassFill: Color(hex: 0xE8E2D9),
+        filterSunny: Color(hex: 0xFDA409)
+    )
+}
+
+// MARK: - Dark Theme
+
+extension ThemeColors {
+    static let dark = ThemeColors(
+        primaryText: Color(hex: 0xE8E4DF),
+        secondaryText: Color(hex: 0x8A8A9A),
+        background: Color(hex: 0x1A1B2E),
+        searchOverlayBackground: Color(hex: 0x1A1B2E).opacity(0.97),
+        modalOverlay: Color.black.opacity(0.5),
+        glassTint: Color(hex: 0x252640).opacity(0.6),
+        popoverBackground: Color(hex: 0x252640).opacity(0.95),
+        mapOcean: Color(hex: 0x1A1B2E),
+        mapLand: Color(hex: 0x252640),
+        mapBorder: Color(hex: 0x353660),
+        svgCountryFill: Color(hex: 0x252640),
+        accent: Color(hex: 0x4A9EE0),
+        destructive: Color(hex: 0xFB4368),
+        dotSun: Color(hex: 0xFDA409),
+        dotPartlyCloudy: Color(hex: 0xF5C563),
+        dotCloudy: Color(hex: 0xE8E4DF),
+        dotRain: Color(hex: 0x4A9EE0),
+        dotDrizzle: Color(hex: 0x57D3E5),
+        dotSnow: Color(hex: 0xE8E4DF),
+        dotFog: Color(hex: 0x8A8A9A),
+        dotWind: Color(hex: 0xE8E4DF),
+        rainEffect: Color(hex: 0x57D3E5).opacity(0.55),
+        snowEffect: Color(hex: 0xE8E4DF).opacity(0.6),
+        cloudEffect: Color(hex: 0xE8E4DF),
+        windEffect: Color(hex: 0xE8E4DF).opacity(0.15),
+        sunIconColor: Color(hex: 0xFDA409),
+        cloudIconColor: Color(hex: 0xE8E4DF),
+        rainIconColor: Color(hex: 0x57D3E5),
+        snowIconColor: Color(hex: 0xE8E4DF),
+        moonIconColor: Color(hex: 0xBE9AED),
+        listCardFill: Color(hex: 0x252640),
+        glassFill: Color(hex: 0x252640),
         filterSunny: Color(hex: 0xFDA409)
     )
 }
@@ -128,10 +187,51 @@ extension ThemeColors {
 class AppTheme {
     static let shared = AppTheme()
 
-    var colors: ThemeColors { .light }
-    var colorScheme: ColorScheme { .light }
+    var style: AppThemeStyle {
+        didSet {
+            UserDefaults.standard.set(style.rawValue, forKey: "appThemeStyle")
+        }
+    }
 
-    private init() {}
+    /// Resolved colors for the current style, given the current system color scheme.
+    func colors(for systemScheme: ColorScheme) -> ThemeColors {
+        switch resolvedScheme(for: systemScheme) {
+        case .dark: return .dark
+        default: return .light
+        }
+    }
+
+    /// Resolved colors without a system color scheme — used in non-view contexts.
+    /// `.automatic` resolves to `.light`; views should use `themeColors` from the environment instead.
+    var colors: ThemeColors {
+        switch style {
+        case .dark: return .dark
+        default: return .light
+        }
+    }
+
+    /// The ColorScheme to apply to the window (nil = follow system).
+    func preferredColorScheme(for systemScheme: ColorScheme) -> ColorScheme? {
+        switch style {
+        case .light: return .light
+        case .dark: return .dark
+        case .automatic: return nil
+        }
+    }
+
+    /// The effective color scheme after resolving "automatic".
+    func resolvedScheme(for systemScheme: ColorScheme) -> ColorScheme {
+        switch style {
+        case .light: return .light
+        case .dark: return .dark
+        case .automatic: return systemScheme
+        }
+    }
+
+    private init() {
+        let raw = UserDefaults.standard.string(forKey: "appThemeStyle") ?? "automatic"
+        self.style = AppThemeStyle(rawValue: raw) ?? .automatic
+    }
 }
 
 // MARK: - Color Hex Extension
@@ -142,35 +242,6 @@ extension Color {
         let g = Double((hex >> 8) & 0xFF) / 255.0
         let b = Double(hex & 0xFF) / 255.0
         self.init(red: r, green: g, blue: b)
-    }
-}
-
-// MARK: - Weather Icon Modifier
-
-extension View {
-    /// Applies themed palette rendering to a weather SF Symbol icon.
-    func weatherIconStyle(for iconName: String) -> some View {
-        let palette = AppTheme.shared.colors.weatherIconPalette(for: iconName)
-        return self
-            .symbolRenderingMode(.palette)
-            .foregroundStyle(palette.primary, palette.secondary)
-    }
-
-    /// Themed popover/presentation background.
-    func themedPopoverBackground() -> some View {
-        self.presentationBackground(AppTheme.shared.colors.popoverBackground)
-    }
-
-    /// Themed glass background for capsule-shaped UI elements.
-    func themedGlass(in shape: some InsettableShape) -> some View {
-        self.background(Color(hex: 0xE8E2D9), in: shape)
-    }
-
-    /// Themed glass background with accent tint (for confirm buttons etc.)
-    @ViewBuilder
-    func themedAccentGlass(tint: Color, in shape: some InsettableShape) -> some View {
-        self.background(tint.opacity(0.15), in: shape)
-            .overlay(shape.stroke(tint.opacity(0.3), lineWidth: 0.5))
     }
 }
 
@@ -186,3 +257,48 @@ extension EnvironmentValues {
         set { self[AppThemeKey.self] = newValue }
     }
 }
+
+// MARK: - Resolved Theme Colors Environment Key
+// Views read `\.themeColors` to get the already-resolved ThemeColors for the current scheme.
+
+private struct ThemeColorsKey: EnvironmentKey {
+    static let defaultValue: ThemeColors = .light
+}
+
+extension EnvironmentValues {
+    var themeColors: ThemeColors {
+        get { self[ThemeColorsKey.self] }
+        set { self[ThemeColorsKey.self] = newValue }
+    }
+}
+
+// MARK: - View Modifiers
+extension View {
+    /// Applies palette icon coloring for a weather SF Symbol.
+    func weatherIconStyle(for iconName: String) -> some View {
+        let palette = AppTheme.shared.colors.weatherIconPalette(for: iconName)
+        return self
+            .symbolRenderingMode(.palette)
+            .foregroundStyle(palette.primary, palette.secondary)
+    }
+
+    /// Themed popover/presentation background.
+    func themedPopoverBackground() -> some View {
+        self.presentationBackground(AppTheme.shared.colors.popoverBackground)
+    }
+
+    /// Themed glass/material background for capsule-shaped UI elements.
+    @ViewBuilder
+    func themedGlass(in shape: some InsettableShape) -> some View {
+        self.background(AppTheme.shared.colors.glassFill, in: shape)
+    }
+
+    /// Themed glass/material background with accent tint (for confirm buttons etc.)
+    @ViewBuilder
+    func themedAccentGlass(tint: Color, in shape: some InsettableShape) -> some View {
+        self.background(tint.opacity(0.15), in: shape)
+            .overlay(shape.stroke(tint.opacity(0.3), lineWidth: 0.5))
+    }
+}
+
+

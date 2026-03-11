@@ -719,6 +719,9 @@
         }
       }
     },
+    "Theme" : {
+
+    },
     "This will reset all city lists back to their defaults. Any cities you added or removed will be lost." : {
       "localizations" : {
         "zh-Hans" : {
