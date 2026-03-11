@@ -73,7 +73,7 @@ struct WeatherDetailView: View {
     }
     
     private var effectiveShowCloudCover: Bool {
-        isPopup ? showCloudCover : showingCloudCover
+        false
     }
     
     private var headerBackgroundColor: Color {
@@ -105,7 +105,7 @@ struct WeatherDetailView: View {
             if !isPopup {
                 GeometryReader { geo in
                     headerBackgroundColor
-                        .frame(height: 320 + geo.safeAreaInsets.top)
+                        .frame(height: 350 + geo.safeAreaInsets.top)
                         .frame(maxWidth: .infinity)
                         .ignoresSafeArea(edges: .top)
                 }
@@ -136,7 +136,7 @@ struct WeatherDetailView: View {
                                 }
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                                 .padding(.trailing, -40)
-                                .offset(y: -40)
+                                .offset(y: -36)
 
                             // Temperature + condition — top left, below back button
                             VStack(alignment: .leading, spacing: 6) {
@@ -158,7 +158,7 @@ struct WeatherDetailView: View {
                         }
                     }
                     // fill half the screen height (matches the color block)
-                    .frame(height: 320)
+                    .frame(height: 350)
                 } else {
                     VStack(alignment: .center, spacing: 0) {
                         Text(cityWeather.city.localizedName(locale: locale))
@@ -324,37 +324,7 @@ struct WeatherDetailView: View {
                         }
                 )
                 
-                // Temperature / Cloud Cover switcher
-                if !isPopup {
-                    HStack(spacing: 8) {
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.25)) { showingCloudCover = false }
-                        } label: {
-                            Text("Temperature")
-                                .font(.avenir(.footnote, weight: showingCloudCover ? .regular : .semibold))
-                                .foregroundStyle(showingCloudCover ? .secondary : .primary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(showingCloudCover ? Color.clear : AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
-                        
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.25)) { showingCloudCover = true }
-                        } label: {
-                            Text("Cloud Cover")
-                                .font(.avenir(.footnote, weight: showingCloudCover ? .semibold : .regular))
-                                .foregroundStyle(showingCloudCover ? .primary : .secondary)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 8)
-                                .background(showingCloudCover ? AppTheme.shared.colors.listCardFill : Color.clear, in: RoundedRectangle(cornerRadius: 8))
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 8)
-                    .padding(.top, -12)
-                    .padding(.bottom, 12)
-                }
+
             }
             .padding(.horizontal, isPopup ? 20 : 16)
             .padding(.top, isPopup ? 36 : 0)
