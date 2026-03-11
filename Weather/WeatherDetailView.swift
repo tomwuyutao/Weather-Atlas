@@ -33,6 +33,7 @@ struct WeatherDetailView: View {
     }
     @State private var showingCloudCover: Bool = false
     @State private var showingDetailMenu: Bool = false
+    @State private var dayScrollHasMore: Bool = true
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     
     private var tempUnit: TemperatureUnit {
@@ -75,6 +76,21 @@ struct WeatherDetailView: View {
         isPopup ? showCloudCover : showingCloudCover
     }
     
+    private var headerBackgroundColor: Color {
+        let theme = AppTheme.shared.colors
+        switch forecast.condition {
+        case .rain: return theme.dotRain
+        case .drizzle: return theme.dotDrizzle
+        case .snow, .cloudy: return Color(red: 0xB8 / 255, green: 0xCC / 255, blue: 0xD8 / 255)
+        default:
+            // If the icon is a plain cloud (no sun), use the cloud color regardless of condition
+            if detailDisplayIcon == "cloud.fill" {
+                return Color(red: 0xB8 / 255, green: 0xCC / 255, blue: 0xD8 / 255)
+            }
+            return forecast.condition.dotColor
+        }
+    }
+
     private var isPopup: Bool {
         #if os(macOS)
         return true
@@ -88,7 +104,7 @@ struct WeatherDetailView: View {
             // Weather condition color block — top half background
             if !isPopup {
                 GeometryReader { geo in
-                    forecast.condition.dotColor
+                    headerBackgroundColor
                         .frame(height: 320 + geo.safeAreaInsets.top)
                         .frame(maxWidth: .infinity)
                         .ignoresSafeArea(edges: .top)
@@ -103,13 +119,24 @@ struct WeatherDetailView: View {
                         ZStack(alignment: .topLeading) {
                             // Large decorative icon — right, slightly cropped
                             Image(systemName: detailDisplayIcon)
-                                .font(.system(size: 140))
+                                .font(.system(size: 180))
                                 .foregroundStyle(.white)
                                 .contentTransition(.symbolEffect(.replace))
                                 .opacity(0.35)
                                 .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                                .background(alignment: .top) {
+                                    WeatherEffectOverlay(
+                                        condition: forecast.condition,
+                                        isCompact: false,
+                                        iconHeight: 220,
+                                        iconName: detailDisplayIcon,
+                                        dropColor: forecast.condition == .drizzle ? AppTheme.shared.colors.dotRain : nil
+                                    )
+                                    .id("detail-header-effect-\(internalSelectedDay)-\(forecast.condition.displayName)")
+                                }
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                                .padding(.trailing, -20)
+                                .padding(.trailing, -40)
+                                .offset(y: -40)
 
                             // Temperature + condition — top left, below back button
                             VStack(alignment: .leading, spacing: 6) {
@@ -127,7 +154,7 @@ struct WeatherDetailView: View {
                             }
                             .foregroundStyle(.white)
                             .padding(.leading, 28)
-                            .padding(.top, geo.safeAreaInsets.top + 110)
+                            .padding(.top, geo.safeAreaInsets.top + 76)
                         }
                     }
                     // fill half the screen height (matches the color block)
@@ -174,6 +201,7 @@ struct WeatherDetailView: View {
                 // 10-day forecast horizontal scroll
                 if !isPopup {
                     let lastIndex = cityWeather.dailyForecasts.count - 1
+                    ScrollViewReader { scrollProxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 0) {
                             ForEach(Array(cityWeather.dailyForecasts.enumerated()), id: \.element.id) { index, dailyForecast in
@@ -191,6 +219,7 @@ struct WeatherDetailView: View {
                                     showCloudCover: effectiveShowCloudCover,
                                     cityTimeZone: cityWeather.timeZone
                                 )
+                                .id(dailyForecast.dayOffset)
                                 .onTapGesture {
                                     swipeDirection = dailyForecast.dayOffset >= internalSelectedDay ? .forward : .backward
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -199,8 +228,31 @@ struct WeatherDetailView: View {
                                 }
                             }
                         }
-                        .padding(.horizontal, 8)
                     }
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                    .onScrollGeometryChange(for: Bool.self) { geo in
+                        geo.contentOffset.x + geo.containerSize.width < geo.contentSize.width - 1
+                    } action: { _, hasMore in
+                        dayScrollHasMore = hasMore
+                    }
+                    .overlay(alignment: .trailing) {
+                        if dayScrollHasMore {
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundStyle(.secondary.opacity(0.5))
+                                .padding(.trailing, 6)
+                                .allowsHitTesting(false)
+                                .transition(.opacity)
+                        }
+                    }
+                    .animation(.easeInOut(duration: 0.2), value: dayScrollHasMore)
+                    .onChange(of: internalSelectedDay) { _, newDay in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            scrollProxy.scrollTo(newDay, anchor: .center)
+                        }
+                    }
+                    }
+                    .padding(.horizontal, 8)
                 }
 
                 // Chart container — box stays fixed, content slides inside
@@ -213,7 +265,8 @@ struct WeatherDetailView: View {
                         showCloudCover: effectiveShowCloudCover,
                         dayOffset: internalSelectedDay,
                         cityTimeZone: cityWeather.timeZone,
-                        previewCurrentHour: previewCurrentHour
+                        previewCurrentHour: previewCurrentHour,
+                        lineColor: headerBackgroundColor
                     )
                     .id("hourly-\(internalSelectedDay)")
                     .transition(.asymmetric(
@@ -571,6 +624,7 @@ struct HourlyTimelineChart: View {
     var dayOffset: Int = 0
     var cityTimeZone: TimeZone = .current
     var previewCurrentHour: Int? = nil
+    var lineColor: Color = AppTheme.shared.colors.destructive
     
     @Environment(\.locale) private var locale
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
@@ -654,7 +708,7 @@ struct HourlyTimelineChart: View {
                     pointXPositions: xPositions,
                     gapRadius: 15
                 )
-                .stroke(AppTheme.shared.colors.destructive, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
+                .stroke(lineColor, style: StrokeStyle(lineWidth: 2.5, lineCap: .round, lineJoin: .round))
                 
                 // Layer 3: Data columns
                 HStack(spacing: 0) {
@@ -755,7 +809,7 @@ struct DayForecastBox: View {
         .padding(.vertical, 14)
         .background(
             UnevenRoundedRectangle(cornerRadii: cornerRadius)
-                .fill(isSelected ? AppTheme.shared.colors.accent.opacity(0.25) : AppTheme.shared.colors.listCardFill)
+                .fill(isSelected ? AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.04) : AppTheme.shared.colors.listCardFill)
         )
     }
 }

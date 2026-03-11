@@ -258,9 +258,9 @@ extension View {
     func themedGlass(in shape: some InsettableShape) -> some View {
         let theme = AppTheme.shared
         if theme.style == .basic {
-            self.glassEffect(.regular.interactive(), in: shape)
+            self.background(Color(white: 0.18), in: shape)
         } else {
-            self.background(.ultraThinMaterial, in: shape)
+            self.background(Color(hex: 0xE8E2D9), in: shape)
         }
     }
     

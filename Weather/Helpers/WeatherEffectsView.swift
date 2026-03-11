@@ -67,6 +67,8 @@ struct RainDropsEffect: View {
     var isHeavy: Bool = true
     /// The height of the parent icon frame (used to compute overflow)
     var iconHeight: CGFloat = 32
+    /// Override drop color (defaults to theme rainEffect)
+    var dropColor: Color? = nil
     
     private var dropCount: Int { isHeavy ? 6 : 3 }
     private var xOffsets: [CGFloat] {
@@ -115,7 +117,7 @@ struct RainDropsEffect: View {
                     let dropH = 4.0 * scale
                     let dropRect = CGRect(x: x - dropW / 2, y: y - dropH / 2, width: dropW, height: dropH)
                     let dropPath = Capsule().path(in: dropRect)
-                    context.fill(dropPath, with: .color(AppTheme.shared.colors.rainEffect.opacity(opacity)))
+                    context.fill(dropPath, with: .color((dropColor ?? AppTheme.shared.colors.rainEffect).opacity(opacity)))
                 }
             }
         }
@@ -255,12 +257,14 @@ struct WeatherEffectOverlay: View {
     let isCompact: Bool
     let iconHeight: CGFloat
     let iconName: String?
+    let dropColor: Color?
     
-    init(condition: AppWeatherCondition, isCompact: Bool, iconHeight: CGFloat = 32, iconName: String? = nil) {
+    init(condition: AppWeatherCondition, isCompact: Bool, iconHeight: CGFloat = 32, iconName: String? = nil, dropColor: Color? = nil) {
         self.condition = condition
         self.isCompact = isCompact
         self.iconHeight = iconHeight
         self.iconName = iconName
+        self.dropColor = dropColor
     }
     
     /// Whether the displayed icon contains a sun element (cloud.sun.fill, etc.)
@@ -288,10 +292,10 @@ struct WeatherEffectOverlay: View {
         case .cloudy:
             CloudDriftEffect()
         case .rain:
-            RainDropsEffect(isHeavy: true, iconHeight: iconHeight)
+            RainDropsEffect(isHeavy: true, iconHeight: iconHeight, dropColor: dropColor)
                 .frame(maxWidth: .infinity, alignment: .top)
         case .drizzle:
-            RainDropsEffect(isHeavy: false, iconHeight: iconHeight)
+            RainDropsEffect(isHeavy: false, iconHeight: iconHeight, dropColor: dropColor)
                 .frame(maxWidth: .infinity, alignment: .top)
         case .snow:
             SnowflakesEffect(iconHeight: iconHeight)

@@ -1059,6 +1059,7 @@ struct ContentView: View {
                                 mapDateSlider(height: 340)
                             }
                             .padding(.bottom, 350)
+                            .padding(.trailing, 1)
                             .transition(.opacity)
                     }
                 }
@@ -1088,6 +1089,7 @@ struct ContentView: View {
                                 mapDateSlider(height: 340)
                             }
                             .padding(.bottom, 350)
+                            .padding(.trailing, 1)
                             .transition(.opacity)
                     }
                 }
