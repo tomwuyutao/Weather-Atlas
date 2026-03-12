@@ -59,6 +59,7 @@ struct ContentView: View {
     @AppStorage("showDateSlider") var showDateSlider: Bool = true
     @State var mapVisibleListIDs: Set<String> = []
     @Environment(\.locale) var locale
+    @Environment(\.colorScheme) private var colorScheme
     
     /// Cities to display on the map — combined from all selected lists + preview city
     private var mapCities: [CityWeather] {
@@ -358,7 +359,12 @@ struct ContentView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .frame(maxWidth: isIPad ? 420 : .infinity)
-        .background(theme.colors.glassFill, in: RoundedRectangle(cornerRadius: 20))
+        .background(
+            RoundedRectangle(cornerRadius: 20)
+                .fill(AppTheme.shared.isDetailedMapMode && colorScheme == .light
+                    ? Color(hex: 0xF5F1EC)
+                    : theme.colors.glassFill)
+        )
         .overlay {
             RoundedRectangle(cornerRadius: 20)
                 .fill(.white.opacity(0.08))
@@ -2365,6 +2371,15 @@ struct WeatherMarker: View {
     private var showAsDot: Bool { displayMode == .dot }
     private var showAsCard: Bool { displayMode == .card }
 
+    private var dotColor: Color {
+        let base = displayCondition.dotColor
+        // In light mode + detailed map, replace white dots with a medium gray so they're visible
+        if colorScheme == .light && AppTheme.shared.isDetailedMapMode && base == .white {
+            return Color(hex: 0xB4B4B4)
+        }
+        return base
+    }
+
     private var displayIcon: String {
         if filterSunny {
             if isPlaying {
@@ -2402,15 +2417,15 @@ struct WeatherMarker: View {
         ZStack(alignment: .bottom) {
             // Pulse ring behind everything
             if isSelected {
-                SelectedPulseRing(shape: .circle, color: displayCondition.dotColor)
+                SelectedPulseRing(shape: .circle, color: dotColor)
                     .frame(width: 10, height: 10)
             }
 
             // Dot layer — always present as anchor
             Circle()
-                .fill(displayCondition.dotColor)
+                .fill(dotColor)
                 .frame(width: 10, height: 10)
-                .shadow(color: displayCondition.dotColor.opacity(isSelected ? 0.8 : 0.5), radius: isSelected ? 12 : 4)
+                .shadow(color: dotColor.opacity(isSelected ? 0.8 : 0.5), radius: isSelected ? 12 : 4)
                 .scaleEffect(isSelected ? 1.5 : 1.0)
 
             // Pin label layer — floats above the dot
