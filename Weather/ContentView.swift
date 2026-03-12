@@ -286,79 +286,103 @@ struct ContentView: View {
         ZStack(alignment: .top) {
             theme.colors.background.ignoresSafeArea()
 
-            // Switcher — always pinned at top
-            let switcherView = HStack(spacing: 0) {
-                ForEach([("Map Style", 0), ("Overlays", 1)], id: \.1) { label, tag in
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                            mapStyleTab = tag
-                        }
-                    } label: {
-                        Text(label)
-                            .font(.avenir(.subheadline, weight: mapStyleTab == tag ? .semibold : .medium))
-                            .foregroundStyle(mapStyleTab == tag ? theme.colors.primaryText : theme.colors.secondaryText)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background {
-                                if mapStyleTab == tag {
-                                    Capsule()
-                                        .fill(theme.colors.listCardFill)
-                                        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(4)
-            .background(theme.colors.background.opacity(0.6), in: Capsule())
-            .overlay(Capsule().strokeBorder(theme.colors.mapBorder.opacity(0.4), lineWidth: 1))
-            .padding(.horizontal, 20)
-            .padding(.top, 24)
-
-            // Content below switcher — offset to sit beneath it
             VStack(spacing: 0) {
-                Color.clear.frame(height: 80) // space for switcher
+                // Tab switcher row
+                HStack(spacing: 0) {
+                    Spacer()
+                    // Custom tab switcher
+                    HStack(spacing: 0) {
+                        ForEach([("Map Style", 0), ("Overlays", 1)], id: \.1) { label, tag in
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                    mapStyleTab = tag
+                                }
+                            } label: {
+                                Text(label)
+                                    .font(.avenir(.subheadline, weight: mapStyleTab == tag ? .semibold : .medium))
+                                    .foregroundStyle(mapStyleTab == tag ? theme.colors.primaryText : theme.colors.secondaryText)
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                                    .background {
+                                        if mapStyleTab == tag {
+                                            Capsule().fill(theme.colors.listCardFill)
+                                                .shadow(color: .black.opacity(0.12), radius: 3, y: 1)
+                                        }
+                                    }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .frame(width: 240)
+                    .padding(3)
+                    .background(theme.colors.background.opacity(0.6), in: Capsule())
+                    .overlay(Capsule().strokeBorder(theme.colors.mapBorder.opacity(0.4), lineWidth: 1))
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
+                .padding(.bottom, 16)
+
                 if mapStyleTab == 0 {
-                    VStack(spacing: 0) {
-                        ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
+                    // 2-column grid of thumbnail cards
+                    let modes = ["minimal", "borders", "detailed"]
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                        ForEach(modes, id: \.self) { mode in
                             Button {
                                 withAnimation { mapMode = mode }
                                 showingMapStyleSheet = false
                             } label: {
-                                HStack(spacing: 12) {
+                                ZStack(alignment: .bottomLeading) {
+                                    MapThumbnailView(mode: mode)
+                                        .frame(maxWidth: .infinity)
+                                        .aspectRatio(3/2, contentMode: .fit)
+
                                     Text(mode.capitalized)
-                                        .font(.avenir(.body, weight: mapMode == mode ? .semibold : .medium))
-                                        .foregroundStyle(.primary)
-                                    Spacer()
+                                        .font(.avenir(.footnote, weight: .semibold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 8)
+                                        .padding(.vertical, 4)
+                                        .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 6))
+                                        .padding(8)
+
                                     if mapMode == mode {
-                                        Image(systemName: "checkmark")
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(theme.colors.accent)
+                                        VStack {
+                                            HStack {
+                                                Spacer()
+                                                Image(systemName: "checkmark.circle.fill")
+                                                    .font(.system(size: 18, weight: .semibold))
+                                                    .foregroundStyle(Color(hex: 0x1579C7))
+                                                    .shadow(radius: 2)
+                                                    .padding(8)
+                                            }
+                                            Spacer()
+                                        }
                                     }
                                 }
-                                .padding(.horizontal, 20)
-                                .padding(.vertical, 14)
-                                .contentShape(Rectangle())
+                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 10)
+                                        .strokeBorder(
+                                            mapMode == mode ? Color(hex: 0x1579C7) : theme.colors.mapBorder.opacity(0.4),
+                                            lineWidth: mapMode == mode ? 2 : 1
+                                        )
+                                )
                             }
                             .buttonStyle(.plain)
-                            if mode != "detailed" {
-                                Divider().padding(.leading, 20)
-                            }
                         }
                     }
-                    .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
                     .padding(.horizontal, 20)
                 } else {
+                    // Overlays placeholder
                     Text("Overlays coming soon")
                         .font(.avenir(.body, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .padding(.top, 16)
+                        .padding(.top, 24)
                 }
+
                 Spacer()
             }
-
-            switcherView
         }
     }
 
@@ -808,7 +832,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingMapStyleSheet) {
             mapStyleSheet
-                .presentationDetents([.height(240)])
+                .presentationDetents([.height(340)])
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(20)
         }
