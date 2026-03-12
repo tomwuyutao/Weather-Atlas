@@ -27,6 +27,7 @@ struct WeatherDetailView: View {
     @State private var previousDay: Int
     @State private var chartDragOffset: CGFloat = 0
     @State private var swipeDirection: SwipeDirection = .forward
+    @State private var isSwipingDays: Bool = false
     
     private enum SwipeDirection {
         case forward, backward
@@ -361,6 +362,15 @@ struct WeatherDetailView: View {
                     }
                     }
                     .padding(.horizontal, 8)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 10)
+                            .onChanged { value in
+                                if abs(value.translation.width) > abs(value.translation.height) {
+                                    isSwipingDays = true
+                                }
+                            }
+                            .onEnded { _ in isSwipingDays = false }
+                    )
                 }
 
                 // Chart container — box stays fixed, content slides inside
@@ -396,6 +406,7 @@ struct WeatherDetailView: View {
                             let horizontal = value.translation.width
                             let vertical = value.translation.height
                             guard abs(horizontal) > abs(vertical) else { return }
+                            isSwipingDays = true
                             // Resist dragging if at boundary
                             let atStart = internalSelectedDay <= 0 && horizontal > 0
                             let atEnd = internalSelectedDay >= 9 && horizontal < 0
@@ -429,6 +440,7 @@ struct WeatherDetailView: View {
                                     chartDragOffset = 0
                                 }
                             }
+                            isSwipingDays = false
                         }
                 )
 
@@ -674,6 +686,7 @@ struct WeatherDetailView: View {
         .simultaneousGesture(
             isPopup ? nil : DragGesture(minimumDistance: 50, coordinateSpace: .global)
                 .onEnded { value in
+                    guard !isSwipingDays else { return }
                     let horizontal = value.translation.width
                     let vertical = value.translation.height
                     // Only trigger on right swipe (and mostly horizontal)
