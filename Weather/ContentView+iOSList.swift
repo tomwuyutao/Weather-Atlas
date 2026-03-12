@@ -572,7 +572,7 @@ extension ContentView {
                         .padding(.top, 24)
                         .padding(.bottom, 20)
 
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
                         ForEach(iOSFilteredCities) { cityWeather in
                             gridCell(for: cityWeather)
                         }

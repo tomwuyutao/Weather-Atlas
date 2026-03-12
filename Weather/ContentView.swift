@@ -54,6 +54,7 @@ struct ContentView: View {
     @State var detailOpenedFromList: Bool = false
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @State var showingSettings: Bool = false
+    @State var showingLegend: Bool = false
     @State var sidebarVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("mapMode") var mapMode: String = "minimal"
     @AppStorage("showDateSlider") var showDateSlider: Bool = true
@@ -715,6 +716,10 @@ struct ContentView: View {
         }
         .onChange(of: radialSearchRadius) { _, _ in
             updateRadialGridPreview()
+        }
+        .sheet(isPresented: $showingLegend) {
+            LegendView()
+                .presentationSizing(.form)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(

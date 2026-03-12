@@ -769,6 +769,15 @@ extension ContentView {
 
             Divider().padding(.horizontal, 12).padding(.vertical, 4)
 
+            if selectedTab == 1 || isIPad {
+                menuRow(icon: "circle.grid.2x2", title: localizedString("Legend", locale: locale)) {
+                    showingMenuPopover = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        showingLegend = true
+                    }
+                }
+            }
+
             menuRow(icon: "gearshape", title: localizedString("Settings", locale: locale)) {
                 showingMenuPopover = false
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
