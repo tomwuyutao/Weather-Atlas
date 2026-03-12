@@ -12,6 +12,7 @@ struct SVGMapView: View {
     let cities: [CityWeather]
     let selectedDayOffset: Int
     let showCloudCover: Bool
+    var overlayMode: String = "weather"
     let filterSunny: Bool
     let isPlaying: Bool
     let namespace: Namespace.ID
@@ -243,6 +244,7 @@ struct SVGMapView: View {
                 isCompact: isZoomedOut,
                 namespace: namespace,
                 showCloudCover: showCloudCover,
+                overlayMode: overlayMode,
                 filterSunny: filterSunny,
                 passesFilter: passesFilter,
                 isPlaying: isPlaying,

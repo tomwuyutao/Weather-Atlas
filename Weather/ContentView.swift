@@ -37,7 +37,8 @@ struct ContentView: View {
     @State private var addCityDetailCity: CityWeather?
     @State var previewCity: CityWeather?
     @State private var previewSearchText: String = ""
-    @State private var showCloudCover: Bool = false
+    private var showCloudCover: Bool { mapOverlayMode == "cloudCover" }
+    private var showTemperatureOverlay: Bool { mapOverlayMode == "temperature" }
     @State var filterSunny: Bool = false
     @State var isPlaying: Bool = false
     @State var showingInlineSearch: Bool = false
@@ -57,6 +58,7 @@ struct ContentView: View {
     @State var showingLegend: Bool = false
     @State var sidebarVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("mapMode") var mapMode: String = "minimal"
+    @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
     @AppStorage("showDateSlider") var showDateSlider: Bool = true
     @State var mapVisibleListIDs: Set<String> = []
     @Environment(\.locale) var locale
@@ -201,7 +203,7 @@ struct ContentView: View {
             // Map view with bottom date bar
             mapView
                 .overlay(alignment: .bottom) {
-                    DesktopDateBar(selectedDayOffset: $selectedDayOffset, showCloudCover: $showCloudCover, filterSunny: $filterSunny, isPlaying: $isPlaying)
+                    DesktopDateBar(selectedDayOffset: $selectedDayOffset, showCloudCover: Binding(get: { mapOverlayMode == "cloudCover" }, set: { mapOverlayMode = $0 ? "cloudCover" : "weather" }), filterSunny: $filterSunny, isPlaying: $isPlaying)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 12)
                 }
@@ -287,10 +289,9 @@ struct ContentView: View {
             theme.colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Tab switcher row
+                // Tab switcher row — fixed height so content below doesn't shift it
                 HStack(spacing: 0) {
                     Spacer()
-                    // Custom tab switcher
                     HStack(spacing: 0) {
                         ForEach([("Map Style", 0), ("Overlays", 1)], id: \.1) { label, tag in
                             Button {
@@ -320,9 +321,9 @@ struct ContentView: View {
                     .overlay(Capsule().strokeBorder(theme.colors.mapBorder.opacity(0.4), lineWidth: 1))
                     Spacer()
                 }
+                .frame(height: 72)
                 .padding(.horizontal, 20)
-                .padding(.top, 24)
-                .padding(.bottom, 16)
+                .padding(.top, 16)
 
                 if mapStyleTab == 0 {
                     // 2-column grid of thumbnail cards
@@ -374,11 +375,51 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 20)
                 } else {
-                    // Overlays placeholder
-                    Text("Overlays coming soon")
-                        .font(.avenir(.body, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .padding(.top, 24)
+                    // Overlay mode picker
+                    let overlays: [(String, String, String)] = [
+                        ("weather",     "cloud.sun.fill",  "Weather"),
+                        ("temperature", "thermometer.medium", "Temperature"),
+                        ("cloudCover",  "cloud.fill",      "Cloud Cover")
+                    ]
+                    VStack(spacing: 10) {
+                        ForEach(overlays, id: \.0) { mode, icon, label in
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    mapOverlayMode = mode
+                                }
+                                showingMapStyleSheet = false
+                            } label: {
+                                HStack(spacing: 14) {
+                                    Image(systemName: icon)
+                                        .font(.system(size: 16, weight: .medium))
+                                        .frame(width: 24)
+                                        .foregroundStyle(theme.colors.primaryText)
+                                    Text(label)
+                                        .font(.avenir(.body, weight: mapOverlayMode == mode ? .semibold : .medium))
+                                        .foregroundStyle(theme.colors.primaryText)
+                                    Spacer()
+                                    if mapOverlayMode == mode {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 18))
+                                            .foregroundStyle(Color(hex: 0x1579C7))
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(mapOverlayMode == mode ? Color(hex: 0x1579C7).opacity(0.08) : theme.colors.listCardFill)
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(mapOverlayMode == mode ? Color(hex: 0x1579C7).opacity(0.4) : Color.clear, lineWidth: 1)
+                                )
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
                 }
 
                 Spacer()
@@ -832,7 +873,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingMapStyleSheet) {
             mapStyleSheet
-                .presentationDetents([.height(340)])
+                .presentationDetents([.height(330)])
                 .presentationDragIndicator(.visible)
                 .presentationCornerRadius(20)
         }
@@ -2241,6 +2282,7 @@ struct ContentView: View {
                 cities: mapCities,
                 selectedDayOffset: selectedDayOffset,
                 showCloudCover: showCloudCover,
+                overlayMode: mapOverlayMode,
                 filterSunny: filterSunny,
                 isPlaying: isPlaying,
                 namespace: popupNamespace,
@@ -2408,6 +2450,7 @@ struct WeatherMarker: View {
     let isCompact: Bool
     let namespace: Namespace.ID
     let showCloudCover: Bool
+    var overlayMode: String = "weather"
     var filterSunny: Bool = false
     var passesFilter: Bool = true
     var isPlaying: Bool = false
@@ -2430,6 +2473,28 @@ struct WeatherMarker: View {
     private var showAsCard: Bool { displayMode == .card }
 
     private var dotColor: Color {
+        // Temperature overlay: cyan #57D3E5 (cold) → yellow #FDA409 (hot), -10°C to 35°C
+        if overlayMode == "temperature" {
+            let tempC = forecast.daytimeHigh
+            let t = Double(max(0, min(1, (tempC - (-10)) / 45.0)))
+            // Cyan #57D3E5 → Yellow #FDA409
+            return Color(
+                red: Double(0x57) / 255.0 + t * Double(0xFD - 0x57) / 255.0,
+                green: Double(0xD3) / 255.0 + t * Double(0xA4 - 0xD3) / 255.0,
+                blue: Double(0xE5) / 255.0 + t * Double(0x09 - 0xE5) / 255.0
+            )
+        }
+        // Cloud cover overlay: clear = dark blue #1579C7, fully cloudy = #E8E4DF
+        if overlayMode == "cloudCover" {
+            let cover = CGFloat(forecast.cloudCover) // 0.0 (clear) to 1.0 (cloudy)
+            // Dark blue #1579C7 (clear) → pure white #FFFFFF (fully cloudy)
+            return Color(
+                red: Double(0x15) / 255.0 + Double(cover) * (1.0 - Double(0x15) / 255.0),
+                green: Double(0x79) / 255.0 + Double(cover) * (1.0 - Double(0x79) / 255.0),
+                blue: Double(0xC7) / 255.0 + Double(cover) * (1.0 - Double(0xC7) / 255.0)
+            )
+        }
+        // Default weather dot color
         let base = displayCondition.dotColor
         // In light mode + detailed map, replace white dots with a medium gray so they're visible
         if colorScheme == .light && AppTheme.shared.isDetailedMapMode && base == .white {

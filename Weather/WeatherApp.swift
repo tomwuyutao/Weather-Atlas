@@ -17,6 +17,9 @@ struct WeatherApp: App {
     }
     
     init() {
+        // Always reset overlay mode to weather on launch
+        UserDefaults.standard.set("weather", forKey: "mapOverlayMode")
+
         // One-time migration: clear old city data so new defaults take effect
         let migrationKey = "defaultCitiesMigrationV2"
         if !UserDefaults.standard.bool(forKey: migrationKey) {

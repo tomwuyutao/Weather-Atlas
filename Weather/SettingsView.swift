@@ -7,6 +7,30 @@
 
 import SwiftUI
 
+enum DistanceUnit: String, CaseIterable {
+    case kilometers = "kilometers"
+    case miles = "miles"
+
+    var symbol: String {
+        switch self {
+        case .kilometers: return "km"
+        case .miles: return "mi"
+        }
+    }
+
+    func display(_ km: Double) -> String {
+        switch self {
+        case .kilometers:
+            let rounded = (km * 10).rounded() / 10
+            return rounded >= 10 ? "\(Int(rounded))km" : String(format: "%.1fkm", rounded)
+        case .miles:
+            let mi = km * 0.621371
+            let rounded = (mi * 10).rounded() / 10
+            return rounded >= 10 ? "\(Int(rounded))mi" : String(format: "%.1fmi", rounded)
+        }
+    }
+}
+
 enum TemperatureUnit: String, CaseIterable {
     case celsius = "celsius"
     case fahrenheit = "fahrenheit"
@@ -52,6 +76,7 @@ enum TemperatureUnit: String, CaseIterable {
 
 struct SettingsView: View {
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.celsius.rawValue
+    @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.kilometers.rawValue
     @AppStorage("isGridView") private var isGridView: Bool = false
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     let weatherService: WeatherService
@@ -62,12 +87,17 @@ struct SettingsView: View {
 
     @State private var showingResetConfirmation = false
     @State private var showingTempPicker = false
+    @State private var showingDistancePicker = false
     @State private var showingViewPicker = false
     @State private var showingLanguagePicker = false
     @State private var showingThemePicker = false
 
     private var selectedUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnit) ?? .celsius
+    }
+
+    private var selectedDistanceUnit: DistanceUnit {
+        DistanceUnit(rawValue: distanceUnit) ?? .kilometers
     }
 
     var body: some View {
@@ -92,6 +122,28 @@ struct SettingsView: View {
                                     menuRow(icon: "thermometer.medium", label: "Fahrenheit (°F)", isSelected: selectedUnit == .fahrenheit) {
                                         temperatureUnit = TemperatureUnit.fahrenheit.rawValue
                                         showingTempPicker = false
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                                .frame(width: 220)
+                                .themedPopoverBackground()
+                                .presentationCompactAdaptation(.popover)
+                            }
+
+                            rowDivider()
+
+                            // Distance
+                            settingsRow(icon: "ruler", label: "Distance", value: selectedDistanceUnit.symbol, isPresented: $showingDistancePicker) {
+                                showingDistancePicker = true
+                            } popoverContent: {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    menuRow(icon: "ruler", label: "Kilometers (km)", isSelected: selectedDistanceUnit == .kilometers) {
+                                        distanceUnit = DistanceUnit.kilometers.rawValue
+                                        showingDistancePicker = false
+                                    }
+                                    menuRow(icon: "ruler", label: "Miles (mi)", isSelected: selectedDistanceUnit == .miles) {
+                                        distanceUnit = DistanceUnit.miles.rawValue
+                                        showingDistancePicker = false
                                     }
                                 }
                                 .padding(.vertical, 8)

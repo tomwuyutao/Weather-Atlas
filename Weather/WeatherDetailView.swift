@@ -45,11 +45,16 @@ struct WeatherDetailView: View {
     @State private var headerDragOffset: CGFloat = 0
     @State private var scrollAtTop: Bool = true
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
-    
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
+
     private var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
     }
-    
+
+    private var distUnit: DistanceUnit {
+        DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+    }
+
     // Initialize with the day from the map slider
     init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil) {
         self.cityWeather = cityWeather
@@ -444,28 +449,32 @@ struct WeatherDetailView: View {
                         }
                 )
 
-                // Stats grid: 3 rows × 2 columns
-                VStack(spacing: 16) {
-                    HStack(spacing: 16) {
-                        WeatherStatCard(
-                            label: "Temperature",
-                            value: tempUnit.displaySlash(low: forecast.daytimeLow, high: forecast.daytimeHigh),
-                            isSelected: chartMetric == .temperature,
-                            valueOffset: 3
-                        )
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                chartMetric = .temperature
-                            }
+                // Stats grid: 2-column, cards with no data are hidden
+                let visibilityValue: String? = forecast.visibility.map { vis in
+                    distUnit.display(vis)
+                }
+                let feelsLikeValue: String? = (forecast.feelsLikeLow != nil && forecast.feelsLikeHigh != nil)
+                    ? tempUnit.displaySlash(low: forecast.feelsLikeLow!, high: forecast.feelsLikeHigh!)
+                    : nil
+                let humidityValue: String? = forecast.humidity.map { "\(Int($0 * 100))%" }
+
+                LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
+                    WeatherStatCard(
+                        label: "Temperature",
+                        value: tempUnit.displaySlash(low: forecast.daytimeLow, high: forecast.daytimeHigh),
+                        isSelected: chartMetric == .temperature,
+                        valueOffset: 3
+                    )
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            chartMetric = .temperature
                         }
+                    }
+
+                    if let feelsLike = feelsLikeValue {
                         WeatherStatCard(
                             label: "Feels Like",
-                            value: {
-                                if let low = forecast.feelsLikeLow, let high = forecast.feelsLikeHigh {
-                                    return tempUnit.displaySlash(low: low, high: high)
-                                }
-                                return "—"
-                            }(),
+                            value: feelsLike,
                             isSelected: chartMetric == .feelsLike,
                             valueOffset: 3
                         )
@@ -475,43 +484,35 @@ struct WeatherDetailView: View {
                             }
                         }
                     }
-                    HStack(spacing: 16) {
-                        WeatherStatCard(
-                            label: "Cloud Cover",
-                            value: "\(Int(forecast.cloudCover * 100))%",
-                            isSelected: chartMetric == .cloudCover
-                        )
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                chartMetric = .cloudCover
-                            }
-                        }
-                        WeatherStatCard(
-                            label: "Precipitation",
-                            value: "\(Int(forecast.precipitationChance * 100))%",
-                            isSelected: chartMetric == .precipitation
-                        )
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                chartMetric = .precipitation
-                            }
+
+                    WeatherStatCard(
+                        label: "Cloud Cover",
+                        value: "\(Int(forecast.cloudCover * 100))%",
+                        isSelected: chartMetric == .cloudCover
+                    )
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            chartMetric = .cloudCover
                         }
                     }
-                    HStack(spacing: 16) {
-                        WeatherStatCard(
-                            label: "Visibility",
-                            value: {
-                                if let vis = forecast.visibility {
-                                    let rounded = (vis * 10).rounded() / 10
-                                    return rounded >= 10 ? "\(Int(rounded))km" : String(format: "%.1fkm", rounded)
-                                }
-                                return "—"
-                            }()
-                        )
-                        WeatherStatCard(
-                            label: "Humidity",
-                            value: forecast.humidity.map { "\(Int($0 * 100))%" } ?? "—"
-                        )
+
+                    WeatherStatCard(
+                        label: "Precipitation",
+                        value: "\(Int(forecast.precipitationChance * 100))%",
+                        isSelected: chartMetric == .precipitation
+                    )
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            chartMetric = .precipitation
+                        }
+                    }
+
+                    if let vis = visibilityValue {
+                        WeatherStatCard(label: "Visibility", value: vis)
+                    }
+
+                    if let hum = humidityValue {
+                        WeatherStatCard(label: "Humidity", value: hum)
                     }
                 }
                 .padding(.horizontal, 8)

@@ -13,6 +13,7 @@ struct MapKitMapView: View {
     let cities: [CityWeather]
     let selectedDayOffset: Int
     let showCloudCover: Bool
+    var overlayMode: String = "weather"
     let filterSunny: Bool
     let isPlaying: Bool
     let namespace: Namespace.ID
@@ -89,6 +90,7 @@ struct MapKitMapView: View {
                         cameraChangeCounter: cameraChangeCounter,
                         selectedDayOffset: selectedDayOffset,
                         showCloudCover: showCloudCover,
+                        overlayMode: overlayMode,
                         filterSunny: filterSunny,
                         isPlaying: isPlaying,
                         namespace: namespace,
@@ -289,6 +291,7 @@ private struct AnnotationsOverlay: View {
     let cameraChangeCounter: Int
     let selectedDayOffset: Int
     let showCloudCover: Bool
+    var overlayMode: String = "weather"
     let filterSunny: Bool
     let isPlaying: Bool
     let namespace: Namespace.ID
@@ -335,6 +338,7 @@ private struct AnnotationsOverlay: View {
                         isCompact: true,
                         namespace: namespace,
                         showCloudCover: showCloudCover,
+                        overlayMode: overlayMode,
                         filterSunny: filterSunny,
                         passesFilter: true,
                         isPlaying: isPlaying,
