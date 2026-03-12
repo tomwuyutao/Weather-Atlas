@@ -358,7 +358,7 @@ struct ContentView: View {
         .padding(.horizontal, 20)
         .padding(.vertical, 16)
         .frame(maxWidth: isIPad ? 420 : .infinity)
-        .themedGlass(in: RoundedRectangle(cornerRadius: 20))
+        .background(theme.colors.glassFill, in: RoundedRectangle(cornerRadius: 20))
         .overlay {
             RoundedRectangle(cornerRadius: 20)
                 .fill(.white.opacity(0.08))
@@ -614,6 +614,7 @@ struct ContentView: View {
     private var iPhoneNavigationStack: some View {
         NavigationStack {
             iOSMainZStack
+                .ignoresSafeArea(.keyboard)
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { iOSLeadingToolbarItems }
@@ -2067,15 +2068,15 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 Text(localizedString("Delete List", locale: locale))
                     .font(.avenir(.headline, weight: .bold))
-                    .padding(.top, 20)
-                    .padding(.bottom, 8)
+                    .padding(.top, 28)
+                    .padding(.bottom, 10)
                 
                 Text(String(format: localizedString("Are you sure you want to delete \"%@\"? This cannot be undone.", locale: locale), weatherService.activeListID.localizedDisplayName(locale: locale)))
                     .font(.avenir(.subheadline, weight: .regular))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 20)
-                    .padding(.bottom, 18)
+                    .padding(.bottom, 24)
                 
                 Divider()
                 
@@ -2113,7 +2114,7 @@ struct ContentView: View {
                 }
             }
             .frame(width: 280)
-            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 16))
             .transition(.scale(scale: 0.9).combined(with: .opacity))
         }
     }

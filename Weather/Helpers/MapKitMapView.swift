@@ -461,6 +461,7 @@ private struct SVGProxyOverlay: View {
             )
 
             let landColor = AppTheme.shared.colors.mapLand
+            let borderedLandColor = AppTheme.shared.colors.mapOcean.mix(with: AppTheme.shared.colors.mapLand, by: 0.70)
             let borderColor = AppTheme.shared.colors.mapBorder
             let borderedIDs: Set<String> = style == .borders ? (borderAllCountries ? Set(countries.map(\.id)) : countriesWithCities) : []
 
@@ -472,8 +473,11 @@ private struct SVGProxyOverlay: View {
                 if let transformed = country.path.copy(using: &transform) {
                     let smoothed = Path(Self.roundCorners(transformed, radius: cornerRadius))
                     switch style {
-                    case .filled, .borders:
+                    case .filled:
                         context.fill(smoothed, with: .color(landColor))
+                    case .borders:
+                        let fill = borderedIDs.contains(country.id) ? landColor : borderedLandColor
+                        context.fill(smoothed, with: .color(fill))
                     case .calibration:
                         context.stroke(smoothed, with: .color(.red), lineWidth: 1)
                     }

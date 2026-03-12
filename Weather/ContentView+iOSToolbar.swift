@@ -93,7 +93,12 @@ extension ContentView {
                 Button {
                     showingMapListSwitcher = true
                 } label: {
-                    HStack(spacing: 4) {
+                    HStack(spacing: 6) {
+                        if weatherService.isLoading || isLoadingMapList {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(theme.colors.primaryText)
+                        }
                         Text(mapToolbarTitle)
                             .font(.avenir(.headline, weight: .semibold))
                             .lineLimit(1)
@@ -185,15 +190,8 @@ extension ContentView {
 
     @ToolbarContentBuilder
     private var iOSNormalToolbarItems: some ToolbarContent {
-        if !isIPad, weatherService.isLoading || isLoadingMapList {
-            ToolbarItem(placement: .topBarTrailing) {
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(width: 44, height: 44)
-                    .themedGlass(in: .circle)
-            }
-            .sharedBackgroundVisibility(.hidden)
-        }
+        // Loading spinner handled inside the principal capsule to avoid pushing it off-center
+
 
         if filterSunny {
             ToolbarItem(placement: .topBarTrailing) {

@@ -255,15 +255,15 @@ struct SettingsView: View {
                         Text("Reset Lists")
                             .font(.avenir(.headline, weight: .bold))
                             .foregroundStyle(colors.primaryText)
-                            .padding(.top, 20)
-                            .padding(.bottom, 8)
+                            .padding(.top, 28)
+                            .padding(.bottom, 10)
 
                         Text("This will reset all city lists back to their defaults. Any cities you added or removed will be lost.")
                             .font(.avenir(.subheadline, weight: .regular))
                             .foregroundStyle(colors.primaryText.opacity(0.6))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal, 20)
-                            .padding(.bottom, 18)
+                            .padding(.bottom, 24)
 
                         Divider()
                             .background(colors.primaryText.opacity(0.1))

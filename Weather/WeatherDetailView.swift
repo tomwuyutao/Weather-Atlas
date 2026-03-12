@@ -31,6 +31,12 @@ struct WeatherDetailView: View {
     private enum SwipeDirection {
         case forward, backward
     }
+    
+    enum ChartMetric {
+        case temperature, feelsLike, cloudCover, precipitation
+    }
+    
+    @State private var chartMetric: ChartMetric = .temperature
     @State private var showingCloudCover: Bool = false
     @State private var showingDetailMenu: Bool = false
     @State private var dayScrollHasMore: Bool = true
@@ -81,16 +87,24 @@ struct WeatherDetailView: View {
     
     private var headerBackgroundColor: Color {
         let theme = AppTheme.shared.colors
-        // cloud.fill icon means WeatherKit gave us a plain overcast — always use cloudy blue
-        if detailDisplayIcon == "cloud.fill" {
-            return Color(hex: 0x9ABCCE)
-        }
         switch forecast.condition {
         case .rain: return theme.dotRain
         case .drizzle: return theme.dotDrizzle
         case .snow, .cloudy, .wind: return Color(hex: 0x9ABCCE)
-        case .partlyCloudy: return Color(hex: 0xF0B830)
-        default: return forecast.condition.dotColor
+        case .partlyCloudy:
+            // If WeatherKit gave a plain cloud icon (no sun), treat as overcast
+            return detailDisplayIcon == "cloud.fill" ? Color(hex: 0x9ABCCE) : Color(hex: 0xF0B830)
+        default:
+            return detailDisplayIcon == "cloud.fill" ? Color(hex: 0x9ABCCE) : forecast.condition.dotColor
+        }
+    }
+
+    private var chartLineColor: Color {
+        switch chartMetric {
+        case .temperature:   return Color(hex: 0xE8536B)
+        case .feelsLike:     return Color(hex: 0xED8988)
+        case .cloudCover:    return Color(hex: 0x9ABCCE)
+        case .precipitation: return Color(hex: 0x57D3E5)
         }
     }
 
@@ -102,8 +116,8 @@ struct WeatherDetailView: View {
         #endif
     }
 
-    private let expandedHeaderHeight: CGFloat = 350
-    private let collapsedHeaderHeight: CGFloat = 120
+    private let expandedHeaderHeight: CGFloat = 375
+    private let collapsedHeaderHeight: CGFloat = 135
 
     private var currentHeaderHeight: CGFloat {
         let base: CGFloat = isHeaderCollapsed ? collapsedHeaderHeight : expandedHeaderHeight
@@ -356,11 +370,11 @@ struct WeatherDetailView: View {
                     
                     HourlyTimelineChart(
                         hourlyForecasts: forecast.hourlyForecasts,
-                        showCloudCover: effectiveShowCloudCover,
+                        chartMetric: chartMetric,
                         dayOffset: internalSelectedDay,
                         cityTimeZone: cityWeather.timeZone,
                         previewCurrentHour: previewCurrentHour,
-                        lineColor: headerBackgroundColor
+                        lineColor: chartLineColor
                     )
                     .id("hourly-\(internalSelectedDay)")
                     .transition(.asymmetric(
@@ -423,8 +437,15 @@ struct WeatherDetailView: View {
                     HStack(spacing: 16) {
                         WeatherStatCard(
                             label: "Temperature",
-                            value: tempUnit.displaySlash(low: forecast.daytimeLow, high: forecast.daytimeHigh)
+                            value: tempUnit.displaySlash(low: forecast.daytimeLow, high: forecast.daytimeHigh),
+                            isSelected: chartMetric == .temperature,
+                            valueOffset: 3
                         )
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                chartMetric = .temperature
+                            }
+                        }
                         WeatherStatCard(
                             label: "Feels Like",
                             value: {
@@ -432,18 +453,37 @@ struct WeatherDetailView: View {
                                     return tempUnit.displaySlash(low: low, high: high)
                                 }
                                 return "—"
-                            }()
+                            }(),
+                            isSelected: chartMetric == .feelsLike,
+                            valueOffset: 3
                         )
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                chartMetric = .feelsLike
+                            }
+                        }
                     }
                     HStack(spacing: 16) {
                         WeatherStatCard(
                             label: "Cloud Cover",
-                            value: "\(Int(forecast.cloudCover * 100))%"
+                            value: "\(Int(forecast.cloudCover * 100))%",
+                            isSelected: chartMetric == .cloudCover
                         )
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                chartMetric = .cloudCover
+                            }
+                        }
                         WeatherStatCard(
                             label: "Precipitation",
-                            value: "\(Int(forecast.precipitationChance * 100))%"
+                            value: "\(Int(forecast.precipitationChance * 100))%",
+                            isSelected: chartMetric == .precipitation
                         )
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                chartMetric = .precipitation
+                            }
+                        }
                     }
                     HStack(spacing: 16) {
                         WeatherStatCard(
@@ -631,7 +671,7 @@ struct WeatherDetailView: View {
             scrollAtTop = true
         }
         .contentShape(Rectangle())
-        .gesture(
+        .simultaneousGesture(
             isPopup ? nil : DragGesture(minimumDistance: 50, coordinateSpace: .global)
                 .onEnded { value in
                     let horizontal = value.translation.width
@@ -780,7 +820,7 @@ struct HourlyChartLineShape: Shape {
 
 struct HourlyTimelineChart: View {
     let hourlyForecasts: [HourlyForecast]
-    let showCloudCover: Bool
+    var chartMetric: WeatherDetailView.ChartMetric = .temperature
     var dayOffset: Int = 0
     var cityTimeZone: TimeZone = .current
     var previewCurrentHour: Int? = nil
@@ -827,18 +867,24 @@ struct HourlyTimelineChart: View {
     }
     
     private func value(for forecast: HourlyForecast) -> Double {
-        showCloudCover ? Double(forecast.cloudCoverPercent) : forecast.temperature
+        switch chartMetric {
+        case .temperature:      return forecast.temperature
+        case .feelsLike:        return forecast.apparentTemperature
+        case .cloudCover:       return Double(forecast.cloudCoverPercent)
+        case .precipitation:    return forecast.precipitationChance * 100
+        }
     }
     
     private var valueRange: (min: Double, max: Double) {
-        if showCloudCover {
+        switch chartMetric {
+        case .cloudCover, .precipitation:
             return (0, 100)
-        } else {
-            let temps = dataPoints.map(\.temperature)
-            let minT = temps.min() ?? 10
-            let maxT = temps.max() ?? 20
-            let padding = max((maxT - minT) * 0.25, 2.0)
-            return (minT - padding, maxT + padding)
+        case .temperature, .feelsLike:
+            let vals = dataPoints.map { value(for: $0) }
+            let minV = vals.min() ?? 10
+            let maxV = vals.max() ?? 20
+            let padding = max((maxV - minV) * 0.25, 2.0)
+            return (minV - padding, maxV + padding)
         }
     }
     
@@ -904,7 +950,14 @@ struct HourlyTimelineChart: View {
                                 .opacity(pastHour ? 0.3 : 1.0)
 
                             // Value text — sits below the dot on the line
-                            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.temperature))
+                            Text({
+                                switch chartMetric {
+                                case .temperature:   return tempUnit.display(forecast.temperature)
+                                case .feelsLike:     return tempUnit.display(forecast.apparentTemperature)
+                                case .cloudCover:    return "\(forecast.cloudCoverPercent)%"
+                                case .precipitation: return "\(Int(forecast.precipitationChance * 100))%"
+                                }
+                            }())
                                 .font(.avenir(.footnote, weight: .semibold))
                                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                                 .contentTransition(.numericText())
@@ -918,7 +971,8 @@ struct HourlyTimelineChart: View {
             }
         }
         .frame(height: totalHeight)
-        .animation(.smooth(duration: 0.3), value: showCloudCover)
+        .animation(.smooth(duration: 0.3), value: chartMetric == .cloudCover)
+        .animation(.smooth(duration: 0.3), value: chartMetric == .precipitation)
     }
 }
 
@@ -989,20 +1043,30 @@ struct DayForecastBox: View {
 struct WeatherStatCard: View {
     let label: String
     let value: String
+    var isSelected: Bool = false
+    var valueOffset: CGFloat = 0
+    
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 10) {
             Text(label)
                 .font(.avenir(.footnote, weight: .medium))
-                .foregroundStyle(AppTheme.shared.colors.secondaryText)
+                .foregroundStyle(isSelected ? AppTheme.shared.colors.primaryText : AppTheme.shared.colors.secondaryText)
             Text(value)
                 .font(.avenir(.title2, weight: .semibold))
                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                 .contentTransition(.numericText())
+                .offset(x: valueOffset)
         }
         .frame(maxWidth: .infinity)
         .frame(height: 110)
-        .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(isSelected
+                    ? AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06)
+                    : AppTheme.shared.colors.listCardFill)
+        )
     }
 }
 
