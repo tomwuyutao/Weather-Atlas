@@ -620,7 +620,6 @@ struct ContentView: View {
     private var iPhoneNavigationStack: some View {
         NavigationStack {
             iOSMainZStack
-                .ignoresSafeArea(.keyboard)
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { iOSLeadingToolbarItems }
@@ -842,6 +841,7 @@ struct ContentView: View {
     private var iOSMainZStack: some View {
         ZStack(alignment: .bottom) {
             iPhoneTabContent
+                .ignoresSafeArea(.keyboard)
 
             // Expanded city card on map
             if selectedTab == 1, (!isMapSpecialMode || countryOverviewActive || radialSearchActive), showingMapExpandedCard, let city = tappedCity {

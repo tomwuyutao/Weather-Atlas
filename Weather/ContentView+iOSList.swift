@@ -336,7 +336,7 @@ extension ContentView {
         .background {
             if theme.colors.listCardFill == .clear {
                 RoundedRectangle(cornerRadius: 12)
-                    .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+                    .stroke(longPressedCity?.id == cityWeather.id ? Color.primary.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: 1)
             } else {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(theme.colors.listCardFill)
@@ -369,32 +369,60 @@ extension ContentView {
                 showingCityDetail = true
             }
         }
-        .onDrag {
-            if isEditMode {
+        .scaleEffect(longPressedCity?.id == cityWeather.id ? 0.97 : 1.0)
+        .animation(.easeOut(duration: 0.2), value: longPressedCity?.id)
+        .onLongPressGesture {
+            if !isEditMode {
+                longPressedCity = cityWeather
+            }
+        }
+        .if(isEditMode) {
+            $0.onDrag {
                 gridDragItem = cityWeather
                 return NSItemProvider(object: cityWeather.id.uuidString as NSString)
             }
-            return NSItemProvider()
+            .onDrop(of: [.text], delegate: GridDropDelegate(
+                item: cityWeather,
+                dragItem: $gridDragItem,
+                cities: weatherService.cityWeatherData,
+                moveCity: { from, to in
+                    weatherService.moveCity(from: from, to: to)
+                }
+            ))
         }
-        .onDrop(of: [.text], delegate: GridDropDelegate(
-            item: cityWeather,
-            dragItem: $gridDragItem,
-            cities: weatherService.cityWeatherData,
-            moveCity: { from, to in
-                weatherService.moveCity(from: from, to: to)
-            }
-        ))
-        .contextMenu {
-            if !isEditMode {
-                Button(role: .destructive) {
+        .popover(isPresented: Binding(
+            get: { longPressedCity?.id == cityWeather.id },
+            set: { if !$0 { longPressedCity = nil } }
+        )) {
+            VStack(alignment: .leading, spacing: 0) {
+                menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
+                    let revealCity = cityWeather
+                    longPressedCity = nil
+                    showingCityDetail = false
+                    centerOnCityTrigger = nil
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedTab = 1
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        centerOnCityTrigger = revealCity
+                    }
+                }
+
+                Divider().padding(.horizontal, 12).padding(.vertical, 4)
+
+                menuRow(icon: "trash", title: localizedString("Delete City", locale: locale)) {
+                    longPressedCity = nil
                     weatherService.removeCity(cityWeather)
                     if selectedCity?.id == cityWeather.id {
                         selectedCity = nil
                     }
-                } label: {
-                    Label(localizedString("Delete", locale: locale), systemImage: "trash")
                 }
+                .foregroundStyle(theme.colors.destructive)
             }
+            .padding(.vertical, 8)
+            .frame(width: 220)
+            .presentationCompactAdaptation(.popover)
+            .themedPopoverBackground()
         }
     }
 

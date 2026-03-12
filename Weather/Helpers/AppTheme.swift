@@ -315,6 +315,16 @@ extension View {
         self.background(tint.opacity(0.15), in: shape)
             .overlay(shape.stroke(tint.opacity(0.3), lineWidth: 0.5))
     }
+
+    /// Conditionally applies a transform to a view.
+    @ViewBuilder
+    func `if`(_ condition: Bool, transform: (Self) -> some View) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
 }
 
 
