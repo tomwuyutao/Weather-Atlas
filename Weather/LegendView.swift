@@ -35,6 +35,7 @@ struct LegendView: View {
                                     .padding(.leading, 52)
                                     .opacity(0.5)
                             }
+
                             HStack(spacing: 16) {
                                 Circle()
                                     .fill(condition.dotColor)

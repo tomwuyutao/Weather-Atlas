@@ -243,6 +243,7 @@ struct ContentView: View {
     @State var draggingListID: CityListID? = nil
     @State var dragOffset: CGFloat = 0
     @State var showingMapStylePopover: Bool = false
+    @State var showingMapStyleSheet: Bool = false
     @State var showingDiscoverPopover: Bool = false
     @State var countrySelectionMode: Bool = false
     @State var mapCenterCoordinate: CLLocationCoordinate2D?
@@ -276,6 +277,90 @@ struct ContentView: View {
     @State private var radialSearchLoadingTask: Task<Void, Never>?
     @State private var radialSearchData: [CityWeather] = []
     @State var radialSearchRadius: Double = 250_000
+
+    // MARK: - Map Style Sheet
+
+    @State private var mapStyleTab: Int = 0
+
+    private var mapStyleSheet: some View {
+        ZStack(alignment: .top) {
+            theme.colors.background.ignoresSafeArea()
+
+            // Switcher — always pinned at top
+            let switcherView = HStack(spacing: 0) {
+                ForEach([("Map Style", 0), ("Overlays", 1)], id: \.1) { label, tag in
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            mapStyleTab = tag
+                        }
+                    } label: {
+                        Text(label)
+                            .font(.avenir(.subheadline, weight: mapStyleTab == tag ? .semibold : .medium))
+                            .foregroundStyle(mapStyleTab == tag ? theme.colors.primaryText : theme.colors.secondaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background {
+                                if mapStyleTab == tag {
+                                    Capsule()
+                                        .fill(theme.colors.listCardFill)
+                                        .shadow(color: .black.opacity(0.12), radius: 4, y: 2)
+                                }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(4)
+            .background(theme.colors.background.opacity(0.6), in: Capsule())
+            .overlay(Capsule().strokeBorder(theme.colors.mapBorder.opacity(0.4), lineWidth: 1))
+            .padding(.horizontal, 20)
+            .padding(.top, 24)
+
+            // Content below switcher — offset to sit beneath it
+            VStack(spacing: 0) {
+                Color.clear.frame(height: 80) // space for switcher
+                if mapStyleTab == 0 {
+                    VStack(spacing: 0) {
+                        ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
+                            Button {
+                                withAnimation { mapMode = mode }
+                                showingMapStyleSheet = false
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Text(mode.capitalized)
+                                        .font(.avenir(.body, weight: mapMode == mode ? .semibold : .medium))
+                                        .foregroundStyle(.primary)
+                                    Spacer()
+                                    if mapMode == mode {
+                                        Image(systemName: "checkmark")
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(theme.colors.accent)
+                                    }
+                                }
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 14)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            if mode != "detailed" {
+                                Divider().padding(.leading, 20)
+                            }
+                        }
+                    }
+                    .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal, 20)
+                } else {
+                    Text("Overlays coming soon")
+                        .font(.avenir(.body, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 16)
+                }
+                Spacer()
+            }
+
+            switcherView
+        }
+    }
 
     // MARK: - Vertical Date Slider (Map Mode)
 
@@ -721,6 +806,12 @@ struct ContentView: View {
             LegendView()
                 .presentationSizing(.form)
         }
+        .sheet(isPresented: $showingMapStyleSheet) {
+            mapStyleSheet
+                .presentationDetents([.height(240)])
+                .presentationDragIndicator(.visible)
+                .presentationCornerRadius(20)
+        }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
                 weatherService: weatherService,
@@ -1148,7 +1239,7 @@ struct ContentView: View {
             }
 
             Button {
-                showingMapStylePopover = true
+                showingMapStyleSheet = true
             } label: {
                 Image(systemName: "square.3.layers.3d")
                     .font(.system(size: 16, weight: .semibold))
@@ -1157,37 +1248,6 @@ struct ContentView: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .popover(isPresented: $showingMapStylePopover) {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
-                        Button {
-                            showingMapStylePopover = false
-                            withAnimation { mapMode = mode }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Text(mode.capitalized)
-                                    .font(.avenir(.body, weight: mapMode == mode ? .bold : .medium))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                if mapMode == mode {
-                                    Circle()
-                                        .fill(Color.primary)
-                                        .frame(width: 6, height: 6)
-                                }
-                            }
-                            .padding(.leading, 24)
-                            .padding(.trailing, 16)
-                            .padding(.vertical, 11)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.vertical, 8)
-                .frame(width: 160)
-                .presentationCompactAdaptation(.popover)
-                .themedPopoverBackground()
-            }
         }
         .padding(6)
         .themedGlass(in: .capsule)
@@ -1386,7 +1446,7 @@ struct ContentView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        showingMapStylePopover = true
+                        showingMapStyleSheet = true
                     } label: {
                         Image(systemName: "square.3.layers.3d")
                             .font(.system(size: 16, weight: .semibold))
@@ -1395,37 +1455,6 @@ struct ContentView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .popover(isPresented: $showingMapStylePopover) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
-                                Button {
-                                    showingMapStylePopover = false
-                                    withAnimation { mapMode = mode }
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        Text(mode.capitalized)
-                                            .font(.avenir(.body, weight: mapMode == mode ? .bold : .medium))
-                                            .foregroundStyle(.primary)
-                                        Spacer()
-                                        if mapMode == mode {
-                                            Circle()
-                                                .fill(Color.primary)
-                                                .frame(width: 6, height: 6)
-                                        }
-                                    }
-                                    .padding(.leading, 24)
-                                    .padding(.trailing, 16)
-                                    .padding(.vertical, 11)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.vertical, 8)
-                        .frame(width: 160)
-                        .presentationCompactAdaptation(.popover)
-                        .themedPopoverBackground()
-                    }
                 }
                 .padding(6)
                 .themedGlass(in: .capsule)

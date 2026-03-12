@@ -391,7 +391,7 @@ extension ContentView {
             // Map style
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showingMapStylePopover = true
+                    showingMapStyleSheet = true
                 } label: {
                     Image(systemName: "map")
                         .font(.system(size: 15, weight: .semibold))
@@ -400,37 +400,6 @@ extension ContentView {
                         .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
-                .popover(isPresented: $showingMapStylePopover) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
-                            Button {
-                                showingMapStylePopover = false
-                                withAnimation { mapMode = mode }
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Text(mode.capitalized)
-                                        .font(.avenir(.body, weight: mapMode == mode ? .bold : .medium))
-                                        .foregroundStyle(.primary)
-                                    Spacer()
-                                    if mapMode == mode {
-                                        Circle()
-                                            .fill(Color.primary)
-                                            .frame(width: 6, height: 6)
-                                    }
-                                }
-                                .padding(.leading, 24)
-                                .padding(.trailing, 16)
-                                .padding(.vertical, 11)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 8)
-                    .frame(width: 160)
-                    .presentationCompactAdaptation(.popover)
-                    .themedPopoverBackground()
-                }
             }
             .sharedBackgroundVisibility(.hidden)
 
