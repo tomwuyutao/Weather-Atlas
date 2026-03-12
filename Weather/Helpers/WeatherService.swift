@@ -618,6 +618,7 @@ class WeatherService {
         
         // Daily forecasts
         let currentVisibilityKm = weather.currentWeather.visibility.converted(to: .kilometers).value
+        let currentHumidity = weather.currentWeather.humidity
         let dailyForecasts = weather.dailyForecast.forecast.prefix(10).enumerated().map { (index, day) -> DailyForecast in
             let daytimeForecast = day.daytimeForecast
             let daySymbol = day.symbolName
@@ -626,6 +627,11 @@ class WeatherService {
             // Generate hourly forecasts for this day
             let hourlyForecasts = generateHourlyFromDaily(day: day, dayOffset: index, allHourly: weather.hourlyForecast.forecast, timeZone: timeZone)
             
+            // Derive daytime (7AM–7PM) feels-like range from hourly apparent temperatures
+            let daytimeHourly = hourlyForecasts.filter { $0.hour >= 7 && $0.hour < 19 }
+            let feelsLikeLow = daytimeHourly.map(\.apparentTemperature).min()
+            let feelsLikeHigh = daytimeHourly.map(\.apparentTemperature).max()
+
             return DailyForecast(
                 dayOffset: index,
                 daytimeLow: daytimeForecast.lowTemperature.value,
@@ -636,6 +642,9 @@ class WeatherService {
                 cloudCover: daytimeForecast.cloudCover,
                 precipitationChance: daytimeForecast.precipitationChance,
                 visibility: index == 0 ? currentVisibilityKm : nil,
+                feelsLikeLow: feelsLikeLow,
+                feelsLikeHigh: feelsLikeHigh,
+                humidity: index == 0 ? currentHumidity : nil,
                 sunrise: day.sun.sunrise,
                 sunset: day.sun.sunset
             )
@@ -672,6 +681,7 @@ class WeatherService {
                 return HourlyForecast(
                     hour: hour,
                     temperature: hourWeather.temperature.value,
+                    apparentTemperature: hourWeather.apparentTemperature.value,
                     symbolName: hourWeather.symbolName,
                     condition: mapWeatherKitCondition(hourWeather.condition),
                     precipitationChance: hourWeather.precipitationChance,
@@ -692,6 +702,7 @@ class WeatherService {
             return HourlyForecast(
                 hour: hour,
                 temperature: temp,
+                apparentTemperature: temp,  // fallback: no apparent temp available
                 symbolName: day.symbolName,
                 condition: mapWeatherKitCondition(day.condition),
                 precipitationChance: day.precipitationChance,
@@ -1046,7 +1057,10 @@ struct DailyForecast: Identifiable {
     let hourlyForecasts: [HourlyForecast]
     let cloudCover: Double  // 0.0 to 1.0
     let precipitationChance: Double  // 0.0 to 1.0
-    let visibility: Double?  // km, only available for day 0 (current weather)
+    let visibility: Double?     // km, only available for day 0 (current weather)
+    let feelsLikeLow: Double?   // °C, daytime (7AM–7PM) min apparent temp
+    let feelsLikeHigh: Double?  // °C, daytime (7AM–7PM) max apparent temp
+    let humidity: Double?       // 0.0–1.0, only available for day 0 (current weather)
     let sunrise: Date?
     let sunset: Date?
     
@@ -1115,6 +1129,7 @@ struct HourlyForecast: Identifiable {
     let id = UUID()
     let hour: Int  // 0-23
     let temperature: Double
+    let apparentTemperature: Double  // feels like
     let symbolName: String
     let condition: AppWeatherCondition
     let precipitationChance: Double  // 0.0 to 1.0
@@ -1305,6 +1320,9 @@ struct CachedDailyForecast: Codable {
     let cloudCover: Double
     let precipitationChance: Double
     let visibility: Double?
+    let feelsLikeLow: Double?
+    let feelsLikeHigh: Double?
+    let humidity: Double?
     let sunrise: Date?
     let sunset: Date?
     
@@ -1318,6 +1336,9 @@ struct CachedDailyForecast: Codable {
         self.cloudCover = forecast.cloudCover
         self.precipitationChance = forecast.precipitationChance
         self.visibility = forecast.visibility
+        self.feelsLikeLow = forecast.feelsLikeLow
+        self.feelsLikeHigh = forecast.feelsLikeHigh
+        self.humidity = forecast.humidity
         self.sunrise = forecast.sunrise
         self.sunset = forecast.sunset
     }
@@ -1342,13 +1363,16 @@ struct CachedDailyForecast: Codable {
             ?? Double(AppWeatherCondition.fromDisplayName(condition).estimatedCloudCover) / 100.0
         precipitationChance = try container.decodeIfPresent(Double.self, forKey: .precipitationChance) ?? 0.0
         visibility = try container.decodeIfPresent(Double.self, forKey: .visibility)
+        feelsLikeLow = try container.decodeIfPresent(Double.self, forKey: .feelsLikeLow)
+        feelsLikeHigh = try container.decodeIfPresent(Double.self, forKey: .feelsLikeHigh)
+        humidity = try container.decodeIfPresent(Double.self, forKey: .humidity)
         sunrise = try container.decodeIfPresent(Date.self, forKey: .sunrise)
         sunset = try container.decodeIfPresent(Date.self, forKey: .sunset)
     }
     
     // Keep the old key for migration during decoding
     private enum CodingKeys: String, CodingKey {
-        case dayOffset, daytimeLow, daytimeHigh, symbolName, condition, hourlyForecasts, cloudCover, precipitationChance, temperature, visibility, sunrise, sunset
+        case dayOffset, daytimeLow, daytimeHigh, symbolName, condition, hourlyForecasts, cloudCover, precipitationChance, temperature, visibility, feelsLikeLow, feelsLikeHigh, humidity, sunrise, sunset
     }
     
     func encode(to encoder: Encoder) throws {
@@ -1362,6 +1386,9 @@ struct CachedDailyForecast: Codable {
         try container.encode(cloudCover, forKey: .cloudCover)
         try container.encode(precipitationChance, forKey: .precipitationChance)
         try container.encodeIfPresent(visibility, forKey: .visibility)
+        try container.encodeIfPresent(feelsLikeLow, forKey: .feelsLikeLow)
+        try container.encodeIfPresent(feelsLikeHigh, forKey: .feelsLikeHigh)
+        try container.encodeIfPresent(humidity, forKey: .humidity)
         try container.encodeIfPresent(sunrise, forKey: .sunrise)
         try container.encodeIfPresent(sunset, forKey: .sunset)
     }
@@ -1380,6 +1407,9 @@ struct CachedDailyForecast: Codable {
             cloudCover: cloudCover,
             precipitationChance: precipitationChance,
             visibility: visibility,
+            feelsLikeLow: feelsLikeLow,
+            feelsLikeHigh: feelsLikeHigh,
+            humidity: humidity,
             sunrise: sunrise,
             sunset: sunset
         )
@@ -1389,6 +1419,7 @@ struct CachedDailyForecast: Codable {
 struct CachedHourlyForecast: Codable {
     let hour: Int
     let temperature: Double
+    let apparentTemperature: Double
     let symbolName: String
     let condition: String
     let precipitationChance: Double
@@ -1397,6 +1428,7 @@ struct CachedHourlyForecast: Codable {
     init(from forecast: HourlyForecast) {
         self.hour = forecast.hour
         self.temperature = forecast.temperature
+        self.apparentTemperature = forecast.apparentTemperature
         self.symbolName = forecast.symbolName
         self.condition = forecast.condition.displayName
         self.precipitationChance = forecast.precipitationChance
@@ -1407,6 +1439,7 @@ struct CachedHourlyForecast: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         hour = try container.decode(Int.self, forKey: .hour)
         temperature = try container.decode(Double.self, forKey: .temperature)
+        apparentTemperature = try container.decodeIfPresent(Double.self, forKey: .apparentTemperature) ?? temperature
         symbolName = try container.decode(String.self, forKey: .symbolName)
         condition = try container.decode(String.self, forKey: .condition)
         precipitationChance = try container.decode(Double.self, forKey: .precipitationChance)
@@ -1420,6 +1453,7 @@ struct CachedHourlyForecast: Codable {
         return HourlyForecast(
             hour: hour,
             temperature: temperature,
+            apparentTemperature: apparentTemperature,
             symbolName: symbolName,
             condition: appCondition,
             precipitationChance: precipitationChance,

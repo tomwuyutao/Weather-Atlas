@@ -154,7 +154,7 @@ extension ContentView {
                             Spacer()
                             if listID == weatherService.activeListID {
                                 Circle()
-                                    .fill(Color.primary)
+                                    .fill(theme.colors.accent)
                                     .frame(width: 6, height: 6)
                                     .frame(width: 13)
                             }
@@ -293,7 +293,7 @@ extension ContentView {
                         Spacer()
                         if listID == weatherService.activeListID {
                             Circle()
-                                .fill(Color.primary)
+                                .fill(theme.colors.accent)
                                 .frame(width: 6, height: 6)
                         }
                     }

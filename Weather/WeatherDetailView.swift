@@ -418,23 +418,34 @@ struct WeatherDetailView: View {
                         }
                 )
 
-                // Stats grid: 2 rows × 2 columns
+                // Stats grid: 3 rows × 2 columns
                 VStack(spacing: 16) {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 16) {
                         WeatherStatCard(
                             label: "Temperature",
-                            value: tempUnit.display(forecast.daytimeHigh)
+                            value: tempUnit.displaySlash(low: forecast.daytimeLow, high: forecast.daytimeHigh)
                         )
+                        WeatherStatCard(
+                            label: "Feels Like",
+                            value: {
+                                if let low = forecast.feelsLikeLow, let high = forecast.feelsLikeHigh {
+                                    return tempUnit.displaySlash(low: low, high: high)
+                                }
+                                return "—"
+                            }()
+                        )
+                    }
+                    HStack(spacing: 16) {
                         WeatherStatCard(
                             label: "Cloud Cover",
                             value: "\(Int(forecast.cloudCover * 100))%"
                         )
-                    }
-                    HStack(spacing: 8) {
                         WeatherStatCard(
                             label: "Precipitation",
                             value: "\(Int(forecast.precipitationChance * 100))%"
                         )
+                    }
+                    HStack(spacing: 16) {
                         WeatherStatCard(
                             label: "Visibility",
                             value: {
@@ -445,8 +456,13 @@ struct WeatherDetailView: View {
                                 return "—"
                             }()
                         )
+                        WeatherStatCard(
+                            label: "Humidity",
+                            value: forecast.humidity.map { "\(Int($0 * 100))%" } ?? "—"
+                        )
                     }
                 }
+                .padding(.horizontal, 8)
 
                 // Sun arc card — only show when sunrise/sunset data is available
                 if let sunrise = forecast.sunrise, let sunset = forecast.sunset {
@@ -455,6 +471,7 @@ struct WeatherDetailView: View {
                         sunset: sunset,
                         cityTimeZone: cityWeather.timeZone
                     )
+                    .padding(.horizontal, 8)
                 }
 
             }
@@ -974,7 +991,7 @@ struct WeatherStatCard: View {
     let value: String
 
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 10) {
             Text(label)
                 .font(.avenir(.footnote, weight: .medium))
                 .foregroundStyle(AppTheme.shared.colors.secondaryText)
@@ -1147,6 +1164,7 @@ struct SunArcCard: View {
         return HourlyForecast(
             hour: hour,
             temperature: temp,
+            apparentTemperature: temp - 2.0,
             symbolName: symbol,
             condition: condition,
             precipitationChance: precipChance,
@@ -1193,6 +1211,7 @@ struct SunArcCard: View {
             return HourlyForecast(
                 hour: hour,
                 temperature: temp,
+                apparentTemperature: temp - 2.0,
                 symbolName: hourSymbol,
                 condition: condition,
                 precipitationChance: precipChance,
@@ -1215,6 +1234,9 @@ struct SunArcCard: View {
             cloudCover: Double(condition.estimatedCloudCover) / 100.0,
             precipitationChance: condition == .rain || condition == .drizzle ? 0.7 : 0.1,
             visibility: dayOffset == 0 ? 15.0 : nil,
+            feelsLikeLow: baseTemp - 5.0,
+            feelsLikeHigh: baseTemp + 1.0,
+            humidity: dayOffset == 0 ? 0.65 : nil,
             sunrise: mockSunrise,
             sunset: mockSunset
         )

@@ -37,6 +37,17 @@ enum TemperatureUnit: String, CaseIterable {
             return "\(fLow)-\(fHigh)°"
         }
     }
+
+    func displaySlash(low: Double, high: Double) -> String {
+        switch self {
+        case .celsius:
+            return "\(Int(low))°/\(Int(high))°"
+        case .fahrenheit:
+            let fLow = Int(low * 9.0 / 5.0 + 32)
+            let fHigh = Int(high * 9.0 / 5.0 + 32)
+            return "\(fLow)°/\(fHigh)°"
+        }
+    }
 }
 
 struct SettingsView: View {

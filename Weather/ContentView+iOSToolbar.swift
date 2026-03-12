@@ -791,10 +791,8 @@ extension ContentView {
                 Image(systemName: icon)
                     .font(.system(size: 15))
                     .frame(width: 24)
-                    .foregroundStyle(.primary)
                 Text(title)
                     .font(.avenir(.body, weight: .medium))
-                    .foregroundStyle(.primary)
                 Spacer()
             }
             .padding(.horizontal, 16)
