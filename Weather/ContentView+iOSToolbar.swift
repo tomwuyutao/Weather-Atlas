@@ -111,6 +111,7 @@ extension ContentView {
                     .themedGlass(in: .capsule)
                 }
                 .buttonStyle(.plain)
+                .fixedSize()
                 .popover(isPresented: $showingMapListSwitcher) {
                     iOSMapListSwitcherMenu
                         .presentationCompactAdaptation(.popover)

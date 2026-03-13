@@ -875,7 +875,6 @@ struct ContentView: View {
             mapStyleSheet
                 .presentationDetents([.height(330)])
                 .presentationDragIndicator(.visible)
-                .presentationCornerRadius(20)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
@@ -2151,8 +2150,12 @@ struct ContentView: View {
                             }
                         } label: {
                             Image(systemName: "plus")
-                                .foregroundStyle(theme.colors.accent)
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .frame(width: 36, height: 36)
+                                .background(theme.colors.destructive, in: .circle)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }

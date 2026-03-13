@@ -506,14 +506,6 @@ struct WeatherDetailView: View {
                             chartMetric = .precipitation
                         }
                     }
-
-                    if let vis = visibilityValue {
-                        WeatherStatCard(label: "Visibility", value: vis)
-                    }
-
-                    if let hum = humidityValue {
-                        WeatherStatCard(label: "Humidity", value: hum)
-                    }
                 }
                 .padding(.horizontal, 8)
 
@@ -524,6 +516,19 @@ struct WeatherDetailView: View {
                         sunset: sunset,
                         cityTimeZone: cityWeather.timeZone
                     )
+                    .padding(.horizontal, 8)
+                }
+
+                // Visibility and humidity below sunrise/sunset
+                if visibilityValue != nil || humidityValue != nil {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
+                        if let vis = visibilityValue {
+                            WeatherStatCard(label: "Visibility", value: vis)
+                        }
+                        if let hum = humidityValue {
+                            WeatherStatCard(label: "Humidity", value: hum)
+                        }
+                    }
                     .padding(.horizontal, 8)
                 }
 
