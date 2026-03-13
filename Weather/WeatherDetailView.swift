@@ -14,6 +14,8 @@ struct WeatherDetailView: View {
     let namespace: Namespace.ID
     let onDismiss: () -> Void
     let onAddCity: (() -> Void)?
+    let onAddCityToList: ((CityListID) -> Void)?
+    let availableLists: [CityListID]
     let onDeleteCity: (() -> Void)?
     let onRevealOnMap: (() -> Void)?
     let isInSidebar: Bool
@@ -40,6 +42,7 @@ struct WeatherDetailView: View {
     @State private var chartMetric: ChartMetric = .temperature
     @State private var showingCloudCover: Bool = false
     @State private var showingDetailMenu: Bool = false
+    @State private var showingAddToListMenu: Bool = false
     @State private var dayScrollHasMore: Bool = true
     @State private var isHeaderCollapsed: Bool = false
     @State private var headerDragOffset: CGFloat = 0
@@ -56,12 +59,14 @@ struct WeatherDetailView: View {
     }
 
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil) {
+    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onAddCityToList: ((CityListID) -> Void)? = nil, availableLists: [CityListID] = [], onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil) {
         self.cityWeather = cityWeather
         self._selectedDayOffset = selectedDayOffset
         self.namespace = namespace
         self.onDismiss = onDismiss
         self.onAddCity = onAddCity
+        self.onAddCityToList = onAddCityToList
+        self.availableLists = availableLists
         self.onDeleteCity = onDeleteCity
         self.onRevealOnMap = onRevealOnMap
         self.isInSidebar = isInSidebar
@@ -549,21 +554,7 @@ struct WeatherDetailView: View {
             }
             .clipShape(isPopup ? AnyShape(RoundedRectangle(cornerRadius: 26)) : AnyShape(Rectangle()))
             .shadow(color: isPopup ? .black.opacity(0.3) : .clear, radius: isPopup ? 20 : 0)
-            .overlay(alignment: .topLeading) {
-                if isPopup, !isInSidebar, let addAction = onAddCity {
-                    Button {
-                        addAction()
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .themedAccentGlass(tint: AppTheme.shared.colors.accent, in: .circle)
-                    }
-                    .buttonStyle(.plain)
-                    .padding(14)
-                }
-            }
+
             .overlay(alignment: .topTrailing) {
                 if isPopup {
                     HStack(spacing: 8) {
@@ -675,6 +666,8 @@ struct WeatherDetailView: View {
                         }
                     }
             )
+
+
 
         }
         .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)

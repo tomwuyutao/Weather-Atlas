@@ -24,6 +24,7 @@ struct ContentView: View {
     @State var showingCityDetail: Bool = false
     @State var tappedCity: CityWeather?
     @State var showingMapExpandedCard: Bool = false
+    @State private var isFetchingTappedLocation: Bool = false
     @Namespace private var popupNamespace
     @State var searchText: String = ""
     @State private var citySearchManager = CitySearchManager()
@@ -339,6 +340,7 @@ struct ContentView: View {
                                     MapThumbnailView(mode: mode)
                                         .frame(maxWidth: .infinity)
                                         .aspectRatio(3/2, contentMode: .fit)
+                                        .allowsHitTesting(false)
 
                                     Text(mode.capitalized)
                                         .font(.avenir(.footnote, weight: .semibold))
@@ -370,6 +372,7 @@ struct ContentView: View {
                                             lineWidth: mapMode == mode ? 2 : 1
                                         )
                                 )
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         }
@@ -1553,6 +1556,16 @@ struct ContentView: View {
                         }
                     }
                 },
+                onAddCityToList: cityIsInSidebar(city) ? nil : { listID in
+                    Task {
+                        await weatherService.addCityToList(city.city, listID: listID)
+                        showingCityDetail = false
+                        if selectedTab == 1 {
+                            recenterOnAllCities = true
+                        }
+                    }
+                },
+                availableLists: cityIsInSidebar(city) ? [] : CityListID.allLists,
                 onDeleteCity: cityIsInSidebar(city) ? {
                     weatherService.removeCity(city)
                     showingCityDetail = false
@@ -1658,6 +1671,9 @@ struct ContentView: View {
                 }
                 if !cityIsInSidebar(city) {
                     ToolbarItem(placement: .topBarTrailing) {
+                        let addButtonTint: Color = city.forecast(for: selectedDayOffset).condition == .rain
+                            ? theme.colors.dotDrizzle
+                            : theme.colors.accent
                         if countryOverviewActive || radialSearchActive {
                             Button {
                                 showingAddToListPopover = true
@@ -1666,7 +1682,7 @@ struct ContentView: View {
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
                                     .frame(width: 44, height: 44)
-                                    .background(theme.colors.accent, in: .circle)
+                                    .background(addButtonTint, in: .circle)
                             }
                             .buttonStyle(.plain)
                             .popover(isPresented: $showingAddToListPopover) {
@@ -1687,14 +1703,58 @@ struct ContentView: View {
                                                     .foregroundStyle(.primary)
                                                 Spacer()
                                             }
-                                            .padding(.horizontal, 16)
+                                            .padding(.horizontal, 20)
                                             .padding(.vertical, 11)
                                             .contentShape(Rectangle())
                                         }
                                         .buttonStyle(.plain)
                                     }
                                 }
+                                .padding(.vertical, 8)
                                 .frame(minWidth: 180)
+                                .themedPopoverBackground()
+                                .presentationCompactAdaptation(.popover)
+                            }
+                        } else if CityListID.allLists.count > 1 {
+                            Button {
+                                showingAddToListPopover = true
+                            } label: {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 44, height: 44)
+                                    .background(addButtonTint, in: .circle)
+                            }
+                            .buttonStyle(.plain)
+                            .popover(isPresented: $showingAddToListPopover) {
+                                VStack(alignment: .leading, spacing: 0) {
+                                    ForEach(CityListID.allLists) { list in
+                                        Button {
+                                            showingAddToListPopover = false
+                                            Task {
+                                                await weatherService.addCityToList(city.city, listID: list)
+                                                showingCityDetail = false
+                                                if selectedTab == 1 {
+                                                    recenterOnAllCities = true
+                                                }
+                                            }
+                                        } label: {
+                                            HStack(spacing: 12) {
+                                                Text(list.localizedDisplayName(locale: locale))
+                                                    .font(.avenir(.body, weight: .medium))
+                                                    .foregroundStyle(.primary)
+                                                Spacer()
+                                            }
+                                            .padding(.horizontal, 20)
+                                            .padding(.vertical, 11)
+                                            .contentShape(Rectangle())
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                }
+                                .padding(.vertical, 8)
+                                .frame(minWidth: 180)
+                                .themedPopoverBackground()
                                 .presentationCompactAdaptation(.popover)
                             }
                         } else {
@@ -1711,7 +1771,7 @@ struct ContentView: View {
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
                                     .frame(width: 44, height: 44)
-                                    .background(theme.colors.accent, in: .circle)
+                                    .background(addButtonTint, in: .circle)
                             }
                             .buttonStyle(.plain)
                         }
@@ -2324,6 +2384,37 @@ struct ContentView: View {
                     if countrySelectionMode {
                         updateCountryUnderPinDirect(coord)
                     }
+                },
+                onTapCoordinate: { coord in
+                    guard mapMode == "detailed", !isFetchingTappedLocation else { return }
+                    isFetchingTappedLocation = true
+                    Task {
+                        let placemark = try? await CLGeocoder().reverseGeocodeLocation(
+                            CLLocation(latitude: coord.latitude, longitude: coord.longitude)
+                        ).first
+                        let name = placemark?.locality ?? placemark?.administrativeArea ?? "—"
+                        let country = placemark?.country ?? ""
+                        let city = City(
+                            name: name,
+                            country: country,
+                            latitude: coord.latitude,
+                            longitude: coord.longitude
+                        )
+                        if let result = await weatherService.fetchWeatherForCity(city) {
+                            await MainActor.run {
+                                withAnimation(.smooth(duration: 0.3)) {
+                                    tappedCity = result
+                                }
+                                Task {
+                                    try? await Task.sleep(for: .milliseconds(150))
+                                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                        showingMapExpandedCard = true
+                                    }
+                                }
+                            }
+                        }
+                        await MainActor.run { isFetchingTappedLocation = false }
+                    }
                 }
             )
             .ignoresSafeArea()
@@ -2354,6 +2445,27 @@ struct ContentView: View {
                 .allowsHitTesting(false)
             }
 
+            // Tap-to-fetch loading indicator
+            if isFetchingTappedLocation {
+                VStack {
+                    Spacer()
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .tint(theme.colors.primaryText)
+                        Text("Fetching weather…")
+                            .font(.avenir(.subheadline, weight: .medium))
+                            .foregroundStyle(theme.colors.primaryText)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .padding(.bottom, 100)
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isFetchingTappedLocation)
+            }
+
             // City detail popup (desktop/iPad only — iPhone uses navigation)
             #if os(macOS)
             if showingCityDetail, let city = tappedCity {
@@ -2376,6 +2488,7 @@ struct ContentView: View {
                         }
                     },
                     onAddCity: cityIsInSidebar(city) ? nil : {
+                        // Single-list fast path
                         Task {
                             await addCityToSidebar(city)
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
@@ -2384,6 +2497,16 @@ struct ContentView: View {
                             recenterOnAllCities = true
                         }
                     },
+                    onAddCityToList: cityIsInSidebar(city) ? nil : { listID in
+                        Task {
+                            await weatherService.addCityToList(city.city, listID: listID)
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                showingCityDetail = false
+                            }
+                            recenterOnAllCities = true
+                        }
+                    },
+                    availableLists: cityIsInSidebar(city) ? [] : CityListID.allLists,
                     onDeleteCity: cityIsInSidebar(city) ? {
                         weatherService.removeCity(city)
                         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {

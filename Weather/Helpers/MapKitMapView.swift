@@ -35,6 +35,7 @@ struct MapKitMapView: View {
     var onRadiusChange: ((Double) -> Void)? = nil
     var onDoubleTapMarker: (() -> Void)?
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)?
+    var onTapCoordinate: ((CLLocationCoordinate2D) -> Void)?
 
     @State private var position: MapCameraPosition = .automatic
     @State private var hasCenteredOnCities: Bool = false
@@ -169,9 +170,13 @@ struct MapKitMapView: View {
                         tappedMarkerID = nil
                     }
                 } else {
-                    // Tapped empty space — dismiss expanded card
+                    // Tapped empty space
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         showingCityDetail = false
+                    }
+                    if mapMode == "detailed", let onTapCoordinate,
+                       let coord = proxy.convert(location, from: .local) {
+                        onTapCoordinate(coord)
                     }
                 }
             }

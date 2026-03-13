@@ -8,6 +8,7 @@ struct MapThumbnailView: View {
     let mode: String   // "minimal", "borders", "detailed"
 
     @Environment(\.appTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
 
     // UK bounding box in geographic coords (with padding)
     private static let ukMinLon: Double = -10.5
@@ -75,7 +76,9 @@ struct MapThumbnailView: View {
             let isBorders = mode == "borders"
             let landColor = land
             let mutedLand = ocean.mix(with: land, by: 0.55)
-            let borderColor = colors.mapBorder
+            let borderColor = colorScheme == .light
+                ? colors.mapBorder.mix(with: .black, by: 0.1)
+                : colors.mapBorder
 
             // 2. Fill countries
             for country in paths {
@@ -96,10 +99,7 @@ struct MapThumbnailView: View {
                     var t = transform
                     guard let transformed = country.path.copy(using: &t) else { continue }
                     let isHighlighted = country.id == "GB" || country.id == "IE"
-                    let color = isHighlighted
-                        ? borderColor.mix(with: .white, by: 0.15)
-                        : borderColor.opacity(0.5)
-                    context.stroke(Path(transformed), with: .color(color), lineWidth: isHighlighted ? 1.6 : 1.0)
+                    context.stroke(Path(transformed), with: .color(borderColor), lineWidth: isHighlighted ? 1.6 : 1.0)
                 }
             }
         }
