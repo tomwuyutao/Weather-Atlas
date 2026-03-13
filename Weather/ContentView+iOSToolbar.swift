@@ -424,6 +424,26 @@ extension ContentView {
                     }
 
                     Button {
+                        if selectedTab == 1 {
+                            showingAddCityView = true
+                        } else {
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                showingInlineSearch = true
+                            }
+                        }
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+
+                    Rectangle()
+                        .fill(theme.colors.primaryText.opacity(0.15))
+                        .frame(width: 1, height: 20)
+
+                    Button {
                         showingMenuPopover = true
                     } label: {
                         Image(systemName: "ellipsis")
