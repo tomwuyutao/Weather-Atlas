@@ -2151,7 +2151,7 @@ struct ContentView: View {
                         } label: {
                             Image(systemName: "plus")
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color(hex: 0xEDE7DE))
+                                .foregroundStyle(.white)
                                 .frame(width: 36, height: 36)
                                 .background(Color(hex: 0x1579C7), in: .circle)
                         }
