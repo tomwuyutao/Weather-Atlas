@@ -194,45 +194,6 @@ extension ContentView {
         // Loading spinner handled inside the principal capsule to avoid pushing it off-center
 
 
-        if filterSunny {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    withAnimation {
-                        filterSunny = false
-                    }
-                } label: {
-                    Image(systemName: "sun.max.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.filterSunny)
-                        .frame(width: 44, height: 44)
-                        .themedGlass(in: .circle)
-                }
-                .buttonStyle(.plain)
-            }
-            .sharedBackgroundVisibility(.hidden)
-        }
-
-        if showPlaybackButton {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    if isPlaying {
-                        iOSStopPlayback()
-                    } else {
-                        iOSStartPlayback()
-                    }
-                } label: {
-                    Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .themedGlass(in: .circle)
-                        .contentTransition(.symbolEffect(.replace))
-                }
-                .buttonStyle(.plain)
-            }
-            .sharedBackgroundVisibility(.hidden)
-        }
-
         if isIPad {
             // Loading spinner
             if weatherService.isLoading || isLoadingMapList {
@@ -428,20 +389,55 @@ extension ContentView {
 
         if !isIPad {
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingMenuPopover = true
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .themedGlass(in: .circle)
+                HStack(spacing: 0) {
+                    if filterSunny {
+                        Button {
+                            withAnimation { filterSunny = false }
+                        } label: {
+                            Image(systemName: "sun.max.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(theme.colors.filterSunny)
+                                .frame(width: 44, height: 44)
+                        }
+                        .buttonStyle(.plain)
+
+                        Rectangle()
+                            .fill(theme.colors.primaryText.opacity(0.15))
+                            .frame(width: 1, height: 20)
+                    }
+
+                    if showPlaybackButton {
+                        Button {
+                            if isPlaying { iOSStopPlayback() } else { iOSStartPlayback() }
+                        } label: {
+                            Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(theme.colors.primaryText)
+                                .frame(width: 44, height: 44)
+                                .contentTransition(.symbolEffect(.replace))
+                        }
+                        .buttonStyle(.plain)
+
+                        Rectangle()
+                            .fill(theme.colors.primaryText.opacity(0.15))
+                            .frame(width: 1, height: 20)
+                    }
+
+                    Button {
+                        showingMenuPopover = true
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .popover(isPresented: $showingMenuPopover) {
+                        iOSCustomMenu
+                            .presentationCompactAdaptation(.popover)
+                    }
                 }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showingMenuPopover) {
-                    iOSCustomMenu
-                        .presentationCompactAdaptation(.popover)
-                }
+                .themedGlass(in: .capsule)
             }
             .sharedBackgroundVisibility(.hidden)
         }
