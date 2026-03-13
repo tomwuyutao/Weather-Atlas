@@ -56,6 +56,7 @@ struct ContentView: View {
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @State var showingSettings: Bool = false
     @State var showingLegend: Bool = false
+    @State var showingInfo: Bool = false
     @State var sidebarVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("mapMode") var mapMode: String = "minimal"
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
@@ -869,6 +870,10 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingLegend) {
             LegendView()
+                .presentationSizing(.form)
+        }
+        .sheet(isPresented: $showingInfo) {
+            InfoView()
                 .presentationSizing(.form)
         }
         .sheet(isPresented: $showingMapStyleSheet) {
