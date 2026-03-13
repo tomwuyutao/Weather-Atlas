@@ -2605,16 +2605,42 @@ struct WeatherMarker: View {
     private var showAsCard: Bool { displayMode == .card }
 
     private var dotColor: Color {
-        // Temperature overlay: cyan #57D3E5 (cold) → yellow #FDA409 (hot), -10°C to 35°C
+        // Temperature overlay: dark blue #1579C7 (≤-20°C) → cyan #57D3E5 (0°C) → green #8BBD9F (10°C) → yellow #FDA409 (20°C) → red #FB4368 (≥40°C)
         if overlayMode == "temperature" {
             let tempC = forecast.daytimeHigh
-            let t = Double(max(0, min(1, (tempC - (-10)) / 45.0)))
-            // Cyan #57D3E5 → Yellow #FDA409
-            return Color(
-                red: Double(0x57) / 255.0 + t * Double(0xFD - 0x57) / 255.0,
-                green: Double(0xD3) / 255.0 + t * Double(0xA4 - 0xD3) / 255.0,
-                blue: Double(0xE5) / 255.0 + t * Double(0x09 - 0xE5) / 255.0
-            )
+            if tempC <= 0 {
+                // Dark blue → Cyan: -20 to 0
+                let t = Double(max(0, min(1, (tempC - (-20)) / 20.0)))
+                return Color(
+                    red: Double(0x15) / 255.0 + t * Double(0x57 - 0x15) / 255.0,
+                    green: Double(0x79) / 255.0 + t * Double(0xD3 - 0x79) / 255.0,
+                    blue: Double(0xC7) / 255.0 + t * Double(0xE5 - 0xC7) / 255.0
+                )
+            } else if tempC <= 10 {
+                // Cyan → Green: 0 to 10
+                let t = Double(max(0, min(1, tempC / 10.0)))
+                return Color(
+                    red: Double(0x57) / 255.0 + t * Double(0x7D - 0x57) / 255.0,
+                    green: Double(0xD3) / 255.0 + t * Double(0xD4 - 0xD3) / 255.0,
+                    blue: Double(0xE5) / 255.0 + t * Double(0xA0 - 0xE5) / 255.0
+                )
+            } else if tempC <= 20 {
+                // Green → Yellow: 10 to 20
+                let t = Double(max(0, min(1, (tempC - 10) / 10.0)))
+                return Color(
+                    red: Double(0x7D) / 255.0 + t * Double(0xFD - 0x7D) / 255.0,
+                    green: Double(0xD4) / 255.0 + t * Double(0xA4 - 0xD4) / 255.0,
+                    blue: Double(0xA0) / 255.0 + t * Double(0x09 - 0xA0) / 255.0
+                )
+            } else {
+                // Yellow → Red: 20 to 40
+                let t = Double(max(0, min(1, (tempC - 20) / 20.0)))
+                return Color(
+                    red: Double(0xFD) / 255.0 + t * Double(0xFB - 0xFD) / 255.0,
+                    green: Double(0xA4) / 255.0 + t * Double(0x43 - 0xA4) / 255.0,
+                    blue: Double(0x09) / 255.0 + t * Double(0x68 - 0x09) / 255.0
+                )
+            }
         }
         // Cloud cover overlay: clear = dark blue #1579C7, fully cloudy = white or gray
         if overlayMode == "cloudCover" {

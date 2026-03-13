@@ -258,7 +258,7 @@ extension ContentView {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 36, height: 36)
+                            .frame(width: countrySelectionMode ? 36 : 44, height: countrySelectionMode ? 36 : 44)
                             .themedGlass(in: .circle)
                     }
                     .buttonStyle(.plain)

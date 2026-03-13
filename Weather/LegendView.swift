@@ -17,13 +17,40 @@ struct LegendView: View {
     ]
 
     private func temperatureColor(celsius: Double) -> Color {
-        let t = Double(max(0, min(1, (celsius - (-10)) / 45.0)))
-        // Cyan #57D3E5 (cold) → Yellow #FDA409 (hot)
-        return Color(
-            red: Double(0x57) / 255.0 + t * Double(0xFD - 0x57) / 255.0,
-            green: Double(0xD3) / 255.0 + t * Double(0xA4 - 0xD3) / 255.0,
-            blue: Double(0xE5) / 255.0 + t * Double(0x09 - 0xE5) / 255.0
-        )
+        // Dark blue #1579C7 (≤-20°C) → Cyan #57D3E5 (0°C) → Green #8BBD9F (10°C) → Yellow #FDA409 (20°C) → Red #FB4368 (≥40°C)
+        if celsius <= 0 {
+            // Dark blue → Cyan: -20 to 0
+            let t = Double(max(0, min(1, (celsius - (-20)) / 20.0)))
+            return Color(
+                red: Double(0x15) / 255.0 + t * Double(0x57 - 0x15) / 255.0,
+                green: Double(0x79) / 255.0 + t * Double(0xD3 - 0x79) / 255.0,
+                blue: Double(0xC7) / 255.0 + t * Double(0xE5 - 0xC7) / 255.0
+            )
+        } else if celsius <= 10 {
+            // Cyan → Green: 0 to 10
+            let t = Double(max(0, min(1, celsius / 10.0)))
+            return Color(
+                red: Double(0x57) / 255.0 + t * Double(0x7D - 0x57) / 255.0,
+                green: Double(0xD3) / 255.0 + t * Double(0xD4 - 0xD3) / 255.0,
+                blue: Double(0xE5) / 255.0 + t * Double(0xA0 - 0xE5) / 255.0
+            )
+        } else if celsius <= 20 {
+            // Green → Yellow: 10 to 20
+            let t = Double(max(0, min(1, (celsius - 10) / 10.0)))
+            return Color(
+                red: Double(0x7D) / 255.0 + t * Double(0xFD - 0x7D) / 255.0,
+                green: Double(0xD4) / 255.0 + t * Double(0xA4 - 0xD4) / 255.0,
+                blue: Double(0xA0) / 255.0 + t * Double(0x09 - 0xA0) / 255.0
+            )
+        } else {
+            // Yellow → Red: 20 to 40
+            let t = Double(max(0, min(1, (celsius - 20) / 20.0)))
+            return Color(
+                red: Double(0xFD) / 255.0 + t * Double(0xFB - 0xFD) / 255.0,
+                green: Double(0xA4) / 255.0 + t * Double(0x43 - 0xA4) / 255.0,
+                blue: Double(0x09) / 255.0 + t * Double(0x68 - 0x09) / 255.0
+            )
+        }
     }
 
     private func cloudColor(percent: Double) -> Color {
@@ -111,14 +138,15 @@ struct LegendView: View {
 
                     gradientScaleView(
                         colors: [
-                            temperatureColor(celsius: -10),
-                            temperatureColor(celsius: 5),
+                            temperatureColor(celsius: -20),
+                            temperatureColor(celsius: 0),
+                            temperatureColor(celsius: 10),
                             temperatureColor(celsius: 20),
-                            temperatureColor(celsius: 35)
+                            temperatureColor(celsius: 40)
                         ],
                         labels: tempUnit == .fahrenheit
-                            ? ["14°F", "32°F", "59°F", "86°F", "95°F"]
-                            : ["-10°C", "0°C", "10°C", "25°C", "35°C"]
+                            ? ["-4°F", "32°F", "50°F", "68°F", "104°F"]
+                            : ["-20°C", "0°C", "10°C", "20°C", "40°C"]
                     )
 
                     // MARK: Cloud cover overlay scale
