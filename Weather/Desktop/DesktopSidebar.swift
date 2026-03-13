@@ -12,6 +12,7 @@ struct CityRow: View {
     let cityWeather: CityWeather
     let dayOffset: Int
     let showCloudCover: Bool
+    var showPrecipitation: Bool = false
     
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
@@ -40,12 +41,13 @@ struct CityRow: View {
             
             Spacer()
             
-            // Temperature or cloud cover
-            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.daytimeHigh))
+            // Temperature, cloud cover, or precipitation
+            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : showPrecipitation ? "\(Int(forecast.precipitationChance * 100))%" : tempUnit.display(forecast.daytimeHigh))
                 .font(.headline)
                 .foregroundStyle(.secondary)
                 .contentTransition(.numericText())
                 .animation(.smooth(duration: 0.3), value: showCloudCover)
+                .animation(.smooth(duration: 0.3), value: showPrecipitation)
         }
         .padding(.vertical, 4)
     }
@@ -64,6 +66,7 @@ struct DesktopSidebar: View {
     @State var citySearchManager: CitySearchManager
     let weatherService: WeatherService
     let showCloudCover: Bool
+    var showPrecipitation: Bool = false
     let onCitySelected: (CityWeather) -> Void
     let onDeleteCity: (CityWeather) -> Void
     let onMoveCity: (IndexSet, Int) -> Void
@@ -117,7 +120,8 @@ struct DesktopSidebar: View {
             CityRow(
                 cityWeather: cityWeather,
                 dayOffset: selectedDayOffset,
-                showCloudCover: showCloudCover
+                showCloudCover: showCloudCover,
+                showPrecipitation: showPrecipitation
             )
                 .tag(cityWeather)
                 .contentShape(Rectangle())

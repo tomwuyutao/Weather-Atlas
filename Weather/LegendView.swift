@@ -63,6 +63,16 @@ struct LegendView: View {
         )
     }
 
+    private func precipitationColor(percent: Double) -> Color {
+        let chance = percent / 100.0
+        // Pure white #FFFFFF (0%) → cyan #57D3E5 (100%)
+        return Color(
+            red: 1.0 + chance * (Double(0x57) / 255.0 - 1.0),
+            green: 1.0 + chance * (Double(0xD3) / 255.0 - 1.0),
+            blue: 1.0 + chance * (Double(0xE5) / 255.0 - 1.0)
+        )
+    }
+
     private func gradientScaleView(colors gradColors: [Color], labels: [String]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             // Gradient bar
@@ -161,6 +171,22 @@ struct LegendView: View {
                             cloudColor(percent: 33),
                             cloudColor(percent: 66),
                             cloudColor(percent: 100)
+                        ],
+                        labels: ["0%", "25%", "50%", "75%", "100%"]
+                    )
+
+                    // MARK: Precipitation overlay scale
+                    Text("Precipitation Overlay")
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 16)
+
+                    gradientScaleView(
+                        colors: [
+                            precipitationColor(percent: 0),
+                            precipitationColor(percent: 33),
+                            precipitationColor(percent: 66),
+                            precipitationColor(percent: 100)
                         ],
                         labels: ["0%", "25%", "50%", "75%", "100%"]
                     )

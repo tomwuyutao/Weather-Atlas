@@ -335,7 +335,7 @@ struct WeatherEffectOverlay: View {
                         WeatherEffectOverlay(condition: item.2, isCompact: false, iconHeight: 64)
                     }
                 Text(item.1)
-                    .font(.title3)
+                    .font(.avenir(.title3, weight: .regular))
                     .frame(width: 120, alignment: .leading)
             }
         }

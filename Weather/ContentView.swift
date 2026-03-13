@@ -40,6 +40,7 @@ struct ContentView: View {
     @State private var previewSearchText: String = ""
     private var showCloudCover: Bool { mapOverlayMode == "cloudCover" }
     private var showTemperatureOverlay: Bool { mapOverlayMode == "temperature" }
+    private var showPrecipitation: Bool { mapOverlayMode == "precipitation" }
     @State var filterSunny: Bool = false
     @State var isPlaying: Bool = false
     @State var showingInlineSearch: Bool = false
@@ -165,6 +166,7 @@ struct ContentView: View {
                 citySearchManager: citySearchManager,
                 weatherService: weatherService,
                 showCloudCover: showCloudCover,
+                showPrecipitation: showPrecipitation,
                 onCitySelected: { cityWeather in
                     selectedCity = cityWeather
                     centerOnCityTrigger = cityWeather
@@ -381,9 +383,10 @@ struct ContentView: View {
                 } else {
                     // Overlay mode picker
                     let overlays: [(String, String, String)] = [
-                        ("weather",     "cloud.sun.fill",  "Weather"),
-                        ("temperature", "thermometer.medium", "Temperature"),
-                        ("cloudCover",  "cloud.fill",      "Cloud Cover")
+                        ("weather",       "cloud.sun.fill",    "Weather"),
+                        ("temperature",   "thermometer.medium", "Temperature"),
+                        ("cloudCover",    "cloud.fill",        "Cloud Cover"),
+                        ("precipitation", "drop.fill",         "Precipitation")
                     ]
                     VStack(spacing: 10) {
                         ForEach(overlays, id: \.0) { mode, icon, label in
@@ -2603,6 +2606,7 @@ struct WeatherMarker: View {
 
     private var showAsDot: Bool { displayMode == .dot }
     private var showAsCard: Bool { displayMode == .card }
+    private var showPrecipitation: Bool { overlayMode == "precipitation" }
 
     private var dotColor: Color {
         // Temperature overlay: dark blue #1579C7 (≤-20°C) → cyan #57D3E5 (0°C) → green #8BBD9F (10°C) → yellow #FDA409 (20°C) → red #FB4368 (≥40°C)
@@ -2642,22 +2646,22 @@ struct WeatherMarker: View {
                 )
             }
         }
-        // Cloud cover overlay: clear = dark blue #1579C7, fully cloudy = white or gray
+        // Cloud cover overlay: white (0%) → dark blue #1579C7 (100%)
         if overlayMode == "cloudCover" {
             let cover = CGFloat(forecast.cloudCover) // 0.0 (clear) to 1.0 (cloudy)
-            if colorScheme == .light && AppTheme.shared.isDetailedMapMode {
-                // Light mode + detailed/colorful: blue #1579C7 → light gray #C8D8DE
-                return Color(
-                    red: Double(0x15) / 255.0 + Double(cover) * (Double(0xC8 - 0x15) / 255.0),
-                    green: Double(0x79) / 255.0 + Double(cover) * (Double(0xD8 - 0x79) / 255.0),
-                    blue: Double(0xC7) / 255.0 + Double(cover) * (Double(0xDE - 0xC7) / 255.0)
-                )
-            }
-            // Dark blue #1579C7 (clear) → pure white #FFFFFF (fully cloudy)
             return Color(
-                red: Double(0x15) / 255.0 + Double(cover) * (1.0 - Double(0x15) / 255.0),
-                green: Double(0x79) / 255.0 + Double(cover) * (1.0 - Double(0x79) / 255.0),
-                blue: Double(0xC7) / 255.0 + Double(cover) * (1.0 - Double(0xC7) / 255.0)
+                red: 1.0 + Double(cover) * (Double(0x15) / 255.0 - 1.0),
+                green: 1.0 + Double(cover) * (Double(0x79) / 255.0 - 1.0),
+                blue: 1.0 + Double(cover) * (Double(0xC7) / 255.0 - 1.0)
+            )
+        }
+        // Precipitation overlay: white (0%) → cyan #57D3E5 (100%)
+        if overlayMode == "precipitation" {
+            let chance = CGFloat(forecast.precipitationChance) // 0.0 to 1.0
+            return Color(
+                red: 1.0 + Double(chance) * (Double(0x57) / 255.0 - 1.0),
+                green: 1.0 + Double(chance) * (Double(0xD3) / 255.0 - 1.0),
+                blue: 1.0 + Double(chance) * (Double(0xE5) / 255.0 - 1.0)
             )
         }
         // Default weather dot color
@@ -2734,7 +2738,7 @@ struct WeatherMarker: View {
     private var pinView: some View {
         VStack(spacing: 1) {
             // Temperature — primary, largest
-            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : tempUnit.display(forecast.daytimeHigh))
+            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : showPrecipitation ? "\(Int(forecast.precipitationChance * 100))%" : tempUnit.display(forecast.daytimeHigh))
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                 .lineLimit(1)
@@ -2743,6 +2747,7 @@ struct WeatherMarker: View {
                 .animation(.smooth(duration: 0.4), value: dayOffset)
                 .offset(x: 2)
                 .animation(.smooth(duration: 0.4), value: showCloudCover)
+                .animation(.smooth(duration: 0.4), value: showPrecipitation)
 
             // City name — secondary, smaller
             Text(cityWeather.city.localizedName(locale: locale))

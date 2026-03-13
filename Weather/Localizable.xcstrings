@@ -595,12 +595,21 @@
       }
     },
     "Precipitation" : {
-      "extractionState" : "stale",
       "localizations" : {
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "降水量"
+          }
+        }
+      }
+    },
+    "Precipitation Overlay" : {
+      "localizations" : {
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "降水概率叠加"
           }
         }
       }
