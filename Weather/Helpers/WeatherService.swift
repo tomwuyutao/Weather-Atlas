@@ -645,6 +645,10 @@ class WeatherService {
                 feelsLikeLow: feelsLikeLow,
                 feelsLikeHigh: feelsLikeHigh,
                 humidity: index == 0 ? currentHumidity : nil,
+                windSpeed: daytimeForecast.wind.speed.converted(to: .kilometersPerHour).value,
+                uvIndex: day.uvIndex.value,
+                maxHumidity: day.maximumHumidity,
+                maxVisibility: day.maximumVisibility / 1000.0,
                 sunrise: day.sun.sunrise,
                 sunset: day.sun.sunset
             )
@@ -1061,6 +1065,10 @@ struct DailyForecast: Identifiable {
     let feelsLikeLow: Double?   // °C, daytime (7AM–7PM) min apparent temp
     let feelsLikeHigh: Double?  // °C, daytime (7AM–7PM) max apparent temp
     let humidity: Double?       // 0.0–1.0, only available for day 0 (current weather)
+    let windSpeed: Double?      // km/h, daytime max sustained wind speed
+    let uvIndex: Int?           // 0–11+
+    let maxHumidity: Double?    // 0.0–1.0, daily max humidity
+    let maxVisibility: Double?  // km, daily max visibility
     let sunrise: Date?
     let sunset: Date?
     
@@ -1323,6 +1331,10 @@ struct CachedDailyForecast: Codable {
     let feelsLikeLow: Double?
     let feelsLikeHigh: Double?
     let humidity: Double?
+    let windSpeed: Double?
+    let uvIndex: Int?
+    let maxHumidity: Double?
+    let maxVisibility: Double?
     let sunrise: Date?
     let sunset: Date?
     
@@ -1339,6 +1351,10 @@ struct CachedDailyForecast: Codable {
         self.feelsLikeLow = forecast.feelsLikeLow
         self.feelsLikeHigh = forecast.feelsLikeHigh
         self.humidity = forecast.humidity
+        self.windSpeed = forecast.windSpeed
+        self.uvIndex = forecast.uvIndex
+        self.maxHumidity = forecast.maxHumidity
+        self.maxVisibility = forecast.maxVisibility
         self.sunrise = forecast.sunrise
         self.sunset = forecast.sunset
     }
@@ -1366,13 +1382,17 @@ struct CachedDailyForecast: Codable {
         feelsLikeLow = try container.decodeIfPresent(Double.self, forKey: .feelsLikeLow)
         feelsLikeHigh = try container.decodeIfPresent(Double.self, forKey: .feelsLikeHigh)
         humidity = try container.decodeIfPresent(Double.self, forKey: .humidity)
+        windSpeed = try container.decodeIfPresent(Double.self, forKey: .windSpeed)
+        uvIndex = try container.decodeIfPresent(Int.self, forKey: .uvIndex)
+        maxHumidity = try container.decodeIfPresent(Double.self, forKey: .maxHumidity)
+        maxVisibility = try container.decodeIfPresent(Double.self, forKey: .maxVisibility)
         sunrise = try container.decodeIfPresent(Date.self, forKey: .sunrise)
         sunset = try container.decodeIfPresent(Date.self, forKey: .sunset)
     }
     
     // Keep the old key for migration during decoding
     private enum CodingKeys: String, CodingKey {
-        case dayOffset, daytimeLow, daytimeHigh, symbolName, condition, hourlyForecasts, cloudCover, precipitationChance, temperature, visibility, feelsLikeLow, feelsLikeHigh, humidity, sunrise, sunset
+        case dayOffset, daytimeLow, daytimeHigh, symbolName, condition, hourlyForecasts, cloudCover, precipitationChance, temperature, visibility, feelsLikeLow, feelsLikeHigh, humidity, windSpeed, uvIndex, maxHumidity, maxVisibility, sunrise, sunset
     }
     
     func encode(to encoder: Encoder) throws {
@@ -1389,6 +1409,10 @@ struct CachedDailyForecast: Codable {
         try container.encodeIfPresent(feelsLikeLow, forKey: .feelsLikeLow)
         try container.encodeIfPresent(feelsLikeHigh, forKey: .feelsLikeHigh)
         try container.encodeIfPresent(humidity, forKey: .humidity)
+        try container.encodeIfPresent(windSpeed, forKey: .windSpeed)
+        try container.encodeIfPresent(uvIndex, forKey: .uvIndex)
+        try container.encodeIfPresent(maxHumidity, forKey: .maxHumidity)
+        try container.encodeIfPresent(maxVisibility, forKey: .maxVisibility)
         try container.encodeIfPresent(sunrise, forKey: .sunrise)
         try container.encodeIfPresent(sunset, forKey: .sunset)
     }
@@ -1410,6 +1434,10 @@ struct CachedDailyForecast: Codable {
             feelsLikeLow: feelsLikeLow,
             feelsLikeHigh: feelsLikeHigh,
             humidity: humidity,
+            windSpeed: windSpeed,
+            uvIndex: uvIndex,
+            maxHumidity: maxHumidity,
+            maxVisibility: maxVisibility,
             sunrise: sunrise,
             sunset: sunset
         )

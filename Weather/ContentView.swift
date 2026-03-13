@@ -165,8 +165,7 @@ struct ContentView: View {
                 tappedCity: $tappedCity,
                 citySearchManager: citySearchManager,
                 weatherService: weatherService,
-                showCloudCover: showCloudCover,
-                showPrecipitation: showPrecipitation,
+                overlayMode: mapOverlayMode,
                 onCitySelected: { cityWeather in
                     selectedCity = cityWeather
                     centerOnCityTrigger = cityWeather
@@ -386,8 +385,13 @@ struct ContentView: View {
                         ("weather",       "cloud.sun.fill",    "Weather"),
                         ("temperature",   "thermometer.medium", "Temperature"),
                         ("cloudCover",    "cloud.fill",        "Cloud Cover"),
-                        ("precipitation", "drop.fill",         "Precipitation")
+                        ("precipitation", "drop.fill",         "Precipitation"),
+                        ("windSpeed",     "wind",              "Wind Speed"),
+                        ("uvIndex",       "sun.max.fill",      "UV Index"),
+                        ("humidity",      "humidity.fill",     "Humidity"),
+                        ("visibility",    "eye.fill",          "Visibility")
                     ]
+                    ScrollView {
                     VStack(spacing: 10) {
                         ForEach(overlays, id: \.0) { mode, icon, label in
                             Button {
@@ -427,6 +431,7 @@ struct ContentView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
+                    }
                 }
 
                 Spacer()
@@ -884,7 +889,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingMapStyleSheet) {
             mapStyleSheet
-                .presentationDetents([.height(350)])
+                .presentationDetents([.medium])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingSettings) {
@@ -2608,6 +2613,26 @@ struct WeatherMarker: View {
     private var showAsCard: Bool { displayMode == .card }
     private var showPrecipitation: Bool { overlayMode == "precipitation" }
 
+    private var overlayPinText: String {
+        switch overlayMode {
+        case "cloudCover":
+            return "\(forecast.cloudCoverPercent)%"
+        case "precipitation":
+            return "\(Int(forecast.precipitationChance * 100))%"
+        case "windSpeed":
+            return "\(Int(forecast.windSpeed ?? 0))"
+        case "uvIndex":
+            return "\(forecast.uvIndex ?? 0)"
+        case "humidity":
+            return "\(Int((forecast.maxHumidity ?? 0) * 100))%"
+        case "visibility":
+            let km = forecast.maxVisibility ?? 0
+            return km >= 10 ? "\(Int(km))" : String(format: "%.1f", km)
+        default:
+            return tempUnit.display(forecast.daytimeHigh)
+        }
+    }
+
     private var dotColor: Color {
         // Temperature overlay: dark blue #1579C7 (≤-20°C) → cyan #57D3E5 (0°C) → green #8BBD9F (10°C) → yellow #FDA409 (20°C) → red #FB4368 (≥40°C)
         if overlayMode == "temperature" {
@@ -2662,6 +2687,42 @@ struct WeatherMarker: View {
                 red: 1.0 + Double(chance) * (Double(0x57) / 255.0 - 1.0),
                 green: 1.0 + Double(chance) * (Double(0xD3) / 255.0 - 1.0),
                 blue: 1.0 + Double(chance) * (Double(0xE5) / 255.0 - 1.0)
+            )
+        }
+        // Wind speed overlay: white (0 km/h) → yellow #FDA409 (100 km/h)
+        if overlayMode == "windSpeed" {
+            let wind = min(1.0, (forecast.windSpeed ?? 0) / 100.0)
+            return Color(
+                red: 1.0 + wind * (Double(0xFD) / 255.0 - 1.0),
+                green: 1.0 + wind * (Double(0xA4) / 255.0 - 1.0),
+                blue: 1.0 + wind * (Double(0x09) / 255.0 - 1.0)
+            )
+        }
+        // UV index overlay: white (0) → red #FB4368 (11+)
+        if overlayMode == "uvIndex" {
+            let uv = min(1.0, Double(forecast.uvIndex ?? 0) / 11.0)
+            return Color(
+                red: 1.0 + uv * (Double(0xFB) / 255.0 - 1.0),
+                green: 1.0 + uv * (Double(0x43) / 255.0 - 1.0),
+                blue: 1.0 + uv * (Double(0x68) / 255.0 - 1.0)
+            )
+        }
+        // Humidity overlay: white (0%) → purple #BE9AED (100%)
+        if overlayMode == "humidity" {
+            let hum = forecast.maxHumidity ?? 0
+            return Color(
+                red: 1.0 + hum * (Double(0xBE) / 255.0 - 1.0),
+                green: 1.0 + hum * (Double(0x9A) / 255.0 - 1.0),
+                blue: 1.0 + hum * (Double(0xED) / 255.0 - 1.0)
+            )
+        }
+        // Visibility overlay: white (0 km) → dark blue #1579C7 (30+ km)
+        if overlayMode == "visibility" {
+            let vis = min(1.0, (forecast.maxVisibility ?? 0) / 30.0)
+            return Color(
+                red: 1.0 + vis * (Double(0x15) / 255.0 - 1.0),
+                green: 1.0 + vis * (Double(0x79) / 255.0 - 1.0),
+                blue: 1.0 + vis * (Double(0xC7) / 255.0 - 1.0)
             )
         }
         // Default weather dot color
@@ -2738,7 +2799,7 @@ struct WeatherMarker: View {
     private var pinView: some View {
         VStack(spacing: 1) {
             // Temperature — primary, largest
-            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : showPrecipitation ? "\(Int(forecast.precipitationChance * 100))%" : tempUnit.display(forecast.daytimeHigh))
+            Text(overlayPinText)
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                 .lineLimit(1)
@@ -2746,8 +2807,7 @@ struct WeatherMarker: View {
                 .contentTransition(.numericText())
                 .animation(.smooth(duration: 0.4), value: dayOffset)
                 .offset(x: 2)
-                .animation(.smooth(duration: 0.4), value: showCloudCover)
-                .animation(.smooth(duration: 0.4), value: showPrecipitation)
+                .animation(.smooth(duration: 0.4), value: overlayMode)
 
             // City name — secondary, smaller
             Text(cityWeather.city.localizedName(locale: locale))

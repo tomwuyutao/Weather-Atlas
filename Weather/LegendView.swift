@@ -73,6 +73,42 @@ struct LegendView: View {
         )
     }
 
+    private func windColor(fraction: Double) -> Color {
+        // White (0) → yellow #FDA409 (1.0)
+        return Color(
+            red: 1.0 + fraction * (Double(0xFD) / 255.0 - 1.0),
+            green: 1.0 + fraction * (Double(0xA4) / 255.0 - 1.0),
+            blue: 1.0 + fraction * (Double(0x09) / 255.0 - 1.0)
+        )
+    }
+
+    private func uvColor(fraction: Double) -> Color {
+        // White (0) → red #FB4368 (1.0)
+        return Color(
+            red: 1.0 + fraction * (Double(0xFB) / 255.0 - 1.0),
+            green: 1.0 + fraction * (Double(0x43) / 255.0 - 1.0),
+            blue: 1.0 + fraction * (Double(0x68) / 255.0 - 1.0)
+        )
+    }
+
+    private func humidityColor(fraction: Double) -> Color {
+        // White (0) → purple #BE9AED (1.0)
+        return Color(
+            red: 1.0 + fraction * (Double(0xBE) / 255.0 - 1.0),
+            green: 1.0 + fraction * (Double(0x9A) / 255.0 - 1.0),
+            blue: 1.0 + fraction * (Double(0xED) / 255.0 - 1.0)
+        )
+    }
+
+    private func visibilityColor(fraction: Double) -> Color {
+        // White (0) → dark blue #1579C7 (1.0)
+        return Color(
+            red: 1.0 + fraction * (Double(0x15) / 255.0 - 1.0),
+            green: 1.0 + fraction * (Double(0x79) / 255.0 - 1.0),
+            blue: 1.0 + fraction * (Double(0xC7) / 255.0 - 1.0)
+        )
+    }
+
     private func gradientScaleView(colors gradColors: [Color], labels: [String]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             // Gradient bar
@@ -189,6 +225,74 @@ struct LegendView: View {
                             precipitationColor(percent: 100)
                         ],
                         labels: ["0%", "25%", "50%", "75%", "100%"]
+                    )
+
+                    // MARK: Wind speed overlay scale
+                    Text("Wind Speed Overlay")
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 16)
+
+                    gradientScaleView(
+                        colors: [
+                            windColor(fraction: 0),
+                            windColor(fraction: 0.25),
+                            windColor(fraction: 0.5),
+                            windColor(fraction: 0.75),
+                            windColor(fraction: 1.0)
+                        ],
+                        labels: ["0", "25", "50", "75", "100 km/h"]
+                    )
+
+                    // MARK: UV index overlay scale
+                    Text("UV Index Overlay")
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 16)
+
+                    gradientScaleView(
+                        colors: [
+                            uvColor(fraction: 0),
+                            uvColor(fraction: 0.27),
+                            uvColor(fraction: 0.55),
+                            uvColor(fraction: 0.82),
+                            uvColor(fraction: 1.0)
+                        ],
+                        labels: ["0", "3", "6", "9", "11+"]
+                    )
+
+                    // MARK: Humidity overlay scale
+                    Text("Humidity Overlay")
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 16)
+
+                    gradientScaleView(
+                        colors: [
+                            humidityColor(fraction: 0),
+                            humidityColor(fraction: 0.25),
+                            humidityColor(fraction: 0.5),
+                            humidityColor(fraction: 0.75),
+                            humidityColor(fraction: 1.0)
+                        ],
+                        labels: ["0%", "25%", "50%", "75%", "100%"]
+                    )
+
+                    // MARK: Visibility overlay scale
+                    Text("Visibility Overlay")
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.top, 16)
+
+                    gradientScaleView(
+                        colors: [
+                            visibilityColor(fraction: 0),
+                            visibilityColor(fraction: 0.25),
+                            visibilityColor(fraction: 0.5),
+                            visibilityColor(fraction: 0.75),
+                            visibilityColor(fraction: 1.0)
+                        ],
+                        labels: ["0", "8", "15", "23", "30 km"]
                     )
                 }
                 .padding(.leading, 24)

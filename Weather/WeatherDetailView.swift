@@ -1313,6 +1313,10 @@ struct SunArcCard: View {
             feelsLikeLow: baseTemp - 5.0,
             feelsLikeHigh: baseTemp + 1.0,
             humidity: dayOffset == 0 ? 0.65 : nil,
+            windSpeed: Double.random(in: 5...40),
+            uvIndex: Int.random(in: 0...11),
+            maxHumidity: Double.random(in: 0.3...0.95),
+            maxVisibility: Double.random(in: 5...30),
             sunrise: mockSunrise,
             sunset: mockSunset
         )

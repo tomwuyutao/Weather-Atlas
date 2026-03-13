@@ -11,8 +11,7 @@ import MapKit
 struct CityRow: View {
     let cityWeather: CityWeather
     let dayOffset: Int
-    let showCloudCover: Bool
-    var showPrecipitation: Bool = false
+    var overlayMode: String = "weather"
     
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
@@ -24,6 +23,26 @@ struct CityRow: View {
     
     private var forecast: DailyForecast {
         cityWeather.forecast(for: dayOffset)
+    }
+    
+    private var displayValue: String {
+        switch overlayMode {
+        case "cloudCover":
+            return "\(forecast.cloudCoverPercent)%"
+        case "precipitation":
+            return "\(Int(forecast.precipitationChance * 100))%"
+        case "windSpeed":
+            return "\(Int(forecast.windSpeed ?? 0)) km/h"
+        case "uvIndex":
+            return "\(forecast.uvIndex ?? 0)"
+        case "humidity":
+            return "\(Int((forecast.maxHumidity ?? 0) * 100))%"
+        case "visibility":
+            let km = forecast.maxVisibility ?? 0
+            return km >= 10 ? "\(Int(km)) km" : String(format: "%.1f km", km)
+        default:
+            return tempUnit.display(forecast.daytimeHigh)
+        }
     }
     
     var body: some View {
@@ -41,13 +60,12 @@ struct CityRow: View {
             
             Spacer()
             
-            // Temperature, cloud cover, or precipitation
-            Text(showCloudCover ? "\(forecast.cloudCoverPercent)%" : showPrecipitation ? "\(Int(forecast.precipitationChance * 100))%" : tempUnit.display(forecast.daytimeHigh))
+            // Overlay value
+            Text(displayValue)
                 .font(.headline)
                 .foregroundStyle(.secondary)
                 .contentTransition(.numericText())
-                .animation(.smooth(duration: 0.3), value: showCloudCover)
-                .animation(.smooth(duration: 0.3), value: showPrecipitation)
+                .animation(.smooth(duration: 0.3), value: overlayMode)
         }
         .padding(.vertical, 4)
     }
@@ -65,8 +83,7 @@ struct DesktopSidebar: View {
     @Binding var tappedCity: CityWeather?
     @State var citySearchManager: CitySearchManager
     let weatherService: WeatherService
-    let showCloudCover: Bool
-    var showPrecipitation: Bool = false
+    var overlayMode: String = "weather"
     let onCitySelected: (CityWeather) -> Void
     let onDeleteCity: (CityWeather) -> Void
     let onMoveCity: (IndexSet, Int) -> Void
@@ -120,8 +137,7 @@ struct DesktopSidebar: View {
             CityRow(
                 cityWeather: cityWeather,
                 dayOffset: selectedDayOffset,
-                showCloudCover: showCloudCover,
-                showPrecipitation: showPrecipitation
+                overlayMode: overlayMode
             )
                 .tag(cityWeather)
                 .contentShape(Rectangle())
