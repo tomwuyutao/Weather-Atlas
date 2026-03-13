@@ -74,7 +74,6 @@ struct LegendView: View {
                     Text("Weather Dot Colors")
                         .font(.avenir(.subheadline, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
                         .padding(.top, 8)
 
                     VStack(spacing: 0) {
@@ -108,7 +107,6 @@ struct LegendView: View {
                     Text("Temperature Overlay")
                         .font(.avenir(.subheadline, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
                         .padding(.top, 16)
 
                     gradientScaleView(
@@ -127,7 +125,6 @@ struct LegendView: View {
                     Text("Cloud Cover Overlay")
                         .font(.avenir(.subheadline, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .textCase(.uppercase)
                         .padding(.top, 16)
 
                     gradientScaleView(

@@ -451,7 +451,7 @@ struct SettingsView: View {
                 Spacer()
                 if isSelected {
                     Circle()
-                        .fill(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(Color.primary))
+                        .fill(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(colors.accent))
                         .frame(width: 6, height: 6)
                         .frame(width: 13)
                 }
