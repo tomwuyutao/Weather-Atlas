@@ -329,7 +329,7 @@ struct ContentView: View {
 
                 if mapStyleTab == 0 {
                     // 2-column grid of thumbnail cards
-                    let modes = ["minimal", "borders", "detailed"]
+                    let modes = ["minimal", "borders", "colorful", "detailed"]
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                         ForEach(modes, id: \.self) { mode in
                             Button {
@@ -796,10 +796,10 @@ struct ContentView: View {
             mapVisibleListIDs.insert(newListID.rawValue)
         }
         .onChange(of: mapMode, initial: true) { _, _ in
-            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && mapMode == "detailed"
+            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && (mapMode == "detailed" || mapMode == "colorful")
         }
         .onChange(of: selectedTab) { _, _ in
-            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && mapMode == "detailed"
+            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && (mapMode == "detailed" || mapMode == "colorful")
         }
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
@@ -881,7 +881,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingMapStyleSheet) {
             mapStyleSheet
-                .presentationDetents([.height(330)])
+                .presentationDetents([.height(350)])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingSettings) {
@@ -2616,9 +2616,17 @@ struct WeatherMarker: View {
                 blue: Double(0xE5) / 255.0 + t * Double(0x09 - 0xE5) / 255.0
             )
         }
-        // Cloud cover overlay: clear = dark blue #1579C7, fully cloudy = #E8E4DF
+        // Cloud cover overlay: clear = dark blue #1579C7, fully cloudy = white or gray
         if overlayMode == "cloudCover" {
             let cover = CGFloat(forecast.cloudCover) // 0.0 (clear) to 1.0 (cloudy)
+            if colorScheme == .light && AppTheme.shared.isDetailedMapMode {
+                // Light mode + detailed/colorful: blue #1579C7 → light gray #C8D8DE
+                return Color(
+                    red: Double(0x15) / 255.0 + Double(cover) * (Double(0xC8 - 0x15) / 255.0),
+                    green: Double(0x79) / 255.0 + Double(cover) * (Double(0xD8 - 0x79) / 255.0),
+                    blue: Double(0xC7) / 255.0 + Double(cover) * (Double(0xDE - 0xC7) / 255.0)
+                )
+            }
             // Dark blue #1579C7 (clear) → pure white #FFFFFF (fully cloudy)
             return Color(
                 red: Double(0x15) / 255.0 + Double(cover) * (1.0 - Double(0x15) / 255.0),

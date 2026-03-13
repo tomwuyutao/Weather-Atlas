@@ -5,7 +5,7 @@ import MapKit
 
 /// A small static illustration of a map mode, cropped to the British Isles region.
 struct MapThumbnailView: View {
-    let mode: String   // "minimal", "borders", "detailed"
+    let mode: String   // "minimal", "borders", "colorful", "detailed"
 
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -66,26 +66,40 @@ struct MapThumbnailView: View {
                 ty: -crop.minY * scale + offsetY
             )
 
+            let isColorful = mode == "colorful"
+            let isBorders = mode == "borders"
+
             // Boost contrast for thumbnail: push ocean darker, land brighter
-            let ocean = colors.mapOcean.mix(with: .black, by: 0.10)
-            let land  = colors.mapLand.mix(with: .white, by: 0.10)
+            let ocean: Color
+            let land: Color
+            if isColorful {
+                ocean = colors.colorfulOcean
+                land = colors.colorfulLandActive
+            } else {
+                ocean = colors.mapOcean.mix(with: .black, by: 0.10)
+                land = colors.mapLand.mix(with: .white, by: 0.10)
+            }
 
             // 1. Ocean background
             context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(ocean))
 
-            let isBorders = mode == "borders"
             let landColor = land
-            let mutedLand = ocean.mix(with: land, by: 0.55)
-            let borderColor = colorScheme == .light
-                ? colors.mapBorder.mix(with: .black, by: 0.1)
-                : colors.mapBorder
+            let mutedLand = isColorful ? colors.colorfulLand : ocean.mix(with: land, by: 0.55)
+            let borderColor: Color
+            if isColorful {
+                borderColor = colors.colorfulBorder
+            } else if colorScheme == .light {
+                borderColor = colors.mapBorder.mix(with: .black, by: 0.1)
+            } else {
+                borderColor = colors.mapBorder
+            }
 
             // 2. Fill countries
             for country in paths {
                 var t = transform
                 guard let transformed = country.path.copy(using: &t) else { continue }
                 let p = Path(transformed)
-                if isBorders {
+                if isBorders || isColorful {
                     let fill = country.id == "GB" || country.id == "IE" ? landColor : mutedLand
                     context.fill(p, with: .color(fill))
                 } else {
@@ -93,8 +107,8 @@ struct MapThumbnailView: View {
                 }
             }
 
-            // 3. Borders (borders mode only)
-            if isBorders {
+            // 3. Borders (borders / colorful mode)
+            if isBorders || isColorful {
                 for country in paths {
                     var t = transform
                     guard let transformed = country.path.copy(using: &t) else { continue }

@@ -332,7 +332,7 @@ extension ContentView {
                     .buttonStyle(.plain)
                     .popover(isPresented: $showingMapStylePopover) {
                         VStack(alignment: .leading, spacing: 0) {
-                            ForEach(["minimal", "borders", "detailed"], id: \.self) { mode in
+                            ForEach(["minimal", "borders", "colorful", "detailed"], id: \.self) { mode in
                                 Button {
                                     showingMapStylePopover = false
                                     withAnimation { mapMode = mode }

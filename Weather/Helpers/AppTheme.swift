@@ -43,6 +43,12 @@ struct ThemeColors {
     let mapBorder: Color
     let svgCountryFill: Color
 
+    // Colorful map mode
+    let colorfulOcean: Color
+    let colorfulLand: Color
+    let colorfulLandActive: Color
+    let colorfulBorder: Color
+
     // Accent / Interactive
     let accent: Color          // add-to-list, radial search handle
     let destructive: Color     // delete, country search pin
@@ -116,6 +122,10 @@ extension ThemeColors {
         mapLand: Color(hex: 0xE0DAD1),
         mapBorder: Color(hex: 0xD5CFC6),
         svgCountryFill: Color(hex: 0xE0DAD1),
+        colorfulOcean: Color(hex: 0xE8F4F0),
+        colorfulLand: Color(hex: 0xD5E5DA),
+        colorfulLandActive: Color(hex: 0xCDDDCF),
+        colorfulBorder: Color(hex: 0xB8CCBC),
         accent: Color(hex: 0x1579C7),
         destructive: Color(hex: 0xFB4368),
         dotSun: Color(hex: 0xFDA409),
@@ -156,6 +166,10 @@ extension ThemeColors {
         mapLand: Color(hex: 0x252640),
         mapBorder: Color(hex: 0x353660),
         svgCountryFill: Color(hex: 0x252640),
+        colorfulOcean: Color(hex: 0x1A3A35),
+        colorfulLand: Color(hex: 0x2A4A3A),
+        colorfulLandActive: Color(hex: 0x345A45),
+        colorfulBorder: Color(hex: 0x3D6B55),
         accent: Color(hex: 0x4A9EE0),
         destructive: Color(hex: 0xFB4368),
         dotSun: Color(hex: 0xFDA409),

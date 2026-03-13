@@ -70,13 +70,13 @@ struct MapKitMapView: View {
             }
             // SVG country overlay
             .overlay {
-                if mapMode == "minimal" || mapMode == "borders" || mapMode == "calibration" {
+                if mapMode == "minimal" || mapMode == "borders" || mapMode == "colorful" || mapMode == "calibration" {
                     SVGProxyOverlay(
                         countries: countries,
                         proxy: proxy,
                         cameraChangeCounter: cameraChangeCounter,
-                        style: (countrySelectionMode || radialSearchMode) ? .borders : (mapMode == "borders" ? .borders : (mapMode == "calibration" ? .calibration : .filled)),
-                        cities: (countrySelectionMode || radialSearchMode || mapMode == "borders") ? cities : [],
+                        style: (countrySelectionMode || radialSearchMode) ? .borders : (mapMode == "colorful" ? .colorful : (mapMode == "borders" ? .borders : (mapMode == "calibration" ? .calibration : .filled))),
+                        cities: (countrySelectionMode || radialSearchMode || mapMode == "borders" || mapMode == "colorful") ? cities : [],
                         borderAllCountries: countrySelectionMode || radialSearchMode
                     )
                     .allowsHitTesting(false)
@@ -400,7 +400,7 @@ private struct AnnotationsOverlay: View {
 /// Uses MapProxy.convert to get exact screen positions of reference coordinates,
 /// then draws transformed SVG country paths in a Canvas.
 private struct SVGProxyOverlay: View {
-    enum Style { case filled, borders, calibration }
+    enum Style { case filled, borders, colorful, calibration }
 
     let countries: [CountryPath]
     let proxy: MapProxy
@@ -442,9 +442,10 @@ private struct SVGProxyOverlay: View {
             guard let screenA = ptA, let screenB = ptB else { return }
             guard size.width > 0, size.height > 0 else { return }
 
-            // Fill entire canvas with black ocean (not in calibration mode)
+            // Fill entire canvas with ocean color (not in calibration mode)
             if style != .calibration {
-                context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(AppTheme.shared.colors.mapOcean))
+                let oceanColor = style == .colorful ? AppTheme.shared.colors.colorfulOcean : AppTheme.shared.colors.mapOcean
+                context.fill(Path(CGRect(origin: .zero, size: size)), with: .color(oceanColor))
             }
 
             let svgA = Self.refSvgA
@@ -469,10 +470,14 @@ private struct SVGProxyOverlay: View {
                 tx: tx, ty: ty
             )
 
-            let landColor = AppTheme.shared.colors.mapLand
-            let borderedLandColor = AppTheme.shared.colors.mapOcean.mix(with: AppTheme.shared.colors.mapLand, by: 0.70)
-            let borderColor = AppTheme.shared.colors.mapBorder
-            let borderedIDs: Set<String> = style == .borders ? (borderAllCountries ? Set(countries.map(\.id)) : countriesWithCities) : []
+            let colors = AppTheme.shared.colors
+            let isColorful = style == .colorful
+            let landColor = isColorful ? colors.colorfulLandActive : colors.mapLand
+            let borderedLandColor = isColorful
+                ? colors.colorfulLand
+                : colors.mapOcean.mix(with: colors.mapLand, by: 0.70)
+            let borderColor = isColorful ? colors.colorfulBorder : colors.mapBorder
+            let borderedIDs: Set<String> = (style == .borders || style == .colorful) ? (borderAllCountries ? Set(countries.map(\.id)) : countriesWithCities) : []
 
             // Corner rounding radius in screen points
             let cornerRadius: CGFloat = min(max(abs(scaleX) * 1.5, 1.5), 8.0)
@@ -484,7 +489,7 @@ private struct SVGProxyOverlay: View {
                     switch style {
                     case .filled:
                         context.fill(smoothed, with: .color(landColor))
-                    case .borders:
+                    case .borders, .colorful:
                         let fill = borderedIDs.contains(country.id) ? landColor : borderedLandColor
                         context.fill(smoothed, with: .color(fill))
                     case .calibration:
@@ -494,7 +499,7 @@ private struct SVGProxyOverlay: View {
             }
 
             // Second pass: stroke borders on top of all fills
-            if style == .borders {
+            if style == .borders || style == .colorful {
                 let borderWidth = min(max(abs(scaleX) * 0.4, 1.5), 3)
                 for country in countries {
                     if borderedIDs.contains(country.id),
