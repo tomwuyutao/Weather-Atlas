@@ -873,7 +873,7 @@ struct ContentView: View {
                 .presentationSizing(.form)
         }
         .sheet(isPresented: $showingInfo) {
-            InfoView()
+            InfoView(source: selectedTab == 1 ? .map : .list)
                 .presentationSizing(.form)
         }
         .sheet(isPresented: $showingMapStyleSheet) {
