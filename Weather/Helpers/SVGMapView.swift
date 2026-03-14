@@ -198,9 +198,12 @@ struct SVGMapView: View {
         
         var onScreen: [Pos] = []
         for cityWeather in cities {
-            let forecast = cityWeather.forecast(for: selectedDayOffset)
+            let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
             let passesFilter = !filterSunny || (forecast.condition == .clear && (forecast.cloudCover ?? 1.0) < 0.30)
-            guard passesFilter, forecast.hasData(forOverlay: overlayMode) else { continue }
+            let hasData = selectedDayOffset == -1
+                ? cityWeather.hasCurrentData(forOverlay: overlayMode)
+                : forecast.hasData(forOverlay: overlayMode)
+            guard passesFilter, hasData else { continue }
             let svgPos = GeoProjection.geoToSVG(
                 latitude: cityWeather.city.latitude,
                 longitude: cityWeather.city.longitude
@@ -231,9 +234,11 @@ struct SVGMapView: View {
         let showDots = anyMarkersColliding(canvasEffective: canvasEffective, liveZoom: liveZoom, viewSize: viewSize)
         
         ForEach(cities) { cityWeather in
-            let forecast = cityWeather.forecast(for: selectedDayOffset)
+            let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
             let passesFilter = !filterSunny || (forecast.condition == .clear && (forecast.cloudCover ?? 1.0) < 0.30)
-            let hasData = forecast.hasData(forOverlay: overlayMode)
+            let hasData = selectedDayOffset == -1
+                ? cityWeather.hasCurrentData(forOverlay: overlayMode)
+                : forecast.hasData(forOverlay: overlayMode)
             let svgPos = GeoProjection.geoToSVG(
                 latitude: cityWeather.city.latitude,
                 longitude: cityWeather.city.longitude

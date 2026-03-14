@@ -17,7 +17,7 @@ struct ContentView: View {
     @State var centerOnCityTrigger: CityWeather?
 
     @State var selectedCity: CityWeather?
-    @State var selectedDayOffset: Int = 0
+    @State var selectedDayOffset: Int = -1
     @State var isEditMode: Bool = false
     @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var isZoomedOut: Bool = true
@@ -452,45 +452,72 @@ struct ContentView: View {
     // MARK: - Vertical Date Slider (Map Mode)
 
     private func mapExpandedCard(for cityWeather: CityWeather) -> some View {
-        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        let isNow = selectedDayOffset == -1
+        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
         let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+        let baseCondition = isNow ? cityWeather.condition : forecast.condition
+        let baseIcon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
         let icon: String = {
-            switch forecast.condition {
+            switch baseCondition {
             case .rain, .drizzle, .snow: return "cloud.fill"
-            default: return forecast.weatherIcon
+            default: return baseIcon
             }
         }()
         // Match effect condition to the displayed icon
         let effectCondition: AppWeatherCondition = {
             if icon == "cloud.fill" {
-                switch forecast.condition {
+                switch baseCondition {
                 case .rain: return .rain
                 case .drizzle: return .drizzle
                 case .snow: return .snow
                 default: return .cloudy
                 }
             }
-            return forecast.condition
+            return baseCondition
         }()
         let isOverlayActive = !["weather", "temperature"].contains(mapOverlayMode)
         let overlayLargeText: String = {
             switch mapOverlayMode {
             case "cloudCover":
+                if isNow {
+                    guard let cc = cityWeather.currentCloudCover else { return "—" }
+                    return "\(Int(cc * 100))%"
+                }
                 guard let cc = forecast.cloudCoverPercent else { return "—" }
                 return "\(cc)%"
             case "precipitation":
+                if isNow {
+                    let isRaining = [.rain, .drizzle, .snow].contains(cityWeather.condition)
+                    return isRaining ? "100%" : "0%"
+                }
                 guard let pc = forecast.precipitationChance else { return "—" }
                 return "\(Int(pc * 100))%"
             case "windSpeed":
+                if isNow {
+                    guard let ws = cityWeather.currentWindSpeed else { return "—" }
+                    return "\(Int(ws))km/h"
+                }
                 guard let ws = forecast.windSpeed else { return "—" }
                 return "\(Int(ws))km/h"
             case "uvIndex":
+                if isNow {
+                    guard let uv = cityWeather.currentUVIndex else { return "—" }
+                    return "\(uv)"
+                }
                 guard let uv = forecast.uvIndex else { return "—" }
                 return "\(uv)"
             case "humidity":
+                if isNow {
+                    guard let hum = cityWeather.currentHumidity else { return "—" }
+                    return "\(Int(hum * 100))%"
+                }
                 guard let hum = forecast.maxHumidity else { return "—" }
                 return "\(Int(hum * 100))%"
             case "visibility":
+                if isNow {
+                    guard let km = cityWeather.currentVisibility else { return "—" }
+                    return km >= 10 ? "\(Int(km))km" : String(format: "%.1fkm", km)
+                }
                 guard let km = forecast.maxVisibility else { return "—" }
                 return km >= 10 ? "\(Int(km))km" : String(format: "%.1fkm", km)
             default: return ""
@@ -512,7 +539,7 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 6) {
                 // Large value: overlay data or temperature
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isOverlayActive ? overlayLargeText : tempUnit.display(forecast.dailyHigh))
+                    Text(isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
                         .font(.custom("AvenirNext-Medium", size: 42, relativeTo: .largeTitle))
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText())
@@ -599,31 +626,36 @@ struct ContentView: View {
     }
 
     private func mapDateSlider(height: CGFloat) -> some View {
-        let totalDays = 10
-        let stepHeight = height / CGFloat(totalDays - 1)
+        let totalPositions = 11 // -1 (Now) through 9
+        let stepHeight = height / CGFloat(totalPositions - 1)
+
+        // Convert between slider position (0...10) and dayOffset (-1...9)
+        func positionToOffset(_ pos: Int) -> Int { pos - 1 }
+        func offsetToPosition(_ offset: Int) -> Int { offset + 1 }
 
         return ZStack(alignment: .topTrailing) {
-            // Today endpoint (top)
+            // Now endpoint (top)
             if isDraggingDateSlider && sliderDragFraction > 0.05 {
-                sliderEndpointLabel(text: localizedString("Today", locale: locale), isWhite: false)
+                sliderEndpointLabel(text: localizedString("Now", locale: locale), isWhite: false)
                     .offset(y: -4)
                     .transition(.opacity)
             }
 
             // Final day endpoint (bottom)
             if isDraggingDateSlider && sliderDragFraction < 0.95 {
-                sliderEndpointLabel(text: sliderDateText(for: totalDays - 1), isWhite: false)
+                sliderEndpointLabel(text: sliderDateText(for: 9), isWhite: false)
                     .offset(y: height - 4)
                     .transition(.opacity)
             }
 
             // Selected day indicator
             HStack(spacing: isDraggingDateSlider ? 6 : 3) {
-                let displayDay = isDraggingDateSlider
-                    ? Int(round(sliderDragFraction * CGFloat(totalDays - 1)))
-                    : selectedDayOffset
+                let displayPos = isDraggingDateSlider
+                    ? Int(round(sliderDragFraction * CGFloat(totalPositions - 1)))
+                    : offsetToPosition(selectedDayOffset)
+                let displayOffset = positionToOffset(max(0, min(totalPositions - 1, displayPos)))
 
-                Text(sliderDateText(for: max(0, min(totalDays - 1, displayDay))))
+                Text(sliderDateText(for: displayOffset))
                     .font(.avenir(isDraggingDateSlider ? .body : .subheadline, weight: .semibold))
                     .foregroundStyle(theme.colors.primaryText)
                     .frame(minWidth: isDraggingDateSlider ? 64 : 52)
@@ -639,7 +671,7 @@ struct ContentView: View {
                     .shadow(color: .black.opacity(0.25), radius: 4, x: -2)
             }
             .animation(.smooth(duration: 0.2), value: isDraggingDateSlider)
-            .offset(y: (isDraggingDateSlider ? sliderDragFraction * CGFloat(totalDays - 1) : CGFloat(selectedDayOffset)) * stepHeight - (isDraggingDateSlider ? 10 : 8))
+            .offset(y: (isDraggingDateSlider ? sliderDragFraction * CGFloat(totalPositions - 1) : CGFloat(offsetToPosition(selectedDayOffset))) * stepHeight - (isDraggingDateSlider ? 10 : 8))
         }
         .animation(.smooth(duration: 0.15), value: selectedDayOffset)
         .frame(height: height)
@@ -647,26 +679,27 @@ struct ContentView: View {
             DragGesture(minimumDistance: 0)
                 .onChanged { value in
                     if !isDraggingDateSlider {
-                        sliderDragStartDay = selectedDayOffset
-                        sliderDragFraction = CGFloat(selectedDayOffset) / CGFloat(totalDays - 1)
+                        sliderDragStartDay = offsetToPosition(selectedDayOffset)
+                        sliderDragFraction = CGFloat(offsetToPosition(selectedDayOffset)) / CGFloat(totalPositions - 1)
                         withAnimation(.easeOut(duration: 0.2)) {
                             isDraggingDateSlider = true
                         }
                     }
                     let fractionalDelta = value.translation.height / height
-                    let startFraction = CGFloat(sliderDragStartDay) / CGFloat(totalDays - 1)
+                    let startFraction = CGFloat(sliderDragStartDay) / CGFloat(totalPositions - 1)
                     sliderDragFraction = max(0, min(1, startFraction + fractionalDelta))
-                    let nearestDay = max(0, min(totalDays - 1, Int(round(sliderDragFraction * CGFloat(totalDays - 1)))))
-                    if nearestDay != selectedDayOffset {
-                        selectedDayOffset = nearestDay
+                    let nearestPos = max(0, min(totalPositions - 1, Int(round(sliderDragFraction * CGFloat(totalPositions - 1)))))
+                    let nearestOffset = positionToOffset(nearestPos)
+                    if nearestOffset != selectedDayOffset {
+                        selectedDayOffset = nearestOffset
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                 }
                 .onEnded { _ in
-                    let snappedDay = Int(round(sliderDragFraction * CGFloat(totalDays - 1)))
-                    let clamped = max(0, min(totalDays - 1, snappedDay))
+                    let snappedPos = Int(round(sliderDragFraction * CGFloat(totalPositions - 1)))
+                    let clampedPos = max(0, min(totalPositions - 1, snappedPos))
                     withAnimation(.smooth(duration: 0.15)) {
-                        selectedDayOffset = clamped
+                        selectedDayOffset = positionToOffset(clampedPos)
                         isDraggingDateSlider = false
                     }
                 }
@@ -689,6 +722,7 @@ struct ContentView: View {
     }
 
     private func sliderDateText(for day: Int) -> String {
+        if day == -1 { return localizedString("Now", locale: locale) }
         if day == 0 { return localizedString("Today", locale: locale) }
         let formatter = DateFormatter()
         formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "dMMM", options: 0, locale: locale)
@@ -697,6 +731,7 @@ struct ContentView: View {
     }
 
     var iOSDateText: String {
+        if selectedDayOffset == -1 { return localizedString("Now", locale: locale) }
         if selectedDayOffset == 0 { return localizedString("Today", locale: locale) }
         let formatter = DateFormatter()
         formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMdEEE", options: 0, locale: locale)
@@ -1600,7 +1635,7 @@ struct ContentView: View {
                 namespace: popupNamespace,
                 onDismiss: {
                     showingCityDetail = false
-                    selectedDayOffset = 0
+                    selectedDayOffset = -1
                 },
                 onAddCity: cityIsInSidebar(city) ? nil : {
                     Task {
@@ -1626,7 +1661,7 @@ struct ContentView: View {
                     showingCityDetail = false
                     showingMapExpandedCard = false
                     tappedCity = nil
-                    selectedDayOffset = 0
+                    selectedDayOffset = -1
                     if selectedTab == 1 {
                         recenterOnAllCities = true
                     }
@@ -1644,7 +1679,7 @@ struct ContentView: View {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
                         showingCityDetail = false
-                        selectedDayOffset = 0
+                        selectedDayOffset = -1
                     } label: {
                         Image(systemName: "chevron.left")
                             .font(.system(size: 15, weight: .medium))
@@ -1727,7 +1762,7 @@ struct ContentView: View {
                 }
                 if !cityIsInSidebar(city) {
                     ToolbarItem(placement: .topBarTrailing) {
-                        let addButtonTint: Color = city.forecast(for: selectedDayOffset).condition == .rain
+                        let addButtonTint: Color = city.forecast(for: max(0, selectedDayOffset)).condition == .rain
                             ? theme.colors.dotDrizzle
                             : theme.colors.accent
                         if countryOverviewActive || radialSearchActive {
@@ -2365,7 +2400,7 @@ struct ContentView: View {
         withAnimation { showPlaybackButton = true }
         isPlaying = true
         if selectedDayOffset >= 9 {
-            selectedDayOffset = 0
+            selectedDayOffset = -1
         }
         playbackTask = Task {
             while !Task.isCancelled && selectedDayOffset < 9 {
@@ -2449,11 +2484,11 @@ struct ContentView: View {
                         fetchingTappedCoordinate = coord
                     }
                     Task {
-                        let placemark = try? await CLGeocoder().reverseGeocodeLocation(
-                            CLLocation(latitude: coord.latitude, longitude: coord.longitude)
-                        ).first
-                        let name = placemark?.locality ?? placemark?.administrativeArea ?? "—"
-                        let country = placemark?.country ?? ""
+                        let request = MKReverseGeocodingRequest(location: CLLocation(latitude: coord.latitude, longitude: coord.longitude))
+                        let mapItem = try? await request?.mapItems.first
+                        let addrRep = mapItem?.addressRepresentations
+                        let name = addrRep?.cityName ?? mapItem?.name ?? "—"
+                        let country = addrRep?.regionName ?? ""
                         let city = City(
                             name: name,
                             country: country,
@@ -2670,17 +2705,30 @@ struct WeatherMarker: View {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
     }
 
+    private var isNow: Bool { dayOffset == -1 }
+
     private var forecast: DailyForecast {
-        cityWeather.forecast(for: dayOffset)
+        cityWeather.forecast(for: max(0, dayOffset))
     }
 
     private var showAsDot: Bool { displayMode == .dot }
     private var showAsCard: Bool { displayMode == .card }
     private var showPrecipitation: Bool { overlayMode == "precipitation" }
 
-    /// Whether the forecast has the data required by the current overlay mode.
+    /// Whether the data required by the current overlay mode is available.
     /// When false the entire marker should be hidden.
     private var hasOverlayData: Bool {
+        if isNow {
+            switch overlayMode {
+            case "cloudCover":    return cityWeather.currentCloudCover != nil
+            case "precipitation": return true // derived from condition
+            case "windSpeed":     return cityWeather.currentWindSpeed != nil
+            case "uvIndex":       return cityWeather.currentUVIndex != nil
+            case "humidity":      return cityWeather.currentHumidity != nil
+            case "visibility":    return cityWeather.currentVisibility != nil
+            default:              return true
+            }
+        }
         switch overlayMode {
         case "cloudCover":    return forecast.cloudCover != nil
         case "precipitation": return forecast.precipitationChance != nil
@@ -2695,32 +2743,58 @@ struct WeatherMarker: View {
     private var overlayPinText: String {
         switch overlayMode {
         case "cloudCover":
+            if isNow {
+                guard let cc = cityWeather.currentCloudCover else { return "—" }
+                return "\(Int(cc * 100))%"
+            }
             guard let cc = forecast.cloudCoverPercent else { return "—" }
             return "\(cc)%"
         case "precipitation":
+            if isNow {
+                let isRaining = [.rain, .drizzle, .snow].contains(cityWeather.condition)
+                return isRaining ? "100%" : "0%"
+            }
             guard let pc = forecast.precipitationChance else { return "—" }
             return "\(Int(pc * 100))%"
         case "windSpeed":
+            if isNow {
+                guard let ws = cityWeather.currentWindSpeed else { return "—" }
+                return "\(Int(ws))km/h"
+            }
             guard let ws = forecast.windSpeed else { return "—" }
-            return "\(Int(ws))"
+            return "\(Int(ws))km/h"
         case "uvIndex":
+            if isNow {
+                guard let uv = cityWeather.currentUVIndex else { return "—" }
+                return "\(uv)"
+            }
             guard let uv = forecast.uvIndex else { return "—" }
             return "\(uv)"
         case "humidity":
+            if isNow {
+                guard let hum = cityWeather.currentHumidity else { return "—" }
+                return "\(Int(hum * 100))%"
+            }
             guard let hum = forecast.maxHumidity else { return "—" }
             return "\(Int(hum * 100))%"
         case "visibility":
+            if isNow {
+                guard let km = cityWeather.currentVisibility else { return "—" }
+                return km >= 10 ? "\(Int(km))" : String(format: "%.1f", km)
+            }
             guard let km = forecast.maxVisibility else { return "—" }
             return km >= 10 ? "\(Int(km))" : String(format: "%.1f", km)
         default:
-            return tempUnit.display(forecast.dailyHigh)
+            return tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh)
         }
     }
 
     private var dotColor: Color {
+        // Temperature overlay: use current temp for "Now", daily high otherwise
+        let tempForColor = isNow ? cityWeather.temperature : forecast.dailyHigh
         // Temperature overlay: dark blue #1579C7 (≤-20°C) → cyan #57D3E5 (0°C) → green #8BBD9F (10°C) → yellow #FDA409 (20°C) → red #FB4368 (≥40°C)
         if overlayMode == "temperature" {
-            let tempC = forecast.dailyHigh
+            let tempC = tempForColor
             if tempC <= 0 {
                 // Dark blue → Cyan: -20 to 0
                 let t = Double(max(0, min(1, (tempC - (-20)) / 20.0)))
@@ -2755,20 +2829,26 @@ struct WeatherMarker: View {
                 )
             }
         }
-        // Cloud cover overlay: white (0%) → dark blue #1579C7 (100%)
+        // Cloud cover overlay: dark blue #1579C7 (0% clear) → white (100% cloudy)
         if overlayMode == "cloudCover" {
-            guard let cloudCoverVal = forecast.cloudCover else { return .gray }
+            let cloudCoverVal: Double? = isNow ? cityWeather.currentCloudCover : forecast.cloudCover
+            guard let cloudCoverVal else { return .gray }
             let cover = CGFloat(cloudCoverVal) // 0.0 (clear) to 1.0 (cloudy)
             return Color(
-                red: 1.0 + Double(cover) * (Double(0x15) / 255.0 - 1.0),
-                green: 1.0 + Double(cover) * (Double(0x79) / 255.0 - 1.0),
-                blue: 1.0 + Double(cover) * (Double(0xC7) / 255.0 - 1.0)
+                red: Double(0x15) / 255.0 + Double(cover) * (1.0 - Double(0x15) / 255.0),
+                green: Double(0x79) / 255.0 + Double(cover) * (1.0 - Double(0x79) / 255.0),
+                blue: Double(0xC7) / 255.0 + Double(cover) * (1.0 - Double(0xC7) / 255.0)
             )
         }
         // Precipitation overlay: white (0%) → cyan #57D3E5 (100%)
         if overlayMode == "precipitation" {
-            guard let precipVal = forecast.precipitationChance else { return .gray }
-            let chance = CGFloat(precipVal) // 0.0 to 1.0
+            let chance: CGFloat
+            if isNow {
+                chance = [.rain, .drizzle, .snow].contains(cityWeather.condition) ? 1.0 : 0.0
+            } else {
+                guard let precipVal = forecast.precipitationChance else { return .gray }
+                chance = CGFloat(precipVal)
+            }
             return Color(
                 red: 1.0 + Double(chance) * (Double(0x57) / 255.0 - 1.0),
                 green: 1.0 + Double(chance) * (Double(0xD3) / 255.0 - 1.0),
@@ -2777,7 +2857,8 @@ struct WeatherMarker: View {
         }
         // Wind speed overlay: white (0 km/h) → yellow #FDA409 (100 km/h)
         if overlayMode == "windSpeed" {
-            guard let ws = forecast.windSpeed else { return .gray }
+            let ws: Double? = isNow ? cityWeather.currentWindSpeed : forecast.windSpeed
+            guard let ws else { return .gray }
             let wind = min(1.0, ws / 100.0)
             return Color(
                 red: 1.0 + wind * (Double(0xFD) / 255.0 - 1.0),
@@ -2787,7 +2868,8 @@ struct WeatherMarker: View {
         }
         // UV index overlay: white (0) → red #FB4368 (11+)
         if overlayMode == "uvIndex" {
-            guard let uvVal = forecast.uvIndex else { return .gray }
+            let uvVal: Int? = isNow ? cityWeather.currentUVIndex : forecast.uvIndex
+            guard let uvVal else { return .gray }
             let uv = min(1.0, Double(uvVal) / 11.0)
             return Color(
                 red: 1.0 + uv * (Double(0xFB) / 255.0 - 1.0),
@@ -2797,7 +2879,8 @@ struct WeatherMarker: View {
         }
         // Humidity overlay: white (0%) → purple #BE9AED (100%)
         if overlayMode == "humidity" {
-            guard let hum = forecast.maxHumidity else { return .gray }
+            let hum: Double? = isNow ? cityWeather.currentHumidity : forecast.maxHumidity
+            guard let hum else { return .gray }
             return Color(
                 red: 1.0 + hum * (Double(0xBE) / 255.0 - 1.0),
                 green: 1.0 + hum * (Double(0x9A) / 255.0 - 1.0),
@@ -2806,13 +2889,18 @@ struct WeatherMarker: View {
         }
         // Visibility overlay: white (0 km) → dark blue #1579C7 (30+ km)
         if overlayMode == "visibility" {
-            guard let visVal = forecast.maxVisibility else { return .gray }
+            let visVal: Double? = isNow ? cityWeather.currentVisibility : forecast.maxVisibility
+            guard let visVal else { return .gray }
             let vis = min(1.0, visVal / 30.0)
             return Color(
                 red: 1.0 + vis * (Double(0x15) / 255.0 - 1.0),
                 green: 1.0 + vis * (Double(0x79) / 255.0 - 1.0),
                 blue: 1.0 + vis * (Double(0xC7) / 255.0 - 1.0)
             )
+        }
+        // Moon icon in "Now" mode uses purple
+        if isNow && baseIcon.contains("moon") {
+            return AppTheme.shared.colors.moonIconColor
         }
         // Default weather dot color
         let base = displayCondition.dotColor
@@ -2823,19 +2911,27 @@ struct WeatherMarker: View {
         return base
     }
 
+    private var baseCondition: AppWeatherCondition {
+        isNow ? cityWeather.condition : forecast.condition
+    }
+
+    private var baseIcon: String {
+        isNow ? cityWeather.weatherIcon : forecast.weatherIcon
+    }
+
     private var displayIcon: String {
         if filterSunny {
             if isPlaying {
                 return "sun.max.fill"
             } else {
-                return passesFilter ? "sun.max.fill" : forecast.weatherIcon
+                return passesFilter ? "sun.max.fill" : baseIcon
             }
         }
         // Use plain cloud for rain/drizzle/snow — the animation shows the precipitation
-        if forecast.condition == .rain || forecast.condition == .drizzle || forecast.condition == .snow {
+        if baseCondition == .rain || baseCondition == .drizzle || baseCondition == .snow {
             return "cloud.fill"
         }
-        return forecast.weatherIcon
+        return baseIcon
     }
 
     private var displayCondition: AppWeatherCondition {
@@ -2843,17 +2939,16 @@ struct WeatherMarker: View {
             return .clear
         }
         // Match animation to the displayed icon, not raw condition
-        // e.g. mostlyCloudy maps to .partlyCloudy but shows cloud.fill (no sun)
         let icon = displayIcon
         if icon == "cloud.fill" {
-            switch forecast.condition {
+            switch baseCondition {
             case .rain: return .rain
             case .drizzle: return .drizzle
             case .snow: return .snow
             default: return .cloudy
             }
         }
-        return forecast.condition
+        return baseCondition
     }
 
     var body: some View {

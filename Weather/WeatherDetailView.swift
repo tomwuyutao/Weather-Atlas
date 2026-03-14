@@ -81,18 +81,19 @@ struct WeatherDetailView: View {
     }
     
     private var forecast: DailyForecast {
-        cityWeather.forecast(for: internalSelectedDay)
+        cityWeather.forecast(for: max(0, internalSelectedDay))
     }
     
-    private var isToday: Bool {
-        internalSelectedDay == 0
+    /// Whether the "Now" mode is selected (-1), showing current weather
+    private var isNow: Bool {
+        internalSelectedDay == -1
     }
     
     /// For today, show current weather icon; for future days, show forecast icon
     /// Use plain cloud icon when animation shows precipitation
     private var detailDisplayIcon: String {
-        let baseCondition = isToday ? cityWeather.condition : forecast.condition
-        let baseIcon = isToday ? cityWeather.weatherIcon : forecast.weatherIcon
+        let baseCondition = isNow ? cityWeather.condition : forecast.condition
+        let baseIcon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
         if baseCondition == .rain || baseCondition == .drizzle || baseCondition == .snow {
             return "cloud.fill"
         }
@@ -101,12 +102,12 @@ struct WeatherDetailView: View {
     
     /// For today, show current condition; for future days, show forecast condition
     private var detailDisplayCondition: AppWeatherCondition {
-        isToday ? cityWeather.condition : forecast.condition
+        isNow ? cityWeather.condition : forecast.condition
     }
     
     /// Whether it's currently nighttime in this city (outside sunrise-sunset)
     private var isCurrentlyNight: Bool {
-        guard isToday,
+        guard isNow,
               let sunrise = forecast.sunrise,
               let sunset = forecast.sunset else { return false }
         let now = Date()
@@ -199,7 +200,7 @@ struct WeatherDetailView: View {
                             // Large decorative icon — right, slightly cropped
                             Image(systemName: detailDisplayIcon)
                                 .font(.system(size: 180))
-                                .foregroundStyle(detailDisplayIcon.contains("moon") ? AppTheme.shared.colors.moonIconColor : .white)
+                                .foregroundStyle(.white)
                                 .contentTransition(.symbolEffect(.replace))
                                 .opacity(0.35)
                                 .animation(.smooth(duration: 0.3), value: internalSelectedDay)
@@ -221,7 +222,7 @@ struct WeatherDetailView: View {
 
                             // Temperature + condition — top left, below back button
                             VStack(alignment: .leading, spacing: 6) {
-                                if isToday {
+                                if isNow {
                                     // Today: show current temperature
                                     HStack(alignment: .firstTextBaseline, spacing: 0) {
                                         Text(tempUnit.display(cityWeather.temperature))
@@ -229,20 +230,6 @@ struct WeatherDetailView: View {
                                             .dynamicTypeSize(...DynamicTypeSize.large)
                                             .contentTransition(.numericText())
                                     }
-                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-
-                                    // High/Low line
-                                    HStack(spacing: 0) {
-                                        Text(tempUnit.display(forecast.dailyHigh))
-                                            .font(.avenir(.title3, weight: .medium))
-                                            .dynamicTypeSize(...DynamicTypeSize.large)
-                                        Text(" ")
-                                        Text(tempUnit.display(forecast.dailyLow))
-                                            .font(.avenir(.title3, weight: .medium))
-                                            .dynamicTypeSize(...DynamicTypeSize.large)
-                                            .opacity(0.6)
-                                    }
-                                    .contentTransition(.numericText())
                                     .animation(.smooth(duration: 0.3), value: internalSelectedDay)
 
                                     Text(detailDisplayCondition.localizedDisplayName(locale: locale))
@@ -287,11 +274,11 @@ struct WeatherDetailView: View {
                         HStack(spacing: 14) {
                             VStack(alignment: .leading, spacing: 2) {
                                 HStack(alignment: .firstTextBaseline, spacing: 0) {
-                                    Text(tempUnit.display(isToday ? cityWeather.temperature : forecast.dailyHigh))
+                                    Text(tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
                                         .font(.avenir(.title, weight: .bold))
                                         .foregroundStyle(.white)
                                         .contentTransition(.numericText())
-                                    if !isToday {
+                                    if !isNow {
                                         Text(" ")
                                             .font(.avenir(.title, weight: .bold))
                                         Text(tempUnit.display(forecast.dailyLow))
@@ -396,8 +383,8 @@ struct WeatherDetailView: View {
                             .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                             .padding(.top, 28)
 
-                        if isToday {
-                            // Today: current temperature
+                        if isNow {
+                            // Now: current temperature only, no high/low
                             Text(tempUnit.display(cityWeather.temperature))
                                 .font(.avenir(.largeTitle, weight: .bold))
                                 .dynamicTypeSize(...DynamicTypeSize.large)
@@ -406,22 +393,8 @@ struct WeatherDetailView: View {
                                 .padding(.top, 14)
                                 .padding(.trailing, 4)
                                 .offset(x: 5)
-                            
-                            // High/Low line
-                            HStack(spacing: 0) {
-                                Text(tempUnit.display(forecast.dailyHigh))
-                                Text(" ")
-                                Text(tempUnit.display(forecast.dailyLow))
-                                    .opacity(0.6)
-                            }
-                            .font(.avenir(.body, weight: .medium))
-                            .foregroundStyle(.secondary)
-                            .dynamicTypeSize(...DynamicTypeSize.large)
-                            .contentTransition(.numericText())
-                            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                            .padding(.top, 4)
                         } else {
-                            // Future days: high with low at 60% opacity
+                            // Today/future: high with low at 60% opacity
                             HStack(alignment: .firstTextBaseline, spacing: 0) {
                                 Text(tempUnit.display(forecast.dailyHigh))
                                     .font(.avenir(.largeTitle, weight: .bold))
@@ -448,11 +421,37 @@ struct WeatherDetailView: View {
                     ScrollViewReader { scrollProxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 0) {
+                            // "Now" box before daily forecasts
+                            let r: CGFloat = 8
+                            VStack(spacing: 4) {
+                                Image(systemName: cityWeather.weatherIcon)
+                                    .font(.body)
+                                    .weatherIconStyle(for: cityWeather.weatherIcon)
+                                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                                    .frame(height: 22)
+                                Text(localizedString("Now", locale: locale))
+                                    .font(.avenir(.caption, weight: internalSelectedDay == -1 ? .semibold : .medium))
+                                    .foregroundStyle(internalSelectedDay == -1 ? .primary : .secondary)
+                            }
+                            .frame(minWidth: 50)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .background(
+                                UnevenRoundedRectangle(cornerRadii: .init(topLeading: r, bottomLeading: r))
+                                    .fill(internalSelectedDay == -1 ? AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06) : AppTheme.shared.colors.listCardFill)
+                            )
+                            .id(-1)
+                            .onTapGesture {
+                                swipeDirection = -1 >= internalSelectedDay ? .forward : .backward
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    internalSelectedDay = -1
+                                }
+                            }
+                            
                             ForEach(Array(cityWeather.dailyForecasts.enumerated()), id: \.element.id) { index, dailyForecast in
-                                let r: CGFloat = 8
                                 let cr = RectangleCornerRadii(
-                                    topLeading: index == 0 ? r : 0,
-                                    bottomLeading: index == 0 ? r : 0,
+                                    topLeading: 0,
+                                    bottomLeading: 0,
                                     bottomTrailing: index == lastIndex ? r : 0,
                                     topTrailing: index == lastIndex ? r : 0
                                 )
@@ -543,7 +542,7 @@ struct WeatherDetailView: View {
                             guard abs(horizontal) > abs(vertical) else { return }
                             isSwipingDays = true
                             // Resist dragging if at boundary
-                            let atStart = internalSelectedDay <= 0 && horizontal > 0
+                            let atStart = internalSelectedDay <= -1 && horizontal > 0
                             let atEnd = internalSelectedDay >= 9 && horizontal < 0
                             if atStart || atEnd {
                                 chartDragOffset = horizontal * 0.2
@@ -565,7 +564,7 @@ struct WeatherDetailView: View {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     if horizontal < 0 && internalSelectedDay < 9 {
                                         internalSelectedDay += 1
-                                    } else if horizontal > 0 && internalSelectedDay > 0 {
+                                    } else if horizontal > 0 && internalSelectedDay > -1 {
                                         internalSelectedDay -= 1
                                     }
                                     chartDragOffset = 0
@@ -587,7 +586,9 @@ struct WeatherDetailView: View {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
                     WeatherStatCard(
                         label: "Temperature",
-                        value: tempUnit.displaySlash(low: forecast.dailyLow, high: forecast.dailyHigh),
+                        value: isNow
+                            ? tempUnit.display(cityWeather.temperature)
+                            : tempUnit.displaySlash(low: forecast.dailyLow, high: forecast.dailyHigh),
                         isSelected: chartMetric == .temperature,
                         valueOffset: 3
                     )
@@ -597,7 +598,21 @@ struct WeatherDetailView: View {
                         }
                     }
 
-                    if let feelsLike = feelsLikeValue {
+                    if isNow {
+                        if let fl = cityWeather.currentFeelsLike {
+                            WeatherStatCard(
+                                label: "Feels Like",
+                                value: tempUnit.display(fl),
+                                isSelected: chartMetric == .feelsLike,
+                                valueOffset: 3
+                            )
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    chartMetric = .feelsLike
+                                }
+                            }
+                        }
+                    } else if let feelsLike = feelsLikeValue {
                         WeatherStatCard(
                             label: "Feels Like",
                             value: feelsLike,
@@ -613,7 +628,7 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "Cloud Cover",
-                        value: forecast.cloudCover.map { "\(Int($0 * 100))%" } ?? "—",
+                        value: (isNow ? cityWeather.currentCloudCover : forecast.cloudCover).map { "\(Int($0 * 100))%" } ?? "—",
                         isSelected: chartMetric == .cloudCover
                     )
                     .onTapGesture {
@@ -624,7 +639,9 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "Precipitation",
-                        value: forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—",
+                        value: isNow
+                            ? ([.rain, .drizzle, .snow].contains(cityWeather.condition) ? "100%" : "0%")
+                            : (forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—"),
                         isSelected: chartMetric == .precipitation
                     )
                     .onTapGesture {
@@ -635,7 +652,7 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "Wind Speed",
-                        value: forecast.windSpeed.map { "\(Int($0)) km/h" } ?? "—",
+                        value: (isNow ? cityWeather.currentWindSpeed : forecast.windSpeed).map { "\(Int($0)) km/h" } ?? "—",
                         isSelected: chartMetric == .windSpeed
                     )
                     .onTapGesture {
@@ -646,7 +663,7 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "UV Index",
-                        value: forecast.uvIndex.map { "\($0)" } ?? "—",
+                        value: (isNow ? cityWeather.currentUVIndex : forecast.uvIndex).map { "\($0)" } ?? "—",
                         isSelected: chartMetric == .uvIndex
                     )
                     .onTapGesture {
@@ -657,7 +674,7 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "Humidity",
-                        value: forecast.maxHumidity.map { "\(Int($0 * 100))%" } ?? "—",
+                        value: (isNow ? cityWeather.currentHumidity : forecast.maxHumidity).map { "\(Int($0 * 100))%" } ?? "—",
                         isSelected: chartMetric == .humidity
                     )
                     .onTapGesture {
@@ -668,7 +685,7 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "Visibility",
-                        value: forecast.maxVisibility.map { distUnit.display($0) } ?? "—",
+                        value: (isNow ? cityWeather.currentVisibility : forecast.maxVisibility).map { distUnit.display($0) } ?? "—",
                         isSelected: chartMetric == .visibility
                     )
                     .onTapGesture {
@@ -856,6 +873,9 @@ struct WeatherDetailView: View {
         cityCalendar.timeZone = cityWeather.timeZone
         let cityToday = cityCalendar.startOfDay(for: Date())
         
+        if internalSelectedDay == -1 {
+            return localizedString("Now", locale: locale)
+        }
         if let date = cityCalendar.date(byAdding: .day, value: internalSelectedDay, to: cityToday) {
             if internalSelectedDay == 0 {
                 return localizedString("Today", locale: locale)
@@ -1118,7 +1138,6 @@ struct HourlyTimelineChart: View {
 
                 // Layer 2: Dots on line points
                 ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, forecast in
-                    let pastHour = isPastHour(forecast.hour)
                     Circle()
                         .fill(lineColor)
                         .frame(width: 10, height: 10)

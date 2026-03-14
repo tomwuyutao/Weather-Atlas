@@ -21,41 +21,71 @@ struct CityRow: View {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
     }
     
+    private var isNow: Bool { dayOffset == -1 }
+
     private var forecast: DailyForecast {
-        cityWeather.forecast(for: dayOffset)
+        cityWeather.forecast(for: max(0, dayOffset))
+    }
+
+    private var currentIcon: String {
+        isNow ? cityWeather.weatherIcon : forecast.weatherIcon
     }
     
     private var displayValue: String {
         switch overlayMode {
         case "cloudCover":
+            if isNow {
+                guard let cc = cityWeather.currentCloudCover else { return "—" }
+                return "\(Int(cc * 100))%"
+            }
             guard let cc = forecast.cloudCoverPercent else { return "—" }
             return "\(cc)%"
         case "precipitation":
+            if isNow {
+                let isRaining = [.rain, .drizzle, .snow].contains(cityWeather.condition)
+                return isRaining ? "100%" : "0%"
+            }
             guard let pc = forecast.precipitationChance else { return "—" }
             return "\(Int(pc * 100))%"
         case "windSpeed":
+            if isNow {
+                guard let ws = cityWeather.currentWindSpeed else { return "—" }
+                return "\(Int(ws)) km/h"
+            }
             guard let ws = forecast.windSpeed else { return "—" }
             return "\(Int(ws)) km/h"
         case "uvIndex":
+            if isNow {
+                guard let uv = cityWeather.currentUVIndex else { return "—" }
+                return "\(uv)"
+            }
             guard let uv = forecast.uvIndex else { return "—" }
             return "\(uv)"
         case "humidity":
+            if isNow {
+                guard let hum = cityWeather.currentHumidity else { return "—" }
+                return "\(Int(hum * 100))%"
+            }
             guard let hum = forecast.maxHumidity else { return "—" }
             return "\(Int(hum * 100))%"
         case "visibility":
+            if isNow {
+                guard let km = cityWeather.currentVisibility else { return "—" }
+                return km >= 10 ? "\(Int(km)) km" : String(format: "%.1f km", km)
+            }
             guard let km = forecast.maxVisibility else { return "—" }
             return km >= 10 ? "\(Int(km)) km" : String(format: "%.1f km", km)
         default:
-            return tempUnit.display(forecast.dailyHigh)
+            return tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh)
         }
     }
     
     var body: some View {
         HStack(spacing: 12) {
             // Weather icon - always shown
-            Image(systemName: forecast.weatherIcon)
+            Image(systemName: currentIcon)
                 .font(.title3)
-                .weatherIconStyle(for: forecast.weatherIcon)
+                .weatherIconStyle(for: currentIcon)
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 .frame(width: 32, height: 28)
             

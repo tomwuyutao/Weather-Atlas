@@ -314,10 +314,10 @@ extension ContentView {
 
     @ViewBuilder
     func gridCell(for cityWeather: CityWeather) -> some View {
-        let forecast = cityWeather.forecast(for: selectedDayOffset)
-        let isToday = selectedDayOffset == 0
-        let displayIcon = isToday ? cityWeather.weatherIcon : forecast.weatherIcon
-        let displayTemp = isToday ? cityWeather.temperature : forecast.dailyHigh
+        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
+        let isNow = selectedDayOffset == -1
+        let displayIcon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
+        let displayTemp = isNow ? cityWeather.temperature : forecast.dailyHigh
         VStack(spacing: 8) {
             Image(systemName: displayIcon)
                 .font(.title2)
@@ -496,7 +496,7 @@ extension ContentView {
                         iOSPreviousDayOffset = selectedDayOffset
                         selectedDayOffset += 1
                     }
-                } else if horizontal > 0 && selectedDayOffset > 0 {
+                } else if horizontal > 0 && selectedDayOffset > -1 {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         iOSPreviousDayOffset = selectedDayOffset
                         selectedDayOffset -= 1
@@ -595,10 +595,10 @@ extension ContentView {
 
                     ForEach(iOSFilteredCities) { cityWeather in
                         HStack {
-                            let isToday = selectedDayOffset == 0
-                            let forecast = cityWeather.forecast(for: selectedDayOffset)
-                            let displayIcon = isToday ? cityWeather.weatherIcon : forecast.weatherIcon
-                            let displayTemp = isToday ? cityWeather.temperature : forecast.dailyHigh
+                            let isNow = selectedDayOffset == -1
+                            let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
+                            let displayIcon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
+                            let displayTemp = isNow ? cityWeather.temperature : forecast.dailyHigh
                             Text(cityWeather.city.localizedName(locale: locale))
                                 .font(.avenir(.body, weight: .medium))
                             Spacer()
@@ -709,7 +709,7 @@ extension ContentView {
         }
         if filterSunny {
             cities = cities.filter {
-                let forecast = $0.forecast(for: selectedDayOffset)
+                let forecast = $0.forecast(for: max(0, selectedDayOffset))
                 return forecast.condition == .clear
             }
         }

@@ -19,7 +19,7 @@ struct DesktopDateBar: View {
     @State private var playbackTask: Task<Void, Never>?
     
     private var selectedDate: Date {
-        Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
+        Calendar.current.date(byAdding: .day, value: max(0, selectedDayOffset), to: Date()) ?? Date()
     }
     
     private var dateRange: ClosedRange<Date> {
@@ -27,6 +27,7 @@ struct DesktopDateBar: View {
     }
     
     private var shortDateWithDayText: String {
+        if selectedDayOffset == -1 { return localizedString("Now", locale: locale) }
         if selectedDayOffset == 0 { return localizedString("Today", locale: locale) }
         let formatter = DateFormatter()
         formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMdEEE", options: 0, locale: locale)
@@ -66,7 +67,7 @@ struct DesktopDateBar: View {
                 // Previous day button
                 Button {
                     stopPlayback()
-                    if selectedDayOffset > 0 {
+                    if selectedDayOffset > -1 {
                         withAnimation(.smooth(duration: 0.2)) {
                             selectedDayOffset -= 1
                         }
@@ -74,14 +75,14 @@ struct DesktopDateBar: View {
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
+                        .foregroundStyle(selectedDayOffset > -1 ? .primary : .tertiary)
                         .frame(width: 28, height: 28)
                 }
                 .buttonStyle(.plain)
                 .simultaneousGesture(LongPressGesture().onEnded { _ in
                     stopPlayback()
                     withAnimation(.smooth(duration: 0.3)) {
-                        selectedDayOffset = 0
+                        selectedDayOffset = -1
                     }
                 })
                 
@@ -181,7 +182,7 @@ struct DesktopDateBar: View {
         isPlaying = true
         // If already at the end, restart from the beginning
         if selectedDayOffset >= 9 {
-            selectedDayOffset = 0
+            selectedDayOffset = -1
         }
         playbackTask = Task {
             while !Task.isCancelled && selectedDayOffset < 9 {

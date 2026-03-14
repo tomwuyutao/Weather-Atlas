@@ -616,9 +616,16 @@ class WeatherService {
         let currentCondition = mapWeatherKitCondition(weather.currentWeather.condition)
         let currentSymbol = weather.currentWeather.symbolName
         
-        // Daily forecasts
+        // Current weather overlay data
+        let currentFeelsLike = weather.currentWeather.apparentTemperature.converted(to: .celsius).value
         let currentVisibilityKm = weather.currentWeather.visibility.converted(to: .kilometers).value
         let currentHumidity = weather.currentWeather.humidity
+        let currentWindSpeedKmh = weather.currentWeather.wind.speed.converted(to: .kilometersPerHour).value
+        let currentUV = weather.currentWeather.uvIndex.value
+        let cca = weather.currentWeather.cloudCoverByAltitude
+        let currentCloudCover = min(1.0, cca.low + cca.medium + cca.high)
+        
+        // Daily forecasts
         let dailyForecasts = weather.dailyForecast.forecast.prefix(10).enumerated().map { (index, day) -> DailyForecast in
             let daySymbol = day.symbolName
             let dayCondition = mapWeatherKitCondition(day.condition)
@@ -668,7 +675,13 @@ class WeatherService {
             temperature: currentTemp,
             symbolName: currentSymbol,
             dailyForecasts: Array(dailyForecasts),
-            timeZone: timeZone
+            timeZone: timeZone,
+            currentFeelsLike: currentFeelsLike,
+            currentCloudCover: currentCloudCover,
+            currentWindSpeed: currentWindSpeedKmh,
+            currentUVIndex: currentUV,
+            currentHumidity: currentHumidity,
+            currentVisibility: currentVisibilityKm
         )
     }
     
@@ -939,6 +952,14 @@ struct CityWeather: Identifiable, Hashable {
     let dailyForecasts: [DailyForecast]
     let timeZone: TimeZone
     
+    // Current weather overlay data (for "Now" mode)
+    var currentFeelsLike: Double?       // °C
+    var currentCloudCover: Double?
+    var currentWindSpeed: Double?       // km/h
+    var currentUVIndex: Int?
+    var currentHumidity: Double?        // 0-1
+    var currentVisibility: Double?      // km
+    
     // Hashable conformance
     static func == (lhs: CityWeather, rhs: CityWeather) -> Bool {
         lhs.id == rhs.id
@@ -951,6 +972,19 @@ struct CityWeather: Identifiable, Hashable {
     // Get forecast for a specific day
     func forecast(for dayOffset: Int) -> DailyForecast {
         dailyForecasts.first { $0.dayOffset == dayOffset } ?? dailyForecasts[0]
+    }
+    
+    /// Whether current weather data is available for the given overlay mode ("Now" mode).
+    func hasCurrentData(forOverlay overlayMode: String) -> Bool {
+        switch overlayMode {
+        case "cloudCover":    return currentCloudCover != nil
+        case "precipitation": return true // derived from condition
+        case "windSpeed":     return currentWindSpeed != nil
+        case "uvIndex":       return currentUVIndex != nil
+        case "humidity":      return currentHumidity != nil
+        case "visibility":    return currentVisibility != nil
+        default:              return true
+        }
     }
     
     var weatherIcon: String {
@@ -1276,6 +1310,12 @@ struct CachedCityWeather: Codable {
     let symbolName: String
     let dailyForecasts: [CachedDailyForecast]
     let timeZoneIdentifier: String?
+    let currentFeelsLike: Double?
+    let currentCloudCover: Double?
+    let currentWindSpeed: Double?
+    let currentUVIndex: Int?
+    let currentHumidity: Double?
+    let currentVisibility: Double?
     
     init(from cityWeather: CityWeather) {
         self.cityId = cityWeather.city.id
@@ -1288,6 +1328,12 @@ struct CachedCityWeather: Codable {
         self.symbolName = cityWeather.symbolName
         self.dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
         self.timeZoneIdentifier = cityWeather.timeZone.identifier
+        self.currentFeelsLike = cityWeather.currentFeelsLike
+        self.currentCloudCover = cityWeather.currentCloudCover
+        self.currentWindSpeed = cityWeather.currentWindSpeed
+        self.currentUVIndex = cityWeather.currentUVIndex
+        self.currentHumidity = cityWeather.currentHumidity
+        self.currentVisibility = cityWeather.currentVisibility
     }
     
     init(from decoder: Decoder) throws {
@@ -1302,6 +1348,12 @@ struct CachedCityWeather: Codable {
         symbolName = try container.decode(String.self, forKey: .symbolName)
         dailyForecasts = try container.decode([CachedDailyForecast].self, forKey: .dailyForecasts)
         timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
+        currentFeelsLike = try container.decodeIfPresent(Double.self, forKey: .currentFeelsLike)
+        currentCloudCover = try container.decodeIfPresent(Double.self, forKey: .currentCloudCover)
+        currentWindSpeed = try container.decodeIfPresent(Double.self, forKey: .currentWindSpeed)
+        currentUVIndex = try container.decodeIfPresent(Int.self, forKey: .currentUVIndex)
+        currentHumidity = try container.decodeIfPresent(Double.self, forKey: .currentHumidity)
+        currentVisibility = try container.decodeIfPresent(Double.self, forKey: .currentVisibility)
     }
     
     func toCityWeather() -> CityWeather {
@@ -1316,7 +1368,13 @@ struct CachedCityWeather: Codable {
             temperature: temperature,
             symbolName: symbolName,
             dailyForecasts: forecasts,
-            timeZone: tz
+            timeZone: tz,
+            currentFeelsLike: currentFeelsLike,
+            currentCloudCover: currentCloudCover,
+            currentWindSpeed: currentWindSpeed,
+            currentUVIndex: currentUVIndex,
+            currentHumidity: currentHumidity,
+            currentVisibility: currentVisibility
         )
     }
 }

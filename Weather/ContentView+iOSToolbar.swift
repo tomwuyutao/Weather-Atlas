@@ -468,7 +468,7 @@ extension ContentView {
     var iPadDateSwitcherToolbarContent: some View {
         HStack(spacing: 6) {
             Button {
-                if selectedDayOffset > 0 {
+                if selectedDayOffset > -1 {
                     withAnimation(.smooth(duration: 0.2)) {
                         selectedDayOffset -= 1
                     }
@@ -476,7 +476,7 @@ extension ContentView {
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
+                    .foregroundStyle(selectedDayOffset > -1 ? .primary : .tertiary)
             }
             .buttonStyle(.plain)
 
@@ -495,7 +495,7 @@ extension ContentView {
                     "",
                     selection: Binding(
                         get: {
-                            Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
+                            Calendar.current.date(byAdding: .day, value: max(0, selectedDayOffset), to: Date()) ?? Date()
                         },
                         set: { newDate in
                             let calendar = Calendar.current
@@ -539,11 +539,11 @@ extension ContentView {
         HStack(spacing: 0) {
             Image(systemName: "chevron.left")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(selectedDayOffset > 0 ? .primary : .tertiary)
+                .foregroundStyle(selectedDayOffset > -1 ? .primary : .tertiary)
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
                 .onTapGesture {
-                    if selectedDayOffset > 0 {
+                    if selectedDayOffset > -1 {
                         withAnimation(.smooth(duration: 0.2)) {
                             selectedDayOffset -= 1
                         }
@@ -570,7 +570,7 @@ extension ContentView {
                         "",
                         selection: Binding(
                             get: {
-                                Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
+                                Calendar.current.date(byAdding: .day, value: max(0, selectedDayOffset), to: Date()) ?? Date()
                             },
                             set: { newDate in
                                 let calendar = Calendar.current

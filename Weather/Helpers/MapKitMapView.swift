@@ -282,7 +282,7 @@ struct MapKitMapView: View {
 
     private func passesFilter(_ cityWeather: CityWeather) -> Bool {
         guard filterSunny else { return true }
-        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
         return forecast.condition == .clear
     }
 
@@ -364,8 +364,10 @@ private struct AnnotationsOverlay: View {
         GeometryReader { geometry in
             // Collect on-screen marker positions for collision detection
             let screenPositions: [(id: UUID, pt: CGPoint)] = cities.compactMap { cityWeather in
-                guard passesFilter(cityWeather),
-                      cityWeather.forecast(for: selectedDayOffset).hasData(forOverlay: overlayMode) else { return nil }
+                let hasData = selectedDayOffset == -1
+                    ? cityWeather.hasCurrentData(forOverlay: overlayMode)
+                    : cityWeather.forecast(for: selectedDayOffset).hasData(forOverlay: overlayMode)
+                guard passesFilter(cityWeather), hasData else { return nil }
                 guard let pt = proxy.convert(
                     CLLocationCoordinate2D(
                         latitude: cityWeather.city.latitude,
@@ -381,8 +383,11 @@ private struct AnnotationsOverlay: View {
             let markerMode: MarkerDisplayMode = forceDotsOnly ? .dot : computeDisplayMode(screenPositions)
 
             ForEach(cities) { cityWeather in
+                let hasOverlay = selectedDayOffset == -1
+                    ? cityWeather.hasCurrentData(forOverlay: overlayMode)
+                    : cityWeather.forecast(for: max(0, selectedDayOffset)).hasData(forOverlay: overlayMode)
                 if passesFilter(cityWeather),
-                   cityWeather.forecast(for: selectedDayOffset).hasData(forOverlay: overlayMode),
+                   hasOverlay,
                    let screenPt = proxy.convert(
                     CLLocationCoordinate2D(
                         latitude: cityWeather.city.latitude,
@@ -418,7 +423,7 @@ private struct AnnotationsOverlay: View {
 
     private func passesFilter(_ cityWeather: CityWeather) -> Bool {
         guard filterSunny else { return true }
-        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
         return forecast.condition == .clear
     }
 
@@ -776,10 +781,11 @@ private struct FetchingPulseOverlay: View {
         guard let city = tappedCity else {
             return AppTheme.shared.colors.accent
         }
-        let forecast = city.forecast(for: selectedDayOffset)
+        let forecast = city.forecast(for: max(0, selectedDayOffset))
+        let isNow = selectedDayOffset == -1
 
         if overlayMode == "temperature" {
-            let tempC = forecast.dailyHigh
+            let tempC = isNow ? city.temperature : forecast.dailyHigh
             if tempC <= 0 {
                 let t = Double(max(0, min(1, (tempC - (-20)) / 20.0)))
                 return Color(
@@ -811,17 +817,23 @@ private struct FetchingPulseOverlay: View {
             }
         }
         if overlayMode == "cloudCover" {
-            guard let cloudCoverVal = forecast.cloudCover else { return .gray }
+            let cloudCoverVal: Double? = isNow ? city.currentCloudCover : forecast.cloudCover
+            guard let cloudCoverVal else { return .gray }
             let cover = CGFloat(cloudCoverVal)
             return Color(
-                red: 1.0 + Double(cover) * (Double(0x15) / 255.0 - 1.0),
-                green: 1.0 + Double(cover) * (Double(0x79) / 255.0 - 1.0),
-                blue: 1.0 + Double(cover) * (Double(0xC7) / 255.0 - 1.0)
+                red: Double(0x15) / 255.0 + Double(cover) * (1.0 - Double(0x15) / 255.0),
+                green: Double(0x79) / 255.0 + Double(cover) * (1.0 - Double(0x79) / 255.0),
+                blue: Double(0xC7) / 255.0 + Double(cover) * (1.0 - Double(0xC7) / 255.0)
             )
         }
         if overlayMode == "precipitation" {
-            guard let precipVal = forecast.precipitationChance else { return .gray }
-            let chance = CGFloat(precipVal)
+            let chance: CGFloat
+            if isNow {
+                chance = [.rain, .drizzle, .snow].contains(city.condition) ? 1.0 : 0.0
+            } else {
+                guard let precipVal = forecast.precipitationChance else { return .gray }
+                chance = CGFloat(precipVal)
+            }
             return Color(
                 red: 1.0 + Double(chance) * (Double(0x57) / 255.0 - 1.0),
                 green: 1.0 + Double(chance) * (Double(0xD3) / 255.0 - 1.0),
@@ -829,7 +841,8 @@ private struct FetchingPulseOverlay: View {
             )
         }
         if overlayMode == "windSpeed" {
-            guard let ws = forecast.windSpeed else { return .gray }
+            let ws: Double? = isNow ? city.currentWindSpeed : forecast.windSpeed
+            guard let ws else { return .gray }
             let wind = min(1.0, ws / 100.0)
             return Color(
                 red: 1.0 + wind * (Double(0xFD) / 255.0 - 1.0),
@@ -838,7 +851,8 @@ private struct FetchingPulseOverlay: View {
             )
         }
         if overlayMode == "uvIndex" {
-            guard let uvVal = forecast.uvIndex else { return .gray }
+            let uvVal: Int? = isNow ? city.currentUVIndex : forecast.uvIndex
+            guard let uvVal else { return .gray }
             let uv = min(1.0, Double(uvVal) / 11.0)
             return Color(
                 red: 1.0 + uv * (Double(0xFB) / 255.0 - 1.0),
@@ -847,7 +861,8 @@ private struct FetchingPulseOverlay: View {
             )
         }
         if overlayMode == "humidity" {
-            guard let hum = forecast.maxHumidity else { return .gray }
+            let hum: Double? = isNow ? city.currentHumidity : forecast.maxHumidity
+            guard let hum else { return .gray }
             return Color(
                 red: 1.0 + hum * (Double(0xBE) / 255.0 - 1.0),
                 green: 1.0 + hum * (Double(0x9A) / 255.0 - 1.0),
@@ -855,13 +870,18 @@ private struct FetchingPulseOverlay: View {
             )
         }
         if overlayMode == "visibility" {
-            guard let visVal = forecast.maxVisibility else { return .gray }
+            let visVal: Double? = isNow ? city.currentVisibility : forecast.maxVisibility
+            guard let visVal else { return .gray }
             let vis = min(1.0, visVal / 30.0)
             return Color(
                 red: 1.0 + vis * (Double(0x15) / 255.0 - 1.0),
                 green: 1.0 + vis * (Double(0x79) / 255.0 - 1.0),
                 blue: 1.0 + vis * (Double(0xC7) / 255.0 - 1.0)
             )
+        }
+        // Moon icon in "Now" mode uses purple
+        if selectedDayOffset == -1, let city = tappedCity, city.weatherIcon.contains("moon") {
+            return AppTheme.shared.colors.moonIconColor
         }
         // Default: weather condition dot color
         let base = forecast.condition.dotColor
