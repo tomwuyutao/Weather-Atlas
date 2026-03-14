@@ -21,6 +21,7 @@ struct WeatherDetailView: View {
     let isInSidebar: Bool
     let showCloudCover: Bool
     var previewCurrentHour: Int? = nil
+    var initialChartMetric: ChartMetric? = nil
     
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -60,7 +61,7 @@ struct WeatherDetailView: View {
     }
 
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onAddCityToList: ((CityListID) -> Void)? = nil, availableLists: [CityListID] = [], onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil) {
+    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onAddCityToList: ((CityListID) -> Void)? = nil, availableLists: [CityListID] = [], onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil, initialChartMetric: ChartMetric? = nil) {
         self.cityWeather = cityWeather
         self._selectedDayOffset = selectedDayOffset
         self.namespace = namespace
@@ -73,8 +74,10 @@ struct WeatherDetailView: View {
         self.isInSidebar = isInSidebar
         self.showCloudCover = showCloudCover
         self.previewCurrentHour = previewCurrentHour
+        self.initialChartMetric = initialChartMetric
         self._internalSelectedDay = State(initialValue: selectedDayOffset.wrappedValue)
         self._previousDay = State(initialValue: selectedDayOffset.wrappedValue)
+        self._chartMetric = State(initialValue: initialChartMetric ?? .temperature)
     }
     
     private var forecast: DailyForecast {
@@ -515,7 +518,7 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "Wind Speed",
-                        value: "\(Int(forecast.windSpeed ?? 0)) km/h",
+                        value: forecast.windSpeed.map { "\(Int($0)) km/h" } ?? "—",
                         isSelected: chartMetric == .windSpeed
                     )
                     .onTapGesture {
@@ -526,7 +529,7 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "UV Index",
-                        value: "\(forecast.uvIndex ?? 0)",
+                        value: forecast.uvIndex.map { "\($0)" } ?? "—",
                         isSelected: chartMetric == .uvIndex
                     )
                     .onTapGesture {
@@ -537,7 +540,7 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "Humidity",
-                        value: "\(Int((forecast.maxHumidity ?? 0) * 100))%",
+                        value: forecast.maxHumidity.map { "\(Int($0 * 100))%" } ?? "—",
                         isSelected: chartMetric == .humidity
                     )
                     .onTapGesture {
@@ -548,7 +551,7 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "Visibility",
-                        value: distUnit.display(forecast.maxVisibility ?? 10),
+                        value: forecast.maxVisibility.map { distUnit.display($0) } ?? "—",
                         isSelected: chartMetric == .visibility
                     )
                     .onTapGesture {
@@ -1010,10 +1013,10 @@ struct HourlyTimelineChart: View {
                                 case .feelsLike:     return tempUnit.display(forecast.apparentTemperature)
                                 case .cloudCover:    return "\(forecast.cloudCoverPercent)%"
                                 case .precipitation: return "\(Int(forecast.precipitationChance * 100))%"
-                                case .windSpeed:     return "\(Int(forecast.windSpeed ?? 0))"
-                                case .uvIndex:       return "\(forecast.uvIndex ?? 0)"
-                                case .humidity:      return "\(Int((forecast.humidity ?? 0) * 100))%"
-                                case .visibility:    return "\(Int(forecast.visibility ?? 10))"
+                                case .windSpeed:     return forecast.windSpeed.map { "\(Int($0))" } ?? "—"
+                                case .uvIndex:       return forecast.uvIndex.map { "\($0)" } ?? "—"
+                                case .humidity:      return forecast.humidity.map { "\(Int($0 * 100))%" } ?? "—"
+                                case .visibility:    return forecast.visibility.map { "\(Int($0))" } ?? "—"
                                 }
                             }())
                                 .font(.avenir(.footnote, weight: .semibold))

@@ -32,13 +32,16 @@ struct CityRow: View {
         case "precipitation":
             return "\(Int(forecast.precipitationChance * 100))%"
         case "windSpeed":
-            return "\(Int(forecast.windSpeed ?? 0)) km/h"
+            guard let ws = forecast.windSpeed else { return "—" }
+            return "\(Int(ws)) km/h"
         case "uvIndex":
-            return "\(forecast.uvIndex ?? 0)"
+            guard let uv = forecast.uvIndex else { return "—" }
+            return "\(uv)"
         case "humidity":
-            return "\(Int((forecast.maxHumidity ?? 0) * 100))%"
+            guard let hum = forecast.maxHumidity else { return "—" }
+            return "\(Int(hum * 100))%"
         case "visibility":
-            let km = forecast.maxVisibility ?? 0
+            guard let km = forecast.maxVisibility else { return "—" }
             return km >= 10 ? "\(Int(km)) km" : String(format: "%.1f km", km)
         default:
             return tempUnit.display(forecast.daytimeHigh)

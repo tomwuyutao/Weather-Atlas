@@ -41,6 +41,17 @@ struct ContentView: View {
     private var showCloudCover: Bool { mapOverlayMode == "cloudCover" }
     private var showTemperatureOverlay: Bool { mapOverlayMode == "temperature" }
     private var showPrecipitation: Bool { mapOverlayMode == "precipitation" }
+    private var overlayChartMetric: WeatherDetailView.ChartMetric? {
+        switch mapOverlayMode {
+        case "cloudCover":     return .cloudCover
+        case "precipitation":  return .precipitation
+        case "windSpeed":      return .windSpeed
+        case "uvIndex":        return .uvIndex
+        case "humidity":       return .humidity
+        case "visibility":     return .visibility
+        default:               return nil
+        }
+    }
     @State var filterSunny: Bool = false
     @State var isPlaying: Bool = false
     @State var showingInlineSearch: Bool = false
@@ -465,11 +476,17 @@ struct ContentView: View {
             switch mapOverlayMode {
             case "cloudCover": return "\(forecast.cloudCoverPercent)%"
             case "precipitation": return "\(Int(forecast.precipitationChance * 100))%"
-            case "windSpeed": return "\(Int(forecast.windSpeed ?? 0))km/h"
-            case "uvIndex": return "\(forecast.uvIndex ?? 0)"
-            case "humidity": return "\(Int((forecast.maxHumidity ?? 0) * 100))%"
+            case "windSpeed":
+                guard let ws = forecast.windSpeed else { return "—" }
+                return "\(Int(ws))km/h"
+            case "uvIndex":
+                guard let uv = forecast.uvIndex else { return "—" }
+                return "\(uv)"
+            case "humidity":
+                guard let hum = forecast.maxHumidity else { return "—" }
+                return "\(Int(hum * 100))%"
             case "visibility":
-                let km = forecast.maxVisibility ?? 0
+                guard let km = forecast.maxVisibility else { return "—" }
                 return km >= 10 ? "\(Int(km))km" : String(format: "%.1fkm", km)
             default: return ""
             }
@@ -1609,7 +1626,8 @@ struct ContentView: View {
                     }
                 } : nil,
                 isInSidebar: cityIsInSidebar(city),
-                showCloudCover: showCloudCover
+                showCloudCover: showCloudCover,
+                initialChartMetric: overlayChartMetric
             )
             .background(theme.colors.background)
             .toolbarBackground(.clear, for: .navigationBar)
@@ -2207,7 +2225,8 @@ struct ContentView: View {
                     }
                 },
                 isInSidebar: cityIsInSidebar(city),
-                showCloudCover: showCloudCover
+                showCloudCover: showCloudCover,
+                initialChartMetric: overlayChartMetric
             )
             .background(theme.colors.background)
             .toolbarBackground(.clear, for: .navigationBar)
@@ -2559,7 +2578,8 @@ struct ContentView: View {
                         }
                     } : nil,
                     isInSidebar: cityIsInSidebar(city),
-                    showCloudCover: showCloudCover
+                    showCloudCover: showCloudCover,
+                    initialChartMetric: overlayChartMetric
                 )
             }
             #endif
@@ -2644,13 +2664,16 @@ struct WeatherMarker: View {
         case "precipitation":
             return "\(Int(forecast.precipitationChance * 100))%"
         case "windSpeed":
-            return "\(Int(forecast.windSpeed ?? 0))"
+            guard let ws = forecast.windSpeed else { return "—" }
+            return "\(Int(ws))"
         case "uvIndex":
-            return "\(forecast.uvIndex ?? 0)"
+            guard let uv = forecast.uvIndex else { return "—" }
+            return "\(uv)"
         case "humidity":
-            return "\(Int((forecast.maxHumidity ?? 0) * 100))%"
+            guard let hum = forecast.maxHumidity else { return "—" }
+            return "\(Int(hum * 100))%"
         case "visibility":
-            let km = forecast.maxVisibility ?? 0
+            guard let km = forecast.maxVisibility else { return "—" }
             return km >= 10 ? "\(Int(km))" : String(format: "%.1f", km)
         default:
             return tempUnit.display(forecast.daytimeHigh)
@@ -2715,7 +2738,8 @@ struct WeatherMarker: View {
         }
         // Wind speed overlay: white (0 km/h) → yellow #FDA409 (100 km/h)
         if overlayMode == "windSpeed" {
-            let wind = min(1.0, (forecast.windSpeed ?? 0) / 100.0)
+            guard let ws = forecast.windSpeed else { return .gray }
+            let wind = min(1.0, ws / 100.0)
             return Color(
                 red: 1.0 + wind * (Double(0xFD) / 255.0 - 1.0),
                 green: 1.0 + wind * (Double(0xA4) / 255.0 - 1.0),
@@ -2724,7 +2748,8 @@ struct WeatherMarker: View {
         }
         // UV index overlay: white (0) → red #FB4368 (11+)
         if overlayMode == "uvIndex" {
-            let uv = min(1.0, Double(forecast.uvIndex ?? 0) / 11.0)
+            guard let uvVal = forecast.uvIndex else { return .gray }
+            let uv = min(1.0, Double(uvVal) / 11.0)
             return Color(
                 red: 1.0 + uv * (Double(0xFB) / 255.0 - 1.0),
                 green: 1.0 + uv * (Double(0x43) / 255.0 - 1.0),
@@ -2733,7 +2758,7 @@ struct WeatherMarker: View {
         }
         // Humidity overlay: white (0%) → purple #BE9AED (100%)
         if overlayMode == "humidity" {
-            let hum = forecast.maxHumidity ?? 0
+            guard let hum = forecast.maxHumidity else { return .gray }
             return Color(
                 red: 1.0 + hum * (Double(0xBE) / 255.0 - 1.0),
                 green: 1.0 + hum * (Double(0x9A) / 255.0 - 1.0),
@@ -2742,7 +2767,8 @@ struct WeatherMarker: View {
         }
         // Visibility overlay: white (0 km) → dark blue #1579C7 (30+ km)
         if overlayMode == "visibility" {
-            let vis = min(1.0, (forecast.maxVisibility ?? 0) / 30.0)
+            guard let visVal = forecast.maxVisibility else { return .gray }
+            let vis = min(1.0, visVal / 30.0)
             return Color(
                 red: 1.0 + vis * (Double(0x15) / 255.0 - 1.0),
                 green: 1.0 + vis * (Double(0x79) / 255.0 - 1.0),
