@@ -36,6 +36,8 @@ struct MapKitMapView: View {
     var onDoubleTapMarker: (() -> Void)?
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)?
     var onTapCoordinate: ((CLLocationCoordinate2D) -> Void)?
+    var onClearFetchingDot: (() -> Void)?
+    var fetchingCoordinate: CLLocationCoordinate2D?
 
     @State private var position: MapCameraPosition = .automatic
     @State private var hasCenteredOnCities: Bool = false
@@ -127,7 +129,21 @@ struct MapKitMapView: View {
                     )
                 }
             }
-            // Transparent tap detection layer — finds nearest marker on tap
+            // Pulsing dot at tapped coordinate while fetching weather
+            .overlay {
+                if let coord = fetchingCoordinate {
+                    let _ = cameraChangeCounter
+                    FetchingPulseOverlay(
+                        coordinate: coord,
+                        proxy: proxy,
+                        tappedCity: tappedCity,
+                        overlayMode: overlayMode,
+                        selectedDayOffset: selectedDayOffset
+                    )
+                    .allowsHitTesting(false)
+                }
+            }
+            // Tap detection layer — finds nearest marker on tap
             .onTapGesture { location in
                 guard !countrySelectionMode && !radialSearchMode else { return }
                 let _ = cameraChangeCounter
@@ -157,6 +173,8 @@ struct MapKitMapView: View {
                         onDoubleTapMarker?()
                         return
                     }
+                    // Tapping an existing marker clears any long-press fetching dot
+                    onClearFetchingDot?()
                     withAnimation(.smooth(duration: 0.3)) {
                         tappedCity = hit.city
                     }
@@ -170,16 +188,49 @@ struct MapKitMapView: View {
                         tappedMarkerID = nil
                     }
                 } else {
-                    // Tapped empty space
+                    // Tapped empty space — dismiss expanded card
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                         showingCityDetail = false
                     }
-                    if mapMode == "detailed", let onTapCoordinate,
-                       let coord = proxy.convert(location, from: .local) {
-                        onTapCoordinate(coord)
-                    }
                 }
             }
+            // Long press on empty space — fetch weather for that location
+            .gesture(
+                LongPressGesture(minimumDuration: 0.5)
+                    .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
+                    .onEnded { value in
+                        guard !countrySelectionMode && !radialSearchMode else { return }
+                        guard mapMode == "detailed" else { return }
+                        switch value {
+                        case .second(true, let drag):
+                            guard let location = drag?.location else { return }
+                            // Check if long press was on an existing marker — if so, ignore
+                            let tapRadius: CGFloat = 30.0
+                            var hitMarker = false
+                            for cityWeather in cities {
+                                guard let pt = proxy.convert(
+                                    CLLocationCoordinate2D(
+                                        latitude: cityWeather.city.latitude,
+                                        longitude: cityWeather.city.longitude
+                                    ),
+                                    to: .local
+                                ) else { continue }
+                                let dx = pt.x - location.x
+                                let dy = pt.y - location.y
+                                if sqrt(dx * dx + dy * dy) < tapRadius {
+                                    hitMarker = true
+                                    break
+                                }
+                            }
+                            guard !hitMarker else { return }
+                            if let coord = proxy.convert(location, from: .local) {
+                                onTapCoordinate?(coord)
+                            }
+                        default:
+                            break
+                        }
+                    }
+            )
             .onAppear {
                 if !cities.isEmpty && !hasCenteredOnCities {
                     fitAllCities(animated: false)
@@ -708,6 +759,142 @@ private struct RadialSearchCircleOverlay: View {
 }
 
 // MARK: - CLLocationCoordinate2D Bearing Extension
+
+// MARK: - Fetching Pulse Overlay
+
+private struct FetchingPulseOverlay: View {
+    let coordinate: CLLocationCoordinate2D
+    let proxy: MapProxy
+    var tappedCity: CityWeather?
+    var overlayMode: String = "weather"
+    var selectedDayOffset: Int = 0
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var isPulsing = false
+
+    private var dotColor: Color {
+        guard let city = tappedCity else {
+            return AppTheme.shared.colors.accent
+        }
+        let forecast = city.forecast(for: selectedDayOffset)
+
+        if overlayMode == "temperature" {
+            let tempC = forecast.dailyHigh
+            if tempC <= 0 {
+                let t = Double(max(0, min(1, (tempC - (-20)) / 20.0)))
+                return Color(
+                    red: Double(0x15) / 255.0 + t * Double(0x57 - 0x15) / 255.0,
+                    green: Double(0x79) / 255.0 + t * Double(0xD3 - 0x79) / 255.0,
+                    blue: Double(0xC7) / 255.0 + t * Double(0xE5 - 0xC7) / 255.0
+                )
+            } else if tempC <= 10 {
+                let t = Double(max(0, min(1, tempC / 10.0)))
+                return Color(
+                    red: Double(0x57) / 255.0 + t * Double(0x7D - 0x57) / 255.0,
+                    green: Double(0xD3) / 255.0 + t * Double(0xD4 - 0xD3) / 255.0,
+                    blue: Double(0xE5) / 255.0 + t * Double(0xA0 - 0xE5) / 255.0
+                )
+            } else if tempC <= 20 {
+                let t = Double(max(0, min(1, (tempC - 10) / 10.0)))
+                return Color(
+                    red: Double(0x7D) / 255.0 + t * Double(0xFD - 0x7D) / 255.0,
+                    green: Double(0xD4) / 255.0 + t * Double(0xA4 - 0xD4) / 255.0,
+                    blue: Double(0xA0) / 255.0 + t * Double(0x09 - 0xA0) / 255.0
+                )
+            } else {
+                let t = Double(max(0, min(1, (tempC - 20) / 20.0)))
+                return Color(
+                    red: Double(0xFD) / 255.0 + t * Double(0xFB - 0xFD) / 255.0,
+                    green: Double(0xA4) / 255.0 + t * Double(0x43 - 0xA4) / 255.0,
+                    blue: Double(0x09) / 255.0 + t * Double(0x68 - 0x09) / 255.0
+                )
+            }
+        }
+        if overlayMode == "cloudCover" {
+            guard let cloudCoverVal = forecast.cloudCover else { return .gray }
+            let cover = CGFloat(cloudCoverVal)
+            return Color(
+                red: 1.0 + Double(cover) * (Double(0x15) / 255.0 - 1.0),
+                green: 1.0 + Double(cover) * (Double(0x79) / 255.0 - 1.0),
+                blue: 1.0 + Double(cover) * (Double(0xC7) / 255.0 - 1.0)
+            )
+        }
+        if overlayMode == "precipitation" {
+            guard let precipVal = forecast.precipitationChance else { return .gray }
+            let chance = CGFloat(precipVal)
+            return Color(
+                red: 1.0 + Double(chance) * (Double(0x57) / 255.0 - 1.0),
+                green: 1.0 + Double(chance) * (Double(0xD3) / 255.0 - 1.0),
+                blue: 1.0 + Double(chance) * (Double(0xE5) / 255.0 - 1.0)
+            )
+        }
+        if overlayMode == "windSpeed" {
+            guard let ws = forecast.windSpeed else { return .gray }
+            let wind = min(1.0, ws / 100.0)
+            return Color(
+                red: 1.0 + wind * (Double(0xFD) / 255.0 - 1.0),
+                green: 1.0 + wind * (Double(0xA4) / 255.0 - 1.0),
+                blue: 1.0 + wind * (Double(0x09) / 255.0 - 1.0)
+            )
+        }
+        if overlayMode == "uvIndex" {
+            guard let uvVal = forecast.uvIndex else { return .gray }
+            let uv = min(1.0, Double(uvVal) / 11.0)
+            return Color(
+                red: 1.0 + uv * (Double(0xFB) / 255.0 - 1.0),
+                green: 1.0 + uv * (Double(0x43) / 255.0 - 1.0),
+                blue: 1.0 + uv * (Double(0x68) / 255.0 - 1.0)
+            )
+        }
+        if overlayMode == "humidity" {
+            guard let hum = forecast.maxHumidity else { return .gray }
+            return Color(
+                red: 1.0 + hum * (Double(0xBE) / 255.0 - 1.0),
+                green: 1.0 + hum * (Double(0x9A) / 255.0 - 1.0),
+                blue: 1.0 + hum * (Double(0xED) / 255.0 - 1.0)
+            )
+        }
+        if overlayMode == "visibility" {
+            guard let visVal = forecast.maxVisibility else { return .gray }
+            let vis = min(1.0, visVal / 30.0)
+            return Color(
+                red: 1.0 + vis * (Double(0x15) / 255.0 - 1.0),
+                green: 1.0 + vis * (Double(0x79) / 255.0 - 1.0),
+                blue: 1.0 + vis * (Double(0xC7) / 255.0 - 1.0)
+            )
+        }
+        // Default: weather condition dot color
+        let base = forecast.condition.dotColor
+        if colorScheme == .light && AppTheme.shared.isDetailedMapMode && base == .white {
+            return Color(hex: 0xB4B4B4)
+        }
+        return base
+    }
+    
+    var body: some View {
+        GeometryReader { _ in
+            if let screenPt = proxy.convert(coordinate, to: .local) {
+                ZStack {
+                    // Pulse ring — same as SelectedPulseRing circle style
+                    Circle()
+                        .stroke(dotColor.opacity(isPulsing ? 0.3 : 0.8), lineWidth: isPulsing ? 1.5 : 2.5)
+                        .frame(width: 30, height: 30)
+                        .scaleEffect(isPulsing ? 1.3 : 1.0)
+                    
+                    // Dot — scaled up like a selected marker
+                    Circle()
+                        .fill(dotColor)
+                        .frame(width: 10, height: 10)
+                        .shadow(color: dotColor.opacity(0.8), radius: 12)
+                        .scaleEffect(1.5)
+                }
+                .position(screenPt)
+            }
+        }
+        .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: isPulsing)
+        .onAppear { isPulsing = true }
+    }
+}
 
 extension CLLocationCoordinate2D {
     /// Returns a coordinate at a given distance (meters) and bearing (degrees) from this coordinate.

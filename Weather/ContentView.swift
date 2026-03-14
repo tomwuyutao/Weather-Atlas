@@ -25,6 +25,7 @@ struct ContentView: View {
     @State var tappedCity: CityWeather?
     @State var showingMapExpandedCard: Bool = false
     @State private var isFetchingTappedLocation: Bool = false
+    @State private var fetchingTappedCoordinate: CLLocationCoordinate2D?
     @Namespace private var popupNamespace
     @State var searchText: String = ""
     @State private var citySearchManager = CitySearchManager()
@@ -869,6 +870,7 @@ struct ContentView: View {
                     recenterOnAllCities = true
                 }
                 resolvedGridCityName = nil
+                fetchingTappedCoordinate = nil
             }
         }
         .onChange(of: tappedCity) { _, newCity in
@@ -2443,6 +2445,9 @@ struct ContentView: View {
                 onTapCoordinate: { coord in
                     guard mapMode == "detailed", !isFetchingTappedLocation else { return }
                     isFetchingTappedLocation = true
+                    withAnimation(.easeOut(duration: 0.2)) {
+                        fetchingTappedCoordinate = coord
+                    }
                     Task {
                         let placemark = try? await CLGeocoder().reverseGeocodeLocation(
                             CLLocation(latitude: coord.latitude, longitude: coord.longitude)
@@ -2467,10 +2472,22 @@ struct ContentView: View {
                                     }
                                 }
                             }
+                        } else {
+                            await MainActor.run {
+                                withAnimation(.easeOut(duration: 0.3)) {
+                                    fetchingTappedCoordinate = nil
+                                }
+                            }
                         }
                         await MainActor.run { isFetchingTappedLocation = false }
                     }
-                }
+                },
+                onClearFetchingDot: {
+                    withAnimation(.easeOut(duration: 0.3)) {
+                        fetchingTappedCoordinate = nil
+                    }
+                },
+                fetchingCoordinate: fetchingTappedCoordinate
             )
             .ignoresSafeArea()
 
