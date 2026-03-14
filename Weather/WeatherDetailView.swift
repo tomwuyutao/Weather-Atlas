@@ -199,7 +199,7 @@ struct WeatherDetailView: View {
                             // Large decorative icon — right, slightly cropped
                             Image(systemName: detailDisplayIcon)
                                 .font(.system(size: 180))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(detailDisplayIcon.contains("moon") ? AppTheme.shared.colors.moonIconColor : .white)
                                 .contentTransition(.symbolEffect(.replace))
                                 .opacity(0.35)
                                 .animation(.smooth(duration: 0.3), value: internalSelectedDay)
@@ -309,7 +309,7 @@ struct WeatherDetailView: View {
                             Spacer()
                             Image(systemName: detailDisplayIcon)
                                 .font(.system(size: 36))
-                                .foregroundStyle(.white)
+                                .foregroundStyle(detailDisplayIcon.contains("moon") ? AppTheme.shared.colors.moonIconColor : .white)
                                 .contentTransition(.symbolEffect(.replace))
                         }
                         .padding(.horizontal, 28)

@@ -315,14 +315,17 @@ extension ContentView {
     @ViewBuilder
     func gridCell(for cityWeather: CityWeather) -> some View {
         let forecast = cityWeather.forecast(for: selectedDayOffset)
+        let isToday = selectedDayOffset == 0
+        let displayIcon = isToday ? cityWeather.weatherIcon : forecast.weatherIcon
+        let displayTemp = isToday ? cityWeather.temperature : forecast.dailyHigh
         VStack(spacing: 8) {
-            Image(systemName: forecast.weatherIcon)
+            Image(systemName: displayIcon)
                 .font(.title2)
-                .weatherIconStyle(for: forecast.weatherIcon)
+                .weatherIconStyle(for: displayIcon)
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 .frame(height: 30)
 
-            Text(tempUnit.display(forecast.dailyHigh))
+            Text(tempUnit.display(displayTemp))
                 .font(.avenir(.title2, weight: .medium))
                 .contentTransition(.numericText())
 
@@ -592,17 +595,21 @@ extension ContentView {
 
                     ForEach(iOSFilteredCities) { cityWeather in
                         HStack {
+                            let isToday = selectedDayOffset == 0
+                            let forecast = cityWeather.forecast(for: selectedDayOffset)
+                            let displayIcon = isToday ? cityWeather.weatherIcon : forecast.weatherIcon
+                            let displayTemp = isToday ? cityWeather.temperature : forecast.dailyHigh
                             Text(cityWeather.city.localizedName(locale: locale))
                                 .font(.avenir(.body, weight: .medium))
                             Spacer()
-                            Text(tempUnit.display(cityWeather.forecast(for: selectedDayOffset).dailyHigh))
+                            Text(tempUnit.display(displayTemp))
                                 .font(.avenir(.title2, weight: .medium))
                                 .foregroundStyle(.secondary)
                                 .contentTransition(.numericText())
                                 .padding(.trailing, 4)
-                            Image(systemName: cityWeather.forecast(for: selectedDayOffset).weatherIcon)
+                            Image(systemName: displayIcon)
                                 .font(.title3)
-                                .weatherIconStyle(for: cityWeather.forecast(for: selectedDayOffset).weatherIcon)
+                                .weatherIconStyle(for: displayIcon)
                                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                                 .frame(width: 32)
                         }

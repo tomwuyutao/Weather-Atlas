@@ -957,8 +957,12 @@ struct CityWeather: Identifiable, Hashable {
         // Map SF Symbol names to simplified icons
         if symbolName.contains("sun") && !symbolName.contains("cloud") {
             return "sun.max.fill"
+        } else if symbolName.contains("moon") && !symbolName.contains("cloud") {
+            return "moon.fill"
         } else if symbolName.contains("cloud") && symbolName.contains("sun") {
             return "cloud.sun.fill"
+        } else if symbolName.contains("cloud") && symbolName.contains("moon") {
+            return "cloud.moon.fill"
         } else if symbolName.contains("cloud.rain") || symbolName.contains("rain") {
             return "cloud.rain.fill"
         } else if symbolName.contains("cloud.drizzle") || symbolName.contains("drizzle") {
