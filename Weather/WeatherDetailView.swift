@@ -84,12 +84,33 @@ struct WeatherDetailView: View {
         cityWeather.forecast(for: internalSelectedDay)
     }
     
+    private var isToday: Bool {
+        internalSelectedDay == 0
+    }
+    
+    /// For today, show current weather icon; for future days, show forecast icon
     /// Use plain cloud icon when animation shows precipitation
     private var detailDisplayIcon: String {
-        if forecast.condition == .rain || forecast.condition == .drizzle || forecast.condition == .snow {
+        let baseCondition = isToday ? cityWeather.condition : forecast.condition
+        let baseIcon = isToday ? cityWeather.weatherIcon : forecast.weatherIcon
+        if baseCondition == .rain || baseCondition == .drizzle || baseCondition == .snow {
             return "cloud.fill"
         }
-        return forecast.weatherIcon
+        return baseIcon
+    }
+    
+    /// For today, show current condition; for future days, show forecast condition
+    private var detailDisplayCondition: AppWeatherCondition {
+        isToday ? cityWeather.condition : forecast.condition
+    }
+    
+    /// Whether it's currently nighttime in this city (outside sunrise-sunset)
+    private var isCurrentlyNight: Bool {
+        guard isToday,
+              let sunrise = forecast.sunrise,
+              let sunset = forecast.sunset else { return false }
+        let now = Date()
+        return now < sunrise || now > sunset
     }
     
     private var goingForward: Bool {
@@ -102,7 +123,14 @@ struct WeatherDetailView: View {
     
     private var headerBackgroundColor: Color {
         let theme = AppTheme.shared.colors
-        switch forecast.condition {
+        let condition = detailDisplayCondition
+        
+        // At night, always use moon purple
+        if isCurrentlyNight {
+            return theme.moonIconColor
+        }
+        
+        switch condition {
         case .rain: return theme.dotRain
         case .drizzle: return theme.dotDrizzle
         case .snow, .cloudy, .wind: return Color(hex: 0x9ABCCE)
@@ -110,7 +138,7 @@ struct WeatherDetailView: View {
             // If WeatherKit gave a plain cloud icon (no sun), treat as overcast
             return detailDisplayIcon == "cloud.fill" ? Color(hex: 0x9ABCCE) : Color(hex: 0xF0B830)
         default:
-            return detailDisplayIcon == "cloud.fill" ? Color(hex: 0x9ABCCE) : forecast.condition.dotColor
+            return detailDisplayIcon == "cloud.fill" ? Color(hex: 0x9ABCCE) : condition.dotColor
         }
     }
 
@@ -176,14 +204,16 @@ struct WeatherDetailView: View {
                                 .opacity(0.35)
                                 .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                                 .background(alignment: .top) {
-                                    WeatherEffectOverlay(
-                                        condition: forecast.condition,
-                                        isCompact: false,
-                                        iconHeight: 220,
-                                        iconName: detailDisplayIcon,
-                                        dropColor: forecast.condition == .drizzle ? AppTheme.shared.colors.dotRain : nil
-                                    )
-                                    .id("detail-header-effect-\(internalSelectedDay)-\(forecast.condition.displayName)")
+                                    if !detailDisplayIcon.contains("moon") {
+                                        WeatherEffectOverlay(
+                                            condition: detailDisplayCondition,
+                                            isCompact: false,
+                                            iconHeight: 220,
+                                            iconName: detailDisplayIcon,
+                                            dropColor: detailDisplayCondition == .drizzle ? AppTheme.shared.colors.dotRain : nil
+                                        )
+                                        .id("detail-header-effect-\(internalSelectedDay)-\(detailDisplayCondition.displayName)")
+                                    }
                                 }
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
                                 .padding(.trailing, -40)
@@ -191,17 +221,58 @@ struct WeatherDetailView: View {
 
                             // Temperature + condition — top left, below back button
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(tempUnit.display(forecast.dailyHigh))
-                                    .font(.avenir(.largeTitle, weight: .bold))
-                                    .dynamicTypeSize(...DynamicTypeSize.large)
+                                if isToday {
+                                    // Today: show current temperature
+                                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                                        Text(tempUnit.display(cityWeather.temperature))
+                                            .font(.avenir(.largeTitle, weight: .bold))
+                                            .dynamicTypeSize(...DynamicTypeSize.large)
+                                            .contentTransition(.numericText())
+                                    }
+                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+
+                                    // High/Low line
+                                    HStack(spacing: 0) {
+                                        Text(tempUnit.display(forecast.dailyHigh))
+                                            .font(.avenir(.title3, weight: .medium))
+                                            .dynamicTypeSize(...DynamicTypeSize.large)
+                                        Text(" ")
+                                        Text(tempUnit.display(forecast.dailyLow))
+                                            .font(.avenir(.title3, weight: .medium))
+                                            .dynamicTypeSize(...DynamicTypeSize.large)
+                                            .opacity(0.6)
+                                    }
                                     .contentTransition(.numericText())
                                     .animation(.smooth(duration: 0.3), value: internalSelectedDay)
 
-                                Text(forecast.condition.localizedDisplayName(locale: locale))
-                                    .font(.avenir(.title3, weight: .medium))
-                                    .dynamicTypeSize(...DynamicTypeSize.large)
-                                    .contentTransition(.opacity)
+                                    Text(detailDisplayCondition.localizedDisplayName(locale: locale))
+                                        .font(.avenir(.title3, weight: .medium))
+                                        .dynamicTypeSize(...DynamicTypeSize.large)
+                                        .contentTransition(.opacity)
+                                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                                } else {
+                                    // Future days: show daily high with low at 60% opacity
+                                    HStack(alignment: .firstTextBaseline, spacing: 0) {
+                                        Text(tempUnit.display(forecast.dailyHigh))
+                                            .font(.avenir(.largeTitle, weight: .bold))
+                                            .dynamicTypeSize(...DynamicTypeSize.large)
+                                            .contentTransition(.numericText())
+                                        Text(" ")
+                                            .font(.avenir(.largeTitle, weight: .bold))
+                                        Text(tempUnit.display(forecast.dailyLow))
+                                            .font(.avenir(.largeTitle, weight: .bold))
+                                            .dynamicTypeSize(...DynamicTypeSize.large)
+                                            .contentTransition(.numericText())
+                                            .opacity(0.6)
+                                    }
                                     .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+
+                                    Text(forecast.condition.localizedDisplayName(locale: locale))
+                                        .font(.avenir(.title3, weight: .medium))
+                                        .dynamicTypeSize(...DynamicTypeSize.large)
+                                        .contentTransition(.opacity)
+                                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                                }
                             }
                             .foregroundStyle(.white)
                             .padding(.leading, 28)
@@ -215,11 +286,21 @@ struct WeatherDetailView: View {
                     if isHeaderCollapsed {
                         HStack(spacing: 14) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(tempUnit.display(forecast.dailyHigh))
-                                    .font(.avenir(.title, weight: .bold))
-                                    .foregroundStyle(.white)
-                                    .contentTransition(.numericText())
-                                Text(forecast.condition.localizedDisplayName(locale: locale))
+                                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                                    Text(tempUnit.display(isToday ? cityWeather.temperature : forecast.dailyHigh))
+                                        .font(.avenir(.title, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .contentTransition(.numericText())
+                                    if !isToday {
+                                        Text(" ")
+                                            .font(.avenir(.title, weight: .bold))
+                                        Text(tempUnit.display(forecast.dailyLow))
+                                            .font(.avenir(.title, weight: .bold))
+                                            .foregroundStyle(.white.opacity(0.6))
+                                            .contentTransition(.numericText())
+                                    }
+                                }
+                                Text(detailDisplayCondition.localizedDisplayName(locale: locale))
                                     .font(.avenir(.subheadline, weight: .semibold))
                                     .foregroundStyle(.white.opacity(0.8))
                                     .contentTransition(.opacity)
@@ -307,20 +388,56 @@ struct WeatherDetailView: View {
                             .contentTransition(.symbolEffect(.replace))
                             .frame(height: 56)
                             .background(alignment: .top) {
-                                WeatherEffectOverlay(condition: forecast.condition, isCompact: false, iconHeight: 56)
-                                    .id("detail-effect-\(internalSelectedDay)-\(forecast.condition.displayName)")
+                                if !detailDisplayIcon.contains("moon") {
+                                    WeatherEffectOverlay(condition: detailDisplayCondition, isCompact: false, iconHeight: 56)
+                                        .id("detail-effect-\(internalSelectedDay)-\(detailDisplayCondition.displayName)")
+                                }
                             }
                             .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                             .padding(.top, 28)
 
-                        Text(tempUnit.display(forecast.dailyHigh))
-                            .font(.avenir(.largeTitle, weight: .bold))
+                        if isToday {
+                            // Today: current temperature
+                            Text(tempUnit.display(cityWeather.temperature))
+                                .font(.avenir(.largeTitle, weight: .bold))
+                                .dynamicTypeSize(...DynamicTypeSize.large)
+                                .contentTransition(.numericText())
+                                .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                                .padding(.top, 14)
+                                .padding(.trailing, 4)
+                                .offset(x: 5)
+                            
+                            // High/Low line
+                            HStack(spacing: 0) {
+                                Text(tempUnit.display(forecast.dailyHigh))
+                                Text(" ")
+                                Text(tempUnit.display(forecast.dailyLow))
+                                    .opacity(0.6)
+                            }
+                            .font(.avenir(.body, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .dynamicTypeSize(...DynamicTypeSize.large)
+                            .contentTransition(.numericText())
+                            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                            .padding(.top, 4)
+                        } else {
+                            // Future days: high with low at 60% opacity
+                            HStack(alignment: .firstTextBaseline, spacing: 0) {
+                                Text(tempUnit.display(forecast.dailyHigh))
+                                    .font(.avenir(.largeTitle, weight: .bold))
+                                Text(" ")
+                                    .font(.avenir(.largeTitle, weight: .bold))
+                                Text(tempUnit.display(forecast.dailyLow))
+                                    .font(.avenir(.largeTitle, weight: .bold))
+                                    .opacity(0.6)
+                            }
                             .dynamicTypeSize(...DynamicTypeSize.large)
                             .contentTransition(.numericText())
                             .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                             .padding(.top, 14)
                             .padding(.trailing, 4)
                             .offset(x: 5)
+                        }
                     }
                     .dynamicTypeSize(...DynamicTypeSize.large)
                 }
