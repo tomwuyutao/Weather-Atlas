@@ -35,8 +35,9 @@ struct WeatherDetailView: View {
         case forward, backward
     }
     
-    enum ChartMetric {
+    enum ChartMetric: Equatable {
         case temperature, feelsLike, cloudCover, precipitation
+        case windSpeed, uvIndex, humidity, visibility
     }
     
     @State private var chartMetric: ChartMetric = .temperature
@@ -116,6 +117,10 @@ struct WeatherDetailView: View {
         case .feelsLike:     return Color(hex: 0xED8988)
         case .cloudCover:    return Color(hex: 0x9ABCCE)
         case .precipitation: return Color(hex: 0x57D3E5)
+        case .windSpeed:     return Color(hex: 0xFDA409)
+        case .uvIndex:       return Color(hex: 0xFB4368)
+        case .humidity:      return Color(hex: 0xBE9AED)
+        case .visibility:    return Color(hex: 0x1579C7)
         }
     }
 
@@ -455,13 +460,9 @@ struct WeatherDetailView: View {
                 )
 
                 // Stats grid: 2-column, cards with no data are hidden
-                let visibilityValue: String? = forecast.visibility.map { vis in
-                    distUnit.display(vis)
-                }
                 let feelsLikeValue: String? = (forecast.feelsLikeLow != nil && forecast.feelsLikeHigh != nil)
                     ? tempUnit.displaySlash(low: forecast.feelsLikeLow!, high: forecast.feelsLikeHigh!)
                     : nil
-                let humidityValue: String? = forecast.humidity.map { "\(Int($0 * 100))%" }
 
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
                     WeatherStatCard(
@@ -511,6 +512,50 @@ struct WeatherDetailView: View {
                             chartMetric = .precipitation
                         }
                     }
+
+                    WeatherStatCard(
+                        label: "Wind Speed",
+                        value: "\(Int(forecast.windSpeed ?? 0)) km/h",
+                        isSelected: chartMetric == .windSpeed
+                    )
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            chartMetric = .windSpeed
+                        }
+                    }
+
+                    WeatherStatCard(
+                        label: "UV Index",
+                        value: "\(forecast.uvIndex ?? 0)",
+                        isSelected: chartMetric == .uvIndex
+                    )
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            chartMetric = .uvIndex
+                        }
+                    }
+
+                    WeatherStatCard(
+                        label: "Humidity",
+                        value: "\(Int((forecast.maxHumidity ?? 0) * 100))%",
+                        isSelected: chartMetric == .humidity
+                    )
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            chartMetric = .humidity
+                        }
+                    }
+
+                    WeatherStatCard(
+                        label: "Visibility",
+                        value: distUnit.display(forecast.maxVisibility ?? 10),
+                        isSelected: chartMetric == .visibility
+                    )
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            chartMetric = .visibility
+                        }
+                    }
                 }
                 .padding(.horizontal, 8)
 
@@ -521,19 +566,6 @@ struct WeatherDetailView: View {
                         sunset: sunset,
                         cityTimeZone: cityWeather.timeZone
                     )
-                    .padding(.horizontal, 8)
-                }
-
-                // Visibility and humidity below sunrise/sunset
-                if visibilityValue != nil || humidityValue != nil {
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
-                        if let vis = visibilityValue {
-                            WeatherStatCard(label: "Visibility", value: vis)
-                        }
-                        if let hum = humidityValue {
-                            WeatherStatCard(label: "Humidity", value: hum)
-                        }
-                    }
                     .padding(.horizontal, 8)
                 }
 
@@ -884,13 +916,23 @@ struct HourlyTimelineChart: View {
         case .feelsLike:        return forecast.apparentTemperature
         case .cloudCover:       return Double(forecast.cloudCoverPercent)
         case .precipitation:    return forecast.precipitationChance * 100
+        case .windSpeed:        return forecast.windSpeed ?? 0
+        case .uvIndex:          return Double(forecast.uvIndex ?? 0)
+        case .humidity:         return (forecast.humidity ?? 0) * 100
+        case .visibility:       return forecast.visibility ?? 10
         }
     }
     
     private var valueRange: (min: Double, max: Double) {
         switch chartMetric {
-        case .cloudCover, .precipitation:
+        case .cloudCover, .precipitation, .humidity:
             return (0, 100)
+        case .uvIndex:
+            return (0, 11)
+        case .windSpeed:
+            return (0, 100)
+        case .visibility:
+            return (0, 30)
         case .temperature, .feelsLike:
             let vals = dataPoints.map { value(for: $0) }
             let minV = vals.min() ?? 10
@@ -968,6 +1010,10 @@ struct HourlyTimelineChart: View {
                                 case .feelsLike:     return tempUnit.display(forecast.apparentTemperature)
                                 case .cloudCover:    return "\(forecast.cloudCoverPercent)%"
                                 case .precipitation: return "\(Int(forecast.precipitationChance * 100))%"
+                                case .windSpeed:     return "\(Int(forecast.windSpeed ?? 0))"
+                                case .uvIndex:       return "\(forecast.uvIndex ?? 0)"
+                                case .humidity:      return "\(Int((forecast.humidity ?? 0) * 100))%"
+                                case .visibility:    return "\(Int(forecast.visibility ?? 10))"
                                 }
                             }())
                                 .font(.avenir(.footnote, weight: .semibold))
@@ -983,8 +1029,7 @@ struct HourlyTimelineChart: View {
             }
         }
         .frame(height: totalHeight)
-        .animation(.smooth(duration: 0.3), value: chartMetric == .cloudCover)
-        .animation(.smooth(duration: 0.3), value: chartMetric == .precipitation)
+        .animation(.smooth(duration: 0.3), value: chartMetric)
     }
 }
 
@@ -1244,7 +1289,11 @@ struct SunArcCard: View {
             symbolName: symbol,
             condition: condition,
             precipitationChance: precipChance,
-            cloudCover: Double(condition.estimatedCloudCover) / 100.0
+            cloudCover: Double(condition.estimatedCloudCover) / 100.0,
+            windSpeed: Double.random(in: 5...35),
+            uvIndex: (hour >= 6 && hour < 18) ? Int.random(in: 1...8) : 0,
+            humidity: Double.random(in: 0.3...0.9),
+            visibility: Double.random(in: 5...25)
         )
     }
     
@@ -1291,7 +1340,11 @@ struct SunArcCard: View {
                 symbolName: hourSymbol,
                 condition: condition,
                 precipitationChance: precipChance,
-                cloudCover: Double(condition.estimatedCloudCover) / 100.0
+                cloudCover: Double(condition.estimatedCloudCover) / 100.0,
+                windSpeed: Double.random(in: 5...35),
+                uvIndex: (hour >= 6 && hour < 18) ? Int.random(in: 1...8) : 0,
+                humidity: Double.random(in: 0.3...0.9),
+                visibility: Double.random(in: 5...25)
             )
         }
         

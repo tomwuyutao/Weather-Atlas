@@ -689,7 +689,11 @@ class WeatherService {
                     symbolName: hourWeather.symbolName,
                     condition: mapWeatherKitCondition(hourWeather.condition),
                     precipitationChance: hourWeather.precipitationChance,
-                    cloudCover: hourWeather.cloudCover
+                    cloudCover: hourWeather.cloudCover,
+                    windSpeed: hourWeather.wind.speed.converted(to: .kilometersPerHour).value,
+                    uvIndex: hourWeather.uvIndex.value,
+                    humidity: hourWeather.humidity,
+                    visibility: hourWeather.visibility.converted(to: .kilometers).value
                 )
             }
         }
@@ -710,7 +714,11 @@ class WeatherService {
                 symbolName: day.symbolName,
                 condition: mapWeatherKitCondition(day.condition),
                 precipitationChance: day.precipitationChance,
-                cloudCover: fallbackCloudCover
+                cloudCover: fallbackCloudCover,
+                windSpeed: nil,
+                uvIndex: nil,
+                humidity: nil,
+                visibility: nil
             )
         }
     }
@@ -1142,6 +1150,10 @@ struct HourlyForecast: Identifiable {
     let condition: AppWeatherCondition
     let precipitationChance: Double  // 0.0 to 1.0
     let cloudCover: Double  // 0.0 to 1.0
+    let windSpeed: Double?  // km/h
+    let uvIndex: Int?
+    let humidity: Double?  // 0.0 to 1.0
+    let visibility: Double?  // km
     
     var weatherIcon: String {
         if symbolName.contains("sun") && !symbolName.contains("cloud") {
@@ -1452,6 +1464,10 @@ struct CachedHourlyForecast: Codable {
     let condition: String
     let precipitationChance: Double
     let cloudCover: Double
+    let windSpeed: Double?
+    let uvIndex: Int?
+    let humidity: Double?
+    let visibility: Double?
     
     init(from forecast: HourlyForecast) {
         self.hour = forecast.hour
@@ -1461,6 +1477,10 @@ struct CachedHourlyForecast: Codable {
         self.condition = forecast.condition.displayName
         self.precipitationChance = forecast.precipitationChance
         self.cloudCover = forecast.cloudCover
+        self.windSpeed = forecast.windSpeed
+        self.uvIndex = forecast.uvIndex
+        self.humidity = forecast.humidity
+        self.visibility = forecast.visibility
     }
     
     init(from decoder: Decoder) throws {
@@ -1473,6 +1493,10 @@ struct CachedHourlyForecast: Codable {
         precipitationChance = try container.decode(Double.self, forKey: .precipitationChance)
         cloudCover = try container.decodeIfPresent(Double.self, forKey: .cloudCover)
             ?? Double(AppWeatherCondition.fromDisplayName(condition).estimatedCloudCover) / 100.0
+        windSpeed = try container.decodeIfPresent(Double.self, forKey: .windSpeed)
+        uvIndex = try container.decodeIfPresent(Int.self, forKey: .uvIndex)
+        humidity = try container.decodeIfPresent(Double.self, forKey: .humidity)
+        visibility = try container.decodeIfPresent(Double.self, forKey: .visibility)
     }
     
     func toHourlyForecast() -> HourlyForecast {
@@ -1485,7 +1509,11 @@ struct CachedHourlyForecast: Codable {
             symbolName: symbolName,
             condition: appCondition,
             precipitationChance: precipitationChance,
-            cloudCover: cloudCover
+            cloudCover: cloudCover,
+            windSpeed: windSpeed,
+            uvIndex: uvIndex,
+            humidity: humidity,
+            visibility: visibility
         )
     }
 }
