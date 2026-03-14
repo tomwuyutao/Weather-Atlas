@@ -433,8 +433,6 @@ struct ContentView: View {
                     .padding(.top, 8)
                     }
                 }
-
-                Spacer()
             }
         }
     }
@@ -889,7 +887,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingMapStyleSheet) {
             mapStyleSheet
-                .presentationDetents([.medium])
+                .presentationDetents([.height(330)])
                 .presentationDragIndicator(.visible)
         }
         .sheet(isPresented: $showingSettings) {
