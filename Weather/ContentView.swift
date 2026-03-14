@@ -460,14 +460,47 @@ struct ContentView: View {
             }
             return forecast.condition
         }()
-        return HStack(alignment: .center, spacing: 0) {
+        let isOverlayActive = !["weather", "temperature"].contains(mapOverlayMode)
+        let overlayLargeText: String = {
+            switch mapOverlayMode {
+            case "cloudCover": return "\(forecast.cloudCoverPercent)%"
+            case "precipitation": return "\(Int(forecast.precipitationChance * 100))%"
+            case "windSpeed": return "\(Int(forecast.windSpeed ?? 0))km/h"
+            case "uvIndex": return "\(forecast.uvIndex ?? 0)"
+            case "humidity": return "\(Int((forecast.maxHumidity ?? 0) * 100))%"
+            case "visibility":
+                let km = forecast.maxVisibility ?? 0
+                return km >= 10 ? "\(Int(km))km" : String(format: "%.1fkm", km)
+            default: return ""
+            }
+        }()
+        let overlayLabel: String = {
+            switch mapOverlayMode {
+            case "cloudCover": return "Cloud Cover"
+            case "precipitation": return "Precipitation"
+            case "windSpeed": return "Wind Speed"
+            case "uvIndex": return "UV Index"
+            case "humidity": return "Humidity"
+            case "visibility": return "Visibility"
+            default: return ""
+            }
+        }()
+        return HStack(alignment: .bottom, spacing: 0) {
             // Left: temperature, city, details
             VStack(alignment: .leading, spacing: 6) {
-                // Large temperature
-                Text(tempUnit.display(forecast.daytimeHigh))
-                    .font(.custom("AvenirNext-Medium", size: 38, relativeTo: .largeTitle))
-                    .foregroundStyle(.primary)
-                    .contentTransition(.numericText())
+                // Large value: overlay data or temperature
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(isOverlayActive ? overlayLargeText : tempUnit.display(forecast.daytimeHigh))
+                        .font(.custom("AvenirNext-Medium", size: 42, relativeTo: .largeTitle))
+                        .foregroundStyle(.primary)
+                        .contentTransition(.numericText())
+                    Text(isOverlayActive ? overlayLabel : "Daytime High")
+                        .font(.avenir(.subheadline, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .offset(x: 4, y: -4)
+                }
+                .offset(x: -4, y: 2)
+                .animation(.smooth(duration: 0.4), value: mapOverlayMode)
 
                 // City name
                 Text((countryOverviewActive || radialSearchActive) ? (resolvedGridCityName ?? "…") : cityWeather.city.localizedName(locale: locale))
@@ -475,50 +508,43 @@ struct ContentView: View {
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
-                // Cloud cover, precipitation & 7-day forecast dots
-                HStack(spacing: 12) {
-                    HStack(spacing: 4) {
-                        Image(systemName: "cloud.fill")
-                            .font(.system(size: 11))
-                        Text("\(forecast.cloudCoverPercent)%")
-                            .font(.avenir(.caption, weight: .medium))
-                    }
-
-                    HStack(spacing: 4) {
-                        Image(systemName: "drop.fill")
-                            .font(.system(size: 11))
-                        Text("\(Int(forecast.precipitationChance * 100))%")
-                            .font(.avenir(.caption, weight: .medium))
-                    }
-
-                    HStack(spacing: 5) {
-                        ForEach(0..<min(7, cityWeather.dailyForecasts.count), id: \.self) { i in
-                            let dayForecast = cityWeather.dailyForecasts[i]
-                            Circle()
-                                .fill(dayForecast.condition.dotColor)
-                                .frame(width: i == selectedDayOffset ? 8 : 6, height: i == selectedDayOffset ? 8 : 6)
-                                .shadow(color: dayForecast.condition.dotColor.opacity(0.6), radius: 3)
-                                .opacity(i == selectedDayOffset ? 1 : 0.6)
-                        }
-                    }
-                }
-                .foregroundStyle(.secondary)
             }
 
             Spacer()
 
-            // Right: weather icon, centered vertically
-            Image(systemName: icon)
-                .font(.system(size: 40))
-                .weatherIconStyle(for: icon)
-                .frame(width: 56, height: 48)
-                .background(alignment: .top) {
-                    WeatherEffectOverlay(condition: effectCondition, isCompact: false, iconHeight: 48, iconName: icon)
+            // Right: weather icon + 10-day dots
+            VStack(spacing: 30) {
+                Image(systemName: icon)
+                    .font(.system(size: 40))
+                    .weatherIconStyle(for: icon)
+                    .frame(width: 56, height: 48)
+                    .background(alignment: .top) {
+                        WeatherEffectOverlay(condition: effectCondition, isCompact: false, iconHeight: 48, iconName: icon)
+                    }
+
+                // 10-day forecast dots in 2 rows of 5
+                VStack(spacing: 6) {
+                    ForEach(0..<2, id: \.self) { row in
+                        HStack(spacing: 6) {
+                            ForEach(0..<5, id: \.self) { col in
+                                let i = row * 5 + col
+                                if i < cityWeather.dailyForecasts.count {
+                                    let dayForecast = cityWeather.dailyForecasts[i]
+                                    Circle()
+                                        .fill(dayForecast.condition.dotColor)
+                                        .frame(width: i == selectedDayOffset ? 8 : 6, height: i == selectedDayOffset ? 8 : 6)
+                                        .shadow(color: dayForecast.condition.dotColor.opacity(0.6), radius: 3)
+                                        .opacity(i == selectedDayOffset ? 1 : 0.6)
+                                }
+                            }
+                        }
+                    }
                 }
-                .padding(.trailing, 10)
+            }
+            .padding(.trailing, 10)
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 16)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 20)
         .frame(maxWidth: isIPad ? 420 : .infinity)
         .background(
             RoundedRectangle(cornerRadius: 20)
@@ -2822,7 +2848,7 @@ struct WeatherMarker: View {
 
 #Preview {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
-    let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
+    let _ = UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
     ContentView()
 }
 
