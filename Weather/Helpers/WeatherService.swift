@@ -627,12 +627,18 @@ class WeatherService {
             let hourlyForecasts = generateHourlyFromDaily(day: day, dayOffset: index, allHourly: weather.hourlyForecast.forecast, timeZone: timeZone)
             
             // Derive full-day feels-like range from all hourly apparent temperatures
-            let feelsLikeLow = hourlyForecasts.map(\.apparentTemperature).min()
-            let feelsLikeHigh = hourlyForecasts.map(\.apparentTemperature).max()
+            let apparentTemps = hourlyForecasts.compactMap(\.apparentTemperature)
+            let feelsLikeLow = apparentTemps.min()
+            let feelsLikeHigh = apparentTemps.max()
+            if hourlyForecasts.isEmpty {
+                print("⚠️ [WeatherService] No hourly data for day \(index) — feels-like and hourly precipitation will be nil.")
+            } else if apparentTemps.isEmpty {
+                print("⚠️ [WeatherService] No apparent temperature data in hourly forecasts for day \(index).")
+            }
             
             // Compute full-day precipitation chance from hourly data (max of all hours)
-            let hourlyPrecipChances = hourlyForecasts.map(\.precipitationChance)
-            let fullDayPrecipChance = hourlyPrecipChances.isEmpty ? day.daytimeForecast.precipitationChance : hourlyPrecipChances.max() ?? 0
+            let hourlyPrecipChances = hourlyForecasts.compactMap(\.precipitationChance)
+            let fullDayPrecipChance: Double? = hourlyPrecipChances.isEmpty ? day.daytimeForecast.precipitationChance : hourlyPrecipChances.max()
 
             return DailyForecast(
                 dayOffset: index,
@@ -679,63 +685,30 @@ class WeatherService {
             hourWeather.date >= dayStart && hourWeather.date < dayEnd
         }
         
-        // If we have real hourly data, use it
-        if !dayHourlyData.isEmpty {
-            return dayHourlyData.map { hourWeather in
-                // Extract hour in the city's local timezone
-                let hour = calendar.component(.hour, from: hourWeather.date)
-                return HourlyForecast(
-                    hour: hour,
-                    temperature: hourWeather.temperature.value,
-                    apparentTemperature: hourWeather.apparentTemperature.value,
-                    symbolName: hourWeather.symbolName,
-                    condition: mapWeatherKitCondition(hourWeather.condition),
-                    precipitationChance: hourWeather.precipitationChance,
-                    cloudCover: hourWeather.cloudCover,
-                    windSpeed: hourWeather.wind.speed.converted(to: .kilometersPerHour).value,
-                    uvIndex: hourWeather.uvIndex.value,
-                    humidity: hourWeather.humidity,
-                    visibility: hourWeather.visibility.converted(to: .kilometers).value
-                )
-            }
+        if dayHourlyData.isEmpty {
+            print("⚠️ [WeatherService] No hourly data available for day \(dayOffset) (\(day.date)). Returning empty hourly forecasts.")
+            return []
         }
         
-        // Fallback: Generate 24 hours based on the daily forecast
-        let fallbackCloudCover = day.daytimeForecast.cloudCover
-        let baseTemp = (day.lowTemperature.value + day.highTemperature.value) / 2.0
-        return (0..<24).map { hour in
-            let hourVariation = calculateHourVariation(hour: hour)
-            let temp = baseTemp + hourVariation
-            
+        return dayHourlyData.map { hourWeather in
+            // Extract hour in the city's local timezone
+            let hour = calendar.component(.hour, from: hourWeather.date)
             return HourlyForecast(
                 hour: hour,
-                temperature: temp,
-                apparentTemperature: temp,  // fallback: no apparent temp available
-                symbolName: day.symbolName,
-                condition: mapWeatherKitCondition(day.condition),
-                precipitationChance: day.precipitationChance,
-                cloudCover: fallbackCloudCover,
-                windSpeed: nil,
-                uvIndex: nil,
-                humidity: nil,
-                visibility: nil
+                temperature: hourWeather.temperature.value,
+                apparentTemperature: hourWeather.apparentTemperature.value,
+                symbolName: hourWeather.symbolName,
+                condition: mapWeatherKitCondition(hourWeather.condition),
+                precipitationChance: hourWeather.precipitationChance,
+                cloudCover: hourWeather.cloudCover,
+                windSpeed: hourWeather.wind.speed.converted(to: .kilometersPerHour).value,
+                uvIndex: hourWeather.uvIndex.value,
+                humidity: hourWeather.humidity,
+                visibility: hourWeather.visibility.converted(to: .kilometers).value
             )
         }
     }
     
-    private func calculateHourVariation(hour: Int) -> Double {
-        if hour < 6 {
-            return -6.0
-        } else if hour < 12 {
-            return -3.0 + Double(hour - 6) * 0.5
-        } else if hour < 16 {
-            return 0.0
-        } else if hour < 20 {
-            return -1.0 - Double(hour - 16) * 0.5
-        } else {
-            return -4.0
-        }
-    }
     
     private func mapWeatherKitCondition(_ condition: WeatherCondition) -> AppWeatherCondition {
         switch condition {
@@ -1067,8 +1040,8 @@ struct DailyForecast: Identifiable {
     let symbolName: String
     let condition: AppWeatherCondition
     let hourlyForecasts: [HourlyForecast]
-    let cloudCover: Double  // 0.0 to 1.0
-    let precipitationChance: Double  // 0.0 to 1.0
+    let cloudCover: Double?  // 0.0 to 1.0, nil if unavailable
+    let precipitationChance: Double?  // 0.0 to 1.0, nil if unavailable
     let visibility: Double?     // km, only available for day 0 (current weather)
     let feelsLikeLow: Double?   // °C, full-day min apparent temp
     let feelsLikeHigh: Double?  // °C, full-day max apparent temp
@@ -1132,12 +1105,25 @@ struct DailyForecast: Identifiable {
         symbolName.contains("cloud") && symbolName.contains("sun")
     }
     
-    var cloudCoverPercent: Int {
-        Int(cloudCover * 100)
+    var cloudCoverPercent: Int? {
+        cloudCover.map { Int($0 * 100) }
     }
     
     var dailyTempString: String {
         "\(Int(dailyLow))-\(Int(dailyHigh))°"
+    }
+    
+    /// Whether this forecast has the data required by the given overlay mode.
+    func hasData(forOverlay overlayMode: String) -> Bool {
+        switch overlayMode {
+        case "cloudCover":    return cloudCover != nil
+        case "precipitation": return precipitationChance != nil
+        case "windSpeed":     return windSpeed != nil
+        case "uvIndex":       return uvIndex != nil
+        case "humidity":      return maxHumidity != nil
+        case "visibility":    return maxVisibility != nil
+        default:              return true
+        }
     }
 }
 
@@ -1145,11 +1131,11 @@ struct HourlyForecast: Identifiable {
     let id = UUID()
     let hour: Int  // 0-23
     let temperature: Double
-    let apparentTemperature: Double  // feels like
+    let apparentTemperature: Double?  // feels like, nil if unavailable
     let symbolName: String
     let condition: AppWeatherCondition
-    let precipitationChance: Double  // 0.0 to 1.0
-    let cloudCover: Double  // 0.0 to 1.0
+    let precipitationChance: Double?  // 0.0 to 1.0, nil if unavailable
+    let cloudCover: Double?  // 0.0 to 1.0, nil if unavailable
     let windSpeed: Double?  // km/h
     let uvIndex: Int?
     let humidity: Double?  // 0.0 to 1.0
@@ -1215,8 +1201,8 @@ struct HourlyForecast: Identifiable {
         symbolName.contains("cloud") && symbolName.contains("moon")
     }
     
-    var cloudCoverPercent: Int {
-        Int(cloudCover * 100)
+    var cloudCoverPercent: Int? {
+        cloudCover.map { Int($0 * 100) }
     }
     
     func formattedHour(locale: Locale = .current) -> String {
@@ -1337,8 +1323,8 @@ struct CachedDailyForecast: Codable {
     let symbolName: String
     let condition: String
     let hourlyForecasts: [CachedHourlyForecast]
-    let cloudCover: Double
-    let precipitationChance: Double
+    let cloudCover: Double?
+    let precipitationChance: Double?
     let visibility: Double?
     let feelsLikeLow: Double?
     let feelsLikeHigh: Double?
@@ -1384,16 +1370,31 @@ struct CachedDailyForecast: Codable {
             dailyLow = low
             dailyHigh = high
         } else {
-            let temp = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 15.0
-            dailyLow = temp - 3.0
-            dailyHigh = temp
+            print("⚠️ [WeatherCache] Daily temperature data missing for day \(try container.decode(Int.self, forKey: .dayOffset)). Cache entry may be corrupt — forcing refresh.")
+            // Decode from legacy single temperature if available, otherwise throw
+            if let temp = try container.decodeIfPresent(Double.self, forKey: .temperature) {
+                print("⚠️ [WeatherCache] Using legacy single temperature value \(temp) for low/high.")
+                dailyLow = temp
+                dailyHigh = temp
+            } else {
+                throw DecodingError.dataCorrupted(.init(codingPath: container.codingPath, debugDescription: "Missing daily temperature data — no dailyLow/dailyHigh, daytimeLow/daytimeHigh, or temperature found."))
+            }
         }
         symbolName = try container.decode(String.self, forKey: .symbolName)
         condition = try container.decode(String.self, forKey: .condition)
         hourlyForecasts = try container.decode([CachedHourlyForecast].self, forKey: .hourlyForecasts)
-        cloudCover = try container.decodeIfPresent(Double.self, forKey: .cloudCover)
-            ?? Double(AppWeatherCondition.fromDisplayName(condition).estimatedCloudCover) / 100.0
-        precipitationChance = try container.decodeIfPresent(Double.self, forKey: .precipitationChance) ?? 0.0
+        if let cc = try container.decodeIfPresent(Double.self, forKey: .cloudCover) {
+            cloudCover = cc
+        } else {
+            print("⚠️ [WeatherCache] Cloud cover data missing for day \(dayOffset). Setting to nil.")
+            cloudCover = nil
+        }
+        if let pc = try container.decodeIfPresent(Double.self, forKey: .precipitationChance) {
+            precipitationChance = pc
+        } else {
+            print("⚠️ [WeatherCache] Precipitation chance data missing for day \(dayOffset). Setting to nil.")
+            precipitationChance = nil
+        }
         visibility = try container.decodeIfPresent(Double.self, forKey: .visibility)
         feelsLikeLow = try container.decodeIfPresent(Double.self, forKey: .feelsLikeLow)
         feelsLikeHigh = try container.decodeIfPresent(Double.self, forKey: .feelsLikeHigh)
@@ -1419,8 +1420,8 @@ struct CachedDailyForecast: Codable {
         try container.encode(symbolName, forKey: .symbolName)
         try container.encode(condition, forKey: .condition)
         try container.encode(hourlyForecasts, forKey: .hourlyForecasts)
-        try container.encode(cloudCover, forKey: .cloudCover)
-        try container.encode(precipitationChance, forKey: .precipitationChance)
+        try container.encodeIfPresent(cloudCover, forKey: .cloudCover)
+        try container.encodeIfPresent(precipitationChance, forKey: .precipitationChance)
         try container.encodeIfPresent(visibility, forKey: .visibility)
         try container.encodeIfPresent(feelsLikeLow, forKey: .feelsLikeLow)
         try container.encodeIfPresent(feelsLikeHigh, forKey: .feelsLikeHigh)
@@ -1463,11 +1464,11 @@ struct CachedDailyForecast: Codable {
 struct CachedHourlyForecast: Codable {
     let hour: Int
     let temperature: Double
-    let apparentTemperature: Double
+    let apparentTemperature: Double?
     let symbolName: String
     let condition: String
-    let precipitationChance: Double
-    let cloudCover: Double
+    let precipitationChance: Double?
+    let cloudCover: Double?
     let windSpeed: Double?
     let uvIndex: Int?
     let humidity: Double?
@@ -1491,12 +1492,24 @@ struct CachedHourlyForecast: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         hour = try container.decode(Int.self, forKey: .hour)
         temperature = try container.decode(Double.self, forKey: .temperature)
-        apparentTemperature = try container.decodeIfPresent(Double.self, forKey: .apparentTemperature) ?? temperature
+        if let at = try container.decodeIfPresent(Double.self, forKey: .apparentTemperature) {
+            apparentTemperature = at
+        } else {
+            print("⚠️ [WeatherCache] Apparent temperature missing for hour \(hour). Setting to nil.")
+            apparentTemperature = nil
+        }
         symbolName = try container.decode(String.self, forKey: .symbolName)
         condition = try container.decode(String.self, forKey: .condition)
-        precipitationChance = try container.decode(Double.self, forKey: .precipitationChance)
-        cloudCover = try container.decodeIfPresent(Double.self, forKey: .cloudCover)
-            ?? Double(AppWeatherCondition.fromDisplayName(condition).estimatedCloudCover) / 100.0
+        precipitationChance = try container.decodeIfPresent(Double.self, forKey: .precipitationChance)
+        if precipitationChance == nil {
+            print("⚠️ [WeatherCache] Precipitation chance missing for hour \(hour). Setting to nil.")
+        }
+        if let cc = try container.decodeIfPresent(Double.self, forKey: .cloudCover) {
+            cloudCover = cc
+        } else {
+            print("⚠️ [WeatherCache] Cloud cover missing for hour \(hour). Setting to nil.")
+            cloudCover = nil
+        }
         windSpeed = try container.decodeIfPresent(Double.self, forKey: .windSpeed)
         uvIndex = try container.decodeIfPresent(Int.self, forKey: .uvIndex)
         humidity = try container.decodeIfPresent(Double.self, forKey: .humidity)

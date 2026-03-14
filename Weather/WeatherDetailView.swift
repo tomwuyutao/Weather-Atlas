@@ -496,7 +496,7 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "Cloud Cover",
-                        value: "\(Int(forecast.cloudCover * 100))%",
+                        value: forecast.cloudCover.map { "\(Int($0 * 100))%" } ?? "—",
                         isSelected: chartMetric == .cloudCover
                     )
                     .onTapGesture {
@@ -507,7 +507,7 @@ struct WeatherDetailView: View {
 
                     WeatherStatCard(
                         label: "Precipitation",
-                        value: "\(Int(forecast.precipitationChance * 100))%",
+                        value: forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—",
                         isSelected: chartMetric == .precipitation
                     )
                     .onTapGesture {
@@ -913,12 +913,25 @@ struct HourlyTimelineChart: View {
         hourlyForecasts.filter { [7, 9, 11, 13, 15, 17, 19].contains($0.hour) }
     }
     
+    private func chartValueText(for forecast: HourlyForecast) -> String {
+        switch chartMetric {
+        case .temperature:   return tempUnit.display(forecast.temperature)
+        case .feelsLike:     return forecast.apparentTemperature.map { tempUnit.display($0) } ?? "—"
+        case .cloudCover:    return forecast.cloudCoverPercent.map { "\($0)%" } ?? "—"
+        case .precipitation: return forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—"
+        case .windSpeed:     return forecast.windSpeed.map { "\(Int($0))" } ?? "—"
+        case .uvIndex:       return forecast.uvIndex.map { "\($0)" } ?? "—"
+        case .humidity:      return forecast.humidity.map { "\(Int($0 * 100))%" } ?? "—"
+        case .visibility:    return forecast.visibility.map { "\(Int($0))" } ?? "—"
+        }
+    }
+    
     private func value(for forecast: HourlyForecast) -> Double {
         switch chartMetric {
         case .temperature:      return forecast.temperature
-        case .feelsLike:        return forecast.apparentTemperature
-        case .cloudCover:       return Double(forecast.cloudCoverPercent)
-        case .precipitation:    return forecast.precipitationChance * 100
+        case .feelsLike:        return forecast.apparentTemperature ?? forecast.temperature
+        case .cloudCover:       return Double(forecast.cloudCoverPercent ?? 0)
+        case .precipitation:    return (forecast.precipitationChance ?? 0) * 100
         case .windSpeed:        return forecast.windSpeed ?? 0
         case .uvIndex:          return Double(forecast.uvIndex ?? 0)
         case .humidity:         return (forecast.humidity ?? 0) * 100
@@ -954,6 +967,19 @@ struct HourlyTimelineChart: View {
     }
     
     var body: some View {
+        if dataPoints.isEmpty {
+            // No hourly data available for this day
+            VStack(spacing: 8) {
+                Image(systemName: "chart.line.downtrend.xyaxis")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.secondary.opacity(0.5))
+                Text("No hourly data")
+                    .font(.avenir(.subheadline, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(height: totalHeight)
+            .frame(maxWidth: .infinity)
+        } else {
         GeometryReader { geometry in
             let width = geometry.size.width
             let count = CGFloat(dataPoints.count)
@@ -1007,18 +1033,7 @@ struct HourlyTimelineChart: View {
                                 .opacity(pastHour ? 0.3 : 1.0)
 
                             // Value text — sits below the dot on the line
-                            Text({
-                                switch chartMetric {
-                                case .temperature:   return tempUnit.display(forecast.temperature)
-                                case .feelsLike:     return tempUnit.display(forecast.apparentTemperature)
-                                case .cloudCover:    return "\(forecast.cloudCoverPercent)%"
-                                case .precipitation: return "\(Int(forecast.precipitationChance * 100))%"
-                                case .windSpeed:     return forecast.windSpeed.map { "\(Int($0))" } ?? "—"
-                                case .uvIndex:       return forecast.uvIndex.map { "\($0)" } ?? "—"
-                                case .humidity:      return forecast.humidity.map { "\(Int($0 * 100))%" } ?? "—"
-                                case .visibility:    return forecast.visibility.map { "\(Int($0))" } ?? "—"
-                                }
-                            }())
+                            Text(chartValueText(for: forecast))
                                 .font(.avenir(.footnote, weight: .semibold))
                                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                                 .contentTransition(.numericText())
@@ -1033,6 +1048,7 @@ struct HourlyTimelineChart: View {
         }
         .frame(height: totalHeight)
         .animation(.smooth(duration: 0.3), value: chartMetric)
+        } // else (has data)
     }
 }
 

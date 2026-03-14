@@ -199,8 +199,8 @@ struct SVGMapView: View {
         var onScreen: [Pos] = []
         for cityWeather in cities {
             let forecast = cityWeather.forecast(for: selectedDayOffset)
-            let passesFilter = !filterSunny || (forecast.condition == .clear && forecast.cloudCover < 0.30)
-            guard passesFilter else { continue }
+            let passesFilter = !filterSunny || (forecast.condition == .clear && (forecast.cloudCover ?? 1.0) < 0.30)
+            guard passesFilter, forecast.hasData(forOverlay: overlayMode) else { continue }
             let svgPos = GeoProjection.geoToSVG(
                 latitude: cityWeather.city.latitude,
                 longitude: cityWeather.city.longitude
@@ -232,7 +232,8 @@ struct SVGMapView: View {
         
         ForEach(cities) { cityWeather in
             let forecast = cityWeather.forecast(for: selectedDayOffset)
-            let passesFilter = !filterSunny || (forecast.condition == .clear && forecast.cloudCover < 0.30)
+            let passesFilter = !filterSunny || (forecast.condition == .clear && (forecast.cloudCover ?? 1.0) < 0.30)
+            let hasData = forecast.hasData(forOverlay: overlayMode)
             let svgPos = GeoProjection.geoToSVG(
                 latitude: cityWeather.city.latitude,
                 longitude: cityWeather.city.longitude
@@ -258,9 +259,10 @@ struct SVGMapView: View {
                 x: svgPos.x * canvasEffective,
                 y: svgPos.y * canvasEffective
             )
-            .opacity(passesFilter ? 1 : 0)
+            .opacity(passesFilter && hasData ? 1 : 0)
             .animation(.easeInOut(duration: 0.3), value: passesFilter)
-            .allowsHitTesting(passesFilter && !isGesturing)
+            .animation(.easeInOut(duration: 0.3), value: hasData)
+            .allowsHitTesting(passesFilter && hasData && !isGesturing)
             .onTapGesture {
                 tappedCity = cityWeather
                 tappedMarkerID = cityWeather.id

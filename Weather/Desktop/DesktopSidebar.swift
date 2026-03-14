@@ -28,9 +28,11 @@ struct CityRow: View {
     private var displayValue: String {
         switch overlayMode {
         case "cloudCover":
-            return "\(forecast.cloudCoverPercent)%"
+            guard let cc = forecast.cloudCoverPercent else { return "—" }
+            return "\(cc)%"
         case "precipitation":
-            return "\(Int(forecast.precipitationChance * 100))%"
+            guard let pc = forecast.precipitationChance else { return "—" }
+            return "\(Int(pc * 100))%"
         case "windSpeed":
             guard let ws = forecast.windSpeed else { return "—" }
             return "\(Int(ws)) km/h"

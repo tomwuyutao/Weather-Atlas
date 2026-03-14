@@ -474,8 +474,12 @@ struct ContentView: View {
         let isOverlayActive = !["weather", "temperature"].contains(mapOverlayMode)
         let overlayLargeText: String = {
             switch mapOverlayMode {
-            case "cloudCover": return "\(forecast.cloudCoverPercent)%"
-            case "precipitation": return "\(Int(forecast.precipitationChance * 100))%"
+            case "cloudCover":
+                guard let cc = forecast.cloudCoverPercent else { return "—" }
+                return "\(cc)%"
+            case "precipitation":
+                guard let pc = forecast.precipitationChance else { return "—" }
+                return "\(Int(pc * 100))%"
             case "windSpeed":
                 guard let ws = forecast.windSpeed else { return "—" }
                 return "\(Int(ws))km/h"
@@ -494,7 +498,7 @@ struct ContentView: View {
         let overlayLabel: String = {
             switch mapOverlayMode {
             case "cloudCover": return "Cloud Cover"
-            case "precipitation": return "Precipitation"
+            case "precipitation": return "Precipitation Chance"
             case "windSpeed": return "Wind Speed"
             case "uvIndex": return "UV Index"
             case "humidity": return "Humidity"
@@ -511,7 +515,7 @@ struct ContentView: View {
                         .font(.custom("AvenirNext-Medium", size: 42, relativeTo: .largeTitle))
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText())
-                    Text(isOverlayActive ? overlayLabel : "Daily High")
+                    Text(isOverlayActive ? overlayLabel : "Highest Temperature")
                         .font(.avenir(.subheadline, weight: .medium))
                         .foregroundStyle(.secondary)
                         .offset(x: 4, y: -4)
@@ -2657,12 +2661,28 @@ struct WeatherMarker: View {
     private var showAsCard: Bool { displayMode == .card }
     private var showPrecipitation: Bool { overlayMode == "precipitation" }
 
+    /// Whether the forecast has the data required by the current overlay mode.
+    /// When false the entire marker should be hidden.
+    private var hasOverlayData: Bool {
+        switch overlayMode {
+        case "cloudCover":    return forecast.cloudCover != nil
+        case "precipitation": return forecast.precipitationChance != nil
+        case "windSpeed":     return forecast.windSpeed != nil
+        case "uvIndex":       return forecast.uvIndex != nil
+        case "humidity":      return forecast.maxHumidity != nil
+        case "visibility":    return forecast.maxVisibility != nil
+        default:              return true // "weather" / "temperature" always available
+        }
+    }
+
     private var overlayPinText: String {
         switch overlayMode {
         case "cloudCover":
-            return "\(forecast.cloudCoverPercent)%"
+            guard let cc = forecast.cloudCoverPercent else { return "—" }
+            return "\(cc)%"
         case "precipitation":
-            return "\(Int(forecast.precipitationChance * 100))%"
+            guard let pc = forecast.precipitationChance else { return "—" }
+            return "\(Int(pc * 100))%"
         case "windSpeed":
             guard let ws = forecast.windSpeed else { return "—" }
             return "\(Int(ws))"
@@ -2720,7 +2740,8 @@ struct WeatherMarker: View {
         }
         // Cloud cover overlay: white (0%) → dark blue #1579C7 (100%)
         if overlayMode == "cloudCover" {
-            let cover = CGFloat(forecast.cloudCover) // 0.0 (clear) to 1.0 (cloudy)
+            guard let cloudCoverVal = forecast.cloudCover else { return .gray }
+            let cover = CGFloat(cloudCoverVal) // 0.0 (clear) to 1.0 (cloudy)
             return Color(
                 red: 1.0 + Double(cover) * (Double(0x15) / 255.0 - 1.0),
                 green: 1.0 + Double(cover) * (Double(0x79) / 255.0 - 1.0),
@@ -2729,7 +2750,8 @@ struct WeatherMarker: View {
         }
         // Precipitation overlay: white (0%) → cyan #57D3E5 (100%)
         if overlayMode == "precipitation" {
-            let chance = CGFloat(forecast.precipitationChance) // 0.0 to 1.0
+            guard let precipVal = forecast.precipitationChance else { return .gray }
+            let chance = CGFloat(precipVal) // 0.0 to 1.0
             return Color(
                 red: 1.0 + Double(chance) * (Double(0x57) / 255.0 - 1.0),
                 green: 1.0 + Double(chance) * (Double(0xD3) / 255.0 - 1.0),
@@ -2841,6 +2863,8 @@ struct WeatherMarker: View {
         }
         .frame(width: 10, height: 10, alignment: .bottom)
         .contentShape(Rectangle())
+        .opacity(hasOverlayData ? 1 : 0)
+        .allowsHitTesting(hasOverlayData)
         .animation(.easeInOut(duration: 0.3), value: displayMode)
         .animation(.easeInOut(duration: 0.2), value: isSelected)
         .animation(.smooth(duration: 0.4), value: dayOffset)

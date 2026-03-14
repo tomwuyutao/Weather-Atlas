@@ -313,7 +313,8 @@ private struct AnnotationsOverlay: View {
         GeometryReader { geometry in
             // Collect on-screen marker positions for collision detection
             let screenPositions: [(id: UUID, pt: CGPoint)] = cities.compactMap { cityWeather in
-                guard passesFilter(cityWeather) else { return nil }
+                guard passesFilter(cityWeather),
+                      cityWeather.forecast(for: selectedDayOffset).hasData(forOverlay: overlayMode) else { return nil }
                 guard let pt = proxy.convert(
                     CLLocationCoordinate2D(
                         latitude: cityWeather.city.latitude,
@@ -330,6 +331,7 @@ private struct AnnotationsOverlay: View {
 
             ForEach(cities) { cityWeather in
                 if passesFilter(cityWeather),
+                   cityWeather.forecast(for: selectedDayOffset).hasData(forOverlay: overlayMode),
                    let screenPt = proxy.convert(
                     CLLocationCoordinate2D(
                         latitude: cityWeather.city.latitude,
