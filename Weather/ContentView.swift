@@ -507,11 +507,11 @@ struct ContentView: View {
             VStack(alignment: .leading, spacing: 6) {
                 // Large value: overlay data or temperature
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(isOverlayActive ? overlayLargeText : tempUnit.display(forecast.daytimeHigh))
+                    Text(isOverlayActive ? overlayLargeText : tempUnit.display(forecast.dailyHigh))
                         .font(.custom("AvenirNext-Medium", size: 42, relativeTo: .largeTitle))
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText())
-                    Text(isOverlayActive ? overlayLabel : "Daytime High")
+                    Text(isOverlayActive ? overlayLabel : "Daily High")
                         .font(.avenir(.subheadline, weight: .medium))
                         .foregroundStyle(.secondary)
                         .offset(x: 4, y: -4)
@@ -2676,14 +2676,14 @@ struct WeatherMarker: View {
             guard let km = forecast.maxVisibility else { return "—" }
             return km >= 10 ? "\(Int(km))" : String(format: "%.1f", km)
         default:
-            return tempUnit.display(forecast.daytimeHigh)
+            return tempUnit.display(forecast.dailyHigh)
         }
     }
 
     private var dotColor: Color {
         // Temperature overlay: dark blue #1579C7 (≤-20°C) → cyan #57D3E5 (0°C) → green #8BBD9F (10°C) → yellow #FDA409 (20°C) → red #FB4368 (≥40°C)
         if overlayMode == "temperature" {
-            let tempC = forecast.daytimeHigh
+            let tempC = forecast.dailyHigh
             if tempC <= 0 {
                 // Dark blue → Cyan: -20 to 0
                 let t = Double(max(0, min(1, (tempC - (-20)) / 20.0)))

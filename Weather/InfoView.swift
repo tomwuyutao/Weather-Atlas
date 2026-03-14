@@ -91,7 +91,7 @@ struct InfoView: View {
                 .padding(.vertical, 18)
                 .background(colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
 
-                calloutLabel("Daytime high (7AM–7PM)")
+                calloutLabel("Daily high temperature")
             }
         }
     }
@@ -103,49 +103,55 @@ struct InfoView: View {
                 .foregroundStyle(.primary)
                 .padding(.leading, 2)
 
-            HStack(alignment: .center, spacing: 0) {
+            HStack(alignment: .bottom, spacing: 0) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(tempUnit == .fahrenheit ? "75°" : "24°")
-                        .font(.custom("AvenirNext-Medium", size: 38, relativeTo: .largeTitle))
-                        .foregroundStyle(.primary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(tempUnit == .fahrenheit ? "75°" : "24°")
+                            .font(.custom("AvenirNext-Medium", size: 42, relativeTo: .largeTitle))
+                            .foregroundStyle(.primary)
+                        Text("Daily High")
+                            .font(.avenir(.subheadline, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
                     Text("Tokyo")
                         .font(.avenir(.body, weight: .semibold))
                         .foregroundStyle(.primary)
-                    HStack(spacing: 12) {
-                        HStack(spacing: 4) {
-                            Image(systemName: "cloud.fill").font(.system(size: 13))
-                            Text("12%").font(.avenir(.footnote, weight: .medium))
-                        }
-                        HStack(spacing: 4) {
-                            Image(systemName: "drop.fill").font(.system(size: 13))
-                            Text("5%").font(.avenir(.footnote, weight: .medium))
-                        }
-                        HStack(spacing: 5) {
-                            ForEach(0..<7, id: \.self) { i in
+                }
+                Spacer()
+                VStack(spacing: 20) {
+                    Image(systemName: "sun.max.fill")
+                        .font(.system(size: 40))
+                        .foregroundStyle(.yellow)
+                        .frame(width: 56, height: 48)
+                    VStack(spacing: 6) {
+                        HStack(spacing: 6) {
+                            ForEach(0..<5, id: \.self) { i in
                                 Circle()
                                     .fill(i == 0 ? AppWeatherCondition.clear.dotColor : AppWeatherCondition.partlyCloudy.dotColor)
-                                    .frame(width: i == 0 ? 8 : 6, height: i == 0 ? 8 : 6)
+                                    .frame(width: 8, height: 8)
                                     .opacity(i == 0 ? 1 : 0.6)
                             }
                         }
+                        HStack(spacing: 6) {
+                            ForEach(0..<5, id: \.self) { _ in
+                                Circle()
+                                    .fill(AppWeatherCondition.partlyCloudy.dotColor)
+                                    .frame(width: 8, height: 8)
+                                    .opacity(0.6)
+                            }
+                        }
                     }
-                    .foregroundStyle(.secondary)
                 }
-                Spacer()
-                Image(systemName: "sun.max.fill")
-                    .font(.system(size: 40))
-                    .foregroundStyle(.yellow)
-                    .frame(width: 56, height: 48)
-                    .padding(.trailing, 10)
+                .padding(.trailing, 10)
             }
-            .padding(.horizontal, 20)
-            .padding(.vertical, 16)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
             .background(colors.listCardFill, in: RoundedRectangle(cornerRadius: 20))
 
             VStack(alignment: .leading, spacing: 3) {
-                calloutLabel("Large number — daytime high (7AM–7PM)")
-                calloutLabel("Cloud & rain % — full-day averages")
-                calloutLabel("Colored dots — 7-day weather conditions")
+                calloutLabel("Large number — daily high (or overlay value)")
+                calloutLabel("Label below — data type shown")
+                calloutLabel("Colored dots — 10-day weather conditions")
             }
             .padding(.leading, 4)
         }
@@ -181,7 +187,7 @@ struct InfoView: View {
             )
 
             VStack(alignment: .leading, spacing: 4) {
-                calloutLabel("Large number — daytime high (7AM–7PM)")
+                calloutLabel("Large number — daily high")
                 calloutLabel("Condition label — current day weather")
             }
             .padding(.leading, 4)
@@ -189,23 +195,50 @@ struct InfoView: View {
             statCard(
                 label: "Temperature",
                 value: tempUnit == .fahrenheit ? "68° / 75°" : "20° / 24°",
-                annotations: ["Low / High", "Daytime (7AM–7PM)"]
+                isSelected: true,
+                annotations: ["Low / High", "Entire day"]
             )
             statCard(
                 label: "Feels Like",
                 value: tempUnit == .fahrenheit ? "65° / 72°" : "18° / 22°",
-                annotations: ["Low / High", "Daytime (7AM–7PM)"]
+                annotations: ["Low / High", "Entire day"]
             )
             statCard(
                 label: "Cloud Cover",
                 value: "12%",
-                annotations: ["Full-day average"]
+                annotations: ["Daytime (7AM–7PM)"]
             )
             statCard(
                 label: "Precipitation",
                 value: "5%",
-                annotations: ["Full-day average"]
+                annotations: ["Full-day max from hourly data"]
             )
+            statCard(
+                label: "Wind Speed",
+                value: "25 km/h",
+                annotations: ["Full-day wind speed"]
+            )
+            statCard(
+                label: "UV Index",
+                value: "6",
+                annotations: ["Daily peak UV"]
+            )
+            statCard(
+                label: "Humidity",
+                value: "65%",
+                annotations: ["Daily max humidity"]
+            )
+            statCard(
+                label: "Visibility",
+                value: "15 km",
+                annotations: ["Daily max visibility"]
+            )
+
+            VStack(alignment: .leading, spacing: 4) {
+                calloutLabel("Tap any card to switch the hourly chart")
+                calloutLabel("\"—\" shown when data is unavailable")
+            }
+            .padding(.leading, 4)
         }
     }
 

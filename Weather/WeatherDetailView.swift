@@ -191,7 +191,7 @@ struct WeatherDetailView: View {
 
                             // Temperature + condition — top left, below back button
                             VStack(alignment: .leading, spacing: 6) {
-                                Text(tempUnit.display(forecast.daytimeHigh))
+                                Text(tempUnit.display(forecast.dailyHigh))
                                     .font(.avenir(.largeTitle, weight: .bold))
                                     .dynamicTypeSize(...DynamicTypeSize.large)
                                     .contentTransition(.numericText())
@@ -215,7 +215,7 @@ struct WeatherDetailView: View {
                     if isHeaderCollapsed {
                         HStack(spacing: 14) {
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(tempUnit.display(forecast.daytimeHigh))
+                                Text(tempUnit.display(forecast.dailyHigh))
                                     .font(.avenir(.title, weight: .bold))
                                     .foregroundStyle(.white)
                                     .contentTransition(.numericText())
@@ -313,7 +313,7 @@ struct WeatherDetailView: View {
                             .animation(.smooth(duration: 0.3), value: internalSelectedDay)
                             .padding(.top, 28)
 
-                        Text(tempUnit.display(forecast.daytimeHigh))
+                        Text(tempUnit.display(forecast.dailyHigh))
                             .font(.avenir(.largeTitle, weight: .bold))
                             .dynamicTypeSize(...DynamicTypeSize.large)
                             .contentTransition(.numericText())
@@ -470,7 +470,7 @@ struct WeatherDetailView: View {
                 LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
                     WeatherStatCard(
                         label: "Temperature",
-                        value: tempUnit.displaySlash(low: forecast.daytimeLow, high: forecast.daytimeHigh),
+                        value: tempUnit.displaySlash(low: forecast.dailyLow, high: forecast.dailyHigh),
                         isSelected: chartMetric == .temperature,
                         valueOffset: 3
                     )
@@ -1358,8 +1358,8 @@ struct SunArcCard: View {
         let mockSunset = calendar.date(byAdding: .init(hour: 18, minute: 30), to: today)
         return DailyForecast(
             dayOffset: dayOffset,
-            daytimeLow: baseTemp - 3.0,
-            daytimeHigh: baseTemp + 3.0,
+            dailyLow: baseTemp - 3.0,
+            dailyHigh: baseTemp + 3.0,
             symbolName: symbol,
             condition: condition,
             hourlyForecasts: dayOffset == 0 ? hourlyForecasts : dayHourlyForecasts,

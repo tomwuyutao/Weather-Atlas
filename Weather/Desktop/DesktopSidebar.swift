@@ -44,7 +44,7 @@ struct CityRow: View {
             guard let km = forecast.maxVisibility else { return "—" }
             return km >= 10 ? "\(Int(km)) km" : String(format: "%.1f km", km)
         default:
-            return tempUnit.display(forecast.daytimeHigh)
+            return tempUnit.display(forecast.dailyHigh)
         }
     }
     

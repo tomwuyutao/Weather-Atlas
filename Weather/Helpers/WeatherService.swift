@@ -620,32 +620,34 @@ class WeatherService {
         let currentVisibilityKm = weather.currentWeather.visibility.converted(to: .kilometers).value
         let currentHumidity = weather.currentWeather.humidity
         let dailyForecasts = weather.dailyForecast.forecast.prefix(10).enumerated().map { (index, day) -> DailyForecast in
-            let daytimeForecast = day.daytimeForecast
             let daySymbol = day.symbolName
             let dayCondition = mapWeatherKitCondition(day.condition)
             
             // Generate hourly forecasts for this day
             let hourlyForecasts = generateHourlyFromDaily(day: day, dayOffset: index, allHourly: weather.hourlyForecast.forecast, timeZone: timeZone)
             
-            // Derive daytime (7AM–7PM) feels-like range from hourly apparent temperatures
-            let daytimeHourly = hourlyForecasts.filter { $0.hour >= 7 && $0.hour < 19 }
-            let feelsLikeLow = daytimeHourly.map(\.apparentTemperature).min()
-            let feelsLikeHigh = daytimeHourly.map(\.apparentTemperature).max()
+            // Derive full-day feels-like range from all hourly apparent temperatures
+            let feelsLikeLow = hourlyForecasts.map(\.apparentTemperature).min()
+            let feelsLikeHigh = hourlyForecasts.map(\.apparentTemperature).max()
+            
+            // Compute full-day precipitation chance from hourly data (max of all hours)
+            let hourlyPrecipChances = hourlyForecasts.map(\.precipitationChance)
+            let fullDayPrecipChance = hourlyPrecipChances.isEmpty ? day.daytimeForecast.precipitationChance : hourlyPrecipChances.max() ?? 0
 
             return DailyForecast(
                 dayOffset: index,
-                daytimeLow: daytimeForecast.lowTemperature.value,
-                daytimeHigh: daytimeForecast.highTemperature.value,
+                dailyLow: day.lowTemperature.value,
+                dailyHigh: day.highTemperature.value,
                 symbolName: daySymbol,
                 condition: dayCondition,
                 hourlyForecasts: hourlyForecasts,
-                cloudCover: daytimeForecast.cloudCover,
-                precipitationChance: daytimeForecast.precipitationChance,
+                cloudCover: day.daytimeForecast.cloudCover,
+                precipitationChance: fullDayPrecipChance,
                 visibility: index == 0 ? currentVisibilityKm : nil,
                 feelsLikeLow: feelsLikeLow,
                 feelsLikeHigh: feelsLikeHigh,
                 humidity: index == 0 ? currentHumidity : nil,
-                windSpeed: daytimeForecast.wind.speed.converted(to: .kilometersPerHour).value,
+                windSpeed: day.wind.speed.converted(to: .kilometersPerHour).value,
                 uvIndex: day.uvIndex.value,
                 maxHumidity: day.maximumHumidity,
                 maxVisibility: day.maximumVisibility / 1000.0,
@@ -699,10 +701,8 @@ class WeatherService {
         }
         
         // Fallback: Generate 24 hours based on the daily forecast
-
-        let daytime = day.daytimeForecast
-        let fallbackCloudCover = daytime.cloudCover
-        let baseTemp = (daytime.lowTemperature.value + daytime.highTemperature.value) / 2.0
+        let fallbackCloudCover = day.daytimeForecast.cloudCover
+        let baseTemp = (day.lowTemperature.value + day.highTemperature.value) / 2.0
         return (0..<24).map { hour in
             let hourVariation = calculateHourVariation(hour: hour)
             let temp = baseTemp + hourVariation
@@ -1062,18 +1062,18 @@ struct ForecastDay: Identifiable {
 struct DailyForecast: Identifiable {
     let id = UUID()
     let dayOffset: Int
-    let daytimeLow: Double   // 7AM-7PM low temperature
-    let daytimeHigh: Double  // 7AM-7PM high temperature
+    let dailyLow: Double   // entire day low temperature
+    let dailyHigh: Double  // entire day high temperature
     let symbolName: String
     let condition: AppWeatherCondition
     let hourlyForecasts: [HourlyForecast]
     let cloudCover: Double  // 0.0 to 1.0
     let precipitationChance: Double  // 0.0 to 1.0
     let visibility: Double?     // km, only available for day 0 (current weather)
-    let feelsLikeLow: Double?   // °C, daytime (7AM–7PM) min apparent temp
-    let feelsLikeHigh: Double?  // °C, daytime (7AM–7PM) max apparent temp
+    let feelsLikeLow: Double?   // °C, full-day min apparent temp
+    let feelsLikeHigh: Double?  // °C, full-day max apparent temp
     let humidity: Double?       // 0.0–1.0, only available for day 0 (current weather)
-    let windSpeed: Double?      // km/h, daytime max sustained wind speed
+    let windSpeed: Double?      // km/h, full-day wind speed
     let uvIndex: Int?           // 0–11+
     let maxHumidity: Double?    // 0.0–1.0, daily max humidity
     let maxVisibility: Double?  // km, daily max visibility
@@ -1136,8 +1136,8 @@ struct DailyForecast: Identifiable {
         Int(cloudCover * 100)
     }
     
-    var daytimeTempString: String {
-        "\(Int(daytimeLow))-\(Int(daytimeHigh))°"
+    var dailyTempString: String {
+        "\(Int(dailyLow))-\(Int(dailyHigh))°"
     }
 }
 
@@ -1332,8 +1332,8 @@ struct CachedCityWeather: Codable {
 }
 struct CachedDailyForecast: Codable {
     let dayOffset: Int
-    let daytimeLow: Double
-    let daytimeHigh: Double
+    let dailyLow: Double
+    let dailyHigh: Double
     let symbolName: String
     let condition: String
     let hourlyForecasts: [CachedHourlyForecast]
@@ -1352,8 +1352,8 @@ struct CachedDailyForecast: Codable {
     
     init(from forecast: DailyForecast) {
         self.dayOffset = forecast.dayOffset
-        self.daytimeLow = forecast.daytimeLow
-        self.daytimeHigh = forecast.daytimeHigh
+        self.dailyLow = forecast.dailyLow
+        self.dailyHigh = forecast.dailyHigh
         self.symbolName = forecast.symbolName
         self.condition = forecast.condition.displayName
         self.hourlyForecasts = forecast.hourlyForecasts.map { CachedHourlyForecast(from: $0) }
@@ -1374,15 +1374,19 @@ struct CachedDailyForecast: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         dayOffset = try container.decode(Int.self, forKey: .dayOffset)
-        // Migration: old cache had single `temperature`, new cache has daytimeLow/daytimeHigh
-        if let low = try container.decodeIfPresent(Double.self, forKey: .daytimeLow),
-           let high = try container.decodeIfPresent(Double.self, forKey: .daytimeHigh) {
-            daytimeLow = low
-            daytimeHigh = high
+        // Migration: old cache used daytimeLow/daytimeHigh or single temperature
+        if let low = try container.decodeIfPresent(Double.self, forKey: .dailyLow),
+           let high = try container.decodeIfPresent(Double.self, forKey: .dailyHigh) {
+            dailyLow = low
+            dailyHigh = high
+        } else if let low = try container.decodeIfPresent(Double.self, forKey: .daytimeLow),
+                  let high = try container.decodeIfPresent(Double.self, forKey: .daytimeHigh) {
+            dailyLow = low
+            dailyHigh = high
         } else {
             let temp = try container.decodeIfPresent(Double.self, forKey: .temperature) ?? 15.0
-            daytimeLow = temp - 3.0
-            daytimeHigh = temp
+            dailyLow = temp - 3.0
+            dailyHigh = temp
         }
         symbolName = try container.decode(String.self, forKey: .symbolName)
         condition = try container.decode(String.self, forKey: .condition)
@@ -1402,16 +1406,16 @@ struct CachedDailyForecast: Codable {
         sunset = try container.decodeIfPresent(Date.self, forKey: .sunset)
     }
     
-    // Keep the old key for migration during decoding
+    // Keep the old keys for migration during decoding
     private enum CodingKeys: String, CodingKey {
-        case dayOffset, daytimeLow, daytimeHigh, symbolName, condition, hourlyForecasts, cloudCover, precipitationChance, temperature, visibility, feelsLikeLow, feelsLikeHigh, humidity, windSpeed, uvIndex, maxHumidity, maxVisibility, sunrise, sunset
+        case dayOffset, dailyLow, dailyHigh, daytimeLow, daytimeHigh, symbolName, condition, hourlyForecasts, cloudCover, precipitationChance, temperature, visibility, feelsLikeLow, feelsLikeHigh, humidity, windSpeed, uvIndex, maxHumidity, maxVisibility, sunrise, sunset
     }
     
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(dayOffset, forKey: .dayOffset)
-        try container.encode(daytimeLow, forKey: .daytimeLow)
-        try container.encode(daytimeHigh, forKey: .daytimeHigh)
+        try container.encode(dailyLow, forKey: .dailyLow)
+        try container.encode(dailyHigh, forKey: .dailyHigh)
         try container.encode(symbolName, forKey: .symbolName)
         try container.encode(condition, forKey: .condition)
         try container.encode(hourlyForecasts, forKey: .hourlyForecasts)
@@ -1435,8 +1439,8 @@ struct CachedDailyForecast: Codable {
         
         return DailyForecast(
             dayOffset: dayOffset,
-            daytimeLow: daytimeLow,
-            daytimeHigh: daytimeHigh,
+            dailyLow: dailyLow,
+            dailyHigh: dailyHigh,
             symbolName: symbolName,
             condition: appCondition,
             hourlyForecasts: forecasts,

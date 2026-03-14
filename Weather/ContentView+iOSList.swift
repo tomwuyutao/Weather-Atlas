@@ -322,7 +322,7 @@ extension ContentView {
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                 .frame(height: 30)
 
-            Text(tempUnit.display(forecast.daytimeHigh))
+            Text(tempUnit.display(forecast.dailyHigh))
                 .font(.avenir(.title2, weight: .medium))
                 .contentTransition(.numericText())
 
@@ -595,7 +595,7 @@ extension ContentView {
                             Text(cityWeather.city.localizedName(locale: locale))
                                 .font(.avenir(.body, weight: .medium))
                             Spacer()
-                            Text(tempUnit.display(cityWeather.forecast(for: selectedDayOffset).daytimeHigh))
+                            Text(tempUnit.display(cityWeather.forecast(for: selectedDayOffset).dailyHigh))
                                 .font(.avenir(.title2, weight: .medium))
                                 .foregroundStyle(.secondary)
                                 .contentTransition(.numericText())
