@@ -774,10 +774,10 @@ extension ContentView {
             }
 
             if selectedTab == 1 || isIPad {
-                menuRow(icon: "circle.grid.2x2", title: localizedString("Legend", locale: locale)) {
+                menuRow(icon: showLegend ? "eye.fill" : "eye.slash", title: showLegend ? localizedString("Hide Legend", locale: locale) : localizedString("Show Legend", locale: locale)) {
                     showingMenuPopover = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        showingLegend = true
+                    withAnimation(.smooth(duration: 0.3)) {
+                        showLegend.toggle()
                     }
                 }
             }

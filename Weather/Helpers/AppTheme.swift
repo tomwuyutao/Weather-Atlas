@@ -166,7 +166,7 @@ extension ThemeColors {
         mapLand: Color(hex: 0x252640),
         mapBorder: Color(hex: 0x353660),
         svgCountryFill: Color(hex: 0x252640),
-        colorfulOcean: Color(hex: 0x1A3A35),
+        colorfulOcean: Color(hex: 0x1A2A3D),
         colorfulLand: Color(hex: 0x2A4A3A),
         colorfulLandActive: Color(hex: 0x345A45),
         colorfulBorder: Color(hex: 0x3D6B55),

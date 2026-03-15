@@ -69,7 +69,7 @@ struct ContentView: View {
     @State var detailOpenedFromList: Bool = false
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @State var showingSettings: Bool = false
-    @State var showingLegend: Bool = false
+    @AppStorage("showLegend") var showLegend: Bool = true
     @State var showingInfo: Bool = false
     @State var sidebarVisibility: NavigationSplitViewVisibility = .all
     @AppStorage("mapMode") var mapMode: String = "minimal"
@@ -961,10 +961,7 @@ struct ContentView: View {
         .onChange(of: radialSearchRadius) { _, _ in
             updateRadialGridPreview()
         }
-        .sheet(isPresented: $showingLegend) {
-            LegendView()
-                .presentationSizing(.form)
-        }
+
         .sheet(isPresented: $showingInfo) {
             InfoView(source: selectedTab == 1 ? .map : .list)
                 .presentationSizing(.form)
@@ -1176,6 +1173,13 @@ struct ContentView: View {
     private var iPhoneTabContent: some View {
         ZStack {
             iOSMapView
+                .overlay(alignment: .top) {
+                    if selectedTab == 1, showLegend {
+                        MapFloatingLegend(overlayMode: mapOverlayMode)
+                            .padding(.top, 8)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
                 .overlay(alignment: .trailing) {
                     if selectedTab == 1, (!isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch)) {
                         Color.clear
@@ -1205,7 +1209,13 @@ struct ContentView: View {
     private var iPadDetailContent: some View {
         ZStack(alignment: .bottom) {
             iOSMapView
-                
+                .overlay(alignment: .top) {
+                    if showLegend {
+                        MapFloatingLegend(overlayMode: mapOverlayMode)
+                            .padding(.top, 8)
+                            .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
                 .overlay(alignment: .trailing) {
                     if showDateSlider, !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
                         Color.clear
