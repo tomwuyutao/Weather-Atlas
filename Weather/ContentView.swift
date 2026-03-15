@@ -2913,12 +2913,7 @@ struct WeatherMarker: View {
             return AppTheme.shared.colors.moonIconColor
         }
         // Default weather dot color
-        let base = displayCondition.dotColor
-        // In light mode + detailed map, replace white dots with a medium gray so they're visible
-        if colorScheme == .light && AppTheme.shared.isDetailedMapMode && base == .white {
-            return Color(hex: 0xB4B4B4)
-        }
-        return base
+        return displayCondition.dotColor
     }
 
     private var baseCondition: AppWeatherCondition {

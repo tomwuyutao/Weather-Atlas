@@ -334,7 +334,7 @@ struct WeatherDetailView: View {
         #endif
     }
 
-    private let expandedHeaderHeight: CGFloat = 375
+    private let expandedHeaderHeight: CGFloat = 270
     private let collapsedHeaderHeight: CGFloat = 135
 
     private var currentHeaderHeight: CGFloat {
@@ -1010,6 +1010,7 @@ struct WeatherDetailView: View {
 
         }
         .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)
+        .background(InteractivePopGestureDisabler())
         .onAppear {
             isHeaderCollapsed = false
             headerDragOffset = 0
@@ -1063,6 +1064,26 @@ struct WeatherDetailView: View {
     }
 }
 
+// MARK: - Disable interactive pop gesture
+
+private struct InteractivePopGestureDisabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController {
+        let controller = DisabledPopGestureController()
+        return controller
+    }
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
+
+private class DisabledPopGestureController: UIViewController {
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+    }
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+    }
+}
 // MARK: - Animatable helpers for chart line
 
 struct AnimatablePointList: VectorArithmetic {
@@ -1259,7 +1280,9 @@ struct HourlyTimelineChart: View {
         case .windSpeed:
             return (0, 100)
         case .visibility:
-            return (0, 30)
+            let vals = dataPoints.map { value(for: $0) }
+            let maxV = vals.max() ?? 30
+            return (0, max(30, maxV + 5))
         case .temperature, .feelsLike:
             let vals = dataPoints.map { value(for: $0) }
             let minV = vals.min() ?? 10

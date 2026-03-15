@@ -707,7 +707,7 @@ private struct GridPreviewOverlay: View {
                     guard pt.x > -margin && pt.x < size.width + margin &&
                           pt.y > -margin && pt.y < size.height + margin else { continue }
                     let rect = CGRect(x: pt.x - 3, y: pt.y - 3, width: 6, height: 6)
-                    context.fill(Path(ellipseIn: rect), with: .color(.white.opacity(0.3)))
+                    context.fill(Path(ellipseIn: rect), with: .color(AppTheme.shared.colors.primaryText.opacity(0.3)))
                 }
             }
         }
@@ -884,11 +884,7 @@ private struct FetchingPulseOverlay: View {
             return AppTheme.shared.colors.moonIconColor
         }
         // Default: weather condition dot color
-        let base = forecast.condition.dotColor
-        if colorScheme == .light && AppTheme.shared.isDetailedMapMode && base == .white {
-            return Color(hex: 0xB4B4B4)
-        }
-        return base
+        return forecast.condition.dotColor
     }
     
     var body: some View {
