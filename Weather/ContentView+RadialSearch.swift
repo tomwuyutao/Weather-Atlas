@@ -13,7 +13,7 @@ extension ContentView {
 
     // MARK: - Radial Grid Generation
 
-    func generateRadialGrid(center: CLLocationCoordinate2D, radiusMeters: Double, maxPoints: Int = 100) -> [City] {
+    func generateRadialGrid(center: CLLocationCoordinate2D, radiusMeters: Double, maxPoints: Int = 60) -> [City] {
         let latDegreesPerMeter = 1.0 / 111_320.0
         let radiusDegLat = radiusMeters * latDegreesPerMeter
         let radiusDegLon = radiusDegLat / max(cos(center.latitude * .pi / 180), 0.1)
@@ -26,9 +26,9 @@ extension ContentView {
         let centerLocation = CLLocation(latitude: center.latitude, longitude: center.longitude)
 
         // Finer spacing tiers for smaller circles
-        let spacings: [Double] = radiusMeters < 100_000 ? [0.25, 0.4, 0.5, 0.75, 1.0, 1.5, 2.0] :
-                                  radiusMeters < 200_000 ? [0.5, 0.75, 1.0, 1.5, 2.0, 3.0] :
-                                  [0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0]
+        let spacings: [Double] = radiusMeters < 100_000 ? [0.4, 0.5, 0.75, 1.0, 1.5, 2.0] :
+                                  radiusMeters < 200_000 ? [0.75, 1.0, 1.5, 2.0, 3.0] :
+                                  [1.0, 1.5, 2.0, 3.0, 4.0, 5.0]
         for spacing in spacings {
             let lonSpacing = spacing / max(cos(center.latitude * .pi / 180), 0.3)
             var gridCities: [City] = []

@@ -25,6 +25,18 @@ extension ContentView {
 
     @ToolbarContentBuilder
     var iOSLeadingToolbarItems: some ToolbarContent {
+        // Loading spinner — always upper-left, styled like the "…" button
+        if weatherService.isLoading || isLoadingMapList {
+            ToolbarItem(placement: .navigationBarLeading) {
+                ProgressView()
+                    .controlSize(.small)
+                    .tint(theme.colors.primaryText)
+                    .frame(width: 44, height: 44)
+                    .themedGlass(in: .circle)
+            }
+            .sharedBackgroundVisibility(.hidden)
+        }
+
         if isIPad {
             if sidebarVisibility == .detailOnly {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -94,11 +106,6 @@ extension ContentView {
                     showingMapListSwitcher = true
                 } label: {
                     HStack(spacing: 6) {
-                        if weatherService.isLoading || isLoadingMapList {
-                            ProgressView()
-                                .controlSize(.mini)
-                                .tint(theme.colors.primaryText)
-                        }
                         Text(mapToolbarTitle)
                             .font(.avenir(.headline, weight: .semibold))
                             .lineLimit(1)
@@ -191,20 +198,7 @@ extension ContentView {
 
     @ToolbarContentBuilder
     private var iOSNormalToolbarItems: some ToolbarContent {
-        // Loading spinner handled inside the principal capsule to avoid pushing it off-center
-
-
         if isIPad {
-            // Loading spinner
-            if weatherService.isLoading || isLoadingMapList {
-                ToolbarItem(placement: .topBarTrailing) {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-
-            ToolbarSpacer(.fixed, placement: .topBarTrailing)
-
             // Search
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -390,17 +384,6 @@ extension ContentView {
         if !isIPad {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 0) {
-                    if weatherService.isLoading, selectedTab == 0 {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .tint(theme.colors.primaryText)
-                            .frame(width: 44, height: 44)
-
-                        Rectangle()
-                            .fill(theme.colors.primaryText.opacity(0.15))
-                            .frame(width: 1, height: 20)
-                    }
-
                     if filterSunny {
                         Button {
                             withAnimation { filterSunny = false }

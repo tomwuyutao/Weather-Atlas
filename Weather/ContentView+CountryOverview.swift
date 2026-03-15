@@ -49,7 +49,7 @@ extension ContentView {
 
     // MARK: - Grid Generation
 
-    func generateCountryGrid(for country: CountryPath, maxPoints: Int = 150) -> [City] {
+    func generateCountryGrid(for country: CountryPath, maxPoints: Int = 100) -> [City] {
         let bbox = country.path.boundingBox
         let topLeft = GeoProjection.svgToGeo(svgPoint: CGPoint(x: bbox.minX, y: bbox.minY))
         let bottomRight = GeoProjection.svgToGeo(svgPoint: CGPoint(x: bbox.maxX, y: bbox.maxY))
@@ -62,7 +62,7 @@ extension ContentView {
         let midLat = (minLat + maxLat) / 2
 
         // Try increasing spacing until we're under maxPoints
-        for spacing in [0.5, 0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 7.0] {
+        for spacing in [0.75, 1.0, 1.5, 2.0, 3.0, 4.0, 5.0, 7.0] {
             // Adjust longitude spacing so the grid appears square on Mercator projection
             let lonSpacing = spacing / max(cos(midLat * .pi / 180), 0.3)
             var gridCities: [City] = []

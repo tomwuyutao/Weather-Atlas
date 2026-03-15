@@ -651,6 +651,25 @@ extension ContentView {
                 }
                 .scaleEffect(longPressedCity?.id == cityWeather.id ? 0.97 : 1.0)
                 .animation(.easeOut(duration: 0.2), value: longPressedCity?.id)
+                .overlay(alignment: .leading) {
+                    if isEditMode {
+                        Button {
+                            withAnimation {
+                                weatherService.removeCity(cityWeather)
+                                if selectedCity?.id == cityWeather.id {
+                                    selectedCity = nil
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.title3)
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, theme.colors.destructive)
+                        }
+                        .offset(x: -6)
+                        .transition(.scale.combined(with: .opacity))
+                    }
+                }
                 .contentShape(Rectangle())
                 .onTapGesture {
                     if !isEditMode {
@@ -697,15 +716,6 @@ extension ContentView {
                     .themedPopoverBackground()
                 }
             }
-            .onDelete(perform: isEditMode ? { indexSet in
-                for index in indexSet {
-                    let cityToDelete = iOSFilteredCities[index]
-                    weatherService.removeCity(cityToDelete)
-                    if selectedCity?.id == cityToDelete.id {
-                        selectedCity = nil
-                    }
-                }
-            } : nil)
             .onMove(perform: isEditMode ? { source, destination in
                 weatherService.moveCity(from: source, to: destination)
             } : nil)

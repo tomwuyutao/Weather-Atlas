@@ -952,6 +952,7 @@ struct ContentView: View {
                 onAddCityToList: cityIsInSidebar(city) ? nil : { listID in
                     Task {
                         await weatherService.addCityToList(city.city, listID: listID)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         showingCityDetail = false
                         if selectedTab == 1 {
                             recenterOnAllCities = true
@@ -1085,6 +1086,7 @@ struct ContentView: View {
                                             let namedCity = City(name: cityName, country: city.city.country, latitude: city.city.latitude, longitude: city.city.longitude)
                                             Task {
                                                 await weatherService.addCityToList(namedCity, listID: list)
+                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                                 showingCityDetail = false
                                             }
                                         } label: {
@@ -1124,6 +1126,7 @@ struct ContentView: View {
                                             showingAddToListPopover = false
                                             Task {
                                                 await weatherService.addCityToList(city.city, listID: list)
+                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                                 showingCityDetail = false
                                                 if selectedTab == 1 {
                                                     recenterOnAllCities = true
@@ -1568,6 +1571,7 @@ struct ContentView: View {
                 onAddCityToList: cityIsInSidebar(city) ? nil : { listID in
                     Task {
                         await weatherService.addCityToList(city.city, listID: listID)
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         showingAddCityView = false
                         showingAddCityDetail = false
                         if selectedTab == 1 {
@@ -1918,6 +1922,7 @@ struct ContentView: View {
                     onAddCityToList: cityIsInSidebar(city) ? nil : { listID in
                         Task {
                             await weatherService.addCityToList(city.city, listID: listID)
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                                 showingCityDetail = false
                             }
@@ -1959,6 +1964,9 @@ struct ContentView: View {
 
     private func addCityToSidebar(_ cityWeather: CityWeather) async {
         await weatherService.addCity(cityWeather.city)
+        #if !os(macOS)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
         // Update the tapped city to the newly added one from the sidebar
         if let newCity = weatherService.cityWeatherData.first(where: { $0.city.name == cityWeather.city.name && $0.city.country == cityWeather.city.country }) {
             tappedCity = newCity

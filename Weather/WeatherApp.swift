@@ -7,8 +7,22 @@
 
 import SwiftUI
 
+#if !os(macOS)
+class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        if UIDevice.current.userInterfaceIdiom == .phone {
+            return .portrait
+        }
+        return .all
+    }
+}
+#endif
+
 @main
 struct WeatherApp: App {
+    #if !os(macOS)
+    @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    #endif
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     @State private var theme = AppTheme.shared
 
