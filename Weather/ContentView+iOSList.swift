@@ -507,197 +507,219 @@ extension ContentView {
 
     // MARK: - Main List View
 
+    @ViewBuilder
     var iOSListView: some View {
         Group {
-            if weatherService.cityWeatherData.isEmpty && weatherService.isLoading {
-                // First launch loading state
-                GeometryReader { geo in
-                    VStack(spacing: 20) {
-                        Image(systemName: "cloud.sun.fill")
-                            .font(.system(size: 56))
-                            .weatherIconStyle(for: "cloud.sun.fill")
-                        Text(localizedString("Loading Weather", locale: locale))
-                            .font(.avenir(.title2, weight: .semibold))
-                        Capsule()
-                            .fill(theme.colors.primaryText.opacity(0.15))
-                            .frame(width: 140, height: 4)
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(theme.colors.primaryText)
-                                    .frame(width: 140 * weatherService.loadingProgress, height: 4)
-                            }
-                    }
-                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                }
-            } else if weatherService.cityWeatherData.isEmpty && weatherService.hasSavedCities {
-                VStack(spacing: 0) {
-                    iOSListSwitcher
-                        .padding(.top, 24)
-                        .padding(.bottom, 20)
-                    Spacer()
-                    ContentUnavailableView(localizedString("Loading Weather", locale: locale), systemImage: "cloud.sun", description: Text(localizedString("Fetching forecasts for your cities…", locale: locale)))
-                    Spacer()
-                }
-            } else if weatherService.cityWeatherData.isEmpty {
-                VStack(spacing: 0) {
-                    iOSListSwitcher
-                        .padding(.top, 24)
-                        .padding(.bottom, 20)
-                    Spacer()
-                    if !isEditingListName {
-                        Button {
-                            if isIPad {
-                                showingAddCityView = true
-                            } else {
-                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                    showingInlineSearch = true
-                                }
-                            }
-                        } label: {
-                            Label(localizedString("Search", locale: locale), systemImage: "magnifyingglass")
-                                .font(.avenir(.body, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .padding(.horizontal, 24)
-                                .padding(.vertical, 12)
-                                .background(theme.colors.accent, in: Capsule())
-                                .themedGlass(in: .capsule)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.top, 40)
-                        .transition(.scale.combined(with: .opacity))
-                    }
-                    Spacer()
-                    Spacer()
-                }
+            if weatherService.cityWeatherData.isEmpty {
+                iOSListEmptyState
             } else if isGridView {
-                ScrollView {
-                    iOSListSwitcher
-                        .padding(.top, 24)
-                        .padding(.bottom, 20)
-
-                    LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
-                        ForEach(iOSFilteredCities) { cityWeather in
-                            gridCell(for: cityWeather)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, isIPad ? 20 : 100)
-                }
-                .gesture(swipeDayGesture())
-                .transition(.opacity)
+                iOSGridContent
             } else {
-                List {
-                    iOSListSwitcher
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 20, trailing: 16))
-                        .padding(.top, 8)
-
-                    ForEach(iOSFilteredCities) { cityWeather in
-                        HStack {
-                            let isNow = selectedDayOffset == -1
-                            let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
-                            let displayIcon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
-                            let displayTemp = isNow ? cityWeather.temperature : forecast.dailyHigh
-                            Text(cityWeather.city.localizedName(locale: locale))
-                                .font(.avenir(.body, weight: .medium))
-                            Spacer()
-                            Text(tempUnit.display(displayTemp))
-                                .font(.avenir(.title2, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .contentTransition(.numericText())
-                                .padding(.trailing, 4)
-                            Image(systemName: displayIcon)
-                                .font(.title3)
-                                .weatherIconStyle(for: displayIcon)
-                                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                                .frame(width: 32)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 22)
-                        .background {
-                            if theme.colors.listCardFill == .clear {
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(longPressedCity?.id == cityWeather.id ? Color.primary.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: 1)
-                            }
-                        }
-                        .scaleEffect(longPressedCity?.id == cityWeather.id ? 0.97 : 1.0)
-                        .animation(.easeOut(duration: 0.2), value: longPressedCity?.id)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            if !isEditMode {
-                                detailOpenedFromList = true
-                                tappedCity = cityWeather
-                                showingCityDetail = true
-                            }
-                        }
-                        .onLongPressGesture {
-                            longPressedCity = cityWeather
-                        }
-                        .popover(isPresented: Binding(
-                            get: { longPressedCity?.id == cityWeather.id },
-                            set: { if !$0 { longPressedCity = nil } }
-                        )) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
-                                    let revealCity = cityWeather
-                                    longPressedCity = nil
-                                    showingCityDetail = false
-                                    centerOnCityTrigger = nil
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        selectedTab = 1
-                                    }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        centerOnCityTrigger = revealCity
-                                    }
-                                }
-                                
-                                Divider().padding(.horizontal, 12).padding(.vertical, 4)
-                                
-                                menuRow(icon: "trash", title: localizedString("Delete City", locale: locale)) {
-                                    longPressedCity = nil
-                                    weatherService.removeCity(cityWeather)
-                                    if selectedCity?.id == cityWeather.id {
-                                        selectedCity = nil
-                                    }
-                                }
-                                .foregroundStyle(theme.colors.destructive)
-                            }
-                            .padding(.vertical, 8)
-                            .frame(width: 220)
-                            .presentationCompactAdaptation(.popover)
-                            .themedPopoverBackground()
-                        }
-                    }
-                    .onDelete(perform: isEditMode ? { indexSet in
-                        for index in indexSet {
-                            let cityToDelete = iOSFilteredCities[index]
-                            weatherService.removeCity(cityToDelete)
-                            if selectedCity?.id == cityToDelete.id {
-                                selectedCity = nil
-                            }
-                        }
-                    } : nil)
-                    .onMove(perform: isEditMode ? { source, destination in
-                        weatherService.moveCity(from: source, to: destination)
-                    } : nil)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(theme.colors.listCardFill == .clear ? .hidden : .visible)
-                    .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] + 16 }
-                    .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] - 16 }
-                    .listRowInsets(EdgeInsets(top: theme.colors.listCardFill == .clear ? 4 : 0, leading: 16, bottom: theme.colors.listCardFill == .clear ? 4 : 0, trailing: 16))
-                }
-                .listStyle(.plain)
-                .contentMargins(.bottom, isIPad ? 20 : 100)
-                .environment(\.editMode, Binding(
-                    get: { isEditMode ? .active : .inactive },
-                    set: { newValue in isEditMode = (newValue == .active) }
-                ))
-                .gesture(swipeDayGesture())
-                .transition(.opacity)
+                iOSPlainListContent
             }
         }
         .opacity(listContentOpacity)
+    }
+
+    // MARK: - Empty State
+
+    @ViewBuilder
+    private var iOSListEmptyState: some View {
+        if weatherService.isLoading {
+            // First launch loading state
+            GeometryReader { geo in
+                VStack(spacing: 20) {
+                    Image(systemName: "cloud.sun.fill")
+                        .font(.system(size: 56))
+                        .weatherIconStyle(for: "cloud.sun.fill")
+                    Text(localizedString("Loading Weather", locale: locale))
+                        .font(.avenir(.title2, weight: .semibold))
+                    Capsule()
+                        .fill(theme.colors.primaryText.opacity(0.15))
+                        .frame(width: 140, height: 4)
+                        .overlay(alignment: .leading) {
+                            Capsule()
+                                .fill(theme.colors.primaryText)
+                                .frame(width: 140 * weatherService.loadingProgress, height: 4)
+                        }
+                }
+                .position(x: geo.size.width / 2, y: geo.size.height / 2)
+            }
+        } else if weatherService.hasSavedCities {
+            VStack(spacing: 0) {
+                iOSListSwitcher
+                    .padding(.top, 24)
+                    .padding(.bottom, 20)
+                Spacer()
+                ContentUnavailableView(localizedString("Loading Weather", locale: locale), systemImage: "cloud.sun", description: Text(localizedString("Fetching forecasts for your cities…", locale: locale)))
+                Spacer()
+            }
+        } else {
+            VStack(spacing: 0) {
+                iOSListSwitcher
+                    .padding(.top, 24)
+                    .padding(.bottom, 20)
+                Spacer()
+                if !isEditingListName {
+                    Button {
+                        if isIPad {
+                            showingAddCityView = true
+                        } else {
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                showingInlineSearch = true
+                            }
+                        }
+                    } label: {
+                        Label(localizedString("Search", locale: locale), systemImage: "magnifyingglass")
+                            .font(.avenir(.body, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 24)
+                            .padding(.vertical, 12)
+                            .background(theme.colors.accent, in: Capsule())
+                            .themedGlass(in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 40)
+                    .transition(.scale.combined(with: .opacity))
+                }
+                Spacer()
+                Spacer()
+            }
+        }
+    }
+
+    // MARK: - Grid Content
+
+    private var iOSGridContent: some View {
+        ScrollView {
+            iOSListSwitcher
+                .padding(.top, 24)
+                .padding(.bottom, 20)
+
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
+                ForEach(iOSFilteredCities) { cityWeather in
+                    gridCell(for: cityWeather)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, isIPad ? 20 : 100)
+        }
+        .gesture(swipeDayGesture())
+        .transition(.opacity)
+    }
+
+    // MARK: - Plain List Content
+
+    private var iOSPlainListContent: some View {
+        List {
+            iOSListSwitcher
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 20, trailing: 16))
+                .padding(.top, 8)
+
+            ForEach(iOSFilteredCities) { cityWeather in
+                HStack {
+                    let isNow = selectedDayOffset == -1
+                    let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
+                    let displayIcon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
+                    let displayTemp = isNow ? cityWeather.temperature : forecast.dailyHigh
+                    Text(cityWeather.city.localizedName(locale: locale))
+                        .font(.avenir(.body, weight: .medium))
+                    Spacer()
+                    Text(tempUnit.display(displayTemp))
+                        .font(.avenir(.title2, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                        .padding(.trailing, 4)
+                    Image(systemName: displayIcon)
+                        .font(.title3)
+                        .weatherIconStyle(for: displayIcon)
+                        .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                        .frame(width: 32)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 22)
+                .background {
+                    if theme.colors.listCardFill == .clear {
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(longPressedCity?.id == cityWeather.id ? Color.primary.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: 1)
+                    }
+                }
+                .scaleEffect(longPressedCity?.id == cityWeather.id ? 0.97 : 1.0)
+                .animation(.easeOut(duration: 0.2), value: longPressedCity?.id)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    if !isEditMode {
+                        detailOpenedFromList = true
+                        tappedCity = cityWeather
+                        showingCityDetail = true
+                    }
+                }
+                .onLongPressGesture {
+                    longPressedCity = cityWeather
+                }
+                .popover(isPresented: Binding(
+                    get: { longPressedCity?.id == cityWeather.id },
+                    set: { if !$0 { longPressedCity = nil } }
+                )) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
+                            let revealCity = cityWeather
+                            longPressedCity = nil
+                            showingCityDetail = false
+                            centerOnCityTrigger = nil
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                selectedTab = 1
+                            }
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                centerOnCityTrigger = revealCity
+                            }
+                        }
+                        
+                        Divider().padding(.horizontal, 12).padding(.vertical, 4)
+                        
+                        menuRow(icon: "trash", title: localizedString("Delete City", locale: locale)) {
+                            longPressedCity = nil
+                            weatherService.removeCity(cityWeather)
+                            if selectedCity?.id == cityWeather.id {
+                                selectedCity = nil
+                            }
+                        }
+                        .foregroundStyle(theme.colors.destructive)
+                    }
+                    .padding(.vertical, 8)
+                    .frame(width: 220)
+                    .presentationCompactAdaptation(.popover)
+                    .themedPopoverBackground()
+                }
+            }
+            .onDelete(perform: isEditMode ? { indexSet in
+                for index in indexSet {
+                    let cityToDelete = iOSFilteredCities[index]
+                    weatherService.removeCity(cityToDelete)
+                    if selectedCity?.id == cityToDelete.id {
+                        selectedCity = nil
+                    }
+                }
+            } : nil)
+            .onMove(perform: isEditMode ? { source, destination in
+                weatherService.moveCity(from: source, to: destination)
+            } : nil)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(theme.colors.listCardFill == .clear ? .hidden : .visible)
+            .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] + 16 }
+            .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] - 16 }
+            .listRowInsets(EdgeInsets(top: theme.colors.listCardFill == .clear ? 4 : 0, leading: 16, bottom: theme.colors.listCardFill == .clear ? 4 : 0, trailing: 16))
+        }
+        .listStyle(.plain)
+        .contentMargins(.bottom, isIPad ? 20 : 100)
+        .environment(\.editMode, Binding(
+            get: { isEditMode ? .active : .inactive },
+            set: { newValue in isEditMode = (newValue == .active) }
+        ))
+        .gesture(swipeDayGesture())
+        .transition(.opacity)
     }
 
     var iOSFilteredCities: [CityWeather] {

@@ -96,19 +96,17 @@ extension WeatherDetailView {
                 let removeEdge: Edge = swipeDirection == .forward ? .leading : .trailing
 
                 if chartTimeRange == .entireDay {
-                    GeometryReader { geo in
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HourlyTimelineChart(
-                                hourlyForecasts: forecast.hourlyForecasts,
-                                chartMetric: chartMetric,
-                                dayOffset: internalSelectedDay,
-                                cityTimeZone: cityWeather.timeZone,
-                                previewCurrentHour: previewCurrentHour,
-                                lineColor: chartLineColor,
-                                showAllHours: true
-                            )
-                            .frame(width: max(geo.size.width * 2.5, 900))
-                        }
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HourlyTimelineChart(
+                            hourlyForecasts: forecast.hourlyForecasts,
+                            chartMetric: chartMetric,
+                            dayOffset: internalSelectedDay,
+                            cityTimeZone: cityWeather.timeZone,
+                            previewCurrentHour: previewCurrentHour,
+                            lineColor: chartLineColor,
+                            showAllHours: true
+                        )
+                        .frame(width: max(UIScreen.main.bounds.width * 2.5, 900))
                     }
                     .id("hourly-all-\(internalSelectedDay)")
                     .transition(.asymmetric(
