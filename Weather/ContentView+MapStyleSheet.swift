@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-#if !os(macOS)
 extension ContentView {
 
     // MARK: - Map Style Sheet
@@ -162,4 +161,3 @@ extension ContentView {
         }
     }
 }
-#endif

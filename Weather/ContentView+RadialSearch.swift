@@ -8,7 +8,6 @@
 import SwiftUI
 import MapKit
 
-#if !os(macOS)
 extension ContentView {
 
     // MARK: - Radial Grid Generation
@@ -302,4 +301,3 @@ extension ContentView {
         }
     }
 }
-#endif

@@ -6,7 +6,6 @@
 import SwiftUI
 import MapKit
 
-#if !os(macOS)
 // MARK: - Add City Search View
 
 struct AddCitySearchView: View {
@@ -225,4 +224,3 @@ struct AddCitySearchView: View {
         )
     }
 }
-#endif

@@ -8,7 +8,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
 
-#if !os(macOS)
 extension ContentView {
 
     // MARK: - List Switcher
@@ -782,7 +781,6 @@ struct GridDropDelegate: DropDelegate {
         DropProposal(operation: .move)
     }
 }
-#endif
 #Preview {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
     let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")

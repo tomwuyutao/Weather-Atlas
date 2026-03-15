@@ -9,7 +9,6 @@
 import SwiftUI
 import MapKit
 
-#if !os(macOS)
 extension ContentView {
 
     // MARK: - Country-under-pin tracking
@@ -381,4 +380,3 @@ enum CountryOverviewCacheManager {
         }
     }
 }
-#endif

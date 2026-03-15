@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-#if !os(macOS)
 extension ContentView {
 
     // MARK: - Vertical Date Slider (Map Mode)
@@ -117,4 +116,3 @@ extension ContentView {
         return formatter.string(from: Calendar.current.date(byAdding: .day, value: day, to: Date()) ?? Date())
     }
 }
-#endif

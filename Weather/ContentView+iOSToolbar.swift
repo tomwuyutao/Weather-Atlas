@@ -9,7 +9,6 @@
 import SwiftUI
 import MapKit
 
-#if !os(macOS)
 extension ContentView {
 
     // MARK: - Map Special Mode
@@ -784,4 +783,3 @@ extension ContentView {
         .buttonStyle(.plain)
     }
 }
-#endif

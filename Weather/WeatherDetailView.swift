@@ -325,11 +325,7 @@ struct WeatherDetailView: View {
     }
 
     var isPopup: Bool {
-        #if os(macOS)
-        return true
-        #else
-        return false
-        #endif
+        false
     }
 
     var expandedHeaderHeight: CGFloat { 270 }
@@ -843,11 +839,7 @@ struct HourlyTimelineChart: View {
         return hour < currentHour
     }
     
-    #if os(macOS)
-    private let totalHeight: CGFloat = 176
-    #else
     private let totalHeight: CGFloat = 250
-    #endif
     private let hourLabelHeight: CGFloat = 20  // fixed hour label at top
     private let topPadding: CGFloat = 4        // space below hour label
     private let iconHeight: CGFloat = 26       // icon sits just below hour label

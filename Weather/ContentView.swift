@@ -19,7 +19,6 @@ struct ContentView: View {
     @State var selectedCity: CityWeather?
     @State var selectedDayOffset: Int = -1
     @State var isEditMode: Bool = false
-    @State private var columnVisibility: NavigationSplitViewVisibility = .all
     @State private var isZoomedOut: Bool = true
     @State var showingCityDetail: Bool = false
     @State var tappedCity: CityWeather?
@@ -132,11 +131,7 @@ struct ContentView: View {
     }
 
     var isIPad: Bool {
-        #if os(macOS)
-        return false
-        #else
-        return UIDevice.current.userInterfaceIdiom == .pad
-        #endif
+        UIDevice.current.userInterfaceIdiom == .pad
     }
 
     func timeSinceRefreshText() -> String {
@@ -156,83 +151,10 @@ struct ContentView: View {
     }
 
     var body: some View {
-        #if os(macOS)
-        desktopView
-        #else
         iOSView
-        #endif
-    }
-
-    // MARK: - Desktop View (macOS & iPadOS)
-
-    private var desktopView: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            // Sidebar - uses the same content as the iOS large sheet
-            DesktopSidebar(
-                cities: mapCities,
-                selectedCity: $selectedCity,
-                selectedDayOffset: $selectedDayOffset,
-                isEditMode: $isEditMode,
-                searchText: $searchText,
-                showingCityDetail: $showingCityDetail,
-                tappedCity: $tappedCity,
-                citySearchManager: citySearchManager,
-                weatherService: weatherService,
-                overlayMode: mapOverlayMode,
-                onCitySelected: { cityWeather in
-                    selectedCity = cityWeather
-                    centerOnCityTrigger = cityWeather
-                },
-                onDeleteCity: { cityWeather in
-                    weatherService.removeCity(cityWeather)
-                    if selectedCity?.id == cityWeather.id {
-                        selectedCity = nil
-                    }
-                },
-                onMoveCity: { source, destination in
-                    weatherService.moveCity(from: source, to: destination)
-                },
-                onRefresh: {
-                    await weatherService.refreshWeather()
-                },
-                onSwitchList: { listID in
-                    mapHasInitialized = false
-                    recenterOnAllCities = false
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        listContentOpacity = 0
-                    }
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(150))
-                        await weatherService.switchList(to: listID)
-                        withAnimation(.easeIn(duration: 0.2)) {
-                            listContentOpacity = 1
-                        }
-                        recenterOnAllCities = true
-                    }
-                },
-                lastFetchDate: weatherService.lastFetchDate,
-                isRefreshing: weatherService.isLoading,
-                detailOpenedFromList: $detailOpenedFromList
-            )
-            .opacity(listContentOpacity)
-        } detail: {
-            // Map view with bottom date bar
-            mapView
-                .overlay(alignment: .bottom) {
-                    DesktopDateBar(selectedDayOffset: $selectedDayOffset, filterSunny: $filterSunny, isPlaying: $isPlaying)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
-                }
-        }
-        .task {
-            countries = SVGMapParser.parse()
-            await weatherService.fetchWeatherForAllCities()
-        }
     }
 
     // MARK: - iOS View
-
-    #if !os(macOS)
     @Namespace private var tabBarNamespace
     @Namespace var countryBarNS
     @Namespace var radialBarNS
@@ -1749,7 +1671,6 @@ struct ContentView: View {
     private var iOSMapView: some View {
         mapView
     }
-    #endif
 
     private var mapView: some View {
         ZStack {
@@ -1888,73 +1809,7 @@ struct ContentView: View {
                 .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isFetchingTappedLocation)
             }
 
-            // City detail popup (desktop/iPad only — iPhone uses navigation)
-            #if os(macOS)
-            if showingCityDetail, let city = tappedCity {
-                theme.colors.modalOverlay
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                            showingCityDetail = false
-                        }
-                    }
-                    .transition(.opacity)
 
-                WeatherDetailView(
-                    cityWeather: city,
-                    selectedDayOffset: $selectedDayOffset,
-                    namespace: popupNamespace,
-                    onDismiss: {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                            showingCityDetail = false
-                        }
-                    },
-                    onAddCity: cityIsInSidebar(city) ? nil : {
-                        // Single-list fast path
-                        Task {
-                            await addCityToSidebar(city)
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                                showingCityDetail = false
-                            }
-                            recenterOnAllCities = true
-                        }
-                    },
-                    onAddCityToList: cityIsInSidebar(city) ? nil : { listID in
-                        Task {
-                            await weatherService.addCityToList(city.city, listID: listID)
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                                showingCityDetail = false
-                            }
-                            recenterOnAllCities = true
-                        }
-                    },
-                    availableLists: cityIsInSidebar(city) ? [] : CityListID.allLists,
-                    onDeleteCity: cityIsInSidebar(city) ? {
-                        weatherService.removeCity(city)
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                            showingCityDetail = false
-                            showingMapExpandedCard = false
-                            tappedCity = nil
-                        }
-                        recenterOnAllCities = true
-                    } : nil,
-                    onRevealOnMap: detailOpenedFromList ? {
-                        let revealCity = city
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                            showingCityDetail = false
-                        }
-                        centerOnCityTrigger = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            centerOnCityTrigger = revealCity
-                        }
-                    } : nil,
-                    isInSidebar: cityIsInSidebar(city),
-                    showCloudCover: showCloudCover,
-                    initialChartMetric: overlayChartMetric
-                )
-            }
-            #endif
         }
     }
 
@@ -1964,9 +1819,7 @@ struct ContentView: View {
 
     private func addCityToSidebar(_ cityWeather: CityWeather) async {
         await weatherService.addCity(cityWeather.city)
-        #if !os(macOS)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        #endif
         // Update the tapped city to the newly added one from the sidebar
         if let newCity = weatherService.cityWeatherData.first(where: { $0.city.name == cityWeather.city.name && $0.city.country == cityWeather.city.country }) {
             tappedCity = newCity
