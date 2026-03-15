@@ -1256,15 +1256,7 @@ struct HourlyForecast: Identifiable {
     }
     
     func shortFormattedHour(locale: Locale = .current) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale)
-        formatter.locale = locale
-        var components = DateComponents()
-        components.hour = hour
-        if let date = Calendar.current.date(from: components) {
-            return formatter.string(from: date).lowercased()
-        }
-        return "\(hour)"
+        return String(format: "%02d", hour)
     }
 }
 

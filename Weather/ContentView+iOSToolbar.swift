@@ -435,12 +435,8 @@ extension ContentView {
                     }
 
                     Button {
-                        if selectedTab == 1 {
-                            showingAddCityView = true
-                        } else {
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                showingInlineSearch = true
-                            }
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            showingInlineSearch = true
                         }
                     } label: {
                         Image(systemName: "magnifyingglass")
@@ -685,15 +681,6 @@ extension ContentView {
 
     var iOSCustomMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if !isIPad {
-                menuRow(icon: "magnifyingglass", title: localizedString("Search", locale: locale)) {
-                    showingMenuPopover = false
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                        showingInlineSearch = true
-                    }
-                }
-            }
-
             if !isEditingListName {
                 if let city = selectedTab == 1 ? (showingMapExpandedCard ? tappedCity : nil) : selectedCity,
                    cityIsInSidebar(city) {

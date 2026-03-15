@@ -304,10 +304,16 @@ struct MapFloatingLegend: View {
     private func legendIconView(for condition: AppWeatherCondition) -> some View {
         let icon = legendConditionIcon(condition)
         let palette = legendIconPalette(for: icon)
+        let yOffset: CGFloat = switch condition {
+        case .rain, .drizzle, .snow: 3
+        case .fog: 2
+        default: 0
+        }
         return Image(systemName: icon)
             .font(.system(size: 13))
             .symbolRenderingMode(.palette)
             .foregroundStyle(palette.primary, palette.secondary)
+            .offset(y: yOffset)
     }
 
     // MARK: - Weather dot legend (single row with separators)

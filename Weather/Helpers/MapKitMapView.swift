@@ -138,7 +138,8 @@ struct MapKitMapView: View {
                         proxy: proxy,
                         tappedCity: tappedCity,
                         overlayMode: overlayMode,
-                        selectedDayOffset: selectedDayOffset
+                        selectedDayOffset: selectedDayOffset,
+                        cameraChangeCounter: cameraChangeCounter
                     )
                     .allowsHitTesting(false)
                 }
@@ -773,6 +774,7 @@ private struct FetchingPulseOverlay: View {
     var tappedCity: CityWeather?
     var overlayMode: String = "weather"
     var selectedDayOffset: Int = 0
+    var cameraChangeCounter: Int = 0
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var isPulsing = false
@@ -889,6 +891,7 @@ private struct FetchingPulseOverlay: View {
     
     var body: some View {
         GeometryReader { _ in
+            let _ = cameraChangeCounter
             if let screenPt = proxy.convert(coordinate, to: .local) {
                 ZStack {
                     // Pulse ring — same as SelectedPulseRing circle style

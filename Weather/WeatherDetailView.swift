@@ -29,7 +29,7 @@ struct WeatherDetailView: View {
     @State var internalSelectedDay: Int
     @State var previousDay: Int
     @State var swipeDirection: SwipeDirection = .forward
-    @State private var isSwipingDays: Bool = false
+    @State var isSwipingDays: Bool = false
     
     enum SwipeDirection {
         case forward, backward
@@ -52,6 +52,8 @@ struct WeatherDetailView: View {
     @State private var showingDetailMenu: Bool = false
     @State private var showingAddToListMenu: Bool = false
     @State private var dayScrollHasMore: Bool = true
+    @State var chartScrollAtStart: Bool = true
+    @State var chartScrollAtEnd: Bool = false
     @State var isHeaderCollapsed: Bool = false
     @State var headerDragOffset: CGFloat = 0
     @State var scrollAtTop: Bool = true

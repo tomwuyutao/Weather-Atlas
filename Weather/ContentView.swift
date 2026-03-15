@@ -1064,9 +1064,6 @@ struct ContentView: View {
                 }
                 if !cityIsInSidebar(city) {
                     ToolbarItem(placement: .topBarTrailing) {
-                        let addButtonTint: Color = city.forecast(for: max(0, selectedDayOffset)).condition == .rain
-                            ? theme.colors.dotDrizzle
-                            : theme.colors.accent
                         if countryOverviewActive || radialSearchActive {
                             Button {
                                 showingAddToListPopover = true
@@ -1074,8 +1071,8 @@ struct ContentView: View {
                                 Image(systemName: "plus")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(addButtonTint, in: .circle)
+                                    .frame(width: 36, height: 36)
+                                    .background(Color(hex: 0x1579C7), in: .circle)
                             }
                             .buttonStyle(.plain)
                             .popover(isPresented: $showingAddToListPopover) {
@@ -1115,8 +1112,8 @@ struct ContentView: View {
                                 Image(systemName: "plus")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(addButtonTint, in: .circle)
+                                    .frame(width: 36, height: 36)
+                                    .background(Color(hex: 0x1579C7), in: .circle)
                             }
                             .buttonStyle(.plain)
                             .popover(isPresented: $showingAddToListPopover) {
@@ -1163,8 +1160,8 @@ struct ContentView: View {
                                 Image(systemName: "plus")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(addButtonTint, in: .circle)
+                                    .frame(width: 36, height: 36)
+                                    .background(Color(hex: 0x1579C7), in: .circle)
                             }
                             .buttonStyle(.plain)
                         }

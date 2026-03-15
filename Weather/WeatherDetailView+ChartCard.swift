@@ -9,6 +9,18 @@ import SwiftUI
 
 extension WeatherDetailView {
 
+    /// Target hour to center the entire-day chart on.
+    /// "Now" mode → current city hour; other days → 10:00.
+    private var entireDayScrollTargetHour: Int {
+        let isNow = internalSelectedDay == -1 || internalSelectedDay == 0
+        if isNow {
+            var calendar = Calendar.current
+            calendar.timeZone = cityWeather.timeZone
+            return calendar.component(.hour, from: Date())
+        }
+        return 10
+    }
+
     // MARK: - Chart Card with Switchers
 
     var chartCard: some View {
@@ -97,23 +109,76 @@ extension WeatherDetailView {
                     let removeEdge: Edge = swipeDirection == .forward ? .leading : .trailing
 
                     if chartTimeRange == .entireDay {
+                        ScrollViewReader { scrollProxy in
                         ScrollView(.horizontal, showsIndicators: false) {
-                            HourlyTimelineChart(
-                                hourlyForecasts: forecast.hourlyForecasts,
-                                chartMetric: chartMetric,
-                                dayOffset: internalSelectedDay,
-                                cityTimeZone: cityWeather.timeZone,
-                                previewCurrentHour: previewCurrentHour,
-                                lineColor: chartLineColor,
-                                showAllHours: true
-                            )
+                            HStack(spacing: 0) {
+                                let contentWidth = max(geo.size.width * 2.5, 900)
+                                let columnWidth = contentWidth / 24
+                                ForEach(0..<24, id: \.self) { hour in
+                                    Color.clear
+                                        .frame(width: columnWidth)
+                                        .id(hour)
+                                }
+                            }
+                            .overlay {
+                                HourlyTimelineChart(
+                                    hourlyForecasts: forecast.hourlyForecasts,
+                                    chartMetric: chartMetric,
+                                    dayOffset: internalSelectedDay,
+                                    cityTimeZone: cityWeather.timeZone,
+                                    previewCurrentHour: previewCurrentHour,
+                                    lineColor: chartLineColor,
+                                    showAllHours: true
+                                )
+                            }
                             .frame(width: max(geo.size.width * 2.5, 900))
+                        }
+                        .onAppear {
+                            scrollProxy.scrollTo(entireDayScrollTargetHour, anchor: .center)
+                        }
+                        .onScrollGeometryChange(for: Bool.self) { geo in
+                            geo.contentOffset.x <= 1
+                        } action: { _, atStart in
+                            chartScrollAtStart = atStart
+                        }
+                        .onScrollGeometryChange(for: Bool.self) { geo in
+                            geo.contentOffset.x + geo.containerSize.width >= geo.contentSize.width - 1
+                        } action: { _, atEnd in
+                            chartScrollAtEnd = atEnd
                         }
                         .id("hourly-all-\(internalSelectedDay)")
                         .transition(.asymmetric(
                             insertion: .move(edge: insertEdge).combined(with: .opacity),
                             removal: .move(edge: removeEdge).combined(with: .opacity)
                         ))
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 50)
+                                .onEnded { value in
+                                    let horizontal = value.translation.width
+                                    let vertical = value.translation.height
+                                    guard abs(horizontal) > abs(vertical) * 2 else { return }
+                                    let maxDay = cityWeather.dailyForecasts.count - 1
+                                    // Swipe left at end → next day
+                                    if horizontal < -120 && chartScrollAtEnd && internalSelectedDay < maxDay {
+                                        swipeDirection = .forward
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                            internalSelectedDay += 1
+                                        }
+                                        chartScrollAtStart = true
+                                        chartScrollAtEnd = false
+                                    }
+                                    // Swipe right at start → previous day
+                                    else if horizontal > 120 && chartScrollAtStart && internalSelectedDay > -1 {
+                                        swipeDirection = .backward
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                            internalSelectedDay -= 1
+                                        }
+                                        chartScrollAtStart = true
+                                        chartScrollAtEnd = false
+                                    }
+                                }
+                        )
+                        } // ScrollViewReader
                     } else {
                         HourlyTimelineChart(
                             hourlyForecasts: forecast.hourlyForecasts,
@@ -134,7 +199,34 @@ extension WeatherDetailView {
             }
             .frame(height: 250)
             .contentShape(Rectangle())
-            .highPriorityGesture(DragGesture(minimumDistance: 10), including: .gesture)
+            .highPriorityGesture(
+                chartTimeRange == .daytime
+                ? DragGesture(minimumDistance: 30)
+                    .onChanged { value in
+                        if abs(value.translation.width) > abs(value.translation.height) {
+                            isSwipingDays = true
+                        }
+                    }
+                    .onEnded { value in
+                        isSwipingDays = false
+                        let horizontal = value.translation.width
+                        let vertical = value.translation.height
+                        guard abs(horizontal) > abs(vertical) * 1.5 else { return }
+                        let maxDay = cityWeather.dailyForecasts.count - 1
+                        if horizontal < -50 && internalSelectedDay < maxDay {
+                            swipeDirection = .forward
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                internalSelectedDay += 1
+                            }
+                        } else if horizontal > 50 && internalSelectedDay > -1 {
+                            swipeDirection = .backward
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                internalSelectedDay -= 1
+                            }
+                        }
+                    }
+                : nil
+            )
             .padding(.top, 8)
         }
         .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
