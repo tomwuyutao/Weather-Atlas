@@ -41,7 +41,7 @@ struct WeatherDetailView: View {
     }
 
     enum ChartTimeRange: Equatable {
-        case daytime, entireDay
+        case daytime, entireDay, tenDay
     }
     
     @State var chartMetric: ChartMetric = .temperature
@@ -306,6 +306,31 @@ struct WeatherDetailView: View {
                         .foregroundStyle(.primary)
                     Spacer()
                     if chartTimeRange == .entireDay {
+                        Circle()
+                            .fill(AppTheme.shared.colors.accent)
+                            .frame(width: 6, height: 6)
+                            .frame(width: 13)
+                    }
+                }
+                .padding(.leading, 24)
+                .padding(.trailing, 16)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    chartTimeRange = .tenDay
+                }
+                showingChartRangePopover = false
+            } label: {
+                HStack(spacing: 12) {
+                    Text(localizedString("10 Days", locale: locale))
+                        .font(.avenir(.body, weight: chartTimeRange == .tenDay ? .bold : .medium))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    if chartTimeRange == .tenDay {
                         Circle()
                             .fill(AppTheme.shared.colors.accent)
                             .frame(width: 6, height: 6)
@@ -969,14 +994,14 @@ struct HourlyTimelineChart: View {
                         let fraction = h1 > h0 ? CGFloat(currentHour - hours[lastIdx]) / (h1 - h0) : 0
                         let nowX = xPositions[lastIdx] + fraction * (xPositions[lastIdx + 1] - xPositions[lastIdx])
                         Rectangle()
-                            .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25))
+                            .fill(Color.white)
                             .frame(width: 3, height: lineHeight)
                             .position(x: nowX, y: lineCenterY)
                             .opacity(0.5)
                     } else if let firstHour = hours.first, currentHour < firstHour {
                         let nowX = xPositions[0] * CGFloat(currentHour) / CGFloat(firstHour)
                         Rectangle()
-                            .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25))
+                            .fill(Color.white)
                             .frame(width: 3, height: lineHeight)
                             .position(x: max(nowX, 4), y: lineCenterY)
                             .opacity(0.5)
@@ -1015,6 +1040,205 @@ struct HourlyTimelineChart: View {
                                 .frame(height: valueHeight)
                                 .position(x: columnWidth / 2 + 2, y: pointY + valueHeight * 0.85 + 2)
                                 .opacity(pastHour ? 0.3 : 1.0)
+                        }
+                        .frame(width: columnWidth, height: totalHeight)
+                    }
+                }
+            }
+        }
+        .frame(height: totalHeight)
+        .animation(.smooth(duration: 0.3), value: chartMetric)
+        } // else (has data)
+    }
+}
+
+// MARK: - 10-Day timeline chart
+
+struct DailyTimelineChart: View {
+    let dailyForecasts: [DailyForecast]
+    var chartMetric: WeatherDetailView.ChartMetric = .temperature
+    var selectedDayOffset: Int = 0
+    var cityTimeZone: TimeZone = .current
+    var lineColor: Color = AppTheme.shared.colors.destructive
+
+    @Environment(\.locale) private var locale
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    private var tempUnit: TemperatureUnit {
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
+
+    private let totalHeight: CGFloat = 250
+    private let dayLabelHeight: CGFloat = 20
+    private let topPadding: CGFloat = 4
+    private let iconHeight: CGFloat = 26
+    private let iconBottomPadding: CGFloat = 20
+    private let valueHeight: CGFloat = 20
+
+    private var chartTop: CGFloat { dayLabelHeight + topPadding + iconHeight + iconBottomPadding }
+    private var chartBottom: CGFloat { totalHeight - valueHeight - 14 }
+    private var chartZone: CGFloat { chartBottom - chartTop }
+
+    private var dataPoints: [DailyForecast] {
+        dailyForecasts.sorted { $0.dayOffset < $1.dayOffset }
+    }
+
+    private func dayLabel(for forecast: DailyForecast) -> String {
+        var cityCalendar = Calendar.current
+        cityCalendar.timeZone = cityTimeZone
+        let cityToday = cityCalendar.startOfDay(for: Date())
+        if let date = cityCalendar.date(byAdding: .day, value: forecast.dayOffset, to: cityToday) {
+            if forecast.dayOffset == 0 {
+                return localizedString("Today", locale: locale)
+            } else {
+                let formatter = DateFormatter()
+                formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "EEE", options: 0, locale: locale)
+                formatter.locale = locale
+                formatter.timeZone = cityTimeZone
+                return formatter.string(from: date)
+            }
+        }
+        return ""
+    }
+
+    private func value(for forecast: DailyForecast) -> Double {
+        switch chartMetric {
+        case .temperature:      return forecast.dailyHigh
+        case .feelsLike:        return forecast.feelsLikeHigh ?? forecast.dailyHigh
+        case .cloudCover:       return (forecast.cloudCover ?? 0) * 100
+        case .precipitation:    return (forecast.precipitationChance ?? 0) * 100
+        case .windSpeed:        return forecast.windSpeed ?? 0
+        case .uvIndex:          return Double(forecast.uvIndex ?? 0)
+        case .humidity:         return (forecast.maxHumidity ?? 0) * 100
+        case .visibility:       return forecast.maxVisibility ?? 10
+        }
+    }
+
+    private func chartValueText(for forecast: DailyForecast) -> String {
+        switch chartMetric {
+        case .temperature:   return tempUnit.display(forecast.dailyHigh)
+        case .feelsLike:     return forecast.feelsLikeHigh.map { tempUnit.display($0) } ?? "—"
+        case .cloudCover:    return forecast.cloudCover.map { "\(Int($0 * 100))%" } ?? "—"
+        case .precipitation: return forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—"
+        case .windSpeed:     return forecast.windSpeed.map { "\(Int($0))" } ?? "—"
+        case .uvIndex:       return forecast.uvIndex.map { "\($0)" } ?? "—"
+        case .humidity:      return forecast.maxHumidity.map { "\(Int($0 * 100))%" } ?? "—"
+        case .visibility:    return forecast.maxVisibility.map { "\(Int($0))" } ?? "—"
+        }
+    }
+
+    private var valueRange: (min: Double, max: Double) {
+        switch chartMetric {
+        case .cloudCover, .precipitation, .humidity:
+            return (0, 100)
+        case .uvIndex:
+            return (0, 11)
+        case .windSpeed:
+            return (0, 100)
+        case .visibility:
+            let vals = dataPoints.map { value(for: $0) }
+            let maxV = vals.max() ?? 30
+            return (0, max(30, maxV + 5))
+        case .temperature, .feelsLike:
+            let vals = dataPoints.map { value(for: $0) }
+            let minV = vals.min() ?? 10
+            let maxV = vals.max() ?? 20
+            let padding = max((maxV - minV) * 0.25, 2.0)
+            return (minV - padding, maxV + padding)
+        }
+    }
+
+    private func lineY(for val: Double) -> CGFloat {
+        let range = valueRange.max - valueRange.min
+        guard range > 0 else { return chartTop + chartZone * 0.5 }
+        let normalized = 1.0 - CGFloat((val - valueRange.min) / range)
+        return chartTop + normalized * chartZone
+    }
+
+    var body: some View {
+        if dataPoints.isEmpty {
+            VStack(spacing: 8) {
+                Image(systemName: "chart.line.downtrend.xyaxis")
+                    .font(.system(size: 28))
+                    .foregroundStyle(.secondary.opacity(0.5))
+                Text("No daily data")
+                    .font(.avenir(.subheadline, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(height: totalHeight)
+            .frame(maxWidth: .infinity)
+        } else {
+        GeometryReader { geometry in
+            let width = geometry.size.width
+            let count = CGFloat(dataPoints.count)
+            let columnWidth = count > 0 ? width / count : width
+
+            let xPositions = dataPoints.indices.map { i in
+                (CGFloat(i) + 0.5) * columnWidth
+            }
+            let lineYPositions = dataPoints.map { lineY(for: value(for: $0)) }
+
+            ZStack(alignment: .topLeading) {
+                // Layer 1: Connecting line
+                HourlyChartLineShape(
+                    pointYValues: AnimatablePointList(values: lineYPositions.map { Double($0) }),
+                    pointXPositions: xPositions,
+                    gapRadius: 0
+                )
+                .stroke(lineColor, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+
+                // Layer 2: Dots on line points
+                ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, _ in
+                    Circle()
+                        .fill(lineColor)
+                        .frame(width: 10, height: 10)
+                        .position(x: xPositions[index], y: lineYPositions[index])
+                }
+
+                // Layer 3: Vertical indicator line on selected day
+                if let selectedIndex = dataPoints.firstIndex(where: {
+                    // "Now" (-1) maps to today (dayOffset 0)
+                    $0.dayOffset == (selectedDayOffset == -1 ? 0 : selectedDayOffset)
+                }) {
+                    let lineTop = chartTop - 4
+                    let lineBottom = chartBottom + valueHeight
+                    let lineHeight = lineBottom - lineTop
+                    let lineCenterY = lineTop + lineHeight / 2
+                    let nowX = xPositions[selectedIndex]
+                    Rectangle()
+                        .fill(Color.white)
+                        .frame(width: 3, height: lineHeight)
+                        .position(x: nowX, y: lineCenterY)
+                        .opacity(0.5)
+                }
+
+                // Layer 4: Data columns
+                HStack(spacing: 0) {
+                    ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, forecast in
+                        let pointY = lineYPositions[index]
+                        let iconY = dayLabelHeight + topPadding + iconHeight / 2 + 10
+                        ZStack {
+                            // Day label — fixed at top
+                            Text(dayLabel(for: forecast))
+                                .font(.avenir(.subheadline))
+                                .foregroundStyle(AppTheme.shared.colors.primaryText)
+                                .frame(height: dayLabelHeight)
+                                .position(x: columnWidth / 2, y: dayLabelHeight / 2 + 10)
+
+                            // Icon — fixed just below day label
+                            Image(systemName: forecast.weatherIcon)
+                                .font(.system(size: 17))
+                                .weatherIconStyle(for: forecast.weatherIcon)
+                                .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                                .frame(height: iconHeight)
+                                .position(x: columnWidth / 2, y: iconY)
+
+                            // Value text — sits below the dot on the line
+                            Text(chartValueText(for: forecast))
+                                .font(.avenir(.footnote, weight: .semibold))
+                                .foregroundStyle(AppTheme.shared.colors.primaryText)
+                                .contentTransition(.numericText())
+                                .frame(height: valueHeight)
+                                .position(x: columnWidth / 2 + 2, y: pointY + valueHeight * 0.85 + 2)
                         }
                         .frame(width: columnWidth, height: totalHeight)
                     }

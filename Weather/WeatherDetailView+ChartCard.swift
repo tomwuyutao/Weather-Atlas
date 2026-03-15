@@ -71,7 +71,9 @@ extension WeatherDetailView {
                     HStack(spacing: 5) {
                         Text(chartTimeRange == .daytime
                              ? localizedString("Daytime", locale: locale)
-                             : localizedString("Entire Day", locale: locale))
+                             : chartTimeRange == .entireDay
+                             ? localizedString("Entire Day", locale: locale)
+                             : localizedString("10 Days", locale: locale))
                             .font(.avenir(.subheadline, weight: .semibold))
                             .lineLimit(1)
                         Image(systemName: "chevron.down")
@@ -108,7 +110,48 @@ extension WeatherDetailView {
                     let insertEdge: Edge = swipeDirection == .forward ? .trailing : .leading
                     let removeEdge: Edge = swipeDirection == .forward ? .leading : .trailing
 
-                    if chartTimeRange == .entireDay {
+                    if chartTimeRange == .tenDay {
+                        // 10-day mode: scrollable, ~6-7 days visible
+                        ScrollViewReader { scrollProxy in
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            let dayCount = CGFloat(cityWeather.dailyForecasts.count)
+                            let visibleDays: CGFloat = 6.5
+                            let contentWidth = geo.size.width * (dayCount / visibleDays)
+                            HStack(spacing: 0) {
+                                ForEach(0..<cityWeather.dailyForecasts.count, id: \.self) { idx in
+                                    Color.clear
+                                        .frame(width: contentWidth / dayCount)
+                                        .id(idx)
+                                }
+                            }
+                            .overlay {
+                                DailyTimelineChart(
+                                    dailyForecasts: cityWeather.dailyForecasts,
+                                    chartMetric: chartMetric,
+                                    selectedDayOffset: internalSelectedDay,
+                                    cityTimeZone: cityWeather.timeZone,
+                                    lineColor: chartLineColor
+                                )
+                            }
+                            .frame(width: contentWidth)
+                        }
+                        .onAppear {
+                            let targetDay = internalSelectedDay == -1 ? 0 : internalSelectedDay
+                            scrollProxy.scrollTo(targetDay, anchor: .center)
+                        }
+                        .onChange(of: internalSelectedDay) { _, newDay in
+                            let targetDay = newDay == -1 ? 0 : newDay
+                            withAnimation(.smooth(duration: 0.3)) {
+                                scrollProxy.scrollTo(targetDay, anchor: .center)
+                            }
+                        }
+                        } // ScrollViewReader
+                        .id("daily-10day-\(chartMetric)")
+                        .transition(.asymmetric(
+                            insertion: .move(edge: insertEdge).combined(with: .opacity),
+                            removal: .move(edge: removeEdge).combined(with: .opacity)
+                        ))
+                    } else if chartTimeRange == .entireDay {
                         ScrollViewReader { scrollProxy in
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 0) {

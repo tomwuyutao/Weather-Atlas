@@ -415,7 +415,7 @@ struct SettingsView: View {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(colors.primaryText.opacity(0.55))
+                    .foregroundStyle(colors.accent)
                     .frame(width: 22)
                 Text(label)
                     .font(.avenir(.body, weight: .medium))
@@ -444,7 +444,7 @@ struct SettingsView: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(colors.primaryText.opacity(0.55))
+                .foregroundStyle(colors.accent)
                 .frame(width: 22)
             Text(label)
                 .font(.avenir(.body, weight: .medium))
