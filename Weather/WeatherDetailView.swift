@@ -28,7 +28,6 @@ struct WeatherDetailView: View {
     @Environment(\.locale) private var locale
     @State private var internalSelectedDay: Int
     @State private var previousDay: Int
-    @State private var chartDragOffset: CGFloat = 0
     @State private var swipeDirection: SwipeDirection = .forward
     @State private var isSwipingDays: Bool = false
     
@@ -40,8 +39,15 @@ struct WeatherDetailView: View {
         case temperature, feelsLike, cloudCover, precipitation
         case windSpeed, uvIndex, humidity, visibility
     }
+
+    enum ChartTimeRange: Equatable {
+        case daytime, entireDay
+    }
     
     @State private var chartMetric: ChartMetric = .temperature
+    @State private var chartTimeRange: ChartTimeRange = .daytime
+    @State private var showingChartRangePopover: Bool = false
+    @State private var showingChartMetricPopover: Bool = false
     @State private var showingCloudCover: Bool = false
     @State private var showingDetailMenu: Bool = false
     @State private var showingAddToListMenu: Bool = false
@@ -154,6 +160,170 @@ struct WeatherDetailView: View {
         case .humidity:      return Color(hex: 0xBE9AED)
         case .visibility:    return Color(hex: 0x1579C7)
         }
+    }
+
+    private var chartMetricIcon: String {
+        switch chartMetric {
+        case .temperature:   return "thermometer.medium"
+        case .feelsLike:     return "thermometer.variable.and.figure"
+        case .cloudCover:    return "cloud"
+        case .precipitation: return "drop.fill"
+        case .windSpeed:     return "wind"
+        case .uvIndex:       return "sun.max.fill"
+        case .humidity:      return "humidity.fill"
+        case .visibility:    return "eye"
+        }
+    }
+
+    private var chartMetricLabel: String {
+        switch chartMetric {
+        case .temperature:   return localizedString("Temperature", locale: locale)
+        case .feelsLike:     return localizedString("Feels Like", locale: locale)
+        case .cloudCover:    return localizedString("Cloud Cover", locale: locale)
+        case .precipitation: return localizedString("Precipitation", locale: locale)
+        case .windSpeed:     return localizedString("Wind Speed", locale: locale)
+        case .uvIndex:       return localizedString("UV Index", locale: locale)
+        case .humidity:      return localizedString("Humidity", locale: locale)
+        case .visibility:    return localizedString("Visibility", locale: locale)
+        }
+    }
+
+    private var chartMetricCurrentValue: String {
+        switch chartMetric {
+        case .temperature:
+            return isNow
+                ? tempUnit.display(cityWeather.temperature)
+                : tempUnit.displaySlash(low: forecast.dailyLow, high: forecast.dailyHigh)
+        case .feelsLike:
+            if isNow {
+                return cityWeather.currentFeelsLike.map { tempUnit.display($0) } ?? "—"
+            } else {
+                if let low = forecast.feelsLikeLow, let high = forecast.feelsLikeHigh {
+                    return tempUnit.displaySlash(low: low, high: high)
+                }
+                return "—"
+            }
+        case .cloudCover:
+            return (isNow ? cityWeather.currentCloudCover : forecast.cloudCover).map { "\(Int($0 * 100))%" } ?? "—"
+        case .precipitation:
+            if isNow {
+                return [.rain, .drizzle, .snow].contains(cityWeather.condition) ? "100%" : "0%"
+            }
+            return forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—"
+        case .windSpeed:
+            return (isNow ? cityWeather.currentWindSpeed : forecast.windSpeed).map { "\(Int($0)) km/h" } ?? "—"
+        case .uvIndex:
+            return (isNow ? cityWeather.currentUVIndex : forecast.uvIndex).map { "\($0)" } ?? "—"
+        case .humidity:
+            return (isNow ? cityWeather.currentHumidity : forecast.maxHumidity).map { "\(Int($0 * 100))%" } ?? "—"
+        case .visibility:
+            return (isNow ? cityWeather.currentVisibility : forecast.maxVisibility).map { distUnit.display($0) } ?? "—"
+        }
+    }
+
+    private var chartMetricPopoverContent: some View {
+        let allMetrics: [(ChartMetric, String, String)] = [
+            (.temperature, "thermometer.medium", localizedString("Temperature", locale: locale)),
+            (.feelsLike, "thermometer.variable.and.figure", localizedString("Feels Like", locale: locale)),
+            (.cloudCover, "cloud", localizedString("Cloud Cover", locale: locale)),
+            (.precipitation, "drop.fill", localizedString("Precipitation", locale: locale)),
+            (.windSpeed, "wind", localizedString("Wind Speed", locale: locale)),
+            (.uvIndex, "sun.max.fill", localizedString("UV Index", locale: locale)),
+            (.humidity, "humidity.fill", localizedString("Humidity", locale: locale)),
+            (.visibility, "eye", localizedString("Visibility", locale: locale)),
+        ]
+
+        return VStack(alignment: .leading, spacing: 0) {
+            ForEach(allMetrics, id: \.0) { metric, icon, label in
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        chartMetric = metric
+                    }
+                    showingChartMetricPopover = false
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: icon)
+                            .font(.system(size: 13))
+                            .frame(width: 18)
+                        Text(label)
+                            .font(.avenir(.body, weight: chartMetric == metric ? .bold : .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        if chartMetric == metric {
+                            Circle()
+                                .fill(AppTheme.shared.colors.accent)
+                                .frame(width: 6, height: 6)
+                                .frame(width: 13)
+                        }
+                    }
+                    .padding(.leading, 16)
+                    .padding(.trailing, 16)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 8)
+        .frame(width: 220)
+        .themedPopoverBackground()
+    }
+
+    private var chartTimeRangePopoverContent: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    chartTimeRange = .daytime
+                }
+                showingChartRangePopover = false
+            } label: {
+                HStack(spacing: 12) {
+                    Text(localizedString("Daytime", locale: locale))
+                        .font(.avenir(.body, weight: chartTimeRange == .daytime ? .bold : .medium))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    if chartTimeRange == .daytime {
+                        Circle()
+                            .fill(AppTheme.shared.colors.accent)
+                            .frame(width: 6, height: 6)
+                            .frame(width: 13)
+                    }
+                }
+                .padding(.leading, 24)
+                .padding(.trailing, 16)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    chartTimeRange = .entireDay
+                }
+                showingChartRangePopover = false
+            } label: {
+                HStack(spacing: 12) {
+                    Text(localizedString("Entire Day", locale: locale))
+                        .font(.avenir(.body, weight: chartTimeRange == .entireDay ? .bold : .medium))
+                        .foregroundStyle(.primary)
+                    Spacer()
+                    if chartTimeRange == .entireDay {
+                        Circle()
+                            .fill(AppTheme.shared.colors.accent)
+                            .frame(width: 6, height: 6)
+                            .frame(width: 13)
+                    }
+                }
+                .padding(.leading, 24)
+                .padding(.trailing, 16)
+                .padding(.vertical, 11)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 8)
+        .frame(width: 210)
+        .themedPopoverBackground()
     }
 
     private var isPopup: Bool {
@@ -507,76 +677,130 @@ struct WeatherDetailView: View {
                     )
                 }
 
-                // Chart container — box stays fixed, content slides inside
-                ZStack {
-                    let insertEdge: Edge = swipeDirection == .forward ? .trailing : .leading
-                    let removeEdge: Edge = swipeDirection == .forward ? .leading : .trailing
-                    
-                    HourlyTimelineChart(
-                        hourlyForecasts: forecast.hourlyForecasts,
-                        chartMetric: chartMetric,
-                        dayOffset: internalSelectedDay,
-                        cityTimeZone: cityWeather.timeZone,
-                        previewCurrentHour: previewCurrentHour,
-                        lineColor: chartLineColor
-                    )
-                    .id("hourly-\(internalSelectedDay)")
-                    .transition(.asymmetric(
-                        insertion: .move(edge: insertEdge).combined(with: .opacity),
-                        removal: .move(edge: removeEdge).combined(with: .opacity)
-                    ))
+                // Chart card with switchers
+                VStack(spacing: 0) {
+                    // Metric value + switchers
+                    HStack {
+                        Text(chartMetricCurrentValue)
+                            .font(.avenir(.title3, weight: .semibold))
+                            .contentTransition(.numericText())
+                            .animation(.smooth(duration: 0.3), value: chartMetric)
+                            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+
+                        Spacer()
+
+                        // Chart metric switcher
+                        Button {
+                            showingChartMetricPopover = true
+                        } label: {
+                            HStack(spacing: 5) {
+                                Image(systemName: chartMetricIcon)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .frame(width: 16)
+                                Text(chartMetricLabel)
+                                    .font(.avenir(.subheadline, weight: .semibold))
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 8, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06))
+                        )
+                        .popover(isPresented: $showingChartMetricPopover) {
+                            chartMetricPopoverContent
+                                .presentationCompactAdaptation(.popover)
+                        }
+
+                        // Chart time range switcher
+                        Button {
+                            showingChartRangePopover = true
+                        } label: {
+                            HStack(spacing: 5) {
+                                Text(chartTimeRange == .daytime
+                                     ? localizedString("Daytime", locale: locale)
+                                     : localizedString("Entire Day", locale: locale))
+                                    .font(.avenir(.subheadline, weight: .semibold))
+                                    .lineLimit(1)
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 8, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                            }
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 7)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .background(
+                            Capsule()
+                                .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06))
+                        )
+                        .popover(isPresented: $showingChartRangePopover) {
+                            chartTimeRangePopoverContent
+                                .presentationCompactAdaptation(.popover)
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    .padding(.bottom, 8)
+
+                    // Separator
+                    Rectangle()
+                        .fill(AppTheme.shared.colors.primaryText.opacity(0.1))
+                        .frame(height: 1)
+                        .padding(.horizontal, 8)
+
+                    // Chart container
+                    ZStack {
+                        let insertEdge: Edge = swipeDirection == .forward ? .trailing : .leading
+                        let removeEdge: Edge = swipeDirection == .forward ? .leading : .trailing
+
+                        if chartTimeRange == .entireDay {
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HourlyTimelineChart(
+                                    hourlyForecasts: forecast.hourlyForecasts,
+                                    chartMetric: chartMetric,
+                                    dayOffset: internalSelectedDay,
+                                    cityTimeZone: cityWeather.timeZone,
+                                    previewCurrentHour: previewCurrentHour,
+                                    lineColor: chartLineColor,
+                                    showAllHours: true
+                                )
+                                .frame(width: max(UIScreen.main.bounds.width * 2.5, 900))
+                            }
+                            .id("hourly-all-\(internalSelectedDay)")
+                            .transition(.asymmetric(
+                                insertion: .move(edge: insertEdge).combined(with: .opacity),
+                                removal: .move(edge: removeEdge).combined(with: .opacity)
+                            ))
+                        } else {
+                            HourlyTimelineChart(
+                                hourlyForecasts: forecast.hourlyForecasts,
+                                chartMetric: chartMetric,
+                                dayOffset: internalSelectedDay,
+                                cityTimeZone: cityWeather.timeZone,
+                                previewCurrentHour: previewCurrentHour,
+                                lineColor: chartLineColor
+                            )
+                            .id("hourly-\(internalSelectedDay)")
+                            .transition(.asymmetric(
+                                insertion: .move(edge: insertEdge).combined(with: .opacity),
+                                removal: .move(edge: removeEdge).combined(with: .opacity)
+                            ))
+                        }
+                    }
+                    .clipped()
+                    .padding(.top, 8)
                 }
-                .clipped()
-                .offset(x: chartDragOffset)
-                .opacity(Double(1.0 - min(abs(chartDragOffset) / 200.0, 0.4)))
-                .padding(.top, 12)
                 .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .padding(.horizontal, 8)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 20, coordinateSpace: .local)
-                        .onChanged { value in
-                            let horizontal = value.translation.width
-                            let vertical = value.translation.height
-                            guard abs(horizontal) > abs(vertical) else { return }
-                            isSwipingDays = true
-                            // Resist dragging if at boundary
-                            let atStart = internalSelectedDay <= -1 && horizontal > 0
-                            let atEnd = internalSelectedDay >= 9 && horizontal < 0
-                            if atStart || atEnd {
-                                chartDragOffset = horizontal * 0.2
-                            } else {
-                                chartDragOffset = horizontal * 0.6
-                            }
-                        }
-                        .onEnded { value in
-                            let horizontal = value.translation.width
-                            let vertical = value.translation.height
-                            let threshold: CGFloat = 40
-                            if abs(horizontal) > abs(vertical) && abs(horizontal) > threshold {
-                                // Set direction BEFORE changing internalSelectedDay
-                                if horizontal < 0 {
-                                    swipeDirection = .forward
-                                } else {
-                                    swipeDirection = .backward
-                                }
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    if horizontal < 0 && internalSelectedDay < 9 {
-                                        internalSelectedDay += 1
-                                    } else if horizontal > 0 && internalSelectedDay > -1 {
-                                        internalSelectedDay -= 1
-                                    }
-                                    chartDragOffset = 0
-                                }
-                            } else {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                    chartDragOffset = 0
-                                }
-                            }
-                            isSwipingDays = false
-                        }
-                )
 
                 // Stats grid: 2-column, cards with no data are hidden
                 let feelsLikeValue: String? = (forecast.feelsLikeLow != nil && forecast.feelsLikeHigh != nil)
@@ -589,110 +813,56 @@ struct WeatherDetailView: View {
                         value: isNow
                             ? tempUnit.display(cityWeather.temperature)
                             : tempUnit.displaySlash(low: forecast.dailyLow, high: forecast.dailyHigh),
-                        isSelected: chartMetric == .temperature,
                         valueOffset: 3
                     )
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            chartMetric = .temperature
-                        }
-                    }
 
                     if isNow {
                         if let fl = cityWeather.currentFeelsLike {
                             WeatherStatCard(
                                 label: "Feels Like",
                                 value: tempUnit.display(fl),
-                                isSelected: chartMetric == .feelsLike,
                                 valueOffset: 3
                             )
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    chartMetric = .feelsLike
-                                }
-                            }
                         }
                     } else if let feelsLike = feelsLikeValue {
                         WeatherStatCard(
                             label: "Feels Like",
                             value: feelsLike,
-                            isSelected: chartMetric == .feelsLike,
                             valueOffset: 3
                         )
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                chartMetric = .feelsLike
-                            }
-                        }
                     }
 
                     WeatherStatCard(
                         label: "Cloud Cover",
-                        value: (isNow ? cityWeather.currentCloudCover : forecast.cloudCover).map { "\(Int($0 * 100))%" } ?? "—",
-                        isSelected: chartMetric == .cloudCover
+                        value: (isNow ? cityWeather.currentCloudCover : forecast.cloudCover).map { "\(Int($0 * 100))%" } ?? "—"
                     )
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            chartMetric = .cloudCover
-                        }
-                    }
 
                     WeatherStatCard(
                         label: "Precipitation",
                         value: isNow
                             ? ([.rain, .drizzle, .snow].contains(cityWeather.condition) ? "100%" : "0%")
-                            : (forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—"),
-                        isSelected: chartMetric == .precipitation
+                            : (forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—")
                     )
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            chartMetric = .precipitation
-                        }
-                    }
 
                     WeatherStatCard(
                         label: "Wind Speed",
-                        value: (isNow ? cityWeather.currentWindSpeed : forecast.windSpeed).map { "\(Int($0)) km/h" } ?? "—",
-                        isSelected: chartMetric == .windSpeed
+                        value: (isNow ? cityWeather.currentWindSpeed : forecast.windSpeed).map { "\(Int($0)) km/h" } ?? "—"
                     )
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            chartMetric = .windSpeed
-                        }
-                    }
 
                     WeatherStatCard(
                         label: "UV Index",
-                        value: (isNow ? cityWeather.currentUVIndex : forecast.uvIndex).map { "\($0)" } ?? "—",
-                        isSelected: chartMetric == .uvIndex
+                        value: (isNow ? cityWeather.currentUVIndex : forecast.uvIndex).map { "\($0)" } ?? "—"
                     )
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            chartMetric = .uvIndex
-                        }
-                    }
 
                     WeatherStatCard(
                         label: "Humidity",
-                        value: (isNow ? cityWeather.currentHumidity : forecast.maxHumidity).map { "\(Int($0 * 100))%" } ?? "—",
-                        isSelected: chartMetric == .humidity
+                        value: (isNow ? cityWeather.currentHumidity : forecast.maxHumidity).map { "\(Int($0 * 100))%" } ?? "—"
                     )
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            chartMetric = .humidity
-                        }
-                    }
 
                     WeatherStatCard(
                         label: "Visibility",
-                        value: (isNow ? cityWeather.currentVisibility : forecast.maxVisibility).map { distUnit.display($0) } ?? "—",
-                        isSelected: chartMetric == .visibility
+                        value: (isNow ? cityWeather.currentVisibility : forecast.maxVisibility).map { distUnit.display($0) } ?? "—"
                     )
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            chartMetric = .visibility
-                        }
-                    }
                 }
                 .padding(.horizontal, 8)
 
@@ -1009,6 +1179,7 @@ struct HourlyTimelineChart: View {
     var cityTimeZone: TimeZone = .current
     var previewCurrentHour: Int? = nil
     var lineColor: Color = AppTheme.shared.colors.destructive
+    var showAllHours: Bool = false
     
     @Environment(\.locale) private var locale
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
@@ -1018,7 +1189,7 @@ struct HourlyTimelineChart: View {
     }
     
     private var currentCityHour: Int? {
-        guard dayOffset == 0 else { return nil }
+        guard dayOffset == 0 || dayOffset == -1 else { return nil }
         if let override = previewCurrentHour { return override }
         var calendar = Calendar.current
         calendar.timeZone = cityTimeZone
@@ -1031,14 +1202,14 @@ struct HourlyTimelineChart: View {
     }
     
     #if os(macOS)
-    private let totalHeight: CGFloat = 156
+    private let totalHeight: CGFloat = 176
     #else
-    private let totalHeight: CGFloat = 220
+    private let totalHeight: CGFloat = 250
     #endif
     private let hourLabelHeight: CGFloat = 20  // fixed hour label at top
     private let topPadding: CGFloat = 4        // space below hour label
     private let iconHeight: CGFloat = 26       // icon sits just below hour label
-    private let iconBottomPadding: CGFloat = 8 // gap between icon bottom and chart top
+    private let iconBottomPadding: CGFloat = 20 // gap between icon bottom and chart top
     private let valueHeight: CGFloat = 20      // height of value text (sits on line)
     
     // Chart zone starts below the fixed header (hour + icon), value text straddles line
@@ -1047,7 +1218,10 @@ struct HourlyTimelineChart: View {
     private var chartZone: CGFloat { chartBottom - chartTop }
     
     private var dataPoints: [HourlyForecast] {
-        hourlyForecasts.filter { [7, 9, 11, 13, 15, 17, 19].contains($0.hour) }
+        if showAllHours {
+            return hourlyForecasts.sorted { $0.hour < $1.hour }
+        }
+        return hourlyForecasts.filter { [7, 9, 11, 13, 15, 17, 19].contains($0.hour) }
     }
     
     private func chartValueText(for forecast: HourlyForecast) -> String {
@@ -1144,7 +1318,36 @@ struct HourlyTimelineChart: View {
                         .position(x: xPositions[index], y: lineYPositions[index])
                 }
 
-                // Layer 3: Data columns
+                // Layer 3: Current time vertical indicator line (behind text)
+                if let currentHour = currentCityHour {
+                    let hours = dataPoints.map { $0.hour }
+                    let lineTop = chartTop - 4
+                    let lineBottom = chartBottom + valueHeight
+                    let lineHeight = lineBottom - lineTop
+                    let lineCenterY = lineTop + lineHeight / 2
+
+                    if let lastIdx = hours.lastIndex(where: { $0 <= currentHour }),
+                       lastIdx < hours.count - 1 {
+                        let h0 = CGFloat(hours[lastIdx])
+                        let h1 = CGFloat(hours[lastIdx + 1])
+                        let fraction = h1 > h0 ? CGFloat(currentHour - hours[lastIdx]) / (h1 - h0) : 0
+                        let nowX = xPositions[lastIdx] + fraction * (xPositions[lastIdx + 1] - xPositions[lastIdx])
+                        Rectangle()
+                            .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25))
+                            .frame(width: 3, height: lineHeight)
+                            .position(x: nowX, y: lineCenterY)
+                            .opacity(0.5)
+                    } else if let firstHour = hours.first, currentHour < firstHour {
+                        let nowX = xPositions[0] * CGFloat(currentHour) / CGFloat(firstHour)
+                        Rectangle()
+                            .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25))
+                            .frame(width: 3, height: lineHeight)
+                            .position(x: max(nowX, 4), y: lineCenterY)
+                            .opacity(0.5)
+                    }
+                }
+
+                // Layer 4: Data columns
                 HStack(spacing: 0) {
                     ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, forecast in
                         let pointY = lineYPositions[index]
@@ -1255,16 +1458,13 @@ struct DayForecastBox: View {
 struct WeatherStatCard: View {
     let label: String
     let value: String
-    var isSelected: Bool = false
     var valueOffset: CGFloat = 0
-    
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 10) {
             Text(label)
                 .font(.avenir(.footnote, weight: .medium))
-                .foregroundStyle(isSelected ? AppTheme.shared.colors.primaryText : AppTheme.shared.colors.secondaryText)
+                .foregroundStyle(AppTheme.shared.colors.secondaryText)
             Text(value)
                 .font(.avenir(.title2, weight: .semibold))
                 .foregroundStyle(AppTheme.shared.colors.primaryText)
@@ -1275,9 +1475,7 @@ struct WeatherStatCard: View {
         .frame(height: 110)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(isSelected
-                    ? AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06)
-                    : AppTheme.shared.colors.listCardFill)
+                .fill(AppTheme.shared.colors.listCardFill)
         )
     }
 }
