@@ -15,6 +15,7 @@ extension ContentView {
         let isNow = selectedDayOffset == -1
         let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
         let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+        let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
         let baseCondition = isNow ? cityWeather.condition : forecast.condition
         let baseIcon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
         let icon: String = {
@@ -55,10 +56,10 @@ extension ContentView {
             case "windSpeed":
                 if isNow {
                     guard let ws = cityWeather.currentWindSpeed else { return "—" }
-                    return "\(Int(ws))km/h"
+                    return distUnit.displayWindSpeed(ws)
                 }
                 guard let ws = forecast.windSpeed else { return "—" }
-                return "\(Int(ws))km/h"
+                return distUnit.displayWindSpeed(ws)
             case "uvIndex":
                 if isNow {
                     guard let uv = cityWeather.currentUVIndex else { return "—" }
@@ -76,10 +77,10 @@ extension ContentView {
             case "visibility":
                 if isNow {
                     guard let km = cityWeather.currentVisibility else { return "—" }
-                    return km >= 10 ? "\(Int(km))km" : String(format: "%.1fkm", km)
+                    return distUnit.display(km)
                 }
                 guard let km = forecast.maxVisibility else { return "—" }
-                return km >= 10 ? "\(Int(km))km" : String(format: "%.1fkm", km)
+                return distUnit.display(km)
             default: return ""
             }
         }()
@@ -168,7 +169,7 @@ extension ContentView {
         }
         .onTapGesture {
             if isIPad {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     showingMapExpandedCard = false
                 }
                 if sidebarVisibility != .all {

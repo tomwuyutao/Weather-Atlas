@@ -202,7 +202,7 @@ extension ContentView {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .frame(width: 36, height: 36)
+                                .frame(width: 44, height: 44)
                                 .background(countryUnderPin.isEmpty ? .gray : AppTheme.shared.colors.accent, in: .circle)
                         }
                         .buttonStyle(.plain)
@@ -258,7 +258,7 @@ extension ContentView {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: countrySelectionMode ? 36 : 44, height: countrySelectionMode ? 36 : 44)
+                            .frame(width: 44, height: 44)
                             .themedGlass(in: .circle)
                     }
                     .buttonStyle(.plain)
@@ -266,7 +266,7 @@ extension ContentView {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
-                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: countrySelectionMode)
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: countrySelectionMode)
             }
         }
     }
@@ -321,7 +321,7 @@ extension ContentView {
                     .buttonStyle(.plain)
 
                     Button {
-                        showingMapStylePopover = true
+                        showingMapStyleSheet = true
                     } label: {
                         Image(systemName: "square.3.layers.3d")
                             .font(.system(size: 16, weight: .semibold))
@@ -330,37 +330,6 @@ extension ContentView {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .popover(isPresented: $showingMapStylePopover) {
-                        VStack(alignment: .leading, spacing: 0) {
-                            ForEach(["minimal", "borders", "colorful", "detailed"], id: \.self) { mode in
-                                Button {
-                                    showingMapStylePopover = false
-                                    withAnimation { mapMode = mode }
-                                } label: {
-                                    HStack(spacing: 12) {
-                                        Text(mode.capitalized)
-                                            .font(.avenir(.body, weight: mapMode == mode ? .bold : .medium))
-                                            .foregroundStyle(.primary)
-                                        Spacer()
-                                        if mapMode == mode {
-                                            Circle()
-                                                .fill(Color.primary)
-                                                .frame(width: 6, height: 6)
-                                        }
-                                    }
-                                    .padding(.leading, 24)
-                                    .padding(.trailing, 16)
-                                    .padding(.vertical, 11)
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                        .padding(.vertical, 8)
-                        .frame(width: 160)
-                        .presentationCompactAdaptation(.popover)
-                        .themedPopoverBackground()
-                    }
                 }
                 .padding(6)
                 .themedGlass(in: .capsule)

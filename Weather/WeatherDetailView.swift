@@ -126,10 +126,6 @@ struct WeatherDetailView: View {
         internalSelectedDay >= previousDay
     }
     
-    var effectiveShowCloudCover: Bool {
-        false
-    }
-    
     var headerBackgroundColor: Color {
         let theme = AppTheme.shared.colors
         let condition = detailDisplayCondition
@@ -213,7 +209,7 @@ struct WeatherDetailView: View {
             }
             return forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—"
         case .windSpeed:
-            return (isNow ? cityWeather.currentWindSpeed : forecast.windSpeed).map { "\(Int($0)) km/h" } ?? "—"
+            return (isNow ? cityWeather.currentWindSpeed : forecast.windSpeed).map { distUnit.displayWindSpeed($0) } ?? "—"
         case .uvIndex:
             return (isNow ? cityWeather.currentUVIndex : forecast.uvIndex).map { "\($0)" } ?? "—"
         case .humidity:
@@ -274,7 +270,7 @@ struct WeatherDetailView: View {
     var chartTimeRangePopoverContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     chartTimeRange = .daytime
                 }
                 showingChartRangePopover = false
@@ -299,7 +295,7 @@ struct WeatherDetailView: View {
             .buttonStyle(.plain)
 
             Button {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     chartTimeRange = .entireDay
                 }
                 showingChartRangePopover = false
@@ -466,7 +462,7 @@ struct WeatherDetailView: View {
                                     dailyForecast: dailyForecast,
                                     isSelected: internalSelectedDay == dailyForecast.dayOffset,
                                     cornerRadius: cr,
-                                    showCloudCover: effectiveShowCloudCover,
+                                    showCloudCover: showCloudCover,
                                     cityTimeZone: cityWeather.timeZone
                                 )
                                 .id(dailyForecast.dayOffset)
@@ -497,7 +493,7 @@ struct WeatherDetailView: View {
                     }
                     .animation(.easeInOut(duration: 0.2), value: dayScrollHasMore)
                     .onChange(of: internalSelectedDay) { _, newDay in
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             scrollProxy.scrollTo(newDay, anchor: .center)
                         }
                     }
@@ -573,12 +569,13 @@ struct WeatherDetailView: View {
                                                     .font(.system(size: 15))
                                                     .frame(width: 24)
                                                     .foregroundStyle(.primary)
-                                                Text("Reveal on Map")
+                                                Text(localizedString("Reveal on Map", locale: locale))
                                                     .font(.avenir(.body, weight: .medium))
                                                     .foregroundStyle(.primary)
                                                 Spacer()
                                             }
-                                            .padding(.horizontal, 16)
+                                            .padding(.leading, 24)
+                                            .padding(.trailing, 16)
                                             .padding(.vertical, 11)
                                             .contentShape(Rectangle())
                                         }
@@ -594,12 +591,13 @@ struct WeatherDetailView: View {
                                                     .font(.system(size: 15))
                                                     .frame(width: 24)
                                                     .foregroundStyle(AppTheme.shared.colors.destructive)
-                                                Text("Delete City")
+                                                Text(localizedString("Delete City", locale: locale))
                                                     .font(.avenir(.body, weight: .medium))
                                                     .foregroundStyle(AppTheme.shared.colors.destructive)
                                                 Spacer()
                                             }
-                                            .padding(.horizontal, 16)
+                                            .padding(.leading, 24)
+                                            .padding(.trailing, 16)
                                             .padding(.vertical, 11)
                                             .contentShape(Rectangle())
                                         }

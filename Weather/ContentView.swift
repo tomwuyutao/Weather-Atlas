@@ -68,6 +68,7 @@ struct ContentView: View {
     @State var recenterOnAllCities: Bool = false
     @State var detailOpenedFromList: Bool = false
     @AppStorage("temperatureUnit") var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
     @State var showingSettings: Bool = false
     @AppStorage("showLegend") var showLegend: Bool = true
     @State var showingInfo: Bool = false
@@ -218,7 +219,7 @@ struct ContentView: View {
             // Map view with bottom date bar
             mapView
                 .overlay(alignment: .bottom) {
-                    DesktopDateBar(selectedDayOffset: $selectedDayOffset, showCloudCover: Binding(get: { mapOverlayMode == "cloudCover" }, set: { mapOverlayMode = $0 ? "cloudCover" : "weather" }), filterSunny: $filterSunny, isPlaying: $isPlaying)
+                    DesktopDateBar(selectedDayOffset: $selectedDayOffset, filterSunny: $filterSunny, isPlaying: $isPlaying)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 12)
                 }
@@ -572,7 +573,7 @@ struct ContentView: View {
         }
         if !showing, showingMapExpandedCard, let city = tappedCity {
             if !weatherService.cityWeatherData.contains(where: { $0.city.name == city.city.name }) {
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     showingMapExpandedCard = false
                     tappedCity = nil
                     recenterOnAllCities = true
@@ -621,7 +622,7 @@ struct ContentView: View {
                     )
                 }
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedTab)
             .ignoresSafeArea(.keyboard)
 
             iOSMainOverlays
@@ -1071,7 +1072,7 @@ struct ContentView: View {
                                 Image(systemName: "plus")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .background(Color(hex: 0x1579C7), in: .circle)
                             }
                             .buttonStyle(.plain)
@@ -1112,7 +1113,7 @@ struct ContentView: View {
                                 Image(systemName: "plus")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .background(Color(hex: 0x1579C7), in: .circle)
                             }
                             .buttonStyle(.plain)
@@ -1160,7 +1161,7 @@ struct ContentView: View {
                                 Image(systemName: "plus")
                                     .font(.system(size: 15, weight: .semibold))
                                     .foregroundStyle(.white)
-                                    .frame(width: 36, height: 36)
+                                    .frame(width: 44, height: 44)
                                     .background(Color(hex: 0x1579C7), in: .circle)
                             }
                             .buttonStyle(.plain)
@@ -1203,7 +1204,7 @@ struct ContentView: View {
                 .padding(6)
                 .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
                 .themedGlass(in: .capsule)
-                .animation(.spring(response: 0.3, dampingFraction: 0.75), value: inlineSearchText.isEmpty)
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: inlineSearchText.isEmpty)
 
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
@@ -1235,7 +1236,7 @@ struct ContentView: View {
                         if let city = previewCity {
                             Task {
                                 await addCityToSidebar(city)
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     previewCity = nil
                                 }
                             }
@@ -1278,7 +1279,7 @@ struct ContentView: View {
                     .themedGlass(in: .circle)
                     .contentShape(Circle())
                     .onTapGesture {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             showingMapExpandedCard = false
                             previewCity = nil
                             recenterOnAllCities = true
@@ -1564,6 +1565,17 @@ struct ContentView: View {
                         }
                     }
                 },
+                onAddCityToList: cityIsInSidebar(city) ? nil : { listID in
+                    Task {
+                        await weatherService.addCityToList(city.city, listID: listID)
+                        showingAddCityView = false
+                        showingAddCityDetail = false
+                        if selectedTab == 1 {
+                            recenterOnAllCities = true
+                        }
+                    }
+                },
+                availableLists: cityIsInSidebar(city) ? [] : CityListID.allLists,
                 isInSidebar: cityIsInSidebar(city),
                 showCloudCover: showCloudCover,
                 initialChartMetric: overlayChartMetric
@@ -1608,7 +1620,7 @@ struct ContentView: View {
                             Image(systemName: "plus")
                                 .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.white)
-                                .frame(width: 36, height: 36)
+                                .frame(width: 44, height: 44)
                                 .background(Color(hex: 0x1579C7), in: .circle)
                         }
                         .buttonStyle(.plain)
@@ -1869,7 +1881,7 @@ struct ContentView: View {
                 }
                 .allowsHitTesting(false)
                 .transition(.opacity.combined(with: .move(edge: .bottom)))
-                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isFetchingTappedLocation)
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isFetchingTappedLocation)
             }
 
             // City detail popup (desktop/iPad only — iPhone uses navigation)
@@ -1878,7 +1890,7 @@ struct ContentView: View {
                 theme.colors.modalOverlay
                     .ignoresSafeArea()
                     .onTapGesture {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                             showingCityDetail = false
                         }
                     }
@@ -1889,7 +1901,7 @@ struct ContentView: View {
                     selectedDayOffset: $selectedDayOffset,
                     namespace: popupNamespace,
                     onDismiss: {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                             showingCityDetail = false
                         }
                     },
@@ -1897,7 +1909,7 @@ struct ContentView: View {
                         // Single-list fast path
                         Task {
                             await addCityToSidebar(city)
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                                 showingCityDetail = false
                             }
                             recenterOnAllCities = true
@@ -1906,7 +1918,7 @@ struct ContentView: View {
                     onAddCityToList: cityIsInSidebar(city) ? nil : { listID in
                         Task {
                             await weatherService.addCityToList(city.city, listID: listID)
-                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                                 showingCityDetail = false
                             }
                             recenterOnAllCities = true
@@ -1915,7 +1927,7 @@ struct ContentView: View {
                     availableLists: cityIsInSidebar(city) ? [] : CityListID.allLists,
                     onDeleteCity: cityIsInSidebar(city) ? {
                         weatherService.removeCity(city)
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                             showingCityDetail = false
                             showingMapExpandedCard = false
                             tappedCity = nil
@@ -1924,7 +1936,7 @@ struct ContentView: View {
                     } : nil,
                     onRevealOnMap: detailOpenedFromList ? {
                         let revealCity = city
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
                             showingCityDetail = false
                         }
                         centerOnCityTrigger = nil
@@ -1999,9 +2011,14 @@ struct WeatherMarker: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
     
     private var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
+
+    private var distUnit: DistanceUnit {
+        DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
     }
 
     private var isNow: Bool { dayOffset == -1 }
@@ -2058,10 +2075,10 @@ struct WeatherMarker: View {
         case "windSpeed":
             if isNow {
                 guard let ws = cityWeather.currentWindSpeed else { return "—" }
-                return "\(Int(ws))km/h"
+                return distUnit.displayWindSpeed(ws)
             }
             guard let ws = forecast.windSpeed else { return "—" }
-            return "\(Int(ws))km/h"
+            return distUnit.displayWindSpeed(ws)
         case "uvIndex":
             if isNow {
                 guard let uv = cityWeather.currentUVIndex else { return "—" }

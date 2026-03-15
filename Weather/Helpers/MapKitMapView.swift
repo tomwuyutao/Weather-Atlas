@@ -190,7 +190,7 @@ struct MapKitMapView: View {
                     }
                 } else {
                     // Tapped empty space — dismiss expanded card
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                         showingCityDetail = false
                     }
                 }

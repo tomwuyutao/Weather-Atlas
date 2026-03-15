@@ -16,9 +16,14 @@ struct CityRow: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
     
     private var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
+
+    private var distUnit: DistanceUnit {
+        DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
     }
     
     private var isNow: Bool { dayOffset == -1 }
@@ -50,10 +55,10 @@ struct CityRow: View {
         case "windSpeed":
             if isNow {
                 guard let ws = cityWeather.currentWindSpeed else { return "—" }
-                return "\(Int(ws)) km/h"
+                return distUnit.displayWindSpeed(ws)
             }
             guard let ws = forecast.windSpeed else { return "—" }
-            return "\(Int(ws)) km/h"
+            return distUnit.displayWindSpeed(ws)
         case "uvIndex":
             if isNow {
                 guard let uv = cityWeather.currentUVIndex else { return "—" }
@@ -71,10 +76,10 @@ struct CityRow: View {
         case "visibility":
             if isNow {
                 guard let km = cityWeather.currentVisibility else { return "—" }
-                return km >= 10 ? "\(Int(km)) km" : String(format: "%.1f km", km)
+                return distUnit.display(km)
             }
             guard let km = forecast.maxVisibility else { return "—" }
-            return km >= 10 ? "\(Int(km)) km" : String(format: "%.1f km", km)
+            return distUnit.display(km)
         default:
             return tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh)
         }
@@ -179,7 +184,7 @@ struct DesktopSidebar: View {
                 .onTapGesture {
                     detailOpenedFromList = true
                     tappedCity = cityWeather
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                         showingCityDetail = true
                     }
                     onCitySelected(cityWeather)
@@ -188,7 +193,7 @@ struct DesktopSidebar: View {
                     Button {
                         detailOpenedFromList = true
                         tappedCity = cityWeather
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             showingCityDetail = true
                         }
                         onCitySelected(cityWeather)
@@ -390,7 +395,7 @@ struct DesktopSidebar: View {
         if let existingCity = cities.first(where: { $0.city.name == cityName && $0.city.country == country }) {
             detailOpenedFromList = false
             tappedCity = existingCity
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 showingCityDetail = true
             }
             onCitySelected(existingCity)
@@ -409,7 +414,7 @@ struct DesktopSidebar: View {
         
         detailOpenedFromList = false
         tappedCity = tempCityWeather
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             showingCityDetail = true
         }
         onCitySelected(tempCityWeather)

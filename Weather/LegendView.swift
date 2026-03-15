@@ -6,9 +6,14 @@ struct MapFloatingLegend: View {
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
 
     private var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
+
+    private var distUnit: DistanceUnit {
+        DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
     }
 
     private let conditions: [AppWeatherCondition] = [
@@ -221,7 +226,7 @@ struct MapFloatingLegend: View {
                     windColor(fraction: 0.75),
                     windColor(fraction: 1.0)
                 ],
-                labels: ["0", "25", "50", "75", "100 km/h"]
+                labels: distUnit == .miles ? ["0", "15", "30", "45", "60 mph"] : ["0", "25", "50", "75", "100 km/h"]
             )
         case "uvIndex":
             gradientLegend(
@@ -254,7 +259,7 @@ struct MapFloatingLegend: View {
                     visibilityColor(fraction: 0.75),
                     visibilityColor(fraction: 1.0)
                 ],
-                labels: ["0", "8", "15", "23", "30 km"]
+                labels: distUnit == .miles ? ["0", "5", "9", "14", "19 mi"] : ["0", "8", "15", "23", "30 km"]
             )
         default:
             EmptyView()

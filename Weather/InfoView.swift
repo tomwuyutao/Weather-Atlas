@@ -109,7 +109,7 @@ struct InfoView: View {
                         Text(tempUnit == .fahrenheit ? "75°" : "24°")
                             .font(.custom("AvenirNext-Medium", size: 42, relativeTo: .largeTitle))
                             .foregroundStyle(.primary)
-                        Text("Daily High")
+                        Text("Highest Temperature")
                             .font(.avenir(.subheadline, weight: .medium))
                             .foregroundStyle(.secondary)
                     }

@@ -9,7 +9,6 @@ import SwiftUI
 
 struct DesktopDateBar: View {
     @Binding var selectedDayOffset: Int
-    @Binding var showCloudCover: Bool
     @Binding var filterSunny: Bool
     @Binding var isPlaying: Bool
     
@@ -47,21 +46,7 @@ struct DesktopDateBar: View {
                     .frame(width: 28, height: 28)
             }
             .buttonStyle(.plain)
-            .background(.thickMaterial, in: Circle())
-            
-            // Cloud cover toggle
-            Button {
-                withAnimation(.smooth(duration: 0.3)) {
-                    showCloudCover.toggle()
-                }
-            } label: {
-                Image(systemName: "cloud.fill")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(showCloudCover ? AppTheme.shared.colors.accent : .secondary)
-                    .frame(width: 28, height: 28)
-            }
-            .buttonStyle(.plain)
-            .background(.thickMaterial, in: Circle())
+            .themedGlass(in: .circle)
             
             HStack(spacing: 2) {
                 // Previous day button
@@ -125,7 +110,7 @@ struct DesktopDateBar: View {
                     .frame(width: 280, height: 300)
                     .padding(8)
                     .presentationCompactAdaptation(.popover)
-                    .presentationBackground(.thickMaterial)
+                    .presentationBackground(AppTheme.shared.colors.popoverBackground)
                 }
                 
                 // Next day button
@@ -153,7 +138,7 @@ struct DesktopDateBar: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .fixedSize()
-            .background(.thickMaterial, in: Capsule())
+            .themedGlass(in: .capsule)
             
             // Play/pause button
             Button {
@@ -170,7 +155,7 @@ struct DesktopDateBar: View {
                     .contentTransition(.symbolEffect(.replace))
             }
             .buttonStyle(.plain)
-            .background(.thickMaterial, in: Circle())
+            .themedGlass(in: .circle)
         }
         .onChange(of: selectedDayOffset) { oldValue, _ in
             previousDayOffset = oldValue

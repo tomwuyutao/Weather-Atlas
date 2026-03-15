@@ -29,6 +29,23 @@ enum DistanceUnit: String, CaseIterable {
             return rounded >= 10 ? "\(Int(rounded))mi" : String(format: "%.1fmi", rounded)
         }
     }
+
+    func displayWindSpeed(_ kmh: Double) -> String {
+        switch self {
+        case .kilometers:
+            return "\(Int(kmh)) km/h"
+        case .miles:
+            let mph = kmh * 0.621371
+            return "\(Int(mph)) mph"
+        }
+    }
+
+    var windSpeedUnit: String {
+        switch self {
+        case .kilometers: return "km/h"
+        case .miles: return "mph"
+        }
+    }
 }
 
 enum TemperatureUnit: String, CaseIterable {
@@ -84,6 +101,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var theme
     @Environment(\.themeColors) private var colors
+    @Environment(\.locale) private var locale
 
     @State private var showingResetConfirmation = false
     @State private var showingTempPicker = false
@@ -109,9 +127,9 @@ struct SettingsView: View {
                     VStack(alignment: .leading, spacing: 28) {
 
                         // MARK: General
-                        settingsSection(title: "General") {
+                        settingsSection(title: localizedString("General", locale: locale)) {
                             // Temperature
-                            settingsRow(icon: "thermometer.medium", label: "Temperature", value: selectedUnit.symbol, isPresented: $showingTempPicker) {
+                            settingsRow(icon: "thermometer.medium", label: localizedString("Temperature", locale: locale), value: selectedUnit.symbol, isPresented: $showingTempPicker) {
                                 showingTempPicker = true
                             } popoverContent: {
                                 VStack(alignment: .leading, spacing: 0) {
@@ -133,7 +151,7 @@ struct SettingsView: View {
                             rowDivider()
 
                             // Distance
-                            settingsRow(icon: "ruler", label: "Distance", value: selectedDistanceUnit.symbol, isPresented: $showingDistancePicker) {
+                            settingsRow(icon: "ruler", label: localizedString("Distance", locale: locale), value: selectedDistanceUnit.symbol, isPresented: $showingDistancePicker) {
                                 showingDistancePicker = true
                             } popoverContent: {
                                 VStack(alignment: .leading, spacing: 0) {
@@ -157,8 +175,8 @@ struct SettingsView: View {
                             // Default View
                             settingsRow(
                                 icon: isGridView ? "square.grid.2x2" : "list.bullet",
-                                label: "Default View",
-                                value: isGridView ? "Grid" : "List",
+                                label: localizedString("Default View", locale: locale),
+                                value: isGridView ? localizedString("Grid View", locale: locale) : localizedString("List View", locale: locale),
                                 isPresented: $showingViewPicker
                             ) {
                                 showingViewPicker = true
@@ -184,7 +202,7 @@ struct SettingsView: View {
                             // Language
                             settingsRow(
                                 icon: "globe",
-                                label: "Language",
+                                label: localizedString("Language", locale: locale),
                                 value: appLanguage == "zh-Hans" ? "中文" : "English",
                                 isPresented: $showingLanguagePicker
                             ) {
@@ -211,7 +229,7 @@ struct SettingsView: View {
                             // Theme
                             settingsRow(
                                 icon: "circle.lefthalf.filled",
-                                label: "Theme",
+                                label: localizedString("Theme", locale: locale),
                                 value: theme.style.displayName,
                                 isPresented: $showingThemePicker
                             ) {
@@ -248,7 +266,7 @@ struct SettingsView: View {
                                         .font(.system(size: 15, weight: .medium))
                                         .foregroundStyle(colors.accent)
                                         .frame(width: 24)
-                                    Text("Reset Lists to Defaults")
+                                    Text(localizedString("Reset Lists to Defaults", locale: locale))
                                         .font(.avenir(.body, weight: .medium))
                                         .foregroundStyle(colors.accent)
                                     Spacer()
@@ -261,12 +279,12 @@ struct SettingsView: View {
                         }
 
                         // MARK: About
-                        settingsSection(title: "About") {
-                            settingsRow(icon: "info.circle", label: "Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+                        settingsSection(title: localizedString("About", locale: locale)) {
+                            settingsRow(icon: "info.circle", label: localizedString("Version", locale: locale), value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
 
                             rowDivider()
 
-                            settingsRow(icon: "cloud.sun", label: "Powered by", value: "Apple Weather")
+                            settingsRow(icon: "cloud.sun", label: localizedString("Powered by", locale: locale), value: "Apple Weather")
                         }
                     }
                     .padding(.horizontal, 20)
@@ -274,7 +292,7 @@ struct SettingsView: View {
                     .padding(.bottom, 40)
                 }
             }
-            .navigationTitle("Settings")
+            .navigationTitle(localizedString("Settings", locale: locale))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -284,7 +302,7 @@ struct SettingsView: View {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(colors.primaryText)
-                            .frame(width: 36, height: 36)
+                            .frame(width: 44, height: 44)
                             .themedGlass(in: .circle)
                     }
                     .buttonStyle(.plain)

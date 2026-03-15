@@ -101,6 +101,15 @@ extension ContentView {
     }
 
     func formatRadius(_ meters: Double) -> String {
+        let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+        if distUnit == .miles {
+            let miles = meters / 1609.344
+            if miles >= 1 {
+                return String(format: "%.0f mi", miles)
+            }
+            let feet = meters * 3.28084
+            return String(format: "%.0f ft", feet)
+        }
         if meters >= 1000 {
             return String(format: "%.0f km", meters / 1000)
         }
@@ -221,7 +230,7 @@ extension ContentView {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 4)
-                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: radialSearchMode)
+                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: radialSearchMode)
             }
         }
     }

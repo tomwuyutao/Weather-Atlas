@@ -23,7 +23,7 @@ extension ContentView {
                     HStack(spacing: 0) {
                         ForEach([("Map Style", 0), ("Overlays", 1)], id: \.1) { label, tag in
                             Button {
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     mapStyleTab = tag
                                 }
                             } label: {

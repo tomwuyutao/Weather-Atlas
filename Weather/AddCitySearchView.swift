@@ -93,7 +93,7 @@ struct AddCitySearchView: View {
             .padding(.horizontal, 16)
             .padding(.top, 12)
             .padding(.bottom, 16)
-            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: searchText.isEmpty)
+            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: searchText.isEmpty)
             
             // Search results
             if shouldShowSearchResults {

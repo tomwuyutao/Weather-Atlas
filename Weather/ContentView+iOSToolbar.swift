@@ -664,7 +664,7 @@ extension ContentView {
                             .font(.system(size: 16))
                             .foregroundStyle(mapVisibleListIDs.contains(listID.rawValue) ? theme.colors.dotRain : .secondary)
                     }
-                    .padding(.leading, 16)
+                    .padding(.leading, 24)
                     .padding(.trailing, 16)
                     .padding(.vertical, 11)
                     .contentShape(Rectangle())
@@ -688,7 +688,7 @@ extension ContentView {
                         showingMenuPopover = false
                         weatherService.removeCity(city)
                         if selectedTab == 1 {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                 showingMapExpandedCard = false
                                 tappedCity = nil
                                 recenterOnAllCities = true
@@ -793,7 +793,8 @@ extension ContentView {
                     .font(.avenir(.body, weight: .medium))
                 Spacer()
             }
-            .padding(.horizontal, 16)
+            .padding(.leading, 24)
+            .padding(.trailing, 16)
             .padding(.vertical, 11)
             .contentShape(Rectangle())
         }

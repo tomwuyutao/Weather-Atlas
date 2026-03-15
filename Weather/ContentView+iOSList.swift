@@ -297,6 +297,7 @@ extension ContentView {
                             Circle()
                                 .fill(theme.colors.accent)
                                 .frame(width: 6, height: 6)
+                                .frame(width: 13)
                         }
                     }
                     .padding(.leading, 24)
@@ -470,7 +471,7 @@ extension ContentView {
     
     func commitListNameEdit() {
         let name = editingListName.trimmingCharacters(in: .whitespacesAndNewlines)
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
             isEditingListName = false
         }
         if name.isEmpty {

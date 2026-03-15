@@ -112,7 +112,7 @@ extension ContentView {
         if day == -1 { return localizedString("Now", locale: locale) }
         if day == 0 { return localizedString("Today", locale: locale) }
         let formatter = DateFormatter()
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "dMMM", options: 0, locale: locale)
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMdEEE", options: 0, locale: locale)
         formatter.locale = locale
         return formatter.string(from: Calendar.current.date(byAdding: .day, value: day, to: Date()) ?? Date())
     }
