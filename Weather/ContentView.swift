@@ -783,6 +783,7 @@ struct ContentView: View {
             }
 
             Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 if mapVisibleListIDs.count > 1 {
                     showingRecenterPopover = true
                 } else {
@@ -1228,6 +1229,7 @@ struct ContentView: View {
                         }
                         .contentShape(Capsule())
                         .onTapGesture {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                 selectedTab = 0
                             }
@@ -1246,6 +1248,7 @@ struct ContentView: View {
                         }
                         .contentShape(Capsule())
                         .onTapGesture {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                 selectedTab = 1
                             }

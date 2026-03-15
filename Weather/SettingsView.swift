@@ -265,14 +265,14 @@ struct SettingsView: View {
                                     Image(systemName: "arrow.counterclockwise")
                                         .font(.system(size: 15, weight: .medium))
                                         .foregroundStyle(colors.accent)
-                                        .frame(width: 24)
+                                        .frame(width: 22)
                                     Text(localizedString("Reset Lists to Defaults", locale: locale))
                                         .font(.avenir(.body, weight: .medium))
                                         .foregroundStyle(colors.accent)
                                     Spacer()
                                 }
                                 .padding(.horizontal, 16)
-                                .padding(.vertical, 11)
+                                .padding(.vertical, 16)
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)

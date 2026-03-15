@@ -104,7 +104,7 @@ extension WeatherDetailView {
                         }
                         .foregroundStyle(.white)
                         .padding(.leading, 28)
-                        .padding(.top, geo.safeAreaInsets.top)
+                        .padding(.top, geo.safeAreaInsets.top - 10)
                     }
                     .opacity(isHeaderCollapsed ? 0 : 1)
                     .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
@@ -139,9 +139,22 @@ extension WeatherDetailView {
                             .font(.system(size: 36))
                             .foregroundStyle(detailDisplayIcon.contains("moon") ? AppTheme.shared.colors.moonIconColor : .white)
                             .contentTransition(.symbolEffect(.replace))
+                            .background(alignment: .top) {
+                                if !detailDisplayIcon.contains("moon") {
+                                    WeatherEffectOverlay(
+                                        condition: detailDisplayCondition,
+                                        isCompact: false,
+                                        iconHeight: 36,
+                                        iconName: detailDisplayIcon,
+                                        dropColor: detailDisplayCondition == .drizzle ? AppTheme.shared.colors.dotRain : nil
+                                    )
+                                    .offset(y: 7)
+                                    .id("detail-collapsed-effect-\(internalSelectedDay)-\(detailDisplayCondition.displayName)")
+                                }
+                            }
                     }
                     .padding(.horizontal, 28)
-                    .padding(.bottom, 50)
+                    .padding(.bottom, 36)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                     .transition(
                         .asymmetric(

@@ -329,7 +329,7 @@ struct WeatherDetailView: View {
     }
 
     var expandedHeaderHeight: CGFloat { 270 }
-    var collapsedHeaderHeight: CGFloat { 135 }
+    var collapsedHeaderHeight: CGFloat { 105 }
 
     var currentHeaderHeight: CGFloat {
         let base: CGFloat = isHeaderCollapsed ? collapsedHeaderHeight : expandedHeaderHeight

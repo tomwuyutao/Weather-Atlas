@@ -58,6 +58,7 @@ extension ContentView {
                     LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
                         ForEach(modes, id: \.self) { mode in
                             Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 withAnimation { mapMode = mode }
                                 showingMapStyleSheet = false
                             } label: {
@@ -119,6 +120,7 @@ extension ContentView {
                     VStack(spacing: 10) {
                         ForEach(overlays, id: \.0) { mode, icon, label in
                             Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     mapOverlayMode = mode
                                 }

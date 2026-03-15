@@ -305,8 +305,14 @@ extension View {
     }
 
     /// Themed popover/presentation background.
+    /// Uses full-opacity glassFill in detailed/colorful map modes to match expanded cards.
+    @ViewBuilder
     func themedPopoverBackground() -> some View {
-        self.presentationBackground(AppTheme.shared.colors.popoverBackground)
+        if AppTheme.shared.isDetailedMapMode {
+            self.presentationBackground(AppTheme.shared.colors.glassFill)
+        } else {
+            self.presentationBackground(AppTheme.shared.colors.popoverBackground)
+        }
     }
 
     /// Themed glass/material background for capsule-shaped UI elements.

@@ -291,6 +291,7 @@ extension ContentView {
             // Center on map
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     if mapVisibleListIDs.count > 1 {
                         showingRecenterPopover = true
                     } else {
@@ -346,6 +347,7 @@ extension ContentView {
             // Map style
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     showingMapStyleSheet = true
                 } label: {
                     Image(systemName: "map")
@@ -458,6 +460,7 @@ extension ContentView {
         HStack(spacing: 6) {
             Button {
                 if selectedDayOffset > -1 {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     withAnimation(.smooth(duration: 0.2)) {
                         selectedDayOffset -= 1
                     }
@@ -509,6 +512,7 @@ extension ContentView {
 
             Button {
                 if selectedDayOffset < 9 {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     withAnimation(.smooth(duration: 0.2)) {
                         selectedDayOffset += 1
                     }
@@ -533,6 +537,7 @@ extension ContentView {
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset > -1 {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         withAnimation(.smooth(duration: 0.2)) {
                             selectedDayOffset -= 1
                         }
@@ -589,6 +594,7 @@ extension ContentView {
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset < 9 {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         withAnimation(.smooth(duration: 0.2)) {
                             selectedDayOffset += 1
                         }
