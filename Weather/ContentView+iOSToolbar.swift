@@ -390,6 +390,17 @@ extension ContentView {
         if !isIPad {
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 0) {
+                    if weatherService.isLoading, selectedTab == 0 {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .tint(theme.colors.primaryText)
+                            .frame(width: 44, height: 44)
+
+                        Rectangle()
+                            .fill(theme.colors.primaryText.opacity(0.15))
+                            .frame(width: 1, height: 20)
+                    }
+
                     if filterSunny {
                         Button {
                             withAnimation { filterSunny = false }

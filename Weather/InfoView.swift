@@ -91,7 +91,7 @@ struct InfoView: View {
                 .padding(.vertical, 18)
                 .background(colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
 
-                calloutLabel("Daily high temperature")
+                calloutLabel("Current temp (Now) or daily high (Today+)")
             }
         }
     }
@@ -149,7 +149,7 @@ struct InfoView: View {
             .background(colors.listCardFill, in: RoundedRectangle(cornerRadius: 20))
 
             VStack(alignment: .leading, spacing: 3) {
-                calloutLabel("Large number — daily high (or overlay value)")
+                calloutLabel("Large number — current temp (Now) or daily high (Today+), or overlay value")
                 calloutLabel("Label below — data type shown")
                 calloutLabel("Colored dots — 10-day weather conditions")
             }
@@ -187,8 +187,8 @@ struct InfoView: View {
             )
 
             VStack(alignment: .leading, spacing: 4) {
-                calloutLabel("Large number — daily high")
-                calloutLabel("Condition label — current day weather")
+                calloutLabel("Large number — current temp (Now) or high/low (Today+)")
+                calloutLabel("Condition label — current weather condition")
             }
             .padding(.leading, 4)
 
@@ -196,42 +196,42 @@ struct InfoView: View {
                 label: "Temperature",
                 value: tempUnit == .fahrenheit ? "68° / 75°" : "20° / 24°",
                 isSelected: true,
-                annotations: ["Low / High", "Entire day"]
+                annotations: ["Low / High (Today+)", "Current temp only (Now)"]
             )
             statCard(
                 label: "Feels Like",
                 value: tempUnit == .fahrenheit ? "65° / 72°" : "18° / 22°",
-                annotations: ["Low / High", "Entire day"]
+                annotations: ["Low / High (Today+)", "Current feels like (Now)"]
             )
             statCard(
                 label: "Cloud Cover",
                 value: "12%",
-                annotations: ["Daytime (7AM–7PM)"]
+                annotations: ["Daytime avg (Today+)", "Current reading (Now)"]
             )
             statCard(
                 label: "Precipitation",
                 value: "5%",
-                annotations: ["Full-day max from hourly data"]
+                annotations: ["Full-day max (Today+)", "100% if raining, 0% otherwise (Now)"]
             )
             statCard(
                 label: "Wind Speed",
                 value: "25 km/h",
-                annotations: ["Full-day wind speed"]
+                annotations: ["Full-day wind (Today+)", "Current wind (Now)"]
             )
             statCard(
                 label: "UV Index",
                 value: "6",
-                annotations: ["Daily peak UV"]
+                annotations: ["Daily peak (Today+)", "Current UV (Now)"]
             )
             statCard(
                 label: "Humidity",
                 value: "65%",
-                annotations: ["Daily max humidity"]
+                annotations: ["Daily max (Today+)", "Current humidity (Now)"]
             )
             statCard(
                 label: "Visibility",
                 value: "15 km",
-                annotations: ["Daily max visibility"]
+                annotations: ["Daily max (Today+)", "Current visibility (Now)"]
             )
 
             VStack(alignment: .leading, spacing: 4) {
