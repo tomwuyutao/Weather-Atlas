@@ -23,15 +23,15 @@ struct WeatherDetailView: View {
     var previewCurrentHour: Int? = nil
     var initialChartMetric: ChartMetric? = nil
     
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorScheme) var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.locale) private var locale
-    @State private var internalSelectedDay: Int
-    @State private var previousDay: Int
-    @State private var swipeDirection: SwipeDirection = .forward
+    @Environment(\.locale) var locale
+    @State var internalSelectedDay: Int
+    @State var previousDay: Int
+    @State var swipeDirection: SwipeDirection = .forward
     @State private var isSwipingDays: Bool = false
     
-    private enum SwipeDirection {
+    enum SwipeDirection {
         case forward, backward
     }
     
@@ -44,25 +44,25 @@ struct WeatherDetailView: View {
         case daytime, entireDay
     }
     
-    @State private var chartMetric: ChartMetric = .temperature
-    @State private var chartTimeRange: ChartTimeRange = .daytime
-    @State private var showingChartRangePopover: Bool = false
-    @State private var showingChartMetricPopover: Bool = false
+    @State var chartMetric: ChartMetric = .temperature
+    @State var chartTimeRange: ChartTimeRange = .daytime
+    @State var showingChartRangePopover: Bool = false
+    @State var showingChartMetricPopover: Bool = false
     @State private var showingCloudCover: Bool = false
     @State private var showingDetailMenu: Bool = false
     @State private var showingAddToListMenu: Bool = false
     @State private var dayScrollHasMore: Bool = true
-    @State private var isHeaderCollapsed: Bool = false
-    @State private var headerDragOffset: CGFloat = 0
-    @State private var scrollAtTop: Bool = true
+    @State var isHeaderCollapsed: Bool = false
+    @State var headerDragOffset: CGFloat = 0
+    @State var scrollAtTop: Bool = true
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
 
-    private var tempUnit: TemperatureUnit {
+    var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
     }
 
-    private var distUnit: DistanceUnit {
+    var distUnit: DistanceUnit {
         DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
     }
 
@@ -86,18 +86,18 @@ struct WeatherDetailView: View {
         self._chartMetric = State(initialValue: initialChartMetric ?? .temperature)
     }
     
-    private var forecast: DailyForecast {
+    var forecast: DailyForecast {
         cityWeather.forecast(for: max(0, internalSelectedDay))
     }
     
     /// Whether the "Now" mode is selected (-1), showing current weather
-    private var isNow: Bool {
+    var isNow: Bool {
         internalSelectedDay == -1
     }
     
     /// For today, show current weather icon; for future days, show forecast icon
     /// Use plain cloud icon when animation shows precipitation
-    private var detailDisplayIcon: String {
+    var detailDisplayIcon: String {
         let baseCondition = isNow ? cityWeather.condition : forecast.condition
         let baseIcon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
         if baseCondition == .rain || baseCondition == .drizzle || baseCondition == .snow {
@@ -107,12 +107,12 @@ struct WeatherDetailView: View {
     }
     
     /// For today, show current condition; for future days, show forecast condition
-    private var detailDisplayCondition: AppWeatherCondition {
+    var detailDisplayCondition: AppWeatherCondition {
         isNow ? cityWeather.condition : forecast.condition
     }
     
     /// Whether it's currently nighttime in this city (outside sunrise-sunset)
-    private var isCurrentlyNight: Bool {
+    var isCurrentlyNight: Bool {
         guard isNow,
               let sunrise = forecast.sunrise,
               let sunset = forecast.sunset else { return false }
@@ -120,15 +120,15 @@ struct WeatherDetailView: View {
         return now < sunrise || now > sunset
     }
     
-    private var goingForward: Bool {
+    var goingForward: Bool {
         internalSelectedDay >= previousDay
     }
     
-    private var effectiveShowCloudCover: Bool {
+    var effectiveShowCloudCover: Bool {
         false
     }
     
-    private var headerBackgroundColor: Color {
+    var headerBackgroundColor: Color {
         let theme = AppTheme.shared.colors
         let condition = detailDisplayCondition
         
@@ -149,7 +149,7 @@ struct WeatherDetailView: View {
         }
     }
 
-    private var chartLineColor: Color {
+    var chartLineColor: Color {
         switch chartMetric {
         case .temperature:   return Color(hex: 0xE8536B)
         case .feelsLike:     return Color(hex: 0xED8988)
@@ -162,7 +162,7 @@ struct WeatherDetailView: View {
         }
     }
 
-    private var chartMetricIcon: String {
+    var chartMetricIcon: String {
         switch chartMetric {
         case .temperature:   return "thermometer.medium"
         case .feelsLike:     return "thermometer.variable.and.figure"
@@ -175,7 +175,7 @@ struct WeatherDetailView: View {
         }
     }
 
-    private var chartMetricLabel: String {
+    var chartMetricLabel: String {
         switch chartMetric {
         case .temperature:   return localizedString("Temperature", locale: locale)
         case .feelsLike:     return localizedString("Feels Like", locale: locale)
@@ -188,7 +188,7 @@ struct WeatherDetailView: View {
         }
     }
 
-    private var chartMetricCurrentValue: String {
+    var chartMetricCurrentValue: String {
         switch chartMetric {
         case .temperature:
             return isNow
@@ -221,7 +221,7 @@ struct WeatherDetailView: View {
         }
     }
 
-    private var chartMetricPopoverContent: some View {
+    var chartMetricPopoverContent: some View {
         let allMetrics: [(ChartMetric, String, String)] = [
             (.temperature, "thermometer.medium", localizedString("Temperature", locale: locale)),
             (.feelsLike, "thermometer.variable.and.figure", localizedString("Feels Like", locale: locale)),
@@ -269,7 +269,7 @@ struct WeatherDetailView: View {
         .themedPopoverBackground()
     }
 
-    private var chartTimeRangePopoverContent: some View {
+    var chartTimeRangePopoverContent: some View {
         VStack(alignment: .leading, spacing: 0) {
             Button {
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
@@ -326,7 +326,7 @@ struct WeatherDetailView: View {
         .themedPopoverBackground()
     }
 
-    private var isPopup: Bool {
+    var isPopup: Bool {
         #if os(macOS)
         return true
         #else
@@ -334,10 +334,10 @@ struct WeatherDetailView: View {
         #endif
     }
 
-    private let expandedHeaderHeight: CGFloat = 270
-    private let collapsedHeaderHeight: CGFloat = 135
+    var expandedHeaderHeight: CGFloat { 270 }
+    var collapsedHeaderHeight: CGFloat { 135 }
 
-    private var currentHeaderHeight: CGFloat {
+    var currentHeaderHeight: CGFloat {
         let base: CGFloat = isHeaderCollapsed ? collapsedHeaderHeight : expandedHeaderHeight
         let clamped = max(collapsedHeaderHeight, base + headerDragOffset * 0.4)
         return clamped
@@ -346,175 +346,10 @@ struct WeatherDetailView: View {
     var body: some View {
         ZStack(alignment: .top) {
             // Weather condition color block — fixed at top, animates height
-            if !isPopup {
-                GeometryReader { geo in
-                    headerBackgroundColor
-                        .frame(height: currentHeaderHeight + geo.safeAreaInsets.top)
-                        .frame(maxWidth: .infinity, alignment: .top)
-                        .ignoresSafeArea(edges: .top)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
-                }
-                .frame(height: currentHeaderHeight)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .allowsHitTesting(false)
-                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
-                .zIndex(2)
-            }
+            headerBackgroundBlock
 
             // Floating header (iOS only) — outside ScrollView so scroll doesn't move it
-            if !isPopup {
-                ZStack(alignment: .bottom) {
-                    // ── EXPANDED content ────────────────────────────────────
-                    GeometryReader { geo in
-                        ZStack(alignment: .topLeading) {
-                            // Large decorative icon — right, slightly cropped
-                            Image(systemName: detailDisplayIcon)
-                                .font(.system(size: 180))
-                                .foregroundStyle(.white)
-                                .contentTransition(.symbolEffect(.replace))
-                                .opacity(0.35)
-                                .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                                .background(alignment: .top) {
-                                    if !detailDisplayIcon.contains("moon") {
-                                        WeatherEffectOverlay(
-                                            condition: detailDisplayCondition,
-                                            isCompact: false,
-                                            iconHeight: 220,
-                                            iconName: detailDisplayIcon,
-                                            dropColor: detailDisplayCondition == .drizzle ? AppTheme.shared.colors.dotRain : nil
-                                        )
-                                        .id("detail-header-effect-\(internalSelectedDay)-\(detailDisplayCondition.displayName)")
-                                    }
-                                }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                                .padding(.trailing, -40)
-                                .offset(y: -36)
-
-                            // Temperature + condition — top left, below back button
-                            VStack(alignment: .leading, spacing: 6) {
-                                if isNow {
-                                    // Today: show current temperature
-                                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                                        Text(tempUnit.display(cityWeather.temperature))
-                                            .font(.avenir(.largeTitle, weight: .bold))
-                                            .dynamicTypeSize(...DynamicTypeSize.large)
-                                            .contentTransition(.numericText())
-                                    }
-                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-
-                                    Text(detailDisplayCondition.localizedDisplayName(locale: locale))
-                                        .font(.avenir(.title3, weight: .medium))
-                                        .dynamicTypeSize(...DynamicTypeSize.large)
-                                        .contentTransition(.opacity)
-                                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                                } else {
-                                    // Future days: show daily high with low at 60% opacity
-                                    HStack(alignment: .firstTextBaseline, spacing: 0) {
-                                        Text(tempUnit.display(forecast.dailyHigh))
-                                            .font(.avenir(.largeTitle, weight: .bold))
-                                            .dynamicTypeSize(...DynamicTypeSize.large)
-                                            .contentTransition(.numericText())
-                                        Text(" ")
-                                            .font(.avenir(.largeTitle, weight: .bold))
-                                        Text(tempUnit.display(forecast.dailyLow))
-                                            .font(.avenir(.largeTitle, weight: .bold))
-                                            .dynamicTypeSize(...DynamicTypeSize.large)
-                                            .contentTransition(.numericText())
-                                            .opacity(0.6)
-                                    }
-                                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-
-                                    Text(forecast.condition.localizedDisplayName(locale: locale))
-                                        .font(.avenir(.title3, weight: .medium))
-                                        .dynamicTypeSize(...DynamicTypeSize.large)
-                                        .contentTransition(.opacity)
-                                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                                }
-                            }
-                            .foregroundStyle(.white)
-                            .padding(.leading, 28)
-                            .padding(.top, geo.safeAreaInsets.top)
-                        }
-                        .opacity(isHeaderCollapsed ? 0 : 1)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
-                    }
-
-                    // ── COLLAPSED content ────────────────────────────────────
-                    if isHeaderCollapsed {
-                        HStack(spacing: 14) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                HStack(alignment: .firstTextBaseline, spacing: 0) {
-                                    Text(tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
-                                        .font(.avenir(.title, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .contentTransition(.numericText())
-                                    if !isNow {
-                                        Text(" ")
-                                            .font(.avenir(.title, weight: .bold))
-                                        Text(tempUnit.display(forecast.dailyLow))
-                                            .font(.avenir(.title, weight: .bold))
-                                            .foregroundStyle(.white.opacity(0.6))
-                                            .contentTransition(.numericText())
-                                    }
-                                }
-                                Text(detailDisplayCondition.localizedDisplayName(locale: locale))
-                                    .font(.avenir(.subheadline, weight: .semibold))
-                                    .foregroundStyle(.white.opacity(0.8))
-                                    .contentTransition(.opacity)
-                            }
-                            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                            Spacer()
-                            Image(systemName: detailDisplayIcon)
-                                .font(.system(size: 36))
-                                .foregroundStyle(detailDisplayIcon.contains("moon") ? AppTheme.shared.colors.moonIconColor : .white)
-                                .contentTransition(.symbolEffect(.replace))
-                        }
-                        .padding(.horizontal, 28)
-                        .padding(.bottom, 50)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                        .transition(
-                            .asymmetric(
-                                insertion: .opacity.combined(with: .move(edge: .bottom)),
-                                removal: .opacity.combined(with: .move(edge: .bottom))
-                            )
-                        )
-                    }
-
-                    // ── DRAG HANDLE ─────────────────────────────
-                    RoundedRectangle(cornerRadius: 2.5)
-                        .fill(.white.opacity(0.4))
-                        .frame(width: 36, height: 5)
-
-                        .frame(width: 80, height: 44)
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 10, coordinateSpace: .global)
-                                .onChanged { value in
-                                    let h = abs(value.translation.width)
-                                    let v = abs(value.translation.height)
-                                    guard v > h else { return }
-                                    headerDragOffset = value.translation.height
-                                }
-                                .onEnded { value in
-                                    let translation = value.translation.height
-                                    let velocity = value.velocity.height
-                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                                        if !isHeaderCollapsed && (translation < -40 || velocity < -200) {
-                                            isHeaderCollapsed = true
-                                        } else if isHeaderCollapsed && (translation > 40 || velocity > 200) {
-                                            isHeaderCollapsed = false
-                                        }
-                                        headerDragOffset = 0
-                                    }
-                                }
-                        )
-                }
-                .frame(height: currentHeaderHeight)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-                .clipped()
-                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
-                .zIndex(3)
-            }
+            floatingHeader
 
             // Main content card
             ScrollView(.vertical, showsIndicators: false) {
@@ -677,194 +512,11 @@ struct WeatherDetailView: View {
                     )
                 }
 
-                // Chart card with switchers
-                VStack(spacing: 0) {
-                    // Metric value + switchers
-                    HStack {
-                        Text(chartMetricCurrentValue)
-                            .font(.avenir(.title3, weight: .semibold))
-                            .contentTransition(.numericText())
-                            .animation(.smooth(duration: 0.3), value: chartMetric)
-                            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                // Chart card with switchers (WeatherDetailView+ChartCard.swift)
+                chartCard
 
-                        Spacer()
-
-                        // Chart metric switcher
-                        Button {
-                            showingChartMetricPopover = true
-                        } label: {
-                            HStack(spacing: 5) {
-                                Image(systemName: chartMetricIcon)
-                                    .font(.system(size: 11, weight: .medium))
-                                    .frame(width: 16)
-                                Text(chartMetricLabel)
-                                    .font(.avenir(.subheadline, weight: .semibold))
-                                    .lineLimit(1)
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 8, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .background(
-                            Capsule()
-                                .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06))
-                        )
-                        .popover(isPresented: $showingChartMetricPopover) {
-                            chartMetricPopoverContent
-                                .presentationCompactAdaptation(.popover)
-                        }
-
-                        // Chart time range switcher
-                        Button {
-                            showingChartRangePopover = true
-                        } label: {
-                            HStack(spacing: 5) {
-                                Text(chartTimeRange == .daytime
-                                     ? localizedString("Daytime", locale: locale)
-                                     : localizedString("Entire Day", locale: locale))
-                                    .font(.avenir(.subheadline, weight: .semibold))
-                                    .lineLimit(1)
-                                Image(systemName: "chevron.down")
-                                    .font(.system(size: 8, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 7)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .background(
-                            Capsule()
-                                .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06))
-                        )
-                        .popover(isPresented: $showingChartRangePopover) {
-                            chartTimeRangePopoverContent
-                                .presentationCompactAdaptation(.popover)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
-                    .padding(.bottom, 8)
-
-                    // Separator
-                    Rectangle()
-                        .fill(AppTheme.shared.colors.primaryText.opacity(0.1))
-                        .frame(height: 1)
-                        .padding(.horizontal, 8)
-
-                    // Chart container
-                    ZStack {
-                        let insertEdge: Edge = swipeDirection == .forward ? .trailing : .leading
-                        let removeEdge: Edge = swipeDirection == .forward ? .leading : .trailing
-
-                        if chartTimeRange == .entireDay {
-                            ScrollView(.horizontal, showsIndicators: false) {
-                                HourlyTimelineChart(
-                                    hourlyForecasts: forecast.hourlyForecasts,
-                                    chartMetric: chartMetric,
-                                    dayOffset: internalSelectedDay,
-                                    cityTimeZone: cityWeather.timeZone,
-                                    previewCurrentHour: previewCurrentHour,
-                                    lineColor: chartLineColor,
-                                    showAllHours: true
-                                )
-                                .frame(width: max(UIScreen.main.bounds.width * 2.5, 900))
-                            }
-                            .id("hourly-all-\(internalSelectedDay)")
-                            .transition(.asymmetric(
-                                insertion: .move(edge: insertEdge).combined(with: .opacity),
-                                removal: .move(edge: removeEdge).combined(with: .opacity)
-                            ))
-                        } else {
-                            HourlyTimelineChart(
-                                hourlyForecasts: forecast.hourlyForecasts,
-                                chartMetric: chartMetric,
-                                dayOffset: internalSelectedDay,
-                                cityTimeZone: cityWeather.timeZone,
-                                previewCurrentHour: previewCurrentHour,
-                                lineColor: chartLineColor
-                            )
-                            .id("hourly-\(internalSelectedDay)")
-                            .transition(.asymmetric(
-                                insertion: .move(edge: insertEdge).combined(with: .opacity),
-                                removal: .move(edge: removeEdge).combined(with: .opacity)
-                            ))
-                        }
-                    }
-                    .clipped()
-                    .padding(.top, 8)
-                }
-                .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-                .padding(.horizontal, 8)
-
-                // Stats grid: 2-column, cards with no data are hidden
-                let feelsLikeValue: String? = (forecast.feelsLikeLow != nil && forecast.feelsLikeHigh != nil)
-                    ? tempUnit.displaySlash(low: forecast.feelsLikeLow!, high: forecast.feelsLikeHigh!)
-                    : nil
-
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
-                    WeatherStatCard(
-                        label: "Temperature",
-                        value: isNow
-                            ? tempUnit.display(cityWeather.temperature)
-                            : tempUnit.displaySlash(low: forecast.dailyLow, high: forecast.dailyHigh),
-                        valueOffset: 3
-                    )
-
-                    if isNow {
-                        if let fl = cityWeather.currentFeelsLike {
-                            WeatherStatCard(
-                                label: "Feels Like",
-                                value: tempUnit.display(fl),
-                                valueOffset: 3
-                            )
-                        }
-                    } else if let feelsLike = feelsLikeValue {
-                        WeatherStatCard(
-                            label: "Feels Like",
-                            value: feelsLike,
-                            valueOffset: 3
-                        )
-                    }
-
-                    WeatherStatCard(
-                        label: "Cloud Cover",
-                        value: (isNow ? cityWeather.currentCloudCover : forecast.cloudCover).map { "\(Int($0 * 100))%" } ?? "—"
-                    )
-
-                    WeatherStatCard(
-                        label: "Precipitation",
-                        value: isNow
-                            ? ([.rain, .drizzle, .snow].contains(cityWeather.condition) ? "100%" : "0%")
-                            : (forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—")
-                    )
-
-                    WeatherStatCard(
-                        label: "Wind Speed",
-                        value: (isNow ? cityWeather.currentWindSpeed : forecast.windSpeed).map { "\(Int($0)) km/h" } ?? "—"
-                    )
-
-                    WeatherStatCard(
-                        label: "UV Index",
-                        value: (isNow ? cityWeather.currentUVIndex : forecast.uvIndex).map { "\($0)" } ?? "—"
-                    )
-
-                    WeatherStatCard(
-                        label: "Humidity",
-                        value: (isNow ? cityWeather.currentHumidity : forecast.maxHumidity).map { "\(Int($0 * 100))%" } ?? "—"
-                    )
-
-                    WeatherStatCard(
-                        label: "Visibility",
-                        value: (isNow ? cityWeather.currentVisibility : forecast.maxVisibility).map { distUnit.display($0) } ?? "—"
-                    )
-                }
-                .padding(.horizontal, 8)
+                // Stats grid (WeatherDetailView+StatsGrid.swift)
+                statsGrid
 
                 // Sun arc card — only show when sunrise/sunset data is available
                 if let sunrise = forecast.sunrise, let sunset = forecast.sunset {
