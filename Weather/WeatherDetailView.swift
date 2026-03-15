@@ -673,18 +673,6 @@ struct WeatherDetailView: View {
             scrollAtTop = true
         }
         .contentShape(Rectangle())
-        .simultaneousGesture(
-            isPopup ? nil : DragGesture(minimumDistance: 50, coordinateSpace: .global)
-                .onEnded { value in
-                    guard !isSwipingDays else { return }
-                    let horizontal = value.translation.width
-                    let vertical = value.translation.height
-                    // Only trigger on right swipe (and mostly horizontal)
-                    if horizontal > 80 && abs(horizontal) > abs(vertical) * 1.5 {
-                        onDismiss()
-                    }
-                }
-        )
         .matchedGeometryEffect(id: isPopup ? (isInSidebar ? "sidebar-\(cityWeather.id)" : "marker-\(cityWeather.id)") : "", in: namespace, isSource: isPopup)
         .transition(isPopup ? .scale(scale: 0.5).combined(with: .opacity) : .identity)
     }
