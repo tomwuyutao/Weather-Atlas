@@ -287,7 +287,7 @@ struct WeatherDetailView: View {
                             .frame(width: 13)
                     }
                 }
-                .padding(.leading, 24)
+                .padding(.leading, 16)
                 .padding(.trailing, 16)
                 .padding(.vertical, 11)
                 .contentShape(Rectangle())
@@ -312,7 +312,7 @@ struct WeatherDetailView: View {
                             .frame(width: 13)
                     }
                 }
-                .padding(.leading, 24)
+                .padding(.leading, 16)
                 .padding(.trailing, 16)
                 .padding(.vertical, 11)
                 .contentShape(Rectangle())
@@ -337,7 +337,7 @@ struct WeatherDetailView: View {
                             .frame(width: 13)
                     }
                 }
-                .padding(.leading, 24)
+                .padding(.leading, 16)
                 .padding(.trailing, 16)
                 .padding(.vertical, 11)
                 .contentShape(Rectangle())
@@ -595,7 +595,7 @@ struct WeatherDetailView: View {
                                                     .foregroundStyle(.primary)
                                                 Spacer()
                                             }
-                                            .padding(.leading, 24)
+                                            .padding(.leading, 16)
                                             .padding(.trailing, 16)
                                             .padding(.vertical, 11)
                                             .contentShape(Rectangle())
@@ -617,7 +617,7 @@ struct WeatherDetailView: View {
                                                     .foregroundStyle(AppTheme.shared.colors.destructive)
                                                 Spacer()
                                             }
-                                            .padding(.leading, 24)
+                                            .padding(.leading, 16)
                                             .padding(.trailing, 16)
                                             .padding(.vertical, 11)
                                             .contentShape(Rectangle())

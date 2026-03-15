@@ -52,10 +52,10 @@ extension ContentView {
                 .padding(.horizontal, 20)
                 .padding(.top, 16)
 
-                if mapStyleTab == 0 {
-                    // 2-column grid of thumbnail cards
+                ZStack(alignment: .top) {
+                    // Map Style tab — 2-column grid of thumbnail cards
                     let modes = ["minimal", "borders", "colorful", "detailed"]
-                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 16), GridItem(.flexible(), spacing: 16)], spacing: 16) {
                         ForEach(modes, id: \.self) { mode in
                             Button {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -103,9 +103,10 @@ extension ContentView {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 20)
-                } else {
-                    // Overlay mode picker
+                    .padding(.horizontal, 8)
+                    .opacity(mapStyleTab == 0 ? 1 : 0)
+
+                    // Overlays tab
                     let overlays: [(String, String, String)] = [
                         ("weather",       "cloud.sun.fill",    "Weather"),
                         ("temperature",   "thermometer.medium", "Temperature"),
@@ -158,6 +159,7 @@ extension ContentView {
                     .padding(.horizontal, 20)
                     .padding(.top, 8)
                     }
+                    .opacity(mapStyleTab == 1 ? 1 : 0)
                 }
             }
         }

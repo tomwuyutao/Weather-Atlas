@@ -67,7 +67,7 @@ extension ContentView {
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.leading, 24)
+                    .padding(.leading, 16)
                     .padding(.trailing, 16)
                     .padding(.vertical, 11)
                     .contentShape(Rectangle())
@@ -122,7 +122,7 @@ extension ContentView {
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.leading, 24)
+                    .padding(.leading, 16)
                     .padding(.trailing, 16)
                     .padding(.vertical, 11)
                     .contentShape(Rectangle())
@@ -160,7 +160,7 @@ extension ContentView {
                                     .frame(width: 13)
                             }
                         }
-                        .padding(.leading, 24)
+                        .padding(.leading, 16)
                         .padding(.trailing, 16)
                         .padding(.vertical, 11)
                         .contentShape(Rectangle())
@@ -185,7 +185,7 @@ extension ContentView {
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.leading, 24)
+                    .padding(.leading, 16)
                     .padding(.trailing, 16)
                     .padding(.vertical, 11)
                     .contentShape(Rectangle())
@@ -205,7 +205,7 @@ extension ContentView {
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.leading, 24)
+                    .padding(.leading, 16)
                     .padding(.trailing, 16)
                     .padding(.vertical, 11)
                     .contentShape(Rectangle())
@@ -227,7 +227,7 @@ extension ContentView {
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.leading, 24)
+                    .padding(.leading, 16)
                     .padding(.trailing, 16)
                     .padding(.vertical, 11)
                     .contentShape(Rectangle())
@@ -247,7 +247,7 @@ extension ContentView {
                             .font(.system(size: 13))
                             .foregroundStyle(theme.colors.destructive)
                     }
-                    .padding(.leading, 24)
+                    .padding(.leading, 16)
                     .padding(.trailing, 16)
                     .padding(.vertical, 11)
                     .contentShape(Rectangle())
@@ -299,7 +299,7 @@ extension ContentView {
                                 .frame(width: 13)
                         }
                     }
-                    .padding(.leading, 24)
+                    .padding(.leading, 16)
                     .padding(.trailing, 16)
                     .padding(.vertical, 11)
                     .contentShape(Rectangle())

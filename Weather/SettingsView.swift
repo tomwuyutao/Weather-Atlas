@@ -455,7 +455,7 @@ struct SettingsView: View {
                 .foregroundStyle(colors.primaryText.opacity(0.45))
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 13)
+        .padding(.vertical, 16)
     }
 
     /// A single option row inside a popover menu — label + small dot on the right for selected.
@@ -474,7 +474,7 @@ struct SettingsView: View {
                         .frame(width: 13)
                 }
             }
-            .padding(.leading, 24)
+            .padding(.leading, 16)
             .padding(.trailing, 16)
             .padding(.vertical, 11)
             .contentShape(Rectangle())

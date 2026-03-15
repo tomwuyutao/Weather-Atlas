@@ -328,7 +328,7 @@ extension ContentView {
                                         .foregroundStyle(.primary)
                                     Spacer()
                                 }
-                                .padding(.leading, 24)
+                                .padding(.leading, 16)
                                 .padding(.trailing, 16)
                                 .padding(.vertical, 11)
                                 .contentShape(Rectangle())
@@ -652,7 +652,7 @@ extension ContentView {
                             .font(.system(size: 16))
                             .foregroundStyle(mapVisibleListIDs.contains(listID.rawValue) ? theme.colors.dotRain : .secondary)
                     }
-                    .padding(.leading, 24)
+                    .padding(.leading, 16)
                     .padding(.trailing, 16)
                     .padding(.vertical, 11)
                     .contentShape(Rectangle())
@@ -781,7 +781,7 @@ extension ContentView {
                     .font(.avenir(.body, weight: .medium))
                 Spacer()
             }
-            .padding(.leading, 24)
+            .padding(.leading, 16)
             .padding(.trailing, 16)
             .padding(.vertical, 11)
             .contentShape(Rectangle())

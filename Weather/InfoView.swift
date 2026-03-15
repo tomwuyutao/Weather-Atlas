@@ -173,7 +173,7 @@ struct InfoView: View {
                         .font(.avenir(.title3, weight: .medium))
                         .foregroundStyle(.white.opacity(0.8))
                 }
-                .padding(.leading, 24)
+                .padding(.leading, 16)
                 .padding(.vertical, 24)
                 Spacer()
                 Image(systemName: "sun.max.fill")

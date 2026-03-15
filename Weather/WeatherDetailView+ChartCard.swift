@@ -51,7 +51,7 @@ extension WeatherDetailView {
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
+                    .padding(.vertical, 6)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -81,7 +81,7 @@ extension WeatherDetailView {
                             .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
+                    .padding(.vertical, 6)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
