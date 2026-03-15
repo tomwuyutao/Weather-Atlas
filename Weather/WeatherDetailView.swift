@@ -1010,7 +1010,6 @@ struct WeatherDetailView: View {
 
         }
         .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)
-        .background(InteractivePopGestureDisabler())
         .onAppear {
             isHeaderCollapsed = false
             headerDragOffset = 0
@@ -1064,26 +1063,8 @@ struct WeatherDetailView: View {
     }
 }
 
-// MARK: - Disable interactive pop gesture
 
-private struct InteractivePopGestureDisabler: UIViewControllerRepresentable {
-    func makeUIViewController(context: Context) -> UIViewController {
-        let controller = DisabledPopGestureController()
-        return controller
-    }
-    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
-}
 
-private class DisabledPopGestureController: UIViewController {
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = false
-    }
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        navigationController?.interactivePopGestureRecognizer?.isEnabled = true
-    }
-}
 // MARK: - Animatable helpers for chart line
 
 struct AnimatablePointList: VectorArithmetic {
