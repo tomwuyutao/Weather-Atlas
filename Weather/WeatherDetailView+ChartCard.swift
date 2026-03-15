@@ -91,45 +91,50 @@ extension WeatherDetailView {
                 .padding(.horizontal, 8)
 
             // Chart container
-            ZStack {
-                let insertEdge: Edge = swipeDirection == .forward ? .trailing : .leading
-                let removeEdge: Edge = swipeDirection == .forward ? .leading : .trailing
+            GeometryReader { geo in
+                ZStack {
+                    let insertEdge: Edge = swipeDirection == .forward ? .trailing : .leading
+                    let removeEdge: Edge = swipeDirection == .forward ? .leading : .trailing
 
-                if chartTimeRange == .entireDay {
-                    ScrollView(.horizontal, showsIndicators: false) {
+                    if chartTimeRange == .entireDay {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HourlyTimelineChart(
+                                hourlyForecasts: forecast.hourlyForecasts,
+                                chartMetric: chartMetric,
+                                dayOffset: internalSelectedDay,
+                                cityTimeZone: cityWeather.timeZone,
+                                previewCurrentHour: previewCurrentHour,
+                                lineColor: chartLineColor,
+                                showAllHours: true
+                            )
+                            .frame(width: max(geo.size.width * 2.5, 900))
+                        }
+                        .id("hourly-all-\(internalSelectedDay)")
+                        .transition(.asymmetric(
+                            insertion: .move(edge: insertEdge).combined(with: .opacity),
+                            removal: .move(edge: removeEdge).combined(with: .opacity)
+                        ))
+                    } else {
                         HourlyTimelineChart(
                             hourlyForecasts: forecast.hourlyForecasts,
                             chartMetric: chartMetric,
                             dayOffset: internalSelectedDay,
                             cityTimeZone: cityWeather.timeZone,
                             previewCurrentHour: previewCurrentHour,
-                            lineColor: chartLineColor,
-                            showAllHours: true
+                            lineColor: chartLineColor
                         )
-                        .frame(width: max(UIScreen.main.bounds.width * 2.5, 900))
+                        .id("hourly-\(internalSelectedDay)")
+                        .transition(.asymmetric(
+                            insertion: .move(edge: insertEdge).combined(with: .opacity),
+                            removal: .move(edge: removeEdge).combined(with: .opacity)
+                        ))
                     }
-                    .id("hourly-all-\(internalSelectedDay)")
-                    .transition(.asymmetric(
-                        insertion: .move(edge: insertEdge).combined(with: .opacity),
-                        removal: .move(edge: removeEdge).combined(with: .opacity)
-                    ))
-                } else {
-                    HourlyTimelineChart(
-                        hourlyForecasts: forecast.hourlyForecasts,
-                        chartMetric: chartMetric,
-                        dayOffset: internalSelectedDay,
-                        cityTimeZone: cityWeather.timeZone,
-                        previewCurrentHour: previewCurrentHour,
-                        lineColor: chartLineColor
-                    )
-                    .id("hourly-\(internalSelectedDay)")
-                    .transition(.asymmetric(
-                        insertion: .move(edge: insertEdge).combined(with: .opacity),
-                        removal: .move(edge: removeEdge).combined(with: .opacity)
-                    ))
                 }
+                .clipped()
             }
-            .clipped()
+            .frame(height: 250)
+            .contentShape(Rectangle())
+            .highPriorityGesture(DragGesture(minimumDistance: 10), including: .gesture)
             .padding(.top, 8)
         }
         .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))

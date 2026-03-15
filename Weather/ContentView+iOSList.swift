@@ -44,8 +44,10 @@ extension ContentView {
                 }
                 .buttonStyle(.plain)
                 .popover(isPresented: $showingListSwitcher) {
-                    iOSListSwitcherMenu
-                        .presentationCompactAdaptation(.popover)
+                    AnyView(
+                        iOSListSwitcherMenu
+                            .presentationCompactAdaptation(.popover)
+                    )
                 }
             }
         }

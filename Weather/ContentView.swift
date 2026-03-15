@@ -310,22 +310,120 @@ struct ContentView: View {
         return formatter.string(from: Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date())
     }
 
-    private var iOSView: some View {
-        iOSNavigationContent
-            .overlay {
-                iOSDeleteListConfirmationOverlay
-            }
-            .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
-
-    }
-
     @ViewBuilder
-    private var iOSNavigationContainer: some View {
-        if isIPad {
-            iPadNavigationSplitView
-        } else {
-            iPhoneNavigationStack
+    private var iOSView: some View {
+        Group {
+            if isIPad {
+                iPadNavigationSplitView
+            } else {
+                iPhoneNavigationStack
+            }
         }
+        .task { await iOSOnAppear() }
+        .onChange(of: weatherService.activeListID) { _, newListID in
+            mapVisibleListIDs.insert(newListID.rawValue)
+        }
+        .onChange(of: mapMode, initial: true) { _, _ in
+            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && (mapMode == "detailed" || mapMode == "colorful")
+        }
+        .onChange(of: selectedTab) { _, _ in
+            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && (mapMode == "detailed" || mapMode == "colorful")
+        }
+        .onChange(of: selectedDayOffset) { oldValue, _ in
+            iOSPreviousDayOffset = oldValue
+        }
+        .onChange(of: weatherService.isLoading) { wasLoading, isLoading in
+            if wasLoading && !isLoading && selectedTab == 1 {
+                recenterOnAllCities = true
+            }
+        }
+        .onChange(of: showingMapExpandedCard) { _, showing in
+            if !showing {
+                if previewCity != nil {
+                    previewCity = nil
+                    recenterOnAllCities = true
+                }
+                resolvedGridCityName = nil
+                fetchingTappedCoordinate = nil
+            }
+        }
+        .onChange(of: tappedCity) { _, newCity in
+            if (countryOverviewActive || radialSearchActive), let city = newCity {
+                // Check cache first
+                if let cached = resolvedGridCityNames[city.id] {
+                    resolvedGridCityName = cached
+                    return
+                }
+                resolvedGridCityName = nil
+                Task {
+                    let location = CLLocation(latitude: city.city.latitude, longitude: city.city.longitude)
+                    if let request = MKReverseGeocodingRequest(location: location) {
+                        if let items = try? await request.mapItems, let item = items.first {
+                            let name = item.addressRepresentations?.cityName
+                                ?? item.addressRepresentations?.cityWithContext(.short)
+                                ?? item.name
+                            let resolved = name ?? city.city.country
+                            resolvedGridCityNames[city.id] = resolved
+                            // Only update if this is still the tapped city
+                            if tappedCity?.id == city.id {
+                                resolvedGridCityName = resolved
+                            }
+                        } else {
+                            // Rate limited or error — fall back to country name
+                            if tappedCity?.id == city.id {
+                                let fallback = city.city.country
+                                resolvedGridCityNames[city.id] = fallback
+                                resolvedGridCityName = fallback
+                            }
+                        }
+                    } else {
+                        if tappedCity?.id == city.id {
+                            let fallback = city.city.country
+                            resolvedGridCityNames[city.id] = fallback
+                            resolvedGridCityName = fallback
+                        }
+                    }
+                }
+            }
+        }
+        .onChange(of: showingCityDetail) { _, showing in
+            iOSHandleCityDetailDismiss(showing: showing)
+        }
+        .onChange(of: mapCenterCoordinate?.latitude) { _, _ in
+            updateCountryUnderPin()
+            updateRadialGridPreview()
+        }
+        .onChange(of: mapCenterCoordinate?.longitude) { _, _ in
+            updateCountryUnderPin()
+            updateRadialGridPreview()
+        }
+        .onChange(of: radialSearchRadius) { _, _ in
+            updateRadialGridPreview()
+        }
+        .sheet(isPresented: $showingInfo) {
+            InfoView(source: selectedTab == 1 ? .map : .list)
+                .presentationSizing(.form)
+        }
+        .sheet(isPresented: $showingMapStyleSheet) {
+            mapStyleSheet
+                .presentationDetents([.height(330)])
+                .presentationDragIndicator(.visible)
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView(
+                weatherService: weatherService,
+                onResetLists: {
+                    Task {
+                        await weatherService.resetAllLists()
+                    }
+                }
+            )
+            .presentationSizing(.form)
+        }
+        .overlay {
+            iOSDeleteListConfirmationOverlay
+        }
+        .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
     }
 
     private var iPadNavigationSplitView: some View {
@@ -441,117 +539,11 @@ struct ContentView: View {
                 .toolbar { iOSPrincipalToolbarItem }
                 .toolbar { iOSTrailingToolbarItems }
                 .navigationDestination(isPresented: $showingCityDetail) {
-                    iOSCityDetailDestination
+                    AnyView(iOSCityDetailDestination)
                 }
                 .navigationDestination(isPresented: $showingAddCityDetail) {
-                    iOSAddCityDetailDestination
+                    AnyView(iOSAddCityDetailDestination)
                 }
-        }
-    }
-
-    private var iOSNavigationContent: some View {
-        iOSNavigationContainer
-        .task { await iOSOnAppear() }
-        .onChange(of: weatherService.activeListID) { _, newListID in
-            mapVisibleListIDs.insert(newListID.rawValue)
-        }
-        .onChange(of: mapMode, initial: true) { _, _ in
-            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && (mapMode == "detailed" || mapMode == "colorful")
-        }
-        .onChange(of: selectedTab) { _, _ in
-            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && (mapMode == "detailed" || mapMode == "colorful")
-        }
-        .onChange(of: selectedDayOffset) { oldValue, _ in
-            iOSPreviousDayOffset = oldValue
-        }
-        .onChange(of: weatherService.isLoading) { wasLoading, isLoading in
-            if wasLoading && !isLoading && selectedTab == 1 {
-                recenterOnAllCities = true
-            }
-        }
-        .onChange(of: showingMapExpandedCard) { _, showing in
-            if !showing {
-                if previewCity != nil {
-                    previewCity = nil
-                    recenterOnAllCities = true
-                }
-                resolvedGridCityName = nil
-                fetchingTappedCoordinate = nil
-            }
-        }
-        .onChange(of: tappedCity) { _, newCity in
-            if (countryOverviewActive || radialSearchActive), let city = newCity {
-                // Check cache first
-                if let cached = resolvedGridCityNames[city.id] {
-                    resolvedGridCityName = cached
-                    return
-                }
-                resolvedGridCityName = nil
-                Task {
-                    let location = CLLocation(latitude: city.city.latitude, longitude: city.city.longitude)
-                    if let request = MKReverseGeocodingRequest(location: location) {
-                        if let items = try? await request.mapItems, let item = items.first {
-                            let name = item.addressRepresentations?.cityName
-                                ?? item.addressRepresentations?.cityWithContext(.short)
-                                ?? item.name
-                            let resolved = name ?? city.city.country
-                            resolvedGridCityNames[city.id] = resolved
-                            // Only update if this is still the tapped city
-                            if tappedCity?.id == city.id {
-                                resolvedGridCityName = resolved
-                            }
-                        } else {
-                            // Rate limited or error — fall back to country name
-                            if tappedCity?.id == city.id {
-                                let fallback = city.city.country
-                                resolvedGridCityNames[city.id] = fallback
-                                resolvedGridCityName = fallback
-                            }
-                        }
-                    } else {
-                        if tappedCity?.id == city.id {
-                            let fallback = city.city.country
-                            resolvedGridCityNames[city.id] = fallback
-                            resolvedGridCityName = fallback
-                        }
-                    }
-                }
-            }
-        }
-        .onChange(of: showingCityDetail) { _, showing in
-            iOSHandleCityDetailDismiss(showing: showing)
-        }
-        .onChange(of: mapCenterCoordinate?.latitude) { _, _ in
-            updateCountryUnderPin()
-            updateRadialGridPreview()
-        }
-        .onChange(of: mapCenterCoordinate?.longitude) { _, _ in
-            updateCountryUnderPin()
-            updateRadialGridPreview()
-        }
-        .onChange(of: radialSearchRadius) { _, _ in
-            updateRadialGridPreview()
-        }
-
-        .sheet(isPresented: $showingInfo) {
-            InfoView(source: selectedTab == 1 ? .map : .list)
-                .presentationSizing(.form)
-        }
-        .sheet(isPresented: $showingMapStyleSheet) {
-            mapStyleSheet
-                .presentationDetents([.height(330)])
-                .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView(
-                weatherService: weatherService,
-                onResetLists: {
-                    Task {
-                        await weatherService.resetAllLists()
-                    }
-                }
-            )
-            .presentationSizing(.form)
         }
     }
 
@@ -595,113 +587,121 @@ struct ContentView: View {
     // iPhone-only main content (iPad uses NavigationSplitView with iPadDetailContent)
     private var iOSMainZStack: some View {
         ZStack(alignment: .bottom) {
-            iPhoneTabContent
-                .ignoresSafeArea(.keyboard)
+            // Tab content (map + list)
+            ZStack {
+                iOSMapView
+                    .overlay(alignment: .top) {
+                        if selectedTab == 1, showLegend {
+                            MapFloatingLegend(overlayMode: mapOverlayMode)
+                                .padding(.top, 8)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+                    }
+                    .overlay(alignment: .trailing) {
+                        if selectedTab == 1, (!isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch)) {
+                            Color.clear
+                                .frame(width: 60, height: 420)
+                                .contentShape(Rectangle())
+                                .overlay(alignment: .trailing) {
+                                    mapDateSlider(height: 340)
+                                }
+                                .padding(.bottom, 480)
+                                .padding(.trailing, 1)
+                                .transition(.opacity)
+                        }
+                    }
+                    .opacity(selectedTab == 1 ? 1 : 0)
 
-            // Expanded city card on map
-            if selectedTab == 1, (!isMapSpecialMode || countryOverviewActive || radialSearchActive), showingMapExpandedCard, let city = tappedCity {
-                mapExpandedCard(for: city)
-                    .id(city.city.id)
-                    .transition(.blurReplace)
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 72)
-                    .zIndex(1)
+                if !isMapSpecialMode {
+                    // AnyView breaks the generic type chain to prevent stack overflow on device
+                    AnyView(
+                        iOSListView
+                            .background(theme.colors.background)
+                            .offset(x: selectedTab == 0 ? 0 : -10000)
+                    )
+                }
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
+            .ignoresSafeArea(.keyboard)
 
-            // Country selection overlay (top part: pin + country name)
-            if countrySelectionMode {
-                countrySelectionTopOverlay
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-                    .zIndex(3)
-            }
-
-            // Country selection + loading bottom bar (unified with morphing animation)
-            if countrySelectionMode || isLoadingCountryOverview {
-                countrySearchBottomBar
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(3)
-            }
-
-            // Country overview exit button (only after loading completes)
-            if countryOverviewActive, !isLoadingCountryOverview {
-                countryOverviewExitOverlay
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(3)
-            }
-
-            // Radial search selection overlay (top part: radius label)
-            if radialSearchMode {
-                radialSelectionTopOverlay
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-                    .zIndex(3)
-            }
-
-            // Radial selection + loading bottom bar (unified with morphing animation)
-            if radialSearchMode || isLoadingRadialSearch {
-                radialSearchBottomBar
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(3)
-            }
-
-            // Radial search exit button (only after loading completes)
-            if radialSearchActive, !isLoadingRadialSearch {
-                radialSearchExitOverlay
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(3)
-            }
-
-            // Search results overlay (only when typing)
-            if showingInlineSearch, !inlineSearchText.isEmpty {
-                iOSInlineSearchResults
-                    .transition(.opacity)
-                    .zIndex(10)
-            }
-
-            // Floating bottom toolbar / inline search bar / preview toolbar
-            if !isMapSpecialMode {
-                iOSUnifiedBottomBar
-                    .zIndex(11)
-            }
-
+            iOSMainOverlays
         }
     }
 
-    // MARK: - iPhone Tab Content
+    // Overlays for country/radial search, expanded card, toolbar
+    // Uses AnyView to type-erase and prevent stack overflow from deep generic nesting on device
+    private var iOSMainOverlays: some View {
+        AnyView(_iOSMainOverlaysContent)
+    }
 
-    private var iPhoneTabContent: some View {
-        ZStack {
-            iOSMapView
-                .overlay(alignment: .top) {
-                    if selectedTab == 1, showLegend {
-                        MapFloatingLegend(overlayMode: mapOverlayMode)
-                            .padding(.top, 8)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                    }
-                }
-                .overlay(alignment: .trailing) {
-                    if selectedTab == 1, (!isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch)) {
-                        Color.clear
-                            .frame(width: 60, height: 420)
-                            .contentShape(Rectangle())
-                            .overlay(alignment: .trailing) {
-                                mapDateSlider(height: 340)
-                            }
-                            .padding(.bottom, 480)
-                            .padding(.trailing, 1)
-                            .transition(.opacity)
-                    }
-                }
-                .opacity(selectedTab == 1 ? 1 : 0)
-
-            if !isMapSpecialMode {
-                iOSListView
-                    .background(theme.colors.background)
-                    .offset(x: selectedTab == 0 ? 0 : -10000)
-            }
+    @ViewBuilder
+    private var _iOSMainOverlaysContent: some View {
+        // Expanded city card on map
+        if selectedTab == 1, (!isMapSpecialMode || countryOverviewActive || radialSearchActive), showingMapExpandedCard, let city = tappedCity {
+            mapExpandedCard(for: city)
+                .id(city.city.id)
+                .transition(.blurReplace)
+                .padding(.horizontal, 16)
+                .padding(.bottom, 72)
+                .zIndex(1)
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: selectedTab)
+
+        // Country selection overlay (top part: pin + country name)
+        if countrySelectionMode {
+            countrySelectionTopOverlay
+                .ignoresSafeArea()
+                .transition(.opacity)
+                .zIndex(3)
+        }
+
+        // Country selection + loading bottom bar (unified with morphing animation)
+        if countrySelectionMode || isLoadingCountryOverview {
+            countrySearchBottomBar
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(3)
+        }
+
+        // Country overview exit button (only after loading completes)
+        if countryOverviewActive, !isLoadingCountryOverview {
+            countryOverviewExitOverlay
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(3)
+        }
+
+        // Radial search selection overlay (top part: radius label)
+        if radialSearchMode {
+            radialSelectionTopOverlay
+                .ignoresSafeArea()
+                .transition(.opacity)
+                .zIndex(3)
+        }
+
+        // Radial selection + loading bottom bar (unified with morphing animation)
+        if radialSearchMode || isLoadingRadialSearch {
+            radialSearchBottomBar
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(3)
+        }
+
+        // Radial search exit button (only after loading completes)
+        if radialSearchActive, !isLoadingRadialSearch {
+            radialSearchExitOverlay
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .zIndex(3)
+        }
+
+        // Search results overlay (only when typing)
+        if showingInlineSearch, !inlineSearchText.isEmpty {
+            iOSInlineSearchResults
+                .transition(.opacity)
+                .zIndex(10)
+        }
+
+        // Floating bottom toolbar / inline search bar / preview toolbar
+        if !isMapSpecialMode {
+            iOSUnifiedBottomBar
+                .zIndex(11)
+        }
     }
 
     // MARK: - iPad Detail Content
