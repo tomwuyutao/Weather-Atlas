@@ -90,9 +90,9 @@ struct RainDropsEffect: View {
             Canvas { context, size in
                 let scale = size.width / 36.0
                 // Rain starts at 75% of the icon height (below cloud)
-                let rainTop = iconHeight * 0.75
-                // Rain falls all the way to the bottom of the extended canvas
-                let rainHeight = size.height - rainTop
+                let rainTop = iconHeight * 0.7
+                // Rain falls most of the way to the bottom of the extended canvas
+                let rainHeight = (size.height - rainTop) * 0.7
                 
                 for i in 0..<dropCount {
                     let seed = Double(i)

@@ -858,7 +858,7 @@ struct HourlyTimelineChart: View {
     
     // Chart zone starts below the fixed header (hour + icon), value text straddles line
     private var chartTop: CGFloat { hourLabelHeight + topPadding + iconHeight + iconBottomPadding }
-    private var chartBottom: CGFloat { totalHeight - valueHeight - 4 }
+    private var chartBottom: CGFloat { totalHeight - valueHeight - 14 }
     private var chartZone: CGFloat { chartBottom - chartTop }
     
     private var dataPoints: [HourlyForecast] {
