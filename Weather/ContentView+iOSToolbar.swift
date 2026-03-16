@@ -779,6 +779,8 @@ extension ContentView {
                     .frame(width: 24)
                 Text(title)
                     .font(.avenir(.body, weight: .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                 Spacer()
             }
             .padding(.leading, 16)

@@ -345,7 +345,7 @@ struct WeatherDetailView: View {
             .buttonStyle(.plain)
         }
         .padding(.vertical, 8)
-        .frame(width: 210)
+        .frame(width: 160)
         .themedPopoverBackground()
     }
 
@@ -615,6 +615,8 @@ struct WeatherDetailView: View {
                                                 Text(localizedString("Delete City", locale: locale))
                                                     .font(.avenir(.body, weight: .medium))
                                                     .foregroundStyle(AppTheme.shared.colors.destructive)
+                                                    .lineLimit(1)
+                                                    .truncationMode(.tail)
                                                 Spacer()
                                             }
                                             .padding(.leading, 16)
@@ -845,10 +847,20 @@ struct HourlyTimelineChart: View {
     var showAllHours: Bool = false
     
     @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
     
     private var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
+    
+    private var distUnit: DistanceUnit {
+        DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+    }
+    
+    private var indicatorLineColor: Color {
+        colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25)
     }
     
     private var currentCityHour: Int? {
@@ -889,10 +901,10 @@ struct HourlyTimelineChart: View {
         case .feelsLike:     return forecast.apparentTemperature.map { tempUnit.display($0) } ?? "—"
         case .cloudCover:    return forecast.cloudCoverPercent.map { "\($0)%" } ?? "—"
         case .precipitation: return forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—"
-        case .windSpeed:     return forecast.windSpeed.map { "\(Int($0))" } ?? "—"
+        case .windSpeed:     return forecast.windSpeed.map { distUnit == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "—"
         case .uvIndex:       return forecast.uvIndex.map { "\($0)" } ?? "—"
         case .humidity:      return forecast.humidity.map { "\(Int($0 * 100))%" } ?? "—"
-        case .visibility:    return forecast.visibility.map { "\(Int($0))" } ?? "—"
+        case .visibility:    return forecast.visibility.map { distUnit == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "—"
         }
     }
     
@@ -994,14 +1006,14 @@ struct HourlyTimelineChart: View {
                         let fraction = h1 > h0 ? CGFloat(currentHour - hours[lastIdx]) / (h1 - h0) : 0
                         let nowX = xPositions[lastIdx] + fraction * (xPositions[lastIdx + 1] - xPositions[lastIdx])
                         Rectangle()
-                            .fill(Color.white)
+                            .fill(indicatorLineColor)
                             .frame(width: 3, height: lineHeight)
                             .position(x: nowX, y: lineCenterY)
                             .opacity(0.5)
                     } else if let firstHour = hours.first, currentHour < firstHour {
                         let nowX = xPositions[0] * CGFloat(currentHour) / CGFloat(firstHour)
                         Rectangle()
-                            .fill(Color.white)
+                            .fill(indicatorLineColor)
                             .frame(width: 3, height: lineHeight)
                             .position(x: max(nowX, 4), y: lineCenterY)
                             .opacity(0.5)
@@ -1062,9 +1074,19 @@ struct DailyTimelineChart: View {
     var lineColor: Color = AppTheme.shared.colors.destructive
 
     @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
     private var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+    }
+
+    private var distUnit: DistanceUnit {
+        DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+    }
+
+    private var indicatorLineColor: Color {
+        colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25)
     }
 
     private let totalHeight: CGFloat = 250
@@ -1119,10 +1141,10 @@ struct DailyTimelineChart: View {
         case .feelsLike:     return forecast.feelsLikeHigh.map { tempUnit.display($0) } ?? "—"
         case .cloudCover:    return forecast.cloudCover.map { "\(Int($0 * 100))%" } ?? "—"
         case .precipitation: return forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—"
-        case .windSpeed:     return forecast.windSpeed.map { "\(Int($0))" } ?? "—"
+        case .windSpeed:     return forecast.windSpeed.map { distUnit == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "—"
         case .uvIndex:       return forecast.uvIndex.map { "\($0)" } ?? "—"
         case .humidity:      return forecast.maxHumidity.map { "\(Int($0 * 100))%" } ?? "—"
-        case .visibility:    return forecast.maxVisibility.map { "\(Int($0))" } ?? "—"
+        case .visibility:    return forecast.maxVisibility.map { distUnit == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "—"
         }
     }
 
@@ -1205,7 +1227,7 @@ struct DailyTimelineChart: View {
                     let lineCenterY = lineTop + lineHeight / 2
                     let nowX = xPositions[selectedIndex]
                     Rectangle()
-                        .fill(Color.white)
+                        .fill(indicatorLineColor)
                         .frame(width: 3, height: lineHeight)
                         .position(x: nowX, y: lineCenterY)
                         .opacity(0.5)
