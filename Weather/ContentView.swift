@@ -839,6 +839,7 @@ struct ContentView: View {
                                 Text(listID.localizedDisplayName(locale: locale))
                                     .font(.avenir(.body, weight: .medium))
                                     .foregroundStyle(.primary)
+                                    .lineLimit(1)
                                 Spacer()
                             }
                             .padding(.leading, 16)

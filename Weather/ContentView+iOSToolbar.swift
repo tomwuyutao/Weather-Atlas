@@ -24,18 +24,6 @@ extension ContentView {
 
     @ToolbarContentBuilder
     var iOSLeadingToolbarItems: some ToolbarContent {
-        // Loading spinner — always upper-left, styled like the "…" button
-        if weatherService.isLoading || isLoadingMapList {
-            ToolbarItem(placement: .navigationBarLeading) {
-                ProgressView()
-                    .controlSize(.small)
-                    .tint(theme.colors.primaryText)
-                    .frame(width: 44, height: 44)
-                    .themedGlass(in: .circle)
-            }
-            .sharedBackgroundVisibility(.hidden)
-        }
-
         if isIPad {
             if sidebarVisibility == .detailOnly {
                 ToolbarItem(placement: .navigationBarLeading) {
@@ -100,7 +88,7 @@ extension ContentView {
             .sharedBackgroundVisibility(.hidden)
         }
         if !isIPad, selectedTab == 1, !isMapSpecialMode {
-            ToolbarItem(placement: .principal) {
+            ToolbarItem(placement: .topBarLeading) {
                 Button {
                     showingMapListSwitcher = true
                 } label: {
@@ -198,18 +186,31 @@ extension ContentView {
     @ToolbarContentBuilder
     private var iOSNormalToolbarItems: some ToolbarContent {
         if isIPad {
-            // Search
+            // Search (+ spinner)
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingAddCityView = true
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .themedGlass(in: .circle)
+                HStack(spacing: 0) {
+                    if weatherService.isLoading || isLoadingMapList {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(theme.colors.primaryText)
+                            .frame(width: 44, height: 44)
+
+                        Rectangle()
+                            .fill(theme.colors.primaryText.opacity(0.15))
+                            .frame(width: 1, height: 20)
+                    }
+
+                    Button {
+                        showingAddCityView = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.plain)
                 }
-                .buttonStyle(.plain)
+                .themedGlass(in: .capsule)
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -326,6 +327,7 @@ extension ContentView {
                                     Text(listID.localizedDisplayName(locale: locale))
                                         .font(.avenir(.body, weight: .medium))
                                         .foregroundStyle(.primary)
+                                        .lineLimit(1)
                                     Spacer()
                                 }
                                 .padding(.leading, 16)
@@ -412,6 +414,17 @@ extension ContentView {
                                 .contentTransition(.symbolEffect(.replace))
                         }
                         .buttonStyle(.plain)
+
+                        Rectangle()
+                            .fill(theme.colors.primaryText.opacity(0.15))
+                            .frame(width: 1, height: 20)
+                    }
+
+                    if weatherService.isLoading || isLoadingMapList {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(theme.colors.primaryText)
+                            .frame(width: 44, height: 44)
 
                         Rectangle()
                             .fill(theme.colors.primaryText.opacity(0.15))
@@ -647,6 +660,7 @@ extension ContentView {
                         Text(listID.localizedDisplayName(locale: locale))
                             .font(.avenir(.body, weight: .medium))
                             .foregroundStyle(.primary)
+                            .lineLimit(1)
                         Spacer()
                         Image(systemName: mapVisibleListIDs.contains(listID.rawValue) ? "checkmark.circle.fill" : "circle")
                             .font(.system(size: 16))
