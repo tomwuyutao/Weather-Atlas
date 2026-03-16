@@ -177,11 +177,31 @@ extension ContentView {
                     startAddingNewList()
                 } label: {
                     HStack(spacing: 12) {
-                        Text("Add List")
+                        Text("Add Custom List")
                             .font(.avenir(.body, weight: .medium))
                             .foregroundStyle(.primary)
                         Spacer()
                         Image(systemName: "plus")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding(.leading, 16)
+                    .padding(.trailing, 16)
+                    .padding(.vertical, 11)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                
+                Button {
+                    showingListSwitcher = false
+                    showingCountrySearch = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Text("Add Country")
+                            .font(.avenir(.body, weight: .medium))
+                            .foregroundStyle(.primary)
+                        Spacer()
+                        Image(systemName: "globe")
                             .font(.system(size: 13))
                             .foregroundStyle(.secondary)
                     }
@@ -781,6 +801,54 @@ struct GridDropDelegate: DropDelegate {
         DropProposal(operation: .move)
     }
 }
+
+struct CountrySearchSheet: View {
+    let onSelect: (String) -> Void
+    
+    @State private var searchText: String = ""
+    @State private var allCountries: [String] = []
+    @Environment(\.dismiss) private var dismiss
+    
+    private var filteredCountries: [String] {
+        if searchText.isEmpty {
+            return allCountries
+        }
+        return allCountries.filter { $0.localizedCaseInsensitiveContains(searchText) }
+    }
+    
+    var body: some View {
+        NavigationStack {
+            List(filteredCountries, id: \.self) { country in
+                Button {
+                    onSelect(country)
+                } label: {
+                    Text(country)
+                        .font(.avenir(.body, weight: .medium))
+                        .foregroundStyle(.primary)
+                }
+                .listRowBackground(Color.clear)
+            }
+            .listStyle(.plain)
+            .searchable(text: $searchText, prompt: "Search countries")
+            .navigationTitle("Add Country")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+        .onAppear {
+            if allCountries.isEmpty {
+                allCountries = WorldCitiesParser.countriesWithEnoughCities()
+            }
+        }
+    }
+}
+
 #Preview {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
     let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")

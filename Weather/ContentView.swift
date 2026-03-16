@@ -182,6 +182,7 @@ struct ContentView: View {
     @State var reorderableLists: [CityListID] = []
     @State var draggingListID: CityListID? = nil
     @State var dragOffset: CGFloat = 0
+    @State var showingCountrySearch: Bool = false
     @State var showingMapStylePopover: Bool = false
     @State var showingMapStyleSheet: Bool = false
     @State var showingDiscoverPopover: Bool = false
@@ -342,6 +343,26 @@ struct ContentView: View {
                 }
             )
             .presentationSizing(.form)
+        }
+        .sheet(isPresented: $showingCountrySearch) {
+            CountrySearchSheet(
+                onSelect: { country in
+                    showingCountrySearch = false
+                    withAnimation(.easeOut(duration: 0.15)) {
+                        listContentOpacity = 0
+                    }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(150))
+                        await weatherService.addCountryList(country: country)
+                        withAnimation(.easeIn(duration: 0.2)) {
+                            listContentOpacity = 1
+                        }
+                        recenterOnAllCities = true
+                    }
+                }
+            )
+            .presentationDetents([.large])
+            .presentationDragIndicator(.visible)
         }
         .overlay {
             iOSDeleteListConfirmationOverlay
