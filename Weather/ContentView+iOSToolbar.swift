@@ -52,17 +52,11 @@ extension ContentView {
                             showingListSidebar = true
                         }
                     } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "list.bullet")
-                                .font(.system(size: 13, weight: .semibold))
-                            Text(mapToolbarTitle)
-                                .font(.avenir(.subheadline, weight: .semibold))
-                                .foregroundStyle(theme.colors.primaryText)
-                                .lineLimit(1)
-                        }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .themedGlass(in: .capsule)
+                        Image(systemName: "sidebar.left")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .themedGlass(in: .circle)
                     }
                     .buttonStyle(.plain)
                 }
@@ -84,26 +78,20 @@ extension ContentView {
             }
             .sharedBackgroundVisibility(.hidden)
         }
-        if !isIPad, selectedTab == 1, !isMapSpecialMode {
+        if !isIPad, !isMapSpecialMode {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         showingListSidebar = true
                     }
                 } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "list.bullet")
-                            .font(.system(size: 13, weight: .semibold))
-                        Text(mapToolbarTitle)
-                            .font(.avenir(.headline, weight: .semibold))
-                            .lineLimit(1)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .themedGlass(in: .capsule)
+                    Image(systemName: "sidebar.left")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 44, height: 44)
+                        .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
-                .fixedSize()
             }
             .sharedBackgroundVisibility(.hidden)
         }

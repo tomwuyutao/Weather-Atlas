@@ -12,38 +12,23 @@ extension ContentView {
 
     // MARK: - List Switcher
 
-    var iOSListSwitcher: some View {
-        Group {
-            if isEditingListName {
-                TextField("List name", text: $editingListName)
-                    .font(.avenir(.title, weight: .bold))
-                    .multilineTextAlignment(.center)
-                    .submitLabel(.done)
-                    .focused($listNameFieldFocused)
-                    .onSubmit { commitListNameEdit() }
-                    .onChange(of: listNameFieldFocused) { _, focused in
-                        if !focused { commitListNameEdit() }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .onAppear { listNameFieldFocused = true }
-            } else {
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        showingListSidebar = true
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "list.bullet")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Text(weatherService.activeListID.localizedDisplayName(locale: locale))
-                            .font(.avenir(.title, weight: .bold))
-                    }
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .contentShape(Rectangle())
+    /// Inline rename field shown at the top of the list when renaming is active.
+    @ViewBuilder
+    var iOSListRenameField: some View {
+        if isEditingListName {
+            TextField("List name", text: $editingListName)
+                .font(.avenir(.title, weight: .bold))
+                .multilineTextAlignment(.center)
+                .submitLabel(.done)
+                .focused($listNameFieldFocused)
+                .onSubmit { commitListNameEdit() }
+                .onChange(of: listNameFieldFocused) { _, focused in
+                    if !focused { commitListNameEdit() }
                 }
-                .buttonStyle(.plain)
-            }
+                .frame(maxWidth: .infinity, alignment: .center)
+                .onAppear { listNameFieldFocused = true }
+                .padding(.top, 24)
+                .padding(.bottom, 20)
         }
     }
 
@@ -308,18 +293,14 @@ extension ContentView {
             }
         } else if weatherService.hasSavedCities {
             VStack(spacing: 0) {
-                iOSListSwitcher
-                    .padding(.top, 24)
-                    .padding(.bottom, 20)
+                iOSListRenameField
                 Spacer()
                 ContentUnavailableView(localizedString("Loading Weather", locale: locale), systemImage: "cloud.sun", description: Text(localizedString("Fetching forecasts for your cities…", locale: locale)))
                 Spacer()
             }
         } else {
             VStack(spacing: 0) {
-                iOSListSwitcher
-                    .padding(.top, 24)
-                    .padding(.bottom, 20)
+                iOSListRenameField
                 Spacer()
                 if !isEditingListName {
                     Button {
@@ -353,9 +334,7 @@ extension ContentView {
 
     private var iOSGridContent: some View {
         ScrollView {
-            iOSListSwitcher
-                .padding(.top, 24)
-                .padding(.bottom, 20)
+            iOSListRenameField
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
                 ForEach(iOSFilteredCities) { cityWeather in
@@ -373,11 +352,12 @@ extension ContentView {
 
     private var iOSPlainListContent: some View {
         List {
-            iOSListSwitcher
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 16, leading: 16, bottom: 20, trailing: 16))
-                .padding(.top, 8)
+            if isEditingListName {
+                iOSListRenameField
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 12, trailing: 16))
+            }
 
             ForEach(iOSFilteredCities) { cityWeather in
                 HStack(spacing: 0) {

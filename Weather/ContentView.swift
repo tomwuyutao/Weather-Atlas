@@ -116,16 +116,6 @@ struct ContentView: View {
         return result
     }
     
-    var mapToolbarTitle: String {
-        let selectedLists = CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }
-        let firstName = selectedLists.first?.localizedDisplayName(locale: locale) ?? weatherService.activeListID.localizedDisplayName(locale: locale)
-        let extra = selectedLists.count - 1
-        if extra > 0 {
-            return "\(firstName), +\(extra)"
-        }
-        return firstName
-    }
-    
     var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
     }
@@ -177,8 +167,8 @@ struct ContentView: View {
     @State var editingListName: String = ""
     @FocusState var listNameFieldFocused: Bool
     @State var showingDeleteListConfirmation: Bool = false
-    @State var isReorderingLists: Bool = false
-    @State var reorderableLists: [CityListID] = []
+    @State var sidebarDisplayLists: [CityListID] = []
+    @State var sidebarLongPressedList: CityListID? = nil
     @State var draggingListID: CityListID? = nil
     @State var dragOffset: CGFloat = 0
     @State var showingCountrySearch: Bool = false
@@ -239,7 +229,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var iOSView: some View {
-        ZStack {
+        withListSidebar {
             Group {
                 if isIPad {
                     iPadNavigationSplitView
@@ -247,9 +237,11 @@ struct ContentView: View {
                     iPhoneNavigationStack
                 }
             }
-
-            listSidebarOverlay
-                .zIndex(100)
+        }
+        .onChange(of: showingListSidebar) { _, showing in
+            if showing {
+                sidebarDisplayLists = CityListID.allLists
+            }
         }
         .task { await iOSOnAppear() }
         .onChange(of: weatherService.activeListID) { _, newListID in
