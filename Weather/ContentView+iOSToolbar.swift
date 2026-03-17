@@ -763,7 +763,7 @@ extension ContentView {
 //            }
 
             if selectedTab == 1 || isIPad {
-                menuRow(icon: showLegend ? "eye.fill" : "eye.slash", title: showLegend ? localizedString("Hide Legend", locale: locale) : localizedString("Show Legend", locale: locale)) {
+                menuRow(icon: showLegend ? "eye.slash" : "eye.fill", title: showLegend ? localizedString("Hide Legend", locale: locale) : localizedString("Show Legend", locale: locale)) {
                     showingMenuPopover = false
                     withAnimation(.smooth(duration: 0.3)) {
                         showLegend.toggle()

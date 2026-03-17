@@ -196,7 +196,13 @@ extension ContentView {
                 
                 Button {
                     showingListSwitcher = false
-                    showingCountrySearch = true
+                    if isIPad {
+                        showingCountrySearch = true
+                    } else {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            showingCountrySearch = true
+                        }
+                    }
                 } label: {
                     HStack(spacing: 12) {
                         Text("Add Country")
@@ -546,6 +552,30 @@ extension ContentView {
             }
         }
         .opacity(listContentOpacity)
+        .overlay {
+            if weatherService.isLoading, listContentOpacity < 1 {
+                GeometryReader { geo in
+                    VStack(spacing: 20) {
+                        Image(systemName: "cloud.sun.fill")
+                            .font(.system(size: 56))
+                            .weatherIconStyle(for: "cloud.sun.fill")
+                        Text(localizedString("Loading Weather", locale: locale))
+                            .font(.avenir(.title2, weight: .semibold))
+                        Capsule()
+                            .fill(theme.colors.primaryText.opacity(0.15))
+                            .frame(width: 140, height: 4)
+                            .overlay(alignment: .leading) {
+                                Capsule()
+                                    .fill(theme.colors.primaryText)
+                                    .frame(width: 140 * weatherService.loadingProgress, height: 4)
+                            }
+                    }
+                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
+                }
+                .allowsHitTesting(false)
+                .transition(.opacity)
+            }
+        }
     }
 
     // MARK: - Empty State
@@ -646,7 +676,26 @@ extension ContentView {
                 .padding(.top, 8)
 
             ForEach(iOSFilteredCities) { cityWeather in
-                HStack {
+                HStack(spacing: 0) {
+                    if isEditMode {
+                        Button {
+                            withAnimation {
+                                weatherService.removeCity(cityWeather)
+                                if selectedCity?.id == cityWeather.id {
+                                    selectedCity = nil
+                                }
+                            }
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .font(.title3)
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, theme.colors.destructive)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 12)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    }
+
                     let isNow = selectedDayOffset == -1
                     let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
                     let displayIcon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
@@ -675,25 +724,6 @@ extension ContentView {
                 }
                 .scaleEffect(longPressedCity?.id == cityWeather.id ? 0.97 : 1.0)
                 .animation(.easeOut(duration: 0.2), value: longPressedCity?.id)
-                .overlay(alignment: .leading) {
-                    if isEditMode {
-                        Button {
-                            withAnimation {
-                                weatherService.removeCity(cityWeather)
-                                if selectedCity?.id == cityWeather.id {
-                                    selectedCity = nil
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "minus.circle.fill")
-                                .font(.title3)
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, theme.colors.destructive)
-                        }
-                        .offset(x: -6)
-                        .transition(.scale.combined(with: .opacity))
-                    }
-                }
                 .contentShape(Rectangle())
                 .onTapGesture {
                     if !isEditMode {

@@ -183,6 +183,9 @@ struct ContentView: View {
     @State var draggingListID: CityListID? = nil
     @State var dragOffset: CGFloat = 0
     @State var showingCountrySearch: Bool = false
+    @State private var countrySearchText: String = ""
+    @FocusState private var countrySearchFocused: Bool
+    @State private var allCountries: [String] = []
     @State var showingMapStylePopover: Bool = false
     @State var showingMapStyleSheet: Bool = false
     @State var showingDiscoverPopover: Bool = false
@@ -344,21 +347,11 @@ struct ContentView: View {
             )
             .presentationSizing(.form)
         }
-        .sheet(isPresented: $showingCountrySearch) {
+        .sheet(isPresented: isIPad ? $showingCountrySearch : .constant(false)) {
             CountrySearchSheet(
                 onSelect: { country in
                     showingCountrySearch = false
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        listContentOpacity = 0
-                    }
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(150))
-                        await weatherService.addCountryList(country: country)
-                        withAnimation(.easeIn(duration: 0.2)) {
-                            listContentOpacity = 1
-                        }
-                        recenterOnAllCities = true
-                    }
+                    selectCountry(country)
                 }
             )
             .presentationDetents([.large])
@@ -462,7 +455,7 @@ struct ContentView: View {
             iPadDetailContent
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar(showingInlineSearch && !inlineSearchText.isEmpty ? .hidden : .visible, for: .navigationBar)
+                .toolbar((showingInlineSearch && !inlineSearchText.isEmpty) || (showingCountrySearch && !countrySearchText.isEmpty) ? .hidden : .visible, for: .navigationBar)
                 .toolbar { iOSLeadingToolbarItems }
                 .toolbar { iOSPrincipalToolbarItem }
                 .toolbar { iOSTrailingToolbarItems }
@@ -637,6 +630,13 @@ struct ContentView: View {
         // Search results overlay (only when typing)
         if showingInlineSearch, !inlineSearchText.isEmpty {
             iOSInlineSearchResults
+                .transition(.opacity)
+                .zIndex(10)
+        }
+
+        // Country search results overlay
+        if showingCountrySearch, !countrySearchText.isEmpty {
+            iOSCountrySearchResults
                 .transition(.opacity)
                 .zIndex(10)
         }
@@ -1170,6 +1170,49 @@ struct ContentView: View {
                         }
                     }
 
+            } else if showingCountrySearch {
+                // COUNTRY SEARCH STATE: search bar (full width) + x button
+                HStack(spacing: 8) {
+                    Image(systemName: "globe")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                    TextField(localizedString("Search for a country", locale: locale), text: $countrySearchText)
+                        .textFieldStyle(.plain)
+                        .font(.avenir(.subheadline, weight: .medium))
+                        .autocorrectionDisabled()
+                        .focused($countrySearchFocused)
+                    if !countrySearchText.isEmpty {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.tertiary)
+                            .font(.system(size: 14, weight: .medium))
+                            .contentShape(Circle())
+                            .onTapGesture { countrySearchText = "" }
+                            .transition(.scale.combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, 14)
+                .frame(height: 36)
+                .padding(6)
+                .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
+                .themedGlass(in: .capsule)
+                .animation(.spring(response: 0.35, dampingFraction: 0.8), value: countrySearchText.isEmpty)
+
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 44, height: 44)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            showingCountrySearch = false
+                            countrySearchText = ""
+                            countrySearchFocused = false
+                        }
+                    }
+
             } else if previewCity != nil {
                 // PREVIEW STATE: + button + search bar (city name) + x button
                 Image(systemName: "plus")
@@ -1316,6 +1359,18 @@ struct ContentView: View {
                 inlineSearchFocused = false
             }
         }
+        .onChange(of: showingCountrySearch) { _, newValue in
+            if newValue {
+                if allCountries.isEmpty {
+                    allCountries = WorldCitiesParser.countriesWithEnoughCities()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    countrySearchFocused = true
+                }
+            } else {
+                countrySearchFocused = false
+            }
+        }
     }
 
     // MARK: - Inline Search Results (shown when typing)
@@ -1388,8 +1443,85 @@ struct ContentView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.searchOverlayBackground)
+        .background(selectedTab == 0 ? theme.colors.background : theme.colors.searchOverlayBackground)
         .ignoresSafeArea(edges: .bottom)
+    }
+
+    // MARK: - Country Search Results
+
+    private var filteredCountries: [String] {
+        if countrySearchText.isEmpty {
+            return allCountries
+        }
+        return allCountries.filter { $0.localizedCaseInsensitiveContains(countrySearchText) }
+    }
+
+    private var iOSCountrySearchResults: some View {
+        VStack(spacing: 0) {
+            if !filteredCountries.isEmpty {
+                List {
+                    ForEach(filteredCountries, id: \.self) { country in
+                        Button {
+                            selectCountry(country)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(country)
+                                    .font(.avenir(.body, weight: .regular))
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowSeparator(.visible)
+                        .listRowBackground(Color.clear)
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .contentMargins(.bottom, 80)
+            } else {
+                VStack(spacing: 16) {
+                    Spacer()
+
+                    Image(systemName: "globe")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.tertiary)
+
+                    Text(localizedString("No results", locale: locale))
+                        .font(.avenir(.title3, weight: .medium))
+
+                    Text(localizedString("Try a different search term", locale: locale))
+                        .font(.avenir(.body))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(selectedTab == 0 ? theme.colors.background : theme.colors.searchOverlayBackground)
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    private func selectCountry(_ country: String) {
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            showingCountrySearch = false
+            countrySearchText = ""
+            countrySearchFocused = false
+        }
+        withAnimation(.easeOut(duration: 0.15)) {
+            listContentOpacity = 0
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            await weatherService.addCountryList(country: country)
+            withAnimation(.easeIn(duration: 0.2)) {
+                listContentOpacity = 1
+            }
+            recenterOnAllCities = true
+        }
     }
 
     @State private var inlineIsLoadingCity = false
