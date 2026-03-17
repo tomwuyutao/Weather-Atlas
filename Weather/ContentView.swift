@@ -171,7 +171,6 @@ struct ContentView: View {
     @State private var showingDetailMenuPopover: Bool = false
     @AppStorage("isGridView") var isGridView: Bool = false
     @State var gridDragItem: CityWeather?
-    @State var showingListSwitcher: Bool = false
     @State var listContentOpacity: Double = 1.0
     @State var longPressedCity: CityWeather?
     @State var isEditingListName: Bool = false
@@ -205,7 +204,8 @@ struct ContentView: View {
     @State var resolvedGridCityNames: [UUID: String] = [:]
     @State private var showingAddToListPopover: Bool = false
 
-    @State var showingMapListSwitcher: Bool = false
+    @State var showingListSidebar: Bool = false
+
     @State var showingRecenterPopover: Bool = false
     @State var focusSubsetCities: [CityWeather] = []
     @State var focusSubsetTrigger: Bool = false
@@ -239,12 +239,17 @@ struct ContentView: View {
 
     @ViewBuilder
     private var iOSView: some View {
-        Group {
-            if isIPad {
-                iPadNavigationSplitView
-            } else {
-                iPhoneNavigationStack
+        ZStack {
+            Group {
+                if isIPad {
+                    iPadNavigationSplitView
+                } else {
+                    iPhoneNavigationStack
+                }
             }
+
+            listSidebarOverlay
+                .zIndex(100)
         }
         .task { await iOSOnAppear() }
         .onChange(of: weatherService.activeListID) { _, newListID in

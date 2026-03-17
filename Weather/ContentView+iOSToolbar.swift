@@ -48,26 +48,23 @@ extension ContentView {
             if !isMapSpecialMode, sidebarVisibility == .detailOnly {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
-                        showingMapListSwitcher = true
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            showingListSidebar = true
+                        }
                     } label: {
                         HStack(spacing: 4) {
+                            Image(systemName: "list.bullet")
+                                .font(.system(size: 13, weight: .semibold))
                             Text(mapToolbarTitle)
                                 .font(.avenir(.subheadline, weight: .semibold))
                                 .foregroundStyle(theme.colors.primaryText)
                                 .lineLimit(1)
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(theme.colors.primaryText.opacity(0.6))
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 8)
                         .themedGlass(in: .capsule)
                     }
                     .buttonStyle(.plain)
-                    .popover(isPresented: $showingMapListSwitcher) {
-                        iOSMapListSwitcherMenu
-                            .presentationCompactAdaptation(.popover)
-                    }
                 }
                 .sharedBackgroundVisibility(.hidden)
             }
@@ -90,15 +87,16 @@ extension ContentView {
         if !isIPad, selectedTab == 1, !isMapSpecialMode {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    showingMapListSwitcher = true
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showingListSidebar = true
+                    }
                 } label: {
                     HStack(spacing: 6) {
+                        Image(systemName: "list.bullet")
+                            .font(.system(size: 13, weight: .semibold))
                         Text(mapToolbarTitle)
                             .font(.avenir(.headline, weight: .semibold))
                             .lineLimit(1)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
@@ -106,10 +104,6 @@ extension ContentView {
                 }
                 .buttonStyle(.plain)
                 .fixedSize()
-                .popover(isPresented: $showingMapListSwitcher) {
-                    iOSMapListSwitcherMenu
-                        .presentationCompactAdaptation(.popover)
-                }
             }
             .sharedBackgroundVisibility(.hidden)
         }
@@ -616,67 +610,6 @@ extension ContentView {
         }
         .padding(6)
         .themedGlass(in: .capsule)
-    }
-
-    // MARK: - Map List Switcher Popover
-
-    var iOSMapListSwitcherMenu: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(CityListID.allLists) { listID in
-                Button {
-                    let id = listID.rawValue
-                    if mapVisibleListIDs.contains(id) {
-                        // Don't allow deselecting the last list
-                        if mapVisibleListIDs.count > 1 {
-                            mapVisibleListIDs.remove(id)
-                            // If we deselected the active list, switch to one that's still visible
-                            if listID == weatherService.activeListID,
-                               let remainingID = mapVisibleListIDs.first,
-                               let newActiveList = CityListID.allLists.first(where: { $0.rawValue == remainingID }) {
-                                Task {
-                                    await weatherService.switchList(to: newActiveList)
-                                    recenterOnAllCities = true
-                                }
-                            } else {
-                                recenterOnAllCities = true
-                            }
-                        }
-                    } else {
-                        mapVisibleListIDs.insert(id)
-                        // Fetch data for this list if not already loaded
-                        if listID != weatherService.activeListID {
-                            Task {
-                                isLoadingMapList = true
-                                await weatherService.fetchWeatherForList(listID)
-                                isLoadingMapList = false
-                                recenterOnAllCities = true
-                            }
-                        } else {
-                            recenterOnAllCities = true
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 12) {
-                        Text(listID.localizedDisplayName(locale: locale))
-                            .font(.avenir(.body, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                        Spacer()
-                        Image(systemName: mapVisibleListIDs.contains(listID.rawValue) ? "checkmark.circle.fill" : "circle")
-                            .font(.system(size: 16))
-                            .foregroundStyle(mapVisibleListIDs.contains(listID.rawValue) ? theme.colors.dotRain : .secondary)
-                    }
-                    .padding(.leading, 16)
-                    .padding(.trailing, 16)
-                    .padding(.vertical, 11)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.vertical, 8)
-        .frame(width: 210)
-        .themedPopoverBackground()
     }
 
     // MARK: - Main Menu Popover
