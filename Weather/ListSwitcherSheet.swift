@@ -59,7 +59,7 @@ struct ListSwitcherSheet: View {
                 }
             }
         }
-        .preferredColorScheme(.dark)
+
     }
 
     // MARK: - Selection View (multi-select rows)
@@ -111,11 +111,7 @@ struct ListSwitcherSheet: View {
                     .padding(.vertical, 14)
                     .background(
                         RoundedRectangle(cornerRadius: 12)
-                            .fill(Color(hex: 0x1579C7).opacity(0.08))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(Color(hex: 0x1579C7).opacity(0.4), lineWidth: 1)
+                            .fill(theme.colors.listCardFill)
                     )
                 }
             }
@@ -158,20 +154,38 @@ struct ListSwitcherSheet: View {
 
             Spacer()
 
-            // Edit button
-            Button {
-                reorderableLists = CityListID.allLists
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    isEditing = true
+            if isAddingList {
+                // Cancel add — dismiss keyboard
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isAddingList = false
+                        newListName = ""
+                        newListNameFocused = false
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 44, height: 44)
+                        .themedGlass(in: .circle)
                 }
-            } label: {
-                Image(systemName: "pencil")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 44, height: 44)
-                    .themedGlass(in: .circle)
+                .buttonStyle(.plain)
+            } else {
+                // Edit button
+                Button {
+                    reorderableLists = CityListID.allLists
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isEditing = true
+                    }
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 44, height: 44)
+                        .themedGlass(in: .circle)
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
@@ -229,13 +243,31 @@ struct ListSwitcherSheet: View {
 
                             Spacer()
 
-                            // Reorder handle
-                            Image(systemName: "line.3.horizontal")
-                                .font(.system(size: 13))
-                                .foregroundStyle(.secondary)
+                            // Reorder arrows
+                            VStack(spacing: 4) {
+                                Button {
+                                    moveList(listID, direction: .up)
+                                } label: {
+                                    Image(systemName: "chevron.up")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(reorderableLists.first?.rawValue == listID.rawValue ? theme.colors.primaryText.opacity(0.15) : theme.colors.primaryText.opacity(0.5))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(reorderableLists.first?.rawValue == listID.rawValue)
+
+                                Button {
+                                    moveList(listID, direction: .down)
+                                } label: {
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(reorderableLists.last?.rawValue == listID.rawValue ? theme.colors.primaryText.opacity(0.15) : theme.colors.primaryText.opacity(0.5))
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(reorderableLists.last?.rawValue == listID.rawValue)
+                            }
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 10)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
                                 .fill(editingListID?.rawValue == listID.rawValue ? Color(hex: 0x1579C7).opacity(0.08) : theme.colors.listCardFill)
@@ -244,9 +276,6 @@ struct ListSwitcherSheet: View {
                             RoundedRectangle(cornerRadius: 12)
                                 .strokeBorder(editingListID?.rawValue == listID.rawValue ? Color(hex: 0x1579C7).opacity(0.4) : Color.clear, lineWidth: 1)
                         )
-                    }
-                    .onMove { source, destination in
-                        reorderableLists.move(fromOffsets: source, toOffset: destination)
                     }
 
                     // Inline new list row
@@ -264,11 +293,7 @@ struct ListSwitcherSheet: View {
                         .padding(.vertical, 14)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(Color(hex: 0x1579C7).opacity(0.08))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12)
-                                .strokeBorder(Color(hex: 0x1579C7).opacity(0.4), lineWidth: 1)
+                                .fill(theme.colors.listCardFill)
                         )
                     }
                 }
@@ -360,6 +385,17 @@ struct ListSwitcherSheet: View {
 
     // MARK: - Helpers
 
+    private enum MoveDirection { case up, down }
+
+    private func moveList(_ listID: CityListID, direction: MoveDirection) {
+        guard let index = reorderableLists.firstIndex(where: { $0.rawValue == listID.rawValue }) else { return }
+        let newIndex = direction == .up ? index - 1 : index + 1
+        guard reorderableLists.indices.contains(newIndex) else { return }
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            reorderableLists.swapAt(index, newIndex)
+        }
+    }
+
     private func commitRename(_ listID: CityListID) {
         let name = editingListName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !name.isEmpty else {
@@ -429,13 +465,21 @@ struct ListSwitcherSheet: View {
 // MARK: - Preview
 
 #Preview {
-    ListSwitcherSheet(
-        weatherService: WeatherService(),
-        visibleListIDs: .constant(Set(["china"])),
-        isPresented: .constant(true),
-        onRecenter: {},
-        onShowCountrySearch: {}
-    )
-    .presentationDetents([.medium, .large])
-    .presentationDragIndicator(.visible)
+    @Previewable @State var showing = true
+    @Previewable @State var visibleIDs: Set<String> = ["china"]
+
+    Color.black
+        .sheet(isPresented: $showing) {
+            ListSwitcherSheet(
+                weatherService: WeatherService(),
+                visibleListIDs: $visibleIDs,
+                isPresented: $showing,
+                onRecenter: {},
+                onShowCountrySearch: {}
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .presentationContentInteraction(.scrolls)
+            .interactiveDismissDisabled()
+        }
 }

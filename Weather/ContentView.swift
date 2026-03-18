@@ -390,7 +390,7 @@ struct ContentView: View {
             .presentationDetents([.medium, .large], selection: $listSheetDetent)
             .presentationDragIndicator(.visible)
             .presentationContentInteraction(.scrolls)
-            .interactiveDismissDisabled()
+
         }
         .sheet(isPresented: isIPad ? $showingCountrySearch : .constant(false)) {
             CountrySearchSheet(
