@@ -75,7 +75,7 @@ struct ContentView: View {
     @AppStorage("mapMode") var mapMode: String = "minimal"
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
     @AppStorage("showDateSlider") var showDateSlider: Bool = true
-    @State var mapVisibleListIDs: Set<String> = []
+    @State var visibleListIDs: Set<String> = []
     @Environment(\.locale) var locale
     @Environment(\.colorScheme) var colorScheme
     
@@ -88,12 +88,12 @@ struct ContentView: View {
             return radialSearchData
         }
         var result: [CityWeather]
-        if mapVisibleListIDs.isEmpty || mapVisibleListIDs == Set([weatherService.activeListID.rawValue]) {
+        if visibleListIDs.isEmpty || visibleListIDs == Set([weatherService.activeListID.rawValue]) {
             result = weatherService.cityWeatherData
         } else {
             var combined: [CityWeather] = []
             var seenNames = Set<String>()
-            for listID in CityListID.allLists where mapVisibleListIDs.contains(listID.rawValue) {
+            for listID in CityListID.allLists where visibleListIDs.contains(listID.rawValue) {
                 let cities: [CityWeather]
                 if listID == weatherService.activeListID {
                     cities = weatherService.cityWeatherData
@@ -116,6 +116,30 @@ struct ContentView: View {
         return result
     }
     
+    /// Cities to display in the list view — combined from all visible lists, deduplicated, ordered by list ranking
+    var listViewCities: [CityWeather] {
+        if visibleListIDs.isEmpty || visibleListIDs == Set([weatherService.activeListID.rawValue]) {
+            return weatherService.cityWeatherData
+        }
+        var combined: [CityWeather] = []
+        var seenNames = Set<String>()
+        for listID in CityListID.allLists where visibleListIDs.contains(listID.rawValue) {
+            let cities: [CityWeather]
+            if listID == weatherService.activeListID {
+                cities = weatherService.cityWeatherData
+            } else {
+                cities = weatherService.otherListData[listID.rawValue] ?? []
+            }
+            for city in cities {
+                if !seenNames.contains(city.city.name) {
+                    combined.append(city)
+                    seenNames.insert(city.city.name)
+                }
+            }
+        }
+        return combined
+    }
+
     var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
     }
@@ -166,21 +190,9 @@ struct ContentView: View {
     @State var isEditingListName: Bool = false
     @State var editingListName: String = ""
     @FocusState var listNameFieldFocused: Bool
-    @FocusState var newListNameFocused: Bool
-    @FocusState var editListNameFocused: Bool
     @State var showingDeleteListConfirmation: Bool = false
     @State var showingListSwitcher: Bool = false
-    @State var showingMapListSwitcher: Bool = false
-    @State var isReorderingLists: Bool = false
-    @State var isEditingSheetLists: Bool = false
-    @State var editingSheetListID: CityListID? = nil
-    @State var editingSheetListName: String = ""
-    @State var isAddingListInSheet: Bool = false
-    @State var newSheetListName: String = ""
     @State var listSheetDetent: PresentationDetent = .medium
-    @State var reorderableLists: [CityListID] = []
-    @State var draggingListID: CityListID? = nil
-    @State var dragOffset: CGFloat = 0
     @State var showingCountrySearch: Bool = false
     @State private var countrySearchText: String = ""
     @FocusState private var countrySearchFocused: Bool
@@ -204,8 +216,8 @@ struct ContentView: View {
     @State var resolvedGridCityNames: [UUID: String] = [:]
     @State private var showingAddToListPopover: Bool = false
 
-    var mapToolbarTitle: String {
-        let selectedLists = CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }
+    var toolbarTitle: String {
+        let selectedLists = CityListID.allLists.filter { visibleListIDs.contains($0.rawValue) }
         let firstName = selectedLists.first?.localizedDisplayName(locale: locale) ?? weatherService.activeListID.localizedDisplayName(locale: locale)
         let extra = selectedLists.count - 1
         if extra > 0 {
@@ -256,7 +268,7 @@ struct ContentView: View {
         }
         .task { await iOSOnAppear() }
         .onChange(of: weatherService.activeListID) { _, newListID in
-            mapVisibleListIDs.insert(newListID.rawValue)
+            visibleListIDs.insert(newListID.rawValue)
         }
         .onChange(of: mapMode, initial: true) { _, _ in
             AppTheme.shared.isDetailedMapMode = selectedTab == 1 && (mapMode == "detailed" || mapMode == "colorful")
@@ -355,12 +367,30 @@ struct ContentView: View {
             )
             .presentationSizing(.form)
         }
-        .sheet(isPresented: $showingListSwitcher) {
-            listSwitcherSheet
-                .presentationDetents([.medium, .large], selection: $listSheetDetent)
-                .presentationDragIndicator(.visible)
-                .presentationContentInteraction(.scrolls)
-                .interactiveDismissDisabled()
+        .sheet(isPresented: $showingListSwitcher, onDismiss: {
+            listSheetDetent = .medium
+        }) {
+            ListSwitcherSheet(
+                weatherService: weatherService,
+                visibleListIDs: $visibleListIDs,
+                isPresented: $showingListSwitcher,
+                onRecenter: {
+                    recenterOnAllCities = true
+                },
+                onShowCountrySearch: {
+                    if isIPad {
+                        showingCountrySearch = true
+                    } else {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            showingCountrySearch = true
+                        }
+                    }
+                }
+            )
+            .presentationDetents([.medium, .large], selection: $listSheetDetent)
+            .presentationDragIndicator(.visible)
+            .presentationContentInteraction(.scrolls)
+            .interactiveDismissDisabled()
         }
         .sheet(isPresented: isIPad ? $showingCountrySearch : .constant(false)) {
             CountrySearchSheet(
@@ -506,8 +536,8 @@ struct ContentView: View {
         if !hasLaunchedBefore {
             hasLaunchedBefore = true
         }
-        if mapVisibleListIDs.isEmpty {
-            mapVisibleListIDs = [weatherService.activeListID.rawValue]
+        if visibleListIDs.isEmpty {
+            visibleListIDs = [weatherService.activeListID.rawValue]
         }
         if countryOverviewCache.isEmpty {
             countryOverviewCache = CountryOverviewCacheManager.load()
@@ -821,7 +851,7 @@ struct ContentView: View {
 
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                if mapVisibleListIDs.count > 1 {
+                if visibleListIDs.count > 1 {
                     showingRecenterPopover = true
                 } else {
                     recenterOnAllCities = false
@@ -839,7 +869,7 @@ struct ContentView: View {
             .buttonStyle(.plain)
             .popover(isPresented: $showingRecenterPopover) {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }) { listID in
+                    ForEach(CityListID.allLists.filter { visibleListIDs.contains($0.rawValue) }) { listID in
                         Button {
                             showingRecenterPopover = false
                             let cities: [CityWeather]

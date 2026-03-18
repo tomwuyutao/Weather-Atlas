@@ -267,7 +267,7 @@ extension ContentView {
     @ViewBuilder
     var iOSListView: some View {
         Group {
-            if weatherService.cityWeatherData.isEmpty {
+            if listViewCities.isEmpty {
                 iOSListEmptyState
             } else if isGridView {
                 iOSGridContent
@@ -512,7 +512,7 @@ extension ContentView {
     }
 
     var iOSFilteredCities: [CityWeather] {
-        var cities = weatherService.cityWeatherData
+        var cities = listViewCities
         if !searchText.isEmpty {
             cities = cities.filter {
                 $0.city.name.localizedCaseInsensitiveContains(searchText)
