@@ -166,10 +166,18 @@ struct ContentView: View {
     @State var isEditingListName: Bool = false
     @State var editingListName: String = ""
     @FocusState var listNameFieldFocused: Bool
+    @FocusState var newListNameFocused: Bool
+    @FocusState var editListNameFocused: Bool
     @State var showingDeleteListConfirmation: Bool = false
     @State var showingListSwitcher: Bool = false
     @State var showingMapListSwitcher: Bool = false
     @State var isReorderingLists: Bool = false
+    @State var isEditingSheetLists: Bool = false
+    @State var editingSheetListID: CityListID? = nil
+    @State var editingSheetListName: String = ""
+    @State var isAddingListInSheet: Bool = false
+    @State var newSheetListName: String = ""
+    @State var listSheetDetent: PresentationDetent = .medium
     @State var reorderableLists: [CityListID] = []
     @State var draggingListID: CityListID? = nil
     @State var dragOffset: CGFloat = 0
@@ -349,8 +357,9 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingListSwitcher) {
             listSwitcherSheet
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.medium, .large], selection: $listSheetDetent)
                 .presentationDragIndicator(.visible)
+                .interactiveDismissDisabled()
         }
         .sheet(isPresented: isIPad ? $showingCountrySearch : .constant(false)) {
             CountrySearchSheet(
@@ -558,7 +567,8 @@ struct ContentView: View {
                     // AnyView breaks the generic type chain to prevent stack overflow on device
                     AnyView(
                         iOSListView
-                            .background(theme.colors.background)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .background(theme.colors.background.ignoresSafeArea())
                             .offset(x: selectedTab == 0 ? 0 : -10000)
                     )
                 }
