@@ -169,8 +169,7 @@ struct ContentView: View {
     @State var showingDeleteListConfirmation: Bool = false
     @State var sidebarDisplayLists: [CityListID] = []
     @State var sidebarLongPressedList: CityListID? = nil
-    @State var draggingListID: CityListID? = nil
-    @State var dragOffset: CGFloat = 0
+    @State var sidebarEditMode: Bool = false
     @State var showingCountrySearch: Bool = false
     @State private var countrySearchText: String = ""
     @FocusState private var countrySearchFocused: Bool

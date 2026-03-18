@@ -58,6 +58,7 @@ extension ContentView {
     func closeSidebar() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showingListSidebar = false
+            sidebarEditMode = false
         }
     }
 
@@ -65,23 +66,57 @@ extension ContentView {
 
     private var sidebarPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header
-            Text(localizedString("Lists", locale: locale))
-                .font(.avenir(.title2, weight: .bold))
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+            // Header with edit button
+            HStack {
+                Text(localizedString("Lists", locale: locale))
+                    .font(.avenir(.title2, weight: .bold))
+                Spacer()
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        sidebarEditMode.toggle()
+                    }
+                } label: {
+                    Image(systemName: sidebarEditMode ? "checkmark" : "pencil")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(sidebarEditMode ? .white : theme.colors.primaryText)
+                        .frame(width: 32, height: 32)
+                        .background(sidebarEditMode ? theme.colors.accent : theme.colors.glassFill, in: .circle)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
+            .padding(.bottom, 12)
 
             Divider()
                 .padding(.horizontal, 16)
 
-            // List content — drag to reorder
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    sidebarListContent
+            // List content with native edit mode
+            List {
+                ForEach($sidebarDisplayLists) { $listID in
+                    sidebarListRow(listID: listID, isMapMode: selectedTab == 1)
                 }
-                .padding(.top, 4)
+                .onDelete { indexSet in
+                    guard let index = indexSet.first else { return }
+                    let listID = sidebarDisplayLists[index]
+                    Task {
+                        if listID != weatherService.activeListID {
+                            await weatherService.switchList(to: listID)
+                        }
+                        await weatherService.deleteCurrentList()
+                        sidebarDisplayLists = CityListID.allLists
+                    }
+                }
+                .onMove { source, destination in
+                    sidebarDisplayLists.move(fromOffsets: source, toOffset: destination)
+                    CityListID.saveListOrder(sidebarDisplayLists)
+                }
             }
+            .listStyle(.plain)
+            .environment(\.editMode, Binding(
+                get: { sidebarEditMode ? .active : .inactive },
+                set: { newValue in sidebarEditMode = (newValue == .active) }
+            ))
 
             Divider()
                 .padding(.horizontal, 16)
@@ -102,17 +137,9 @@ extension ContentView {
         }
     }
 
-    // MARK: - List Content (with inline drag-to-reorder)
+    // MARK: - List Row
 
-    private var sidebarListContent: some View {
-        let isMapMode = selectedTab == 1
-        let rowHeight: CGFloat = 40
-        return ForEach(Array(sidebarDisplayLists.enumerated()), id: \.element.id) { index, listID in
-            sidebarListRow(listID: listID, isMapMode: isMapMode, rowHeight: rowHeight)
-        }
-    }
-
-    private func sidebarListRow(listID: CityListID, isMapMode: Bool, rowHeight: CGFloat) -> some View {
+    private func sidebarListRow(listID: CityListID, isMapMode: Bool) -> some View {
         HStack(spacing: 12) {
             Text(listID.localizedDisplayName(locale: locale))
                 .font(.avenir(.body, weight: sidebarIsActive(listID) ? .bold : .medium))
@@ -129,74 +156,23 @@ extension ContentView {
                     .frame(width: 6, height: 6)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 10)
+        .padding(.vertical, 2)
         .contentShape(Rectangle())
         .scaleEffect(sidebarLongPressedList == listID ? 0.96 : 1.0)
-        .opacity(draggingListID == listID ? 0.5 : 1.0)
-        .offset(y: draggingListID == listID ? dragOffset : 0)
-        .zIndex(draggingListID == listID ? 1 : 0)
         .animation(.easeOut(duration: 0.2), value: sidebarLongPressedList?.id)
         .onTapGesture {
+            guard !sidebarEditMode else { return }
             if isMapMode {
                 sidebarToggleMapList(listID)
             } else {
                 sidebarSelectList(listID)
             }
         }
-        .gesture(
-            LongPressGesture(minimumDuration: 0.35)
-                .sequenced(before: DragGesture(minimumDistance: 0))
-                .onChanged { value in
-                    switch value {
-                    case .first(true):
-                        // Long press recognized — start visual feedback
-                        if draggingListID == nil, sidebarLongPressedList == nil {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            draggingListID = listID
-                        }
-                    case .second(true, let drag):
-                        guard draggingListID == listID, let drag = drag else { return }
-                        dragOffset = drag.translation.height
-
-                        guard let fromIndex = sidebarDisplayLists.firstIndex(of: listID) else { return }
-                        let proposedOffset = Int(round(drag.translation.height / rowHeight))
-                        let toIndex = min(max(fromIndex + proposedOffset, 0), sidebarDisplayLists.count - 1)
-                        if toIndex != fromIndex {
-                            withAnimation(.easeInOut(duration: 0.15)) {
-                                sidebarDisplayLists.move(fromOffsets: IndexSet(integer: fromIndex), toOffset: toIndex > fromIndex ? toIndex + 1 : toIndex)
-                            }
-                            let moved = toIndex - fromIndex
-                            dragOffset -= CGFloat(moved) * rowHeight
-                        }
-                    default:
-                        break
-                    }
-                }
-                .onEnded { _ in
-                    if draggingListID != nil {
-                        CityListID.saveListOrder(sidebarDisplayLists)
-                    }
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        dragOffset = 0
-                        draggingListID = nil
-                    }
-                }
-        )
-        .simultaneousGesture(
-            LongPressGesture(minimumDuration: 0.5)
-                .onEnded { _ in
-                    // Only show context menu if not dragging
-                    if draggingListID == nil || (draggingListID == listID && abs(dragOffset) < 5) {
-                        withAnimation(.easeInOut(duration: 0.15)) {
-                            dragOffset = 0
-                            draggingListID = nil
-                        }
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        sidebarLongPressedList = listID
-                    }
-                }
-        )
+        .onLongPressGesture(minimumDuration: 0.5) {
+            guard !sidebarEditMode else { return }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            sidebarLongPressedList = listID
+        }
         .popover(isPresented: Binding(
             get: { sidebarLongPressedList == listID },
             set: { if !$0 { sidebarLongPressedList = nil } }
@@ -204,6 +180,9 @@ extension ContentView {
             sidebarContextMenu(for: listID)
                 .presentationCompactAdaptation(.popover)
         }
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 0, leading: 20, bottom: 0, trailing: 20))
     }
 
     // MARK: - Context Menu (Long Press)
