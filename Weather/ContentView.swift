@@ -359,6 +359,7 @@ struct ContentView: View {
             listSwitcherSheet
                 .presentationDetents([.medium, .large], selection: $listSheetDetent)
                 .presentationDragIndicator(.visible)
+                .presentationContentInteraction(.scrolls)
                 .interactiveDismissDisabled()
         }
         .sheet(isPresented: isIPad ? $showingCountrySearch : .constant(false)) {
@@ -1172,7 +1173,7 @@ struct ContentView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 36, height: 36)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
                     .themedGlass(in: .circle)
@@ -1215,7 +1216,7 @@ struct ContentView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 36, height: 36)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
                     .themedGlass(in: .circle)
@@ -1279,7 +1280,7 @@ struct ContentView: View {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 44, height: 44)
+                    .frame(width: 36, height: 36)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
                     .themedGlass(in: .circle)

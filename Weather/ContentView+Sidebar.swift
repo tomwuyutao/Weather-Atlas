@@ -32,11 +32,9 @@ extension ContentView {
                     .buttonStyle(.plain)
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 4)
+                .padding(.top, 12)
 
-                if isAddingListInSheet {
-                    listSwitcherNewListView
-                } else if isEditingSheetLists {
+                if isEditingSheetLists {
                     listSwitcherEditingView
                 } else {
                     // List selection content
@@ -46,6 +44,29 @@ extension ContentView {
                                 listSwitcherMapRows
                             } else {
                                 listSwitcherListRows
+                            }
+
+                            // Inline new list row (non-editing mode)
+                            if isAddingListInSheet {
+                                HStack(spacing: 12) {
+                                    TextField(localizedString("New List", locale: locale), text: $newSheetListName)
+                                        .font(.avenir(.body, weight: .medium))
+                                        .foregroundStyle(theme.colors.primaryText)
+                                        .submitLabel(.done)
+                                        .focused($newListNameFocused)
+                                        .onSubmit { commitNewListInSheet() }
+                                    Spacer()
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .fill(Color(hex: 0x1579C7).opacity(0.08))
+                                )
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 12)
+                                        .strokeBorder(Color(hex: 0x1579C7).opacity(0.4), lineWidth: 1)
+                                )
                             }
                         }
                         .padding(.horizontal, 20)
@@ -61,7 +82,6 @@ extension ContentView {
                                 newSheetListName = ""
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     isAddingListInSheet = true
-                                    listSheetDetent = .large
                                 }
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                                     newListNameFocused = true
@@ -210,76 +230,13 @@ extension ContentView {
         }
     }
 
-    // MARK: - New List View
-
-    private var listSwitcherNewListView: some View {
-        VStack(spacing: 0) {
-            Spacer()
-
-            VStack(spacing: 20) {
-                Text(localizedString("New List", locale: locale))
-                    .font(.avenir(.title2, weight: .semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-
-                TextField(localizedString("List Name", locale: locale), text: $newSheetListName)
-                    .font(.avenir(.body, weight: .medium))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12)
-                            .fill(theme.colors.listCardFill)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .strokeBorder(Color(hex: 0x1579C7).opacity(0.4), lineWidth: 1)
-                    )
-                    .focused($newListNameFocused)
-                    .submitLabel(.done)
-                    .onSubmit { commitNewListInSheet() }
-
-                Button {
-                    commitNewListInSheet()
-                } label: {
-                    Text(localizedString("Create", locale: locale))
-                        .font(.avenir(.body, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
-                        .background(Color(hex: 0x1579C7), in: RoundedRectangle(cornerRadius: 12))
-                }
-                .buttonStyle(.plain)
-                .opacity(newSheetListName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.4 : 1)
-                .disabled(newSheetListName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            .padding(.horizontal, 20)
-
-            Spacer()
-            Spacer()
-        }
-    }
-
-    private func commitNewListInSheet() {
-        let name = newSheetListName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !name.isEmpty else { return }
-
-        Task {
-            await weatherService.addNewList(name: name)
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                isAddingListInSheet = false
-                listSheetDetent = .medium
-            }
-        }
-    }
-
     // MARK: - Editing View
 
     private var listSwitcherEditingView: some View {
         VStack(spacing: 0) {
             ScrollView {
                 VStack(spacing: 10) {
-                    ForEach(Array(reorderableLists.enumerated()), id: \.element.id) { index, listID in
+                    ForEach(reorderableLists) { listID in
                         HStack(spacing: 12) {
                             // Delete button
                             if reorderableLists.count > 1 {
@@ -326,41 +283,13 @@ extension ContentView {
 
                             Spacer()
 
-                            // Move up/down buttons
-                            HStack(spacing: 4) {
-                                Button {
-                                    guard index > 0 else { return }
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                        reorderableLists.swapAt(index, index - 1)
-                                    }
-                                } label: {
-                                    Image(systemName: "chevron.up")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(index > 0 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.2))
-                                        .frame(width: 30, height: 30)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(index == 0)
-
-                                Button {
-                                    guard index < reorderableLists.count - 1 else { return }
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                        reorderableLists.swapAt(index, index + 1)
-                                    }
-                                } label: {
-                                    Image(systemName: "chevron.down")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(index < reorderableLists.count - 1 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.2))
-                                        .frame(width: 30, height: 30)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(index == reorderableLists.count - 1)
-                            }
+                            // Reorder handle
+                            Image(systemName: "line.3.horizontal")
+                                .font(.system(size: 13))
+                                .foregroundStyle(.secondary)
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
+                        .padding(.vertical, 14)
                         .background(
                             RoundedRectangle(cornerRadius: 12)
                                 .fill(editingSheetListID?.rawValue == listID.rawValue ? Color(hex: 0x1579C7).opacity(0.08) : theme.colors.listCardFill)
@@ -370,31 +299,80 @@ extension ContentView {
                                 .strokeBorder(editingSheetListID?.rawValue == listID.rawValue ? Color(hex: 0x1579C7).opacity(0.4) : Color.clear, lineWidth: 1)
                         )
                     }
+                    .onMove { source, destination in
+                        reorderableLists.move(fromOffsets: source, toOffset: destination)
+                    }
+
+                    // Inline new list row
+                    if isAddingListInSheet {
+                        HStack(spacing: 12) {
+                            TextField(localizedString("New List", locale: locale), text: $newSheetListName)
+                                .font(.avenir(.body, weight: .medium))
+                                .foregroundStyle(theme.colors.primaryText)
+                                .submitLabel(.done)
+                                .focused($newListNameFocused)
+                                .onSubmit { commitNewListInSheet() }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .background(
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color(hex: 0x1579C7).opacity(0.08))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 12)
+                                .strokeBorder(Color(hex: 0x1579C7).opacity(0.4), lineWidth: 1)
+                        )
+                    }
                 }
                 .padding(.horizontal, 20)
                 .padding(.top, 8)
                 .padding(.bottom, 16)
             }
 
-            // Done button
+            // Bottom bar: + button (left) and done checkmark (right)
             HStack {
+                // Add list button
+                Button {
+                    newSheetListName = ""
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        isAddingListInSheet = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        newListNameFocused = true
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 44, height: 44)
+                        .themedGlass(in: .circle)
+                }
+                .buttonStyle(.plain)
+
                 Spacer()
+
+                // Done — blue checkmark circle (matches country selection confirm)
                 Button {
                     // Commit any in-progress rename
                     if let editingID = editingSheetListID {
                         commitSheetListRename(editingID)
                     }
+                    if isAddingListInSheet {
+                        commitNewListInSheet()
+                    }
                     CityListID.saveListOrder(reorderableLists)
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                         isEditingSheetLists = false
+                        isAddingListInSheet = false
                     }
                 } label: {
-                    Text(localizedString("Done", locale: locale))
-                        .font(.avenir(.body, weight: .semibold))
-                        .foregroundStyle(Color(hex: 0x1579C7))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 8)
-                        .themedGlass(in: .capsule)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(theme.colors.accent, in: .circle)
                 }
                 .buttonStyle(.plain)
             }
@@ -459,6 +437,19 @@ extension ContentView {
                 await weatherService.switchList(to: first)
             }
         }
+    }
+
+    private func commitNewListInSheet() {
+        let name = newSheetListName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else {
+            isAddingListInSheet = false
+            newSheetListName = ""
+            return
+        }
+        let newList = CityListID.createList(name: name)
+        reorderableLists.append(newList)
+        isAddingListInSheet = false
+        newSheetListName = ""
     }
 
     // MARK: - Map List Toggle Helper
