@@ -12,6 +12,40 @@ extension ContentView {
 
     // MARK: - List Switcher
 
+    var iOSListSwitcher: some View {
+        Group {
+            if isEditingListName {
+                TextField("List name", text: $editingListName)
+                    .font(.avenir(.title, weight: .bold))
+                    .multilineTextAlignment(.center)
+                    .submitLabel(.done)
+                    .focused($listNameFieldFocused)
+                    .onSubmit { commitListNameEdit() }
+                    .onChange(of: listNameFieldFocused) { _, focused in
+                        if !focused { commitListNameEdit() }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .onAppear { listNameFieldFocused = true }
+            } else {
+                Button {
+                    showingListSwitcher = true
+                } label: {
+                    Text(weatherService.activeListID.localizedDisplayName(locale: locale))
+                        .font(.avenir(.title, weight: .bold))
+                        .overlay(alignment: .trailing) {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .offset(x: 20)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
     /// Inline rename field shown at the top of the list when renaming is active.
     @ViewBuilder
     var iOSListRenameField: some View {
@@ -293,14 +327,21 @@ extension ContentView {
             }
         } else if weatherService.hasSavedCities {
             VStack(spacing: 0) {
-                iOSListRenameField
+                iOSListSwitcher
+                    .padding(.top, 24)
+                    .padding(.bottom, 12)
                 Spacer()
                 ContentUnavailableView(localizedString("Loading Weather", locale: locale), systemImage: "cloud.sun", description: Text(localizedString("Fetching forecasts for your cities…", locale: locale)))
                 Spacer()
             }
         } else {
             VStack(spacing: 0) {
-                iOSListRenameField
+                iOSListSwitcher
+                    .padding(.top, 24)
+                    .padding(.bottom, 12)
+                if isEditingListName {
+                    iOSListRenameField
+                }
                 Spacer()
                 if !isEditingListName {
                     Button {
@@ -334,7 +375,13 @@ extension ContentView {
 
     private var iOSGridContent: some View {
         ScrollView {
-            iOSListRenameField
+            iOSListSwitcher
+                .padding(.top, 24)
+                .padding(.bottom, 12)
+
+            if isEditingListName {
+                iOSListRenameField
+            }
 
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 16), count: 3), spacing: 16) {
                 ForEach(iOSFilteredCities) { cityWeather in
@@ -352,6 +399,12 @@ extension ContentView {
 
     private var iOSPlainListContent: some View {
         List {
+            iOSListSwitcher
+                .padding(.top, 16)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 8, trailing: 16))
+
             if isEditingListName {
                 iOSListRenameField
                     .listRowBackground(Color.clear)

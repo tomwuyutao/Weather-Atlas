@@ -167,9 +167,12 @@ struct ContentView: View {
     @State var editingListName: String = ""
     @FocusState var listNameFieldFocused: Bool
     @State var showingDeleteListConfirmation: Bool = false
-    @State var sidebarDisplayLists: [CityListID] = []
-    @State var sidebarLongPressedList: CityListID? = nil
-    @State var sidebarEditMode: Bool = false
+    @State var showingListSwitcher: Bool = false
+    @State var showingMapListSwitcher: Bool = false
+    @State var isReorderingLists: Bool = false
+    @State var reorderableLists: [CityListID] = []
+    @State var draggingListID: CityListID? = nil
+    @State var dragOffset: CGFloat = 0
     @State var showingCountrySearch: Bool = false
     @State private var countrySearchText: String = ""
     @FocusState private var countrySearchFocused: Bool
@@ -193,7 +196,15 @@ struct ContentView: View {
     @State var resolvedGridCityNames: [UUID: String] = [:]
     @State private var showingAddToListPopover: Bool = false
 
-    @State var showingListSidebar: Bool = false
+    var mapToolbarTitle: String {
+        let selectedLists = CityListID.allLists.filter { mapVisibleListIDs.contains($0.rawValue) }
+        let firstName = selectedLists.first?.localizedDisplayName(locale: locale) ?? weatherService.activeListID.localizedDisplayName(locale: locale)
+        let extra = selectedLists.count - 1
+        if extra > 0 {
+            return "\(firstName), +\(extra)"
+        }
+        return firstName
+    }
 
     @State var showingRecenterPopover: Bool = false
     @State var focusSubsetCities: [CityWeather] = []
@@ -228,18 +239,11 @@ struct ContentView: View {
 
     @ViewBuilder
     private var iOSView: some View {
-        withListSidebar {
-            Group {
-                if isIPad {
-                    iPadNavigationSplitView
-                } else {
-                    iPhoneNavigationStack
-                }
-            }
-        }
-        .onChange(of: showingListSidebar) { _, showing in
-            if showing {
-                sidebarDisplayLists = CityListID.allLists
+        Group {
+            if isIPad {
+                iPadNavigationSplitView
+            } else {
+                iPhoneNavigationStack
             }
         }
         .task { await iOSOnAppear() }
@@ -343,6 +347,11 @@ struct ContentView: View {
             )
             .presentationSizing(.form)
         }
+        .sheet(isPresented: $showingListSwitcher) {
+            listSwitcherSheet
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+        }
         .sheet(isPresented: isIPad ? $showingCountrySearch : .constant(false)) {
             CountrySearchSheet(
                 onSelect: { country in
@@ -371,7 +380,7 @@ struct ContentView: View {
                                     .font(.system(size: 40))
                                     .weatherIconStyle(for: "cloud.sun.fill")
                                 Text(localizedString("Loading Weather", locale: locale))
-                                    .font(.avenir(.headline, weight: .semibold))
+                                    .font(.headline)
                                 Capsule()
                                     .fill(theme.colors.primaryText.opacity(0.15))
                                     .frame(width: 120, height: 4)

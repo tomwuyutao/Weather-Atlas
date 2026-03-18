@@ -244,7 +244,7 @@ struct WeatherDetailView: View {
                             .font(.system(size: 13))
                             .frame(width: 18)
                         Text(label)
-                            .font(.avenir(.body, weight: chartMetric == metric ? .bold : .medium))
+                            .font(.body).fontWeight(chartMetric == metric ? .bold : .medium)
                             .foregroundStyle(.primary)
                         Spacer()
                         if chartMetric == metric {
