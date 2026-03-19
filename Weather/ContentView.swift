@@ -1022,6 +1022,17 @@ struct ContentView: View {
                         recenterOnAllCities = true
                     }
                 } : nil,
+                onRevealOnMap: {
+                    let revealCity = city
+                    showingCityDetail = false
+                    centerOnCityTrigger = nil
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedTab = 1
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        centerOnCityTrigger = revealCity
+                    }
+                },
                 isInSidebar: cityIsInSidebar(city),
                 showCloudCover: showCloudCover,
                 initialChartMetric: overlayChartMetric
@@ -1627,51 +1638,7 @@ struct ContentView: View {
                 initialChartMetric: overlayChartMetric
             )
             .background(theme.colors.background)
-            .toolbarBackground(.clear, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .navigationBarBackButtonHidden(true)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showingAddCityDetail = false
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .sharedBackgroundVisibility(.hidden)
-                ToolbarItem(placement: .principal) {
-                    Text(city.city.localizedName(locale: locale))
-                        .font(.avenir(.title3, weight: .semibold))
-                        .dynamicTypeSize(...DynamicTypeSize.large)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-                if !cityIsInSidebar(city) {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            Task {
-                                await addCityToSidebar(city)
-                                showingAddCityView = false
-                                showingAddCityDetail = false
-                                if selectedTab == 1 {
-                                    recenterOnAllCities = true
-                                }
-                            }
-                        } label: {
-                            Image(systemName: "plus")
-                                .font(.system(size: 15, weight: .semibold))
-                        }
-                        .buttonStyle(.glassProminent)
-                        .buttonBorderShape(.circle)
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 

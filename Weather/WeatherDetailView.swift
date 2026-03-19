@@ -657,33 +657,48 @@ struct WeatherDetailView: View {
                 .padding(6)
                 .themedGlass(in: .capsule)
 
-            // Menu button (right) — native menu with Reveal + Delete
-            Menu {
-                if let revealAction = onRevealOnMap {
-                    Button {
-                        revealAction()
-                    } label: {
-                        Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+            // Menu button — native menu with Reveal + Delete
+            if onDeleteCity != nil || onRevealOnMap != nil {
+                Menu {
+                    if let revealAction = onRevealOnMap {
+                        Button {
+                            revealAction()
+                        } label: {
+                            Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+                        }
                     }
-                }
-                if let deleteAction = onDeleteCity {
-                    Button(role: .destructive) {
-                        deleteAction()
-                    } label: {
-                        Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                    if let deleteAction = onDeleteCity {
+                        Button(role: .destructive) {
+                            deleteAction()
+                        } label: {
+                            Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                        }
                     }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(AppTheme.shared.colors.primaryText)
+                        .frame(width: 36, height: 36)
+                        .padding(6)
+                        .themedGlass(in: .circle)
+                        .contentShape(Circle())
                 }
-            } label: {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(AppTheme.shared.colors.primaryText)
-                    .frame(width: 36, height: 36)
-                    .padding(6)
-                    .themedGlass(in: .circle)
-                    .contentShape(Circle())
+                .menuStyle(.button)
+                .buttonStyle(.plain)
             }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
+
+            // Add city button (right)
+            if let addAction = onAddCity {
+                Button {
+                    addAction()
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
+            }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
