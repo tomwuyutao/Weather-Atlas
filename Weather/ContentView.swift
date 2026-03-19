@@ -517,9 +517,7 @@ struct ContentView: View {
             iOSMainZStack
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar { iOSLeadingToolbarItems }
-                .toolbar { iOSPrincipalToolbarItem }
-                .toolbar { iOSTrailingToolbarItems }
+                .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(isPresented: $showingCityDetail) {
                     AnyView(iOSCityDetailDestination)
                 }
@@ -579,19 +577,6 @@ struct ContentView: View {
                                 .transition(.move(edge: .top).combined(with: .opacity))
                         }
                     }
-                    .overlay(alignment: .trailing) {
-                        if selectedTab == 1, (!isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch)) {
-                            Color.clear
-                                .frame(width: 60, height: 420)
-                                .contentShape(Rectangle())
-                                .overlay(alignment: .trailing) {
-                                    mapDateSlider(height: 340)
-                                }
-                                .padding(.bottom, 480)
-                                .padding(.trailing, 1)
-                                .transition(.opacity)
-                        }
-                    }
                     .opacity(selectedTab == 1 ? 1 : 0)
 
                 if !isMapSpecialMode {
@@ -600,18 +585,23 @@ struct ContentView: View {
                         iOSListView
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                             .background(theme.colors.background.ignoresSafeArea())
-                            .offset(x: selectedTab == 0 ? 0 : -10000)
+                            .opacity(selectedTab == 0 ? 1 : 0)
                     )
                 }
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedTab)
+            .animation(.easeInOut(duration: 0.25), value: selectedTab)
             .ignoresSafeArea(.keyboard)
             .overlay(alignment: .trailing) {
-                // Date slider on list view (map view has its own inside the map overlay)
-                if selectedTab == 0, !isMapSpecialMode {
-                    mapDateSlider(height: 340)
+                // Single date slider shared by both views — no animation on tab switch
+                if !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
+                    Color.clear
+                        .frame(width: 60, height: 420)
+                        .contentShape(Rectangle())
+                        .overlay(alignment: .trailing) {
+                            mapDateSlider(height: 340)
+                        }
+                        .padding(.bottom, 480)
                         .padding(.trailing, 1)
-                        .padding(.bottom, 120)
                         .transition(.opacity)
                 }
             }
@@ -1195,7 +1185,23 @@ struct ContentView: View {
     private var iOSUnifiedBottomBar: some View {
         HStack(spacing: 12) {
             if showingInlineSearch {
-                // SEARCH STATE: search bar (morphed from search button) + x button (morphed from view switcher)
+                // SEARCH STATE: view switcher stays left, search bar morphs from center capsule, x button morphs from …
+                Image(systemName: selectedTab == 0 ? (isGridView ? "square.grid.2x2.fill" : "list.bullet") : "map.fill")
+                    .contentTransition(.symbolEffect(.replace))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(theme.colors.accent)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = selectedTab == 0 ? 1 : 0
+                        }
+                    }
+
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 14, weight: .medium))
@@ -1214,10 +1220,11 @@ struct ContentView: View {
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 14)
                 .frame(height: 36)
                 .padding(6)
-                .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
+                .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
                 .themedGlass(in: .capsule)
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: inlineSearchText.isEmpty)
 
@@ -1238,7 +1245,23 @@ struct ContentView: View {
                     }
 
             } else if showingCountrySearch {
-                // COUNTRY SEARCH STATE: search bar + x button
+                // COUNTRY SEARCH STATE: view switcher stays left, search bar morphs from center, x from …
+                Image(systemName: selectedTab == 0 ? (isGridView ? "square.grid.2x2.fill" : "list.bullet") : "map.fill")
+                    .contentTransition(.symbolEffect(.replace))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(theme.colors.accent)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = selectedTab == 0 ? 1 : 0
+                        }
+                    }
+
                 HStack(spacing: 8) {
                     Image(systemName: "globe")
                         .font(.system(size: 14, weight: .medium))
@@ -1257,10 +1280,11 @@ struct ContentView: View {
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 14)
                 .frame(height: 36)
                 .padding(6)
-                .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
+                .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
                 .themedGlass(in: .capsule)
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: countrySearchText.isEmpty)
 
@@ -1345,47 +1369,14 @@ struct ContentView: View {
                     }
 
             } else {
-                // NORMAL STATE: search button (left) + list selector capsule (center, stretched) + view switcher (right)
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 36, height: 36)
-                    .padding(6)
-                    .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
-                    .themedGlass(in: .circle)
-                    .contentShape(Circle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                            showingInlineSearch = true
-                        }
-                    }
-
-                // List selector capsule — stretched to fill center
-                HStack(spacing: 6) {
-                    Text(toolbarTitle)
-                        .font(.avenir(.subheadline, weight: .semibold))
-                        .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity)
-                .frame(height: 36)
-                .padding(.horizontal, 6)
-                .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
-                .themedGlass(in: .capsule)
-                .contentShape(Capsule())
-                .onTapGesture {
-                    showingListSwitcher = true
-                }
-
+                // NORMAL STATE: view switcher (left) + list selector capsule with search (center) + … menu (right)
                 Image(systemName: selectedTab == 0 ? (isGridView ? "square.grid.2x2.fill" : "list.bullet") : "map.fill")
                     .contentTransition(.symbolEffect(.replace))
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(theme.colors.accent)
                     .frame(width: 36, height: 36)
                     .padding(6)
-                    .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+                    .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
                     .themedGlass(in: .circle)
                     .contentShape(Circle())
                     .onTapGesture {
@@ -1393,6 +1384,55 @@ struct ContentView: View {
                         withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                             selectedTab = selectedTab == 0 ? 1 : 0
                         }
+                    }
+
+                // List selector capsule with search button — stretched to fill center
+                HStack(spacing: 6) {
+                    Text(toolbarTitle)
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    // Search button inside capsule
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                showingInlineSearch = true
+                            }
+                        }
+                }
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+                .padding(.leading, 14)
+                .padding(.trailing, 4)
+                .padding(6)
+                .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
+                .themedGlass(in: .capsule)
+                .contentShape(Capsule())
+                .onTapGesture {
+                    showingListSwitcher = true
+                }
+
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        showingMenuPopover = true
+                    }
+                    .popover(isPresented: $showingMenuPopover) {
+                        iOSCustomMenu
+                            .presentationCompactAdaptation(.popover)
                     }
             }
         }

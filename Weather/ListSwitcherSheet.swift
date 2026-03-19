@@ -457,6 +457,11 @@ struct ListSwitcherSheet: View {
         }
         let newList = CityListID.createList(name: name)
         reorderableLists.append(newList)
+        // Deselect all and show only the new list
+        visibleListIDs = [newList.rawValue]
+        Task {
+            await weatherService.switchList(to: newList)
+        }
         isAddingList = false
         newListName = ""
     }
