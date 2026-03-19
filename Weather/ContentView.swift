@@ -1174,7 +1174,7 @@ struct ContentView: View {
     private var iOSUnifiedBottomBar: some View {
         HStack(spacing: 12) {
             if showingInlineSearch {
-                // SEARCH STATE: search bar (full width) + x button
+                // SEARCH STATE: search bar (morphed from search button) + x button (morphed from view switcher)
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 14, weight: .medium))
@@ -1196,7 +1196,7 @@ struct ContentView: View {
                 .padding(.horizontal, 14)
                 .frame(height: 36)
                 .padding(6)
-                .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
+                .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
                 .themedGlass(in: .capsule)
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: inlineSearchText.isEmpty)
 
@@ -1217,7 +1217,7 @@ struct ContentView: View {
                     }
 
             } else if showingCountrySearch {
-                // COUNTRY SEARCH STATE: search bar (full width) + x button
+                // COUNTRY SEARCH STATE: search bar + x button
                 HStack(spacing: 8) {
                     Image(systemName: "globe")
                         .font(.system(size: 14, weight: .medium))
@@ -1239,7 +1239,7 @@ struct ContentView: View {
                 .padding(.horizontal, 14)
                 .frame(height: 36)
                 .padding(6)
-                .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
+                .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
                 .themedGlass(in: .capsule)
                 .animation(.spring(response: 0.35, dampingFraction: 0.8), value: countrySearchText.isEmpty)
 
@@ -1324,51 +1324,20 @@ struct ContentView: View {
                     }
 
             } else {
-                // NORMAL STATE: tab switcher + spacer + date/map controls
-                HStack(spacing: 8) {
-                    Image(systemName: isGridView ? "square.grid.2x2" : "list.bullet")
-                        .contentTransition(.symbolEffect(.replace))
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(selectedTab == 0 ? theme.colors.dotRain : .secondary)
-                        .frame(width: 42, height: 44)
-                        .background {
-                            if selectedTab == 0 {
-                                Capsule()
-                                    .fill(.ultraThinMaterial)
-                                    .transition(.scale.combined(with: .opacity))
-                            }
+                // NORMAL STATE: search button (left) + date/map controls (center) + view switcher (right)
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            showingInlineSearch = true
                         }
-                        .contentShape(Capsule())
-                        .onTapGesture {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                selectedTab = 0
-                            }
-                        }
-
-                    Image(systemName: selectedTab == 1 ? "map.fill" : "map")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(selectedTab == 1 ? theme.colors.dotRain : .secondary)
-                        .frame(width: 42, height: 44)
-                        .background {
-                            if selectedTab == 1 {
-                                Capsule()
-                                    .fill(.ultraThinMaterial)
-                                    .transition(.scale.combined(with: .opacity))
-                            }
-                        }
-                        .contentShape(Capsule())
-                        .onTapGesture {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                selectedTab = 1
-                            }
-                        }
-                }
-                .padding(6)
-                .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
-                .themedGlass(in: .capsule)
-                .fixedSize()
+                    }
 
                 Spacer()
 
@@ -1379,7 +1348,25 @@ struct ContentView: View {
                         iOSMapControlsCapsule
                     }
                 }
-                .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+                .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
+
+                Spacer()
+
+                Image(systemName: selectedTab == 0 ? (isGridView ? "square.grid.2x2.fill" : "list.bullet") : "map.fill")
+                    .contentTransition(.symbolEffect(.replace))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(theme.colors.accent)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = selectedTab == 0 ? 1 : 0
+                        }
+                    }
             }
         }
         .padding(.horizontal, 16)
