@@ -539,18 +539,18 @@ struct WeatherDetailView: View {
                                     }
                                     Divider()
                                 }
-                                if let revealAction = onRevealOnMap {
-                                    Button {
-                                        revealAction()
-                                    } label: {
-                                        Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
-                                    }
-                                }
                                 if let deleteAction = onDeleteCity {
                                     Button(role: .destructive) {
                                         deleteAction()
                                     } label: {
                                         Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                                    }
+                                }
+                                if let revealAction = onRevealOnMap {
+                                    Button {
+                                        revealAction()
+                                    } label: {
+                                        Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
                                     }
                                 }
                             } label: {
@@ -733,11 +733,11 @@ struct WeatherDetailView: View {
                         }
                         Divider()
                     }
-                    if let revealAction = onRevealOnMap {
-                        Button {
-                            revealAction()
+                    if let deleteAction = onDeleteCity {
+                        Button(role: .destructive) {
+                            deleteAction()
                         } label: {
-                            Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+                            Label(localizedString("Delete City", locale: locale), systemImage: "trash")
                         }
                     }
                     if onRenameCity != nil {
@@ -748,11 +748,11 @@ struct WeatherDetailView: View {
                             Label(localizedString("Rename", locale: locale), systemImage: "pencil")
                         }
                     }
-                    if let deleteAction = onDeleteCity {
-                        Button(role: .destructive) {
-                            deleteAction()
+                    if let revealAction = onRevealOnMap {
+                        Button {
+                            revealAction()
                         } label: {
-                            Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                            Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
                         }
                     }
                 } label: {

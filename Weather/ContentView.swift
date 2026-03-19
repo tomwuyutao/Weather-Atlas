@@ -193,6 +193,9 @@ struct ContentView: View {
     @State var showingDeleteListConfirmation: Bool = false
     @State var showingRenameAlert: Bool = false
     @State var renameAlertText: String = ""
+    @State var showingCityRenameAlert: Bool = false
+    @State var cityRenameText: String = ""
+    @State var cityToRename: CityWeather?
     @State var showingListSwitcher: Bool = false
     @State var listSheetDetent: PresentationDetent = .medium
     @State var showingCountrySearch: Bool = false
@@ -695,6 +698,16 @@ struct ContentView: View {
                 .zIndex(3)
         }
 
+        // Tap-to-dismiss keyboard when search is active
+        if showingInlineSearch {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    inlineSearchFocused = false
+                }
+                .zIndex(9)
+        }
+
         // Search results overlay (only when typing)
         if showingInlineSearch, !inlineSearchText.isEmpty {
             iOSInlineSearchResults
@@ -818,7 +831,7 @@ struct ContentView: View {
     @ViewBuilder
     private var iOSActiveFilterButtons: some View {
         if filterSunny || showPlaybackButton {
-            HStack(spacing: 0) {
+            HStack(spacing: 8) {
                 if filterSunny {
                     Button {
                         withAnimation { filterSunny = false }
@@ -1440,6 +1453,16 @@ struct ContentView: View {
                 let trimmed = renameAlertText.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
                     weatherService.renameCurrentList(to: trimmed)
+                }
+            }
+        }
+        .alert(localizedString("Rename", locale: locale), isPresented: $showingCityRenameAlert) {
+            TextField(localizedString("Name", locale: locale), text: $cityRenameText)
+            Button(localizedString("Cancel", locale: locale), role: .cancel) { }
+            Button(localizedString("OK", locale: locale)) {
+                let trimmed = cityRenameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty, let city = cityToRename {
+                    weatherService.renameCity(city, to: trimmed)
                 }
             }
         }
