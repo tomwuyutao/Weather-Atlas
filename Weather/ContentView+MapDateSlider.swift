@@ -11,7 +11,7 @@ extension ContentView {
 
     // MARK: - Vertical Date Slider (Map Mode)
 
-    func mapDateSlider(height: CGFloat) -> some View {
+    func mapDateSlider(height: CGFloat, transparent: Bool = false) -> some View {
         let totalPositions = 11 // -1 (Now) through 9
         let stepHeight = height / CGFloat(totalPositions - 1)
 
@@ -48,7 +48,12 @@ extension ContentView {
                     .fixedSize()
                     .padding(.horizontal, isDraggingDateSlider ? 14 : 12)
                     .padding(.vertical, isDraggingDateSlider ? 9 : 7)
-                    .themedGlass(in: .capsule)
+                    .background(
+                        transparent
+                            ? theme.colors.glassFill.opacity(0.3)
+                            : (AppTheme.shared.isDetailedMapMode ? theme.colors.glassFill.opacity(0.3) : theme.colors.glassFill),
+                        in: .capsule
+                    )
 
                 Capsule()
                     .fill(Color.gray.opacity(0.6))

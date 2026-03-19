@@ -269,8 +269,14 @@ struct WeatherEffectOverlay: View {
     
     /// Whether the displayed icon contains a sun element (cloud.sun.fill, etc.)
     private var iconHasSun: Bool {
-        if let iconName { return iconName.contains("sun") }
+        if let iconName { return iconName.contains("sun") && !iconName.contains("moon") }
         return condition == .clear || condition == .partlyCloudy
+    }
+    
+    /// Whether the displayed icon is a moon (nighttime)
+    private var iconIsMoon: Bool {
+        if let iconName { return iconName.contains("moon") }
+        return false
     }
     
     /// Whether the displayed icon is a plain cloud (cloud.fill)
@@ -282,10 +288,16 @@ struct WeatherEffectOverlay: View {
     var body: some View {
         switch condition {
         case .clear:
-            SunGlowEffect()
+            if iconIsMoon {
+                EmptyView()
+            } else {
+                SunGlowEffect()
+            }
         case .partlyCloudy:
             if iconIsCloud {
                 CloudDriftEffect()
+            } else if iconIsMoon {
+                EmptyView()
             } else {
                 SunGlowEffect(subtle: true)
             }

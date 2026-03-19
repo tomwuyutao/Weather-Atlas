@@ -598,7 +598,7 @@ struct ContentView: View {
                         .frame(width: 60, height: 420)
                         .contentShape(Rectangle())
                         .overlay(alignment: .trailing) {
-                            mapDateSlider(height: 340)
+                            mapDateSlider(height: 340, transparent: selectedTab == 0)
                         }
                         .padding(.bottom, 480)
                         .padding(.trailing, 1)
@@ -618,14 +618,19 @@ struct ContentView: View {
 
     @ViewBuilder
     private var _iOSMainOverlaysContent: some View {
-        // Expanded city card on map
+        // Expanded city card on map — positioned at bottom, covering toolbar rows
         if selectedTab == 1, (!isMapSpecialMode || countryOverviewActive || radialSearchActive), showingMapExpandedCard, let city = tappedCity {
             mapExpandedCard(for: city)
                 .id(city.city.id)
-                .transition(.blurReplace)
                 .padding(.horizontal, 16)
-                .padding(.bottom, 72)
-                .zIndex(1)
+                .padding(.bottom, 4)
+                .transition(
+                    .asymmetric(
+                        insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),
+                        removal: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20))
+                    )
+                )
+                .zIndex(12)
         }
 
         // Country selection overlay (top part: pin + country name)
@@ -687,7 +692,7 @@ struct ContentView: View {
         }
 
         // Floating map controls capsule (above bottom bar, right side)
-        if selectedTab == 1, !isMapSpecialMode, !showingInlineSearch, !showingCountrySearch, previewCity == nil {
+        if selectedTab == 1, !isMapSpecialMode, !showingInlineSearch, !showingCountrySearch, previewCity == nil, !showingMapExpandedCard {
             HStack {
                 Spacer()
                 iOSMapControlsCapsule
@@ -699,7 +704,7 @@ struct ContentView: View {
         }
 
         // Floating bottom toolbar / inline search bar / preview toolbar
-        if !isMapSpecialMode {
+        if !isMapSpecialMode, !(selectedTab == 1 && showingMapExpandedCard) {
             iOSUnifiedBottomBar
                 .zIndex(11)
         }
@@ -1185,23 +1190,7 @@ struct ContentView: View {
     private var iOSUnifiedBottomBar: some View {
         HStack(spacing: 12) {
             if showingInlineSearch {
-                // SEARCH STATE: view switcher stays left, search bar morphs from center capsule, x button morphs from …
-                Image(systemName: selectedTab == 0 ? (isGridView ? "square.grid.2x2.fill" : "list.bullet") : "map.fill")
-                    .contentTransition(.symbolEffect(.replace))
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.colors.accent)
-                    .frame(width: 36, height: 36)
-                    .padding(6)
-                    .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
-                    .themedGlass(in: .circle)
-                    .contentShape(Circle())
-                    .onTapGesture {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selectedTab = selectedTab == 0 ? 1 : 0
-                        }
-                    }
-
+                // SEARCH STATE: search capsule encompasses left+center, x button on right
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 14, weight: .medium))
@@ -1245,23 +1234,7 @@ struct ContentView: View {
                     }
 
             } else if showingCountrySearch {
-                // COUNTRY SEARCH STATE: view switcher stays left, search bar morphs from center, x from …
-                Image(systemName: selectedTab == 0 ? (isGridView ? "square.grid.2x2.fill" : "list.bullet") : "map.fill")
-                    .contentTransition(.symbolEffect(.replace))
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.colors.accent)
-                    .frame(width: 36, height: 36)
-                    .padding(6)
-                    .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
-                    .themedGlass(in: .circle)
-                    .contentShape(Circle())
-                    .onTapGesture {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selectedTab = selectedTab == 0 ? 1 : 0
-                        }
-                    }
-
+                // COUNTRY SEARCH STATE: search capsule encompasses left+center, x button on right
                 HStack(spacing: 8) {
                     Image(systemName: "globe")
                         .font(.system(size: 14, weight: .medium))
@@ -1387,29 +1360,33 @@ struct ContentView: View {
                     }
 
                 // List selector capsule with search button — stretched to fill center
-                HStack(spacing: 6) {
+                ZStack {
+                    // Centered list name
                     Text(toolbarTitle)
                         .font(.avenir(.subheadline, weight: .semibold))
                         .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    // Search button inside capsule
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 32, height: 32)
-                        .contentShape(Circle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                showingInlineSearch = true
+
+                    // Chevron left-aligned, search right-aligned
+                    HStack {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 32, height: 32)
+                            .contentShape(Circle())
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                    showingInlineSearch = true
+                                }
                             }
-                        }
+                    }
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 36)
-                .padding(.leading, 14)
+                .padding(.leading, 10)
                 .padding(.trailing, 4)
                 .padding(6)
                 .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
