@@ -732,10 +732,11 @@ struct WeatherDetailView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(AppTheme.shared.colors.primaryText)
                     .frame(width: 36, height: 36)
+                    .padding(6)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .padding(6)
-            .themedGlass(in: .circle)
 
             // City name capsule (center)
             Text(cityWeather.city.localizedName(locale: locale))

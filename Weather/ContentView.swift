@@ -482,9 +482,9 @@ struct ContentView: View {
                             } label: {
                                 Image(systemName: isEditMode ? "checkmark" : "pencil")
                                     .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(isEditMode ? .white : theme.colors.primaryText)
+                                    .foregroundStyle(theme.colors.primaryText)
                                     .frame(width: 44, height: 44)
-                                    .background(isEditMode ? theme.colors.accent : theme.colors.glassFill, in: .circle)
+                                    .themedGlass(in: .circle)
                             }
                             .buttonStyle(.plain)
                         }
@@ -1177,11 +1177,11 @@ struct ContentView: View {
 
                 Image(systemName: "checkmark")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(theme.colors.primaryText)
                     .frame(width: 36, height: 36)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
-                    .background(theme.colors.accent, in: .circle)
+                    .themedGlass(in: .circle)
                     .contentShape(Circle())
                     .onTapGesture {
                         if let city = previewCity {

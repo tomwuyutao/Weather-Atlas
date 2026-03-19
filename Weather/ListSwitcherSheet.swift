@@ -30,21 +30,22 @@ struct ListSwitcherSheet: View {
     @FocusState private var editListNameFocused: Bool
 
     var body: some View {
-        ZStack(alignment: .top) {
-            theme.colors.background.ignoresSafeArea()
+        GlassEffectContainer {
+            ZStack(alignment: .top) {
+                theme.colors.background.ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                Spacer().frame(height: 16)
+                VStack(spacing: 0) {
+                    Spacer().frame(height: 16)
 
-                if isEditing {
-                    editingView
-                } else {
-                    selectionView
-                    bottomBar
+                    if isEditing {
+                        editingView
+                    } else {
+                        selectionView
+                        bottomBar
+                    }
                 }
             }
         }
-
     }
 
     // MARK: - Selection View (multi-select rows)
@@ -325,9 +326,9 @@ struct ListSwitcherSheet: View {
                 } label: {
                     Image(systemName: "checkmark")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(theme.colors.primaryText)
                         .frame(width: 44, height: 44)
-                        .background(theme.colors.accent, in: .circle)
+                        .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
             }

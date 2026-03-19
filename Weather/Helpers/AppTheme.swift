@@ -294,21 +294,6 @@ extension EnvironmentValues {
     }
 }
 
-// MARK: - Themed Glass Modifier
-
-private struct ThemedGlassModifier<S: InsettableShape>: ViewModifier {
-    @Environment(\.colorScheme) private var colorScheme
-    let shape: S
-
-    func body(content: Content) -> some View {
-        if colorScheme == .dark {
-            content.glassEffect(.regular.interactive(), in: shape)
-        } else {
-            content.glassEffect(.regular.tint(Color.white.opacity(0.05)).interactive(), in: shape)
-        }
-    }
-}
-
 // MARK: - View Modifiers
 extension View {
     /// Applies palette icon coloring for a weather SF Symbol.
@@ -330,10 +315,9 @@ extension View {
         }
     }
 
-    /// Themed Liquid Glass background for capsule-shaped UI elements.
-    /// Light mode gets a subtle white tint; dark mode uses untinted glass.
+    /// Themed Liquid Glass background.
     func themedGlass(in shape: some InsettableShape) -> some View {
-        self.modifier(ThemedGlassModifier(shape: shape))
+        self.glassEffect(.regular.interactive(), in: shape)
     }
 
 }

@@ -106,9 +106,9 @@ extension ContentView {
                 } label: {
                     Image(systemName: "checkmark")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.white)
+                        .foregroundStyle(theme.colors.primaryText)
                         .frame(width: 44, height: 44)
-                        .background(theme.colors.accent, in: .circle)
+                        .themedGlass(in: .circle)
                 }
                 .buttonStyle(.plain)
             }
