@@ -1284,12 +1284,8 @@ struct ContentView: View {
                         .font(.avenir(.subheadline, weight: .semibold))
                         .lineLimit(1)
 
-                    // Chevron left-aligned, search right-aligned
+                    // Search left-aligned, chevron right-aligned
                     HStack {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                        Spacer()
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.secondary)
@@ -1300,12 +1296,16 @@ struct ContentView: View {
                                     showingInlineSearch = true
                                 }
                             }
+                        Spacer()
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity)
                 .frame(height: 36)
-                .padding(.leading, 10)
-                .padding(.trailing, 4)
+                .padding(.leading, 4)
+                .padding(.trailing, 10)
                 .padding(6)
                 .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
                 .themedGlass(in: .capsule)
@@ -1335,13 +1335,7 @@ struct ContentView: View {
         .overlay(alignment: .bottomTrailing) {
             if showingMenuPopover {
                 iOSCustomMenu
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(AppTheme.shared.isDetailedMapMode && colorScheme == .light
-                                ? Color(hex: 0xF5F1EC)
-                                : theme.colors.glassFill)
-                    )
-                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .themedGlass(in: .rect(cornerRadius: 16))
                     .padding(.horizontal, 16)
                     .padding(.bottom, 4)
                     .transition(.scale(scale: 0.3, anchor: .bottomTrailing).combined(with: .opacity))
@@ -2349,7 +2343,7 @@ struct WeatherMarker: View {
 
 #Preview {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
-    let _ = UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+    let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
     ContentView()
 }
 

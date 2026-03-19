@@ -48,18 +48,12 @@ extension ContentView {
                     .fixedSize()
                     .padding(.horizontal, isDraggingDateSlider ? 14 : 12)
                     .padding(.vertical, isDraggingDateSlider ? 9 : 7)
-                    .background(
-                        transparent
-                            ? theme.colors.glassFill.opacity(0.3)
-                            : (AppTheme.shared.isDetailedMapMode ? theme.colors.glassFill.opacity(0.3) : theme.colors.glassFill),
-                        in: .capsule
-                    )
+                    .themedGlass(in: .capsule)
 
-                Capsule()
-                    .fill(Color.gray.opacity(0.6))
+                Color.clear
                     .frame(width: isDraggingDateSlider ? 30 : 24, height: isDraggingDateSlider ? 20 : 16)
+                    .themedGlass(in: .capsule)
                     .offset(x: isDraggingDateSlider ? 12 : 9)
-                    .shadow(color: .black.opacity(0.25), radius: 4, x: -2)
             }
             .animation(.smooth(duration: 0.2), value: isDraggingDateSlider)
             .offset(y: (isDraggingDateSlider ? sliderDragFraction * CGFloat(totalPositions - 1) : CGFloat(offsetToPosition(selectedDayOffset))) * stepHeight - (isDraggingDateSlider ? 10 : 8))

@@ -816,11 +816,7 @@ struct WeatherDetailView: View {
                 }
                 .padding(.vertical, 8)
                 .fixedSize(horizontal: true, vertical: true)
-                .background(
-                    RoundedRectangle(cornerRadius: 16)
-                        .fill(AppTheme.shared.colors.glassFill)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .themedGlass(in: .rect(cornerRadius: 16))
                 .padding(.trailing, 16)
                 .padding(.bottom, 4)
                 .transition(.scale(scale: 0.3, anchor: .bottomTrailing).combined(with: .opacity))
