@@ -598,6 +598,8 @@ extension ContentView {
                 }
             }
 
+            Divider()
+
             Button {
                 showingSettings = true
             } label: {

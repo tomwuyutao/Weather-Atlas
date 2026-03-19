@@ -18,6 +18,9 @@ struct WeatherDetailView: View {
     let availableLists: [CityListID]
     let onDeleteCity: (() -> Void)?
     let onRevealOnMap: (() -> Void)?
+    let onPreviousCity: (() -> Void)?
+    let onNextCity: (() -> Void)?
+    let onShowSettings: (() -> Void)?
     let isInSidebar: Bool
     let showCloudCover: Bool
     var previewCurrentHour: Int? = nil
@@ -68,7 +71,7 @@ struct WeatherDetailView: View {
     }
 
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onAddCityToList: ((CityListID) -> Void)? = nil, availableLists: [CityListID] = [], onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil, initialChartMetric: ChartMetric? = nil) {
+    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onAddCityToList: ((CityListID) -> Void)? = nil, availableLists: [CityListID] = [], onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, onPreviousCity: (() -> Void)? = nil, onNextCity: (() -> Void)? = nil, onShowSettings: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil, initialChartMetric: ChartMetric? = nil) {
         self.cityWeather = cityWeather
         self._selectedDayOffset = selectedDayOffset
         self.namespace = namespace
@@ -78,6 +81,9 @@ struct WeatherDetailView: View {
         self.availableLists = availableLists
         self.onDeleteCity = onDeleteCity
         self.onRevealOnMap = onRevealOnMap
+        self.onPreviousCity = onPreviousCity
+        self.onNextCity = onNextCity
+        self.onShowSettings = onShowSettings
         self.isInSidebar = isInSidebar
         self.showCloudCover = showCloudCover
         self.previewCurrentHour = previewCurrentHour
@@ -516,7 +522,7 @@ struct WeatherDetailView: View {
             .overlay(alignment: .topTrailing) {
                 if isPopup {
                     HStack(spacing: 8) {
-                        if isInSidebar, onDeleteCity != nil || onRevealOnMap != nil {
+                        if isInSidebar, onDeleteCity != nil || onRevealOnMap != nil || onShowSettings != nil {
                             Menu {
                                 if let revealAction = onRevealOnMap {
                                     Button {
@@ -530,6 +536,14 @@ struct WeatherDetailView: View {
                                         deleteAction()
                                     } label: {
                                         Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                                    }
+                                }
+                                if let settingsAction = onShowSettings {
+                                    Divider()
+                                    Button {
+                                        settingsAction()
+                                    } label: {
+                                        Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
                                     }
                                 }
                             } label: {
@@ -632,7 +646,7 @@ struct WeatherDetailView: View {
             }
             .buttonStyle(.plain)
 
-            // City name capsule (center)
+            // City name capsule (center) — swipe left/right to switch cities
             Text(cityWeather.city.localizedName(locale: locale))
                 .font(.avenir(.subheadline, weight: .semibold))
                 .lineLimit(1)
@@ -641,9 +655,34 @@ struct WeatherDetailView: View {
                 .padding(.horizontal, 14)
                 .padding(6)
                 .themedGlass(in: .capsule)
+                .contentShape(Capsule())
+                .contextMenu {
+                    if let deleteAction = onDeleteCity {
+                        Button(role: .destructive) {
+                            deleteAction()
+                        } label: {
+                            Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                        }
+                    }
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 30, coordinateSpace: .local)
+                        .onEnded { value in
+                            let dx = value.translation.width
+                            let dy = abs(value.translation.height)
+                            guard abs(dx) > dy else { return }
+                            if dx < 0, let next = onNextCity {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                next()
+                            } else if dx > 0, let prev = onPreviousCity {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                prev()
+                            }
+                        }
+                )
 
-            // Menu button — native menu with Reveal + Delete
-            if onDeleteCity != nil || onRevealOnMap != nil {
+            // Menu button — native menu with Reveal + Delete + Settings
+            if onDeleteCity != nil || onRevealOnMap != nil || onShowSettings != nil {
                 Menu {
                     if let revealAction = onRevealOnMap {
                         Button {
@@ -657,6 +696,14 @@ struct WeatherDetailView: View {
                             deleteAction()
                         } label: {
                             Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                        }
+                    }
+                    if let settingsAction = onShowSettings {
+                        Divider()
+                        Button {
+                            settingsAction()
+                        } label: {
+                            Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
                         }
                     }
                 } label: {

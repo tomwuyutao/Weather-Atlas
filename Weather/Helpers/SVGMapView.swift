@@ -254,7 +254,8 @@ struct SVGMapView: View {
                 filterSunny: filterSunny,
                 passesFilter: passesFilter,
                 isPlaying: isPlaying,
-                displayMode: showDots ? .dot : .card
+                displayMode: showDots ? .dot : .card,
+                hideCityName: false
             )
             .scaleEffect(((tappedMarkerID == cityWeather.id || highlightedMarkerID == cityWeather.id || (showingCityDetail && tappedCity?.id == cityWeather.id)) ? 1.5 : 1.0) / liveZoom, anchor: .center)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: tappedMarkerID)

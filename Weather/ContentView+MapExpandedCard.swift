@@ -97,9 +97,9 @@ extension ContentView {
         }()
         return HStack(alignment: .bottom, spacing: 0) {
             // Left: temperature, city, details
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 10) {
                 // Large value: overlay data or temperature
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
                         .font(.custom("AvenirNext-Medium", size: 42, relativeTo: .largeTitle))
                         .foregroundStyle(.primary)
@@ -109,7 +109,7 @@ extension ContentView {
                         .foregroundStyle(.secondary)
                         .offset(x: 4, y: -4)
                 }
-                .offset(x: -4, y: 2)
+                .offset(x: -4, y: -4)
                 .animation(.smooth(duration: 0.4), value: mapOverlayMode)
 
                 // City name
@@ -154,7 +154,7 @@ extension ContentView {
             .padding(.trailing, 10)
         }
         .padding(.horizontal, 24)
-        .padding(.top, 32)
+        .padding(.top, 28)
         .padding(.bottom, 20)
         .frame(maxWidth: isIPad ? 420 : .infinity)
         .background(

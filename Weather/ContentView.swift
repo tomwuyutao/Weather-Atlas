@@ -195,6 +195,8 @@ struct ContentView: View {
     @State var showingCountrySearch: Bool = false
     @State private var countrySearchText: String = ""
     @FocusState private var countrySearchFocused: Bool
+    @State private var pendingCountryList: String?
+    @State private var isLoadingPendingCountry: Bool = false
     @State private var allCountries: [String] = []
     @State var showingMapStylePopover: Bool = false
     @State var showingMapStyleSheet: Bool = false
@@ -352,6 +354,7 @@ struct ContentView: View {
             mapStyleSheet
                 .presentationDetents([.height(330)])
                 .presentationDragIndicator(.visible)
+                .presentationBackground(theme.colors.glassFill)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
@@ -387,7 +390,7 @@ struct ContentView: View {
             .presentationDetents([.medium, .large], selection: $listSheetDetent)
             .presentationDragIndicator(.visible)
             .presentationContentInteraction(.scrolls)
-
+            .presentationBackground(theme.colors.glassFill)
         }
         .sheet(isPresented: isIPad ? $showingCountrySearch : .constant(false)) {
             CountrySearchSheet(
@@ -801,9 +804,9 @@ struct ContentView: View {
                         withAnimation { filterSunny = false }
                     } label: {
                         Image(systemName: "sun.max.fill")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 42, height: 44)
+                            .frame(width: 36, height: 36)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -811,7 +814,7 @@ struct ContentView: View {
                     if showPlaybackButton {
                         Rectangle()
                             .fill(theme.colors.primaryText.opacity(0.15))
-                            .frame(width: 1, height: 20)
+                            .frame(width: 1, height: 18)
                     }
                 }
 
@@ -821,9 +824,9 @@ struct ContentView: View {
                     } label: {
                         Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                             .contentTransition(.symbolEffect(.replace))
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 42, height: 44)
+                            .frame(width: 36, height: 36)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -864,9 +867,9 @@ struct ContentView: View {
                 }
             } label: {
                 Image(systemName: "wand.and.stars")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 42, height: 44)
+                    .frame(width: 36, height: 36)
                     .contentShape(Rectangle())
             }
             .menuStyle(.button)
@@ -890,9 +893,9 @@ struct ContentView: View {
                     }
                 } label: {
                     Image(systemName: "dot.squareshape.split.2x2")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.primary)
-                        .frame(width: 42, height: 44)
+                        .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
                 .menuStyle(.button)
@@ -906,9 +909,9 @@ struct ContentView: View {
                     }
                 } label: {
                     Image(systemName: "dot.squareshape.split.2x2")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.primary)
-                        .frame(width: 42, height: 44)
+                        .frame(width: 36, height: 36)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -918,9 +921,9 @@ struct ContentView: View {
                 showingMapStyleSheet = true
             } label: {
                 Image(systemName: "square.3.layers.3d")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
-                    .frame(width: 42, height: 44)
+                    .frame(width: 36, height: 36)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -931,6 +934,14 @@ struct ContentView: View {
     }
 
     // Radial search overlays are in ContentView+RadialSearch.swift
+
+    private func navigatableCity(offset: Int, from city: CityWeather) -> CityWeather? {
+        let cities = detailOpenedFromList ? listViewCities : mapCities
+        guard let idx = cities.firstIndex(where: { $0.city.name == city.city.name }) else { return nil }
+        let newIdx = idx + offset
+        guard cities.indices.contains(newIdx) else { return nil }
+        return cities[newIdx]
+    }
 
     @ViewBuilder
     private var iOSCityDetailDestination: some View {
@@ -983,6 +994,23 @@ struct ContentView: View {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         centerOnCityTrigger = revealCity
                     }
+                },
+                onPreviousCity: navigatableCity(offset: -1, from: city) != nil ? {
+                    if let prev = navigatableCity(offset: -1, from: city) {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            tappedCity = prev
+                        }
+                    }
+                } : nil,
+                onNextCity: navigatableCity(offset: 1, from: city) != nil ? {
+                    if let next = navigatableCity(offset: 1, from: city) {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            tappedCity = next
+                        }
+                    }
+                } : nil,
+                onShowSettings: {
+                    showingSettings = true
                 },
                 isInSidebar: cityIsInSidebar(city),
                 showCloudCover: showCloudCover,
@@ -1043,6 +1071,61 @@ struct ContentView: View {
                         }
                     }
 
+            } else if showingCountrySearch, let pending = pendingCountryList {
+                // COUNTRY CONFIRM STATE: x (left) + country name capsule (center) + blue + (right)
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        // Delete the just-created list and revert
+                        Task {
+                            await weatherService.deleteCurrentList()
+                        }
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            pendingCountryList = nil
+                            isLoadingPendingCountry = false
+                            recenterOnAllCities = true
+                        }
+                    }
+
+                Text(pending)
+                    .font(.avenir(.subheadline, weight: .semibold))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 36)
+                    .padding(.horizontal, 14)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
+                    .themedGlass(in: .capsule)
+                    .contentShape(Capsule())
+
+                if isLoadingPendingCountry {
+                    ProgressView()
+                        .frame(width: 36, height: 36)
+                        .padding(6)
+                        .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+                } else {
+                    Button {
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            showingCountrySearch = false
+                            pendingCountryList = nil
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(width: 36, height: 36)
+                    }
+                    .buttonStyle(.glassProminent)
+                    .buttonBorderShape(.circle)
+                    .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+                    .transition(.scale.combined(with: .opacity))
+                }
+
             } else if showingCountrySearch {
                 // COUNTRY SEARCH STATE: search capsule encompasses left+center, x button on right
                 HStack(spacing: 8) {
@@ -1084,6 +1167,7 @@ struct ContentView: View {
                             showingCountrySearch = false
                             countrySearchText = ""
                             countrySearchFocused = false
+                            pendingCountryList = nil
                         }
                     }
 
@@ -1256,6 +1340,49 @@ struct ContentView: View {
                 .onTapGesture {
                     showingListSwitcher = true
                 }
+                .contextMenu {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            editingListName = weatherService.activeListID.localizedDisplayName(locale: locale)
+                            isEditingListName = true
+                            listNameFieldFocused = true
+                        }
+                    } label: {
+                        Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+                    }
+                    Button(role: .destructive) {
+                        showingDeleteListConfirmation = true
+                    } label: {
+                        Label(localizedString("Delete", locale: locale), systemImage: "trash")
+                    }
+                }
+                .gesture(
+                    DragGesture(minimumDistance: 30, coordinateSpace: .local)
+                        .onEnded { value in
+                            let dx = value.translation.width
+                            let dy = abs(value.translation.height)
+                            guard abs(dx) > dy else { return }
+                            let allLists = CityListID.allLists
+                            guard !allLists.isEmpty else { return }
+                            let currentIdx = allLists.firstIndex(where: { visibleListIDs.contains($0.rawValue) }) ?? 0
+                            let newIdx: Int
+                            if dx < 0 {
+                                newIdx = (currentIdx + 1) % allLists.count
+                            } else {
+                                newIdx = (currentIdx - 1 + allLists.count) % allLists.count
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            let newList = allLists[newIdx]
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                visibleListIDs = [newList.rawValue]
+                            }
+                            Task {
+                                isLoadingMapList = true
+                                await weatherService.switchList(to: newList)
+                                isLoadingMapList = false
+                            }
+                        }
+                )
 
                 iOSNativeMenu
                     .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
@@ -1387,7 +1514,20 @@ struct ContentView: View {
                 List {
                     ForEach(filteredCountries, id: \.self) { country in
                         Button {
-                            selectCountry(country)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                pendingCountryList = country
+                                countrySearchText = ""
+                                countrySearchFocused = false
+                                isLoadingPendingCountry = true
+                            }
+                            Task {
+                                visibleListIDs = []
+                                await weatherService.addCountryList(country: country)
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    isLoadingPendingCountry = false
+                                }
+                                recenterOnAllCities = true
+                            }
                         } label: {
                             HStack(spacing: 12) {
                                 Text(country)
@@ -1441,6 +1581,7 @@ struct ContentView: View {
         }
         Task {
             try? await Task.sleep(for: .milliseconds(150))
+            visibleListIDs = []
             await weatherService.addCountryList(country: country)
             withAnimation(.easeIn(duration: 0.2)) {
                 listContentOpacity = 1
@@ -1904,6 +2045,7 @@ struct WeatherMarker: View {
     var isPlaying: Bool = false
     var displayMode: MarkerDisplayMode = .card
     var isSelected: Bool = false
+    var hideCityName: Bool = false
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
@@ -2203,12 +2345,14 @@ struct WeatherMarker: View {
                 .offset(x: 2)
                 .animation(.smooth(duration: 0.4), value: overlayMode)
 
-            // City name — secondary, smaller
-            Text(cityWeather.city.localizedName(locale: locale))
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(AppTheme.shared.colors.primaryText.opacity(0.75))
-                .lineLimit(1)
-                .minimumScaleFactor(0.5)
+            // City name — secondary, smaller (hidden when detail card is shown)
+            if !hideCityName {
+                Text(cityWeather.city.localizedName(locale: locale))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(AppTheme.shared.colors.primaryText.opacity(0.75))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.5)
+            }
         }
         .offset(y: -16)
     }

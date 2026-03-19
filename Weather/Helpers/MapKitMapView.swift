@@ -100,6 +100,7 @@ struct MapKitMapView: View {
                         highlightedMarkerID: highlightedMarkerID,
                         tappedMarkerID: tappedMarkerID,
                         forceDotsOnly: forceDotsOnly,
+                        mapMode: mapMode,
                         showingCityDetail: $showingCityDetail,
                         tappedCity: $tappedCity
                     )
@@ -358,6 +359,7 @@ private struct AnnotationsOverlay: View {
     let highlightedMarkerID: UUID?
     let tappedMarkerID: UUID?
     var forceDotsOnly: Bool = false
+    var mapMode: String = "minimal"
     @Binding var showingCityDetail: Bool
     @Binding var tappedCity: CityWeather?
 
@@ -410,7 +412,8 @@ private struct AnnotationsOverlay: View {
                         passesFilter: true,
                         isPlaying: isPlaying,
                         displayMode: markerMode,
-                        isSelected: showingCityDetail && tappedCity?.id == cityWeather.id
+                        isSelected: showingCityDetail && tappedCity?.id == cityWeather.id,
+                        hideCityName: mapMode == "detailed"
                     )
                     .scaleEffect(
                         (tappedMarkerID == cityWeather.id || highlightedMarkerID == cityWeather.id || (showingCityDetail && tappedCity?.id == cityWeather.id)) ? 1.5 : 1.0

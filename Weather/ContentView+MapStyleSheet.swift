@@ -13,7 +13,6 @@ extension ContentView {
 
     var mapStyleSheet: some View {
         ZStack(alignment: .top) {
-            theme.colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
                 // Tab switcher row — fixed height so content below doesn't shift it
@@ -71,7 +70,7 @@ extension ContentView {
                                     Text(mode.capitalized)
                                         .font(.avenir(.footnote, weight: .semibold))
                                         .foregroundStyle(.white)
-                                        .padding(.horizontal, 8)
+                                        .padding(.horizontal, 10)
                                         .padding(.vertical, 4)
                                         .background(.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 6))
                                         .padding(8)
@@ -90,9 +89,9 @@ extension ContentView {
                                         }
                                     }
                                 }
-                                .clipShape(RoundedRectangle(cornerRadius: 10))
+                                .clipShape(RoundedRectangle(cornerRadius: 14))
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 10)
+                                    RoundedRectangle(cornerRadius: 14)
                                         .strokeBorder(
                                             mapMode == mode ? Color(hex: 0x1579C7) : theme.colors.mapBorder.opacity(0.4),
                                             lineWidth: mapMode == mode ? 2 : 1
@@ -103,7 +102,7 @@ extension ContentView {
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 20)
                     .opacity(mapStyleTab == 0 ? 1 : 0)
 
                     // Overlays tab

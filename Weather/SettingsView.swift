@@ -104,11 +104,7 @@ struct SettingsView: View {
     @Environment(\.locale) private var locale
 
     @State private var showingResetConfirmation = false
-    @State private var showingTempPicker = false
-    @State private var showingDistancePicker = false
-    @State private var showingViewPicker = false
-    @State private var showingLanguagePicker = false
-    @State private var showingThemePicker = false
+
 
     private var selectedUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnit) ?? .celsius
@@ -129,130 +125,84 @@ struct SettingsView: View {
                         // MARK: General
                         settingsSection(title: localizedString("General", locale: locale)) {
                             // Temperature
-                            settingsRow(icon: "thermometer.medium", label: localizedString("Temperature", locale: locale), value: selectedUnit.symbol, isPresented: $showingTempPicker) {
-                                showingTempPicker = true
-                            } popoverContent: {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    menuRow(icon: "thermometer.medium", label: "Celsius (°C)", isSelected: selectedUnit == .celsius) {
-                                        temperatureUnit = TemperatureUnit.celsius.rawValue
-                                        showingTempPicker = false
-                                    }
-                                    menuRow(icon: "thermometer.medium", label: "Fahrenheit (°F)", isSelected: selectedUnit == .fahrenheit) {
-                                        temperatureUnit = TemperatureUnit.fahrenheit.rawValue
-                                        showingTempPicker = false
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 220)
-                                .themedPopoverBackground()
-                                .presentationCompactAdaptation(.popover)
+                            settingsMenuRow(icon: "thermometer.medium", label: localizedString("Temperature", locale: locale), value: selectedUnit.symbol) {
+                                Picker(selection: Binding(
+                                    get: { temperatureUnit },
+                                    set: { temperatureUnit = $0 }
+                                )) {
+                                    Text("Celsius (°C)").tag(TemperatureUnit.celsius.rawValue)
+                                    Text("Fahrenheit (°F)").tag(TemperatureUnit.fahrenheit.rawValue)
+                                } label: { EmptyView() }
+                                .pickerStyle(.inline)
                             }
 
                             rowDivider()
 
                             // Distance
-                            settingsRow(icon: "ruler", label: localizedString("Distance", locale: locale), value: selectedDistanceUnit.symbol, isPresented: $showingDistancePicker) {
-                                showingDistancePicker = true
-                            } popoverContent: {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    menuRow(icon: "ruler", label: "Kilometers (km)", isSelected: selectedDistanceUnit == .kilometers) {
-                                        distanceUnit = DistanceUnit.kilometers.rawValue
-                                        showingDistancePicker = false
-                                    }
-                                    menuRow(icon: "ruler", label: "Miles (mi)", isSelected: selectedDistanceUnit == .miles) {
-                                        distanceUnit = DistanceUnit.miles.rawValue
-                                        showingDistancePicker = false
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 220)
-                                .themedPopoverBackground()
-                                .presentationCompactAdaptation(.popover)
+                            settingsMenuRow(icon: "ruler", label: localizedString("Distance", locale: locale), value: selectedDistanceUnit.symbol) {
+                                Picker(selection: Binding(
+                                    get: { distanceUnit },
+                                    set: { distanceUnit = $0 }
+                                )) {
+                                    Text("Kilometers (km)").tag(DistanceUnit.kilometers.rawValue)
+                                    Text("Miles (mi)").tag(DistanceUnit.miles.rawValue)
+                                } label: { EmptyView() }
+                                .pickerStyle(.inline)
                             }
 
                             rowDivider()
 
                             // Default View
-                            settingsRow(
+                            settingsMenuRow(
                                 icon: isGridView ? "square.grid.2x2" : "list.bullet",
                                 label: localizedString("Default View", locale: locale),
-                                value: isGridView ? localizedString("Grid View", locale: locale) : localizedString("List View", locale: locale),
-                                isPresented: $showingViewPicker
+                                value: isGridView ? localizedString("Grid View", locale: locale) : localizedString("List View", locale: locale)
                             ) {
-                                showingViewPicker = true
-                            } popoverContent: {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    menuRow(icon: "list.bullet", label: "List", isSelected: !isGridView) {
-                                        isGridView = false
-                                        showingViewPicker = false
-                                    }
-                                    menuRow(icon: "square.grid.2x2", label: "Grid", isSelected: isGridView) {
-                                        isGridView = true
-                                        showingViewPicker = false
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 220)
-                                .themedPopoverBackground()
-                                .presentationCompactAdaptation(.popover)
+                                Picker(selection: Binding(
+                                    get: { isGridView },
+                                    set: { isGridView = $0 }
+                                )) {
+                                    Text("List").tag(false)
+                                    Text("Grid").tag(true)
+                                } label: { EmptyView() }
+                                .pickerStyle(.inline)
                             }
 
                             rowDivider()
 
                             // Language
-                            settingsRow(
+                            settingsMenuRow(
                                 icon: "globe",
                                 label: localizedString("Language", locale: locale),
-                                value: appLanguage == "zh-Hans" ? "中文" : "English",
-                                isPresented: $showingLanguagePicker
+                                value: appLanguage == "zh-Hans" ? "中文" : "English"
                             ) {
-                                showingLanguagePicker = true
-                            } popoverContent: {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    menuRow(icon: "globe", label: "English", isSelected: appLanguage == "en") {
-                                        appLanguage = "en"
-                                        showingLanguagePicker = false
-                                    }
-                                    menuRow(icon: "globe", label: "中文", isSelected: appLanguage == "zh-Hans") {
-                                        appLanguage = "zh-Hans"
-                                        showingLanguagePicker = false
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 220)
-                                .themedPopoverBackground()
-                                .presentationCompactAdaptation(.popover)
+                                Picker(selection: Binding(
+                                    get: { appLanguage },
+                                    set: { appLanguage = $0 }
+                                )) {
+                                    Text("English").tag("en")
+                                    Text("中文").tag("zh-Hans")
+                                } label: { EmptyView() }
+                                .pickerStyle(.inline)
                             }
 
                             rowDivider()
 
                             // Theme
-                            settingsRow(
+                            settingsMenuRow(
                                 icon: "circle.lefthalf.filled",
                                 label: localizedString("Theme", locale: locale),
-                                value: theme.style.displayName,
-                                isPresented: $showingThemePicker
+                                value: theme.style.displayName
                             ) {
-                                showingThemePicker = true
-                            } popoverContent: {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    menuRow(icon: "sun.max", label: "Light", isSelected: theme.style == .light) {
-                                        theme.style = .light
-                                        showingThemePicker = false
-                                    }
-                                    menuRow(icon: "moon", label: "Dark", isSelected: theme.style == .dark) {
-                                        theme.style = .dark
-                                        showingThemePicker = false
-                                    }
-                                    menuRow(icon: "circle.lefthalf.filled", label: "Auto", isSelected: theme.style == .automatic) {
-                                        theme.style = .automatic
-                                        showingThemePicker = false
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 220)
-                                .themedPopoverBackground()
-                                .presentationCompactAdaptation(.popover)
+                                Picker(selection: Binding(
+                                    get: { theme.style },
+                                    set: { theme.style = $0 }
+                                )) {
+                                    Text("Light").tag(AppThemeStyle.light)
+                                    Text("Dark").tag(AppThemeStyle.dark)
+                                    Text("Auto").tag(AppThemeStyle.automatic)
+                                } label: { EmptyView() }
+                                .pickerStyle(.inline)
                             }
 
                             rowDivider()
@@ -408,10 +358,12 @@ struct SettingsView: View {
         }
     }
 
-    /// Row with a tappable chevron — opens a popover picker.
+    /// Row with a native Menu that opens a picker.
     @ViewBuilder
-    private func settingsRow(icon: String, label: String, value: String, isPresented: Binding<Bool>, action: @escaping () -> Void, @ViewBuilder popoverContent: @escaping () -> some View) -> some View {
-        Button(action: action) {
+    private func settingsMenuRow(icon: String, label: String, value: String, @ViewBuilder menuContent: @escaping () -> some View) -> some View {
+        Menu {
+            menuContent()
+        } label: {
             HStack(spacing: 12) {
                 Image(systemName: icon)
                     .font(.system(size: 15, weight: .medium))
@@ -424,9 +376,6 @@ struct SettingsView: View {
                 Text(value)
                     .font(.avenir(.body, weight: .regular))
                     .foregroundStyle(colors.primaryText.opacity(0.45))
-                    .popover(isPresented: isPresented, attachmentAnchor: .point(.bottom), arrowEdge: .top) {
-                        popoverContent()
-                    }
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(colors.primaryText.opacity(0.3))
@@ -435,6 +384,7 @@ struct SettingsView: View {
             .padding(.vertical, 16)
             .contentShape(Rectangle())
         }
+        .menuStyle(.button)
         .buttonStyle(.plain)
     }
 
@@ -458,29 +408,7 @@ struct SettingsView: View {
         .padding(.vertical, 16)
     }
 
-    /// A single option row inside a popover menu — label + small dot on the right for selected.
-    @ViewBuilder
-    private func menuRow(icon: String, label: String, isSelected: Bool = false, tint: Color? = nil, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Text(label)
-                    .font(.avenir(.body, weight: isSelected ? .bold : .medium))
-                    .foregroundStyle(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.primary))
-                Spacer()
-                if isSelected {
-                    Circle()
-                        .fill(tint.map { AnyShapeStyle($0) } ?? AnyShapeStyle(colors.accent))
-                        .frame(width: 6, height: 6)
-                        .frame(width: 13)
-                }
-            }
-            .padding(.leading, 16)
-            .padding(.trailing, 16)
-            .padding(.vertical, 11)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
+
 
     @ViewBuilder
     private func rowDivider() -> some View {

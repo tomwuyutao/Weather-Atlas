@@ -32,7 +32,6 @@ struct ListSwitcherSheet: View {
     var body: some View {
         GlassEffectContainer {
             ZStack(alignment: .top) {
-                theme.colors.background.ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     Spacer().frame(height: 16)

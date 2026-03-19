@@ -274,17 +274,10 @@ extension ContentView {
                     VStack(spacing: 20) {
                         Image(systemName: "cloud.sun.fill")
                             .font(.system(size: 56))
-                            .weatherIconStyle(for: "cloud.sun.fill")
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(theme.colors.cloudIconColor, .yellow)
                         Text(localizedString("Loading Weather", locale: locale))
                             .font(.avenir(.title2, weight: .semibold))
-                        Capsule()
-                            .fill(theme.colors.primaryText.opacity(0.15))
-                            .frame(width: 140, height: 4)
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(theme.colors.primaryText)
-                                    .frame(width: 140 * weatherService.loadingProgress, height: 4)
-                            }
                     }
                     .position(x: geo.size.width / 2, y: geo.size.height / 2)
                 }
@@ -304,17 +297,10 @@ extension ContentView {
                 VStack(spacing: 20) {
                     Image(systemName: "cloud.sun.fill")
                         .font(.system(size: 56))
-                        .weatherIconStyle(for: "cloud.sun.fill")
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(theme.colors.cloudIconColor, .yellow)
                     Text(localizedString("Loading Weather", locale: locale))
                         .font(.avenir(.title2, weight: .semibold))
-                    Capsule()
-                        .fill(theme.colors.primaryText.opacity(0.15))
-                        .frame(width: 140, height: 4)
-                        .overlay(alignment: .leading) {
-                            Capsule()
-                                .fill(theme.colors.primaryText)
-                                .frame(width: 140 * weatherService.loadingProgress, height: 4)
-                        }
                 }
                 .position(x: geo.size.width / 2, y: geo.size.height / 2)
             }
@@ -382,6 +368,7 @@ extension ContentView {
 
     private var iOSPlainListContent: some View {
         List {
+            Section {
             if isEditingListName {
                 iOSListRenameField
                     .listRowBackground(Color.clear)
@@ -481,6 +468,8 @@ extension ContentView {
             .alignmentGuide(.listRowSeparatorLeading) { d in d[.leading] + 16 }
             .alignmentGuide(.listRowSeparatorTrailing) { d in d[.trailing] - 16 }
             .listRowInsets(EdgeInsets(top: theme.colors.listCardFill == .clear ? 4 : 0, leading: 16, bottom: theme.colors.listCardFill == .clear ? 4 : 0, trailing: 16))
+            } // Section
+            .listSectionSeparator(.hidden, edges: .top)
         }
         .listStyle(.plain)
         .contentMargins(.bottom, isIPad ? 20 : 100)
