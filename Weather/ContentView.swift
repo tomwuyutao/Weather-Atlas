@@ -481,11 +481,9 @@ struct ContentView: View {
                             } label: {
                                 Image(systemName: isEditMode ? "checkmark" : "pencil")
                                     .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(theme.colors.primaryText)
-                                    .frame(width: 44, height: 44)
-                                    .themedGlass(in: .circle)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.glassProminent)
+                            .buttonBorderShape(.circle)
                         }
                         .sharedBackgroundVisibility(.hidden)
                     }
@@ -1128,7 +1126,7 @@ struct ContentView: View {
                     }
 
             } else if previewCity != nil, showingMapExpandedCard {
-                // PREVIEW EXPANDED STATE: x (left) + list capsule (center) + checkmark (right)
+                // PREVIEW EXPANDED STATE: x (left) + list capsule (center) + + (right)
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -1160,44 +1158,40 @@ struct ContentView: View {
                         showingListSwitcher = true
                     }
 
-                Image(systemName: "checkmark")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 36, height: 36)
-                    .padding(6)
-                    .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
-                    .themedGlass(in: .circle)
-                    .contentShape(Circle())
-                    .onTapGesture {
-                        if let city = previewCity {
-                            Task {
-                                await addCityToSidebar(city)
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    showingMapExpandedCard = false
-                                    previewCity = nil
-                                }
+                Button {
+                    if let city = previewCity {
+                        Task {
+                            await addCityToSidebar(city)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                showingMapExpandedCard = false
+                                previewCity = nil
                             }
                         }
                     }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
+                .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
 
             } else if previewCity != nil {
-                // PREVIEW SEARCH STATE: + button + search bar (city name) + x button
-                Image(systemName: "plus")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.colors.accent)
-                    .frame(width: 44, height: 44)
+                // PREVIEW SEARCH STATE: x button + search bar (city name) + + button
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
                     .padding(6)
                     .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
                     .themedGlass(in: .circle)
                     .contentShape(Circle())
                     .onTapGesture {
-                        if let city = previewCity {
-                            Task {
-                                await addCityToSidebar(city)
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    previewCity = nil
-                                }
-                            }
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showingMapExpandedCard = false
+                            previewCity = nil
+                            recenterOnAllCities = true
                         }
                     }
 
@@ -1228,21 +1222,23 @@ struct ContentView: View {
                     }
                 }
 
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-                    .padding(6)
-                    .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
-                    .themedGlass(in: .circle)
-                    .contentShape(Circle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            showingMapExpandedCard = false
-                            previewCity = nil
-                            recenterOnAllCities = true
+                Button {
+                    if let city = previewCity {
+                        Task {
+                            await addCityToSidebar(city)
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                previewCity = nil
+                            }
                         }
                     }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: 14, weight: .semibold))
+                        .frame(width: 36, height: 36)
+                }
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
+                .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
 
             } else {
                 // NORMAL STATE: view switcher (left) + list selector capsule with search (center) + … menu (right)
@@ -1669,11 +1665,9 @@ struct ContentView: View {
                         } label: {
                             Image(systemName: "plus")
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
-                                .background(Color(hex: 0x1579C7), in: .circle)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.glassProminent)
+                        .buttonBorderShape(.circle)
                     }
                     .sharedBackgroundVisibility(.hidden)
                 }

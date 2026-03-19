@@ -200,11 +200,9 @@ extension ContentView {
                         } label: {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(countryUnderPin.isEmpty ? theme.colors.primaryText.opacity(0.4) : theme.colors.primaryText)
-                                .frame(width: 44, height: 44)
-                                .themedGlass(in: .circle)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.glassProminent)
+                        .buttonBorderShape(.circle)
                         .glassEffectID("cConfirm", in: countryBarNS)
                         .disabled(countryUnderPin.isEmpty)
                     } else {

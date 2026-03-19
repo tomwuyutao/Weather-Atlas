@@ -302,11 +302,9 @@ struct ListSwitcherSheet: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .themedGlass(in: .circle)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
 
                 Spacer()
 
@@ -326,11 +324,9 @@ struct ListSwitcherSheet: View {
                 } label: {
                     Image(systemName: "checkmark")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .themedGlass(in: .circle)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 8)
