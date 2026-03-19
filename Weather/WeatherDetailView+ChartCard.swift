@@ -89,7 +89,7 @@ extension WeatherDetailView {
                     Capsule()
                         .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06))
                 )
-                .popover(isPresented: $showingChartRangePopover) {
+                .popover(isPresented: $showingChartRangePopover, arrowEdge: .top) {
                     chartTimeRangePopoverContent
                         .presentationCompactAdaptation(.popover)
                 }

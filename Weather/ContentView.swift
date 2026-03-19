@@ -623,7 +623,7 @@ struct ContentView: View {
             mapExpandedCard(for: city)
                 .id(city.city.id)
                 .padding(.horizontal, 16)
-                .padding(.bottom, 4)
+                .padding(.bottom, previewCity != nil ? 68 : 4)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),
@@ -723,7 +723,7 @@ struct ContentView: View {
         }
 
         // Floating bottom toolbar / inline search bar / preview toolbar
-        if !isMapSpecialMode, !(selectedTab == 1 && showingMapExpandedCard) {
+        if !isMapSpecialMode, !(selectedTab == 1 && showingMapExpandedCard && previewCity == nil) {
             iOSUnifiedBottomBar
                 .zIndex(11)
         }
@@ -1044,204 +1044,7 @@ struct ContentView: View {
                 initialChartMetric: overlayChartMetric
             )
             .background(theme.colors.background)
-            .toolbarBackground(.clear, for: .navigationBar)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .navigationBarBackButtonHidden(true)
-            .toolbar(removing: .sidebarToggle)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showingCityDetail = false
-                        selectedDayOffset = -1
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .sharedBackgroundVisibility(.hidden)
-                if isIPad {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            withAnimation {
-                                sidebarVisibility = sidebarVisibility == .all ? .detailOnly : .all
-                            }
-                        } label: {
-                            Image(systemName: "sidebar.left")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(theme.colors.primaryText)
-                                .frame(width: 44, height: 44)
-                                .themedGlass(in: .circle)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                }
-                ToolbarItem(placement: .principal) {
-                    Text((countryOverviewActive || radialSearchActive) ? (resolvedGridCityName ?? "…") : city.city.localizedName(locale: locale))
-                        .font(.avenir(.title3, weight: .semibold))
-                        .dynamicTypeSize(...DynamicTypeSize.large)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.7)
-                }
-                if cityIsInSidebar(city) {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showingDetailMenuPopover = true
-                        } label: {
-                            Image(systemName: "ellipsis")
-                                .font(.system(size: 15, weight: .medium))
-                                .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .popover(isPresented: $showingDetailMenuPopover) {
-                            VStack(alignment: .leading, spacing: 0) {
-                                menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
-                                    showingDetailMenuPopover = false
-                                    let revealCity = city
-                                    showingCityDetail = false
-                                    centerOnCityTrigger = nil
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        selectedTab = 1
-                                    }
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                                        centerOnCityTrigger = revealCity
-                                    }
-                                }
-                                menuRow(icon: "trash", title: localizedString("Delete City", locale: locale)) {
-                                    showingDetailMenuPopover = false
-                                    weatherService.removeCity(city)
-                                    showingCityDetail = false
-                                    showingMapExpandedCard = false
-                                    tappedCity = nil
-                                    if selectedTab == 1 {
-                                        recenterOnAllCities = true
-                                    }
-                                }
-                                .foregroundStyle(theme.colors.destructive)
-                            }
-                            .padding(.vertical, 8)
-                            .frame(width: 220)
-                            .themedPopoverBackground()
-                            .presentationCompactAdaptation(.popover)
-                        }
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                }
-                if !cityIsInSidebar(city) {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        if countryOverviewActive || radialSearchActive {
-                            Button {
-                                showingAddToListPopover = true
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color(hex: 0x1579C7), in: .circle)
-                            }
-                            .buttonStyle(.plain)
-                            .popover(isPresented: $showingAddToListPopover) {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    ForEach(CityListID.allLists) { list in
-                                        Button {
-                                            showingAddToListPopover = false
-                                            let cityName = resolvedGridCityName ?? city.city.country
-                                            let namedCity = City(name: cityName, country: city.city.country, latitude: city.city.latitude, longitude: city.city.longitude)
-                                            Task {
-                                                await weatherService.addCityToList(namedCity, listID: list)
-                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                                showingCityDetail = false
-                                            }
-                                        } label: {
-                                            HStack(spacing: 12) {
-                                                Text(list.localizedDisplayName(locale: locale))
-                                                    .font(.avenir(.body, weight: .medium))
-                                                    .foregroundStyle(.primary)
-                                                Spacer()
-                                            }
-                                            .padding(.horizontal, 20)
-                                            .padding(.vertical, 11)
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(minWidth: 180)
-                                .themedPopoverBackground()
-                                .presentationCompactAdaptation(.popover)
-                            }
-                        } else if CityListID.allLists.count > 1 {
-                            Button {
-                                showingAddToListPopover = true
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color(hex: 0x1579C7), in: .circle)
-                            }
-                            .buttonStyle(.plain)
-                            .popover(isPresented: $showingAddToListPopover) {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    ForEach(CityListID.allLists) { list in
-                                        Button {
-                                            showingAddToListPopover = false
-                                            Task {
-                                                await weatherService.addCityToList(city.city, listID: list)
-                                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                                showingCityDetail = false
-                                                if selectedTab == 1 {
-                                                    recenterOnAllCities = true
-                                                }
-                                            }
-                                        } label: {
-                                            HStack(spacing: 12) {
-                                                Text(list.localizedDisplayName(locale: locale))
-                                                    .font(.avenir(.body, weight: .medium))
-                                                    .foregroundStyle(.primary)
-                                                Spacer()
-                                            }
-                                            .padding(.horizontal, 20)
-                                            .padding(.vertical, 11)
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(minWidth: 180)
-                                .themedPopoverBackground()
-                                .presentationCompactAdaptation(.popover)
-                            }
-                        } else {
-                            Button {
-                                Task {
-                                    await addCityToSidebar(city)
-                                    showingCityDetail = false
-                                    if selectedTab == 1 {
-                                        recenterOnAllCities = true
-                                    }
-                                }
-                            } label: {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .background(Color(hex: 0x1579C7), in: .circle)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .sharedBackgroundVisibility(.hidden)
-                }
-            }
+            .toolbar(.hidden, for: .navigationBar)
         }
     }
 
@@ -1339,8 +1142,61 @@ struct ContentView: View {
                         }
                     }
 
+            } else if previewCity != nil, showingMapExpandedCard {
+                // PREVIEW EXPANDED STATE: x (left) + list capsule (center) + checkmark (right)
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showingMapExpandedCard = false
+                            previewCity = nil
+                            recenterOnAllCities = true
+                        }
+                    }
+
+                // List switcher capsule (center)
+                Text(toolbarTitle)
+                    .font(.avenir(.subheadline, weight: .semibold))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 36)
+                    .padding(.horizontal, 14)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
+                    .themedGlass(in: .capsule)
+                    .contentShape(Capsule())
+                    .onTapGesture {
+                        showingListSwitcher = true
+                    }
+
+                Image(systemName: "checkmark")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+                    .background(theme.colors.accent, in: .circle)
+                    .contentShape(Circle())
+                    .onTapGesture {
+                        if let city = previewCity {
+                            Task {
+                                await addCityToSidebar(city)
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    showingMapExpandedCard = false
+                                    previewCity = nil
+                                }
+                            }
+                        }
+                    }
+
             } else if previewCity != nil {
-                // PREVIEW STATE: + button + search bar (city name) + x button
+                // PREVIEW SEARCH STATE: + button + search bar (city name) + x button
                 Image(systemName: "plus")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(theme.colors.accent)
