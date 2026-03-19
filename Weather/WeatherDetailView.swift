@@ -35,12 +35,12 @@ struct WeatherDetailView: View {
         case forward, backward
     }
     
-    enum ChartMetric: Equatable {
+    enum ChartMetric: Hashable {
         case temperature, feelsLike, cloudCover, precipitation
         case windSpeed, uvIndex, humidity, visibility
     }
 
-    enum ChartTimeRange: Equatable {
+    enum ChartTimeRange: Hashable {
         case daytime, entireDay, tenDay
     }
     
@@ -231,15 +231,15 @@ struct WeatherDetailView: View {
         ]
 
         return Menu {
-            ForEach(allMetrics, id: \.0) { metric, icon, label in
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        chartMetric = metric
-                    }
-                } label: {
+            Picker(selection: $chartMetric) {
+                ForEach(allMetrics, id: \.0) { metric, icon, label in
                     Label(label, systemImage: icon)
+                        .tag(metric)
                 }
+            } label: {
+                EmptyView()
             }
+            .pickerStyle(.inline)
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: chartMetricIcon)
@@ -265,29 +265,14 @@ struct WeatherDetailView: View {
 
     var chartTimeRangeMenu: some View {
         Menu {
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    chartTimeRange = .daytime
-                }
+            Picker(selection: $chartTimeRange) {
+                Text(localizedString("Daytime", locale: locale)).tag(ChartTimeRange.daytime)
+                Text(localizedString("Entire Day", locale: locale)).tag(ChartTimeRange.entireDay)
+                Text(localizedString("10 Days", locale: locale)).tag(ChartTimeRange.tenDay)
             } label: {
-                Label(localizedString("Daytime", locale: locale), systemImage: chartTimeRange == .daytime ? "checkmark" : "")
+                EmptyView()
             }
-
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    chartTimeRange = .entireDay
-                }
-            } label: {
-                Label(localizedString("Entire Day", locale: locale), systemImage: chartTimeRange == .entireDay ? "checkmark" : "")
-            }
-
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    chartTimeRange = .tenDay
-                }
-            } label: {
-                Label(localizedString("10 Days", locale: locale), systemImage: chartTimeRange == .tenDay ? "checkmark" : "")
-            }
+            .pickerStyle(.inline)
         } label: {
             HStack(spacing: 5) {
                 Text(chartTimeRange == .daytime

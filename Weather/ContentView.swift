@@ -198,7 +198,6 @@ struct ContentView: View {
     @State private var allCountries: [String] = []
     @State var showingMapStylePopover: Bool = false
     @State var showingMapStyleSheet: Bool = false
-    @State var showingDiscoverPopover: Bool = false
     @State var countrySelectionMode: Bool = false
     @State var mapCenterCoordinate: CLLocationCoordinate2D?
     @State var countryUnderPin: String = ""
@@ -225,7 +224,6 @@ struct ContentView: View {
         return firstName
     }
 
-    @State var showingRecenterPopover: Bool = false
     @State var focusSubsetCities: [CityWeather] = []
     @State var focusSubsetTrigger: Bool = false
     @State var isLoadingMapList: Bool = false
@@ -592,12 +590,12 @@ struct ContentView: View {
                 // Single date slider shared by both views — no animation on tab switch
                 if !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
                     Color.clear
-                        .frame(width: 60, height: 420)
+                        .frame(width: 60, height: 500)
                         .contentShape(Rectangle())
                         .overlay(alignment: .trailing) {
-                            mapDateSlider(height: 340, transparent: selectedTab == 0)
+                            mapDateSlider(height: 420, transparent: selectedTab == 0)
                         }
-                        .padding(.bottom, 480)
+                        .padding(.bottom, 400)
                         .padding(.trailing, 1)
                         .transition(.opacity)
                 }
@@ -727,12 +725,12 @@ struct ContentView: View {
                 .overlay(alignment: .trailing) {
                     if showDateSlider, !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
                         Color.clear
-                            .frame(width: 60, height: 420)
+                            .frame(width: 60, height: 500)
                             .contentShape(Rectangle())
                             .overlay(alignment: .trailing) {
-                                mapDateSlider(height: 340)
+                                mapDateSlider(height: 420)
                             }
-                            .padding(.bottom, 480)
+                            .padding(.bottom, 400)
                             .padding(.trailing, 1)
                             .transition(.opacity)
                     }
@@ -839,8 +837,31 @@ struct ContentView: View {
 
         private var iOSMapControlsCapsule: some View {
         HStack(spacing: 8) {
-            Button {
-                showingDiscoverPopover = true
+            Menu {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedTab = 1
+                        showingMapExpandedCard = false
+                        tappedCity = nil
+                        previewCity = nil
+                        countrySelectionMode = true
+                    }
+                } label: {
+                    Label(localizedString("Country Overview", locale: locale), systemImage: "globe.desk")
+                }
+
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedTab = 1
+                        showingMapExpandedCard = false
+                        tappedCity = nil
+                        previewCity = nil
+                        radialSearchMode = true
+                        radialSearchRadius = 250_000
+                    }
+                } label: {
+                    Label(localizedString("Radial Search", locale: locale), systemImage: "circle.dotted.circle")
+                }
             } label: {
                 Image(systemName: "wand.and.stars")
                     .font(.system(size: 16, weight: .semibold))
@@ -848,91 +869,13 @@ struct ContentView: View {
                     .frame(width: 42, height: 44)
                     .contentShape(Rectangle())
             }
+            .menuStyle(.button)
             .buttonStyle(.plain)
-            .popover(isPresented: $showingDiscoverPopover) {
-                VStack(alignment: .leading, spacing: 0) {
-                    Button {
-                        showingDiscoverPopover = false
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selectedTab = 1
-                            showingMapExpandedCard = false
-                            tappedCity = nil
-                            previewCity = nil
-                            countrySelectionMode = true
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "globe.desk")
-                                .font(.system(size: 14))
-                                .frame(width: 20)
-                            Text(localizedString("Country Overview", locale: locale))
-                                .font(.avenir(.body, weight: .medium))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                        }
-                        .padding(.leading, 16)
-                        .padding(.trailing, 16)
-                        .padding(.vertical, 11)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
 
-                    Button {
-                        showingDiscoverPopover = false
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            selectedTab = 1
-                            showingMapExpandedCard = false
-                            tappedCity = nil
-                            previewCity = nil
-                            radialSearchMode = true
-                            radialSearchRadius = 250_000
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "circle.dotted.circle")
-                                .font(.system(size: 14))
-                                .frame(width: 20)
-                            Text(localizedString("Radial Search", locale: locale))
-                                .font(.avenir(.body, weight: .medium))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                        }
-                        .padding(.leading, 16)
-                        .padding(.trailing, 16)
-                        .padding(.vertical, 11)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.vertical, 8)
-                .frame(width: 240)
-                .presentationCompactAdaptation(.popover)
-                .themedPopoverBackground()
-            }
-
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                if visibleListIDs.count > 1 {
-                    showingRecenterPopover = true
-                } else {
-                    recenterOnAllCities = false
-                    DispatchQueue.main.async {
-                        recenterOnAllCities = true
-                    }
-                }
-            } label: {
-                Image(systemName: "dot.squareshape.split.2x2")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 42, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .popover(isPresented: $showingRecenterPopover) {
-                VStack(alignment: .leading, spacing: 0) {
+            if visibleListIDs.count > 1 {
+                Menu {
                     ForEach(CityListID.allLists.filter { visibleListIDs.contains($0.rawValue) }) { listID in
                         Button {
-                            showingRecenterPopover = false
                             let cities: [CityWeather]
                             if listID == weatherService.activeListID {
                                 cities = weatherService.cityWeatherData
@@ -942,25 +885,33 @@ struct ContentView: View {
                             focusSubsetCities = cities
                             focusSubsetTrigger = true
                         } label: {
-                            HStack(spacing: 12) {
-                                Text(listID.localizedDisplayName(locale: locale))
-                                    .font(.avenir(.body, weight: .medium))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                Spacer()
-                            }
-                            .padding(.leading, 16)
-                            .padding(.trailing, 16)
-                            .padding(.vertical, 11)
-                            .contentShape(Rectangle())
+                            Label(listID.localizedDisplayName(locale: locale), systemImage: "mappin.and.ellipse")
                         }
-                        .buttonStyle(.plain)
                     }
+                } label: {
+                    Image(systemName: "dot.squareshape.split.2x2")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 42, height: 44)
+                        .contentShape(Rectangle())
                 }
-                .padding(.vertical, 8)
-                .frame(width: 160)
-                .presentationCompactAdaptation(.popover)
-                .themedPopoverBackground()
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+            } else {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    recenterOnAllCities = false
+                    DispatchQueue.main.async {
+                        recenterOnAllCities = true
+                    }
+                } label: {
+                    Image(systemName: "dot.squareshape.split.2x2")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 42, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
             }
 
             Button {

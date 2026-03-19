@@ -185,8 +185,29 @@ extension ContentView {
 
             // Discover
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingDiscoverPopover = true
+                Menu {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showingMapExpandedCard = false
+                            tappedCity = nil
+                            previewCity = nil
+                            countrySelectionMode = true
+                        }
+                    } label: {
+                        Label(localizedString("Country Overview", locale: locale), systemImage: "globe.desk")
+                    }
+
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showingMapExpandedCard = false
+                            tappedCity = nil
+                            previewCity = nil
+                            radialSearchMode = true
+                            radialSearchRadius = 250_000
+                        }
+                    } label: {
+                        Label(localizedString("Radial Search", locale: locale), systemImage: "circle.dotted.circle")
+                    }
                 } label: {
                     Image(systemName: "wand.and.stars")
                         .font(.system(size: 15, weight: .semibold))
@@ -194,65 +215,8 @@ extension ContentView {
                         .frame(width: 44, height: 44)
                         .themedGlass(in: .circle)
                 }
+                .menuStyle(.button)
                 .buttonStyle(.plain)
-                .popover(isPresented: $showingDiscoverPopover) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Button {
-                            showingDiscoverPopover = false
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                showingMapExpandedCard = false
-                                tappedCity = nil
-                                previewCity = nil
-                                countrySelectionMode = true
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "globe.desk")
-                                    .font(.system(size: 14))
-                                    .frame(width: 20)
-                                Text(localizedString("Country Overview", locale: locale))
-                                    .font(.avenir(.body, weight: .medium))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                            }
-                            .padding(.leading, 16)
-                            .padding(.trailing, 16)
-                            .padding(.vertical, 11)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            showingDiscoverPopover = false
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                showingMapExpandedCard = false
-                                tappedCity = nil
-                                previewCity = nil
-                                radialSearchMode = true
-                                radialSearchRadius = 250_000
-                            }
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "circle.dotted.circle")
-                                    .font(.system(size: 14))
-                                    .frame(width: 20)
-                                Text(localizedString("Radial Search", locale: locale))
-                                    .font(.avenir(.body, weight: .medium))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                            }
-                            .padding(.leading, 16)
-                            .padding(.trailing, 16)
-                            .padding(.vertical, 11)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.vertical, 8)
-                    .frame(width: 240)
-                    .presentationCompactAdaptation(.popover)
-                    .themedPopoverBackground()
-                }
             }
             .sharedBackgroundVisibility(.hidden)
 
@@ -260,29 +224,10 @@ extension ContentView {
 
             // Center on map
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    if visibleListIDs.count > 1 {
-                        showingRecenterPopover = true
-                    } else {
-                        recenterOnAllCities = false
-                        DispatchQueue.main.async {
-                            recenterOnAllCities = true
-                        }
-                    }
-                } label: {
-                    Image(systemName: "dot.squareshape.split.2x2")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .themedGlass(in: .circle)
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showingRecenterPopover) {
-                    VStack(alignment: .leading, spacing: 0) {
+                if visibleListIDs.count > 1 {
+                    Menu {
                         ForEach(CityListID.allLists.filter { visibleListIDs.contains($0.rawValue) }) { listID in
                             Button {
-                                showingRecenterPopover = false
                                 let cities: [CityWeather]
                                 if listID == weatherService.activeListID {
                                     cities = weatherService.cityWeatherData
@@ -292,25 +237,33 @@ extension ContentView {
                                 focusSubsetCities = cities
                                 focusSubsetTrigger = true
                             } label: {
-                                HStack(spacing: 12) {
-                                    Text(listID.localizedDisplayName(locale: locale))
-                                        .font(.avenir(.body, weight: .medium))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                    Spacer()
-                                }
-                                .padding(.leading, 16)
-                                .padding(.trailing, 16)
-                                .padding(.vertical, 11)
-                                .contentShape(Rectangle())
+                                Label(listID.localizedDisplayName(locale: locale), systemImage: "mappin.and.ellipse")
                             }
-                            .buttonStyle(.plain)
                         }
+                    } label: {
+                        Image(systemName: "dot.squareshape.split.2x2")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .themedGlass(in: .circle)
                     }
-                    .padding(.vertical, 8)
-                    .frame(width: 160)
-                    .presentationCompactAdaptation(.popover)
-                    .themedPopoverBackground()
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                } else {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        recenterOnAllCities = false
+                        DispatchQueue.main.async {
+                            recenterOnAllCities = true
+                        }
+                    } label: {
+                        Image(systemName: "dot.squareshape.split.2x2")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .themedGlass(in: .circle)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .sharedBackgroundVisibility(.hidden)
@@ -573,48 +526,57 @@ extension ContentView {
             }
 
             if selectedTab == 0, !isIPad {
-                Button {
-                    withAnimation { isEditMode.toggle() }
-                } label: {
-                    Label(isEditMode ? localizedString("Done Editing", locale: locale) : (isGridView ? localizedString("Edit Grid", locale: locale) : localizedString("Edit List", locale: locale)), systemImage: isEditMode ? "checkmark" : "pencil")
+                Toggle(isOn: Binding(
+                    get: { isEditMode },
+                    set: { newValue in withAnimation { isEditMode = newValue } }
+                )) {
+                    Label(localizedString("Edit Mode", locale: locale), systemImage: "pencil")
                 }
 
-                Button {
-                    withAnimation(.easeOut(duration: 0.15)) {
-                        listContentOpacity = 0
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        isGridView.toggle()
-                        withAnimation(.easeIn(duration: 0.2)) {
-                            listContentOpacity = 1
+                Toggle(isOn: Binding(
+                    get: { isGridView },
+                    set: { newValue in
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            listContentOpacity = 0
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            isGridView = newValue
+                            withAnimation(.easeIn(duration: 0.2)) {
+                                listContentOpacity = 1
+                            }
                         }
                     }
-                } label: {
-                    Label(isGridView ? localizedString("List View", locale: locale) : localizedString("Grid View", locale: locale), systemImage: isGridView ? "list.bullet" : "square.grid.2x2")
+                )) {
+                    Label(localizedString("Grid View", locale: locale), systemImage: "square.grid.2x2")
                 }
             }
 
             if isIPad {
-                Button {
-                    withAnimation { showDateSlider.toggle() }
-                } label: {
-                    Label(showDateSlider ? localizedString("Hide Date Slider", locale: locale) : localizedString("Show Date Slider", locale: locale), systemImage: "slider.horizontal.below.sun.max")
+                Toggle(isOn: Binding(
+                    get: { showDateSlider },
+                    set: { newValue in withAnimation { showDateSlider = newValue } }
+                )) {
+                    Label(localizedString("Date Slider", locale: locale), systemImage: "slider.horizontal.below.sun.max")
                 }
             }
 
             Divider()
 
-            Button {
-                withAnimation { filterSunny.toggle() }
-            } label: {
-                Label(filterSunny ? localizedString("Clear Filter", locale: locale) : localizedString("Filter Sunny", locale: locale), systemImage: filterSunny ? "sun.max.fill" : "sun.max")
+            Toggle(isOn: Binding(
+                get: { filterSunny },
+                set: { newValue in withAnimation { filterSunny = newValue } }
+            )) {
+                Label(localizedString("Filter Sunny", locale: locale), systemImage: "sun.max")
             }
 
             if selectedTab == 1 || isIPad {
-                Button {
-                    if isPlaying { iOSStopPlayback() } else { iOSStartPlayback() }
-                } label: {
-                    Label(isPlaying ? localizedString("Stop Playback", locale: locale) : localizedString("Play Forecast", locale: locale), systemImage: isPlaying ? "stop.fill" : "play.fill")
+                Toggle(isOn: Binding(
+                    get: { isPlaying },
+                    set: { newValue in
+                        if newValue { iOSStartPlayback() } else { iOSStopPlayback() }
+                    }
+                )) {
+                    Label(localizedString("Playback", locale: locale), systemImage: "play.fill")
                 }
             }
 
@@ -628,12 +590,11 @@ extension ContentView {
             Divider()
 
             if selectedTab == 1 || isIPad {
-                Button {
-                    withAnimation(.smooth(duration: 0.3)) {
-                        showLegend.toggle()
-                    }
-                } label: {
-                    Label(showLegend ? localizedString("Hide Legend", locale: locale) : localizedString("Show Legend", locale: locale), systemImage: showLegend ? "eye.slash" : "eye.fill")
+                Toggle(isOn: Binding(
+                    get: { showLegend },
+                    set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
+                )) {
+                    Label(localizedString("Legend", locale: locale), systemImage: "eye")
                 }
             }
 

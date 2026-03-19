@@ -154,7 +154,8 @@ extension ContentView {
             .padding(.trailing, 10)
         }
         .padding(.horizontal, 24)
-        .padding(.vertical, 20)
+        .padding(.top, 32)
+        .padding(.bottom, 20)
         .frame(maxWidth: isIPad ? 420 : .infinity)
         .background(
             RoundedRectangle(cornerRadius: 20)
