@@ -36,63 +36,10 @@ extension WeatherDetailView {
                 Spacer()
 
                 // Chart metric switcher
-                Button {
-                    showingChartMetricPopover = true
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: chartMetricIcon)
-                            .font(.system(size: 11, weight: .medium))
-                            .frame(width: 16)
-                        Text(chartMetricLabel)
-                            .font(.avenir(.subheadline, weight: .semibold))
-                            .lineLimit(1)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .background(
-                    Capsule()
-                        .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06))
-                )
-                .popover(isPresented: $showingChartMetricPopover) {
-                    chartMetricPopoverContent
-                        .presentationCompactAdaptation(.popover)
-                }
+                chartMetricMenu
 
                 // Chart time range switcher
-                Button {
-                    showingChartRangePopover = true
-                } label: {
-                    HStack(spacing: 5) {
-                        Text(chartTimeRange == .daytime
-                             ? localizedString("Daytime", locale: locale)
-                             : chartTimeRange == .entireDay
-                             ? localizedString("Entire Day", locale: locale)
-                             : localizedString("10 Days", locale: locale))
-                            .font(.avenir(.subheadline, weight: .semibold))
-                            .lineLimit(1)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 8, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .background(
-                    Capsule()
-                        .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06))
-                )
-                .popover(isPresented: $showingChartRangePopover, arrowEdge: .top) {
-                    chartTimeRangePopoverContent
-                        .presentationCompactAdaptation(.popover)
-                }
+                chartTimeRangeMenu
             }
             .padding(.horizontal, 12)
             .padding(.top, 10)

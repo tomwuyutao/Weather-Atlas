@@ -181,8 +181,7 @@ struct ContentView: View {
     @State private var playbackTask: Task<Void, Never>?
     @State var showPlaybackButton: Bool = false
     @State private var playbackButtonHideTask: Task<Void, Never>?
-    @State var showingMenuPopover: Bool = false
-    @State private var showingDetailMenuPopover: Bool = false
+
     @AppStorage("isGridView") var isGridView: Bool = false
     @State var gridDragItem: CityWeather?
     @State var listContentOpacity: Double = 1.0
@@ -706,20 +705,6 @@ struct ContentView: View {
             .padding(.bottom, 68)
             .transition(.opacity)
             .zIndex(10)
-        }
-
-        // Full-screen dismiss scrim for menu popover
-        if showingMenuPopover {
-            Color.black.opacity(0.001)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .ignoresSafeArea()
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        showingMenuPopover = false
-                    }
-                }
-                .zIndex(10.5)
         }
 
         // Floating bottom toolbar / inline search bar / preview toolbar
@@ -1314,35 +1299,13 @@ struct ContentView: View {
                     showingListSwitcher = true
                 }
 
-                Image(systemName: "ellipsis")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 36, height: 36)
-                    .padding(6)
+                iOSNativeMenu
                     .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
-                    .themedGlass(in: .circle)
-                    .contentShape(Circle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            showingMenuPopover = true
-                        }
-                    }
             }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
         .padding(.top, showingInlineSearch || previewCity != nil ? 0 : 20)
-        .overlay(alignment: .bottomTrailing) {
-            if showingMenuPopover {
-                iOSCustomMenu
-                    .themedGlass(in: .rect(cornerRadius: 16))
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 4)
-                    .transition(.scale(scale: 0.3, anchor: .bottomTrailing).combined(with: .opacity))
-                    .zIndex(20)
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showingMenuPopover)
         .background {
             if !showingInlineSearch && previewCity == nil {
                 Color.clear

@@ -337,20 +337,7 @@ extension ContentView {
 
             // Menu
             ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showingMenuPopover = true
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .themedGlass(in: .circle)
-                }
-                .buttonStyle(.plain)
-                .popover(isPresented: $showingMenuPopover) {
-                    iOSCustomMenu
-                        .presentationCompactAdaptation(.popover)
-                }
+                iOSNativeMenu
             }
             .sharedBackgroundVisibility(.hidden)
         }
@@ -402,19 +389,7 @@ extension ContentView {
                             .frame(width: 1, height: 20)
                     }
 
-                    Button {
-                        showingMenuPopover = true
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .popover(isPresented: $showingMenuPopover) {
-                        iOSCustomMenu
-                            .presentationCompactAdaptation(.popover)
-                    }
+                    iOSNativeMenu
                 }
                 .themedGlass(in: .capsule)
             }
@@ -573,26 +548,14 @@ extension ContentView {
         .themedGlass(in: .capsule)
     }
 
-    // MARK: - Main Menu Popover
+    // MARK: - Native Menu
 
-    private var hasMenuTopSection: Bool {
-        let hasDeleteCity: Bool = {
-            if isEditingListName { return false }
-            let city = selectedTab == 1 ? (showingMapExpandedCard ? tappedCity : nil) : selectedCity
-            guard let city else { return false }
-            return cityIsInSidebar(city)
-        }()
-        let hasListEditing = selectedTab == 0 && !isIPad
-        return hasDeleteCity || hasListEditing || isIPad
-    }
-
-    var iOSCustomMenu: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    var iOSNativeMenu: some View {
+        Menu {
             if !isEditingListName {
                 if let city = selectedTab == 1 ? (showingMapExpandedCard ? tappedCity : nil) : selectedCity,
                    cityIsInSidebar(city) {
-                    menuRow(icon: "trash", title: localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"") {
-                        showingMenuPopover = false
+                    Button(role: .destructive) {
                         weatherService.removeCity(city)
                         if selectedTab == 1 {
                             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -605,19 +568,20 @@ extension ContentView {
                                 selectedCity = nil
                             }
                         }
+                    } label: {
+                        Label(localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"", systemImage: "trash")
                     }
-                    .foregroundStyle(theme.colors.destructive)
                 }
             }
 
             if selectedTab == 0, !isIPad {
-                menuRow(icon: isEditMode ? "checkmark" : "pencil", title: isEditMode ? localizedString("Done Editing", locale: locale) : (isGridView ? localizedString("Edit Grid", locale: locale) : localizedString("Edit List", locale: locale))) {
-                    showingMenuPopover = false
+                Button {
                     withAnimation { isEditMode.toggle() }
+                } label: {
+                    Label(isEditMode ? localizedString("Done Editing", locale: locale) : (isGridView ? localizedString("Edit Grid", locale: locale) : localizedString("Edit List", locale: locale)), systemImage: isEditMode ? "checkmark" : "pencil")
                 }
 
-                menuRow(icon: isGridView ? "list.bullet" : "square.grid.2x2", title: isGridView ? localizedString("List View", locale: locale) : localizedString("Grid View", locale: locale)) {
-                    showingMenuPopover = false
+                Button {
                     withAnimation(.easeOut(duration: 0.15)) {
                         listContentOpacity = 0
                     }
@@ -627,89 +591,69 @@ extension ContentView {
                             listContentOpacity = 1
                         }
                     }
+                } label: {
+                    Label(isGridView ? localizedString("List View", locale: locale) : localizedString("Grid View", locale: locale), systemImage: isGridView ? "list.bullet" : "square.grid.2x2")
                 }
             }
 
             if isIPad {
-                menuRow(icon: "slider.horizontal.below.sun.max", title: showDateSlider ? localizedString("Hide Date Slider", locale: locale) : localizedString("Show Date Slider", locale: locale)) {
-                    showingMenuPopover = false
+                Button {
                     withAnimation { showDateSlider.toggle() }
+                } label: {
+                    Label(showDateSlider ? localizedString("Hide Date Slider", locale: locale) : localizedString("Show Date Slider", locale: locale), systemImage: "slider.horizontal.below.sun.max")
                 }
             }
 
-            // Only show divider if there are items above it
-            if hasMenuTopSection {
-                Divider().padding(.horizontal, 12).padding(.vertical, 4)
-            }
+            Divider()
 
-            menuRow(icon: filterSunny ? "sun.max.fill" : "sun.max", title: filterSunny ? localizedString("Clear Filter", locale: locale) : localizedString("Filter Sunny", locale: locale)) {
-                showingMenuPopover = false
+            Button {
                 withAnimation { filterSunny.toggle() }
+            } label: {
+                Label(filterSunny ? localizedString("Clear Filter", locale: locale) : localizedString("Filter Sunny", locale: locale), systemImage: filterSunny ? "sun.max.fill" : "sun.max")
             }
 
             if selectedTab == 1 || isIPad {
-                menuRow(icon: isPlaying ? "stop.fill" : "play.fill", title: isPlaying ? localizedString("Stop Playback", locale: locale) : localizedString("Play Forecast", locale: locale)) {
-                    showingMenuPopover = false
+                Button {
                     if isPlaying { iOSStopPlayback() } else { iOSStartPlayback() }
+                } label: {
+                    Label(isPlaying ? localizedString("Stop Playback", locale: locale) : localizedString("Play Forecast", locale: locale), systemImage: isPlaying ? "stop.fill" : "play.fill")
                 }
             }
 
-            menuRow(icon: "arrow.clockwise", title: localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))")) {
-                showingMenuPopover = false
+            Button {
                 Task { await weatherService.refreshWeather() }
+            } label: {
+                Label(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"), systemImage: "arrow.clockwise")
             }
-            .opacity(weatherService.isLoading ? 0.4 : 1.0)
             .disabled(weatherService.isLoading)
 
-            Divider().padding(.horizontal, 12).padding(.vertical, 4)
-
-//            menuRow(icon: "info.circle", title: localizedString("Info", locale: locale)) {
-//                showingMenuPopover = false
-//                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-//                    showingInfo = true
-//                }
-//            }
+            Divider()
 
             if selectedTab == 1 || isIPad {
-                menuRow(icon: showLegend ? "eye.slash" : "eye.fill", title: showLegend ? localizedString("Hide Legend", locale: locale) : localizedString("Show Legend", locale: locale)) {
-                    showingMenuPopover = false
+                Button {
                     withAnimation(.smooth(duration: 0.3)) {
                         showLegend.toggle()
                     }
+                } label: {
+                    Label(showLegend ? localizedString("Hide Legend", locale: locale) : localizedString("Show Legend", locale: locale), systemImage: showLegend ? "eye.slash" : "eye.fill")
                 }
             }
 
-            menuRow(icon: "gearshape", title: localizedString("Settings", locale: locale)) {
-                showingMenuPopover = false
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    showingSettings = true
-                }
+            Button {
+                showingSettings = true
+            } label: {
+                Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
             }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .frame(width: 36, height: 36)
+                .padding(6)
+                .themedGlass(in: .circle)
+                .contentShape(Circle())
         }
-        .padding(.vertical, 8)
-        .frame(width: 220)
-        .themedPopoverBackground()
-    }
-
-    // MARK: - Menu Row Helper
-
-    func menuRow(icon: String, title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                Image(systemName: icon)
-                    .font(.system(size: 15))
-                    .frame(width: 24)
-                Text(title)
-                    .font(.avenir(.body, weight: .medium))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer()
-            }
-            .padding(.leading, 16)
-            .padding(.trailing, 16)
-            .padding(.vertical, 11)
-            .contentShape(Rectangle())
-        }
+        .menuStyle(.button)
         .buttonStyle(.plain)
     }
 }

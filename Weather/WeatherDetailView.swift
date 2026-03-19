@@ -46,10 +46,9 @@ struct WeatherDetailView: View {
     
     @State var chartMetric: ChartMetric = .temperature
     @State var chartTimeRange: ChartTimeRange = .daytime
-    @State var showingChartRangePopover: Bool = false
-    @State var showingChartMetricPopover: Bool = false
+
     @State private var showingCloudCover: Bool = false
-    @State private var showingDetailMenu: Bool = false
+
     
     @State private var dayScrollHasMore: Bool = true
     @State var chartScrollAtStart: Bool = true
@@ -219,7 +218,7 @@ struct WeatherDetailView: View {
         }
     }
 
-    var chartMetricPopoverContent: some View {
+    var chartMetricMenu: some View {
         let allMetrics: [(ChartMetric, String, String)] = [
             (.temperature, "thermometer.medium", localizedString("Temperature", locale: locale)),
             (.feelsLike, "thermometer.variable.and.figure", localizedString("Feels Like", locale: locale)),
@@ -231,122 +230,86 @@ struct WeatherDetailView: View {
             (.visibility, "eye", localizedString("Visibility", locale: locale)),
         ]
 
-        return VStack(alignment: .leading, spacing: 0) {
+        return Menu {
             ForEach(allMetrics, id: \.0) { metric, icon, label in
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                         chartMetric = metric
                     }
-                    showingChartMetricPopover = false
                 } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: icon)
-                            .font(.system(size: 13))
-                            .frame(width: 18)
-                        Text(label)
-                            .font(.avenir(.body, weight: chartMetric == metric ? .bold : .medium))
-                            .foregroundStyle(.primary)
-                        Spacer()
-                        if chartMetric == metric {
-                            Circle()
-                                .fill(AppTheme.shared.colors.accent)
-                                .frame(width: 6, height: 6)
-                                .frame(width: 13)
-                        }
-                    }
-                    .padding(.leading, 16)
-                    .padding(.trailing, 16)
-                    .padding(.vertical, 11)
-                    .contentShape(Rectangle())
+                    Label(label, systemImage: icon)
                 }
-                .buttonStyle(.plain)
             }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: chartMetricIcon)
+                    .font(.system(size: 11, weight: .medium))
+                    .frame(width: 16)
+                Text(chartMetricLabel)
+                    .font(.avenir(.subheadline, weight: .semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06))
+            )
         }
-        .padding(.vertical, 8)
-        .frame(width: 220)
-        .themedPopoverBackground()
+        .menuStyle(.button)
+        .buttonStyle(.plain)
     }
 
-    var chartTimeRangePopoverContent: some View {
-        VStack(alignment: .leading, spacing: 0) {
+    var chartTimeRangeMenu: some View {
+        Menu {
             Button {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     chartTimeRange = .daytime
                 }
-                showingChartRangePopover = false
             } label: {
-                HStack(spacing: 12) {
-                    Text(localizedString("Daytime", locale: locale))
-                        .font(.avenir(.body, weight: chartTimeRange == .daytime ? .bold : .medium))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    if chartTimeRange == .daytime {
-                        Circle()
-                            .fill(AppTheme.shared.colors.accent)
-                            .frame(width: 6, height: 6)
-                            .frame(width: 13)
-                    }
-                }
-                .padding(.leading, 16)
-                .padding(.trailing, 16)
-                .padding(.vertical, 11)
-                .contentShape(Rectangle())
+                Label(localizedString("Daytime", locale: locale), systemImage: chartTimeRange == .daytime ? "checkmark" : "")
             }
-            .buttonStyle(.plain)
 
             Button {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     chartTimeRange = .entireDay
                 }
-                showingChartRangePopover = false
             } label: {
-                HStack(spacing: 12) {
-                    Text(localizedString("Entire Day", locale: locale))
-                        .font(.avenir(.body, weight: chartTimeRange == .entireDay ? .bold : .medium))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    if chartTimeRange == .entireDay {
-                        Circle()
-                            .fill(AppTheme.shared.colors.accent)
-                            .frame(width: 6, height: 6)
-                            .frame(width: 13)
-                    }
-                }
-                .padding(.leading, 16)
-                .padding(.trailing, 16)
-                .padding(.vertical, 11)
-                .contentShape(Rectangle())
+                Label(localizedString("Entire Day", locale: locale), systemImage: chartTimeRange == .entireDay ? "checkmark" : "")
             }
-            .buttonStyle(.plain)
 
             Button {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     chartTimeRange = .tenDay
                 }
-                showingChartRangePopover = false
             } label: {
-                HStack(spacing: 12) {
-                    Text(localizedString("10 Days", locale: locale))
-                        .font(.avenir(.body, weight: chartTimeRange == .tenDay ? .bold : .medium))
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    if chartTimeRange == .tenDay {
-                        Circle()
-                            .fill(AppTheme.shared.colors.accent)
-                            .frame(width: 6, height: 6)
-                            .frame(width: 13)
-                    }
-                }
-                .padding(.leading, 16)
-                .padding(.trailing, 16)
-                .padding(.vertical, 11)
-                .contentShape(Rectangle())
+                Label(localizedString("10 Days", locale: locale), systemImage: chartTimeRange == .tenDay ? "checkmark" : "")
             }
-            .buttonStyle(.plain)
+        } label: {
+            HStack(spacing: 5) {
+                Text(chartTimeRange == .daytime
+                     ? localizedString("Daytime", locale: locale)
+                     : chartTimeRange == .entireDay
+                     ? localizedString("Entire Day", locale: locale)
+                     : localizedString("10 Days", locale: locale))
+                    .font(.avenir(.subheadline, weight: .semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(
+                Capsule()
+                    .fill(AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06))
+            )
         }
-        .padding(.vertical, 8)
-        .frame(width: 160)
-        .themedPopoverBackground()
+        .menuStyle(.button)
+        .buttonStyle(.plain)
     }
 
     var isPopup: Bool {
@@ -569,69 +532,29 @@ struct WeatherDetailView: View {
                 if isPopup {
                     HStack(spacing: 8) {
                         if isInSidebar, onDeleteCity != nil || onRevealOnMap != nil {
-                            Button {
-                                showingDetailMenu = true
+                            Menu {
+                                if let revealAction = onRevealOnMap {
+                                    Button {
+                                        revealAction()
+                                    } label: {
+                                        Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+                                    }
+                                }
+                                if let deleteAction = onDeleteCity {
+                                    Button(role: .destructive) {
+                                        deleteAction()
+                                    } label: {
+                                        Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                                    }
+                                }
                             } label: {
                                 Image(systemName: "ellipsis")
                                     .font(.system(size: 15, weight: .medium))
                                     .foregroundStyle(.white)
                                     .frame(width: 44, height: 44)
                             }
+                            .menuStyle(.button)
                             .buttonStyle(.plain)
-                            .popover(isPresented: $showingDetailMenu) {
-                                VStack(alignment: .leading, spacing: 0) {
-                                    if let revealAction = onRevealOnMap {
-                                        Button {
-                                            showingDetailMenu = false
-                                            revealAction()
-                                        } label: {
-                                            HStack(spacing: 12) {
-                                                Image(systemName: "map")
-                                                    .font(.system(size: 15))
-                                                    .frame(width: 24)
-                                                    .foregroundStyle(.primary)
-                                                Text(localizedString("Reveal on Map", locale: locale))
-                                                    .font(.avenir(.body, weight: .medium))
-                                                    .foregroundStyle(.primary)
-                                                Spacer()
-                                            }
-                                            .padding(.leading, 16)
-                                            .padding(.trailing, 16)
-                                            .padding(.vertical, 11)
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                    if let deleteAction = onDeleteCity {
-                                        Button {
-                                            showingDetailMenu = false
-                                            deleteAction()
-                                        } label: {
-                                            HStack(spacing: 12) {
-                                                Image(systemName: "trash")
-                                                    .font(.system(size: 15))
-                                                    .frame(width: 24)
-                                                    .foregroundStyle(AppTheme.shared.colors.destructive)
-                                                Text(localizedString("Delete City", locale: locale))
-                                                    .font(.avenir(.body, weight: .medium))
-                                                    .foregroundStyle(AppTheme.shared.colors.destructive)
-                                                    .lineLimit(1)
-                                                    .truncationMode(.tail)
-                                                Spacer()
-                                            }
-                                            .padding(.leading, 16)
-                                            .padding(.trailing, 16)
-                                            .padding(.vertical, 11)
-                                            .contentShape(Rectangle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                }
-                                .padding(.vertical, 8)
-                                .frame(width: 220)
-                                .themedPopoverBackground()
-                                .presentationCompactAdaptation(.popover)
-                            }
                         }
 
                         // X button in upper right corner (popup only)
@@ -685,20 +608,6 @@ struct WeatherDetailView: View {
 
         }
         .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)
-        .overlay {
-            if !isPopup, showingDetailMenu {
-                Color.black.opacity(0.001)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            showingDetailMenu = false
-                        }
-                    }
-                    .zIndex(15)
-            }
-        }
         .overlay(alignment: .bottom) {
             if !isPopup {
                 detailBottomBar
@@ -748,83 +657,37 @@ struct WeatherDetailView: View {
                 .padding(6)
                 .themedGlass(in: .capsule)
 
-            // Menu button (right) — always shows … with Reveal + Delete
-            Image(systemName: "ellipsis")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(AppTheme.shared.colors.primaryText)
-                .frame(width: 36, height: 36)
-                .padding(6)
-                .themedGlass(in: .circle)
-                .contentShape(Circle())
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        showingDetailMenu = true
+            // Menu button (right) — native menu with Reveal + Delete
+            Menu {
+                if let revealAction = onRevealOnMap {
+                    Button {
+                        revealAction()
+                    } label: {
+                        Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
                     }
                 }
+                if let deleteAction = onDeleteCity {
+                    Button(role: .destructive) {
+                        deleteAction()
+                    } label: {
+                        Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                    }
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(AppTheme.shared.colors.primaryText)
+                    .frame(width: 36, height: 36)
+                    .padding(6)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
         .padding(.top, 20)
-        .overlay(alignment: .bottomTrailing) {
-            if showingDetailMenu {
-                VStack(alignment: .leading, spacing: 0) {
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            showingDetailMenu = false
-                        }
-                        onRevealOnMap?()
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "map")
-                                .font(.system(size: 15))
-                                .frame(width: 24)
-                            Text(localizedString("Reveal on Map", locale: locale))
-                                .font(.avenir(.body, weight: .medium))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Spacer()
-                        }
-                        .padding(.leading, 16)
-                        .padding(.trailing, 16)
-                        .padding(.vertical, 11)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            showingDetailMenu = false
-                        }
-                        onDeleteCity?()
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "trash")
-                                .font(.system(size: 15))
-                                .frame(width: 24)
-                            Text(localizedString("Delete City", locale: locale))
-                                .font(.avenir(.body, weight: .medium))
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                            Spacer()
-                        }
-                        .padding(.leading, 16)
-                        .padding(.trailing, 16)
-                        .padding(.vertical, 11)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(AppTheme.shared.colors.destructive)
-                }
-                .padding(.vertical, 8)
-                .fixedSize(horizontal: true, vertical: true)
-                .themedGlass(in: .rect(cornerRadius: 16))
-                .padding(.trailing, 16)
-                .padding(.bottom, 4)
-                .transition(.scale(scale: 0.3, anchor: .bottomTrailing).combined(with: .opacity))
-                .zIndex(20)
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showingDetailMenu)
     }
     
     private var forecastDateText: String {

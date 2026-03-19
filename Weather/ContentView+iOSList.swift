@@ -150,39 +150,31 @@ extension ContentView {
                 }
             ))
         }
-        .popover(isPresented: Binding(
-            get: { longPressedCity?.id == cityWeather.id },
-            set: { if !$0 { longPressedCity = nil } }
-        )) {
-            VStack(alignment: .leading, spacing: 0) {
-                menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
-                    let revealCity = cityWeather
-                    longPressedCity = nil
-                    showingCityDetail = false
-                    centerOnCityTrigger = nil
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        selectedTab = 1
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        centerOnCityTrigger = revealCity
-                    }
+        .contextMenu {
+            Button {
+                let revealCity = cityWeather
+                longPressedCity = nil
+                showingCityDetail = false
+                centerOnCityTrigger = nil
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    selectedTab = 1
                 }
-
-                Divider().padding(.horizontal, 12).padding(.vertical, 4)
-
-                menuRow(icon: "trash", title: localizedString("Delete City", locale: locale)) {
-                    longPressedCity = nil
-                    weatherService.removeCity(cityWeather)
-                    if selectedCity?.id == cityWeather.id {
-                        selectedCity = nil
-                    }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    centerOnCityTrigger = revealCity
                 }
-                .foregroundStyle(theme.colors.destructive)
+            } label: {
+                Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
             }
-            .padding(.vertical, 8)
-            .frame(width: 220)
-            .presentationCompactAdaptation(.popover)
-            .themedPopoverBackground()
+
+            Button(role: .destructive) {
+                longPressedCity = nil
+                weatherService.removeCity(cityWeather)
+                if selectedCity?.id == cityWeather.id {
+                    selectedCity = nil
+                }
+            } label: {
+                Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+            }
         }
     }
 
@@ -454,42 +446,31 @@ extension ContentView {
                         showingCityDetail = true
                     }
                 }
-                .onLongPressGesture {
-                    longPressedCity = cityWeather
-                }
-                .popover(isPresented: Binding(
-                    get: { longPressedCity?.id == cityWeather.id },
-                    set: { if !$0 { longPressedCity = nil } }
-                )) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        menuRow(icon: "map", title: localizedString("Reveal on Map", locale: locale)) {
-                            let revealCity = cityWeather
-                            longPressedCity = nil
-                            showingCityDetail = false
-                            centerOnCityTrigger = nil
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                selectedTab = 1
-                            }
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                centerOnCityTrigger = revealCity
-                            }
+                .contextMenu {
+                    Button {
+                        let revealCity = cityWeather
+                        longPressedCity = nil
+                        showingCityDetail = false
+                        centerOnCityTrigger = nil
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            selectedTab = 1
                         }
-                        
-                        Divider().padding(.horizontal, 12).padding(.vertical, 4)
-                        
-                        menuRow(icon: "trash", title: localizedString("Delete City", locale: locale)) {
-                            longPressedCity = nil
-                            weatherService.removeCity(cityWeather)
-                            if selectedCity?.id == cityWeather.id {
-                                selectedCity = nil
-                            }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            centerOnCityTrigger = revealCity
                         }
-                        .foregroundStyle(theme.colors.destructive)
+                    } label: {
+                        Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
                     }
-                    .padding(.vertical, 8)
-                    .frame(width: 220)
-                    .presentationCompactAdaptation(.popover)
-                    .themedPopoverBackground()
+
+                    Button(role: .destructive) {
+                        longPressedCity = nil
+                        weatherService.removeCity(cityWeather)
+                        if selectedCity?.id == cityWeather.id {
+                            selectedCity = nil
+                        }
+                    } label: {
+                        Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                    }
                 }
             }
             .onMove(perform: isEditMode ? { source, destination in
