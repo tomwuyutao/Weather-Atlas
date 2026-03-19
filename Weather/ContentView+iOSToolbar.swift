@@ -83,50 +83,7 @@ extension ContentView {
             }
             .sharedBackgroundVisibility(.hidden)
         }
-        if !isIPad, selectedTab == 0 {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    showingListSwitcher = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(toolbarTitle)
-                            .font(.avenir(.headline, weight: .semibold))
-                            .lineLimit(1)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .themedGlass(in: .capsule)
-                }
-                .buttonStyle(.plain)
-                .fixedSize()
-            }
-            .sharedBackgroundVisibility(.hidden)
-        }
-        if !isIPad, selectedTab == 1, !isMapSpecialMode {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    showingListSwitcher = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(toolbarTitle)
-                            .font(.avenir(.headline, weight: .semibold))
-                            .lineLimit(1)
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(.secondary)
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .themedGlass(in: .capsule)
-                }
-                .buttonStyle(.plain)
-                .fixedSize()
-            }
-            .sharedBackgroundVisibility(.hidden)
-        }
+        // iPhone list selector capsule is now in the bottom bar
     }
 
     // MARK: - Trailing Toolbar

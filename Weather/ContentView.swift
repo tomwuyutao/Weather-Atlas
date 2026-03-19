@@ -606,6 +606,15 @@ struct ContentView: View {
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedTab)
             .ignoresSafeArea(.keyboard)
+            .overlay(alignment: .trailing) {
+                // Date slider on list view (map view has its own inside the map overlay)
+                if selectedTab == 0, !isMapSpecialMode {
+                    mapDateSlider(height: 340)
+                        .padding(.trailing, 1)
+                        .padding(.bottom, 120)
+                        .transition(.opacity)
+                }
+            }
 
             iOSMainOverlays
         }
@@ -685,6 +694,18 @@ struct ContentView: View {
             iOSCountrySearchResults
                 .transition(.opacity)
                 .zIndex(10)
+        }
+
+        // Floating map controls capsule (above bottom bar, right side)
+        if selectedTab == 1, !isMapSpecialMode, !showingInlineSearch, !showingCountrySearch, previewCity == nil {
+            HStack {
+                Spacer()
+                iOSMapControlsCapsule
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 68)
+            .transition(.opacity)
+            .zIndex(10)
         }
 
         // Floating bottom toolbar / inline search bar / preview toolbar
@@ -1324,7 +1345,7 @@ struct ContentView: View {
                     }
 
             } else {
-                // NORMAL STATE: search button (left) + date/map controls (center) + view switcher (right)
+                // NORMAL STATE: search button (left) + list selector capsule (center, stretched) + view switcher (right)
                 Image(systemName: "magnifyingglass")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(theme.colors.primaryText)
@@ -1339,18 +1360,24 @@ struct ContentView: View {
                         }
                     }
 
-                Spacer()
-
-                Group {
-                    if selectedTab == 0 {
-                        iOSDateSwitcherCapsule
-                    } else {
-                        iOSMapControlsCapsule
-                    }
+                // List selector capsule — stretched to fill center
+                HStack(spacing: 6) {
+                    Text(toolbarTitle)
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.secondary)
                 }
+                .frame(maxWidth: .infinity)
+                .frame(height: 36)
+                .padding(.horizontal, 6)
                 .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
-
-                Spacer()
+                .themedGlass(in: .capsule)
+                .contentShape(Capsule())
+                .onTapGesture {
+                    showingListSwitcher = true
+                }
 
                 Image(systemName: selectedTab == 0 ? (isGridView ? "square.grid.2x2.fill" : "list.bullet") : "map.fill")
                     .contentTransition(.symbolEffect(.replace))

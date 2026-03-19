@@ -468,10 +468,13 @@ private struct SVGProxyOverlay: View {
     var cities: [CityWeather] = []
     var borderAllCountries: Bool = false
 
+    // Two reference points on the equator, close enough to always be on the same world copy
     private static let refCoordA = CLLocationCoordinate2D(latitude: 0.0, longitude: 0.0)
-    private static let refCoordB = CLLocationCoordinate2D(latitude: 45.0, longitude: 90.0)
+    private static let refCoordB = CLLocationCoordinate2D(latitude: 0.0, longitude: 1.0)
+    // Vertical reference to compute Y scale
+    private static let refCoordV = CLLocationCoordinate2D(latitude: 45.0, longitude: 0.0)
     private static let refSvgA = GeoProjection.geoToSVG(latitude: 0.0, longitude: 0.0)
-    private static let refSvgB = GeoProjection.geoToSVG(latitude: 45.0, longitude: 90.0)
+    private static let refSvgV = GeoProjection.geoToSVG(latitude: 45.0, longitude: 0.0)
 
     /// Returns the set of country IDs that contain at least one city
     private var countriesWithCities: Set<String> {
@@ -494,11 +497,12 @@ private struct SVGProxyOverlay: View {
     var body: some View {
         let ptA = proxy.convert(Self.refCoordA, to: .local)
         let ptB = proxy.convert(Self.refCoordB, to: .local)
+        let ptV = proxy.convert(Self.refCoordV, to: .local)
 
         Canvas { context, size in
             let _ = cameraChangeCounter
 
-            guard let screenA = ptA, let screenB = ptB else { return }
+            guard let screenA = ptA, let screenB = ptB, let screenV = ptV else { return }
             guard size.width > 0, size.height > 0 else { return }
 
             // Fill entire canvas with ocean color (not in calibration mode)
@@ -508,13 +512,23 @@ private struct SVGProxyOverlay: View {
             }
 
             let svgA = Self.refSvgA
-            let svgB = Self.refSvgB
-            let svgDx = Double(svgB.x - svgA.x)
-            let svgDy = Double(svgB.y - svgA.y)
-            guard abs(svgDx) > 0.001, abs(svgDy) > 0.001 else { return }
+            let svgV = Self.refSvgV
 
-            let scaleX = (screenB.x - screenA.x) / svgDx
-            let baseScaleY = (screenB.y - screenA.y) / svgDy
+            // refA and refB are both on the equator, 1° apart — always on the same world copy.
+            // Screen pixels per degree of longitude at the equator:
+            let pixelsPerDegree = screenB.x - screenA.x
+            guard pixelsPerDegree.isFinite, pixelsPerDegree != 0 else { return }
+
+            // SVG pixels per degree of longitude
+            let svgPixelsPerDegree = Double(GeoProjection.svgWidth) / Double(GeoProjection.lonRange)
+
+            // Screen pixels per SVG pixel (horizontal)
+            let scaleX = pixelsPerDegree / svgPixelsPerDegree
+
+            // Vertical scale: refA (lat=0) to refV (lat=45), same longitude
+            let svgDy = Double(svgV.y - svgA.y)
+            guard abs(svgDy) > 0.001 else { return }
+            let baseScaleY = (screenV.y - screenA.y) / svgDy
             guard scaleX.isFinite, baseScaleY.isFinite, scaleX != 0, baseScaleY != 0 else { return }
 
             // Stretch vertically by a small factor, anchored at the equator (refA)
@@ -522,12 +536,6 @@ private struct SVGProxyOverlay: View {
             let scaleY = baseScaleY * yStretch
             let tx = screenA.x - Double(svgA.x) * scaleX
             let ty = screenA.y - Double(svgA.y) * scaleY
-
-            var transform = CGAffineTransform(
-                a: scaleX, b: 0,
-                c: 0, d: scaleY,
-                tx: tx, ty: ty
-            )
 
             let colors = AppTheme.shared.colors
             let isColorful = style == .colorful
@@ -541,30 +549,59 @@ private struct SVGProxyOverlay: View {
             // Corner rounding radius in screen points
             let cornerRadius: CGFloat = min(max(abs(scaleX) * 1.5, 1.5), 8.0)
 
-            // First pass: fill all countries
-            for country in countries {
-                if let transformed = country.path.copy(using: &transform) {
-                    let smoothed = Path(Self.roundCorners(transformed, radius: cornerRadius))
-                    switch style {
-                    case .filled:
-                        context.fill(smoothed, with: .color(landColor))
-                    case .borders, .colorful:
-                        let fill = borderedIDs.contains(country.id) ? landColor : borderedLandColor
-                        context.fill(smoothed, with: .color(fill))
-                    case .calibration:
-                        context.stroke(smoothed, with: .color(.red), lineWidth: 1)
-                    }
+            // World wrapping: 360° in screen pixels
+            let worldWidthScreen = pixelsPerDegree * 360.0
+
+            // Determine which horizontal copies are needed to cover the visible area.
+            // The base SVG left edge is at screen x = tx. We need copies at tx + n * worldWidth
+            // for all n where the copy overlaps the visible rect [0, size.width].
+            let svgScreenWidth = Double(GeoProjection.svgWidth) * scaleX
+            var offsets: [Double] = []
+            // Check a range of copies
+            for n in -3...3 {
+                let copyLeft = tx + Double(n) * worldWidthScreen
+                let copyRight = copyLeft + svgScreenWidth
+                // Does this copy overlap the visible area (with some margin)?
+                if copyRight > -svgScreenWidth * 0.1 && copyLeft < Double(size.width) + svgScreenWidth * 0.1 {
+                    offsets.append(Double(n) * worldWidthScreen)
                 }
             }
+            // Always include at least the base copy
+            if offsets.isEmpty { offsets = [0] }
 
-            // Second pass: stroke borders on top of all fills
-            if style == .borders || style == .colorful {
-                let borderWidth = min(max(abs(scaleX) * 0.4, 1.5), 3)
+            // Draw countries at each horizontal offset for world wrapping
+            for wrapOffset in offsets {
+                var transform = CGAffineTransform(
+                    a: scaleX, b: 0,
+                    c: 0, d: scaleY,
+                    tx: tx + wrapOffset, ty: ty
+                )
+
+                // First pass: fill all countries
                 for country in countries {
-                    if borderedIDs.contains(country.id),
-                       let transformed = country.path.copy(using: &transform) {
+                    if let transformed = country.path.copy(using: &transform) {
                         let smoothed = Path(Self.roundCorners(transformed, radius: cornerRadius))
-                        context.stroke(smoothed, with: .color(borderColor), lineWidth: borderWidth)
+                        switch style {
+                        case .filled:
+                            context.fill(smoothed, with: .color(landColor))
+                        case .borders, .colorful:
+                            let fill = borderedIDs.contains(country.id) ? landColor : borderedLandColor
+                            context.fill(smoothed, with: .color(fill))
+                        case .calibration:
+                            context.stroke(smoothed, with: .color(.red), lineWidth: 1)
+                        }
+                    }
+                }
+
+                // Second pass: stroke borders on top of all fills
+                if style == .borders || style == .colorful {
+                    let borderWidth = min(max(abs(scaleX) * 0.4, 1.5), 3)
+                    for country in countries {
+                        if borderedIDs.contains(country.id),
+                           let transformed = country.path.copy(using: &transform) {
+                            let smoothed = Path(Self.roundCorners(transformed, radius: cornerRadius))
+                            context.stroke(smoothed, with: .color(borderColor), lineWidth: borderWidth)
+                        }
                     }
                 }
             }
