@@ -301,6 +301,7 @@ struct ListSwitcherSheet: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
                 }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.circle)
@@ -323,6 +324,7 @@ struct ListSwitcherSheet: View {
                 } label: {
                     Image(systemName: "checkmark")
                         .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
                 }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.circle)

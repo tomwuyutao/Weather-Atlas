@@ -17,6 +17,7 @@ struct WeatherDetailView: View {
     let onAddCityToList: ((CityListID) -> Void)?
     let availableLists: [CityListID]
     let onDeleteCity: (() -> Void)?
+    let onRenameCity: ((String) -> Void)?
     let onRevealOnMap: (() -> Void)?
     let onPreviousCity: (() -> Void)?
     let onNextCity: (() -> Void)?
@@ -59,6 +60,10 @@ struct WeatherDetailView: View {
     @State var isHeaderCollapsed: Bool = false
     @State var headerDragOffset: CGFloat = 0
     @State var scrollAtTop: Bool = true
+    @State var citySwipeFromTrailing: Bool = true
+    @State private var showingRenameAlert: Bool = false
+    @State private var renameText: String = ""
+    @State private var displayCityName: String = ""
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
 
@@ -71,7 +76,7 @@ struct WeatherDetailView: View {
     }
 
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onAddCityToList: ((CityListID) -> Void)? = nil, availableLists: [CityListID] = [], onDeleteCity: (() -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, onPreviousCity: (() -> Void)? = nil, onNextCity: (() -> Void)? = nil, onShowSettings: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil, initialChartMetric: ChartMetric? = nil) {
+    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onAddCityToList: ((CityListID) -> Void)? = nil, availableLists: [CityListID] = [], onDeleteCity: (() -> Void)? = nil, onRenameCity: ((String) -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, onPreviousCity: (() -> Void)? = nil, onNextCity: (() -> Void)? = nil, onShowSettings: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil, initialChartMetric: ChartMetric? = nil) {
         self.cityWeather = cityWeather
         self._selectedDayOffset = selectedDayOffset
         self.namespace = namespace
@@ -80,6 +85,7 @@ struct WeatherDetailView: View {
         self.onAddCityToList = onAddCityToList
         self.availableLists = availableLists
         self.onDeleteCity = onDeleteCity
+        self.onRenameCity = onRenameCity
         self.onRevealOnMap = onRevealOnMap
         self.onPreviousCity = onPreviousCity
         self.onNextCity = onNextCity
@@ -91,6 +97,7 @@ struct WeatherDetailView: View {
         self._internalSelectedDay = State(initialValue: selectedDayOffset.wrappedValue)
         self._previousDay = State(initialValue: selectedDayOffset.wrappedValue)
         self._chartMetric = State(initialValue: initialChartMetric ?? .temperature)
+        self._displayCityName = State(initialValue: cityWeather.city.localizedName(locale: .current))
     }
     
     var forecast: DailyForecast {
@@ -524,6 +531,14 @@ struct WeatherDetailView: View {
                     HStack(spacing: 8) {
                         if isInSidebar, onDeleteCity != nil || onRevealOnMap != nil || onShowSettings != nil {
                             Menu {
+                                if let settingsAction = onShowSettings {
+                                    Button {
+                                        settingsAction()
+                                    } label: {
+                                        Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
+                                    }
+                                    Divider()
+                                }
                                 if let revealAction = onRevealOnMap {
                                     Button {
                                         revealAction()
@@ -536,14 +551,6 @@ struct WeatherDetailView: View {
                                         deleteAction()
                                     } label: {
                                         Label(localizedString("Delete City", locale: locale), systemImage: "trash")
-                                    }
-                                }
-                                if let settingsAction = onShowSettings {
-                                    Divider()
-                                    Button {
-                                        settingsAction()
-                                    } label: {
-                                        Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
                                     }
                                 }
                             } label: {
@@ -622,10 +629,22 @@ struct WeatherDetailView: View {
             isHeaderCollapsed = false
             headerDragOffset = 0
             scrollAtTop = true
+            displayCityName = cityWeather.city.localizedName(locale: locale)
         }
         .contentShape(Rectangle())
         .matchedGeometryEffect(id: isPopup ? (isInSidebar ? "sidebar-\(cityWeather.id)" : "marker-\(cityWeather.id)") : "", in: namespace, isSource: isPopup)
         .transition(isPopup ? .scale(scale: 0.5).combined(with: .opacity) : .identity)
+        .alert(localizedString("Rename", locale: locale), isPresented: $showingRenameAlert) {
+            TextField(localizedString("Name", locale: locale), text: $renameText)
+            Button(localizedString("Cancel", locale: locale), role: .cancel) { }
+            Button(localizedString("OK", locale: locale)) {
+                let trimmed = renameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    onRenameCity?(trimmed)
+                    displayCityName = trimmed
+                }
+            }
+        }
     }
 
     // MARK: - Detail Bottom Bar
@@ -647,21 +666,37 @@ struct WeatherDetailView: View {
             .buttonStyle(.plain)
 
             // City name capsule (center) — swipe left/right to switch cities
-            Text(cityWeather.city.localizedName(locale: locale))
-                .font(.avenir(.subheadline, weight: .semibold))
-                .lineLimit(1)
-                .frame(maxWidth: .infinity)
-                .frame(height: 36)
-                .padding(.horizontal, 14)
-                .padding(6)
-                .themedGlass(in: .capsule)
-                .contentShape(Capsule())
-                .contextMenu {
+            ZStack {
+                Text(displayCityName)
+                    .font(.avenir(.subheadline, weight: .semibold))
+                    .lineLimit(1)
+                    .id(displayCityName)
+                    .transition(.asymmetric(
+                        insertion: .offset(x: citySwipeFromTrailing ? 200 : -200),
+                        removal: .offset(x: citySwipeFromTrailing ? -200 : 200)
+                    ))
+            }
+            .clipped()
+            .frame(maxWidth: .infinity)
+            .frame(height: 36)
+            .padding(.horizontal, 14)
+            .padding(6)
+            .themedGlass(in: .capsule)
+            .contentShape(Capsule())
+            .contextMenu {
                     if let deleteAction = onDeleteCity {
                         Button(role: .destructive) {
                             deleteAction()
                         } label: {
                             Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                        }
+                    }
+                    if onRenameCity != nil {
+                        Button {
+                            renameText = displayCityName
+                            showingRenameAlert = true
+                        } label: {
+                            Label(localizedString("Rename", locale: locale), systemImage: "pencil")
                         }
                     }
                 }
@@ -673,17 +708,31 @@ struct WeatherDetailView: View {
                             guard abs(dx) > dy else { return }
                             if dx < 0, let next = onNextCity {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                next()
+                                citySwipeFromTrailing = true
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    next()
+                                }
                             } else if dx > 0, let prev = onPreviousCity {
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                prev()
+                                citySwipeFromTrailing = false
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    prev()
+                                }
                             }
                         }
                 )
 
             // Menu button — native menu with Reveal + Delete + Settings
-            if onDeleteCity != nil || onRevealOnMap != nil || onShowSettings != nil {
+            if onDeleteCity != nil || onRevealOnMap != nil || onShowSettings != nil || onRenameCity != nil {
                 Menu {
+                    if let settingsAction = onShowSettings {
+                        Button {
+                            settingsAction()
+                        } label: {
+                            Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
+                        }
+                        Divider()
+                    }
                     if let revealAction = onRevealOnMap {
                         Button {
                             revealAction()
@@ -691,19 +740,19 @@ struct WeatherDetailView: View {
                             Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
                         }
                     }
+                    if onRenameCity != nil {
+                        Button {
+                            renameText = displayCityName
+                            showingRenameAlert = true
+                        } label: {
+                            Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+                        }
+                    }
                     if let deleteAction = onDeleteCity {
                         Button(role: .destructive) {
                             deleteAction()
                         } label: {
                             Label(localizedString("Delete City", locale: locale), systemImage: "trash")
-                        }
-                    }
-                    if let settingsAction = onShowSettings {
-                        Divider()
-                        Button {
-                            settingsAction()
-                        } label: {
-                            Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
                         }
                     }
                 } label: {
@@ -726,6 +775,7 @@ struct WeatherDetailView: View {
                 } label: {
                     Image(systemName: "plus")
                         .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.white)
                         .frame(width: 36, height: 36)
                 }
                 .buttonStyle(.glassProminent)

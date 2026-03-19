@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @State var weatherService = WeatherService()
     @Environment(\.appTheme) var theme
+    var previewLoading: Bool = false
 
     @State var countries: [CountryPath] = []
     @State var centerOnCityTrigger: CityWeather?
@@ -190,6 +191,8 @@ struct ContentView: View {
     @State var editingListName: String = ""
     @FocusState var listNameFieldFocused: Bool
     @State var showingDeleteListConfirmation: Bool = false
+    @State var showingRenameAlert: Bool = false
+    @State var renameAlertText: String = ""
     @State var showingListSwitcher: Bool = false
     @State var listSheetDetent: PresentationDetent = .medium
     @State var showingCountrySearch: Bool = false
@@ -229,6 +232,7 @@ struct ContentView: View {
     @State var focusSubsetCities: [CityWeather] = []
     @State var focusSubsetTrigger: Bool = false
     @State var isLoadingMapList: Bool = false
+    @State var capsuleSwipeFromTrailing: Bool = true
     @State var gridPreviewPoints: [CLLocationCoordinate2D] = []
     @State var gridPreviewTask: Task<Void, Never>?
 
@@ -485,6 +489,7 @@ struct ContentView: View {
                             } label: {
                                 Image(systemName: isEditMode ? "checkmark" : "pencil")
                                     .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(.white)
                             }
                             .buttonStyle(.glassProminent)
                             .buttonBorderShape(.circle)
@@ -543,6 +548,11 @@ struct ContentView: View {
         }
         if countries.isEmpty {
             countries = SVGMapParser.parse()
+        }
+        if previewLoading {
+            weatherService.isLoading = true
+            weatherService.loadingProgress = 0.6
+            return
         }
         await weatherService.fetchWeatherForAllCities()
     }
@@ -605,7 +615,7 @@ struct ContentView: View {
     @ViewBuilder
     private var iOSDateSliderOverlay: some View {
         // Single date slider shared by both views — no animation on tab switch
-        if !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
+        if !showingInlineSearch, !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
             Color.clear
                 .frame(width: 60, height: 500)
                 .contentShape(Rectangle())
@@ -736,7 +746,7 @@ struct ContentView: View {
                     }
                 }
                 .overlay(alignment: .trailing) {
-                    if showDateSlider, !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
+                    if showDateSlider, !showingInlineSearch, !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
                         Color.clear
                             .frame(width: 60, height: 500)
                             .contentShape(Rectangle())
@@ -820,12 +830,6 @@ struct ContentView: View {
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-
-                    if showPlaybackButton {
-                        Rectangle()
-                            .fill(theme.colors.primaryText.opacity(0.15))
-                            .frame(width: 1, height: 18)
-                    }
                 }
 
                 if showPlaybackButton {
@@ -994,6 +998,10 @@ struct ContentView: View {
                         recenterOnAllCities = true
                     }
                 } : nil,
+                onRenameCity: cityIsInSidebar(city) ? { newName in
+                    weatherService.renameCity(city, to: newName)
+                    tappedCity = weatherService.cityWeatherData.first(where: { $0.city.latitude == city.city.latitude && $0.city.longitude == city.city.longitude })
+                } : nil,
                 onRevealOnMap: {
                     let revealCity = city
                     showingCityDetail = false
@@ -1128,6 +1136,7 @@ struct ContentView: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
                     .frame(width: 36, height: 36)
             }
             .buttonStyle(.glassProminent)
@@ -1215,23 +1224,7 @@ struct ContentView: View {
                 showingListSwitcher = true
             }
 
-        Button {
-            if let city = previewCity {
-                Task {
-                    await addCityToSidebar(city)
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        showingMapExpandedCard = false
-                        previewCity = nil
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 36, height: 36)
-        }
-        .buttonStyle(.glassProminent)
-        .buttonBorderShape(.circle)
+        addCityButton(dismissExpanded: true)
         .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
     }
 
@@ -1280,22 +1273,7 @@ struct ContentView: View {
             }
         }
 
-        Button {
-            if let city = previewCity {
-                Task {
-                    await addCityToSidebar(city)
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        previewCity = nil
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 14, weight: .semibold))
-                .frame(width: 36, height: 36)
-        }
-        .buttonStyle(.glassProminent)
-        .buttonBorderShape(.circle)
+        addCityButton(dismissExpanded: false)
         .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
     }
 
@@ -1321,6 +1299,11 @@ struct ContentView: View {
             Text(toolbarTitle)
                 .font(.avenir(.subheadline, weight: .semibold))
                 .lineLimit(1)
+                .id(toolbarTitle)
+                .transition(.asymmetric(
+                    insertion: .offset(x: capsuleSwipeFromTrailing ? 200 : -200),
+                    removal: .offset(x: capsuleSwipeFromTrailing ? -200 : 200)
+                ))
 
             HStack {
                 Image(systemName: "magnifyingglass")
@@ -1339,6 +1322,7 @@ struct ContentView: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .clipped()
         .frame(maxWidth: .infinity)
         .frame(height: 36)
         .padding(.leading, 4)
@@ -1351,19 +1335,16 @@ struct ContentView: View {
             showingListSwitcher = true
         }
         .contextMenu {
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    editingListName = weatherService.activeListID.localizedDisplayName(locale: locale)
-                    isEditingListName = true
-                    listNameFieldFocused = true
-                }
-            } label: {
-                Label(localizedString("Rename", locale: locale), systemImage: "pencil")
-            }
             Button(role: .destructive) {
                 showingDeleteListConfirmation = true
             } label: {
                 Label(localizedString("Delete", locale: locale), systemImage: "trash")
+            }
+            Button {
+                renameAlertText = weatherService.activeListID.localizedDisplayName(locale: locale)
+                showingRenameAlert = true
+            } label: {
+                Label(localizedString("Rename", locale: locale), systemImage: "pencil")
             }
         }
         .gesture(
@@ -1383,7 +1364,8 @@ struct ContentView: View {
                     }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     let newList = allLists[newIdx]
-                    withAnimation(.easeInOut(duration: 0.25)) {
+                    capsuleSwipeFromTrailing = dx < 0
+                    withAnimation(.easeInOut(duration: 0.35)) {
                         visibleListIDs = [newList.rawValue]
                     }
                     Task {
@@ -1449,6 +1431,16 @@ struct ContentView: View {
                 }
             } else {
                 countrySearchFocused = false
+            }
+        }
+        .alert(localizedString("Rename", locale: locale), isPresented: $showingRenameAlert) {
+            TextField(localizedString("Name", locale: locale), text: $renameAlertText)
+            Button(localizedString("Cancel", locale: locale), role: .cancel) { }
+            Button(localizedString("OK", locale: locale)) {
+                let trimmed = renameAlertText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    weatherService.renameCurrentList(to: trimmed)
+                }
             }
         }
     }
@@ -2030,6 +2022,59 @@ struct ContentView: View {
             tappedCity = newCity
         }
     }
+
+    @ViewBuilder
+    private func addCityButton(dismissExpanded: Bool) -> some View {
+        let visibleLists = CityListID.allLists.filter { visibleListIDs.contains($0.rawValue) }
+        if visibleLists.count > 1 {
+            Menu {
+                ForEach(visibleLists) { listID in
+                    Button(listID.localizedDisplayName(locale: locale)) {
+                        if let city = previewCity {
+                            Task {
+                                if listID == weatherService.activeListID {
+                                    await addCityToSidebar(city)
+                                } else {
+                                    await weatherService.addCityToList(city.city, listID: listID)
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    if dismissExpanded { showingMapExpandedCard = false }
+                                    previewCity = nil
+                                }
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
+        } else {
+            Button {
+                if let city = previewCity {
+                    Task {
+                        await addCityToSidebar(city)
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            if dismissExpanded { showingMapExpandedCard = false }
+                            previewCity = nil
+                        }
+                    }
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+            }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
+        }
+    }
 }
 
 enum MarkerDisplayMode {
@@ -2392,5 +2437,9 @@ struct WeatherMarker: View {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
     let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
     ContentView()
+}
+
+#Preview("Loading") {
+    ContentView(previewLoading: true)
 }
 

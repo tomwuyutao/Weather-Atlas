@@ -151,6 +151,16 @@ extension ContentView {
             ))
         }
         .contextMenu {
+            Button(role: .destructive) {
+                longPressedCity = nil
+                weatherService.removeCity(cityWeather)
+                if selectedCity?.id == cityWeather.id {
+                    selectedCity = nil
+                }
+            } label: {
+                Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+            }
+
             Button {
                 let revealCity = cityWeather
                 longPressedCity = nil
@@ -164,16 +174,6 @@ extension ContentView {
                 }
             } label: {
                 Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
-            }
-
-            Button(role: .destructive) {
-                longPressedCity = nil
-                weatherService.removeCity(cityWeather)
-                if selectedCity?.id == cityWeather.id {
-                    selectedCity = nil
-                }
-            } label: {
-                Label(localizedString("Delete City", locale: locale), systemImage: "trash")
             }
         }
     }
@@ -267,6 +267,9 @@ extension ContentView {
                 iOSPlainListContent
             }
         }
+        .id(visibleListIDs)
+        .transition(.push(from: capsuleSwipeFromTrailing ? .trailing : .leading))
+        .clipShape(Rectangle())
         .opacity(listContentOpacity)
         .overlay {
             if weatherService.isLoading, listContentOpacity < 1 {
@@ -434,6 +437,16 @@ extension ContentView {
                     }
                 }
                 .contextMenu {
+                    Button(role: .destructive) {
+                        longPressedCity = nil
+                        weatherService.removeCity(cityWeather)
+                        if selectedCity?.id == cityWeather.id {
+                            selectedCity = nil
+                        }
+                    } label: {
+                        Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                    }
+
                     Button {
                         let revealCity = cityWeather
                         longPressedCity = nil
@@ -447,16 +460,6 @@ extension ContentView {
                         }
                     } label: {
                         Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
-                    }
-
-                    Button(role: .destructive) {
-                        longPressedCity = nil
-                        weatherService.removeCity(cityWeather)
-                        if selectedCity?.id == cityWeather.id {
-                            selectedCity = nil
-                        }
-                    } label: {
-                        Label(localizedString("Delete City", locale: locale), systemImage: "trash")
                     }
                 }
             }
@@ -581,4 +584,5 @@ struct CountrySearchSheet: View {
     let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
     ContentView()
 }
+
 

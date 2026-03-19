@@ -200,6 +200,7 @@ extension ContentView {
                         } label: {
                             Image(systemName: "checkmark")
                                 .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white)
                         }
                         .buttonStyle(.glassProminent)
                         .buttonBorderShape(.circle)

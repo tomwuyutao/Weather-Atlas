@@ -865,6 +865,13 @@ class WeatherService {
         // Save the updated cities list
         saveCitiesList()
     }
+
+    func renameCity(_ cityWeather: CityWeather, to newName: String) {
+        guard let index = cityWeatherData.firstIndex(where: { $0.id == cityWeather.id }) else { return }
+        cityWeatherData[index].city.name = newName
+        cacheData(cityWeatherData)
+        saveCitiesList()
+    }
     
     func addCity(_ city: City) async {
         do {
@@ -1001,7 +1008,7 @@ class WeatherService {
 
 struct City: Identifiable, Hashable, Codable {
     var id = UUID()
-    let name: String
+    var name: String
     let country: String
     let latitude: Double
     let longitude: Double
@@ -1057,7 +1064,7 @@ struct City: Identifiable, Hashable, Codable {
 
 struct CityWeather: Identifiable, Hashable {
     let id = UUID()
-    let city: City
+    var city: City
     let condition: AppWeatherCondition
     let temperature: Double
     let symbolName: String

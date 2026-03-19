@@ -106,6 +106,7 @@ extension ContentView {
                 } label: {
                     Image(systemName: "checkmark")
                         .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white)
                 }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.circle)
@@ -163,10 +164,6 @@ extension ContentView {
                             .controlSize(.small)
                             .tint(theme.colors.primaryText)
                             .frame(width: 44, height: 44)
-
-                        Rectangle()
-                            .fill(theme.colors.primaryText.opacity(0.15))
-                            .frame(width: 1, height: 20)
                     }
 
                     Button {
@@ -237,7 +234,7 @@ extension ContentView {
                                 focusSubsetCities = cities
                                 focusSubsetTrigger = true
                             } label: {
-                                Label(listID.localizedDisplayName(locale: locale), systemImage: "mappin.and.ellipse")
+                                Text(listID.localizedDisplayName(locale: locale))
                             }
                         }
                     } label: {
@@ -306,10 +303,6 @@ extension ContentView {
                                 .frame(width: 44, height: 44)
                         }
                         .buttonStyle(.plain)
-
-                        Rectangle()
-                            .fill(theme.colors.primaryText.opacity(0.15))
-                            .frame(width: 1, height: 20)
                     }
 
                     if showPlaybackButton {
@@ -323,10 +316,6 @@ extension ContentView {
                                 .contentTransition(.symbolEffect(.replace))
                         }
                         .buttonStyle(.plain)
-
-                        Rectangle()
-                            .fill(theme.colors.primaryText.opacity(0.15))
-                            .frame(width: 1, height: 20)
                     }
 
                     if weatherService.isLoading || isLoadingMapList {
@@ -334,10 +323,6 @@ extension ContentView {
                             .controlSize(.small)
                             .tint(theme.colors.primaryText)
                             .frame(width: 44, height: 44)
-
-                        Rectangle()
-                            .fill(theme.colors.primaryText.opacity(0.15))
-                            .frame(width: 1, height: 20)
                     }
 
                     iOSNativeMenu
@@ -503,6 +488,85 @@ extension ContentView {
 
     var iOSNativeMenu: some View {
         Menu {
+            Button {
+                showingSettings = true
+            } label: {
+                Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
+            }
+
+            Divider()
+
+            if selectedTab == 1 || isIPad {
+                Toggle(isOn: Binding(
+                    get: { showLegend },
+                    set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
+                )) {
+                    Label(localizedString("Legend", locale: locale), systemImage: "eye")
+                }
+            }
+
+            Button {
+                Task { await weatherService.refreshWeather() }
+            } label: {
+                Label(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"), systemImage: "arrow.clockwise")
+            }
+            .disabled(weatherService.isLoading)
+
+            if selectedTab == 1 || isIPad {
+                Toggle(isOn: Binding(
+                    get: { isPlaying },
+                    set: { newValue in
+                        if newValue { iOSStartPlayback() } else { iOSStopPlayback() }
+                    }
+                )) {
+                    Label(localizedString("Playback", locale: locale), systemImage: "play.fill")
+                }
+            }
+
+            Toggle(isOn: Binding(
+                get: { filterSunny },
+                set: { newValue in withAnimation { filterSunny = newValue } }
+            )) {
+                Label(localizedString("Filter Sunny", locale: locale), systemImage: "sun.max")
+            }
+
+            Divider()
+
+            if isIPad {
+                Toggle(isOn: Binding(
+                    get: { showDateSlider },
+                    set: { newValue in withAnimation { showDateSlider = newValue } }
+                )) {
+                    Label(localizedString("Date Slider", locale: locale), systemImage: "slider.horizontal.below.sun.max")
+                }
+            }
+
+            if selectedTab == 0, !isIPad {
+                Toggle(isOn: Binding(
+                    get: { isGridView },
+                    set: { newValue in
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            listContentOpacity = 0
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            isGridView = newValue
+                            withAnimation(.easeIn(duration: 0.2)) {
+                                listContentOpacity = 1
+                            }
+                        }
+                    }
+                )) {
+                    Label(localizedString("Grid View", locale: locale), systemImage: "square.grid.2x2")
+                }
+
+                Toggle(isOn: Binding(
+                    get: { isEditMode },
+                    set: { newValue in withAnimation { isEditMode = newValue } }
+                )) {
+                    Label(localizedString("Edit Mode", locale: locale), systemImage: "pencil")
+                }
+            }
+
             if !isEditingListName {
                 if let city = selectedTab == 1 ? (showingMapExpandedCard ? tappedCity : nil) : selectedCity,
                    cityIsInSidebar(city) {
@@ -523,87 +587,6 @@ extension ContentView {
                         Label(localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"", systemImage: "trash")
                     }
                 }
-            }
-
-            if selectedTab == 0, !isIPad {
-                Toggle(isOn: Binding(
-                    get: { isEditMode },
-                    set: { newValue in withAnimation { isEditMode = newValue } }
-                )) {
-                    Label(localizedString("Edit Mode", locale: locale), systemImage: "pencil")
-                }
-
-                Toggle(isOn: Binding(
-                    get: { isGridView },
-                    set: { newValue in
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            listContentOpacity = 0
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            isGridView = newValue
-                            withAnimation(.easeIn(duration: 0.2)) {
-                                listContentOpacity = 1
-                            }
-                        }
-                    }
-                )) {
-                    Label(localizedString("Grid View", locale: locale), systemImage: "square.grid.2x2")
-                }
-            }
-
-            if isIPad {
-                Toggle(isOn: Binding(
-                    get: { showDateSlider },
-                    set: { newValue in withAnimation { showDateSlider = newValue } }
-                )) {
-                    Label(localizedString("Date Slider", locale: locale), systemImage: "slider.horizontal.below.sun.max")
-                }
-            }
-
-            Divider()
-
-            Toggle(isOn: Binding(
-                get: { filterSunny },
-                set: { newValue in withAnimation { filterSunny = newValue } }
-            )) {
-                Label(localizedString("Filter Sunny", locale: locale), systemImage: "sun.max")
-            }
-
-            if selectedTab == 1 || isIPad {
-                Toggle(isOn: Binding(
-                    get: { isPlaying },
-                    set: { newValue in
-                        if newValue { iOSStartPlayback() } else { iOSStopPlayback() }
-                    }
-                )) {
-                    Label(localizedString("Playback", locale: locale), systemImage: "play.fill")
-                }
-            }
-
-            Button {
-                Task { await weatherService.refreshWeather() }
-            } label: {
-                Label(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"), systemImage: "arrow.clockwise")
-            }
-            .disabled(weatherService.isLoading)
-
-            Divider()
-
-            if selectedTab == 1 || isIPad {
-                Toggle(isOn: Binding(
-                    get: { showLegend },
-                    set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
-                )) {
-                    Label(localizedString("Legend", locale: locale), systemImage: "eye")
-                }
-            }
-
-            Divider()
-
-            Button {
-                showingSettings = true
-            } label: {
-                Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
             }
         } label: {
             Image(systemName: "ellipsis")
