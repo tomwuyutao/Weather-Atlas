@@ -848,7 +848,7 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(.horizontal, 4)
+            .padding(6)
             .themedGlass(in: .capsule)
             .transition(.scale.combined(with: .opacity))
         }
@@ -1481,7 +1481,9 @@ struct ContentView: View {
                 iOSCustomMenu
                     .background(
                         RoundedRectangle(cornerRadius: 16)
-                            .fill(theme.colors.glassFill)
+                            .fill(AppTheme.shared.isDetailedMapMode && colorScheme == .light
+                                ? Color(hex: 0xF5F1EC)
+                                : theme.colors.glassFill)
                     )
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .padding(.horizontal, 16)
