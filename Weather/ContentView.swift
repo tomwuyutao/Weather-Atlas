@@ -691,16 +691,35 @@ struct ContentView: View {
                 .zIndex(10)
         }
 
-        // Floating map controls capsule (above bottom bar, right side)
-        if selectedTab == 1, !isMapSpecialMode, !showingInlineSearch, !showingCountrySearch, previewCity == nil, !showingMapExpandedCard {
-            HStack {
+        // Floating controls row (above bottom bar, right side)
+        // Map view: active filter buttons + map controls capsule
+        // List view: active filter buttons only
+        if !isMapSpecialMode, !showingInlineSearch, !showingCountrySearch, previewCity == nil, !showingMapExpandedCard {
+            HStack(spacing: 8) {
                 Spacer()
-                iOSMapControlsCapsule
+                if selectedTab == 1 {
+                    iOSMapControlsCapsule
+                }
+                iOSActiveFilterButtons
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 68)
             .transition(.opacity)
             .zIndex(10)
+        }
+
+        // Full-screen dismiss scrim for menu popover
+        if showingMenuPopover {
+            Color.black.opacity(0.001)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        showingMenuPopover = false
+                    }
+                }
+                .zIndex(10.5)
         }
 
         // Floating bottom toolbar / inline search bar / preview toolbar
@@ -791,6 +810,49 @@ struct ContentView: View {
         }
     }
 
+
+    @ViewBuilder
+    private var iOSActiveFilterButtons: some View {
+        if filterSunny || showPlaybackButton {
+            HStack(spacing: 0) {
+                if filterSunny {
+                    Button {
+                        withAnimation { filterSunny = false }
+                    } label: {
+                        Image(systemName: "sun.max.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 42, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if showPlaybackButton {
+                        Rectangle()
+                            .fill(theme.colors.primaryText.opacity(0.15))
+                            .frame(width: 1, height: 20)
+                    }
+                }
+
+                if showPlaybackButton {
+                    Button {
+                        if isPlaying { iOSStopPlayback() } else { iOSStartPlayback() }
+                    } label: {
+                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
+                            .contentTransition(.symbolEffect(.replace))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 42, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 4)
+            .themedGlass(in: .capsule)
+            .transition(.scale.combined(with: .opacity))
+        }
+    }
 
         private var iOSMapControlsCapsule: some View {
         HStack(spacing: 8) {
@@ -1405,17 +1467,30 @@ struct ContentView: View {
                     .themedGlass(in: .circle)
                     .contentShape(Circle())
                     .onTapGesture {
-                        showingMenuPopover = true
-                    }
-                    .popover(isPresented: $showingMenuPopover) {
-                        iOSCustomMenu
-                            .presentationCompactAdaptation(.popover)
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showingMenuPopover = true
+                        }
                     }
             }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
         .padding(.top, showingInlineSearch || previewCity != nil ? 0 : 20)
+        .overlay(alignment: .bottomTrailing) {
+            if showingMenuPopover {
+                iOSCustomMenu
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(theme.colors.glassFill)
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 4)
+                    .transition(.scale(scale: 0.3, anchor: .bottomTrailing).combined(with: .opacity))
+                    .zIndex(20)
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: showingMenuPopover)
         .background {
             if !showingInlineSearch && previewCity == nil {
                 Color.clear

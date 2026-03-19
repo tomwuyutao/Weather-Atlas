@@ -283,8 +283,11 @@ struct MapKitMapView: View {
 
     private func passesFilter(_ cityWeather: CityWeather) -> Bool {
         guard filterSunny else { return true }
-        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
-        return forecast.condition == .clear
+        if selectedDayOffset == -1 {
+            return cityWeather.condition == .clear && !cityWeather.weatherIcon.contains("moon")
+        }
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        return forecast.condition == .clear && !forecast.weatherIcon.contains("moon")
     }
 
     private func fitAllCities(animated: Bool) {
@@ -424,8 +427,11 @@ private struct AnnotationsOverlay: View {
 
     private func passesFilter(_ cityWeather: CityWeather) -> Bool {
         guard filterSunny else { return true }
-        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
-        return forecast.condition == .clear
+        if selectedDayOffset == -1 {
+            return cityWeather.condition == .clear && !cityWeather.weatherIcon.contains("moon")
+        }
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        return forecast.condition == .clear && !forecast.weatherIcon.contains("moon")
     }
 
     private func computeDisplayMode(_ positions: [(id: UUID, pt: CGPoint)]) -> MarkerDisplayMode {

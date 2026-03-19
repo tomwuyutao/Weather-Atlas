@@ -34,22 +34,7 @@ struct ListSwitcherSheet: View {
             theme.colors.background.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Top bar — X button
-                HStack {
-                    Spacer()
-                    Button {
-                        isPresented = false
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 44, height: 44)
-                            .themedGlass(in: .circle)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
+                Spacer().frame(height: 16)
 
                 if isEditing {
                     editingView

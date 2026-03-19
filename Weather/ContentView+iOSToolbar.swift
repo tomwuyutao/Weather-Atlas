@@ -575,6 +575,17 @@ extension ContentView {
 
     // MARK: - Main Menu Popover
 
+    private var hasMenuTopSection: Bool {
+        let hasDeleteCity: Bool = {
+            if isEditingListName { return false }
+            let city = selectedTab == 1 ? (showingMapExpandedCard ? tappedCity : nil) : selectedCity
+            guard let city else { return false }
+            return cityIsInSidebar(city)
+        }()
+        let hasListEditing = selectedTab == 0 && !isIPad
+        return hasDeleteCity || hasListEditing || isIPad
+    }
+
     var iOSCustomMenu: some View {
         VStack(alignment: .leading, spacing: 0) {
             if !isEditingListName {
@@ -626,7 +637,10 @@ extension ContentView {
                 }
             }
 
-            Divider().padding(.horizontal, 12).padding(.vertical, 4)
+            // Only show divider if there are items above it
+            if hasMenuTopSection {
+                Divider().padding(.horizontal, 12).padding(.vertical, 4)
+            }
 
             menuRow(icon: filterSunny ? "sun.max.fill" : "sun.max", title: filterSunny ? localizedString("Clear Filter", locale: locale) : localizedString("Filter Sunny", locale: locale)) {
                 showingMenuPopover = false
