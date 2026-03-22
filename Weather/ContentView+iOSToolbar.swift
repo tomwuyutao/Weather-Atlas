@@ -408,15 +408,16 @@ extension ContentView {
     // MARK: - iPhone Date Switcher Capsule
 
     var iOSDateSwitcherCapsule: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: 8) {
             Image(systemName: "chevron.left")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(selectedDayOffset > -1 ? .primary : .tertiary)
-                .frame(width: 44, height: 44)
+                .frame(width: 36, height: 36)
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset > -1 {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dateSwitcherForward = false
                         withAnimation(.smooth(duration: 0.2)) {
                             selectedDayOffset -= 1
                         }
@@ -424,15 +425,12 @@ extension ContentView {
                 }
 
             Text(iOSDateText)
-                .font(.avenir(.subheadline, weight: .medium))
+                .font(.avenir(.caption, weight: .semibold))
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .frame(minWidth: 80)
                 .id("ios-date-\(selectedDayOffset)")
-                .transition(.asymmetric(
-                    insertion: .move(edge: selectedDayOffset >= iOSPreviousDayOffset ? .trailing : .leading).combined(with: .opacity),
-                    removal: .move(edge: selectedDayOffset >= iOSPreviousDayOffset ? .leading : .trailing).combined(with: .opacity)
-                ))
+                .transition(.push(from: dateSwitcherForward ? .trailing : .leading))
                 .clipped()
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -469,11 +467,12 @@ extension ContentView {
             Image(systemName: "chevron.right")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
-                .frame(width: 44, height: 44)
+                .frame(width: 36, height: 36)
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset < 9 {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dateSwitcherForward = true
                         withAnimation(.smooth(duration: 0.2)) {
                             selectedDayOffset += 1
                         }
@@ -482,6 +481,7 @@ extension ContentView {
         }
         .padding(6)
         .themedGlass(in: .capsule)
+        .transition(.scale.combined(with: .opacity))
     }
 
     // MARK: - Native Menu

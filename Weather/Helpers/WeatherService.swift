@@ -1665,24 +1665,11 @@ struct CachedHourlyForecast: Codable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         hour = try container.decode(Int.self, forKey: .hour)
         temperature = try container.decode(Double.self, forKey: .temperature)
-        if let at = try container.decodeIfPresent(Double.self, forKey: .apparentTemperature) {
-            apparentTemperature = at
-        } else {
-            print("⚠️ [WeatherCache] Apparent temperature missing for hour \(hour). Setting to nil.")
-            apparentTemperature = nil
-        }
+        apparentTemperature = try container.decodeIfPresent(Double.self, forKey: .apparentTemperature)
         symbolName = try container.decode(String.self, forKey: .symbolName)
         condition = try container.decode(String.self, forKey: .condition)
         precipitationChance = try container.decodeIfPresent(Double.self, forKey: .precipitationChance)
-        if precipitationChance == nil {
-            print("⚠️ [WeatherCache] Precipitation chance missing for hour \(hour). Setting to nil.")
-        }
-        if let cc = try container.decodeIfPresent(Double.self, forKey: .cloudCover) {
-            cloudCover = cc
-        } else {
-            print("⚠️ [WeatherCache] Cloud cover missing for hour \(hour). Setting to nil.")
-            cloudCover = nil
-        }
+        cloudCover = try container.decodeIfPresent(Double.self, forKey: .cloudCover)
         windSpeed = try container.decodeIfPresent(Double.self, forKey: .windSpeed)
         uvIndex = try container.decodeIfPresent(Int.self, forKey: .uvIndex)
         humidity = try container.decodeIfPresent(Double.self, forKey: .humidity)

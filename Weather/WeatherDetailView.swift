@@ -73,6 +73,7 @@ struct WeatherDetailView: View {
     @State private var detailSearchManager = CitySearchManager()
     @FocusState private var detailSearchFocused: Bool
     @State private var detailSearchLoading: Bool = false
+    @State private var showingSearchedCity: Bool = false
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
 
@@ -792,19 +793,21 @@ struct WeatherDetailView: View {
         .themedGlass(in: .capsule)
         .contentShape(Capsule())
         .contextMenu {
-                if let deleteAction = onDeleteCity {
-                    Button(role: .destructive) {
-                        deleteAction()
-                    } label: {
-                        Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                if !showingSearchedCity {
+                    if let deleteAction = onDeleteCity {
+                        Button(role: .destructive) {
+                            deleteAction()
+                        } label: {
+                            Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                        }
                     }
-                }
-                if onRenameCity != nil {
-                    Button {
-                        renameText = displayCityName
-                        showingRenameAlert = true
-                    } label: {
-                        Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+                    if onRenameCity != nil {
+                        Button {
+                            renameText = displayCityName
+                            showingRenameAlert = true
+                        } label: {
+                            Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+                        }
                     }
                 }
             }
@@ -817,12 +820,14 @@ struct WeatherDetailView: View {
                         if dx < 0, let next = onNextCity {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             citySwipeFromTrailing = true
+                            showingSearchedCity = false
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 next()
                             }
                         } else if dx > 0, let prev = onPreviousCity {
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             citySwipeFromTrailing = false
+                            showingSearchedCity = false
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 prev()
                             }
@@ -830,8 +835,8 @@ struct WeatherDetailView: View {
                     }
             )
 
-        // Menu button — native menu with Reveal + Delete + Settings
-        if onDeleteCity != nil || onRevealOnMap != nil || onShowSettings != nil || onRenameCity != nil {
+        // Menu button — native menu with Reveal + Delete + Settings (hidden for searched cities)
+        if !showingSearchedCity, onDeleteCity != nil || onRevealOnMap != nil || onShowSettings != nil || onRenameCity != nil {
             Menu {
                 if let settingsAction = onShowSettings {
                     Button {
@@ -889,7 +894,7 @@ struct WeatherDetailView: View {
                     Image(systemName: "plus")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.circle)
@@ -900,7 +905,7 @@ struct WeatherDetailView: View {
                     Image(systemName: "plus")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 32, height: 32)
                 }
                 .buttonStyle(.glassProminent)
                 .buttonBorderShape(.circle)
@@ -1006,11 +1011,12 @@ struct WeatherDetailView: View {
         let cityName = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
         let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
 
-        // Check if city already exists
+        // Check if city already exists in a list
         if let existingCity = ws.cityWeatherData.first(where: { $0.city.name == cityName && $0.city.country == country }) {
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 showingDetailSearch = false
                 detailSearchText = ""
+                showingSearchedCity = false
             }
             onSearchCitySelected?(existingCity)
             return
@@ -1030,6 +1036,7 @@ struct WeatherDetailView: View {
         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
             showingDetailSearch = false
             detailSearchText = ""
+            showingSearchedCity = true
         }
         onSearchCitySelected?(tempCityWeather)
     }

@@ -176,6 +176,7 @@ struct ContentView: View {
     @Namespace var radialBarNS
     @Namespace private var bottomBarNS
     @State var iOSPreviousDayOffset: Int = 0
+    @State var dateSwitcherForward: Bool = true
     @State var showingDatePopover: Bool = false
     @State var isDraggingDateSlider: Bool = false
     @State var sliderDragStartDay: Int = 0
@@ -618,13 +619,13 @@ struct ContentView: View {
 
     @ViewBuilder
     private var iOSDateSliderOverlay: some View {
-        // Single date slider shared by both views — no animation on tab switch
-        if !showingInlineSearch, !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
+        // Date slider only on map tab — list tab uses the date switcher capsule
+        if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
             Color.clear
                 .frame(width: 60, height: 500)
                 .contentShape(Rectangle())
                 .overlay(alignment: .trailing) {
-                    mapDateSlider(height: 420, transparent: selectedTab == 0)
+                    mapDateSlider(height: 420)
                 }
                 .padding(.bottom, 400)
                 .padding(.trailing, 1)
@@ -729,7 +730,9 @@ struct ContentView: View {
         if !isMapSpecialMode, !showingInlineSearch, !showingCountrySearch, previewCity == nil, !showingMapExpandedCard {
             HStack(spacing: 8) {
                 Spacer()
-                if selectedTab == 1 {
+                if selectedTab == 0 {
+                    iOSDateSwitcherCapsule
+                } else if selectedTab == 1 {
                     iOSMapControlsCapsule
                 }
                 iOSActiveFilterButtons
@@ -1157,7 +1160,7 @@ struct ContentView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 32, height: 32)
             }
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
@@ -2080,7 +2083,7 @@ struct ContentView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 32, height: 32)
             }
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
@@ -2099,7 +2102,7 @@ struct ContentView: View {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
+                    .frame(width: 32, height: 32)
             }
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
