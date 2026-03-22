@@ -67,6 +67,7 @@ struct ContentView: View {
     @State var mapHasInitialized: Bool = false
     @State var recenterOnAllCities: Bool = false
     @State var detailOpenedFromList: Bool = false
+    @State var listTappedCityID: UUID?
     @AppStorage("temperatureUnit") var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
     @State var showingSettings: Bool = false
@@ -1043,6 +1044,12 @@ struct ContentView: View {
                 onShowSettings: {
                     showingSettings = true
                 },
+                onSearch: { },
+                onSearchCitySelected: { selectedCity in
+                    // Navigate to the selected city in the detail view
+                    tappedCity = selectedCity
+                },
+                weatherService: weatherService,
                 isInSidebar: cityIsInSidebar(city),
                 showCloudCover: showCloudCover,
                 initialChartMetric: overlayChartMetric
@@ -2048,10 +2055,10 @@ struct ContentView: View {
 
     @ViewBuilder
     private func addCityButton(dismissExpanded: Bool) -> some View {
-        let visibleLists = CityListID.allLists.filter { visibleListIDs.contains($0.rawValue) }
-        if visibleLists.count > 1 {
+        let allLists = CityListID.allLists
+        if allLists.count > 1 {
             Menu {
-                ForEach(visibleLists) { listID in
+                ForEach(allLists) { listID in
                     Button(listID.localizedDisplayName(locale: locale)) {
                         if let city = previewCity {
                             Task {

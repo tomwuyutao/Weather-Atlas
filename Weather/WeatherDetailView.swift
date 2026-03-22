@@ -7,6 +7,7 @@
 
 import SwiftUI
 import WeatherKit
+import MapKit
 
 struct WeatherDetailView: View {
     let cityWeather: CityWeather
@@ -22,6 +23,9 @@ struct WeatherDetailView: View {
     let onPreviousCity: (() -> Void)?
     let onNextCity: (() -> Void)?
     let onShowSettings: (() -> Void)?
+    let onSearch: (() -> Void)?
+    let onSearchCitySelected: ((CityWeather) -> Void)?
+    let weatherService: WeatherService?
     let isInSidebar: Bool
     let showCloudCover: Bool
     var previewCurrentHour: Int? = nil
@@ -64,6 +68,11 @@ struct WeatherDetailView: View {
     @State private var showingRenameAlert: Bool = false
     @State private var renameText: String = ""
     @State private var displayCityName: String = ""
+    @State private var showingDetailSearch: Bool = false
+    @State private var detailSearchText: String = ""
+    @State private var detailSearchManager = CitySearchManager()
+    @FocusState private var detailSearchFocused: Bool
+    @State private var detailSearchLoading: Bool = false
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
 
@@ -76,7 +85,7 @@ struct WeatherDetailView: View {
     }
 
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onAddCityToList: ((CityListID) -> Void)? = nil, availableLists: [CityListID] = [], onDeleteCity: (() -> Void)? = nil, onRenameCity: ((String) -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, onPreviousCity: (() -> Void)? = nil, onNextCity: (() -> Void)? = nil, onShowSettings: (() -> Void)? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil, initialChartMetric: ChartMetric? = nil) {
+    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onAddCityToList: ((CityListID) -> Void)? = nil, availableLists: [CityListID] = [], onDeleteCity: (() -> Void)? = nil, onRenameCity: ((String) -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, onPreviousCity: (() -> Void)? = nil, onNextCity: (() -> Void)? = nil, onShowSettings: (() -> Void)? = nil, onSearch: (() -> Void)? = nil, onSearchCitySelected: ((CityWeather) -> Void)? = nil, weatherService: WeatherService? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil, initialChartMetric: ChartMetric? = nil) {
         self.cityWeather = cityWeather
         self._selectedDayOffset = selectedDayOffset
         self.namespace = namespace
@@ -90,6 +99,9 @@ struct WeatherDetailView: View {
         self.onPreviousCity = onPreviousCity
         self.onNextCity = onNextCity
         self.onShowSettings = onShowSettings
+        self.onSearch = onSearch
+        self.onSearchCitySelected = onSearchCitySelected
+        self.weatherService = weatherService
         self.isInSidebar = isInSidebar
         self.showCloudCover = showCloudCover
         self.previewCurrentHour = previewCurrentHour
@@ -614,6 +626,13 @@ struct WeatherDetailView: View {
 
         }
         .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)
+        .overlay {
+            if showingDetailSearch, !detailSearchText.isEmpty {
+                detailSearchResultsOverlay
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
+        }
         .overlay(alignment: .bottom) {
             if !isPopup {
                 detailBottomBar
@@ -630,6 +649,19 @@ struct WeatherDetailView: View {
             headerDragOffset = 0
             scrollAtTop = true
             displayCityName = cityWeather.city.localizedName(locale: locale)
+        }
+        .onChange(of: detailSearchText) { _, newValue in
+            detailSearchManager.search(query: newValue)
+        }
+        .onChange(of: showingDetailSearch) { _, newValue in
+            if newValue {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    detailSearchFocused = true
+                }
+            } else {
+                detailSearchManager.search(query: "")
+                detailSearchFocused = false
+            }
         }
         .contentShape(Rectangle())
         .matchedGeometryEffect(id: isPopup ? (isInSidebar ? "sidebar-\(cityWeather.id)" : "marker-\(cityWeather.id)") : "", in: namespace, isSource: isPopup)
@@ -651,11 +683,188 @@ struct WeatherDetailView: View {
 
     private var detailBottomBar: some View {
         HStack(spacing: 8) {
-            // Back button (left)
-            Button {
-                onDismiss()
+            if showingDetailSearch {
+                detailBottomBarSearchState
+            } else {
+                detailBottomBarNormalState
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+        .padding(.top, 20)
+        .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showingDetailSearch)
+    }
+
+    @ViewBuilder
+    private var detailBottomBarSearchState: some View {
+        // Search text field capsule
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.tertiary)
+            TextField(localizedString("Search for a city", locale: locale), text: $detailSearchText)
+                .textFieldStyle(.plain)
+                .font(.avenir(.subheadline, weight: .medium))
+                .autocorrectionDisabled()
+                .focused($detailSearchFocused)
+            if !detailSearchText.isEmpty {
+                Image(systemName: "xmark.circle.fill")
+                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 14, weight: .medium))
+                    .contentShape(Circle())
+                    .onTapGesture { detailSearchText = "" }
+                    .transition(.scale.combined(with: .opacity))
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 14)
+        .frame(height: 36)
+        .padding(6)
+        .themedGlass(in: .capsule)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: detailSearchText.isEmpty)
+
+        // X close button
+        Image(systemName: "xmark")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(.primary)
+            .frame(width: 36, height: 36)
+            .padding(6)
+            .themedGlass(in: .circle)
+            .contentShape(Circle())
+            .onTapGesture {
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    showingDetailSearch = false
+                    detailSearchText = ""
+                    detailSearchFocused = false
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var detailBottomBarNormalState: some View {
+        // Back button (left)
+        Button {
+            onDismiss()
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(AppTheme.shared.colors.primaryText)
+                .frame(width: 36, height: 36)
+                .padding(6)
+                .themedGlass(in: .circle)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+
+        // City name capsule (center) — swipe left/right to switch cities
+        ZStack {
+            Text(displayCityName)
+                .font(.avenir(.subheadline, weight: .semibold))
+                .lineLimit(1)
+                .id(displayCityName)
+                .transition(.asymmetric(
+                    insertion: .offset(x: citySwipeFromTrailing ? 200 : -200),
+                    removal: .offset(x: citySwipeFromTrailing ? -200 : 200)
+                ))
+
+            if onSearch != nil {
+                HStack {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                        .contentShape(Circle())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                showingDetailSearch = true
+                            }
+                        }
+                    Spacer()
+                }
+            }
+        }
+        .clipped()
+        .frame(maxWidth: .infinity)
+        .frame(height: 36)
+        .padding(.leading, onSearch != nil ? 4 : 14)
+        .padding(.trailing, 14)
+        .padding(6)
+        .themedGlass(in: .capsule)
+        .contentShape(Capsule())
+        .contextMenu {
+                if let deleteAction = onDeleteCity {
+                    Button(role: .destructive) {
+                        deleteAction()
+                    } label: {
+                        Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                    }
+                }
+                if onRenameCity != nil {
+                    Button {
+                        renameText = displayCityName
+                        showingRenameAlert = true
+                    } label: {
+                        Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+                    }
+                }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 30, coordinateSpace: .local)
+                    .onEnded { value in
+                        let dx = value.translation.width
+                        let dy = abs(value.translation.height)
+                        guard abs(dx) > dy else { return }
+                        if dx < 0, let next = onNextCity {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            citySwipeFromTrailing = true
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                next()
+                            }
+                        } else if dx > 0, let prev = onPreviousCity {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            citySwipeFromTrailing = false
+                            withAnimation(.easeInOut(duration: 0.25)) {
+                                prev()
+                            }
+                        }
+                    }
+            )
+
+        // Menu button — native menu with Reveal + Delete + Settings
+        if onDeleteCity != nil || onRevealOnMap != nil || onShowSettings != nil || onRenameCity != nil {
+            Menu {
+                if let settingsAction = onShowSettings {
+                    Button {
+                        settingsAction()
+                    } label: {
+                        Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
+                    }
+                    Divider()
+                }
+                if let deleteAction = onDeleteCity {
+                    Button(role: .destructive) {
+                        deleteAction()
+                    } label: {
+                        Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                    }
+                }
+                if onRenameCity != nil {
+                    Button {
+                        renameText = displayCityName
+                        showingRenameAlert = true
+                    } label: {
+                        Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+                    }
+                }
+                if let revealAction = onRevealOnMap {
+                    Button {
+                        revealAction()
+                    } label: {
+                        Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+                    }
+                }
             } label: {
-                Image(systemName: "chevron.left")
+                Image(systemName: "ellipsis")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(AppTheme.shared.colors.primaryText)
                     .frame(width: 36, height: 36)
@@ -663,113 +872,28 @@ struct WeatherDetailView: View {
                     .themedGlass(in: .circle)
                     .contentShape(Circle())
             }
+            .menuStyle(.button)
             .buttonStyle(.plain)
+        }
 
-            // City name capsule (center) — swipe left/right to switch cities
-            ZStack {
-                Text(displayCityName)
-                    .font(.avenir(.subheadline, weight: .semibold))
-                    .lineLimit(1)
-                    .id(displayCityName)
-                    .transition(.asymmetric(
-                        insertion: .offset(x: citySwipeFromTrailing ? 200 : -200),
-                        removal: .offset(x: citySwipeFromTrailing ? -200 : 200)
-                    ))
-            }
-            .clipped()
-            .frame(maxWidth: .infinity)
-            .frame(height: 36)
-            .padding(.horizontal, 14)
-            .padding(6)
-            .themedGlass(in: .capsule)
-            .contentShape(Capsule())
-            .contextMenu {
-                    if let deleteAction = onDeleteCity {
-                        Button(role: .destructive) {
-                            deleteAction()
-                        } label: {
-                            Label(localizedString("Delete City", locale: locale), systemImage: "trash")
-                        }
-                    }
-                    if onRenameCity != nil {
-                        Button {
-                            renameText = displayCityName
-                            showingRenameAlert = true
-                        } label: {
-                            Label(localizedString("Rename", locale: locale), systemImage: "pencil")
-                        }
-                    }
-                }
-                .gesture(
-                    DragGesture(minimumDistance: 30, coordinateSpace: .local)
-                        .onEnded { value in
-                            let dx = value.translation.width
-                            let dy = abs(value.translation.height)
-                            guard abs(dx) > dy else { return }
-                            if dx < 0, let next = onNextCity {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                citySwipeFromTrailing = true
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    next()
-                                }
-                            } else if dx > 0, let prev = onPreviousCity {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                citySwipeFromTrailing = false
-                                withAnimation(.easeInOut(duration: 0.25)) {
-                                    prev()
-                                }
-                            }
-                        }
-                )
-
-            // Menu button — native menu with Reveal + Delete + Settings
-            if onDeleteCity != nil || onRevealOnMap != nil || onShowSettings != nil || onRenameCity != nil {
+        // Add city button (right)
+        if onAddCity != nil {
+            if availableLists.count > 1, let addToList = onAddCityToList {
                 Menu {
-                    if let settingsAction = onShowSettings {
-                        Button {
-                            settingsAction()
-                        } label: {
-                            Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
-                        }
-                        Divider()
-                    }
-                    if let deleteAction = onDeleteCity {
-                        Button(role: .destructive) {
-                            deleteAction()
-                        } label: {
-                            Label(localizedString("Delete City", locale: locale), systemImage: "trash")
-                        }
-                    }
-                    if onRenameCity != nil {
-                        Button {
-                            renameText = displayCityName
-                            showingRenameAlert = true
-                        } label: {
-                            Label(localizedString("Rename", locale: locale), systemImage: "pencil")
-                        }
-                    }
-                    if let revealAction = onRevealOnMap {
-                        Button {
-                            revealAction()
-                        } label: {
-                            Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+                    ForEach(availableLists) { listID in
+                        Button(listID.localizedDisplayName(locale: locale)) {
+                            addToList(listID)
                         }
                     }
                 } label: {
-                    Image(systemName: "ellipsis")
+                    Image(systemName: "plus")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(AppTheme.shared.colors.primaryText)
+                        .foregroundStyle(.white)
                         .frame(width: 36, height: 36)
-                        .padding(6)
-                        .themedGlass(in: .circle)
-                        .contentShape(Circle())
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-            }
-
-            // Add city button (right)
-            if let addAction = onAddCity {
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
+            } else if let addAction = onAddCity {
                 Button {
                     addAction()
                 } label: {
@@ -782,11 +906,134 @@ struct WeatherDetailView: View {
                 .buttonBorderShape(.circle)
             }
         }
-        .padding(.horizontal, 16)
-        .padding(.bottom, 4)
-        .padding(.top, 20)
     }
-    
+
+    // MARK: - Detail Search Results
+
+    private var detailSearchResultsOverlay: some View {
+        VStack(spacing: 0) {
+            if !detailSearchManager.searchResults.isEmpty {
+                List {
+                    ForEach(detailSortedSearchResults) { result in
+                        let existing = detailIsExistingCity(result)
+                        Button {
+                            Task {
+                                await detailSelectSearchResult(result)
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Text(result.title)
+                                    .font(.avenir(.body, weight: existing ? .semibold : .regular))
+                                    .foregroundStyle(.primary)
+
+                                if existing {
+                                    Text(localizedString("Added", locale: locale))
+                                        .font(.avenir(.caption2, weight: .medium))
+                                        .foregroundStyle(AppTheme.shared.colors.accent)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 2)
+                                        .background(AppTheme.shared.colors.accent.opacity(0.12), in: Capsule())
+                                }
+
+                                Spacer()
+
+                                if detailSearchLoading {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    Text(result.subtitle)
+                                        .font(.avenir(.headline, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(detailSearchLoading)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowSeparator(.visible)
+                        .listRowBackground(Color.clear)
+                    }
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .contentMargins(.bottom, 80)
+            } else {
+                VStack(spacing: 16) {
+                    Spacer()
+
+                    Image(systemName: "map")
+                        .font(.system(size: 48))
+                        .foregroundStyle(.tertiary)
+
+                    Text(localizedString("No results", locale: locale))
+                        .font(.avenir(.title3, weight: .medium))
+
+                    Text(localizedString("Try a different search term", locale: locale))
+                        .font(.avenir(.body))
+                        .foregroundStyle(.secondary)
+
+                    Spacer()
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.shared.colors.background)
+        .ignoresSafeArea(edges: .bottom)
+    }
+
+    private func detailIsExistingCity(_ result: CitySearchResult) -> Bool {
+        guard let ws = weatherService else { return false }
+        let name = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
+        let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
+        return ws.cityWeatherData.contains(where: { $0.city.name == name && $0.city.country == country })
+    }
+
+    private var detailSortedSearchResults: [CitySearchResult] {
+        detailSearchManager.searchResults.sorted { a, b in
+            let aExists = detailIsExistingCity(a)
+            let bExists = detailIsExistingCity(b)
+            if aExists != bExists { return aExists }
+            return false
+        }
+    }
+
+    private func detailSelectSearchResult(_ result: CitySearchResult) async {
+        guard let ws = weatherService else { return }
+        detailSearchLoading = true
+        defer { detailSearchLoading = false }
+
+        let cityName = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
+        let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
+
+        // Check if city already exists
+        if let existingCity = ws.cityWeatherData.first(where: { $0.city.name == cityName && $0.city.country == country }) {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                showingDetailSearch = false
+                detailSearchText = ""
+            }
+            onSearchCitySelected?(existingCity)
+            return
+        }
+
+        // Resolve coordinates
+        guard let coordinate = await detailSearchManager.resolveCoordinate(for: result) else {
+            return
+        }
+
+        // Create and fetch weather for new city
+        let tempCity = City(name: cityName, country: country, latitude: coordinate.latitude, longitude: coordinate.longitude)
+        guard let tempCityWeather = await ws.fetchWeatherForCity(tempCity) else {
+            return
+        }
+
+        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+            showingDetailSearch = false
+            detailSearchText = ""
+        }
+        onSearchCitySelected?(tempCityWeather)
+    }
+
     private var forecastDateText: String {
         // Use the city's timezone so day labels match the city's local date
         var cityCalendar = Calendar.current

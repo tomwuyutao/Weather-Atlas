@@ -124,12 +124,22 @@ extension ContentView {
         
         .onTapGesture {
             if !isEditMode {
-                detailOpenedFromList = true
-                tappedCity = cityWeather
-                showingCityDetail = true
+                withAnimation(.easeOut(duration: 0.1)) {
+                    listTappedCityID = cityWeather.id
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    detailOpenedFromList = true
+                    tappedCity = cityWeather
+                    showingCityDetail = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        listTappedCityID = nil
+                    }
+                }
             }
         }
-        .scaleEffect(longPressedCity?.id == cityWeather.id ? 0.97 : 1.0)
+        .scaleEffect(listTappedCityID == cityWeather.id ? 0.95 : (longPressedCity?.id == cityWeather.id ? 0.97 : 1.0))
+        .opacity(listTappedCityID == cityWeather.id ? 0.7 : 1.0)
+        .animation(.easeOut(duration: 0.15), value: listTappedCityID)
         .animation(.easeOut(duration: 0.2), value: longPressedCity?.id)
         .onLongPressGesture {
             if !isEditMode {
@@ -434,14 +444,24 @@ extension ContentView {
                             .stroke(longPressedCity?.id == cityWeather.id ? Color.primary.opacity(0.5) : Color.gray.opacity(0.3), lineWidth: 1)
                     }
                 }
-                .scaleEffect(longPressedCity?.id == cityWeather.id ? 0.97 : 1.0)
+                .scaleEffect(listTappedCityID == cityWeather.id ? 0.97 : (longPressedCity?.id == cityWeather.id ? 0.97 : 1.0))
+                .opacity(listTappedCityID == cityWeather.id ? 0.7 : 1.0)
+                .animation(.easeOut(duration: 0.15), value: listTappedCityID)
                 .animation(.easeOut(duration: 0.2), value: longPressedCity?.id)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     if !isEditMode {
-                        detailOpenedFromList = true
-                        tappedCity = cityWeather
-                        showingCityDetail = true
+                        withAnimation(.easeOut(duration: 0.1)) {
+                            listTappedCityID = cityWeather.id
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            detailOpenedFromList = true
+                            tappedCity = cityWeather
+                            showingCityDetail = true
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                                listTappedCityID = nil
+                            }
+                        }
                     }
                 }
                 .contextMenu {
