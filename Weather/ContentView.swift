@@ -622,7 +622,7 @@ struct ContentView: View {
         // Date slider only on map tab — list tab uses the date switcher capsule
         if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
             Color.clear
-                .frame(width: 60, height: 500)
+                .frame(width: 80, height: 500)
                 .contentShape(Rectangle())
                 .overlay(alignment: .trailing) {
                     mapDateSlider(height: 420)

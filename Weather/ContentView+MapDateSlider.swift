@@ -19,7 +19,45 @@ extension ContentView {
         func positionToOffset(_ pos: Int) -> Int { pos - 1 }
         func offsetToPosition(_ offset: Int) -> Int { offset + 1 }
 
+        let capsuleY = (isDraggingDateSlider ? sliderDragFraction * CGFloat(totalPositions - 1) : CGFloat(offsetToPosition(selectedDayOffset))) * stepHeight
+
         return ZStack(alignment: .topTrailing) {
+            // Touch target box behind capsule — moves with it
+            // TODO: remove .red debug color once confirmed working
+            Color.red.opacity(0.15)
+                .frame(width: 120, height: 80)
+                .contentShape(Rectangle())
+                .offset(y: capsuleY - 30)
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            if !isDraggingDateSlider {
+                                sliderDragStartDay = offsetToPosition(selectedDayOffset)
+                                sliderDragFraction = CGFloat(offsetToPosition(selectedDayOffset)) / CGFloat(totalPositions - 1)
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    isDraggingDateSlider = true
+                                }
+                            }
+                            let fractionalDelta = value.translation.height / height
+                            let startFraction = CGFloat(sliderDragStartDay) / CGFloat(totalPositions - 1)
+                            sliderDragFraction = max(0, min(1, startFraction + fractionalDelta))
+                            let nearestPos = max(0, min(totalPositions - 1, Int(round(sliderDragFraction * CGFloat(totalPositions - 1)))))
+                            let nearestOffset = positionToOffset(nearestPos)
+                            if nearestOffset != selectedDayOffset {
+                                selectedDayOffset = nearestOffset
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            }
+                        }
+                        .onEnded { _ in
+                            let snappedPos = Int(round(sliderDragFraction * CGFloat(totalPositions - 1)))
+                            let clampedPos = max(0, min(totalPositions - 1, snappedPos))
+                            withAnimation(.smooth(duration: 0.15)) {
+                                selectedDayOffset = positionToOffset(clampedPos)
+                                isDraggingDateSlider = false
+                            }
+                        }
+                )
+
             // Now endpoint (top)
             if isDraggingDateSlider && sliderDragFraction > 0.05 {
                 sliderEndpointLabel(text: localizedString("Now", locale: locale), isWhite: false)
@@ -55,40 +93,12 @@ extension ContentView {
                     .themedGlass(in: .capsule)
                     .offset(x: isDraggingDateSlider ? 12 : 9)
             }
+            .allowsHitTesting(false)
             .animation(.smooth(duration: 0.2), value: isDraggingDateSlider)
-            .offset(y: (isDraggingDateSlider ? sliderDragFraction * CGFloat(totalPositions - 1) : CGFloat(offsetToPosition(selectedDayOffset))) * stepHeight - (isDraggingDateSlider ? 10 : 8))
+            .offset(y: capsuleY - (isDraggingDateSlider ? 10 : 8))
         }
         .animation(.smooth(duration: 0.15), value: selectedDayOffset)
         .frame(height: height)
-        .gesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    if !isDraggingDateSlider {
-                        sliderDragStartDay = offsetToPosition(selectedDayOffset)
-                        sliderDragFraction = CGFloat(offsetToPosition(selectedDayOffset)) / CGFloat(totalPositions - 1)
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            isDraggingDateSlider = true
-                        }
-                    }
-                    let fractionalDelta = value.translation.height / height
-                    let startFraction = CGFloat(sliderDragStartDay) / CGFloat(totalPositions - 1)
-                    sliderDragFraction = max(0, min(1, startFraction + fractionalDelta))
-                    let nearestPos = max(0, min(totalPositions - 1, Int(round(sliderDragFraction * CGFloat(totalPositions - 1)))))
-                    let nearestOffset = positionToOffset(nearestPos)
-                    if nearestOffset != selectedDayOffset {
-                        selectedDayOffset = nearestOffset
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-                }
-                .onEnded { _ in
-                    let snappedPos = Int(round(sliderDragFraction * CGFloat(totalPositions - 1)))
-                    let clampedPos = max(0, min(totalPositions - 1, snappedPos))
-                    withAnimation(.smooth(duration: 0.15)) {
-                        selectedDayOffset = positionToOffset(clampedPos)
-                        isDraggingDateSlider = false
-                    }
-                }
-        )
     }
 
     func sliderEndpointLabel(text: String, isWhite: Bool) -> some View {
