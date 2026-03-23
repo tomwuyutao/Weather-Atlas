@@ -2,7 +2,7 @@
 //  ListSwitcherSheet.swift
 //  Weather
 //
-//  List switcher sheet: shows all lists with multi-select checkmarks,
+//  List switcher sheet: shows all lists with single-select,
 //  plus management actions (add, rename, reorder, delete).
 //
 
@@ -47,7 +47,7 @@ struct ListSwitcherSheet: View {
         }
     }
 
-    // MARK: - Selection View (multi-select rows)
+    // MARK: - Selection View (single-select rows)
 
     private var selectionView: some View {
         ScrollView {
@@ -55,7 +55,7 @@ struct ListSwitcherSheet: View {
                 ForEach(CityListID.allLists) { listID in
                     let isSelected = visibleListIDs.contains(listID.rawValue)
                     Button {
-                        toggleList(listID)
+                        selectList(listID)
                     } label: {
                         HStack(spacing: 14) {
                             Text(listID.localizedDisplayName(locale: locale))
@@ -132,10 +132,10 @@ struct ListSwitcherSheet: View {
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 44, height: 44)
-                    .themedGlass(in: .circle)
+                    .foregroundStyle(.white)
             }
+            .buttonStyle(.glassProminent)
+            .buttonBorderShape(.circle)
 
             Spacer()
 
@@ -150,11 +150,10 @@ struct ListSwitcherSheet: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .themedGlass(in: .circle)
+                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
             } else {
                 // Edit button
                 Button {
@@ -165,11 +164,10 @@ struct ListSwitcherSheet: View {
                 } label: {
                     Image(systemName: "pencil")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .themedGlass(in: .circle)
+                        .foregroundStyle(.white)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glassProminent)
+                .buttonBorderShape(.circle)
             }
         }
         .padding(.horizontal, 16)
@@ -334,35 +332,22 @@ struct ListSwitcherSheet: View {
         }
     }
 
-    // MARK: - Toggle List Visibility
+    // MARK: - Select List
 
-    private func toggleList(_ listID: CityListID) {
+    private func selectList(_ listID: CityListID) {
         let id = listID.rawValue
-        if visibleListIDs.contains(id) {
-            guard visibleListIDs.count > 1 else { return }
-            visibleListIDs.remove(id)
-            if listID == weatherService.activeListID,
-               let remainingID = visibleListIDs.first,
-               let newActiveList = CityListID.allLists.first(where: { $0.rawValue == remainingID }) {
-                Task {
-                    await weatherService.switchList(to: newActiveList)
-                    onRecenter()
-                }
-            } else {
+        // Already selected — do nothing
+        guard !visibleListIDs.contains(id) || visibleListIDs.count != 1 else { return }
+        visibleListIDs = [id]
+        if listID != weatherService.activeListID {
+            Task {
+                isLoadingList = true
+                await weatherService.switchList(to: listID)
+                isLoadingList = false
                 onRecenter()
             }
         } else {
-            visibleListIDs.insert(id)
-            if listID != weatherService.activeListID {
-                Task {
-                    isLoadingList = true
-                    await weatherService.fetchWeatherForList(listID)
-                    isLoadingList = false
-                    onRecenter()
-                }
-            } else {
-                onRecenter()
-            }
+            onRecenter()
         }
     }
 

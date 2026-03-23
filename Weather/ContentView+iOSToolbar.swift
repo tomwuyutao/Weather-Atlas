@@ -221,47 +221,20 @@ extension ContentView {
 
             // Center on map
             ToolbarItem(placement: .topBarTrailing) {
-                if visibleListIDs.count > 1 {
-                    Menu {
-                        ForEach(CityListID.allLists.filter { visibleListIDs.contains($0.rawValue) }) { listID in
-                            Button {
-                                let cities: [CityWeather]
-                                if listID == weatherService.activeListID {
-                                    cities = weatherService.cityWeatherData
-                                } else {
-                                    cities = weatherService.otherListData[listID.rawValue] ?? []
-                                }
-                                focusSubsetCities = cities
-                                focusSubsetTrigger = true
-                            } label: {
-                                Text(listID.localizedDisplayName(locale: locale))
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "dot.squareshape.split.2x2")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 44, height: 44)
-                            .themedGlass(in: .circle)
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    recenterOnAllCities = false
+                    DispatchQueue.main.async {
+                        recenterOnAllCities = true
                     }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-                } else {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        recenterOnAllCities = false
-                        DispatchQueue.main.async {
-                            recenterOnAllCities = true
-                        }
-                    } label: {
-                        Image(systemName: "dot.squareshape.split.2x2")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 44, height: 44)
-                            .themedGlass(in: .circle)
-                    }
-                    .buttonStyle(.plain)
+                } label: {
+                    Image(systemName: "dot.squareshape.split.2x2")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 44, height: 44)
+                        .themedGlass(in: .circle)
                 }
+                .buttonStyle(.plain)
             }
             .sharedBackgroundVisibility(.hidden)
 

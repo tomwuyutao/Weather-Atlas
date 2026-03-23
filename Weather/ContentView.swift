@@ -81,7 +81,7 @@ struct ContentView: View {
     @Environment(\.locale) var locale
     @Environment(\.colorScheme) var colorScheme
     
-    /// Cities to display on the map — combined from all selected lists + preview city
+    /// Cities to display on the map — from the active list + preview city
     private var mapCities: [CityWeather] {
         if countryOverviewActive {
             return countryOverviewData
@@ -89,28 +89,7 @@ struct ContentView: View {
         if radialSearchActive {
             return radialSearchData
         }
-        var result: [CityWeather]
-        if visibleListIDs.isEmpty || visibleListIDs == Set([weatherService.activeListID.rawValue]) {
-            result = weatherService.cityWeatherData
-        } else {
-            var combined: [CityWeather] = []
-            var seenNames = Set<String>()
-            for listID in CityListID.allLists where visibleListIDs.contains(listID.rawValue) {
-                let cities: [CityWeather]
-                if listID == weatherService.activeListID {
-                    cities = weatherService.cityWeatherData
-                } else {
-                    cities = weatherService.otherListData[listID.rawValue] ?? []
-                }
-                for city in cities {
-                    if !seenNames.contains(city.city.name) {
-                        combined.append(city)
-                        seenNames.insert(city.city.name)
-                    }
-                }
-            }
-            result = combined
-        }
+        var result = weatherService.cityWeatherData
         // Include temporary preview city from search
         if let preview = previewCity, !result.contains(where: { $0.city.name == preview.city.name }) {
             result.append(preview)
@@ -118,28 +97,9 @@ struct ContentView: View {
         return result
     }
     
-    /// Cities to display in the list view — combined from all visible lists, deduplicated, ordered by list ranking
+    /// Cities to display in the list view — from the active list
     var listViewCities: [CityWeather] {
-        if visibleListIDs.isEmpty || visibleListIDs == Set([weatherService.activeListID.rawValue]) {
-            return weatherService.cityWeatherData
-        }
-        var combined: [CityWeather] = []
-        var seenNames = Set<String>()
-        for listID in CityListID.allLists where visibleListIDs.contains(listID.rawValue) {
-            let cities: [CityWeather]
-            if listID == weatherService.activeListID {
-                cities = weatherService.cityWeatherData
-            } else {
-                cities = weatherService.otherListData[listID.rawValue] ?? []
-            }
-            for city in cities {
-                if !seenNames.contains(city.city.name) {
-                    combined.append(city)
-                    seenNames.insert(city.city.name)
-                }
-            }
-        }
-        return combined
+        weatherService.cityWeatherData
     }
 
     var tempUnit: TemperatureUnit {
@@ -225,13 +185,7 @@ struct ContentView: View {
     @State private var showingAddToListPopover: Bool = false
 
     var toolbarTitle: String {
-        let selectedLists = CityListID.allLists.filter { visibleListIDs.contains($0.rawValue) }
-        let firstName = selectedLists.first?.localizedDisplayName(locale: locale) ?? weatherService.activeListID.localizedDisplayName(locale: locale)
-        let extra = selectedLists.count - 1
-        if extra > 0 {
-            return "\(firstName), +\(extra)"
-        }
-        return firstName
+        weatherService.activeListID.localizedDisplayName(locale: locale)
     }
 
     @State var focusSubsetCities: [CityWeather] = []
@@ -910,47 +864,20 @@ struct ContentView: View {
             .menuStyle(.button)
             .buttonStyle(.plain)
 
-            if visibleListIDs.count > 1 {
-                Menu {
-                    ForEach(CityListID.allLists.filter { visibleListIDs.contains($0.rawValue) }) { listID in
-                        Button {
-                            let cities: [CityWeather]
-                            if listID == weatherService.activeListID {
-                                cities = weatherService.cityWeatherData
-                            } else {
-                                cities = weatherService.otherListData[listID.rawValue] ?? []
-                            }
-                            focusSubsetCities = cities
-                            focusSubsetTrigger = true
-                        } label: {
-                            Label(listID.localizedDisplayName(locale: locale), systemImage: "mappin.and.ellipse")
-                        }
-                    }
-                } label: {
-                    Image(systemName: "dot.squareshape.split.2x2")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                recenterOnAllCities = false
+                DispatchQueue.main.async {
+                    recenterOnAllCities = true
                 }
-                .menuStyle(.button)
-                .buttonStyle(.plain)
-            } else {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    recenterOnAllCities = false
-                    DispatchQueue.main.async {
-                        recenterOnAllCities = true
-                    }
-                } label: {
-                    Image(systemName: "dot.squareshape.split.2x2")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 36, height: 36)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
+            } label: {
+                Image(systemName: "dot.squareshape.split.2x2")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .frame(width: 36, height: 36)
+                    .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
 
             Button {
                 showingMapStyleSheet = true
