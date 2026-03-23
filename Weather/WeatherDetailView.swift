@@ -61,9 +61,7 @@ struct WeatherDetailView: View {
     @State private var dayScrollHasMore: Bool = true
     @State var chartScrollAtStart: Bool = true
     @State var chartScrollAtEnd: Bool = false
-    @State var isHeaderCollapsed: Bool = false
-    @State var headerDragOffset: CGFloat = 0
-    @State var scrollAtTop: Bool = true
+
     @State var citySwipeFromTrailing: Bool = true
     @State private var showingRenameAlert: Bool = false
     @State private var renameText: String = ""
@@ -328,29 +326,18 @@ struct WeatherDetailView: View {
     }
 
     var expandedHeaderHeight: CGFloat { 320 }
-    var collapsedHeaderHeight: CGFloat { 105 }
-
-    var currentHeaderHeight: CGFloat {
-        let base: CGFloat = isHeaderCollapsed ? collapsedHeaderHeight : expandedHeaderHeight
-        let clamped = max(collapsedHeaderHeight, base + headerDragOffset * 0.4)
-        return clamped
-    }
 
     var body: some View {
         ZStack(alignment: .top) {
-            // Weather condition color block — fixed at top, animates height
-            headerBackgroundBlock
-
-            // Floating header (iOS only) — outside ScrollView so scroll doesn't move it
-            floatingHeader
-
             // Main content card
             ScrollView(.vertical, showsIndicators: false) {
+            // Inline scrollable header — full width, above padded content
+            if !isPopup {
+                inlineHeader
+                    .padding(.bottom, 12)
+            }
+
             VStack(spacing: isPopup ? 24 : 16) {
-                if !isPopup {
-                    Color.clear.frame(height: currentHeaderHeight + 20)
-                        .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isHeaderCollapsed)
-                }
 
                 if isPopup {
                     VStack(alignment: .center, spacing: 0) {
@@ -524,7 +511,7 @@ struct WeatherDetailView: View {
             }
             .padding(.horizontal, isPopup ? 20 : 16)
             .padding(.top, isPopup ? 36 : 0)
-            .padding(.bottom, isPopup ? 24 : 8)
+            .padding(.bottom, isPopup ? 24 : 80)
             .frame(maxWidth: isPopup ? 340 : .infinity)
             .onChange(of: internalSelectedDay) { oldValue, newValue in
                 previousDay = oldValue
@@ -591,37 +578,11 @@ struct WeatherDetailView: View {
                     .padding(14)
                 }
             }
-            .background(
-                GeometryReader { geo in
-                    Color.clear
-                        .onChange(of: geo.frame(in: .named("detailScroll")).minY) { _, newY in
-                            scrollAtTop = newY >= -1
-                        }
-                }
-            )
             } // ScrollView
-            .coordinateSpace(name: "detailScroll")
+            .scrollContentBackground(.hidden)
             .contentMargins(.top, 0, for: .scrollContent)
-            .scrollDisabled(!isPopup && !isHeaderCollapsed)
+            .ignoresSafeArea(edges: isPopup ? [] : .top)
             .frame(maxWidth: isPopup ? 340 : .infinity)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 20, coordinateSpace: .global)
-                    .onEnded { value in
-                        guard !isPopup else { return }
-                        let dx = abs(value.translation.width)
-                        let dy = abs(value.translation.height)
-                        guard dy > dx else { return }  // vertical-dominant swipe only
-                        let vy = value.velocity.height
-                        let ty = value.translation.height
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                            if !isHeaderCollapsed && (ty < -40 || vy < -300) {
-                                isHeaderCollapsed = true
-                            } else if isHeaderCollapsed && scrollAtTop && (ty > 40 || vy > 300) {
-                                isHeaderCollapsed = false
-                            }
-                        }
-                    }
-            )
 
 
 
@@ -640,15 +601,7 @@ struct WeatherDetailView: View {
                     .zIndex(16)
             }
         }
-        .onAppear {
-            isHeaderCollapsed = false
-            headerDragOffset = 0
-            scrollAtTop = true
-        }
         .onChange(of: cityWeather.city.name) {
-            isHeaderCollapsed = false
-            headerDragOffset = 0
-            scrollAtTop = true
             displayCityName = cityWeather.city.localizedName(locale: locale)
         }
         .onChange(of: detailSearchText) { _, newValue in

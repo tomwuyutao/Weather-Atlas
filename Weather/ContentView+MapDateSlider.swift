@@ -42,7 +42,7 @@ extension ContentView {
                 let displayOffset = positionToOffset(max(0, min(totalPositions - 1, displayPos)))
 
                 Text(sliderDateText(for: displayOffset))
-                    .font(.avenir(isDraggingDateSlider ? .body : .subheadline, weight: .semibold))
+                    .font(.avenir(.subheadline, weight: .semibold))
                     .foregroundStyle(theme.colors.primaryText)
                     .frame(minWidth: isDraggingDateSlider ? 64 : 52)
                     .fixedSize()

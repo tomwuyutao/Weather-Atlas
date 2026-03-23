@@ -627,7 +627,7 @@ struct ContentView: View {
                 .overlay(alignment: .trailing) {
                     mapDateSlider(height: 420)
                 }
-                .padding(.bottom, 400)
+                .padding(.bottom, 440)
                 .padding(.trailing, 1)
                 .transition(.opacity)
         }
