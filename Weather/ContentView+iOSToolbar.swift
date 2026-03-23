@@ -599,5 +599,6 @@ extension ContentView {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        .menuOrder(.fixed)
     }
 }

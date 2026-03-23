@@ -700,12 +700,16 @@ struct ContentView: View {
                 .zIndex(3)
         }
 
-        // Tap-to-dismiss keyboard when search is active
+        // Tap outside search bar dismisses search entirely
         if showingInlineSearch {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    inlineSearchFocused = false
+                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                        showingInlineSearch = false
+                        inlineSearchText = ""
+                        inlineSearchFocused = false
+                    }
                 }
                 .zIndex(9)
         }
@@ -1094,6 +1098,7 @@ struct ContentView: View {
         .padding(6)
         .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
         .themedGlass(in: .capsule)
+        .glassEffectID("bottomBarCenter", in: bottomBarNS)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: inlineSearchText.isEmpty)
 
         Image(systemName: "xmark")
@@ -1103,6 +1108,7 @@ struct ContentView: View {
             .padding(6)
             .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
             .themedGlass(in: .circle)
+            .glassEffectID("bottomBarRight", in: bottomBarNS)
             .contentShape(Circle())
             .onTapGesture {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
@@ -1122,6 +1128,7 @@ struct ContentView: View {
             .padding(6)
             .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
             .themedGlass(in: .circle)
+            .glassEffectID("bottomBarLeft", in: bottomBarNS)
             .contentShape(Circle())
             .onTapGesture {
                 Task {
@@ -1143,6 +1150,7 @@ struct ContentView: View {
             .padding(6)
             .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
             .themedGlass(in: .capsule)
+            .glassEffectID("bottomBarCenter", in: bottomBarNS)
             .contentShape(Capsule())
 
         if isLoadingPendingCountry {
@@ -1165,6 +1173,7 @@ struct ContentView: View {
             .buttonStyle(.glassProminent)
             .buttonBorderShape(.circle)
             .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+            .glassEffectID("bottomBarRight", in: bottomBarNS)
             .transition(.scale.combined(with: .opacity))
         }
     }
@@ -1195,6 +1204,7 @@ struct ContentView: View {
         .padding(6)
         .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
         .themedGlass(in: .capsule)
+        .glassEffectID("bottomBarCenter", in: bottomBarNS)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: countrySearchText.isEmpty)
 
         Image(systemName: "xmark")
@@ -1204,6 +1214,7 @@ struct ContentView: View {
             .padding(6)
             .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
             .themedGlass(in: .circle)
+            .glassEffectID("bottomBarRight", in: bottomBarNS)
             .contentShape(Circle())
             .onTapGesture {
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
@@ -1224,6 +1235,7 @@ struct ContentView: View {
             .padding(6)
             .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
             .themedGlass(in: .circle)
+            .glassEffectID("bottomBarLeft", in: bottomBarNS)
             .contentShape(Circle())
             .onTapGesture {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -1242,6 +1254,7 @@ struct ContentView: View {
             .padding(6)
             .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
             .themedGlass(in: .capsule)
+            .glassEffectID("bottomBarCenter", in: bottomBarNS)
             .contentShape(Capsule())
             .onTapGesture {
                 showingListSwitcher = true
@@ -1249,6 +1262,7 @@ struct ContentView: View {
 
         addCityButton(dismissExpanded: true)
         .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+        .glassEffectID("bottomBarRight", in: bottomBarNS)
     }
 
     @ViewBuilder
@@ -1260,6 +1274,7 @@ struct ContentView: View {
             .padding(6)
             .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
             .themedGlass(in: .circle)
+            .glassEffectID("bottomBarLeft", in: bottomBarNS)
             .contentShape(Circle())
             .onTapGesture {
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -1284,6 +1299,7 @@ struct ContentView: View {
         .padding(6)
         .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
         .themedGlass(in: .capsule)
+        .glassEffectID("bottomBarCenter", in: bottomBarNS)
         .contentShape(Capsule())
         .onTapGesture {
             if isIPad {
@@ -1298,6 +1314,7 @@ struct ContentView: View {
 
         addCityButton(dismissExpanded: false)
         .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+        .glassEffectID("bottomBarRight", in: bottomBarNS)
     }
 
     @ViewBuilder
@@ -1310,6 +1327,7 @@ struct ContentView: View {
             .padding(6)
             .matchedGeometryEffect(id: "bottomBarLeft", in: bottomBarNS)
             .themedGlass(in: .circle)
+            .glassEffectID("bottomBarLeft", in: bottomBarNS)
             .contentShape(Circle())
             .onTapGesture {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -1353,6 +1371,7 @@ struct ContentView: View {
         .padding(6)
         .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
         .themedGlass(in: .capsule)
+        .glassEffectID("bottomBarCenter", in: bottomBarNS)
         .contentShape(Capsule())
         .onTapGesture {
             showingListSwitcher = true
@@ -1401,11 +1420,13 @@ struct ContentView: View {
 
         iOSNativeMenu
             .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
+            .glassEffectID("bottomBarRight", in: bottomBarNS)
     }
 
     // MARK: - Unified Bottom Bar (morphs between toolbar and search)
 
     private var iOSUnifiedBottomBar: some View {
+        GlassEffectContainer(spacing: 12) {
         HStack(spacing: 12) {
             if showingInlineSearch {
                 bottomBarSearchState
@@ -1421,8 +1442,9 @@ struct ContentView: View {
                 bottomBarNormalState
             }
         }
+        }
         .padding(.horizontal, 16)
-        .padding(.bottom, 4)
+        .padding(.bottom, showingInlineSearch ? 12 : 4)
         .padding(.top, showingInlineSearch || previewCity != nil ? 0 : 20)
         .background {
             if !showingInlineSearch && previewCity == nil {
@@ -1436,9 +1458,7 @@ struct ContentView: View {
         }
         .onChange(of: showingInlineSearch) { _, newValue in
             if newValue {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    inlineSearchFocused = true
-                }
+                inlineSearchFocused = true
             } else {
                 inlineSearchManager.search(query: "")
                 inlineSearchFocused = false

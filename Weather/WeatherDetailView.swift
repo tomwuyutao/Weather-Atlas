@@ -747,19 +747,19 @@ struct WeatherDetailView: View {
         .contentShape(Capsule())
         .contextMenu {
                 if !showingSearchedCity {
-                    if let deleteAction = onDeleteCity {
-                        Button(role: .destructive) {
-                            deleteAction()
-                        } label: {
-                            Label(localizedString("Delete City", locale: locale), systemImage: "trash")
-                        }
-                    }
                     if onRenameCity != nil {
                         Button {
                             renameText = displayCityName
                             showingRenameAlert = true
                         } label: {
                             Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+                        }
+                    }
+                    if let deleteAction = onDeleteCity {
+                        Button(role: .destructive) {
+                            deleteAction()
+                        } label: {
+                            Label(localizedString("Delete City", locale: locale), systemImage: "trash")
                         }
                     }
                 }

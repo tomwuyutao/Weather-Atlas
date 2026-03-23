@@ -69,14 +69,7 @@ struct AddCitySearchView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 12)
-                .background(
-                    Capsule()
-                        .fill(.regularMaterial)
-                )
-                .overlay(
-                    Capsule()
-                        .strokeBorder(.quaternary, lineWidth: 1)
-                )
+                .glassEffect(.regular, in: .capsule)
 
                 Button {
                     dismiss()

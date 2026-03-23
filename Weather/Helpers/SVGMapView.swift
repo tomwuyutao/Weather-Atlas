@@ -545,7 +545,7 @@ struct SVGMapView: View {
             longitude: cityWeather.city.longitude
         )
         let fitScale = citiesFitScale(viewSize: viewSize, baseScale: baseScale)
-        let targetScale: CGFloat = min(fitScale * 3.0, maxScale)
+        let targetScale: CGFloat = min(fitScale * 2.0, maxScale)
         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
             mapScale = targetScale
             mapLastScale = targetScale

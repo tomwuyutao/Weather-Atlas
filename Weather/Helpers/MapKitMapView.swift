@@ -335,7 +335,7 @@ struct MapKitMapView: View {
                 latitude: cityWeather.city.latitude,
                 longitude: cityWeather.city.longitude
             ),
-            span: MKCoordinateSpan(latitudeDelta: 5.0, longitudeDelta: 5.0)
+            span: MKCoordinateSpan(latitudeDelta: 15.0, longitudeDelta: 15.0)
         )
         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
             position = .region(region)
