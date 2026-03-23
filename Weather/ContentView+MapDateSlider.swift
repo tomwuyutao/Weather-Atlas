@@ -23,9 +23,8 @@ extension ContentView {
 
         return ZStack(alignment: .topTrailing) {
             // Touch target box behind capsule — moves with it
-            // TODO: remove .red debug color once confirmed working
-            Color.red.opacity(0.15)
-                .frame(width: 120, height: 80)
+            Color.clear
+                .frame(width: selectedDayOffset > 0 ? 145 : 120, height: 80)
                 .contentShape(Rectangle())
                 .offset(y: capsuleY - 30)
                 .gesture(
