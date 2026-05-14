@@ -15,7 +15,6 @@ struct MapKitMapView: View {
     let showCloudCover: Bool
     var overlayMode: String = "weather"
     let filterSunny: Bool
-    let isPlaying: Bool
     let namespace: Namespace.ID
 
     @Binding var showingCityDetail: Bool
@@ -110,7 +109,6 @@ struct MapKitMapView: View {
                     showCloudCover: showCloudCover,
                     overlayMode: overlayMode,
                     filterSunny: filterSunny,
-                    isPlaying: isPlaying,
                     namespace: namespace,
                     highlightedMarkerID: highlightedMarkerID,
                     tappedMarkerID: tappedMarkerID,
@@ -369,7 +367,6 @@ private struct AnnotationsOverlay: View {
     let showCloudCover: Bool
     var overlayMode: String = "weather"
     let filterSunny: Bool
-    let isPlaying: Bool
     let namespace: Namespace.ID
     let highlightedMarkerID: UUID?
     let tappedMarkerID: UUID?
@@ -411,7 +408,6 @@ private struct AnnotationsOverlay: View {
                         overlayMode: overlayMode,
                         filterSunny: filterSunny,
                         passesFilter: true,
-                        isPlaying: isPlaying,
                         displayMode: markerMode,
                         isSelected: showingCityDetail && tappedCity?.id == cityWeather.id,
                         hideCityName: mapMode == "detailed"

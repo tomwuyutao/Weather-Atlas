@@ -54,7 +54,6 @@ struct ContentView: View {
         }
     }
     @State var filterSunny: Bool = false
-    @State var isPlaying: Bool = false
     @State var showingInlineSearch: Bool = false
     @State private var inlineSearchText: String = ""
     @FocusState private var inlineSearchFocused: Bool
@@ -116,7 +115,11 @@ struct ContentView: View {
     }
 
     var body: some View {
+        #if os(macOS)
+        macOSView
+        #else
         iOSView
+        #endif
     }
 
     // MARK: - iOS View
@@ -128,9 +131,6 @@ struct ContentView: View {
     @State var isDraggingDateSlider: Bool = false
     @State var sliderDragStartDay: Int = 0
     @State var sliderDragFraction: CGFloat = 0
-    @State private var playbackTask: Task<Void, Never>?
-    @State var showPlaybackButton: Bool = false
-    @State private var playbackButtonHideTask: Task<Void, Never>?
 
     @AppStorage("isGridView") var isGridView: Bool = false
     @State var gridDragItem: CityWeather?
@@ -145,7 +145,20 @@ struct ContentView: View {
     @State var showingCityRenameAlert: Bool = false
     @State var cityRenameText: String = ""
     @State var cityToRename: CityWeather?
+    @State var cityToRenameListID: CityListID?
+    @State var listToRenameID: CityListID?
     @State var showingListSwitcher: Bool = false
+    @State var showingMapSidebar: Bool = false
+    @State var sidebarExpandedListIDs: Set<String> = []
+    @State var sidebarEditing: Bool = false
+    @State var sidebarAddingList: Bool = false
+    @State var sidebarNewListName: String = ""
+    @State var sidebarRenamingListID: CityListID?
+    @State var sidebarRenameText: String = ""
+    @FocusState var sidebarNewListFocused: Bool
+    @FocusState var sidebarRenameFocused: Bool
+    @State var listManagerIsEditing: Bool = false
+    @State var listRenameDrafts: [String: String] = [:]
     @State var listSheetDetent: PresentationDetent = .medium
     @State var showingCountrySearch: Bool = false
     @State private var countrySearchText: String = ""
@@ -156,6 +169,10 @@ struct ContentView: View {
     @State var showingMapStylePopover: Bool = false
     @State var showingMapStyleSheet: Bool = false
     @State private var showingAddToListPopover: Bool = false
+    @State var inlineAddTargetListID: CityListID?
+    #if os(macOS)
+    @State private var macSidebarVisibility: NavigationSplitViewVisibility = .all
+    #endif
 
     var toolbarTitle: String {
         weatherService.activeListID.localizedDisplayName(locale: locale)
@@ -183,6 +200,9 @@ struct ContentView: View {
         .task { await iOSOnAppear() }
         .onChange(of: weatherService.activeListID) { _, newListID in
             visibleListIDs.insert(newListID.rawValue)
+        }
+        .onChange(of: inlineSearchText) { _, newValue in
+            inlineSearchManager.search(query: newValue)
         }
         .onChange(of: mapMode, initial: true) { _, _ in
             AppTheme.shared.isDetailedMapMode = selectedTab == 1 && (mapMode == "detailed" || mapMode == "colorful")
@@ -218,7 +238,7 @@ struct ContentView: View {
             mapStyleSheet
                 .presentationDetents([.height(390)])
                 .presentationDragIndicator(.visible)
-                .presentationBackground(theme.colors.glassFill)
+                .presentationBackground(.regularMaterial)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
@@ -231,97 +251,96 @@ struct ContentView: View {
             )
             .presentationSizing(.form)
         }
-        .sheet(isPresented: $showingListSwitcher, onDismiss: {
-            listSheetDetent = .medium
-        }) {
-            ListSwitcherSheet(
-                weatherService: weatherService,
-                visibleListIDs: $visibleListIDs,
-                isPresented: $showingListSwitcher,
-                onRecenter: {
+        .overlay {
+            iOSDeleteListConfirmationOverlay
+        }
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .toolbar(removing: .title)
+        .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
+    }
+
+    #if os(macOS)
+    private var macOSView: some View {
+        NavigationSplitView(columnVisibility: $macSidebarVisibility) {
+            macListManagerSidebar
+        } detail: {
+            NavigationStack {
+                macMapContent
+                    .navigationDestination(isPresented: $showingCityDetail) {
+                        AnyView(iOSCityDetailDestination)
+                    }
+                    .navigationDestination(isPresented: $showingAddCityDetail) {
+                        AnyView(iOSAddCityDetailDestination)
+                    }
+            }
+        }
+        .task { await iOSOnAppear() }
+        .onChange(of: weatherService.activeListID) { _, newListID in
+            visibleListIDs.insert(newListID.rawValue)
+        }
+        .onChange(of: inlineSearchText) { _, newValue in
+            inlineSearchManager.search(query: newValue)
+        }
+        .onChange(of: mapMode, initial: true) { _, _ in
+            AppTheme.shared.isDetailedMapMode = mapMode == "detailed" || mapMode == "colorful"
+        }
+        .onChange(of: selectedDayOffset) { oldValue, _ in
+            iOSPreviousDayOffset = oldValue
+        }
+        .onChange(of: weatherService.isLoading) { wasLoading, isLoading in
+            if wasLoading && !isLoading {
+                recenterOnAllCities = true
+            }
+        }
+        .onChange(of: showingMapExpandedCard) { _, showing in
+            if !showing {
+                if previewCity != nil {
+                    previewCity = nil
                     recenterOnAllCities = true
-                },
-                onShowCountrySearch: {
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                        showingCountrySearch = true
+                }
+                fetchingTappedCoordinate = nil
+            }
+        }
+        .onChange(of: showingCityDetail) { _, showing in
+            iOSHandleCityDetailDismiss(showing: showing)
+        }
+        .sheet(isPresented: $showingInfo) {
+            InfoView(source: .map)
+                .frame(minWidth: 420, minHeight: 520)
+        }
+        .sheet(isPresented: $showingMapStyleSheet) {
+            mapStyleSheet
+                .frame(minWidth: 360, minHeight: 390)
+                .presentationBackground(.regularMaterial)
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView(
+                weatherService: weatherService,
+                onResetLists: {
+                    Task {
+                        await weatherService.resetAllLists()
                     }
                 }
             )
-            .presentationDetents([.medium, .large], selection: $listSheetDetent)
-            .presentationDragIndicator(.visible)
-            .presentationContentInteraction(.scrolls)
-            .presentationBackground(theme.colors.glassFill)
+            .frame(minWidth: 440, minHeight: 560)
         }
         .overlay {
             iOSDeleteListConfirmationOverlay
         }
+        .containerBackground(.clear, for: .window)
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .toolbar(removing: .title)
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
     }
 
-    private var iPhoneNavigationStack: some View {
-        TabView(selection: $selectedTab) {
-            Tab(localizedString("Map", locale: locale), systemImage: "map", value: 1) {
-                iPhoneTabNavigationStack {
-                    iPhoneMapTabContent
-                }
-            }
-
-            Tab(localizedString("List", locale: locale), systemImage: "list.bullet", value: 0) {
-                iPhoneTabNavigationStack {
-                    iPhoneListTabContent
-                }
-            }
-
-            Tab(value: 2, role: .search) {
-                iPhoneTabNavigationStack {
-                    iPhoneSearchTabContent
-                }
-            }
-        }
-        .tabViewStyle(.sidebarAdaptable)
-        .toolbarBackground(.hidden, for: .tabBar)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .onChange(of: inlineSearchText) { _, newValue in
-            inlineSearchManager.search(query: newValue)
-        }
-        .onChange(of: selectedTab) { _, newValue in
-            if newValue != 2 {
-                showingInlineSearch = false
-                inlineSearchText = ""
-            }
-        }
-    }
-
-    private func iPhoneTabNavigationStack<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        NavigationStack {
-            content()
-                .navigationTitle("")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar(iPhoneShowsNativeToolbar ? .visible : .hidden, for: .navigationBar)
-                .toolbarBackground(.hidden, for: .navigationBar)
-                .toolbar(removing: .search)
-                .toolbar { iPhoneNativeToolbarItems }
-                .navigationDestination(isPresented: $showingCityDetail) {
-                    AnyView(iOSCityDetailDestination)
-                }
-                .navigationDestination(isPresented: $showingAddCityDetail) {
-                    AnyView(iOSAddCityDetailDestination)
-                }
-        }
-    }
-
-    private var iPhoneShowsNativeToolbar: Bool {
-        selectedTab != 2 && !isMapSpecialMode && !showingInlineSearch && !showingCountrySearch && previewCity == nil
-    }
-
-    private var iPhoneMapTabContent: some View {
+    private var macMapContent: some View {
         ZStack(alignment: .bottom) {
             AnyView(
                 iOSMapView
                     .overlay(alignment: .top) {
-                        if selectedTab == 1, showLegend {
-                            MapFloatingLegend(overlayMode: mapOverlayMode)
-                                .padding(.top, 8)
+                        if showLegend {
+                            MapFloatingLegend(overlayMode: mapOverlayMode, compact: true)
+                                .padding(.top, 16)
                                 .transition(.move(edge: .top).combined(with: .opacity))
                         }
                     }
@@ -332,58 +351,15 @@ struct ContentView: View {
 
             iOSMainOverlays
         }
-        .ignoresSafeArea(.keyboard)
-    }
-
-    private var iPhoneListTabContent: some View {
-        ZStack(alignment: .bottom) {
-            AnyView(
-                iOSListView
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(theme.colors.background)
-                    .ignoresSafeArea(.container, edges: [.top, .bottom])
-                    .overlay(alignment: .trailing) {
-                        AnyView(iOSListDateSliderOverlay)
-                    }
-            )
-
-            iOSMainOverlays
-        }
-        .ignoresSafeArea(.keyboard)
-    }
-
-    private var iPhoneSearchTabContent: some View {
-        iOSInlineSearchResults
-            .searchable(text: $inlineSearchText, placement: .navigationBarDrawer(displayMode: .always), prompt: Text(localizedString("Search", locale: locale)))
-            .onAppear {
-                showingInlineSearch = true
+        .ignoresSafeArea(.container, edges: .top)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                mapTopListMenu
+                    .fixedSize()
             }
-            .onDisappear {
-                showingInlineSearch = false
-                inlineSearchText = ""
-            }
-    }
 
-    @ToolbarContentBuilder
-    private var iPhoneNativeToolbarItems: some ToolbarContent {
-        ToolbarItem(placement: .topBarLeading) {
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showingListSwitcher = true
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "sidebar.left")
-                    Text(toolbarTitle)
-                        .font(.headline)
-                        .lineLimit(1)
-                }
-            }
-        }
-
-        ToolbarItemGroup(placement: .topBarTrailing) {
-            if selectedTab == 1 {
+            ToolbarItemGroup {
                 Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     recenterOnAllCities = false
                     DispatchQueue.main.async {
                         recenterOnAllCities = true
@@ -397,10 +373,974 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "square.3.layers.3d")
                 }
+
+                if filterSunny {
+                    Button {
+                        withAnimation {
+                            filterSunny = false
+                        }
+                    } label: {
+                        Image(systemName: "sun.max.fill")
+                    }
+                }
+
+                iOSNativeMenu
+
+                if showingInlineSearch {
+                    TextField(localizedString("Search for a city", locale: locale), text: $inlineSearchText)
+                        .textFieldStyle(.roundedBorder)
+                        .focused($inlineSearchFocused)
+                        .frame(width: 240)
+
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            showingInlineSearch = false
+                            inlineSearchText = ""
+                            inlineSearchFocused = false
+                            inlineAddTargetListID = nil
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                } else {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            showingInlineSearch = true
+                        }
+                        DispatchQueue.main.async {
+                            inlineSearchFocused = true
+                        }
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                    }
+                }
+            }
+        }
+    }
+
+    private var macListManagerSidebar: some View {
+        List {
+            ForEach(CityListID.allLists) { listID in
+                DisclosureGroup(
+                    isExpanded: Binding(
+                        get: { sidebarExpandedListIDs.contains(listID.rawValue) },
+                        set: { isExpanded in
+                            if isExpanded {
+                                sidebarExpandedListIDs.insert(listID.rawValue)
+                                Task { await weatherService.fetchWeatherForList(listID) }
+                            } else {
+                                sidebarExpandedListIDs.remove(listID.rawValue)
+                            }
+                        }
+                    )
+                ) {
+                    let cities = weatherService.weatherData(for: listID)
+                    if cities.isEmpty {
+                        Text(localizedString("No cities", locale: locale))
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(cities) { city in
+                            Button {
+                                revealCityOnMap(city, in: listID)
+                            } label: {
+                                Text(city.city.localizedName(locale: locale))
+                                    .lineLimit(1)
+                            }
+                            .contextMenu {
+                                cityActions(for: city, in: listID)
+                            }
+                        }
+                        .onMove { source, destination in
+                            weatherService.moveCity(in: listID, from: source, to: destination)
+                        }
+                        .onDelete { offsets in
+                            removeCities(at: offsets, from: listID)
+                        }
+                    }
+                } label: {
+                    HStack {
+                        Text(listID.localizedDisplayName(locale: locale))
+                            .lineLimit(1)
+                        Spacer()
+                        if weatherService.activeListID.rawValue == listID.rawValue {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        Task {
+                            await switchToList(listID)
+                        }
+                    }
+                    .contextMenu {
+                        listActions(for: listID)
+                    }
+                }
+            }
+            .onMove { source, destination in
+                weatherService.moveLists(from: source, to: destination)
+            }
+            .onDelete { offsets in
+                Task {
+                    let lists = CityListID.allLists
+                    for listID in offsets.map({ lists[$0] }) {
+                        await weatherService.deleteList(listID)
+                    }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .navigationTitle(localizedString("Lists", locale: locale))
+        .toolbar {
+            ToolbarItemGroup {
+                Button {
+                    createListAtBottom()
+                } label: {
+                    Image(systemName: "plus")
+                }
+
+                Button {
+                    listManagerIsEditing.toggle()
+                } label: {
+                    Image(systemName: listManagerIsEditing ? "checkmark" : "pencil")
+                }
+            }
+        }
+        .onAppear {
+            if sidebarExpandedListIDs.isEmpty {
+                sidebarExpandedListIDs = Set(CityListID.allLists.map(\.rawValue))
+            }
+        }
+    }
+    #endif
+
+    private var iPhoneNavigationStack: some View {
+        NavigationStack {
+            iPhoneMapTabContent
+                .navigationTitle("")
+                #if os(iOS)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar(.hidden, for: .navigationBar)
+                #endif
+                .navigationDestination(isPresented: $showingCityDetail) {
+                    AnyView(iOSCityDetailDestination)
+                }
+                .navigationDestination(isPresented: $showingAddCityDetail) {
+                    AnyView(iOSAddCityDetailDestination)
+                }
+        }
+        .onAppear {
+            selectedTab = 1
+        }
+    }
+
+    @ViewBuilder
+    private var mapBottomToolbar: some View {
+        if showingInlineSearch {
+            HStack(spacing: 10) {
+                Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.secondary)
+                TextField(localizedString("Search for a city", locale: locale), text: $inlineSearchText)
+                    .textFieldStyle(.plain)
+                    .focused($inlineSearchFocused)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showingInlineSearch = false
+                        inlineSearchText = ""
+                        inlineSearchFocused = false
+                        inlineAddTargetListID = nil
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 14)
+            .frame(height: 50)
+            .themedGlass(in: .capsule)
+            .onAppear {
+                inlineSearchFocused = true
+            }
+        } else {
+            HStack(spacing: 14) {
+                Button {
+                    PlatformFeedback.lightImpact()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showingMapSidebar = true
+                    }
+                } label: {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 50, height: 50)
+                        .themedGlass(in: .circle)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                HStack(spacing: 4) {
+                    Button {
+                        PlatformFeedback.lightImpact()
+                        recenterOnAllCities = false
+                        DispatchQueue.main.async {
+                            recenterOnAllCities = true
+                        }
+                    } label: {
+                        Image(systemName: "dot.squareshape.split.2x2")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    Button {
+                        showingMapStyleSheet = true
+                    } label: {
+                        Image(systemName: "square.3.layers.3d")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    if filterSunny {
+                        Button {
+                            withAnimation {
+                                filterSunny = false
+                            }
+                        } label: {
+                            Image(systemName: "sun.max.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+
+                    iOSNativeMenu
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .padding(3)
+                .themedGlass(in: .capsule)
+                .contentShape(Capsule())
+
+                Spacer()
+
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showingInlineSearch = true
+                    }
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 50, height: 50)
+                        .themedGlass(in: .circle)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private var mapTopListMenu: some View {
+        Menu {
+            ForEach(CityListID.allLists) { listID in
+                Button(listID.localizedDisplayName(locale: locale)) {
+                    Task {
+                        await switchToList(listID)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Text(toolbarTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .semibold))
+            }
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 16)
+            .frame(height: 44)
+            .fixedSize(horizontal: true, vertical: false)
+            .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .menuOrder(.fixed)
+    }
+
+    private var listManagerNavigation: some View {
+        NavigationStack {
+            ZStack {
+                theme.colors.background.ignoresSafeArea()
+
+                List {
+                    if sidebarAddingList {
+                        Section {
+                            TextField(localizedString("New List", locale: locale), text: $sidebarNewListName)
+                                .focused($sidebarNewListFocused)
+                                .submitLabel(.done)
+                                .onSubmit { commitListManagerNewList() }
+                        }
+                    }
+
+                    ForEach(CityListID.allLists) { listID in
+                        Section {
+                            listManagerListRow(for: listID)
+
+                            if sidebarExpandedListIDs.contains(listID.rawValue) {
+                                ForEach(weatherService.weatherData(for: listID)) { city in
+                                    listManagerCityRow(city, in: listID)
+                                }
+                                .onDelete { offsets in
+                                    removeCities(at: offsets, from: listID)
+                                }
+                                .onMove { source, destination in
+                                    weatherService.moveCity(in: listID, from: source, to: destination)
+                                }
+                            }
+                        }
+                        .textCase(nil)
+                        .listSectionSeparator(.visible)
+                    }
+                    .onDelete { offsets in
+                        Task {
+                            let lists = CityListID.allLists
+                            for listID in offsets.map({ lists[$0] }) {
+                                await weatherService.deleteList(listID)
+                            }
+                        }
+                    }
+                    .onMove { source, destination in
+                        weatherService.moveLists(from: source, to: destination)
+                    }
+                }
+                .scrollContentBackground(.hidden)
+                .listStyle(.plain)
+                .contentMargins(.horizontal, 28, for: .scrollContent)
+                .contentMargins(.bottom, 110, for: .scrollContent)
+                .onAppear {
+                    if sidebarExpandedListIDs.isEmpty {
+                        sidebarExpandedListIDs = Set(CityListID.allLists.map(\.rawValue))
+                    }
+                }
+            }
+            .navigationTitle(localizedString("Lists", locale: locale))
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.large)
+            #endif
+            .toolbar {
+                #if os(iOS)
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        commitListManagerRenames()
+                        showingMapSidebar = false
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        createListAtBottom()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+                #else
+                ToolbarItem {
+                    Button {
+                        commitListManagerRenames()
+                        showingMapSidebar = false
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                }
+                ToolbarItem {
+                    Button {
+                        createListAtBottom()
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+                #endif
+            }
+            #if os(iOS)
+            .toolbarBackground(theme.colors.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+            #endif
+        }
+    }
+
+    private func listManagerListRow(for listID: CityListID) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            if listManagerIsEditing {
+                TextField(
+                    localizedString("List Name", locale: locale),
+                    text: Binding(
+                        get: { listRenameDrafts[listID.rawValue] ?? listID.localizedDisplayName(locale: locale) },
+                        set: { listRenameDrafts[listID.rawValue] = $0 }
+                    )
+                )
+                .submitLabel(.done)
+                .onSubmit {
+                    commitListManagerRename(listID)
+                }
+            } else {
+                Text(listID.localizedDisplayName(locale: locale))
+                    .font(.title3.weight(.semibold))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
 
-            iOSNativeMenu
+            Spacer()
+
+            Menu {
+                listActions(for: listID)
+            } label: {
+                Image(systemName: "ellipsis")
+                    .font(.title3.weight(.semibold))
+                    .frame(width: 38, height: 36)
+            }
+            .menuOrder(.fixed)
+
+            Button {
+                withAnimation(.smooth(duration: 0.2)) {
+                    if sidebarExpandedListIDs.contains(listID.rawValue) {
+                        sidebarExpandedListIDs.remove(listID.rawValue)
+                    } else {
+                        sidebarExpandedListIDs.insert(listID.rawValue)
+                    }
+                }
+            } label: {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 14, weight: .semibold))
+                    .rotationEffect(.degrees(sidebarExpandedListIDs.contains(listID.rawValue) ? 0 : -90))
+                    .frame(width: 28, height: 36)
+            }
+            .buttonStyle(.plain)
         }
+        .foregroundStyle(Color.accentColor)
+        .padding(.top, 26)
+        .padding(.bottom, 8)
+        .overlay(alignment: .bottom) {
+            Divider()
+        }
+        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+        .listRowBackground(Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            guard !listManagerIsEditing else { return }
+            Task {
+                await switchToList(listID)
+                showingMapSidebar = false
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button {
+                beginRenamingList(listID)
+            } label: {
+                Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+            }
+            .tint(.blue)
+
+            Button(role: .destructive) {
+                Task { await weatherService.deleteList(listID) }
+            } label: {
+                Label(localizedString("Delete", locale: locale), systemImage: "trash")
+            }
+        }
+        .contextMenu {
+            listActions(for: listID)
+        }
+    }
+
+    private func listManagerCityRow(_ city: CityWeather, in listID: CityListID) -> some View {
+        Text(city.city.localizedName(locale: locale))
+            .font(.title3)
+            .foregroundStyle(theme.colors.primaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                revealCityOnMap(city, in: listID)
+            }
+            .listRowSeparator(.hidden)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                Button {
+                    beginRenamingCity(city, in: listID)
+                } label: {
+                    Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+                }
+                .tint(.blue)
+
+                Button(role: .destructive) {
+                    weatherService.removeCity(city, from: listID)
+                } label: {
+                    Label(localizedString("Delete", locale: locale), systemImage: "trash")
+                }
+            }
+            .contextMenu {
+                cityActions(for: city, in: listID)
+            }
+    }
+
+    @ViewBuilder
+    private func listActions(for listID: CityListID) -> some View {
+        Button {
+            Task {
+                await switchToList(listID)
+                showingMapSidebar = false
+            }
+        } label: {
+            Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+        }
+
+        Button {
+            beginRenamingList(listID)
+        } label: {
+            Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+        }
+
+        Button {
+            beginAddingCity(to: listID)
+        } label: {
+            Label(localizedString("Add City", locale: locale), systemImage: "plus")
+        }
+
+        Button(role: .destructive) {
+            Task {
+                await weatherService.deleteList(listID)
+            }
+        } label: {
+            Label(localizedString("Delete", locale: locale), systemImage: "trash")
+        }
+    }
+
+    @ViewBuilder
+    private func cityActions(for city: CityWeather, in listID: CityListID) -> some View {
+        Button {
+            revealCityOnMap(city, in: listID)
+        } label: {
+            Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+        }
+
+        Button {
+            beginRenamingCity(city, in: listID)
+        } label: {
+            Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+        }
+
+        Button(role: .destructive) {
+            weatherService.removeCity(city, from: listID)
+        } label: {
+            Label(localizedString("Delete", locale: locale), systemImage: "trash")
+        }
+    }
+
+    private func beginRenamingList(_ listID: CityListID) {
+        listToRenameID = listID
+        renameAlertText = listID.localizedDisplayName(locale: locale)
+        showingRenameAlert = true
+    }
+
+    private func beginRenamingCity(_ city: CityWeather, in listID: CityListID) {
+        cityToRename = city
+        cityToRenameListID = listID
+        cityRenameText = city.city.localizedName(locale: locale)
+        showingCityRenameAlert = true
+    }
+
+    private func beginAddingCity(to listID: CityListID) {
+        inlineAddTargetListID = listID
+        showingMapSidebar = false
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showingInlineSearch = true
+            inlineSearchText = ""
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            inlineSearchFocused = true
+        }
+    }
+
+    private func createListAtBottom() {
+        let newList = CityListID.createList(name: localizedString("New List", locale: locale))
+        sidebarExpandedListIDs.insert(newList.rawValue)
+        listToRenameID = newList
+        renameAlertText = newList.localizedDisplayName(locale: locale)
+        showingRenameAlert = true
+    }
+
+    private func revealCityOnMap(_ city: CityWeather, in listID: CityListID) {
+        Task {
+            await switchToList(listID)
+            let revealedCity = weatherService.cityWeatherData.first {
+                $0.city.latitude == city.city.latitude && $0.city.longitude == city.city.longitude
+            } ?? city
+            tappedCity = revealedCity
+            centerOnCityTrigger = revealedCity
+            showingMapExpandedCard = true
+            showingMapSidebar = false
+        }
+    }
+
+    private func commitListManagerNewList() {
+        let trimmed = sidebarNewListName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let newList = CityListID.createList(name: trimmed)
+        sidebarExpandedListIDs.insert(newList.rawValue)
+        sidebarNewListName = ""
+        sidebarAddingList = false
+    }
+
+    private func commitListManagerRename(_ listID: CityListID) {
+        guard let draft = listRenameDrafts[listID.rawValue] else { return }
+        weatherService.renameList(listID, to: draft)
+        listRenameDrafts[listID.rawValue] = nil
+    }
+
+    private func commitListManagerRenames() {
+        for listID in CityListID.allLists {
+            commitListManagerRename(listID)
+        }
+    }
+
+    private func removeCities(at offsets: IndexSet, from listID: CityListID) {
+        let cities = weatherService.weatherData(for: listID)
+        for city in offsets.map({ cities[$0] }) {
+            weatherService.removeCity(city, from: listID)
+        }
+    }
+
+    private func switchToList(_ listID: CityListID) async {
+        guard listID.rawValue != weatherService.activeListID.rawValue else { return }
+        await weatherService.switchList(to: listID)
+        recenterOnAllCities = true
+    }
+
+    @ViewBuilder
+    private var mapSidebarOverlay: some View {
+        if showingMapSidebar {
+            ZStack(alignment: .leading) {
+                Color.black.opacity(0.001)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            showingMapSidebar = false
+                        }
+                    }
+
+                mapSidebar
+                    .frame(width: 310)
+                    .padding(.top, 54)
+                    .padding(.bottom, 86)
+                    .padding(.leading, 12)
+                    .transition(.move(edge: .leading).combined(with: .opacity))
+            }
+            .zIndex(30)
+        }
+    }
+
+    private var mapSidebar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Text(localizedString("Lists", locale: locale))
+                    .font(.title3.weight(.semibold))
+                Spacer()
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        sidebarAddingList = true
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        sidebarNewListFocused = true
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                }
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        sidebarEditing.toggle()
+                        sidebarRenamingListID = nil
+                    }
+                } label: {
+                    Image(systemName: sidebarEditing ? "checkmark" : "pencil")
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 16)
+
+            if sidebarAddingList {
+                HStack(spacing: 8) {
+                    TextField(localizedString("New List", locale: locale), text: $sidebarNewListName)
+                        .textFieldStyle(.plain)
+                        .focused($sidebarNewListFocused)
+                        .submitLabel(.done)
+                        .onSubmit { commitSidebarNewList() }
+                    Button {
+                        commitSidebarNewList()
+                    } label: {
+                        Image(systemName: "checkmark.circle.fill")
+                    }
+                    Button {
+                        sidebarAddingList = false
+                        sidebarNewListName = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 10)
+                .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                .padding(.horizontal, 10)
+            }
+
+            ScrollView {
+                LazyVStack(spacing: 8) {
+                    ForEach(CityListID.allLists) { listID in
+                        sidebarListRow(for: listID)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.bottom, 16)
+            }
+        }
+        .themedGlass(in: .rect(cornerRadius: 24))
+    }
+
+    private func sidebarListRow(for listID: CityListID) -> some View {
+        let isActive = weatherService.activeListID.rawValue == listID.rawValue
+        let isExpanded = sidebarExpandedListIDs.contains(listID.rawValue)
+        let cities = weatherService.weatherData(for: listID)
+
+        return VStack(spacing: 6) {
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        if isExpanded {
+                            sidebarExpandedListIDs.remove(listID.rawValue)
+                        } else {
+                            sidebarExpandedListIDs.insert(listID.rawValue)
+                            Task { await weatherService.fetchWeatherForList(listID) }
+                        }
+                    }
+                } label: {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .frame(width: 20, height: 28)
+                }
+                .buttonStyle(.plain)
+
+                if sidebarRenamingListID?.rawValue == listID.rawValue {
+                    TextField("", text: $sidebarRenameText)
+                        .textFieldStyle(.plain)
+                        .focused($sidebarRenameFocused)
+                        .submitLabel(.done)
+                        .onSubmit { commitSidebarRename(listID) }
+                } else {
+                    Button {
+                        Task {
+                            await weatherService.switchList(to: listID)
+                            recenterOnAllCities = true
+                        }
+                    } label: {
+                        Text(listID.localizedDisplayName(locale: locale))
+                            .font(.body.weight(isActive ? .semibold : .regular))
+                            .lineLimit(1)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                if sidebarEditing {
+                    sidebarListEditingControls(for: listID)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 9)
+            .background(isActive ? Color.primary.opacity(0.09) : Color.clear, in: RoundedRectangle(cornerRadius: 14))
+
+            if isExpanded {
+                VStack(spacing: 4) {
+                    if cities.isEmpty {
+                        Text(localizedString("No cities", locale: locale))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.leading, 38)
+                            .padding(.vertical, 6)
+                    } else {
+                        ForEach(Array(cities.enumerated()), id: \.element.id) { index, city in
+                            sidebarCityRow(city, at: index, in: listID, cities: cities)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func sidebarListEditingControls(for listID: CityListID) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                sidebarRenamingListID = listID
+                sidebarRenameText = listID.localizedDisplayName(locale: locale)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    sidebarRenameFocused = true
+                }
+            } label: {
+                Image(systemName: "pencil")
+            }
+            .disabled(CityListID.builtInLists.contains(where: { $0.rawValue == listID.rawValue }))
+
+            Button {
+                weatherService.moveList(listID, direction: .up)
+            } label: {
+                Image(systemName: "chevron.up")
+            }
+
+            Button {
+                weatherService.moveList(listID, direction: .down)
+            } label: {
+                Image(systemName: "chevron.down")
+            }
+
+            Button(role: .destructive) {
+                Task { await weatherService.deleteList(listID) }
+            } label: {
+                Image(systemName: "trash")
+            }
+        }
+        .font(.caption.weight(.semibold))
+    }
+
+    private func sidebarCityRow(_ city: CityWeather, at index: Int, in listID: CityListID, cities: [CityWeather]) -> some View {
+        HStack(spacing: 8) {
+            Button {
+                Task {
+                    if weatherService.activeListID.rawValue != listID.rawValue {
+                        await weatherService.switchList(to: listID)
+                    }
+                    selectedTab = 1
+                    tappedCity = city
+                    centerOnCityTrigger = city
+                    showingMapExpandedCard = true
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showingMapSidebar = false
+                    }
+                }
+            } label: {
+                Text(city.city.localizedName(locale: locale))
+                    .font(.subheadline)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .buttonStyle(.plain)
+
+            if sidebarEditing {
+                Button {
+                    if index > 0 {
+                        weatherService.moveCity(in: listID, from: IndexSet(integer: index), to: index - 1)
+                    }
+                } label: {
+                    Image(systemName: "chevron.up")
+                }
+                .disabled(index == 0)
+
+                Button {
+                    if index < cities.count - 1 {
+                        weatherService.moveCity(in: listID, from: IndexSet(integer: index), to: index + 2)
+                    }
+                } label: {
+                    Image(systemName: "chevron.down")
+                }
+                .disabled(index >= cities.count - 1)
+
+                Button(role: .destructive) {
+                    weatherService.removeCity(city, from: listID)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                }
+            }
+        }
+        .font(.caption)
+        .padding(.leading, 38)
+        .padding(.trailing, 10)
+        .padding(.vertical, 6)
+    }
+
+    private func commitSidebarNewList() {
+        let name = sidebarNewListName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        Task {
+            await weatherService.addNewList(name: name)
+            sidebarExpandedListIDs.insert(weatherService.activeListID.rawValue)
+            sidebarNewListName = ""
+            sidebarAddingList = false
+            recenterOnAllCities = true
+        }
+    }
+
+    private func commitSidebarRename(_ listID: CityListID) {
+        weatherService.renameList(listID, to: sidebarRenameText)
+        sidebarRenamingListID = nil
+        sidebarRenameText = ""
+    }
+
+    private var iPhoneShowsNativeToolbar: Bool {
+        selectedTab != 2 && !isMapSpecialMode && !showingInlineSearch && !showingCountrySearch && previewCity == nil
+    }
+
+    private var iPhoneMapTabContent: some View {
+        ZStack(alignment: .bottom) {
+            AnyView(
+                iOSMapView
+                    .overlay(alignment: .top) {
+                        if selectedTab == 1, showLegend {
+                            MapFloatingLegend(overlayMode: mapOverlayMode)
+                                .padding(.top, 58)
+                                .transition(.move(edge: .top).combined(with: .opacity))
+                        }
+                    }
+                    .overlay(alignment: .top) {
+                        HStack {
+                            Spacer()
+                            mapTopListMenu
+                            Spacer()
+                        }
+                        .frame(maxWidth: .infinity)
+                            .padding(.top, 8)
+                    }
+                    .overlay(alignment: .trailing) {
+                        AnyView(iOSDateSliderOverlay)
+                    }
+            )
+
+            iOSMainOverlays
+        }
+        .overlay(alignment: .bottom) {
+            mapBottomToolbar
+                .padding(.horizontal, 28)
+                .padding(.bottom, -6)
+                .frame(maxWidth: .infinity, minHeight: 62, alignment: .bottom)
+                .contentShape(Rectangle())
+                .zIndex(100)
+        }
+        #if os(iOS)
+        .fullScreenCover(isPresented: $showingMapSidebar) {
+            listManagerNavigation
+        }
+        #else
+        .sheet(isPresented: $showingMapSidebar) {
+            listManagerNavigation
+        }
+        #endif
     }
 
     private func iOSOnAppear() async {
@@ -436,46 +1376,6 @@ struct ContentView: View {
         }
     }
 
-    // Main content
-    private var iOSMainZStack: some View {
-        ZStack(alignment: .bottom) {
-            // Tab content (map + list)
-            ZStack {
-                AnyView(
-                    iOSMapView
-                        .overlay(alignment: .top) {
-                            if selectedTab == 1, showLegend {
-                                MapFloatingLegend(overlayMode: mapOverlayMode)
-                                    .padding(.top, 8)
-                                    .transition(.move(edge: .top).combined(with: .opacity))
-                            }
-                        }
-                        .opacity(selectedTab == 1 ? 1 : 0)
-                )
-
-                if !isMapSpecialMode {
-                    // AnyView breaks the generic type chain to prevent stack overflow on device
-                    AnyView(
-                        iOSListView
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .background(theme.colors.background.ignoresSafeArea())
-                            .opacity(selectedTab == 0 ? 1 : 0)
-                    )
-                }
-            }
-            .animation(.easeInOut(duration: 0.25), value: selectedTab)
-            .ignoresSafeArea(.keyboard)
-            .overlay(alignment: .trailing) {
-                AnyView(iOSDateSliderOverlay)
-            }
-            .overlay(alignment: .top) {
-                AnyView(iOSTopChrome)
-            }
-
-            iOSMainOverlays
-        }
-    }
-
     @ViewBuilder
     private var iOSDateSliderOverlay: some View {
         // Date slider only on map tab — list tab uses the date switcher capsule
@@ -489,61 +1389,6 @@ struct ContentView: View {
                 .padding(.bottom, 440)
                 .padding(.trailing, 1)
                 .transition(.opacity)
-        }
-    }
-
-    @ViewBuilder
-    private var iOSListDateSliderOverlay: some View {
-        if selectedTab == 0, !showingInlineSearch, !isMapSpecialMode {
-            Color.clear
-                .frame(width: 80, height: 500)
-                .contentShape(Rectangle())
-                .overlay(alignment: .trailing) {
-                    mapDateSlider(height: 420, showsSelectedLabelWhenIdle: false)
-                }
-                .padding(.bottom, 260)
-                .padding(.trailing, 1)
-                .transition(.opacity)
-        }
-    }
-
-    @ViewBuilder
-    private var iOSTopChrome: some View {
-        if !isMapSpecialMode, !showingInlineSearch, !showingCountrySearch, previewCity == nil, !showingMapExpandedCard {
-            GlassEffectContainer(spacing: 14) {
-                HStack(spacing: 14) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        showingListSwitcher = true
-                    } label: {
-                        HStack(spacing: 8) {
-                            Text(toolbarTitle)
-                                .font(.system(.headline, design: .default, weight: .semibold))
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.8)
-
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                        }
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(maxWidth: 210)
-                        .frame(height: 44)
-                        .padding(.horizontal, 18)
-                    }
-                    .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive(), in: .capsule)
-                    .contentShape(Capsule())
-
-                    Spacer(minLength: 12)
-
-                    iOSNativeMenu
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-            }
-            .transition(.move(edge: .top).combined(with: .opacity))
-            .zIndex(20)
         }
     }
 
@@ -602,7 +1447,7 @@ struct ContentView: View {
             mapExpandedCard(for: city)
                 .id(city.city.id)
                 .padding(.horizontal, 16)
-                .padding(.bottom, previewCity != nil ? 88 : 62)
+                .padding(.bottom, previewCity != nil ? 104 : 76)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),
@@ -621,6 +1466,7 @@ struct ContentView: View {
                         showingInlineSearch = false
                         inlineSearchText = ""
                         inlineSearchFocused = false
+                        inlineAddTargetListID = nil
                     }
                 }
                 .zIndex(9)
@@ -640,66 +1486,17 @@ struct ContentView: View {
                 .zIndex(10)
         }
 
-        // Active filter chips float above the tab bar when needed.
-        if !isMapSpecialMode, !showingInlineSearch, !showingCountrySearch, previewCity == nil, !showingMapExpandedCard, filterSunny || isPlaying {
-            HStack(spacing: 8) {
-                Spacer()
-                iOSActiveFilterButtons
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 86)
-            .transition(.opacity)
-            .zIndex(10)
-        }
-
         // Preview flows still use the transitional bottom bar; the native search tab owns search UI.
-        if selectedTab != 2, !isMapSpecialMode, !iPhoneShowsNativeToolbar, !(selectedTab == 1 && showingMapExpandedCard && previewCity == nil) {
+        if false {
             iOSUnifiedBottomBar
                 .zIndex(11)
-        }
-    }
-
-    @ViewBuilder
-    private var iOSActiveFilterButtons: some View {
-        if filterSunny || showPlaybackButton {
-            HStack(spacing: 8) {
-                if filterSunny {
-                    Button {
-                        withAnimation { filterSunny = false }
-                    } label: {
-                        Image(systemName: "sun.max.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                if showPlaybackButton {
-                    Button {
-                        if isPlaying { iOSStopPlayback() } else { iOSStartPlayback() }
-                    } label: {
-                        Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .contentTransition(.symbolEffect(.replace))
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(6)
-            .themedGlass(in: .capsule)
-            .transition(.scale.combined(with: .opacity))
         }
     }
 
     private var iOSMapControlsCapsule: some View {
         HStack(spacing: 8) {
             Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                PlatformFeedback.lightImpact()
                 recenterOnAllCities = false
                 DispatchQueue.main.async {
                     recenterOnAllCities = true
@@ -832,7 +1629,7 @@ struct ContentView: View {
                 onAddCityToList: cityInSidebar ? nil : { listID in
                     Task {
                         await weatherService.addCityToList(city.city, listID: listID)
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        PlatformFeedback.lightImpact()
                         showingCityDetail = false
                         if selectedTab == 1 {
                             recenterOnAllCities = true
@@ -895,12 +1692,20 @@ struct ContentView: View {
             )
             .background(theme.colors.background)
             .navigationTitle(city.city.localizedName(locale: locale))
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
+            #endif
             .toolbar {
+                #if os(iOS)
                 ToolbarItem(placement: .topBarTrailing) {
                     detailActionsMenu(for: city)
                 }
+                #else
+                ToolbarItem {
+                    detailActionsMenu(for: city)
+                }
+                #endif
             }
         }
     }
@@ -1165,7 +1970,7 @@ struct ContentView: View {
         .glassEffectID("bottomBarCenter", in: bottomBarNS)
 
         Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            PlatformFeedback.lightImpact()
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 showingInlineSearch = true
             }
@@ -1186,7 +1991,7 @@ struct ContentView: View {
         let isSelected = selectedTab == tab
 
         return Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            PlatformFeedback.lightImpact()
             withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
                 selectedTab = tab
             }
@@ -1265,8 +2070,13 @@ struct ContentView: View {
             Button(localizedString("OK", locale: locale)) {
                 let trimmed = renameAlertText.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty {
-                    weatherService.renameCurrentList(to: trimmed)
+                    if let listToRenameID {
+                        weatherService.renameList(listToRenameID, to: trimmed)
+                    } else {
+                        weatherService.renameCurrentList(to: trimmed)
+                    }
                 }
+                listToRenameID = nil
             }
         }
         .alert(localizedString("Rename", locale: locale), isPresented: $showingCityRenameAlert) {
@@ -1275,8 +2085,13 @@ struct ContentView: View {
             Button(localizedString("OK", locale: locale)) {
                 let trimmed = cityRenameText.trimmingCharacters(in: .whitespacesAndNewlines)
                 if !trimmed.isEmpty, let city = cityToRename {
-                    weatherService.renameCity(city, to: trimmed)
+                    if let cityToRenameListID {
+                        weatherService.renameCity(city, in: cityToRenameListID, to: trimmed)
+                    } else {
+                        weatherService.renameCity(city, to: trimmed)
+                    }
                 }
+                cityToRenameListID = nil
             }
         }
     }
@@ -1451,7 +2266,8 @@ struct ContentView: View {
     private func inlineIsExistingCity(_ result: CitySearchResult) -> Bool {
         let name = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
         let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
-        return weatherService.cityWeatherData.contains(where: { $0.city.name == name && $0.city.country == country })
+        let data = inlineAddTargetListID.map { weatherService.weatherData(for: $0) } ?? weatherService.cityWeatherData
+        return data.contains(where: { $0.city.name == name && $0.city.country == country })
     }
 
     private var inlineSortedSearchResults: [CitySearchResult] {
@@ -1470,8 +2286,20 @@ struct ContentView: View {
         let cityName = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
         let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
 
+        let targetListID = inlineAddTargetListID
+        let targetData = targetListID.map { weatherService.weatherData(for: $0) } ?? weatherService.cityWeatherData
+
         // Check if city already exists
-        if let existingCity = weatherService.cityWeatherData.first(where: { $0.city.name == cityName && $0.city.country == country }) {
+        if let existingCity = targetData.first(where: { $0.city.name == cityName && $0.city.country == country }) {
+            if let targetListID {
+                inlineAddTargetListID = nil
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    showingInlineSearch = false
+                    inlineSearchText = ""
+                }
+                revealCityOnMap(existingCity, in: targetListID)
+                return
+            }
             handleInlineSearchCitySelected(existingCity)
             return
         }
@@ -1487,7 +2315,17 @@ struct ContentView: View {
             return
         }
 
-        handleInlineSearchCitySelected(tempCityWeather)
+        if let targetListID {
+            await weatherService.addCityToList(tempCityWeather.city, listID: targetListID)
+            inlineAddTargetListID = nil
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                showingInlineSearch = false
+                inlineSearchText = ""
+            }
+            revealCityOnMap(tempCityWeather, in: targetListID)
+        } else {
+            handleInlineSearchCitySelected(tempCityWeather)
+        }
     }
 
     private func handleInlineSearchCitySelected(_ cityWeather: CityWeather) {
@@ -1572,7 +2410,7 @@ struct ContentView: View {
                 onAddCityToList: cityIsInSidebar(city) ? nil : { listID in
                     Task {
                         await weatherService.addCityToList(city.city, listID: listID)
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        PlatformFeedback.lightImpact()
                         showingAddCityView = false
                         showingAddCityDetail = false
                         if selectedTab == 1 {
@@ -1588,12 +2426,20 @@ struct ContentView: View {
             )
             .background(theme.colors.background)
             .navigationTitle(city.city.localizedName(locale: locale))
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
+            #endif
             .toolbar {
+                #if os(iOS)
                 ToolbarItem(placement: .topBarTrailing) {
                     detailActionsMenu(for: city)
                 }
+                #else
+                ToolbarItem {
+                    detailActionsMenu(for: city)
+                }
+                #endif
             }
         }
     }
@@ -1645,7 +2491,9 @@ struct ContentView: View {
                         withAnimation(.easeOut(duration: 0.2)) {
                             showingDeleteListConfirmation = false
                         }
-                        deleteCurrentList()
+                        Task {
+                            await weatherService.deleteCurrentList()
+                        }
                     } label: {
                         Text(localizedString("Delete", locale: locale))
                             .font(.avenir(.body, weight: .semibold))
@@ -1672,40 +2520,6 @@ struct ContentView: View {
 
 
 
-
-    func iOSStartPlayback() {
-        playbackButtonHideTask?.cancel()
-        withAnimation { showPlaybackButton = true }
-        isPlaying = true
-        if selectedDayOffset >= 9 {
-            selectedDayOffset = -1
-        }
-        playbackTask = Task {
-            while !Task.isCancelled && selectedDayOffset < 9 {
-                try? await Task.sleep(for: .seconds(1.5))
-                guard !Task.isCancelled else { break }
-                withAnimation(.smooth(duration: 0.4)) {
-                    selectedDayOffset += 1
-                }
-            }
-            if !Task.isCancelled {
-                iOSStopPlayback()
-            }
-        }
-    }
-
-    func iOSStopPlayback() {
-        playbackTask?.cancel()
-        playbackTask = nil
-        isPlaying = false
-        // Auto-hide button after 10 seconds
-        playbackButtonHideTask?.cancel()
-        playbackButtonHideTask = Task {
-            try? await Task.sleep(for: .seconds(10))
-            guard !Task.isCancelled else { return }
-            withAnimation { showPlaybackButton = false }
-        }
-    }
 
     @State var isAddingNewList: Bool = false
     
@@ -1753,7 +2567,6 @@ struct ContentView: View {
                 showCloudCover: showCloudCover,
                 overlayMode: mapOverlayMode,
                 filterSunny: filterSunny,
-                isPlaying: isPlaying,
                 namespace: popupNamespace,
                 showingCityDetail: Binding(
                     get: { showingMapExpandedCard },
@@ -1881,7 +2694,7 @@ struct ContentView: View {
 
     private func addCityToSidebar(_ cityWeather: CityWeather) async {
         await weatherService.addCity(cityWeather.city)
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        PlatformFeedback.lightImpact()
         // Update the tapped city to the newly added one from the sidebar
         if let newCity = weatherService.cityWeatherData.first(where: { $0.city.name == cityWeather.city.name && $0.city.country == cityWeather.city.country }) {
             tappedCity = newCity
@@ -1901,7 +2714,7 @@ struct ContentView: View {
                                     await addCityToSidebar(city)
                                 } else {
                                     await weatherService.addCityToList(city.city, listID: listID)
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    PlatformFeedback.lightImpact()
                                 }
                                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                     if dismissExpanded { showingMapExpandedCard = false }
@@ -1980,7 +2793,6 @@ struct WeatherMarker: View {
     var overlayMode: String = "weather"
     var filterSunny: Bool = false
     var passesFilter: Bool = true
-    var isPlaying: Bool = false
     var displayMode: MarkerDisplayMode = .card
     var isSelected: Bool = false
     var hideCityName: Bool = false
@@ -2209,11 +3021,7 @@ struct WeatherMarker: View {
 
     private var displayIcon: String {
         if filterSunny {
-            if isPlaying {
-                return "sun.max.fill"
-            } else {
-                return passesFilter ? "sun.max.fill" : baseIcon
-            }
+            return passesFilter ? "sun.max.fill" : baseIcon
         }
         // Use plain cloud for rain/drizzle/snow — the animation shows the precipitation
         if baseCondition == .rain || baseCondition == .drizzle || baseCondition == .snow {
@@ -2307,4 +3115,3 @@ struct WeatherMarker: View {
 #Preview("Loading") {
     ContentView(previewLoading: true)
 }
-

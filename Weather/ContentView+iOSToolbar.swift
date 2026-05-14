@@ -26,7 +26,7 @@ extension ContentView {
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset > -1 {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        PlatformFeedback.lightImpact()
                         dateSwitcherForward = false
                         withAnimation(.smooth(duration: 0.2)) {
                             selectedDayOffset -= 1
@@ -81,7 +81,7 @@ extension ContentView {
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset < 9 {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        PlatformFeedback.lightImpact()
                         dateSwitcherForward = true
                         withAnimation(.smooth(duration: 0.2)) {
                             selectedDayOffset += 1
@@ -98,14 +98,6 @@ extension ContentView {
 
     var iOSNativeMenu: some View {
         Menu {
-            Button {
-                showingSettings = true
-            } label: {
-                Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
-            }
-
-            Divider()
-
             if selectedTab == 1 {
                 Toggle(isOn: Binding(
                     get: { showLegend },
@@ -122,17 +114,6 @@ extension ContentView {
             }
             .disabled(weatherService.isLoading)
 
-            if selectedTab == 1 {
-                Toggle(isOn: Binding(
-                    get: { isPlaying },
-                    set: { newValue in
-                        if newValue { iOSStartPlayback() } else { iOSStopPlayback() }
-                    }
-                )) {
-                    Label(localizedString("Playback", locale: locale), systemImage: "play.fill")
-                }
-            }
-
             Toggle(isOn: Binding(
                 get: { filterSunny },
                 set: { newValue in withAnimation { filterSunny = newValue } }
@@ -141,32 +122,6 @@ extension ContentView {
             }
 
             Divider()
-
-            if selectedTab == 0 {
-                Toggle(isOn: Binding(
-                    get: { isGridView },
-                    set: { newValue in
-                        withAnimation(.easeOut(duration: 0.15)) {
-                            listContentOpacity = 0
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                            isGridView = newValue
-                            withAnimation(.easeIn(duration: 0.2)) {
-                                listContentOpacity = 1
-                            }
-                        }
-                    }
-                )) {
-                    Label(localizedString("Grid View", locale: locale), systemImage: "square.grid.2x2")
-                }
-
-                Toggle(isOn: Binding(
-                    get: { isEditMode },
-                    set: { newValue in withAnimation { isEditMode = newValue } }
-                )) {
-                    Label(localizedString("Edit Mode", locale: locale), systemImage: "pencil")
-                }
-            }
 
             if !isEditingListName {
                 if let city = selectedTab == 1 ? (showingMapExpandedCard ? tappedCity : nil) : selectedCity,
@@ -189,7 +144,9 @@ extension ContentView {
             }
         } label: {
             Image(systemName: "ellipsis")
+                .foregroundStyle(.primary)
         }
+        .tint(.primary)
         .menuOrder(.fixed)
     }
 }

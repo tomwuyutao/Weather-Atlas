@@ -165,7 +165,9 @@ struct AddCitySearchView: View {
                 }
             }
         }
+        #if os(iOS)
         .navigationBarHidden(true)
+        #endif
         .onChange(of: searchText) { oldValue, newValue in
             citySearchManager.search(query: newValue)
         }

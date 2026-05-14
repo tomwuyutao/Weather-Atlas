@@ -14,7 +14,6 @@ struct SVGMapView: View {
     let showCloudCover: Bool
     var overlayMode: String = "weather"
     let filterSunny: Bool
-    let isPlaying: Bool
     let namespace: Namespace.ID
     
     @Binding var isZoomedOut: Bool
@@ -253,7 +252,6 @@ struct SVGMapView: View {
                 overlayMode: overlayMode,
                 filterSunny: filterSunny,
                 passesFilter: passesFilter,
-                isPlaying: isPlaying,
                 displayMode: showDots ? .dot : .card,
                 hideCityName: false
             )
@@ -559,5 +557,4 @@ struct SVGMapView: View {
         renderScale = targetScale
     }
 }
-
 

@@ -44,7 +44,7 @@ extension ContentView {
                             let nearestOffset = positionToOffset(nearestPos)
                             if nearestOffset != selectedDayOffset {
                                 selectedDayOffset = nearestOffset
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                PlatformFeedback.lightImpact()
                             }
                         }
                         .onEnded { _ in

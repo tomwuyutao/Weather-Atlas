@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MapFloatingLegend: View {
     let overlayMode: String
+    var compact: Bool = false
 
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
@@ -174,7 +175,7 @@ struct MapFloatingLegend: View {
                 .padding(.vertical, 10)
             }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: compact ? 520 : .infinity, alignment: .leading)
         .padding(6)
         .themedGlass(in: Capsule())
         .padding(.horizontal, 12)
@@ -342,15 +343,15 @@ struct MapFloatingLegend: View {
     }
 
     private var weatherDotLegend: some View {
-        HStack(spacing: 0) {
+        HStack(spacing: compact ? 18 : 0) {
             dotPairEntry(.clear)
-            Spacer()
+            if !compact { Spacer() }
             dotPairEntry(.partlyCloudy)
-            Spacer()
+            if !compact { Spacer() }
             dotPairEntry(.rain)
-            Spacer()
+            if !compact { Spacer() }
             dotPairEntry(.drizzle)
-            Spacer()
+            if !compact { Spacer() }
             // White dot | cloudy, snow, fog, wind icons
             Circle()
                 .fill(AppWeatherCondition.cloudy.dotColor)

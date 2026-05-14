@@ -205,6 +205,9 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
     static let europe = CityListID(rawValue: "europe", displayName: "Europe")
     
     func localizedDisplayName(locale: Locale = .current) -> String {
+        if let customName = Self.customDisplayName(for: rawValue) {
+            return customName
+        }
         switch rawValue {
         case "china": return localizedString("China", locale: locale)
         case "europe": return localizedString("Europe", locale: locale)
@@ -217,6 +220,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
     private static let userListsKey = "userCreatedLists"
     private static let deletedBuiltInListsKey = "deletedBuiltInLists"
     private static let listOrderKey = "listOrder"
+    private static let customListNamesKey = "customListNames"
     
     static var allLists: [CityListID] {
         let deletedIDs = loadDeletedBuiltInIDs()
@@ -245,6 +249,26 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         let ids = lists.map(\.rawValue)
         if let data = try? JSONEncoder().encode(ids) {
             UserDefaults.standard.set(data, forKey: listOrderKey)
+        }
+    }
+
+    private static func loadCustomListNames() -> [String: String] {
+        guard let data = UserDefaults.standard.data(forKey: customListNamesKey),
+              let names = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return [:]
+        }
+        return names
+    }
+
+    static func customDisplayName(for rawValue: String) -> String? {
+        loadCustomListNames()[rawValue]
+    }
+
+    static func saveCustomDisplayName(_ name: String, for rawValue: String) {
+        var names = loadCustomListNames()
+        names[rawValue] = name
+        if let data = try? JSONEncoder().encode(names) {
+            UserDefaults.standard.set(data, forKey: customListNamesKey)
         }
     }
     
@@ -286,6 +310,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
     static func restoreBuiltInLists() {
         UserDefaults.standard.removeObject(forKey: deletedBuiltInListsKey)
         UserDefaults.standard.removeObject(forKey: listOrderKey)
+        UserDefaults.standard.removeObject(forKey: customListNamesKey)
     }
     
     static func createList(name: String) -> CityListID {
@@ -553,6 +578,70 @@ class WeatherService {
             await fetchWeatherForAllCities()
         }
     }
+
+    func renameList(_ listID: CityListID, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        if CityListID.builtInLists.contains(where: { $0.rawValue == listID.rawValue }) {
+            CityListID.saveCustomDisplayName(trimmed, for: listID.rawValue)
+            if activeListID.rawValue == listID.rawValue {
+                activeListID = CityListID(rawValue: listID.rawValue, displayName: trimmed)
+            }
+            return
+        }
+
+        var userLists = CityListID.loadUserLists()
+        guard let index = userLists.firstIndex(where: { $0.rawValue == listID.rawValue }) else { return }
+        let renamed = CityListID(rawValue: listID.rawValue, displayName: trimmed)
+        userLists[index] = renamed
+        CityListID.saveUserLists(userLists)
+        if activeListID.rawValue == listID.rawValue {
+            activeListID = renamed
+        }
+    }
+
+    func deleteList(_ listID: CityListID) async {
+        if listID.rawValue == activeListID.rawValue {
+            await deleteCurrentList()
+            return
+        }
+
+        UserDefaults.standard.removeObject(forKey: "savedCitiesList_\(listID.rawValue)")
+        UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
+        UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listID.rawValue)")
+        otherListData[listID.rawValue] = nil
+
+        if CityListID.builtInLists.contains(where: { $0.rawValue == listID.rawValue }) {
+            CityListID.deleteBuiltInList(listID)
+        } else {
+            var userLists = CityListID.loadUserLists()
+            userLists.removeAll { $0.rawValue == listID.rawValue }
+            CityListID.saveUserLists(userLists)
+        }
+        CityListID.saveListOrder(CityListID.allLists)
+    }
+
+    func moveList(_ listID: CityListID, direction: ListMoveDirection) {
+        var lists = CityListID.allLists
+        guard let index = lists.firstIndex(where: { $0.rawValue == listID.rawValue }) else { return }
+        let newIndex: Int
+        switch direction {
+        case .up:
+            newIndex = max(0, index - 1)
+        case .down:
+            newIndex = min(lists.count - 1, index + 1)
+        }
+        guard newIndex != index else { return }
+        lists.swapAt(index, newIndex)
+        CityListID.saveListOrder(lists)
+    }
+
+    func moveLists(from source: IndexSet, to destination: Int) {
+        var lists = CityListID.allLists
+        lists.move(fromOffsets: source, toOffset: destination)
+        CityListID.saveListOrder(lists)
+    }
     
     // MARK: - Caching Methods
     
@@ -575,6 +664,17 @@ class WeatherService {
             UserDefaults.standard.set(encoded, forKey: cacheKey)
             UserDefaults.standard.set(Date(), forKey: cacheTimestampKey)
             lastFetchDate = Date()
+        } catch {
+        }
+    }
+
+    private func cacheData(_ data: [CityWeather], for listID: CityListID) {
+        let key = "cachedWeatherData_\(listID.rawValue)"
+        let timestampKey = "weatherCacheTimestamp_\(listID.rawValue)"
+        do {
+            let encoded = try JSONEncoder().encode(data.map { CachedCityWeather(from: $0) })
+            UserDefaults.standard.set(encoded, forKey: key)
+            UserDefaults.standard.set(Date(), forKey: timestampKey)
         } catch {
         }
     }
@@ -609,6 +709,22 @@ class WeatherService {
             return cachedWeather.map { $0.toCityWeather() }
         } catch {
             return nil
+        }
+    }
+
+    func weatherData(for listID: CityListID) -> [CityWeather] {
+        if listID.rawValue == activeListID.rawValue {
+            return cityWeatherData
+        }
+        return otherListData[listID.rawValue] ?? loadCachedData(for: listID) ?? []
+    }
+
+    private func saveCities(_ cities: [City], for listID: CityListID) {
+        let key = "savedCitiesList_\(listID.rawValue)"
+        do {
+            let encoded = try JSONEncoder().encode(cities.map { CachedCity(from: $0) })
+            UserDefaults.standard.set(encoded, forKey: key)
+        } catch {
         }
     }
     
@@ -866,11 +982,36 @@ class WeatherService {
         saveCitiesList()
     }
 
+    func removeCity(_ cityWeather: CityWeather, from listID: CityListID) {
+        if listID.rawValue == activeListID.rawValue {
+            removeCity(cityWeather)
+            return
+        }
+        var listData = otherListData[listID.rawValue] ?? loadCachedData(for: listID) ?? []
+        listData.removeAll { $0.id == cityWeather.id }
+        otherListData[listID.rawValue] = listData
+        saveCities(listData.map(\.city), for: listID)
+        cacheData(listData, for: listID)
+    }
+
     func renameCity(_ cityWeather: CityWeather, to newName: String) {
         guard let index = cityWeatherData.firstIndex(where: { $0.id == cityWeather.id }) else { return }
         cityWeatherData[index].city.name = newName
         cacheData(cityWeatherData)
         saveCitiesList()
+    }
+
+    func renameCity(_ cityWeather: CityWeather, in listID: CityListID, to newName: String) {
+        if listID.rawValue == activeListID.rawValue {
+            renameCity(cityWeather, to: newName)
+            return
+        }
+        var listData = otherListData[listID.rawValue] ?? loadCachedData(for: listID) ?? []
+        guard let index = listData.firstIndex(where: { $0.id == cityWeather.id }) else { return }
+        listData[index].city.name = newName
+        otherListData[listID.rawValue] = listData
+        saveCities(listData.map(\.city), for: listID)
+        cacheData(listData, for: listID)
     }
     
     func addCity(_ city: City) async {
@@ -962,6 +1103,18 @@ class WeatherService {
         // Save the updated cities list
         saveCitiesList()
     }
+
+    func moveCity(in listID: CityListID, from source: IndexSet, to destination: Int) {
+        if listID.rawValue == activeListID.rawValue {
+            moveCity(from: source, to: destination)
+            return
+        }
+        var listData = otherListData[listID.rawValue] ?? loadCachedData(for: listID) ?? []
+        listData.move(fromOffsets: source, toOffset: destination)
+        otherListData[listID.rawValue] = listData
+        saveCities(listData.map(\.city), for: listID)
+        cacheData(listData, for: listID)
+    }
     
     private func generateForecastDays() {
         let calendar = Calendar.current
@@ -973,6 +1126,11 @@ class WeatherService {
         }
     }
     
+}
+
+enum ListMoveDirection {
+    case up
+    case down
 }
 
 struct City: Identifiable, Hashable, Codable {
@@ -1688,4 +1846,3 @@ extension AppWeatherCondition {
         }
     }
 }
-

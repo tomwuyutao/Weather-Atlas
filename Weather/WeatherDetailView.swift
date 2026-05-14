@@ -773,14 +773,14 @@ struct WeatherDetailView: View {
                         let dy = abs(value.translation.height)
                         guard abs(dx) > dy else { return }
                         if dx < 0, let next = onNextCity {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            PlatformFeedback.lightImpact()
                             citySwipeFromTrailing = true
                             showingSearchedCity = false
                             withAnimation(.easeInOut(duration: 0.25)) {
                                 next()
                             }
                         } else if dx > 0, let prev = onPreviousCity {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            PlatformFeedback.lightImpact()
                             citySwipeFromTrailing = false
                             showingSearchedCity = false
                             withAnimation(.easeInOut(duration: 0.25)) {

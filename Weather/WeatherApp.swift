@@ -7,15 +7,19 @@
 
 import SwiftUI
 
+#if os(iOS)
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         .portrait
     }
 }
+#endif
 
 @main
 struct WeatherApp: App {
+    #if os(iOS)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    #endif
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     @State private var theme = AppTheme.shared
 
@@ -43,6 +47,7 @@ struct WeatherApp: App {
             UserDefaults.standard.set(true, forKey: migrationKey)
         }
         
+        #if os(iOS)
         // Keep native bars transparent so Liquid Glass floats over app content.
         let navBarAppearance = UINavigationBarAppearance()
         navBarAppearance.configureWithTransparentBackground()
@@ -59,12 +64,16 @@ struct WeatherApp: App {
         tabBarAppearance.shadowColor = .clear
         UITabBar.appearance().standardAppearance = tabBarAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
+        #endif
     }
 
     var body: some Scene {
         WindowGroup {
             ThemeRoot(theme: theme, appLocale: appLocale)
         }
+        #if os(macOS)
+        .windowStyle(.hiddenTitleBar)
+        #endif
     }
 }
 /// Outer layer: sets the preferred color scheme so the inner layer reads the correct one.
@@ -126,4 +135,3 @@ extension Font {
         return .system(size: size, weight: weight, design: .default)
     }
 }
-

@@ -2,7 +2,13 @@ import SwiftUI
 import WebKit
 import CoreLocation
 
-struct MapLibreWebMapView: UIViewRepresentable {
+#if os(macOS)
+typealias PlatformWebViewRepresentable = NSViewRepresentable
+#else
+typealias PlatformWebViewRepresentable = UIViewRepresentable
+#endif
+
+struct MapLibreWebMapView: PlatformWebViewRepresentable {
     let cities: [CityWeather]
     let selectedDayOffset: Int
     var overlayMode: String = "weather"
@@ -21,13 +27,42 @@ struct MapLibreWebMapView: UIViewRepresentable {
         Coordinator(parent: self)
     }
 
+    #if os(macOS)
+    func makeNSView(context: Context) -> WKWebView {
+        makeWebView(context: context)
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        updateWebView(webView, context: context)
+    }
+
+    static func dismantleNSView(_ nsView: WKWebView, coordinator: Coordinator) {
+        dismantleWebView(nsView, coordinator: coordinator)
+    }
+    #else
     func makeUIView(context: Context) -> WKWebView {
+        makeWebView(context: context)
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        updateWebView(webView, context: context)
+    }
+
+    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
+        dismantleWebView(uiView, coordinator: coordinator)
+    }
+    #endif
+
+    private func makeWebView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(context.coordinator, name: "mapEvent")
+        #if os(iOS)
         configuration.allowsInlineMediaPlayback = true
+        #endif
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
+        #if os(iOS)
         webView.isOpaque = true
         webView.backgroundColor = UIColor(red: 0xED / 255.0, green: 0xE7 / 255.0, blue: 0xDE / 255.0, alpha: 1)
         webView.scrollView.backgroundColor = webView.backgroundColor
@@ -39,21 +74,24 @@ struct MapLibreWebMapView: UIViewRepresentable {
         if #available(iOS 15.0, *) {
             webView.underPageBackgroundColor = webView.backgroundColor
         }
+        #elseif os(macOS)
+        webView.setValue(false, forKey: "drawsBackground")
+        #endif
         webView.loadHTMLString(Self.html, baseURL: Bundle.main.resourceURL)
         context.coordinator.webView = webView
         return webView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {
+    private func updateWebView(_ webView: WKWebView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.webView = webView
         context.coordinator.pushStateIfReady()
     }
 
-    static func dismantleUIView(_ uiView: WKWebView, coordinator: Coordinator) {
-        uiView.configuration.userContentController.removeScriptMessageHandler(forName: "mapEvent")
-        uiView.stopLoading()
-        uiView.navigationDelegate = nil
+    private static func dismantleWebView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "mapEvent")
+        webView.stopLoading()
+        webView.navigationDelegate = nil
     }
 
     final class Coordinator: NSObject, WKNavigationDelegate, WKScriptMessageHandler {

@@ -123,6 +123,7 @@ extension ContentView {
                         .background(alignment: .top) {
                             WeatherEffectOverlay(condition: effectCondition, isCompact: false, iconHeight: 46, iconName: icon)
                         }
+                        .offset(y: -6)
 
                     VStack(spacing: 6) {
                         ForEach(0..<2, id: \.self) { row in

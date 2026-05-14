@@ -35,7 +35,7 @@ extension ContentView {
                     VStack(spacing: 10) {
                         ForEach(overlays, id: \.0) { mode, icon, label in
                             Button {
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                PlatformFeedback.lightImpact()
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     mapOverlayMode = mode
                                 }
@@ -61,13 +61,14 @@ extension ContentView {
                                 }
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 14)
-                                .background(
+                                .themedGlass(in: .rect(cornerRadius: 12))
+                                .overlay(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .fill(mapOverlayMode == mode ? Color(hex: 0x1579C7).opacity(0.08) : theme.colors.listCardFill)
+                                        .fill(mapOverlayMode == mode ? Color(hex: 0x1579C7).opacity(0.08) : Color.clear)
                                 )
                                 .overlay(
                                     RoundedRectangle(cornerRadius: 12)
-                                        .strokeBorder(mapOverlayMode == mode ? Color(hex: 0x1579C7).opacity(0.4) : Color.clear, lineWidth: 1)
+                                        .strokeBorder(mapOverlayMode == mode ? Color(hex: 0x1579C7).opacity(0.4) : theme.colors.primaryText.opacity(0.08), lineWidth: 1)
                                 )
                             }
                             .buttonStyle(.plain)
