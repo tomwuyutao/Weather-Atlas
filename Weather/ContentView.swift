@@ -159,7 +159,7 @@ struct ContentView: View {
     @State private var showingAddToListPopover: Bool = false
     @State var inlineAddTargetListID: CityListID?
     #if os(macOS)
-    @State private var macSidebarVisibility: NavigationSplitViewVisibility = .all
+    @State private var macShowsLeftSidebar: Bool = true
     @State private var macMapExpandedCardAnchor: CGPoint?
     #endif
 
@@ -246,24 +246,17 @@ struct ContentView: View {
 
     #if os(macOS)
     private var macOSView: some View {
-        NavigationSplitView(columnVisibility: $macSidebarVisibility) {
-            macListManagerSidebar
-        } detail: {
-            NavigationStack {
-                HStack(spacing: 0) {
-                    macMapContent
+        AnyView(macOSRootView)
+    }
 
-                    if showingCityDetail, tappedCity != nil {
-                        Divider()
-                        macDetailSidebar
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
-                    }
-                }
-                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showingCityDetail)
-                    .navigationDestination(isPresented: $showingAddCityDetail) {
-                        AnyView(iOSAddCityDetailDestination)
-                    }
+    private var macOSRootView: some View {
+        HSplitView {
+            if macShowsLeftSidebar {
+                macSidebarContent
+                    .transition(.move(edge: .leading).combined(with: .opacity))
             }
+
+            macNavigationContent
         }
         .task { await iOSOnAppear() }
         .onChange(of: weatherService.activeListID) { _, newListID in
@@ -320,8 +313,37 @@ struct ContentView: View {
         .containerBackground(.clear, for: .window)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar(removing: .title)
-        .toolbar(removing: .sidebarToggle)
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: macShowsLeftSidebar)
+    }
+
+    private var macSidebarContent: some View {
+        NavigationStack {
+            macListManagerSidebar
+        }
+        .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
+    }
+
+    private var macNavigationContent: some View {
+        NavigationStack {
+            macMapAndDetailContent
+                .navigationDestination(isPresented: $showingAddCityDetail) {
+                    AnyView(iOSAddCityDetailDestination)
+                }
+        }
+    }
+
+    private var macMapAndDetailContent: some View {
+        HStack(spacing: 0) {
+            macMapContent
+
+            if showingCityDetail, tappedCity != nil {
+                Divider()
+                macDetailSidebar
+                    .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showingCityDetail)
     }
 
     private var macMapContent: some View {
@@ -347,7 +369,7 @@ struct ContentView: View {
             ToolbarItemGroup(placement: .navigation) {
                 Button {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        macSidebarVisibility = macSidebarVisibility == .all ? .detailOnly : .all
+                        macShowsLeftSidebar.toggle()
                     }
                 } label: {
                     Image(systemName: "sidebar.left")
