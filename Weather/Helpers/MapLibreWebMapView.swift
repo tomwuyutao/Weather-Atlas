@@ -504,8 +504,15 @@ struct MapLibreWebMapView: UIViewRepresentable {
             ensureLayers();
             if (pendingPayload) updateSource(pendingPayload);
           });
-          map.on('click', 'weather-points', event => {
-            const feature = event.features && event.features[0];
+          map.on('click', event => {
+            const hitBox = [
+              [event.point.x - 18, event.point.y - 18],
+              [event.point.x + 18, event.point.y + 18]
+            ];
+            const features = map.queryRenderedFeatures(hitBox, {
+              layers: ['weather-points', 'weather-halo', 'weather-glow']
+            });
+            const feature = features && features[0];
             if (feature?.properties?.id) post({ type: 'markerTap', id: feature.properties.id });
           });
           map.on('mouseenter', 'weather-points', () => { map.getCanvas().style.cursor = 'pointer'; });

@@ -11,7 +11,7 @@ extension ContentView {
 
     // MARK: - Vertical Date Slider (Map Mode)
 
-    func mapDateSlider(height: CGFloat, transparent: Bool = false) -> some View {
+    func mapDateSlider(height: CGFloat, transparent: Bool = false, showsSelectedLabelWhenIdle: Bool = true) -> some View {
         let totalPositions = 11 // -1 (Now) through 9
         let stepHeight = height / CGFloat(totalPositions - 1)
 
@@ -71,30 +71,31 @@ extension ContentView {
                     .transition(.opacity)
             }
 
-            // Selected day indicator
-            HStack(spacing: isDraggingDateSlider ? 6 : 3) {
+            if isDraggingDateSlider || showsSelectedLabelWhenIdle {
                 let displayPos = isDraggingDateSlider
                     ? Int(round(sliderDragFraction * CGFloat(totalPositions - 1)))
                     : offsetToPosition(selectedDayOffset)
                 let displayOffset = positionToOffset(max(0, min(totalPositions - 1, displayPos)))
 
-                Text(sliderDateText(for: displayOffset))
-                    .font(.avenir(.subheadline, weight: .semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(minWidth: isDraggingDateSlider ? 64 : 52)
-                    .fixedSize()
-                    .padding(.horizontal, isDraggingDateSlider ? 14 : 12)
-                    .padding(.vertical, isDraggingDateSlider ? 9 : 7)
-                    .themedGlass(in: .capsule)
+                HStack(spacing: isDraggingDateSlider ? 6 : 3) {
+                    Text(sliderDateText(for: displayOffset))
+                        .font(.avenir(.subheadline, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(minWidth: isDraggingDateSlider ? 64 : 52)
+                        .fixedSize()
+                        .padding(.horizontal, isDraggingDateSlider ? 14 : 12)
+                        .padding(.vertical, isDraggingDateSlider ? 9 : 7)
+                        .themedGlass(in: .capsule)
 
-                Color.clear
-                    .frame(width: isDraggingDateSlider ? 30 : 24, height: isDraggingDateSlider ? 20 : 16)
-                    .themedGlass(in: .capsule)
-                    .offset(x: isDraggingDateSlider ? 12 : 9)
+                    Color.clear
+                        .frame(width: isDraggingDateSlider ? 30 : 24, height: isDraggingDateSlider ? 20 : 16)
+                        .themedGlass(in: .capsule)
+                        .offset(x: isDraggingDateSlider ? 12 : 9)
+                }
+                .allowsHitTesting(false)
+                .animation(.smooth(duration: 0.2), value: isDraggingDateSlider)
+                .offset(y: capsuleY - (isDraggingDateSlider ? 10 : 8))
             }
-            .allowsHitTesting(false)
-            .animation(.smooth(duration: 0.2), value: isDraggingDateSlider)
-            .offset(y: capsuleY - (isDraggingDateSlider ? 10 : 8))
         }
         .animation(.smooth(duration: 0.15), value: selectedDayOffset)
         .frame(height: height)

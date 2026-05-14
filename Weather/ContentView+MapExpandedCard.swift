@@ -95,79 +95,59 @@ extension ContentView {
             default: return ""
             }
         }()
-        return HStack(alignment: .bottom, spacing: 0) {
-            // Left: temperature, city, details
-            VStack(alignment: .leading, spacing: 10) {
-                // Large value: overlay data or temperature
-                VStack(alignment: .leading, spacing: 4) {
+        return HStack(alignment: .bottom, spacing: 18) {
+                VStack(alignment: .leading, spacing: 8) {
                     Text(isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
-                        .font(.system(size: 42, weight: .medium, design: .default))
+                        .font(.system(size: 40, weight: .semibold, design: .default))
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText())
+
                     Text(isOverlayActive ? overlayLabel : "Highest Temperature")
-                        .font(.avenir(.subheadline, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
-                        .offset(x: 4, y: -4)
+
+                    Text(cityWeather.city.localizedName(locale: locale))
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
                 }
-                .offset(x: -4, y: -4)
                 .animation(.smooth(duration: 0.4), value: mapOverlayMode)
 
-                // City name
-                Text(cityWeather.city.localizedName(locale: locale))
-                    .font(.avenir(.body, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
+                Spacer(minLength: 8)
 
-            }
+                VStack(spacing: 12) {
+                    Image(systemName: icon)
+                        .font(.system(size: 36, weight: .medium))
+                        .weatherIconStyle(for: icon)
+                        .frame(width: 54, height: 46)
+                        .background(alignment: .top) {
+                            WeatherEffectOverlay(condition: effectCondition, isCompact: false, iconHeight: 46, iconName: icon)
+                        }
 
-            Spacer()
-
-            // Right: weather icon + 10-day dots
-            VStack(spacing: 30) {
-                Image(systemName: icon)
-                    .font(.system(size: 40))
-                    .weatherIconStyle(for: icon)
-                    .frame(width: 56, height: 48)
-                    .background(alignment: .top) {
-                        WeatherEffectOverlay(condition: effectCondition, isCompact: false, iconHeight: 48, iconName: icon)
-                    }
-
-                // 10-day forecast dots in 2 rows of 5
-                VStack(spacing: 6) {
-                    ForEach(0..<2, id: \.self) { row in
-                        HStack(spacing: 6) {
-                            ForEach(0..<5, id: \.self) { col in
-                                let i = row * 5 + col
-                                if i < cityWeather.dailyForecasts.count {
-                                    let dayForecast = cityWeather.dailyForecasts[i]
-                                    Circle()
-                                        .fill(dayForecast.condition.dotColor)
-                                        .frame(width: i == selectedDayOffset ? 8 : 6, height: i == selectedDayOffset ? 8 : 6)
-                                        .shadow(color: dayForecast.condition.dotColor.opacity(0.6), radius: 3)
-                                        .opacity(i == selectedDayOffset ? 1 : 0.6)
+                    VStack(spacing: 6) {
+                        ForEach(0..<2, id: \.self) { row in
+                            HStack(spacing: 6) {
+                                ForEach(0..<5, id: \.self) { col in
+                                    let i = row * 5 + col
+                                    if i < cityWeather.dailyForecasts.count {
+                                        let dayForecast = cityWeather.dailyForecasts[i]
+                                        Circle()
+                                            .fill(dayForecast.condition.dotColor)
+                                            .frame(width: i == selectedDayOffset ? 8 : 6, height: i == selectedDayOffset ? 8 : 6)
+                                            .shadow(color: dayForecast.condition.dotColor.opacity(0.55), radius: 3)
+                                            .opacity(i == selectedDayOffset ? 1 : 0.58)
+                                    }
                                 }
                             }
                         }
                     }
                 }
-            }
-            .padding(.trailing, 10)
         }
-        .padding(.horizontal, 24)
-        .padding(.top, 28)
-        .padding(.bottom, 20)
+        .padding(.horizontal, 22)
+        .padding(.vertical, 18)
         .frame(maxWidth: .infinity)
-        .background(
-            RoundedRectangle(cornerRadius: 20)
-                .fill(AppTheme.shared.isDetailedMapMode && colorScheme == .light
-                    ? Color(hex: 0xF5F1EC)
-                    : theme.colors.glassFill)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 20)
-                .fill(.white.opacity(0.08))
-                .allowsHitTesting(false)
-        }
+        .themedGlass(in: .rect(cornerRadius: 24))
+        .contentShape(RoundedRectangle(cornerRadius: 24))
         .onTapGesture {
             showingCityDetail = true
         }

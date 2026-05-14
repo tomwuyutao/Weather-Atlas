@@ -311,7 +311,7 @@ struct ContentView: View {
     }
 
     private var iPhoneShowsNativeToolbar: Bool {
-        selectedTab != 2 && !isMapSpecialMode && !showingInlineSearch && !showingCountrySearch && previewCity == nil && !showingMapExpandedCard
+        selectedTab != 2 && !isMapSpecialMode && !showingInlineSearch && !showingCountrySearch && previewCity == nil
     }
 
     private var iPhoneMapTabContent: some View {
@@ -342,6 +342,9 @@ struct ContentView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(theme.colors.background)
                     .ignoresSafeArea(.container, edges: [.top, .bottom])
+                    .overlay(alignment: .trailing) {
+                        AnyView(iOSListDateSliderOverlay)
+                    }
             )
 
             iOSMainOverlays
@@ -373,8 +376,6 @@ struct ContentView: View {
                     Text(toolbarTitle)
                         .font(.headline)
                         .lineLimit(1)
-                    Image(systemName: "chevron.down")
-                        .font(.caption.weight(.semibold))
                 }
             }
         }
@@ -396,16 +397,6 @@ struct ContentView: View {
                 } label: {
                     Image(systemName: "square.3.layers.3d")
                 }
-            }
-
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showingDatePopover = true
-            } label: {
-                Image(systemName: "calendar")
-            }
-            .popover(isPresented: $showingDatePopover) {
-                iOSDatePickerPopover
             }
 
             iOSNativeMenu
@@ -502,28 +493,25 @@ struct ContentView: View {
     }
 
     @ViewBuilder
+    private var iOSListDateSliderOverlay: some View {
+        if selectedTab == 0, !showingInlineSearch, !isMapSpecialMode {
+            Color.clear
+                .frame(width: 80, height: 500)
+                .contentShape(Rectangle())
+                .overlay(alignment: .trailing) {
+                    mapDateSlider(height: 420, showsSelectedLabelWhenIdle: false)
+                }
+                .padding(.bottom, 260)
+                .padding(.trailing, 1)
+                .transition(.opacity)
+        }
+    }
+
+    @ViewBuilder
     private var iOSTopChrome: some View {
         if !isMapSpecialMode, !showingInlineSearch, !showingCountrySearch, previewCity == nil, !showingMapExpandedCard {
             GlassEffectContainer(spacing: 14) {
                 HStack(spacing: 14) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        showingDatePopover = true
-                    } label: {
-                        Image(systemName: "calendar")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive(), in: .circle)
-                    .contentShape(Circle())
-                    .popover(isPresented: $showingDatePopover) {
-                        iOSDatePickerPopover
-                    }
-
-                    Spacer(minLength: 12)
-
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         showingListSwitcher = true
@@ -594,11 +582,27 @@ struct ContentView: View {
 
     @ViewBuilder
     private var _iOSMainOverlaysContent: some View {
+        if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard {
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showingMapExpandedCard = false
+                        tappedCity = nil
+                        if previewCity != nil {
+                            previewCity = nil
+                            recenterOnAllCities = true
+                        }
+                    }
+                }
+                .zIndex(10)
+        }
+
         if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
             mapExpandedCard(for: city)
                 .id(city.city.id)
                 .padding(.horizontal, 16)
-                .padding(.bottom, previewCity != nil ? 68 : 4)
+                .padding(.bottom, previewCity != nil ? 88 : 62)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),

@@ -365,11 +365,6 @@ extension ContentView {
 
     private var iOSGridContent: some View {
         ScrollView {
-            iOSListTitle
-                .padding(.horizontal, 16)
-                .padding(.top, 72)
-                .padding(.bottom, 12)
-
             if isEditingListName {
                 iOSListRenameField
             }
@@ -380,7 +375,8 @@ extension ContentView {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, 0)
+            .padding(.top, 88)
+            .padding(.bottom, 116)
         }
         .ignoresSafeArea(.container, edges: [.top, .bottom])
         .gesture(swipeDayGesture())
@@ -391,11 +387,6 @@ extension ContentView {
 
     private var iOSPlainListContent: some View {
         List {
-            iOSListTitle
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
-                .listRowInsets(EdgeInsets(top: 72, leading: 16, bottom: 12, trailing: 16))
-
             Section {
             if isEditingListName {
                 iOSListRenameField
@@ -519,22 +510,14 @@ extension ContentView {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
-        .contentMargins(.top, 0, for: .scrollContent)
-        .contentMargins(.bottom, 0, for: .scrollContent)
+        .contentMargins(.top, 88, for: .scrollContent)
+        .contentMargins(.bottom, 116, for: .scrollContent)
         .environment(\.editMode, Binding(
             get: { isEditMode ? .active : .inactive },
             set: { newValue in isEditMode = (newValue == .active) }
         ))
         .gesture(swipeDayGesture())
         .transition(.opacity)
-    }
-
-    private var iOSListTitle: some View {
-        Text(toolbarTitle)
-            .font(.largeTitle.weight(.bold))
-            .foregroundStyle(.primary)
-            .lineLimit(1)
-            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     var iOSFilteredCities: [CityWeather] {
@@ -637,4 +620,3 @@ struct CountrySearchSheet: View {
     let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
     ContentView()
 }
-
