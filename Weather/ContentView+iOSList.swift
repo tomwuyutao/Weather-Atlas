@@ -339,12 +339,8 @@ extension ContentView {
                 Spacer()
                 if !isEditingListName {
                     Button {
-                        if isIPad {
-                            showingAddCityView = true
-                        } else {
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                showingInlineSearch = true
-                            }
+                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                            showingInlineSearch = true
                         }
                     } label: {
                         Label(localizedString("Search", locale: locale), systemImage: "magnifyingglass")
@@ -379,8 +375,9 @@ extension ContentView {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.bottom, isIPad ? 20 : 100)
+            .padding(.bottom, 0)
         }
+        .ignoresSafeArea(.container, edges: [.top, .bottom])
         .gesture(swipeDayGesture())
         .transition(.opacity)
     }
@@ -511,7 +508,9 @@ extension ContentView {
             .listSectionSeparator(.hidden, edges: .top)
         }
         .listStyle(.plain)
-        .contentMargins(.bottom, isIPad ? 20 : 100)
+        .scrollContentBackground(.hidden)
+        .contentMargins(.top, 0, for: .scrollContent)
+        .contentMargins(.bottom, 0, for: .scrollContent)
         .environment(\.editMode, Binding(
             get: { isEditMode ? .active : .inactive },
             set: { newValue in isEditMode = (newValue == .active) }

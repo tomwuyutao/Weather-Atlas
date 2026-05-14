@@ -28,6 +28,7 @@ struct WeatherDetailView: View {
     let weatherService: WeatherService?
     let isInSidebar: Bool
     let showCloudCover: Bool
+    let usesNativeToolbar: Bool
     var previewCurrentHour: Int? = nil
     var initialChartMetric: ChartMetric? = nil
     
@@ -84,7 +85,7 @@ struct WeatherDetailView: View {
     }
 
     // Initialize with the day from the map slider
-    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onAddCityToList: ((CityListID) -> Void)? = nil, availableLists: [CityListID] = [], onDeleteCity: (() -> Void)? = nil, onRenameCity: ((String) -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, onPreviousCity: (() -> Void)? = nil, onNextCity: (() -> Void)? = nil, onShowSettings: (() -> Void)? = nil, onSearch: (() -> Void)? = nil, onSearchCitySelected: ((CityWeather) -> Void)? = nil, weatherService: WeatherService? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, previewCurrentHour: Int? = nil, initialChartMetric: ChartMetric? = nil) {
+    init(cityWeather: CityWeather, selectedDayOffset: Binding<Int>, namespace: Namespace.ID, onDismiss: @escaping () -> Void, onAddCity: (() -> Void)? = nil, onAddCityToList: ((CityListID) -> Void)? = nil, availableLists: [CityListID] = [], onDeleteCity: (() -> Void)? = nil, onRenameCity: ((String) -> Void)? = nil, onRevealOnMap: (() -> Void)? = nil, onPreviousCity: (() -> Void)? = nil, onNextCity: (() -> Void)? = nil, onShowSettings: (() -> Void)? = nil, onSearch: (() -> Void)? = nil, onSearchCitySelected: ((CityWeather) -> Void)? = nil, weatherService: WeatherService? = nil, isInSidebar: Bool = true, showCloudCover: Bool = false, usesNativeToolbar: Bool = false, previewCurrentHour: Int? = nil, initialChartMetric: ChartMetric? = nil) {
         self.cityWeather = cityWeather
         self._selectedDayOffset = selectedDayOffset
         self.namespace = namespace
@@ -103,6 +104,7 @@ struct WeatherDetailView: View {
         self.weatherService = weatherService
         self.isInSidebar = isInSidebar
         self.showCloudCover = showCloudCover
+        self.usesNativeToolbar = usesNativeToolbar
         self.previewCurrentHour = previewCurrentHour
         self.initialChartMetric = initialChartMetric
         self._internalSelectedDay = State(initialValue: selectedDayOffset.wrappedValue)
@@ -511,7 +513,7 @@ struct WeatherDetailView: View {
             }
             .padding(.horizontal, isPopup ? 20 : 16)
             .padding(.top, isPopup ? 36 : 0)
-            .padding(.bottom, isPopup ? 24 : 80)
+            .padding(.bottom, isPopup ? 24 : (usesNativeToolbar ? 24 : 80))
             .frame(maxWidth: isPopup ? 340 : .infinity)
             .onChange(of: internalSelectedDay) { oldValue, newValue in
                 previousDay = oldValue
@@ -596,7 +598,7 @@ struct WeatherDetailView: View {
             }
         }
         .overlay(alignment: .bottom) {
-            if !isPopup {
+            if !isPopup && !usesNativeToolbar {
                 detailBottomBar
                     .zIndex(16)
             }

@@ -107,7 +107,7 @@ struct InfoView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(tempUnit == .fahrenheit ? "75°" : "24°")
-                            .font(.custom("AvenirNext-Medium", size: 42, relativeTo: .largeTitle))
+                            .font(.system(size: 42, weight: .medium, design: .default))
                             .foregroundStyle(.primary)
                         Text("Highest Temperature")
                             .font(.avenir(.subheadline, weight: .medium))

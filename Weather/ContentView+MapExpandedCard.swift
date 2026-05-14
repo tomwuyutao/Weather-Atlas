@@ -101,7 +101,7 @@ extension ContentView {
                 // Large value: overlay data or temperature
                 VStack(alignment: .leading, spacing: 4) {
                     Text(isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
-                        .font(.custom("AvenirNext-Medium", size: 42, relativeTo: .largeTitle))
+                        .font(.system(size: 42, weight: .medium, design: .default))
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText())
                     Text(isOverlayActive ? overlayLabel : "Highest Temperature")
@@ -156,7 +156,7 @@ extension ContentView {
         .padding(.horizontal, 24)
         .padding(.top, 28)
         .padding(.bottom, 20)
-        .frame(maxWidth: isIPad ? 420 : .infinity)
+        .frame(maxWidth: .infinity)
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(AppTheme.shared.isDetailedMapMode && colorScheme == .light
@@ -169,21 +169,7 @@ extension ContentView {
                 .allowsHitTesting(false)
         }
         .onTapGesture {
-            if isIPad {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    showingMapExpandedCard = false
-                }
-                if sidebarVisibility != .all {
-                    withAnimation {
-                        sidebarVisibility = .all
-                    }
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                    showingCityDetail = true
-                }
-            } else {
-                showingCityDetail = true
-            }
+            showingCityDetail = true
         }
     }
 }

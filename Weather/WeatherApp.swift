@@ -9,10 +9,7 @@ import SwiftUI
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
-        if UIDevice.current.userInterfaceIdiom == .phone {
-            return .portrait
-        }
-        return .all
+        .portrait
     }
 }
 
@@ -46,12 +43,22 @@ struct WeatherApp: App {
             UserDefaults.standard.set(true, forKey: migrationKey)
         }
         
-        // Set Avenir Next for navigation bar titles
+        // Keep native bars transparent so Liquid Glass floats over app content.
         let navBarAppearance = UINavigationBarAppearance()
-        navBarAppearance.titleTextAttributes = [.font: UIFont(name: "AvenirNext-DemiBold", size: 17)!]
-        navBarAppearance.largeTitleTextAttributes = [.font: UIFont(name: "AvenirNext-Bold", size: 34)!]
+        navBarAppearance.configureWithTransparentBackground()
+        navBarAppearance.backgroundColor = .clear
+        navBarAppearance.shadowColor = .clear
         UINavigationBar.appearance().standardAppearance = navBarAppearance
         UINavigationBar.appearance().scrollEdgeAppearance = navBarAppearance
+        UINavigationBar.appearance().compactAppearance = navBarAppearance
+        UINavigationBar.appearance().compactScrollEdgeAppearance = navBarAppearance
+
+        let tabBarAppearance = UITabBarAppearance()
+        tabBarAppearance.configureWithTransparentBackground()
+        tabBarAppearance.backgroundColor = .clear
+        tabBarAppearance.shadowColor = .clear
+        UITabBar.appearance().standardAppearance = tabBarAppearance
+        UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
     }
 
     var body: some Scene {
@@ -95,7 +102,7 @@ private struct ThemeContent: View {
 
 extension View {
     func defaultFont() -> some View {
-        self.environment(\.font, .custom("AvenirNext-Regular", size: 17, relativeTo: .body))
+        self
     }
 }
 
@@ -116,20 +123,7 @@ extension Font {
         case .caption2: size = 11
         @unknown default: size = 17
         }
-        let name: String
-        switch weight {
-        case .ultraLight: name = "AvenirNext-UltraLight"
-        case .thin: name = "AvenirNext-UltraLight"
-        case .light: name = "AvenirNext-Regular"
-        case .regular: name = "AvenirNext-Regular"
-        case .medium: name = "AvenirNext-Medium"
-        case .semibold: name = "AvenirNext-DemiBold"
-        case .bold: name = "AvenirNext-Bold"
-        case .heavy: name = "AvenirNext-Heavy"
-        case .black: name = "AvenirNext-Heavy"
-        default: name = "AvenirNext-Regular"
-        }
-        return .custom(name, size: size, relativeTo: style)
+        return .system(size: size, weight: weight, design: .default)
     }
 }
 
