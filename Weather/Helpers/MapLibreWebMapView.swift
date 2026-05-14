@@ -29,7 +29,7 @@ struct MapLibreWebMapView: UIViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         webView.isOpaque = true
-        webView.backgroundColor = UIColor(red: 0xDD / 255.0, green: 0xE9 / 255.0, blue: 0xEF / 255.0, alpha: 1)
+        webView.backgroundColor = UIColor(red: 0xED / 255.0, green: 0xE7 / 255.0, blue: 0xDE / 255.0, alpha: 1)
         webView.scrollView.backgroundColor = webView.backgroundColor
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.contentInset = .zero
@@ -286,9 +286,9 @@ struct MapLibreWebMapView: UIViewRepresentable {
       <link rel="stylesheet" href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css">
       <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
       <style>
-        html, body { margin: 0; padding: 0; width: 100%; height: 100%; min-height: 100%; overflow: hidden; background: #DDE9EF; }
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; min-height: 100%; overflow: hidden; background: #EDE7DE; }
         body { -webkit-user-select: none; user-select: none; position: fixed; inset: 0; }
-        #map { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: #DDE9EF; }
+        #map { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: #EDE7DE; }
         .maplibregl-map, .maplibregl-canvas-container, .maplibregl-canvas { width: 100% !important; height: 100% !important; }
         .maplibregl-ctrl-logo, .maplibregl-ctrl-attrib { display: none !important; }
       </style>
@@ -301,6 +301,7 @@ struct MapLibreWebMapView: UIViewRepresentable {
         let pendingPayload = null;
         let currentStyleMode = 'bright';
         let lastMovePost = 0;
+        var baseStylePreferencesApplied = false;
 
         function styleURL(mode) {
           return mode === 'dark'
@@ -317,11 +318,48 @@ struct MapLibreWebMapView: UIViewRepresentable {
           return JSON.stringify(value || '').toLowerCase();
         }
 
-        function shouldHideBaseLayer(layer) {
+        function layerSignature(layer) {
           const id = (layer.id || '').toLowerCase();
           const sourceLayer = (layer['source-layer'] || '').toLowerCase();
           const textField = layerTextField(layer);
-          const combined = `${id} ${sourceLayer} ${textField}`;
+          return `${id} ${sourceLayer} ${textField}`;
+        }
+
+        function themePalette(mode) {
+          return mode === 'dark'
+            ? { ocean: '#1A1B2E', land: '#252640', subtleLand: '#2D2E4A', road: '#353660' }
+            : { ocean: '#EDE7DE', land: '#E0DAD1', subtleLand: '#E8E2D9', road: '#D5CFC6' };
+        }
+
+        function applyWarmMapPaint(layer, palette) {
+          const combined = layerSignature(layer);
+          layer.paint = layer.paint || {};
+
+          if (layer.type === 'background') {
+            layer.paint['background-color'] = palette.land;
+            return;
+          }
+
+          if (layer.type === 'fill') {
+            if (combined.includes('water') || combined.includes('ocean') || combined.includes('sea')) {
+              layer.paint['fill-color'] = palette.ocean;
+            } else if (combined.includes('park') || combined.includes('landcover') || combined.includes('landuse') || combined.includes('wood') || combined.includes('grass')) {
+              layer.paint['fill-color'] = palette.subtleLand;
+            } else {
+              layer.paint['fill-color'] = palette.land;
+            }
+            layer.paint['fill-opacity'] = 1;
+            return;
+          }
+
+          if (layer.type === 'line' && (combined.includes('road') || combined.includes('path') || combined.includes('track'))) {
+            layer.paint['line-color'] = palette.road;
+            layer.paint['line-opacity'] = 0.55;
+          }
+        }
+
+        function shouldHideBaseLayer(layer) {
+          const combined = layerSignature(layer);
 
           if (layer.type === 'line') {
             return combined.includes('boundary')
@@ -337,8 +375,8 @@ struct MapLibreWebMapView: UIViewRepresentable {
               || combined.includes('place_name:latin')
               || combined.includes('name:latin')
               || combined.includes('name:nonlatin')
-              || id.includes('place')
-              || id.includes('label');
+              || combined.includes('place')
+              || combined.includes('label');
           }
 
           return false;
@@ -347,20 +385,33 @@ struct MapLibreWebMapView: UIViewRepresentable {
         async function cleanedStyle(mode) {
           const response = await fetch(styleURL(mode));
           const style = await response.json();
-          style.layers = (style.layers || []).filter(layer => !shouldHideBaseLayer(layer));
+          const palette = themePalette(mode);
+          style.layers = (style.layers || [])
+            .filter(layer => !shouldHideBaseLayer(layer))
+            .map(layer => {
+              applyWarmMapPaint(layer, palette);
+              return layer;
+            });
           return style;
         }
 
         function applyWeatherMapStylePreferences() {
-          if (!map || !map.isStyleLoaded()) return;
+          if (!map || !map.isStyleLoaded() || baseStylePreferencesApplied) return;
           const style = map.getStyle();
           if (!style || !style.layers) return;
 
+          const palette = themePalette(currentStyleMode);
           style.layers.forEach(layer => {
             if (shouldHideBaseLayer(layer)) {
               try { map.setLayoutProperty(layer.id, 'visibility', 'none'); } catch (_) {}
+            } else {
+              applyWarmMapPaint(layer, palette);
+              try {
+                Object.entries(layer.paint || {}).forEach(([key, value]) => map.setPaintProperty(layer.id, key, value));
+              } catch (_) {}
             }
           });
+          baseStylePreferencesApplied = true;
         }
 
         function ensureLayers() {
@@ -369,14 +420,25 @@ struct MapLibreWebMapView: UIViewRepresentable {
           if (!map.getSource('weather')) {
             map.addSource('weather', { type: 'geojson', data: emptyCollection() });
           }
+          if (!map.getLayer('weather-glow')) {
+            map.addLayer({
+              id: 'weather-glow', type: 'circle', source: 'weather',
+              paint: {
+                'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 20, 13],
+                'circle-color': ['get', 'color'],
+                'circle-opacity': ['case', ['boolean', ['get', 'selected'], false], 0.36, 0.24],
+                'circle-blur': 0.85
+              }
+            });
+          }
           if (!map.getLayer('weather-halo')) {
             map.addLayer({
               id: 'weather-halo', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 14, 10],
+                'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 11, 7],
                 'circle-color': ['get', 'color'],
-                'circle-opacity': ['case', ['boolean', ['get', 'selected'], false], 0.28, 0.14],
-                'circle-blur': 0.35
+                'circle-opacity': ['case', ['boolean', ['get', 'selected'], false], 0.22, 0.14],
+                'circle-blur': 0.45
               }
             });
           }
@@ -384,10 +446,10 @@ struct MapLibreWebMapView: UIViewRepresentable {
             map.addLayer({
               id: 'weather-points', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 7, 4.5],
+                'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 6.5, 4.5],
                 'circle-color': ['get', 'color'],
-                'circle-stroke-color': 'rgba(255,255,255,0.85)',
-                'circle-stroke-width': ['case', ['boolean', ['get', 'selected'], false], 1.5, 0.6]
+                'circle-stroke-color': 'rgba(255,255,255,0.0)',
+                'circle-stroke-width': 0
               }
             });
           }
@@ -398,16 +460,16 @@ struct MapLibreWebMapView: UIViewRepresentable {
               layout: {
                 'text-field': ['get', 'label'],
                 'text-size': 12,
-                'text-font': ['Noto Sans Regular'],
+                'text-font': ['SF Pro Text Regular', 'SF Pro Display Regular', 'System Font Regular', 'Noto Sans Regular'],
                 'text-anchor': 'bottom',
                 'text-offset': [0, -0.9],
                 'text-allow-overlap': false,
                 'text-optional': true
               },
               paint: {
-                'text-color': '#ffffff',
-                'text-halo-color': 'rgba(0,0,0,0.45)',
-                'text-halo-width': 1.2
+                'text-color': 'rgba(80,80,80,0.82)',
+                'text-halo-color': 'rgba(255,255,255,0.28)',
+                'text-halo-width': 0.6
               }
             });
           }
@@ -463,6 +525,7 @@ struct MapLibreWebMapView: UIViewRepresentable {
 
         window.setMapStyleMode = async function(mode) {
           currentStyleMode = mode;
+          baseStylePreferencesApplied = false;
           if (map) map.setStyle(await cleanedStyle(mode));
         };
 
