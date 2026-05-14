@@ -47,6 +47,43 @@ struct MapKitMapView: View {
     // Incremented on every camera change to force overlay redraw
     @State private var cameraChangeCounter: Int = 0
 
+    private var showsCountryOverlay: Bool {
+        switch mapMode {
+        case "minimal", "borders", "colorful", "calibration":
+            return true
+        default:
+            return false
+        }
+    }
+
+    private var usesBorderOverlayStyle: Bool {
+        countrySelectionMode || radialSearchMode
+    }
+
+    private var countryOverlayStyle: SVGProxyOverlay.Style {
+        if usesBorderOverlayStyle {
+            return .borders
+        }
+
+        switch mapMode {
+        case "colorful":
+            return .colorful
+        case "borders":
+            return .borders
+        case "calibration":
+            return .calibration
+        default:
+            return .filled
+        }
+    }
+
+    private var countryOverlayCities: [CityWeather] {
+        if usesBorderOverlayStyle || mapMode == "borders" || mapMode == "colorful" {
+            return cities
+        }
+        return []
+    }
+
     var body: some View {
         MapReader { proxy in
             Map(position: $position, interactionModes: [.pan, .zoom]) {
@@ -56,11 +93,17 @@ struct MapKitMapView: View {
             .mapControls { }
             .environment(\.locale, Locale(identifier: "en"))
             .onMapCameraChange(frequency: .continuous) { context in
-                cameraChangeCounter += 1
-                let coord = context.camera.centerCoordinate
-                mapCenterCoordinate = coord
-                if countrySelectionMode || radialSearchMode {
-                    onCameraMove?(coord)
+                // Use a non-animated transaction so overlay positions snap to the map
+                // instead of lagging behind with their own animation curve
+                var transaction = Transaction()
+                transaction.animation = nil
+                withTransaction(transaction) {
+                    cameraChangeCounter += 1
+                    let coord = context.camera.centerCoordinate
+                    mapCenterCoordinate = coord
+                    if countrySelectionMode || radialSearchMode {
+                        onCameraMove?(coord)
+                    }
                 }
             }
             // Black underlay to prevent MapKit tiles flashing during transitions
@@ -72,17 +115,7 @@ struct MapKitMapView: View {
             }
             // SVG country overlay
             .overlay {
-                if mapMode == "minimal" || mapMode == "borders" || mapMode == "colorful" || mapMode == "calibration" {
-                    SVGProxyOverlay(
-                        countries: countries,
-                        proxy: proxy,
-                        cameraChangeCounter: cameraChangeCounter,
-                        style: (countrySelectionMode || radialSearchMode) ? .borders : (mapMode == "colorful" ? .colorful : (mapMode == "borders" ? .borders : (mapMode == "calibration" ? .calibration : .filled))),
-                        cities: (countrySelectionMode || radialSearchMode || mapMode == "borders" || mapMode == "colorful") ? cities : [],
-                        borderAllCountries: countrySelectionMode || radialSearchMode
-                    )
-                    .allowsHitTesting(false)
-                }
+                countryOverlay(proxy: proxy)
             }
             // Weather marker annotations on top of SVG overlay (non-interactive so map gestures pass through)
             .overlay {
@@ -147,90 +180,14 @@ struct MapKitMapView: View {
             }
             // Tap detection layer — finds nearest marker on tap
             .onTapGesture { location in
-                guard !countrySelectionMode && !radialSearchMode else { return }
-                let _ = cameraChangeCounter
-                let tapRadius: CGFloat = 30.0
-                var closest: (city: CityWeather, dist: CGFloat)?
-                for cityWeather in cities {
-                    guard passesFilter(cityWeather) else { continue }
-                    guard let pt = proxy.convert(
-                        CLLocationCoordinate2D(
-                            latitude: cityWeather.city.latitude,
-                            longitude: cityWeather.city.longitude
-                        ),
-                        to: .local
-                    ) else { continue }
-                    let dx = pt.x - location.x
-                    let dy = pt.y - location.y
-                    let dist = sqrt(dx * dx + dy * dy)
-                    if dist < tapRadius {
-                        if closest == nil || dist < closest!.dist {
-                            closest = (city: cityWeather, dist: dist)
-                        }
-                    }
-                }
-                if let hit = closest {
-                    // If tapping the already-selected marker, go to detail view
-                    if showingCityDetail && tappedCity?.id == hit.city.id {
-                        onDoubleTapMarker?()
-                        return
-                    }
-                    // Tapping an existing marker clears any long-press fetching dot
-                    onClearFetchingDot?()
-                    withAnimation(.smooth(duration: 0.3)) {
-                        tappedCity = hit.city
-                    }
-                    tappedMarkerID = hit.city.id
-                    Task {
-                        try? await Task.sleep(for: .milliseconds(150))
-                        withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                            showingCityDetail = true
-                        }
-                        try? await Task.sleep(for: .milliseconds(100))
-                        tappedMarkerID = nil
-                    }
-                } else {
-                    // Tapped empty space — dismiss expanded card
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        showingCityDetail = false
-                    }
-                }
+                handleMapTap(at: location, proxy: proxy)
             }
             // Long press on empty space — fetch weather for that location
             .gesture(
                 LongPressGesture(minimumDuration: 0.5)
                     .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .local))
                     .onEnded { value in
-                        guard !countrySelectionMode && !radialSearchMode else { return }
-                        guard mapMode == "detailed" else { return }
-                        switch value {
-                        case .second(true, let drag):
-                            guard let location = drag?.location else { return }
-                            // Check if long press was on an existing marker — if so, ignore
-                            let tapRadius: CGFloat = 30.0
-                            var hitMarker = false
-                            for cityWeather in cities {
-                                guard let pt = proxy.convert(
-                                    CLLocationCoordinate2D(
-                                        latitude: cityWeather.city.latitude,
-                                        longitude: cityWeather.city.longitude
-                                    ),
-                                    to: .local
-                                ) else { continue }
-                                let dx = pt.x - location.x
-                                let dy = pt.y - location.y
-                                if sqrt(dx * dx + dy * dy) < tapRadius {
-                                    hitMarker = true
-                                    break
-                                }
-                            }
-                            guard !hitMarker else { return }
-                            if let coord = proxy.convert(location, from: .local) {
-                                onTapCoordinate?(coord)
-                            }
-                        default:
-                            break
-                        }
+                        handleLongPress(value, proxy: proxy)
                     }
             )
             .onAppear {
@@ -280,6 +237,108 @@ struct MapKitMapView: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder
+    private func countryOverlay(proxy: MapProxy) -> some View {
+        if showsCountryOverlay {
+            SVGProxyOverlay(
+                countries: countries,
+                proxy: proxy,
+                cameraChangeCounter: cameraChangeCounter,
+                style: countryOverlayStyle,
+                cities: countryOverlayCities,
+                borderAllCountries: usesBorderOverlayStyle
+            )
+            .allowsHitTesting(false)
+        }
+    }
+
+    private func handleMapTap(at location: CGPoint, proxy: MapProxy) {
+        guard !countrySelectionMode && !radialSearchMode else { return }
+        let _ = cameraChangeCounter
+        let tapRadius: CGFloat = 30.0
+
+        if let hit = closestCity(to: location, proxy: proxy, radius: tapRadius) {
+            handleMarkerTap(hit.city)
+        } else {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                showingCityDetail = false
+            }
+        }
+    }
+
+    private func handleMarkerTap(_ city: CityWeather) {
+        if showingCityDetail && tappedCity?.id == city.id {
+            onDoubleTapMarker?()
+            return
+        }
+
+        onClearFetchingDot?()
+        withAnimation(.smooth(duration: 0.3)) {
+            tappedCity = city
+        }
+        tappedMarkerID = city.id
+
+        Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                showingCityDetail = true
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+            tappedMarkerID = nil
+        }
+    }
+
+    private func handleLongPress(
+        _ value: SequenceGesture<LongPressGesture, DragGesture>.Value,
+        proxy: MapProxy
+    ) {
+        guard !countrySelectionMode && !radialSearchMode else { return }
+        guard mapMode == "detailed" else { return }
+
+        switch value {
+        case .second(true, let drag):
+            guard let location = drag?.location else { return }
+            guard closestCity(to: location, proxy: proxy, radius: 30.0) == nil else { return }
+            if let coord = proxy.convert(location, from: .local) {
+                onTapCoordinate?(coord)
+            }
+        default:
+            break
+        }
+    }
+
+    private func closestCity(
+        to location: CGPoint,
+        proxy: MapProxy,
+        radius: CGFloat
+    ) -> (city: CityWeather, dist: CGFloat)? {
+        var closest: (city: CityWeather, dist: CGFloat)?
+
+        for cityWeather in cities {
+            guard passesFilter(cityWeather) else { continue }
+            guard let point = proxy.convert(coordinate(for: cityWeather), to: .local) else { continue }
+            let dist = distance(from: point, to: location)
+            if dist < radius && (closest == nil || dist < closest!.dist) {
+                closest = (city: cityWeather, dist: dist)
+            }
+        }
+
+        return closest
+    }
+
+    private func coordinate(for cityWeather: CityWeather) -> CLLocationCoordinate2D {
+        CLLocationCoordinate2D(
+            latitude: cityWeather.city.latitude,
+            longitude: cityWeather.city.longitude
+        )
+    }
+
+    private func distance(from point: CGPoint, to location: CGPoint) -> CGFloat {
+        let dx = point.x - location.x
+        let dy = point.y - location.y
+        return sqrt(dx * dx + dy * dy)
     }
 
     private func passesFilter(_ cityWeather: CityWeather) -> Bool {
@@ -415,14 +474,13 @@ private struct AnnotationsOverlay: View {
                         isSelected: showingCityDetail && tappedCity?.id == cityWeather.id,
                         hideCityName: mapMode == "detailed"
                     )
+                    .position(screenPt)
                     .scaleEffect(
                         (tappedMarkerID == cityWeather.id || highlightedMarkerID == cityWeather.id || (showingCityDetail && tappedCity?.id == cityWeather.id)) ? 1.5 : 1.0
                     )
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: tappedMarkerID)
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: highlightedMarkerID)
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: showingCityDetail)
-
-                    .position(screenPt)
                 }
             }
         }
