@@ -12,8 +12,7 @@ extension ContentView {
 
     /// Whether the map is in a special full-screen mode.
     var isMapSpecialMode: Bool {
-        countrySelectionMode || isLoadingCountryOverview || countryOverviewActive
-        || radialSearchMode || isLoadingRadialSearch || radialSearchActive
+        false
     }
 
     // MARK: - Date Switcher Capsule

@@ -175,6 +175,7 @@ struct MapFloatingLegend: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(6)
         .themedGlass(in: Capsule())
         .padding(.horizontal, 12)
     }

@@ -113,7 +113,7 @@ extension ContentView {
                 .animation(.smooth(duration: 0.4), value: mapOverlayMode)
 
                 // City name
-                Text((countryOverviewActive || radialSearchActive) ? (resolvedGridCityName ?? "…") : cityWeather.city.localizedName(locale: locale))
+                Text(cityWeather.city.localizedName(locale: locale))
                     .font(.avenir(.body, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)

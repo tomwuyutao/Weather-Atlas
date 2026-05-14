@@ -365,6 +365,11 @@ extension ContentView {
 
     private var iOSGridContent: some View {
         ScrollView {
+            iOSListTitle
+                .padding(.horizontal, 16)
+                .padding(.top, 72)
+                .padding(.bottom, 12)
+
             if isEditingListName {
                 iOSListRenameField
             }
@@ -386,6 +391,11 @@ extension ContentView {
 
     private var iOSPlainListContent: some View {
         List {
+            iOSListTitle
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 72, leading: 16, bottom: 12, trailing: 16))
+
             Section {
             if isEditingListName {
                 iOSListRenameField
@@ -519,6 +529,14 @@ extension ContentView {
         .transition(.opacity)
     }
 
+    private var iOSListTitle: some View {
+        Text(toolbarTitle)
+            .font(.largeTitle.weight(.bold))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     var iOSFilteredCities: [CityWeather] {
         var cities = listViewCities
         if !searchText.isEmpty {
@@ -619,5 +637,4 @@ struct CountrySearchSheet: View {
     let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
     ContentView()
 }
-
 

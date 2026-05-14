@@ -955,37 +955,6 @@ class WeatherService {
         }
     }
     
-    /// Fetch weather for a grid of points (used by Country Overview).
-    /// Reports each result progressively via `onResult` and progress via `onProgress`.
-    /// Looks up the timezone once from the first grid point and reuses it for all.
-    func fetchWeatherForGrid(_ gridCities: [City], onProgress: @escaping (Double) -> Void, onResult: ((CityWeather) -> Void)? = nil) async -> [CityWeather] {
-        var results: [CityWeather] = []
-        let total = gridCities.count
-        
-        // Resolve timezone once from the first point to avoid rate-limiting
-        var gridTimeZone: TimeZone?
-        
-        for (index, city) in gridCities.enumerated() {
-            do {
-                let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
-                let weather = try await weatherService.weather(for: location)
-                
-                // Look up timezone only for the first point
-                if gridTimeZone == nil {
-                    gridTimeZone = await getTimeZone(for: location)
-                }
-                
-                let cityWeather = convertWeatherKitData(weather: weather, for: city, timeZone: gridTimeZone ?? .current)
-                results.append(cityWeather)
-                onResult?(cityWeather)
-            } catch {
-            }
-            onProgress(Double(index + 1) / Double(total))
-        }
-        
-        return results
-    }
-    
     func moveCity(from source: IndexSet, to destination: Int) {
         cityWeatherData.move(fromOffsets: source, toOffset: destination)
         // Update cache after reordering cities
@@ -1719,5 +1688,4 @@ extension AppWeatherCondition {
         }
     }
 }
-
 

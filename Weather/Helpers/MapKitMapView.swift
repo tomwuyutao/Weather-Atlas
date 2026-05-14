@@ -26,13 +26,7 @@ struct MapKitMapView: View {
     var focusOnSubsetCities: [CityWeather] = []
     @Binding var focusOnSubsetTrigger: Bool
     var mapMode: String = "minimal"
-    var countrySelectionMode: Bool = false
     var forceDotsOnly: Bool = false
-    var gridPreviewPoints: [CLLocationCoordinate2D] = []
-    @Binding var mapCenterCoordinate: CLLocationCoordinate2D?
-    var radialSearchMode: Bool = false
-    var radialSearchRadius: Double = 250_000
-    var onRadiusChange: ((Double) -> Void)? = nil
     var onDoubleTapMarker: (() -> Void)?
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)?
     var onTapCoordinate: ((CLLocationCoordinate2D) -> Void)?
@@ -56,15 +50,7 @@ struct MapKitMapView: View {
         }
     }
 
-    private var usesBorderOverlayStyle: Bool {
-        countrySelectionMode || radialSearchMode
-    }
-
     private var countryOverlayStyle: SVGProxyOverlay.Style {
-        if usesBorderOverlayStyle {
-            return .borders
-        }
-
         switch mapMode {
         case "colorful":
             return .colorful
@@ -78,7 +64,7 @@ struct MapKitMapView: View {
     }
 
     private var countryOverlayCities: [CityWeather] {
-        if usesBorderOverlayStyle || mapMode == "borders" || mapMode == "colorful" {
+        if mapMode == "borders" || mapMode == "colorful" {
             return cities
         }
         return []
@@ -100,11 +86,7 @@ struct MapKitMapView: View {
                 transaction.disablesAnimations = true
                 withTransaction(transaction) {
                     cameraChangeCounter += 1
-                    let coord = context.camera.centerCoordinate
-                    mapCenterCoordinate = coord
-                    if countrySelectionMode || radialSearchMode {
-                        onCameraMove?(coord)
-                    }
+                    onCameraMove?(context.camera.centerCoordinate)
                 }
             }
             // Black underlay to prevent MapKit tiles flashing during transitions
@@ -120,49 +102,24 @@ struct MapKitMapView: View {
             }
             // Weather marker annotations on top of SVG overlay (non-interactive so map gestures pass through)
             .overlay {
-                if !countrySelectionMode && !radialSearchMode {
-                    AnnotationsOverlay(
-                        cities: cities,
-                        proxy: proxy,
-                        cameraChangeCounter: cameraChangeCounter,
-                        selectedDayOffset: selectedDayOffset,
-                        showCloudCover: showCloudCover,
-                        overlayMode: overlayMode,
-                        filterSunny: filterSunny,
-                        isPlaying: isPlaying,
-                        namespace: namespace,
-                        highlightedMarkerID: highlightedMarkerID,
-                        tappedMarkerID: tappedMarkerID,
-                        forceDotsOnly: forceDotsOnly,
-                        mapMode: mapMode,
-                        showingCityDetail: $showingCityDetail,
-                        tappedCity: $tappedCity
-                    )
-                    .allowsHitTesting(false)
-                }
-            }
-            // Grid preview dots during country selection
-            .overlay {
-                if (countrySelectionMode || radialSearchMode), !gridPreviewPoints.isEmpty {
-                    GridPreviewOverlay(
-                        points: gridPreviewPoints,
-                        proxy: proxy,
-                        cameraChangeCounter: cameraChangeCounter
-                    )
-                    .allowsHitTesting(false)
-                }
-            }
-            // Radial search circle overlay
-            .overlay {
-                if radialSearchMode, let center = mapCenterCoordinate {
-                    RadialSearchCircleOverlay(
-                        center: center,
-                        radiusMeters: radialSearchRadius,
-                        proxy: proxy,
-                        cameraChangeCounter: cameraChangeCounter,
-                        onRadiusChange: onRadiusChange
-                    )
-                }
+                AnnotationsOverlay(
+                    cities: cities,
+                    proxy: proxy,
+                    cameraChangeCounter: cameraChangeCounter,
+                    selectedDayOffset: selectedDayOffset,
+                    showCloudCover: showCloudCover,
+                    overlayMode: overlayMode,
+                    filterSunny: filterSunny,
+                    isPlaying: isPlaying,
+                    namespace: namespace,
+                    highlightedMarkerID: highlightedMarkerID,
+                    tappedMarkerID: tappedMarkerID,
+                    forceDotsOnly: forceDotsOnly,
+                    mapMode: mapMode,
+                    showingCityDetail: $showingCityDetail,
+                    tappedCity: $tappedCity
+                )
+                .allowsHitTesting(false)
             }
             // Pulsing dot at tapped coordinate while fetching weather
             .overlay {
@@ -249,14 +206,13 @@ struct MapKitMapView: View {
                 cameraChangeCounter: cameraChangeCounter,
                 style: countryOverlayStyle,
                 cities: countryOverlayCities,
-                borderAllCountries: usesBorderOverlayStyle
+                borderAllCountries: false
             )
             .allowsHitTesting(false)
         }
     }
 
     private func handleMapTap(at location: CGPoint, proxy: MapProxy) {
-        guard !countrySelectionMode && !radialSearchMode else { return }
         let _ = cameraChangeCounter
         let tapRadius: CGFloat = 30.0
 
@@ -295,7 +251,6 @@ struct MapKitMapView: View {
         _ value: SequenceGesture<LongPressGesture, DragGesture>.Value,
         proxy: MapProxy
     ) {
-        guard !countrySelectionMode && !radialSearchMode else { return }
         guard mapMode == "detailed" else { return }
 
         switch value {
@@ -428,25 +383,7 @@ private struct AnnotationsOverlay: View {
         let _ = cameraChangeCounter
         
         GeometryReader { geometry in
-            // Collect on-screen marker positions for collision detection
-            let screenPositions: [(id: UUID, pt: CGPoint)] = cities.compactMap { cityWeather in
-                let hasData = selectedDayOffset == -1
-                    ? cityWeather.hasCurrentData(forOverlay: overlayMode)
-                    : cityWeather.forecast(for: selectedDayOffset).hasData(forOverlay: overlayMode)
-                guard passesFilter(cityWeather), hasData else { return nil }
-                guard let pt = proxy.convert(
-                    CLLocationCoordinate2D(
-                        latitude: cityWeather.city.latitude,
-                        longitude: cityWeather.city.longitude
-                    ),
-                    to: .local
-                ) else { return nil }
-                let margin: CGFloat = 40
-                guard pt.x > -margin && pt.x < geometry.size.width + margin &&
-                      pt.y > -margin && pt.y < geometry.size.height + margin else { return nil }
-                return (id: cityWeather.id, pt: pt)
-            }
-            let markerMode: MarkerDisplayMode = forceDotsOnly ? .dot : computeDisplayMode(screenPositions)
+            let markerMode: MarkerDisplayMode = .dot
 
             ForEach(cities) { cityWeather in
                 let hasOverlay = selectedDayOffset == -1
@@ -460,7 +397,11 @@ private struct AnnotationsOverlay: View {
                         longitude: cityWeather.city.longitude
                     ),
                     to: .local
-                   ) {
+                   ),
+                   screenPt.x > -40,
+                   screenPt.x < geometry.size.width + 40,
+                   screenPt.y > -40,
+                   screenPt.y < geometry.size.height + 40 {
                     WeatherMarker(
                         cityWeather: cityWeather,
                         dayOffset: selectedDayOffset,
@@ -801,80 +742,6 @@ private struct SVGProxyOverlay: View {
     }
 }
 
-// MARK: - Grid Preview Overlay (country selection)
-
-private struct GridPreviewOverlay: View {
-    let points: [CLLocationCoordinate2D]
-    let proxy: MapProxy
-    let cameraChangeCounter: Int
-
-    var body: some View {
-        let _ = cameraChangeCounter
-        Canvas { context, size in
-            for coord in points {
-                if let pt = proxy.convert(coord, to: .local) {
-                    let margin: CGFloat = 20
-                    guard pt.x > -margin && pt.x < size.width + margin &&
-                          pt.y > -margin && pt.y < size.height + margin else { continue }
-                    let rect = CGRect(x: pt.x - 3, y: pt.y - 3, width: 6, height: 6)
-                    context.fill(Path(ellipseIn: rect), with: .color(AppTheme.shared.colors.primaryText.opacity(0.3)))
-                }
-            }
-        }
-    }
-}
-
-// MARK: - Radial Search Circle Overlay
-
-private struct RadialSearchCircleOverlay: View {
-    let center: CLLocationCoordinate2D
-    let radiusMeters: Double
-    let proxy: MapProxy
-    let cameraChangeCounter: Int
-    var onRadiusChange: ((Double) -> Void)?
-
-    var body: some View {
-        let _ = cameraChangeCounter
-        GeometryReader { geometry in
-            let screenCenter = CGPoint(x: geometry.size.width / 2, y: geometry.size.height / 2)
-            let edgeCoord = center.coordinate(at: radiusMeters, bearing: 90)
-            if let centerPt = proxy.convert(center, to: .local),
-               let edgePt = proxy.convert(edgeCoord, to: .local) {
-                let screenRadius = abs(edgePt.x - centerPt.x)
-
-                // Circle stroke — always at screen center
-                Circle()
-                    .stroke(Color.white.opacity(0.6), lineWidth: 4)
-                    .frame(width: screenRadius * 2, height: screenRadius * 2)
-                    .position(screenCenter)
-                    .allowsHitTesting(false)
-
-                // Drag handle at right edge
-                Circle()
-                    .fill(AppTheme.shared.colors.accent)
-                    .frame(width: 24, height: 24)
-                    .overlay(Circle().stroke(Color.white, lineWidth: 2))
-                    .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-                    .position(x: screenCenter.x + screenRadius, y: screenCenter.y)
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                if let dragCoord = proxy.convert(value.location, from: .local) {
-                                    let centerLoc = CLLocation(latitude: center.latitude, longitude: center.longitude)
-                                    let dragLoc = CLLocation(latitude: dragCoord.latitude, longitude: dragCoord.longitude)
-                                    let newRadius = centerLoc.distance(from: dragLoc)
-                                    let clamped = min(max(newRadius, 50_000), 500_000)
-                                    onRadiusChange?(clamped)
-                                }
-                            }
-                    )
-            }
-        }
-    }
-}
-
-// MARK: - CLLocationCoordinate2D Bearing Extension
-
 // MARK: - Fetching Pulse Overlay
 
 private struct FetchingPulseOverlay: View {
@@ -1021,21 +888,5 @@ private struct FetchingPulseOverlay: View {
         }
         .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: isPulsing)
         .onAppear { isPulsing = true }
-    }
-}
-
-extension CLLocationCoordinate2D {
-    /// Returns a coordinate at a given distance (meters) and bearing (degrees) from this coordinate.
-    func coordinate(at distanceMeters: Double, bearing bearingDegrees: Double) -> CLLocationCoordinate2D {
-        let R = 6_371_000.0
-        let d = distanceMeters / R
-        let brng = bearingDegrees * .pi / 180
-        let lat1 = latitude * .pi / 180
-        let lon1 = longitude * .pi / 180
-
-        let lat2 = asin(sin(lat1) * cos(d) + cos(lat1) * sin(d) * cos(brng))
-        let lon2 = lon1 + atan2(sin(brng) * sin(d) * cos(lat1), cos(d) - sin(lat1) * sin(lat2))
-
-        return CLLocationCoordinate2D(latitude: lat2 * 180 / .pi, longitude: lon2 * 180 / .pi)
     }
 }

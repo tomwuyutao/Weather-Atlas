@@ -82,12 +82,6 @@ struct ContentView: View {
     
     /// Cities to display on the map — from the active list + preview city
     private var mapCities: [CityWeather] {
-        if countryOverviewActive {
-            return countryOverviewData
-        }
-        if radialSearchActive {
-            return radialSearchData
-        }
         var result = weatherService.cityWeatherData
         // Include temporary preview city from search
         if let preview = previewCity, !result.contains(where: { $0.city.name == preview.city.name }) {
@@ -127,8 +121,6 @@ struct ContentView: View {
 
     // MARK: - iOS View
     @Namespace private var tabBarNamespace
-    @Namespace var countryBarNS
-    @Namespace var radialBarNS
     @Namespace private var bottomBarNS
     @State var iOSPreviousDayOffset: Int = 0
     @State var dateSwitcherForward: Bool = true
@@ -163,41 +155,14 @@ struct ContentView: View {
     @State private var allCountries: [String] = []
     @State var showingMapStylePopover: Bool = false
     @State var showingMapStyleSheet: Bool = false
-    @State var countrySelectionMode: Bool = false
-    @State var mapCenterCoordinate: CLLocationCoordinate2D?
-    @State var countryUnderPin: String = ""
-    @State private var showCountrySelectedAlert: Bool = false
-    @State private var selectedCountryName: String = ""
-    @State var countryOverviewData: [CityWeather] = []
-    @State var countryOverviewActive: Bool = false
-    @State var countryOverviewCountryName: String = ""
-    @State var isLoadingCountryOverview: Bool = false
-    @State var countryOverviewProgress: Double = 0
-    @State var countryOverviewLoadingTask: Task<Void, Never>?
-    @State var countryOverviewCache: [String: (data: [CityWeather], date: Date)] = [:]
-    @State var resolvedGridCityName: String?
-    @State var resolvedGridCityNames: [UUID: String] = [:]
     @State private var showingAddToListPopover: Bool = false
 
     var toolbarTitle: String {
         weatherService.activeListID.localizedDisplayName(locale: locale)
     }
 
-    @State var focusSubsetCities: [CityWeather] = []
-    @State var focusSubsetTrigger: Bool = false
     @State var isLoadingMapList: Bool = false
     @State var capsuleSwipeFromTrailing: Bool = true
-    @State var gridPreviewPoints: [CLLocationCoordinate2D] = []
-    @State var gridPreviewTask: Task<Void, Never>?
-
-    // MARK: - Radial Search State
-    @State var radialSearchMode: Bool = false
-    @State var radialSearchActive: Bool = false
-    @State var isLoadingRadialSearch: Bool = false
-    @State var radialSearchProgress: Double = 0
-    @State var radialSearchLoadingTask: Task<Void, Never>?
-    @State var radialSearchData: [CityWeather] = []
-    @State var radialSearchRadius: Double = 250_000
 
     // Map style sheet is in ContentView+MapStyleSheet.swift
 
@@ -239,62 +204,11 @@ struct ContentView: View {
                     previewCity = nil
                     recenterOnAllCities = true
                 }
-                resolvedGridCityName = nil
                 fetchingTappedCoordinate = nil
-            }
-        }
-        .onChange(of: tappedCity) { _, newCity in
-            if (countryOverviewActive || radialSearchActive), let city = newCity {
-                // Check cache first
-                if let cached = resolvedGridCityNames[city.id] {
-                    resolvedGridCityName = cached
-                    return
-                }
-                resolvedGridCityName = nil
-                Task {
-                    let location = CLLocation(latitude: city.city.latitude, longitude: city.city.longitude)
-                    if let request = MKReverseGeocodingRequest(location: location) {
-                        if let items = try? await request.mapItems, let item = items.first {
-                            let name = item.addressRepresentations?.cityName
-                                ?? item.addressRepresentations?.cityWithContext(.short)
-                                ?? item.name
-                            let resolved = name ?? city.city.country
-                            resolvedGridCityNames[city.id] = resolved
-                            // Only update if this is still the tapped city
-                            if tappedCity?.id == city.id {
-                                resolvedGridCityName = resolved
-                            }
-                        } else {
-                            // Rate limited or error — fall back to country name
-                            if tappedCity?.id == city.id {
-                                let fallback = city.city.country
-                                resolvedGridCityNames[city.id] = fallback
-                                resolvedGridCityName = fallback
-                            }
-                        }
-                    } else {
-                        if tappedCity?.id == city.id {
-                            let fallback = city.city.country
-                            resolvedGridCityNames[city.id] = fallback
-                            resolvedGridCityName = fallback
-                        }
-                    }
-                }
             }
         }
         .onChange(of: showingCityDetail) { _, showing in
             iOSHandleCityDetailDismiss(showing: showing)
-        }
-        .onChange(of: mapCenterCoordinate?.latitude) { _, _ in
-            updateCountryUnderPin()
-            updateRadialGridPreview()
-        }
-        .onChange(of: mapCenterCoordinate?.longitude) { _, _ in
-            updateCountryUnderPin()
-            updateRadialGridPreview()
-        }
-        .onChange(of: radialSearchRadius) { _, _ in
-            updateRadialGridPreview()
         }
         .sheet(isPresented: $showingInfo) {
             InfoView(source: selectedTab == 1 ? .map : .list)
@@ -463,13 +377,10 @@ struct ContentView: View {
                         .font(.caption.weight(.semibold))
                 }
             }
-            .buttonStyle(.glass(.clear))
         }
 
         ToolbarItemGroup(placement: .topBarTrailing) {
             if selectedTab == 1 {
-                mapActionsMenu
-
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     recenterOnAllCities = false
@@ -501,38 +412,6 @@ struct ContentView: View {
         }
     }
 
-    private var mapActionsMenu: some View {
-        Menu {
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    selectedTab = 1
-                    showingMapExpandedCard = false
-                    tappedCity = nil
-                    previewCity = nil
-                    countrySelectionMode = true
-                }
-            } label: {
-                Label(localizedString("Country Overview", locale: locale), systemImage: "globe.desk")
-            }
-
-            Button {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    selectedTab = 1
-                    showingMapExpandedCard = false
-                    tappedCity = nil
-                    previewCity = nil
-                    radialSearchMode = true
-                    radialSearchRadius = 250_000
-                }
-            } label: {
-                Label(localizedString("Radial Search", locale: locale), systemImage: "circle.dotted.circle")
-            }
-        } label: {
-            Image(systemName: "wand.and.stars")
-        }
-        .menuOrder(.fixed)
-    }
-
     private func iOSOnAppear() async {
         if hasLaunchedBefore {
             selectedTab = 1
@@ -542,9 +421,6 @@ struct ContentView: View {
         }
         if visibleListIDs.isEmpty {
             visibleListIDs = [weatherService.activeListID.rawValue]
-        }
-        if countryOverviewCache.isEmpty {
-            countryOverviewCache = CountryOverviewCacheManager.load()
         }
         if countries.isEmpty {
             countries = SVGMapParser.parse()
@@ -568,9 +444,6 @@ struct ContentView: View {
             }
         }
     }
-
-    // Radial grid generation is in ContentView+RadialSearch.swift
-    @State var radialGridPreviewTask: Task<Void, Never>?
 
     // Main content
     private var iOSMainZStack: some View {
@@ -615,7 +488,7 @@ struct ContentView: View {
     @ViewBuilder
     private var iOSDateSliderOverlay: some View {
         // Date slider only on map tab — list tab uses the date switcher capsule
-        if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode || (countryOverviewActive && !isLoadingCountryOverview) || (radialSearchActive && !isLoadingRadialSearch) {
+        if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode {
             Color.clear
                 .frame(width: 80, height: 500)
                 .contentShape(Rectangle())
@@ -721,8 +594,7 @@ struct ContentView: View {
 
     @ViewBuilder
     private var _iOSMainOverlaysContent: some View {
-        // Expanded city card on map — positioned at bottom, covering toolbar rows
-        if selectedTab == 1, (!isMapSpecialMode || countryOverviewActive || radialSearchActive), showingMapExpandedCard, let city = tappedCity {
+        if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
             mapExpandedCard(for: city)
                 .id(city.city.id)
                 .padding(.horizontal, 16)
@@ -734,50 +606,6 @@ struct ContentView: View {
                     )
                 )
                 .zIndex(12)
-        }
-
-        // Country selection overlay (top part: pin + country name)
-        if countrySelectionMode {
-            countrySelectionTopOverlay
-                .ignoresSafeArea()
-                .transition(.opacity)
-                .zIndex(3)
-        }
-
-        // Country selection + loading bottom bar (unified with morphing animation)
-        if countrySelectionMode || isLoadingCountryOverview {
-            countrySearchBottomBar
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .zIndex(3)
-        }
-
-        // Country overview exit button (only after loading completes)
-        if countryOverviewActive, !isLoadingCountryOverview {
-            countryOverviewExitOverlay
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .zIndex(3)
-        }
-
-        // Radial search selection overlay (top part: radius label)
-        if radialSearchMode {
-            radialSelectionTopOverlay
-                .ignoresSafeArea()
-                .transition(.opacity)
-                .zIndex(3)
-        }
-
-        // Radial selection + loading bottom bar (unified with morphing animation)
-        if radialSearchMode || isLoadingRadialSearch {
-            radialSearchBottomBar
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .zIndex(3)
-        }
-
-        // Radial search exit button (only after loading completes)
-        if radialSearchActive, !isLoadingRadialSearch {
-            radialSearchExitOverlay
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-                .zIndex(3)
         }
 
         // Tap outside search bar dismisses search entirely
@@ -820,7 +648,7 @@ struct ContentView: View {
             .zIndex(10)
         }
 
-        // Preview/country flows still use the transitional bottom bar; the native search tab owns search UI.
+        // Preview flows still use the transitional bottom bar; the native search tab owns search UI.
         if selectedTab != 2, !isMapSpecialMode, !iPhoneShowsNativeToolbar, !(selectedTab == 1 && showingMapExpandedCard && previewCity == nil) {
             iOSUnifiedBottomBar
                 .zIndex(11)
@@ -864,43 +692,8 @@ struct ContentView: View {
         }
     }
 
-        private var iOSMapControlsCapsule: some View {
+    private var iOSMapControlsCapsule: some View {
         HStack(spacing: 8) {
-            Menu {
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        selectedTab = 1
-                        showingMapExpandedCard = false
-                        tappedCity = nil
-                        previewCity = nil
-                        countrySelectionMode = true
-                    }
-                } label: {
-                    Label(localizedString("Country Overview", locale: locale), systemImage: "globe.desk")
-                }
-
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        selectedTab = 1
-                        showingMapExpandedCard = false
-                        tappedCity = nil
-                        previewCity = nil
-                        radialSearchMode = true
-                        radialSearchRadius = 250_000
-                    }
-                } label: {
-                    Label(localizedString("Radial Search", locale: locale), systemImage: "circle.dotted.circle")
-                }
-            } label: {
-                Image(systemName: "wand.and.stars")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 recenterOnAllCities = false
@@ -931,8 +724,6 @@ struct ContentView: View {
         .themedGlass(in: .capsule)
         .transition(.scale.combined(with: .opacity))
     }
-
-    // Radial search overlays are in ContentView+RadialSearch.swift
 
     private func navigatableCity(offset: Int, from city: CityWeather) -> CityWeather? {
         let cities = detailOpenedFromList ? listViewCities : mapCities
@@ -1920,12 +1711,6 @@ struct ContentView: View {
 
     private var usesMapLibreMap: Bool {
         mapMode == "maplibre"
-            && !countrySelectionMode
-            && !radialSearchMode
-            && !countryOverviewActive
-            && !radialSearchActive
-            && !isLoadingCountryOverview
-            && !isLoadingRadialSearch
     }
 
     private var mapView: some View {
@@ -1973,28 +1758,15 @@ struct ContentView: View {
                 tappedCity: $tappedCity,
                 centerOnCity: centerOnCityTrigger,
                 recenterOnAllCities: $recenterOnAllCities,
-                focusOnSubsetCities: focusSubsetCities,
-                focusOnSubsetTrigger: $focusSubsetTrigger,
+                focusOnSubsetCities: [],
+                focusOnSubsetTrigger: .constant(false),
                 mapMode: mapMode == "maplibre" ? "colorful" : mapMode,
-                countrySelectionMode: countrySelectionMode,
-                forceDotsOnly: countryOverviewActive || radialSearchActive,
-                gridPreviewPoints: gridPreviewPoints,
-                mapCenterCoordinate: $mapCenterCoordinate,
-                radialSearchMode: radialSearchMode,
-                radialSearchRadius: radialSearchRadius,
-                onRadiusChange: { newRadius in
-                    radialSearchRadius = newRadius
-                },
+                forceDotsOnly: true,
                 onDoubleTapMarker: {
                     if previewCity != nil {
                         previewCity = nil
                     }
                     showingCityDetail = true
-                },
-                onCameraMove: { coord in
-                    if countrySelectionMode {
-                        updateCountryUnderPinDirect(coord)
-                    }
                 },
                 onTapCoordinate: { coord in
                     guard mapMode == "detailed", !isFetchingTappedLocation else { return }

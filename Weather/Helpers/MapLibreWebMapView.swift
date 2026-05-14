@@ -140,8 +140,6 @@ struct MapLibreWebMapView: UIViewRepresentable {
     }
 
     private func makeFeatures() -> [MapLibreWeatherFeature] {
-        let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
-        let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
         return cities.compactMap { cityWeather in
             guard passesFilter(cityWeather) else { return nil }
             let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
@@ -150,7 +148,6 @@ struct MapLibreWebMapView: UIViewRepresentable {
                 : forecast.hasData(forOverlay: overlayMode)
             guard hasData else { return nil }
 
-            let label = markerLabel(for: cityWeather, forecast: forecast, tempUnit: tempUnit, distUnit: distUnit)
             let color = markerColor(for: cityWeather, forecast: forecast)
             return MapLibreWeatherFeature(
                 id: cityWeather.id.uuidString,
@@ -158,7 +155,7 @@ struct MapLibreWebMapView: UIViewRepresentable {
                 country: cityWeather.city.country,
                 latitude: cityWeather.city.latitude,
                 longitude: cityWeather.city.longitude,
-                label: label,
+                label: "",
                 color: color
             )
         }
@@ -171,32 +168,6 @@ struct MapLibreWebMapView: UIViewRepresentable {
         }
         let forecast = cityWeather.forecast(for: selectedDayOffset)
         return forecast.condition == .clear && !forecast.weatherIcon.contains("moon")
-    }
-
-    private func markerLabel(for cityWeather: CityWeather, forecast: DailyForecast, tempUnit: TemperatureUnit, distUnit: DistanceUnit) -> String {
-        let isNow = selectedDayOffset == -1
-        switch overlayMode {
-        case "cloudCover":
-            if isNow { return cityWeather.currentCloudCover.map { "\(Int($0 * 100))%" } ?? "-" }
-            return forecast.cloudCoverPercent.map { "\($0)%" } ?? "-"
-        case "precipitation":
-            if isNow { return [.rain, .drizzle, .snow].contains(cityWeather.condition) ? "100%" : "0%" }
-            return forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "-"
-        case "windSpeed":
-            if isNow { return cityWeather.currentWindSpeed.map { distUnit.displayWindSpeed($0) } ?? "-" }
-            return forecast.windSpeed.map { distUnit.displayWindSpeed($0) } ?? "-"
-        case "uvIndex":
-            if isNow { return cityWeather.currentUVIndex.map(String.init) ?? "-" }
-            return forecast.uvIndex.map(String.init) ?? "-"
-        case "humidity":
-            if isNow { return cityWeather.currentHumidity.map { "\(Int($0 * 100))%" } ?? "-" }
-            return forecast.maxHumidity.map { "\(Int($0 * 100))%" } ?? "-"
-        case "visibility":
-            if isNow { return cityWeather.currentVisibility.map { distUnit.display($0) } ?? "-" }
-            return forecast.maxVisibility.map { distUnit.display($0) } ?? "-"
-        default:
-            return tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh)
-        }
     }
 
     private func markerColor(for cityWeather: CityWeather, forecast: DailyForecast) -> String {
@@ -450,26 +421,6 @@ struct MapLibreWebMapView: UIViewRepresentable {
                 'circle-color': ['get', 'color'],
                 'circle-stroke-color': 'rgba(255,255,255,0.0)',
                 'circle-stroke-width': 0
-              }
-            });
-          }
-          if (!map.getLayer('weather-labels')) {
-            map.addLayer({
-              id: 'weather-labels', type: 'symbol', source: 'weather',
-              minzoom: 2,
-              layout: {
-                'text-field': ['get', 'label'],
-                'text-size': 12,
-                'text-font': ['SF Pro Text Regular', 'SF Pro Display Regular', 'System Font Regular', 'Noto Sans Regular'],
-                'text-anchor': 'bottom',
-                'text-offset': [0, -0.9],
-                'text-allow-overlap': false,
-                'text-optional': true
-              },
-              paint: {
-                'text-color': 'rgba(80,80,80,0.82)',
-                'text-halo-color': 'rgba(255,255,255,0.28)',
-                'text-halo-width': 0.6
               }
             });
           }
