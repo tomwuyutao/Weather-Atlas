@@ -97,6 +97,7 @@ struct MapKitMapView: View {
                 // instead of lagging behind with their own animation curve
                 var transaction = Transaction()
                 transaction.animation = nil
+                transaction.disablesAnimations = true
                 withTransaction(transaction) {
                     cameraChangeCounter += 1
                     let coord = context.camera.centerCoordinate
@@ -475,6 +476,10 @@ private struct AnnotationsOverlay: View {
                         hideCityName: mapMode == "detailed"
                     )
                     .position(screenPt)
+                    .transaction { transaction in
+                        transaction.animation = nil
+                        transaction.disablesAnimations = true
+                    }
                     .scaleEffect(
                         (tappedMarkerID == cityWeather.id || highlightedMarkerID == cityWeather.id || (showingCityDetail && tappedCity?.id == cityWeather.id)) ? 1.5 : 1.0
                     )

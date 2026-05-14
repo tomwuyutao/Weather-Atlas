@@ -30,6 +30,13 @@ struct WeatherApp: App {
         // Always reset overlay mode to weather on launch
         UserDefaults.standard.set("weather", forKey: "mapOverlayMode")
 
+        // One-time migration: make the MapLibre-based map the default normal map.
+        let mapLibreMigrationKey = "mapLibreDefaultMigrationV1"
+        if !UserDefaults.standard.bool(forKey: mapLibreMigrationKey) {
+            UserDefaults.standard.set("maplibre", forKey: "mapMode")
+            UserDefaults.standard.set(true, forKey: mapLibreMigrationKey)
+        }
+
         // One-time migration: clear old city data so new defaults take effect
         let migrationKey = "defaultCitiesMigrationV2"
         if !UserDefaults.standard.bool(forKey: migrationKey) {

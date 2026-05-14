@@ -74,7 +74,7 @@ struct ContentView: View {
     @AppStorage("showLegend") var showLegend: Bool = true
     @State var showingInfo: Bool = false
     @State var sidebarVisibility: NavigationSplitViewVisibility = .all
-    @AppStorage("mapMode") var mapMode: String = "minimal"
+    @AppStorage("mapMode") var mapMode: String = "maplibre"
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
     @AppStorage("showDateSlider") var showDateSlider: Bool = true
     @State var visibleListIDs: Set<String> = []
@@ -205,7 +205,6 @@ struct ContentView: View {
     @State var radialSearchRadius: Double = 250_000
 
     // Map style sheet is in ContentView+MapStyleSheet.swift
-    @State var mapStyleTab: Int = 0
 
     // Map expanded card is in ContentView+MapExpandedCard.swift
     // Map date slider is in ContentView+MapDateSlider.swift
@@ -318,7 +317,7 @@ struct ContentView: View {
         }
         .sheet(isPresented: $showingMapStyleSheet) {
             mapStyleSheet
-                .presentationDetents([.height(330)])
+                .presentationDetents([.height(390)])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.colors.glassFill)
         }
@@ -1849,9 +1848,46 @@ struct ContentView: View {
         mapView
     }
 
+    private var usesMapLibreMap: Bool {
+        mapMode == "maplibre"
+            && !countrySelectionMode
+            && !radialSearchMode
+            && !countryOverviewActive
+            && !radialSearchActive
+            && !isLoadingCountryOverview
+            && !isLoadingRadialSearch
+    }
+
     private var mapView: some View {
         ZStack {
-            MapKitMapView(
+            if usesMapLibreMap {
+                MapLibreWebMapView(
+                    cities: mapCities,
+                    selectedDayOffset: selectedDayOffset,
+                    overlayMode: mapOverlayMode,
+                    filterSunny: filterSunny,
+                    tappedCity: $tappedCity,
+                    recenterOnAllCities: $recenterOnAllCities,
+                    centerOnCity: centerOnCityTrigger,
+                    onMarkerTap: { city in
+                        if showingMapExpandedCard && tappedCity?.id == city.id {
+                            showingCityDetail = true
+                            return
+                        }
+                        withAnimation(.smooth(duration: 0.3)) {
+                            tappedCity = city
+                        }
+                        Task {
+                            try? await Task.sleep(for: .milliseconds(150))
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                showingMapExpandedCard = true
+                            }
+                        }
+                    }
+                )
+                .ignoresSafeArea()
+            } else {
+                MapKitMapView(
                 countries: countries,
                 cities: mapCities,
                 selectedDayOffset: selectedDayOffset,
@@ -1869,7 +1905,7 @@ struct ContentView: View {
                 recenterOnAllCities: $recenterOnAllCities,
                 focusOnSubsetCities: focusSubsetCities,
                 focusOnSubsetTrigger: $focusSubsetTrigger,
-                mapMode: mapMode,
+                mapMode: mapMode == "maplibre" ? "colorful" : mapMode,
                 countrySelectionMode: countrySelectionMode,
                 forceDotsOnly: countryOverviewActive || radialSearchActive,
                 gridPreviewPoints: gridPreviewPoints,
@@ -1938,6 +1974,7 @@ struct ContentView: View {
                 fetchingCoordinate: fetchingTappedCoordinate
             )
             .ignoresSafeArea()
+            }
 
             // Floating loading popup on map — positioned at 1/3 from top to match list view
             if weatherService.isLoading, !(isIPad && sidebarVisibility != .detailOnly) {
@@ -1988,6 +2025,8 @@ struct ContentView: View {
 
 
         }
+        .background(Color(hex: 0xDDE9EF).ignoresSafeArea())
+        .ignoresSafeArea()
     }
 
     func cityIsInSidebar(_ cityWeather: CityWeather) -> Bool {
