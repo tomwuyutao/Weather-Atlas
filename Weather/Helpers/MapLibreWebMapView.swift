@@ -312,8 +312,60 @@ struct MapLibreWebMapView: UIViewRepresentable {
           window.webkit?.messageHandlers?.mapEvent?.postMessage(message);
         }
 
+        function layerTextField(layer) {
+          const value = layer?.layout?.['text-field'];
+          return JSON.stringify(value || '').toLowerCase();
+        }
+
+        function shouldHideBaseLayer(layer) {
+          const id = (layer.id || '').toLowerCase();
+          const sourceLayer = (layer['source-layer'] || '').toLowerCase();
+          const textField = layerTextField(layer);
+          const combined = `${id} ${sourceLayer} ${textField}`;
+
+          if (layer.type === 'line') {
+            return combined.includes('boundary')
+              || combined.includes('admin')
+              || combined.includes('border')
+              || combined.includes('disputed');
+          }
+
+          if (layer.type === 'symbol') {
+            return combined.includes('country')
+              || combined.includes('state')
+              || combined.includes('province')
+              || combined.includes('place_name:latin')
+              || combined.includes('name:latin')
+              || combined.includes('name:nonlatin')
+              || id.includes('place')
+              || id.includes('label');
+          }
+
+          return false;
+        }
+
+        async function cleanedStyle(mode) {
+          const response = await fetch(styleURL(mode));
+          const style = await response.json();
+          style.layers = (style.layers || []).filter(layer => !shouldHideBaseLayer(layer));
+          return style;
+        }
+
+        function applyWeatherMapStylePreferences() {
+          if (!map || !map.isStyleLoaded()) return;
+          const style = map.getStyle();
+          if (!style || !style.layers) return;
+
+          style.layers.forEach(layer => {
+            if (shouldHideBaseLayer(layer)) {
+              try { map.setLayoutProperty(layer.id, 'visibility', 'none'); } catch (_) {}
+            }
+          });
+        }
+
         function ensureLayers() {
           if (!map || !map.isStyleLoaded()) return;
+          applyWeatherMapStylePreferences();
           if (!map.getSource('weather')) {
             map.addSource('weather', { type: 'geojson', data: emptyCollection() });
           }
@@ -409,15 +461,15 @@ struct MapLibreWebMapView: UIViewRepresentable {
           if (item) map.flyTo({ center: [item.longitude, item.latitude], zoom: Math.max(map.getZoom(), 5), duration: 550 });
         };
 
-        window.setMapStyleMode = function(mode) {
+        window.setMapStyleMode = async function(mode) {
           currentStyleMode = mode;
-          if (map) map.setStyle(styleURL(mode));
+          if (map) map.setStyle(await cleanedStyle(mode));
         };
 
-        function init() {
+        async function init() {
           map = new maplibregl.Map({
             container: 'map',
-            style: styleURL(currentStyleMode),
+            style: await cleanedStyle(currentStyleMode),
             preserveDrawingBuffer: false,
             center: [0, 20],
             zoom: 1.45,
@@ -453,7 +505,7 @@ struct MapLibreWebMapView: UIViewRepresentable {
           });
         }
 
-        if (window.maplibregl) init();
+        if (window.maplibregl) init().catch(error => console.error('Map init failed', error));
       </script>
     </body>
     </html>
