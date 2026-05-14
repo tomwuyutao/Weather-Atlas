@@ -6,7 +6,6 @@
 //
 
 import SwiftUI
-import MapKit
 
 extension ContentView {
 
@@ -147,6 +146,9 @@ extension ContentView {
                 .foregroundStyle(.primary)
         }
         .tint(.primary)
+        #if os(macOS)
+        .menuIndicator(.hidden)
+        #endif
         .menuOrder(.fixed)
     }
 }

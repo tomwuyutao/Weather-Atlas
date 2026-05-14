@@ -6,7 +6,7 @@
 //
 
 import SwiftUI
-import MapKit
+import CoreLocation
 import UniformTypeIdentifiers
 
 struct ContentView: View {
@@ -14,18 +14,14 @@ struct ContentView: View {
     @Environment(\.appTheme) var theme
     var previewLoading: Bool = false
 
-    @State var countries: [CountryPath] = []
     @State var centerOnCityTrigger: CityWeather?
 
     @State var selectedCity: CityWeather?
     @State var selectedDayOffset: Int = -1
     @State var isEditMode: Bool = false
-    @State private var isZoomedOut: Bool = true
     @State var showingCityDetail: Bool = false
     @State var tappedCity: CityWeather?
     @State var showingMapExpandedCard: Bool = false
-    @State private var isFetchingTappedLocation: Bool = false
-    @State private var fetchingTappedCoordinate: CLLocationCoordinate2D?
     @Namespace private var popupNamespace
     @State var searchText: String = ""
     @State private var citySearchManager = CitySearchManager()
@@ -40,8 +36,6 @@ struct ContentView: View {
     @State var previewCity: CityWeather?
     @State private var previewSearchText: String = ""
     private var showCloudCover: Bool { mapOverlayMode == "cloudCover" }
-    private var showTemperatureOverlay: Bool { mapOverlayMode == "temperature" }
-    private var showPrecipitation: Bool { mapOverlayMode == "precipitation" }
     private var overlayChartMetric: WeatherDetailView.ChartMetric? {
         switch mapOverlayMode {
         case "cloudCover":     return .cloudCover
@@ -59,11 +53,6 @@ struct ContentView: View {
     @FocusState private var inlineSearchFocused: Bool
     @State private var inlineSearchManager = CitySearchManager()
     
-    @State private var mapScale: CGFloat = 10.0
-    @State private var mapOffset: CGSize = .zero
-    @State private var mapLastScale: CGFloat = 10.0
-    @State private var mapLastOffset: CGSize = .zero
-    @State var mapHasInitialized: Bool = false
     @State var recenterOnAllCities: Bool = false
     @State var detailOpenedFromList: Bool = false
     @State var listTappedCityID: UUID?
@@ -72,7 +61,6 @@ struct ContentView: View {
     @State var showingSettings: Bool = false
     @AppStorage("showLegend") var showLegend: Bool = true
     @State var showingInfo: Bool = false
-    @AppStorage("mapMode") var mapMode: String = "maplibre"
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
     @AppStorage("showDateSlider") var showDateSlider: Bool = true
     @State var visibleListIDs: Set<String> = []
@@ -172,6 +160,7 @@ struct ContentView: View {
     @State var inlineAddTargetListID: CityListID?
     #if os(macOS)
     @State private var macSidebarVisibility: NavigationSplitViewVisibility = .all
+    @State private var macMapExpandedCardAnchor: CGPoint?
     #endif
 
     var toolbarTitle: String {
@@ -204,11 +193,8 @@ struct ContentView: View {
         .onChange(of: inlineSearchText) { _, newValue in
             inlineSearchManager.search(query: newValue)
         }
-        .onChange(of: mapMode, initial: true) { _, _ in
-            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && (mapMode == "detailed" || mapMode == "colorful")
-        }
         .onChange(of: selectedTab) { _, _ in
-            AppTheme.shared.isDetailedMapMode = selectedTab == 1 && (mapMode == "detailed" || mapMode == "colorful")
+            AppTheme.shared.isDetailedMapMode = false
         }
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
@@ -224,7 +210,6 @@ struct ContentView: View {
                     previewCity = nil
                     recenterOnAllCities = true
                 }
-                fetchingTappedCoordinate = nil
             }
         }
         .onChange(of: showingCityDetail) { _, showing in
@@ -265,10 +250,16 @@ struct ContentView: View {
             macListManagerSidebar
         } detail: {
             NavigationStack {
-                macMapContent
-                    .navigationDestination(isPresented: $showingCityDetail) {
-                        AnyView(iOSCityDetailDestination)
+                HStack(spacing: 0) {
+                    macMapContent
+
+                    if showingCityDetail, tappedCity != nil {
+                        Divider()
+                        macDetailSidebar
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
                     }
+                }
+                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showingCityDetail)
                     .navigationDestination(isPresented: $showingAddCityDetail) {
                         AnyView(iOSAddCityDetailDestination)
                     }
@@ -281,8 +272,8 @@ struct ContentView: View {
         .onChange(of: inlineSearchText) { _, newValue in
             inlineSearchManager.search(query: newValue)
         }
-        .onChange(of: mapMode, initial: true) { _, _ in
-            AppTheme.shared.isDetailedMapMode = mapMode == "detailed" || mapMode == "colorful"
+        .onAppear {
+            AppTheme.shared.isDetailedMapMode = false
         }
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
@@ -298,7 +289,6 @@ struct ContentView: View {
                     previewCity = nil
                     recenterOnAllCities = true
                 }
-                fetchingTappedCoordinate = nil
             }
         }
         .onChange(of: showingCityDetail) { _, showing in
@@ -330,11 +320,12 @@ struct ContentView: View {
         .containerBackground(.clear, for: .window)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar(removing: .title)
+        .toolbar(removing: .sidebarToggle)
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
     }
 
     private var macMapContent: some View {
-        ZStack(alignment: .bottom) {
+        ZStack {
             AnyView(
                 iOSMapView
                     .overlay(alignment: .top) {
@@ -349,11 +340,19 @@ struct ContentView: View {
                     }
             )
 
-            iOSMainOverlays
+            macMainOverlays
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbar {
-            ToolbarItem(placement: .principal) {
+            ToolbarItemGroup(placement: .navigation) {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        macSidebarVisibility = macSidebarVisibility == .all ? .detailOnly : .all
+                    }
+                } label: {
+                    Image(systemName: "sidebar.left")
+                }
+
                 mapTopListMenu
                     .fixedSize()
             }
@@ -414,8 +413,104 @@ struct ContentView: View {
                         Image(systemName: "magnifyingglass")
                     }
                 }
+
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showingCityDetail.toggle()
+                    }
+                } label: {
+                    Image(systemName: "sidebar.right")
+                }
+                .disabled(tappedCity == nil)
             }
         }
+    }
+
+    private var macDetailSidebar: some View {
+        AnyView(iOSCityDetailDestination)
+            .frame(minWidth: 360, idealWidth: 420, maxWidth: 520)
+            .background(theme.colors.background)
+    }
+
+    private var macMainOverlays: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                showingMapExpandedCard = false
+                                tappedCity = nil
+                                macMapExpandedCardAnchor = nil
+                                if previewCity != nil {
+                                    previewCity = nil
+                                    recenterOnAllCities = true
+                                }
+                            }
+                        }
+                        .zIndex(10)
+                }
+
+                if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
+                    mapExpandedCard(for: city)
+                        .id(city.city.id)
+                        .frame(width: 360, height: 128)
+                        .position(macExpandedCardPosition(in: geometry.size))
+                        .transition(
+                            .asymmetric(
+                                insertion: .scale(scale: 0.4, anchor: .topLeading).combined(with: .opacity),
+                                removal: .scale(scale: 0.4, anchor: .topLeading).combined(with: .opacity)
+                            )
+                        )
+                        .zIndex(12)
+                }
+
+                if showingInlineSearch {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                                showingInlineSearch = false
+                                inlineSearchText = ""
+                                inlineSearchFocused = false
+                                inlineAddTargetListID = nil
+                            }
+                        }
+                        .zIndex(9)
+                }
+
+                if showingInlineSearch, !inlineSearchText.isEmpty {
+                    iOSInlineSearchResults
+                        .transition(.opacity)
+                        .zIndex(10)
+                }
+
+                if showingCountrySearch, !countrySearchText.isEmpty {
+                    iOSCountrySearchResults
+                        .transition(.opacity)
+                        .zIndex(10)
+                }
+            }
+        }
+    }
+
+    private func macExpandedCardPosition(in size: CGSize) -> CGPoint {
+        let cardSize = CGSize(width: 360, height: 128)
+        let margin: CGFloat = 16
+        let anchor = macMapExpandedCardAnchor ?? CGPoint(
+            x: size.width - cardSize.width - margin,
+            y: size.height - cardSize.height - margin
+        )
+        let proposed = CGPoint(
+            x: anchor.x + cardSize.width / 2 + 14,
+            y: anchor.y + cardSize.height / 2 + 14
+        )
+
+        return CGPoint(
+            x: min(max(proposed.x, cardSize.width / 2 + margin), size.width - cardSize.width / 2 - margin),
+            y: min(max(proposed.y, cardSize.height / 2 + margin), size.height - cardSize.height / 2 - margin)
+        )
     }
 
     private var macListManagerSidebar: some View {
@@ -660,6 +755,16 @@ struct ContentView: View {
                 }
             }
         } label: {
+            #if os(macOS)
+            Text(toolbarTitle)
+                .font(.headline)
+                .lineLimit(1)
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 16)
+                .frame(height: 44)
+                .fixedSize(horizontal: true, vertical: false)
+                .contentShape(Capsule())
+            #else
             HStack(spacing: 8) {
                 Text(toolbarTitle)
                     .font(.headline)
@@ -672,8 +777,12 @@ struct ContentView: View {
             .frame(height: 44)
             .fixedSize(horizontal: true, vertical: false)
             .contentShape(Capsule())
+            #endif
         }
         .buttonStyle(.plain)
+        #if os(macOS)
+        .menuIndicator(.hidden)
+        #endif
         .menuOrder(.fixed)
     }
 
@@ -1353,9 +1462,6 @@ struct ContentView: View {
         if visibleListIDs.isEmpty {
             visibleListIDs = [weatherService.activeListID.rawValue]
         }
-        if countries.isEmpty {
-            countries = SVGMapParser.parse()
-        }
         if previewLoading {
             weatherService.isLoading = true
             weatherService.loadingProgress = 0.6
@@ -1534,6 +1640,31 @@ struct ContentView: View {
         return cities[newIdx]
     }
 
+    private func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
+        #if os(macOS)
+        macMapExpandedCardAnchor = anchor
+        #endif
+
+        if showingMapExpandedCard && tappedCity?.id == city.id {
+            #if os(macOS)
+            return
+            #else
+            showingCityDetail = true
+            return
+            #endif
+        }
+
+        withAnimation(.smooth(duration: 0.3)) {
+            tappedCity = city
+        }
+        Task {
+            try? await Task.sleep(for: .milliseconds(150))
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                showingMapExpandedCard = true
+            }
+        }
+    }
+
     private func renamedCityMatching(_ city: CityWeather) -> CityWeather? {
         weatherService.cityWeatherData.first { candidate in
             candidate.city.latitude == city.city.latitude && candidate.city.longitude == city.city.longitude
@@ -1599,6 +1730,9 @@ struct ContentView: View {
         } label: {
             Image(systemName: "ellipsis")
         }
+        #if os(macOS)
+        .menuIndicator(.hidden)
+        #endif
         .menuOrder(.fixed)
     }
 
@@ -2527,113 +2661,21 @@ struct ContentView: View {
         mapView
     }
 
-    private var usesMapLibreMap: Bool {
-        mapMode == "maplibre"
-    }
-
     private var mapView: some View {
         ZStack {
-            if usesMapLibreMap {
-                MapLibreWebMapView(
-                    cities: mapCities,
-                    selectedDayOffset: selectedDayOffset,
-                    overlayMode: mapOverlayMode,
-                    filterSunny: filterSunny,
-                    tappedCity: $tappedCity,
-                    recenterOnAllCities: $recenterOnAllCities,
-                    centerOnCity: centerOnCityTrigger,
-                    onMarkerTap: { city in
-                        if showingMapExpandedCard && tappedCity?.id == city.id {
-                            showingCityDetail = true
-                            return
-                        }
-                        withAnimation(.smooth(duration: 0.3)) {
-                            tappedCity = city
-                        }
-                        Task {
-                            try? await Task.sleep(for: .milliseconds(150))
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                showingMapExpandedCard = true
-                            }
-                        }
-                    }
-                )
-                .ignoresSafeArea()
-            } else {
-                MapKitMapView(
-                countries: countries,
+            MapLibreWebMapView(
                 cities: mapCities,
                 selectedDayOffset: selectedDayOffset,
-                showCloudCover: showCloudCover,
                 overlayMode: mapOverlayMode,
                 filterSunny: filterSunny,
-                namespace: popupNamespace,
-                showingCityDetail: Binding(
-                    get: { showingMapExpandedCard },
-                    set: { showingMapExpandedCard = $0 }
-                ),
                 tappedCity: $tappedCity,
-                centerOnCity: centerOnCityTrigger,
                 recenterOnAllCities: $recenterOnAllCities,
-                focusOnSubsetCities: [],
-                focusOnSubsetTrigger: .constant(false),
-                mapMode: mapMode == "maplibre" ? "colorful" : mapMode,
-                forceDotsOnly: true,
-                onDoubleTapMarker: {
-                    if previewCity != nil {
-                        previewCity = nil
-                    }
-                    showingCityDetail = true
-                },
-                onTapCoordinate: { coord in
-                    guard mapMode == "detailed", !isFetchingTappedLocation else { return }
-                    isFetchingTappedLocation = true
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        fetchingTappedCoordinate = coord
-                    }
-                    Task {
-                        let request = MKReverseGeocodingRequest(location: CLLocation(latitude: coord.latitude, longitude: coord.longitude))
-                        let mapItem = try? await request?.mapItems.first
-                        let addrRep = mapItem?.addressRepresentations
-                        let name = addrRep?.cityName ?? mapItem?.name ?? "—"
-                        let country = addrRep?.regionName ?? ""
-                        let city = City(
-                            name: name,
-                            country: country,
-                            latitude: coord.latitude,
-                            longitude: coord.longitude
-                        )
-                        if let result = await weatherService.fetchWeatherForCity(city) {
-                            await MainActor.run {
-                                withAnimation(.smooth(duration: 0.3)) {
-                                    tappedCity = result
-                                }
-                                Task {
-                                    try? await Task.sleep(for: .milliseconds(150))
-                                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                        showingMapExpandedCard = true
-                                    }
-                                }
-                            }
-                        } else {
-                            await MainActor.run {
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    fetchingTappedCoordinate = nil
-                                }
-                            }
-                        }
-                        await MainActor.run { isFetchingTappedLocation = false }
-                    }
-                },
-                onClearFetchingDot: {
-                    withAnimation(.easeOut(duration: 0.3)) {
-                        fetchingTappedCoordinate = nil
-                    }
-                },
-                fetchingCoordinate: fetchingTappedCoordinate
+                centerOnCity: centerOnCityTrigger,
+                onMarkerTap: { city, point in
+                    handleMapMarkerTap(city, anchor: point)
+                }
             )
             .ignoresSafeArea()
-            }
 
             // Floating loading popup on map — positioned at 1/3 from top to match list view
             if weatherService.isLoading {
@@ -2660,28 +2702,6 @@ struct ContentView: View {
                 }
                 .allowsHitTesting(false)
             }
-
-            // Tap-to-fetch loading indicator
-            if isFetchingTappedLocation {
-                VStack {
-                    Spacer()
-                    HStack(spacing: 10) {
-                        ProgressView()
-                            .tint(theme.colors.primaryText)
-                        Text("Fetching weather…")
-                            .font(.avenir(.subheadline, weight: .medium))
-                            .foregroundStyle(theme.colors.primaryText)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 12)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .padding(.bottom, 100)
-                }
-                .allowsHitTesting(false)
-                .transition(.opacity.combined(with: .move(edge: .bottom)))
-                .animation(.spring(response: 0.4, dampingFraction: 0.85), value: isFetchingTappedLocation)
-            }
-
 
         }
         .background(Color(hex: 0xDDE9EF).ignoresSafeArea())
@@ -2818,7 +2838,6 @@ struct WeatherMarker: View {
 
     private var showAsDot: Bool { displayMode == .dot }
     private var showAsCard: Bool { displayMode == .card }
-    private var showPrecipitation: Bool { overlayMode == "precipitation" }
 
     /// Whether the data required by the current overlay mode is available.
     /// When false the entire marker should be hidden.

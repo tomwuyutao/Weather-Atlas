@@ -16,7 +16,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     @Binding var tappedCity: CityWeather?
     @Binding var recenterOnAllCities: Bool
     var centerOnCity: CityWeather?
-    var onMarkerTap: (CityWeather) -> Void
+    var onMarkerTap: (CityWeather, CGPoint?) -> Void
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
@@ -123,7 +123,13 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             case "markerTap":
                 guard let id = body["id"] as? String,
                       let city = parent.cities.first(where: { $0.id.uuidString == id }) else { return }
-                parent.onMarkerTap(city)
+                let point: CGPoint?
+                if let x = body["x"] as? Double, let y = body["y"] as? Double {
+                    point = CGPoint(x: x, y: y)
+                } else {
+                    point = nil
+                }
+                parent.onMarkerTap(city, point)
             case "cameraMove":
                 guard let lat = body["lat"] as? Double,
                       let lng = body["lng"] as? Double else { return }
@@ -551,7 +557,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
               layers: ['weather-points', 'weather-halo', 'weather-glow']
             });
             const feature = features && features[0];
-            if (feature?.properties?.id) post({ type: 'markerTap', id: feature.properties.id });
+            if (feature?.properties?.id) post({ type: 'markerTap', id: feature.properties.id, x: event.point.x, y: event.point.y });
           });
           map.on('mouseenter', 'weather-points', () => { map.getCanvas().style.cursor = 'pointer'; });
           map.on('mouseleave', 'weather-points', () => { map.getCanvas().style.cursor = ''; });

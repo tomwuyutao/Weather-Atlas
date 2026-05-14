@@ -267,12 +267,6 @@ struct WeatherEffectOverlay: View {
         self.dropColor = dropColor
     }
     
-    /// Whether the displayed icon contains a sun element (cloud.sun.fill, etc.)
-    private var iconHasSun: Bool {
-        if let iconName { return iconName.contains("sun") && !iconName.contains("moon") }
-        return condition == .clear || condition == .partlyCloudy
-    }
-    
     /// Whether the displayed icon is a moon (nighttime)
     private var iconIsMoon: Bool {
         if let iconName { return iconName.contains("moon") }
@@ -357,4 +351,3 @@ struct WeatherEffectOverlay: View {
     .background(AppTheme.shared.colors.background)
     .preferredColorScheme(.dark)
 }
-
