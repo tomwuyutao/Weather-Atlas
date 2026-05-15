@@ -61,26 +61,68 @@ struct WeatherApp: App {
     }
 
     var body: some Scene {
+        #if os(macOS)
         WindowGroup {
             ThemeRoot(theme: theme, appLocale: appLocale)
         }
-        #if os(macOS)
         .windowStyle(.hiddenTitleBar)
         .commands {
-            CommandGroup(replacing: .appSettings) {
-                Button("Settings...") {
-                    NotificationCenter.default.post(name: .openSettingsCommand, object: nil)
+            SidebarCommands()
+            CommandGroup(after: .sidebar) {
+                Divider()
+                Button("Center on Map") {
+                    NotificationCenter.default.post(name: .weatherCenterMapCommand, object: nil)
                 }
-                .keyboardShortcut(",", modifiers: .command)
+                Button("Zoom In") {
+                    NotificationCenter.default.post(name: .weatherZoomInCommand, object: nil)
+                }
+                .keyboardShortcut("+", modifiers: .command)
+                Button("Zoom Out") {
+                    NotificationCenter.default.post(name: .weatherZoomOutCommand, object: nil)
+                }
+                .keyboardShortcut("-", modifiers: .command)
+                Divider()
+                Button("Previous Date") {
+                    NotificationCenter.default.post(name: .weatherPreviousDayCommand, object: nil)
+                }
+                .keyboardShortcut(.upArrow, modifiers: [])
+                Button("Next Date") {
+                    NotificationCenter.default.post(name: .weatherNextDayCommand, object: nil)
+                }
+                .keyboardShortcut(.downArrow, modifiers: [])
+                Divider()
+                Button("Previous List") {
+                    NotificationCenter.default.post(name: .weatherPreviousListCommand, object: nil)
+                }
+                .keyboardShortcut(.upArrow, modifiers: [.command, .shift])
+                Button("Next List") {
+                    NotificationCenter.default.post(name: .weatherNextListCommand, object: nil)
+                }
+                .keyboardShortcut(.downArrow, modifiers: [.command, .shift])
             }
+        }
+
+        Settings {
+            SettingsRoot(theme: theme, appLocale: appLocale)
+        }
+        #else
+        WindowGroup {
+            ThemeRoot(theme: theme, appLocale: appLocale)
         }
         #endif
     }
 }
 
 extension Notification.Name {
-    static let openSettingsCommand = Notification.Name("openSettingsCommand")
+    static let weatherCenterMapCommand = Notification.Name("weatherCenterMapCommand")
+    static let weatherZoomInCommand = Notification.Name("weatherZoomInCommand")
+    static let weatherZoomOutCommand = Notification.Name("weatherZoomOutCommand")
+    static let weatherPreviousDayCommand = Notification.Name("weatherPreviousDayCommand")
+    static let weatherNextDayCommand = Notification.Name("weatherNextDayCommand")
+    static let weatherPreviousListCommand = Notification.Name("weatherPreviousListCommand")
+    static let weatherNextListCommand = Notification.Name("weatherNextListCommand")
 }
+
 /// Outer layer: sets the preferred color scheme so the inner layer reads the correct one.
 private struct ThemeRoot: View {
     let theme: AppTheme
@@ -108,11 +150,42 @@ private struct ThemeContent: View {
             .defaultFont()
             .environment(\.appTheme, theme)
             .environment(\.themeColors, resolvedColors)
+            .tint(resolvedColors.accent)
             .onChange(of: colorScheme, initial: true) { _, newScheme in
                 theme.systemScheme = newScheme
             }
     }
 }
+
+#if os(macOS)
+private struct SettingsRoot: View {
+    let theme: AppTheme
+    let appLocale: Locale
+    @State private var weatherService = WeatherService()
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        let resolvedColors = theme.colors(for: colorScheme)
+        SettingsView(
+            weatherService: weatherService,
+            onResetLists: {
+                Task {
+                    await weatherService.resetAllLists()
+                }
+            }
+        )
+        .environment(\.locale, appLocale)
+        .defaultFont()
+        .environment(\.appTheme, theme)
+        .environment(\.themeColors, resolvedColors)
+        .tint(resolvedColors.accent)
+        .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
+        .onChange(of: colorScheme, initial: true) { _, newScheme in
+            theme.systemScheme = newScheme
+        }
+    }
+}
+#endif
 
 extension View {
     func defaultFont() -> some View {

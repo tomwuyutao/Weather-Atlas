@@ -66,6 +66,9 @@ struct ContentView: View {
     @State var visibleListIDs: Set<String> = []
     @Environment(\.locale) var locale
     @Environment(\.colorScheme) var colorScheme
+    #if os(macOS)
+    @Environment(\.openSettings) var openSettings
+    #endif
     
     /// Cities to display on the map — from the active list + preview city
     private var mapCities: [CityWeather] {
@@ -278,28 +281,29 @@ struct ContentView: View {
         .onChange(of: showingCityDetail) { _, showing in
             iOSHandleCityDetailDismiss(showing: showing)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .openSettingsCommand)) { _ in
-            showingSettings = true
+        .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousDayCommand)) { _ in
+            stepSelectedDay(-1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .weatherNextDayCommand)) { _ in
+            stepSelectedDay(1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousListCommand)) { _ in
+            switchListByOffset(-1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .weatherNextListCommand)) { _ in
+            switchListByOffset(1)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .weatherCenterMapCommand)) { _ in
+            centerMapOnVisibleCities()
         }
         .sheet(isPresented: $showingInfo) {
             InfoView(source: .map)
                 .frame(minWidth: 420, minHeight: 520)
         }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView(
-                weatherService: weatherService,
-                onResetLists: {
-                    Task {
-                        await weatherService.resetAllLists()
-                    }
-                }
-            )
-            .frame(minWidth: 440, minHeight: 560)
-        }
         .overlay {
             iOSDeleteListConfirmationOverlay
         }
-        .containerBackground(.clear, for: .window)
+        .containerBackground(theme.colors.background, for: .window)
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar(removing: .title)
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
@@ -322,11 +326,10 @@ struct ContentView: View {
     }
 
     private var macMapAndDetailContent: some View {
-        HStack(spacing: 0) {
+        HSplitView {
             macMapContent
 
             if showingCityDetail, tappedCity != nil {
-                Divider()
                 macDetailSidebar
                     .transition(.move(edge: .trailing).combined(with: .opacity))
             }
@@ -340,9 +343,13 @@ struct ContentView: View {
                 iOSMapView
                     .overlay(alignment: .bottomLeading) {
                         if showLegend {
-                            MapFloatingLegend(overlayMode: mapOverlayMode, compact: true)
-                                .padding(.leading, 16)
-                                .padding(.bottom, 16)
+                            MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
+                                withAnimation(.smooth(duration: 0.2)) {
+                                    showLegend = false
+                                }
+                            }
+                                .padding(.leading, 24)
+                                .padding(.bottom, 24)
                                 .transition(.move(edge: .leading).combined(with: .opacity))
                         }
                     }
@@ -352,6 +359,7 @@ struct ContentView: View {
             )
 
             macMainOverlays
+            macWindowDragTopArea
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbar {
@@ -363,65 +371,27 @@ struct ContentView: View {
             ToolbarSpacer(.flexible)
 
             ToolbarItemGroup {
-                Button {
-                    recenterOnAllCities = false
-                    DispatchQueue.main.async {
-                        recenterOnAllCities = true
-                    }
-                } label: {
-                    Image(systemName: "dot.squareshape.split.2x2")
-                }
+                macCenterMapButton
 
                 mapOverlayMenu
+            }
 
-                iOSNativeMenu
+            ToolbarItemGroup {
+                macLegendButton
+                macRefreshButton
+                macFilterSunnyButton
             }
 
             ToolbarSpacer(.fixed)
 
             ToolbarItem {
-                if showingInlineSearch {
-                    HStack(spacing: 6) {
-                        TextField(localizedString("Search for a city", locale: locale), text: $inlineSearchText)
-                            .textFieldStyle(.roundedBorder)
-                            .focused($inlineSearchFocused)
-                            .frame(width: 240)
-
-                        Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                showingInlineSearch = false
-                                inlineSearchText = ""
-                                inlineSearchFocused = false
-                                inlineAddTargetListID = nil
-                            }
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                        }
-                    }
-                } else {
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            showingInlineSearch = true
-                        }
-                        DispatchQueue.main.async {
-                            inlineSearchFocused = true
-                        }
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                    }
-                }
+                macRightSidebarButton
             }
-
-            ToolbarItem {
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        showingCityDetail.toggle()
-                    }
-                } label: {
-                    Image(systemName: "sidebar.right")
-                }
-                .disabled(tappedCity == nil)
-            }
+        }
+        .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
+        .searchPresentationToolbarBehavior(.avoidHidingContent)
+        .background {
+            macKeyboardShortcuts
         }
     }
 
@@ -429,6 +399,71 @@ struct ContentView: View {
         AnyView(iOSCityDetailDestination)
             .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
             .background(theme.colors.background)
+    }
+
+    private var macWindowDragTopArea: some View {
+        VStack(spacing: 0) {
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .frame(height: 34)
+                .contentShape(Rectangle())
+                .gesture(WindowDragGesture())
+                .allowsWindowActivationEvents(true)
+
+            Spacer(minLength: 0)
+        }
+        .ignoresSafeArea(.container, edges: .top)
+    }
+
+    private var macCenterMapButton: some View {
+        Button {
+            centerMapOnVisibleCities()
+        } label: {
+            Image(systemName: "dot.squareshape.split.2x2")
+        }
+        .help(localizedString("Center on Map", locale: locale))
+    }
+
+    private var macLegendButton: some View {
+        Toggle(isOn: Binding(
+            get: { showLegend },
+            set: { newValue in withAnimation(.smooth(duration: 0.2)) { showLegend = newValue } }
+        )) {
+            Image(systemName: showLegend ? "eye" : "eye.slash")
+        }
+        .help(localizedString("Legend", locale: locale))
+    }
+
+    private var macRefreshButton: some View {
+        Button {
+            Task { await weatherService.refreshWeather() }
+        } label: {
+            Image(systemName: "arrow.clockwise")
+        }
+        .disabled(weatherService.isLoading)
+        .help(localizedString("Refresh", locale: locale))
+    }
+
+    private var macFilterSunnyButton: some View {
+        Toggle(isOn: Binding(
+            get: { filterSunny },
+            set: { newValue in withAnimation { filterSunny = newValue } }
+        )) {
+            Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
+        }
+        .help(localizedString("Filter Sunny", locale: locale))
+    }
+
+    private var macRightSidebarButton: some View {
+        Button {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                showingCityDetail.toggle()
+            }
+        } label: {
+            Image(systemName: "sidebar.right")
+        }
+        .disabled(tappedCity == nil)
+        .help(localizedString("Details", locale: locale))
     }
 
     private var macMainOverlays: some View {
@@ -451,17 +486,15 @@ struct ContentView: View {
                         .zIndex(10)
                 }
 
-                if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
+                if selectedTab == 1, !isMapSpecialMode, let city = tappedCity {
                     mapExpandedCard(for: city)
                         .id(city.city.id)
-                        .frame(width: 420, height: 320)
-                        .position(macExpandedCardPosition(in: geometry.size))
-                        .transition(
-                            .asymmetric(
-                                insertion: .scale(scale: 0.05, anchor: .topLeading).combined(with: .opacity),
-                                removal: .scale(scale: 0.05, anchor: .topLeading).combined(with: .opacity)
-                            )
-                        )
+                        .frame(width: 252, height: 380)
+                        .offset(macExpandedCardTopLeft(in: geometry.size))
+                        .scaleEffect(showingMapExpandedCard ? 1 : 0.05, anchor: .topLeading)
+                        .opacity(showingMapExpandedCard ? 1 : 0)
+                        .allowsHitTesting(showingMapExpandedCard)
+                        .animation(.spring(response: 0.34, dampingFraction: 0.82), value: showingMapExpandedCard)
                         .zIndex(12)
                 }
 
@@ -494,22 +527,52 @@ struct ContentView: View {
         }
     }
 
-    private func macExpandedCardPosition(in size: CGSize) -> CGPoint {
-        let cardSize = CGSize(width: 420, height: 320)
+    private func macExpandedCardTopLeft(in size: CGSize) -> CGSize {
+        let cardSize = CGSize(width: 252, height: 380)
         let margin: CGFloat = 16
         let anchor = macMapExpandedCardAnchor ?? CGPoint(
             x: size.width - cardSize.width - margin,
             y: size.height - cardSize.height - margin
         )
-        let proposed = CGPoint(
-            x: anchor.x + cardSize.width / 2 + 6,
-            y: anchor.y + cardSize.height / 2 + 6
+        let proposed = CGPoint(x: anchor.x + 6, y: anchor.y + 6)
+        let clamped = CGPoint(
+            x: min(max(proposed.x, margin), size.width - cardSize.width - margin),
+            y: min(max(proposed.y, margin), size.height - cardSize.height - margin)
         )
+        return CGSize(width: clamped.x, height: clamped.y)
+    }
 
-        return CGPoint(
-            x: min(max(proposed.x, cardSize.width / 2 + margin), size.width - cardSize.width / 2 - margin),
-            y: min(max(proposed.y, cardSize.height / 2 + margin), size.height - cardSize.height / 2 - margin)
-        )
+    private var macKeyboardShortcuts: some View {
+        Group {
+            Button("") { stepSelectedDay(-1) }
+                .keyboardShortcut(.upArrow, modifiers: [])
+            Button("") { stepSelectedDay(1) }
+                .keyboardShortcut(.downArrow, modifiers: [])
+            Button("") { switchListByOffset(-1) }
+                .keyboardShortcut(.upArrow, modifiers: [.command, .shift])
+            Button("") { switchListByOffset(1) }
+                .keyboardShortcut(.downArrow, modifiers: [.command, .shift])
+        }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+    }
+
+    private func centerMapOnVisibleCities() {
+        recenterOnAllCities = false
+        DispatchQueue.main.async {
+            recenterOnAllCities = true
+        }
+    }
+
+    private func stepSelectedDay(_ delta: Int) {
+        selectedDayOffset = max(-1, min(9, selectedDayOffset + delta))
+    }
+
+    private func switchListByOffset(_ delta: Int) {
+        let lists = CityListID.allLists
+        guard let currentIndex = lists.firstIndex(of: weatherService.activeListID), !lists.isEmpty else { return }
+        let nextIndex = (currentIndex + delta + lists.count) % lists.count
+        Task { await switchToList(lists[nextIndex]) }
     }
 
     private var macListManagerSidebar: some View {
@@ -731,7 +794,7 @@ struct ContentView: View {
                 .navigationTitle("")
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar(.hidden, for: .navigationBar)
+                .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
                 #endif
                 .navigationDestination(isPresented: $showingCityDetail) {
                     AnyView(iOSCityDetailDestination)
@@ -743,39 +806,14 @@ struct ContentView: View {
         .onAppear {
             selectedTab = 1
         }
+        .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
+        .searchPresentationToolbarBehavior(.avoidHidingContent)
     }
 
     @ViewBuilder
     private var mapBottomToolbar: some View {
         if showingInlineSearch {
-            HStack(spacing: 10) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.secondary)
-                TextField(localizedString("Search for a city", locale: locale), text: $inlineSearchText)
-                    .textFieldStyle(.plain)
-                    .focused($inlineSearchFocused)
-                    .autocorrectionDisabled()
-                    .submitLabel(.search)
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        showingInlineSearch = false
-                        inlineSearchText = ""
-                        inlineSearchFocused = false
-                        inlineAddTargetListID = nil
-                    }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 14)
-            .frame(height: 50)
-            .themedGlass(in: .capsule)
-            .onAppear {
-                inlineSearchFocused = true
-            }
+            EmptyView()
         } else {
             HStack(spacing: 14) {
                 Button {
@@ -1520,7 +1558,11 @@ struct ContentView: View {
                 iOSMapView
                     .overlay(alignment: .bottomLeading) {
                         if selectedTab == 1, showLegend {
-                            MapFloatingLegend(overlayMode: mapOverlayMode)
+                            MapFloatingLegend(overlayMode: mapOverlayMode) {
+                                withAnimation(.smooth(duration: 0.2)) {
+                                    showLegend = false
+                                }
+                            }
                                 .padding(.leading, 16)
                                 .padding(.bottom, 92)
                                 .transition(.move(edge: .leading).combined(with: .opacity))
@@ -1946,17 +1988,13 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             #endif
+            #if os(iOS)
             .toolbar {
-                #if os(iOS)
                 ToolbarItem(placement: .topBarTrailing) {
                     detailActionsMenu(for: city)
                 }
-                #else
-                ToolbarItem {
-                    detailActionsMenu(for: city)
-                }
-                #endif
             }
+            #endif
         }
     }
 
@@ -2267,7 +2305,7 @@ struct ContentView: View {
         GlassEffectContainer(spacing: 12) {
         HStack(spacing: 12) {
             if showingInlineSearch {
-                bottomBarSearchState
+                EmptyView()
             } else if showingCountrySearch, let pending = pendingCountryList {
                 bottomBarCountryConfirmState(pending: pending)
             } else if showingCountrySearch {
@@ -2680,17 +2718,13 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
             #endif
+            #if os(iOS)
             .toolbar {
-                #if os(iOS)
                 ToolbarItem(placement: .topBarTrailing) {
                     detailActionsMenu(for: city)
                 }
-                #else
-                ToolbarItem {
-                    detailActionsMenu(for: city)
-                }
-                #endif
             }
+            #endif
         }
     }
 

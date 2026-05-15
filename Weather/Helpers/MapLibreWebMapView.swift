@@ -101,9 +101,22 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         private var lastPayload = ""
         private var lastStyleKey = ""
         private var lastCenteredCityID: UUID?
+        private var observers: [NSObjectProtocol] = []
 
         init(parent: MapLibreWebMapView) {
             self.parent = parent
+            super.init()
+            let center = NotificationCenter.default
+            observers.append(center.addObserver(forName: .weatherZoomInCommand, object: nil, queue: .main) { [weak self] _ in
+                self?.evaluate("window.weatherMapZoomIn?.();")
+            })
+            observers.append(center.addObserver(forName: .weatherZoomOutCommand, object: nil, queue: .main) { [weak self] _ in
+                self?.evaluate("window.weatherMapZoomOut?.();")
+            })
+        }
+
+        deinit {
+            observers.forEach(NotificationCenter.default.removeObserver)
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
@@ -510,7 +523,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           if (!pendingPayload || !pendingPayload.features || pendingPayload.features.length === 0) return;
           const bounds = new maplibregl.LngLatBounds();
           pendingPayload.features.forEach(item => bounds.extend([item.longitude, item.latitude]));
-          if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 70, duration: 550, maxZoom: 7 });
+          if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 95, duration: 550, maxZoom: 4.6 });
         };
 
         window.flyToCity = function(id) {
@@ -522,6 +535,14 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           currentStyleMode = mode;
           baseStylePreferencesApplied = false;
           if (map) map.setStyle(await cleanedStyle(mode));
+        };
+
+        window.weatherMapZoomIn = function() {
+          if (map) map.zoomIn({ duration: 220 });
+        };
+
+        window.weatherMapZoomOut = function() {
+          if (map) map.zoomOut({ duration: 220 });
         };
 
         async function init() {
@@ -537,6 +558,9 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           });
           map.dragRotate.disable();
           map.touchZoomRotate.disableRotation();
+          map.scrollZoom.enable();
+          map.scrollZoom.setWheelZoomRate(1 / 220);
+          map.scrollZoom.setZoomRate(1 / 70);
           map.on('load', () => {
             loaded = true;
             ensureLayers();
@@ -567,6 +591,55 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             lastMovePost = now;
             const center = map.getCenter();
             post({ type: 'cameraMove', lat: center.lat, lng: center.lng });
+          });
+          const pressedPanKeys = new Set();
+          let panAnimationFrame = null;
+
+          function panLoop() {
+            if (!pressedPanKeys.size) {
+              panAnimationFrame = null;
+              return;
+            }
+            let x = 0;
+            let y = 0;
+            const step = 12;
+            if (pressedPanKeys.has('w')) y -= step;
+            if (pressedPanKeys.has('a')) x -= step;
+            if (pressedPanKeys.has('s')) y += step;
+            if (pressedPanKeys.has('d')) x += step;
+            if (x !== 0 || y !== 0) map.panBy([x, y], { duration: 0 });
+            panAnimationFrame = requestAnimationFrame(panLoop);
+          }
+
+          function startPanLoop() {
+            if (!panAnimationFrame) panAnimationFrame = requestAnimationFrame(panLoop);
+          }
+
+          window.addEventListener('keydown', event => {
+            const key = event.key.toLowerCase();
+            if (event.metaKey && (key === '+' || key === '=')) {
+              event.preventDefault();
+              window.weatherMapZoomIn();
+              return;
+            }
+            if (event.metaKey && key === '-') {
+              event.preventDefault();
+              window.weatherMapZoomOut();
+              return;
+            }
+            if (event.metaKey || event.ctrlKey || event.altKey) return;
+
+            if (['w', 'a', 's', 'd'].includes(key)) {
+              event.preventDefault();
+              pressedPanKeys.add(key);
+              startPanLoop();
+            }
+          });
+          window.addEventListener('keyup', event => {
+            pressedPanKeys.delete(event.key.toLowerCase());
+          });
+          window.addEventListener('blur', () => {
+            pressedPanKeys.clear();
           });
         }
 

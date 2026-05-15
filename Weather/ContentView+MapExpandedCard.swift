@@ -173,7 +173,7 @@ extension ContentView {
         metricLabel: String,
         tempUnit: TemperatureUnit
     ) -> some View {
-        let forecasts = Array(cityWeather.dailyForecasts.prefix(7))
+        let forecasts = Array(cityWeather.dailyForecasts.prefix(10))
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
@@ -210,7 +210,7 @@ extension ContentView {
 
             HStack(alignment: .center, spacing: 12) {
                 Text(primaryText)
-                    .font(.system(size: 52, weight: .regular, design: .default))
+                    .font(.system(size: 42, weight: .regular, design: .default))
                     .foregroundStyle(.primary)
                     .contentTransition(.numericText())
                     .lineLimit(1)
@@ -222,48 +222,58 @@ extension ContentView {
 
                 Spacer(minLength: 8)
             }
-            .padding(.bottom, 16)
+            .padding(.bottom, 14)
 
-            Divider()
+            Rectangle()
+                .fill(Color.primary.opacity(0.08))
+                .frame(height: 0.75)
                 .padding(.horizontal, -14)
                 .padding(.bottom, 12)
 
-            Text(localizedString("7 Day Forecast", locale: locale))
+            Text(localizedString("10 Day Forecast", locale: locale))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
                 .tracking(0.8)
                 .padding(.bottom, 12)
 
-            HStack(alignment: .top, spacing: 0) {
-                ForEach(Array(forecasts.enumerated()), id: \.element.id) { index, forecast in
-                    VStack(spacing: 7) {
-                        Text(macForecastDayLabel(for: index))
-                            .font(.caption2.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+            VStack(spacing: 8) {
+                ForEach(0..<2, id: \.self) { row in
+                    HStack(alignment: .top, spacing: 6) {
+                        ForEach(0..<5, id: \.self) { column in
+                            let index = row * 5 + column
+                            if index < forecasts.count {
+                                let forecast = forecasts[index]
+                                VStack(spacing: 7) {
+                                    Text(macForecastDayLabel(for: index))
+                                        .font(.caption2.weight(.medium))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
 
-                        Circle()
-                            .fill(forecast.condition.dotColor)
-                            .frame(width: index == selectedDayOffset ? 8 : 7, height: index == selectedDayOffset ? 8 : 7)
-                            .shadow(color: forecast.condition.dotColor.opacity(0.45), radius: 2)
+                                    Circle()
+                                        .fill(forecast.condition.dotColor)
+                                        .frame(width: index == selectedDayOffset ? 8 : 7, height: index == selectedDayOffset ? 8 : 7)
+                                        .shadow(color: forecast.condition.dotColor.opacity(0.45), radius: 2)
 
-                        Text(tempUnit.display(forecast.dailyHigh))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-
-                        Text(tempUnit.display(forecast.dailyLow))
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+                                    Text(tempUnit.display(forecast.dailyHigh))
+                                        .font(.caption.weight(.semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6)
+                                .background {
+                                    if index == selectedDayOffset {
+                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            .fill(Color.primary.opacity(0.09))
+                                    }
+                                }
+                            }
+                        }
                     }
-                    .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.bottom, 18)
-
-            Spacer(minLength: 0)
+            .padding(.bottom, 8)
 
             HStack {
                 Button(role: .destructive) {
@@ -290,23 +300,33 @@ extension ContentView {
                 Button {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         showingCityDetail = true
+                        showingMapExpandedCard = false
                     }
                 } label: {
-                    Label(localizedString("Open Details", locale: locale), systemImage: "arrow.right")
+                    HStack(spacing: 8) {
+                        Text(localizedString("Open Details", locale: locale))
+                        Image(systemName: "arrow.right")
+                    }
                 }
-                .labelStyle(.titleAndIcon)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
+                .tint(theme.colors.accent)
             }
         }
         .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .background(
+            (colorScheme == .dark
+             ? Color(red: 0.06, green: 0.06, blue: 0.08).opacity(0.98)
+             : Color.white.opacity(0.97)),
+            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
                 .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 10)
-        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .gesture(DragGesture(minimumDistance: 1).onChanged { _ in })
     }
 
     private func macForecastDayLabel(for offset: Int) -> String {

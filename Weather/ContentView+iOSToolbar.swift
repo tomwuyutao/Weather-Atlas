@@ -98,7 +98,11 @@ extension ContentView {
     var iOSNativeMenu: some View {
         Menu {
             Button {
+                #if os(macOS)
+                openSettings()
+                #else
                 showingSettings = true
+                #endif
             } label: {
                 Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
             }

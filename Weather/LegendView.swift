@@ -3,6 +3,7 @@ import SwiftUI
 struct MapFloatingLegend: View {
     let overlayMode: String
     var compact: Bool = false
+    var onClose: (() -> Void)? = nil
 
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
@@ -156,29 +157,43 @@ struct MapFloatingLegend: View {
     // MARK: - Body
 
     var body: some View {
-        Group {
-            if overlayMode == "weather" {
-                legendContent
-                    .padding(.horizontal, compact ? 10 : 16)
-                    .padding(.vertical, compact ? 6 : 10)
-            } else {
-                HStack(spacing: compact ? 7 : 10) {
-                    Image(systemName: leadingIcon)
-                        .font(.system(size: compact ? 13 : 15, weight: .medium))
-                        .foregroundStyle(AppTheme.shared.colors.primaryText)
-                        .frame(width: compact ? 15 : 18)
-
+        HStack(spacing: compact ? 8 : 10) {
+            Group {
+                if overlayMode == "weather" {
                     legendContent
+                        .padding(.leading, compact ? 10 : 16)
+                        .padding(.vertical, compact ? 6 : 10)
+                } else {
+                    HStack(spacing: compact ? 7 : 10) {
+                        Image(systemName: leadingIcon)
+                            .font(.system(size: compact ? 13 : 15, weight: .medium))
+                            .foregroundStyle(AppTheme.shared.colors.primaryText)
+                            .frame(width: compact ? 15 : 18)
+
+                        legendContent
+                    }
+                    .padding(.leading, compact ? 10 : 14)
+                    .padding(.vertical, compact ? 6 : 10)
                 }
-                .padding(.leading, compact ? 10 : 14)
-                .padding(.trailing, compact ? 12 : 16)
-                .padding(.vertical, compact ? 6 : 10)
+            }
+
+            if let onClose {
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: compact ? 10 : 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: compact ? 18 : 22, height: compact ? 18 : 22)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.trailing, compact ? 8 : 10)
             }
         }
-        .frame(maxWidth: compact ? 420 : .infinity, alignment: .leading)
+        .frame(maxWidth: compact ? 320 : .infinity, alignment: .leading)
         .padding(compact ? 3 : 6)
         .themedGlass(in: Capsule())
         .padding(.horizontal, compact ? 8 : 12)
+        .fixedSize(horizontal: compact, vertical: false)
     }
 
     @ViewBuilder
@@ -343,7 +358,7 @@ struct MapFloatingLegend: View {
     }
 
     private var weatherDotLegend: some View {
-        HStack(spacing: compact ? 10 : 0) {
+        HStack(spacing: compact ? 7 : 0) {
             dotPairEntry(.clear)
             if !compact { Spacer() }
             dotPairEntry(.partlyCloudy)

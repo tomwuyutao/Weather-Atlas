@@ -126,7 +126,7 @@ extension ThemeColors {
         colorfulLand: Color(hex: 0xDFEDE4),
         colorfulLandActive: Color(hex: 0xD8E8DC),
         colorfulBorder: Color(hex: 0xCDDDD2),
-        accent: Color(hex: 0x1579C7),
+        accent: Color(hex: 0x1F5F9F),
         destructive: Color(hex: 0xFB4368),
         dotSun: Color(hex: 0xFDA409),
         dotPartlyCloudy: Color(hex: 0xF5C563),
@@ -170,7 +170,7 @@ extension ThemeColors {
         colorfulLand: Color(hex: 0x2A4A3A),
         colorfulLandActive: Color(hex: 0x345A45),
         colorfulBorder: Color(hex: 0x3D6B55),
-        accent: Color(hex: 0x4A9EE0),
+        accent: Color(hex: 0x1F5F9F),
         destructive: Color(hex: 0xFB4368),
         dotSun: Color(hex: 0xFDA409),
         dotPartlyCloudy: Color(hex: 0xF5C563),
@@ -340,6 +340,5 @@ extension View {
         }
     }
 }
-
 
 
