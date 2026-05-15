@@ -18,6 +18,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     var centerOnCity: CityWeather?
     var leadingFitPadding: Double = 0
     var onMarkerTap: (CityWeather, CGPoint?) -> Void
+    var onMarkerCommandHover: ((CityWeather?, CGPoint?) -> Void)? = nil
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
@@ -144,6 +145,18 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                     point = nil
                 }
                 parent.onMarkerTap(city, point)
+            case "markerCommandHover":
+                guard let id = body["id"] as? String,
+                      let city = parent.cities.first(where: { $0.id.uuidString == id }) else { return }
+                let point: CGPoint?
+                if let x = body["x"] as? Double, let y = body["y"] as? Double {
+                    point = CGPoint(x: x, y: y)
+                } else {
+                    point = nil
+                }
+                parent.onMarkerCommandHover?(city, point)
+            case "markerCommandHoverEnd":
+                parent.onMarkerCommandHover?(nil, nil)
             case "cameraMove":
                 guard let lat = body["lat"] as? Double,
                       let lng = body["lng"] as? Double else { return }
@@ -315,15 +328,15 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
       <link rel="stylesheet" href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css">
       <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
       <style>
-        html, body { margin: 0; padding: 0; width: 100%; height: 100%; min-height: 100%; overflow: hidden; background: #EDE7DE; }
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; min-height: 100%; overflow: hidden; background: #F4F1EB; }
         body { -webkit-user-select: none; user-select: none; position: fixed; inset: 0; }
-        #map { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: #EDE7DE; }
+        #map { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: #F4F1EB; }
         #window-drag-blur {
           position: fixed;
           top: 0;
           left: 0;
           right: 0;
-          height: 48px;
+          height: 54px;
           z-index: 4;
           pointer-events: none;
           background: rgba(237, 231, 222, 0.24);
@@ -337,17 +350,47 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
         .maplibregl-map, .maplibregl-canvas-container, .maplibregl-canvas { width: 100% !important; height: 100% !important; cursor: default !important; }
         .maplibregl-ctrl-logo, .maplibregl-ctrl-attrib { display: none !important; }
+        #hover-label {
+          position: fixed;
+          z-index: 5;
+          pointer-events: none;
+          transform: translate(-50%, calc(-100% - 14px));
+          padding: 3px 7px;
+          border-radius: 7px;
+          font: 600 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+          color: #282828;
+          background: rgba(244, 241, 235, 0.86);
+          opacity: 0;
+          transition: opacity 140ms ease, transform 140ms ease;
+          white-space: nowrap;
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
+        }
+        body.dark-map #hover-label {
+          color: #E8E4DF;
+          background: rgba(26, 27, 46, 0.86);
+        }
+        #hover-label.visible {
+          opacity: 1;
+          transform: translate(-50%, calc(-100% - 18px));
+        }
       </style>
     </head>
     <body>
       <div id="map"></div>
       <div id="window-drag-blur"></div>
+      <div id="hover-label"></div>
       <script>
-        let map;
-        let loaded = false;
-        let pendingPayload = null;
-        let currentStyleMode = 'bright';
-        let lastMovePost = 0;
+        var map;
+        var loaded = false;
+        var pendingPayload = null;
+        var currentStyleMode = 'bright';
+        var lastMovePost = 0;
+        var hoveredMarkerID = '';
+        var hoveredMarkerPoint = null;
+        var commandPressed = false;
+        var commandHoverCardID = '';
+        var pinchVelocity = 0;
+        var pinchAnimationFrame = null;
         var baseStylePreferencesApplied = false;
 
         function styleURL(mode) {
@@ -375,7 +418,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         function themePalette(mode) {
           return mode === 'dark'
             ? { ocean: '#1A1B2E', land: '#252640', subtleLand: '#2D2E4A', road: '#353660' }
-            : { ocean: '#EDE7DE', land: '#E0DAD1', subtleLand: '#E8E2D9', road: '#D5CFC6' };
+            : { ocean: '#F4F1EB', land: '#E8E5DF', subtleLand: '#EFEBE5', road: '#DDDAD3' };
         }
 
         function applyWarmMapPaint(layer, palette) {
@@ -471,9 +514,17 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-glow', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 20, 13],
+                'circle-radius': ['case',
+                  ['any', ['boolean', ['get', 'selected'], false], ['boolean', ['get', 'hovered'], false]], 20,
+                  13
+                ],
                 'circle-color': ['get', 'color'],
-                'circle-opacity': ['case', ['boolean', ['get', 'selected'], false], 0.36, 0.24],
+                'circle-opacity': ['case',
+                  ['any', ['boolean', ['get', 'selected'], false], ['boolean', ['get', 'hovered'], false]], 0.36,
+                  0.24
+                ],
+                'circle-radius-transition': { duration: 180, delay: 0 },
+                'circle-opacity-transition': { duration: 180, delay: 0 },
                 'circle-blur': 0.85
               }
             });
@@ -482,9 +533,17 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-halo', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 11, 7],
+                'circle-radius': ['case',
+                  ['any', ['boolean', ['get', 'selected'], false], ['boolean', ['get', 'hovered'], false]], 11,
+                  7
+                ],
                 'circle-color': ['get', 'color'],
-                'circle-opacity': ['case', ['boolean', ['get', 'selected'], false], 0.22, 0.14],
+                'circle-opacity': ['case',
+                  ['any', ['boolean', ['get', 'selected'], false], ['boolean', ['get', 'hovered'], false]], 0.22,
+                  0.14
+                ],
+                'circle-radius-transition': { duration: 180, delay: 0 },
+                'circle-opacity-transition': { duration: 180, delay: 0 },
                 'circle-blur': 0.45
               }
             });
@@ -493,8 +552,12 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-points', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['case', ['boolean', ['get', 'selected'], false], 6.5, 4.5],
+                'circle-radius': ['case',
+                  ['any', ['boolean', ['get', 'selected'], false], ['boolean', ['get', 'hovered'], false]], 6.5,
+                  4.5
+                ],
                 'circle-color': ['get', 'color'],
+                'circle-radius-transition': { duration: 180, delay: 0 },
                 'circle-stroke-color': 'rgba(255,255,255,0.0)',
                 'circle-stroke-width': 0
               }
@@ -519,7 +582,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 country: item.country,
                 label: item.label,
                 color: item.color,
-                selected: item.id === selectedID
+                selected: item.id === selectedID,
+                hovered: item.id === hoveredMarkerID
               },
               geometry: { type: 'Point', coordinates: [item.longitude, item.latitude] }
             }))
@@ -576,6 +640,78 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           if (map) map.zoomOut({ duration: 220 });
         };
 
+        function refreshHoveredMarker(id, point) {
+          const feature = pendingPayload?.features?.find(item => item.id === id);
+          const label = document.getElementById('hover-label');
+          if (label && point && feature) {
+            label.textContent = feature.name;
+            label.style.left = `${point.x}px`;
+            label.style.top = `${point.y}px`;
+            label.classList.add('visible');
+          }
+          if (hoveredMarkerID === id) {
+            hoveredMarkerPoint = point;
+          } else {
+            hoveredMarkerID = id;
+            hoveredMarkerPoint = point;
+            if (pendingPayload) updateSource(pendingPayload);
+          }
+        }
+
+        function endCommandHoverCard() {
+          if (!commandHoverCardID) return;
+          commandHoverCardID = '';
+          post({ type: 'markerCommandHoverEnd' });
+        }
+
+        function updateCommandHoverCard() {
+          if (!commandPressed || !hoveredMarkerID || !hoveredMarkerPoint) {
+            endCommandHoverCard();
+            return;
+          }
+          if (commandHoverCardID === hoveredMarkerID) return;
+          commandHoverCardID = hoveredMarkerID;
+          post({
+            type: 'markerCommandHover',
+            id: hoveredMarkerID,
+            x: hoveredMarkerPoint.x,
+            y: hoveredMarkerPoint.y
+          });
+        }
+
+        function clearHoveredMarker() {
+          document.getElementById('hover-label')?.classList.remove('visible');
+          if (!hoveredMarkerID) return;
+          hoveredMarkerID = '';
+          hoveredMarkerPoint = null;
+          if (pendingPayload) updateSource(pendingPayload);
+          endCommandHoverCard();
+        }
+
+        function stopPinchInertia() {
+          if (pinchAnimationFrame) cancelAnimationFrame(pinchAnimationFrame);
+          pinchAnimationFrame = null;
+          pinchVelocity = 0;
+        }
+
+        function startPinchInertia(point) {
+          if (pinchAnimationFrame) cancelAnimationFrame(pinchAnimationFrame);
+          function step() {
+            pinchVelocity *= 0.88;
+            if (Math.abs(pinchVelocity) < 0.001) {
+              pinchAnimationFrame = null;
+              pinchVelocity = 0;
+              return;
+            }
+            map.zoomTo(map.getZoom() + pinchVelocity, {
+              duration: 0,
+              around: map.unproject(point)
+            });
+            pinchAnimationFrame = requestAnimationFrame(step);
+          }
+          pinchAnimationFrame = requestAnimationFrame(step);
+        }
+
         async function init() {
           map = new maplibregl.Map({
             container: 'map',
@@ -589,9 +725,24 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           });
           map.dragRotate.disable();
           map.touchZoomRotate.disableRotation();
-          map.scrollZoom.enable();
-          map.scrollZoom.setWheelZoomRate(1 / 220);
-          map.scrollZoom.setZoomRate(1 / 70);
+          map.scrollZoom.disable();
+          map.getCanvas().addEventListener('wheel', event => {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            const point = new maplibregl.Point(event.offsetX, event.offsetY);
+            if (event.ctrlKey) {
+              const delta = -event.deltaY / 420;
+              pinchVelocity = Math.max(-0.12, Math.min(0.12, delta));
+              map.zoomTo(map.getZoom() + pinchVelocity, {
+                duration: 0,
+                around: map.unproject(point)
+              });
+              startPinchInertia(point);
+            } else {
+              stopPinchInertia();
+              map.panBy([event.deltaX, event.deltaY], { duration: 0 });
+            }
+          }, { capture: true, passive: false });
           map.on('load', () => {
             loaded = true;
             ensureLayers();
@@ -605,17 +756,27 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           });
           map.on('click', event => {
             const hitBox = [
-              [event.point.x - 18, event.point.y - 18],
-              [event.point.x + 18, event.point.y + 18]
+              [event.point.x - 8, event.point.y - 8],
+              [event.point.x + 8, event.point.y + 8]
             ];
             const features = map.queryRenderedFeatures(hitBox, {
-              layers: ['weather-points', 'weather-halo', 'weather-glow']
+              layers: ['weather-points']
             });
             const feature = features && features[0];
             if (feature?.properties?.id) post({ type: 'markerTap', id: feature.properties.id, x: event.point.x, y: event.point.y });
           });
+          map.on('mousemove', 'weather-points', event => {
+            const feature = event.features && event.features[0];
+            if (!feature?.properties?.id) return;
+            commandPressed = !!event.originalEvent?.metaKey;
+            refreshHoveredMarker(feature.properties.id, event.point);
+            updateCommandHoverCard();
+          });
           map.on('mouseenter', 'weather-points', () => { map.getCanvas().style.cursor = 'default'; });
-          map.on('mouseleave', 'weather-points', () => { map.getCanvas().style.cursor = 'default'; });
+          map.on('mouseleave', 'weather-points', () => {
+            map.getCanvas().style.cursor = 'default';
+            clearHoveredMarker();
+          });
           map.on('move', () => {
             const now = Date.now();
             if (now - lastMovePost < 120) return;
@@ -624,10 +785,11 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             post({ type: 'cameraMove', lat: center.lat, lng: center.lng });
           });
           const pressedPanKeys = new Set();
+          const pressedZoomKeys = new Set();
           let panAnimationFrame = null;
 
           function panLoop() {
-            if (!pressedPanKeys.size) {
+            if (!pressedPanKeys.size && !pressedZoomKeys.size) {
               panAnimationFrame = null;
               return;
             }
@@ -639,6 +801,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             if (pressedPanKeys.has('s')) y += step;
             if (pressedPanKeys.has('d')) x += step;
             if (x !== 0 || y !== 0) map.panBy([x, y], { duration: 0 });
+            if (pressedZoomKeys.has('c')) map.zoomTo(map.getZoom() + 0.035, { duration: 0 });
+            if (pressedZoomKeys.has('v')) map.zoomTo(map.getZoom() - 0.035, { duration: 0 });
             panAnimationFrame = requestAnimationFrame(panLoop);
           }
 
@@ -648,6 +812,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
           window.addEventListener('keydown', event => {
             const key = event.key.toLowerCase();
+            if (event.metaKey || key === 'meta') {
+              commandPressed = true;
+              updateCommandHoverCard();
+            }
             if (event.metaKey && (key === '+' || key === '=')) {
               event.preventDefault();
               window.weatherMapZoomIn();
@@ -665,12 +833,26 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
               pressedPanKeys.add(key);
               startPanLoop();
             }
+            if (['c', 'v'].includes(key)) {
+              event.preventDefault();
+              pressedZoomKeys.add(key);
+              startPanLoop();
+            }
           });
           window.addEventListener('keyup', event => {
-            pressedPanKeys.delete(event.key.toLowerCase());
+            const key = event.key.toLowerCase();
+            if (!event.metaKey || key === 'meta') {
+              commandPressed = false;
+              endCommandHoverCard();
+            }
+            pressedPanKeys.delete(key);
+            pressedZoomKeys.delete(key);
           });
           window.addEventListener('blur', () => {
             pressedPanKeys.clear();
+            pressedZoomKeys.clear();
+            commandPressed = false;
+            endCommandHoverCard();
           });
         }
 

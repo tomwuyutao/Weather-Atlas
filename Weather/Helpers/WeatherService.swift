@@ -1115,6 +1115,42 @@ class WeatherService {
         saveCities(listData.map(\.city), for: listID)
         cacheData(listData, for: listID)
     }
+
+    func moveCity(id cityID: String, from sourceListID: CityListID, to targetListID: CityListID, destination: Int?) -> Bool {
+        var sourceData = weatherData(for: sourceListID)
+        guard let sourceIndex = sourceData.firstIndex(where: { $0.id.uuidString == cityID }) else { return false }
+        let city = sourceData.remove(at: sourceIndex)
+
+        var targetData = sourceListID == targetListID ? sourceData : weatherData(for: targetListID)
+        let rawDestination = destination ?? targetData.count
+        let adjustedDestination: Int
+        if sourceListID == targetListID, rawDestination > sourceIndex {
+            adjustedDestination = max(0, min(targetData.count, rawDestination - 1))
+        } else {
+            adjustedDestination = max(0, min(targetData.count, rawDestination))
+        }
+        targetData.insert(city, at: adjustedDestination)
+
+        setWeatherData(sourceData, for: sourceListID)
+        if sourceListID == targetListID {
+            setWeatherData(targetData, for: sourceListID)
+        } else {
+            setWeatherData(targetData, for: targetListID)
+        }
+        return true
+    }
+
+    private func setWeatherData(_ data: [CityWeather], for listID: CityListID) {
+        if listID.rawValue == activeListID.rawValue {
+            cityWeatherData = data
+            cacheData(cityWeatherData)
+            saveCitiesList()
+        } else {
+            otherListData[listID.rawValue] = data
+            saveCities(data.map(\.city), for: listID)
+            cacheData(data, for: listID)
+        }
+    }
     
     private func generateForecastDays() {
         let calendar = Calendar.current

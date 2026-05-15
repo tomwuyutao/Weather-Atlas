@@ -174,6 +174,8 @@ extension ContentView {
         tempUnit: TemperatureUnit
     ) -> some View {
         let forecasts = Array(cityWeather.dailyForecasts.prefix(10))
+        let selectedForecast = cityWeather.forecast(for: max(0, selectedDayOffset))
+        let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
 
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
@@ -202,9 +204,17 @@ extension ContentView {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 28, height: 28)
+                        .background {
+                            if macExpandedCardHoveringClose {
+                                Circle()
+                                    .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
+                            }
+                        }
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
+                .onHover { macExpandedCardHoveringClose = $0 }
             }
             .padding(.bottom, 14)
 
@@ -244,29 +254,43 @@ extension ContentView {
                             let index = row * 5 + column
                             if index < forecasts.count {
                                 let forecast = forecasts[index]
-                                VStack(spacing: 7) {
-                                    Text(macForecastDayLabel(for: index))
-                                        .font(.caption2.weight(.medium))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-
-                                    Circle()
-                                        .fill(forecast.condition.dotColor)
-                                        .frame(width: index == selectedDayOffset ? 8 : 7, height: index == selectedDayOffset ? 8 : 7)
-                                        .shadow(color: forecast.condition.dotColor.opacity(0.45), radius: 2)
-
-                                    Text(tempUnit.display(forecast.dailyHigh))
-                                        .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                }
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 6)
-                                .background {
-                                    if index == selectedDayOffset {
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .fill(Color.primary.opacity(0.09))
+                                Button {
+                                    withAnimation(.smooth(duration: 0.18)) {
+                                        selectedDayOffset = index
                                     }
+                                } label: {
+                                    VStack(spacing: 7) {
+                                        Text(macForecastDayLabel(for: index))
+                                            .font(.caption2.weight(.medium))
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+
+                                        Circle()
+                                            .fill(forecast.condition.dotColor)
+                                            .frame(width: index == selectedDayOffset ? 8 : 7, height: index == selectedDayOffset ? 8 : 7)
+                                            .shadow(color: forecast.condition.dotColor.opacity(0.45), radius: 2)
+
+                                        Text(tempUnit.display(forecast.dailyHigh))
+                                            .font(.caption.weight(.semibold))
+                                            .foregroundStyle(.primary)
+                                            .lineLimit(1)
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 6)
+                                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .background {
+                                        if index == selectedDayOffset {
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .fill(Color.primary.opacity(0.09))
+                                        } else if macExpandedCardHoveredDay == index {
+                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                                .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .onHover { hovering in
+                                    macExpandedCardHoveredDay = hovering ? index : (macExpandedCardHoveredDay == index ? nil : macExpandedCardHoveredDay)
                                 }
                             }
                         }
@@ -274,6 +298,12 @@ extension ContentView {
                 }
             }
             .padding(.bottom, 14)
+
+            if macExpandedCardShowsDetails {
+                macExpandedCardDetails(for: cityWeather, forecast: selectedForecast, tempUnit: tempUnit, distUnit: distUnit)
+                    .padding(.bottom, 14)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
 
             HStack {
                 if cityIsInSidebar(cityWeather) {
@@ -286,9 +316,18 @@ extension ContentView {
                         recenterOnAllCities = true
                     } label: {
                         Text(localizedString("Remove", locale: locale))
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 4)
+                            .background {
+                                if macExpandedCardHoveringRemove {
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
+                                }
+                            }
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
+                    .onHover { macExpandedCardHoveringRemove = $0 }
                 } else if CityListID.allLists.count > 1 {
                     Menu {
                         ForEach(CityListID.allLists) { listID in
@@ -330,25 +369,26 @@ extension ContentView {
 
                 Button {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        showingCityDetail = true
-                        showingMapExpandedCard = false
+                        macExpandedCardShowsDetails.toggle()
                     }
                 } label: {
                     HStack(spacing: 8) {
-                        Text(localizedString("Open Details", locale: locale))
-                        Image(systemName: "arrow.right")
+                        Text(macExpandedCardShowsDetails ? localizedString("Hide Details", locale: locale) : localizedString("Expand Details", locale: locale))
+                        Image(systemName: "chevron.down")
+                            .rotationEffect(.degrees(macExpandedCardShowsDetails ? 180 : 0))
                     }
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.regular)
-                .tint(theme.colors.accent)
+                .tint(macExpandedCardHoveringOpenDetails ? theme.colors.accent.opacity(0.82) : theme.colors.accent)
+                .onHover { macExpandedCardHoveringOpenDetails = $0 }
             }
         }
         .padding(14)
         .background(
             (colorScheme == .dark
-             ? theme.colors.mapOcean.opacity(0.96)
-             : theme.colors.mapLand.opacity(0.96)),
+             ? Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.98)
+             : Color(red: 0.92, green: 0.90, blue: 0.86).opacity(0.98)),
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
         .overlay {
@@ -357,6 +397,120 @@ extension ContentView {
         }
         .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 10)
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func macExpandedCardDetails(
+        for cityWeather: CityWeather,
+        forecast: DailyForecast,
+        tempUnit: TemperatureUnit,
+        distUnit: DistanceUnit
+    ) -> some View {
+        let isNow = selectedDayOffset == -1
+        let rows: [(String, String, String)] = [
+            (
+                "thermometer.medium",
+                localizedString("Temperature", locale: locale),
+                isNow ? tempUnit.display(cityWeather.temperature) : tempUnit.displaySlash(low: forecast.dailyLow, high: forecast.dailyHigh)
+            ),
+            (
+                "thermometer.variable.and.figure",
+                localizedString("Feels Like", locale: locale),
+                isNow
+                    ? (cityWeather.currentFeelsLike.map { tempUnit.display($0) } ?? "—")
+                    : {
+                        if let low = forecast.feelsLikeLow, let high = forecast.feelsLikeHigh {
+                            return tempUnit.displaySlash(low: low, high: high)
+                        }
+                        return "—"
+                    }()
+            ),
+            (
+                "cloud",
+                localizedString("Cloud Cover", locale: locale),
+                (isNow ? cityWeather.currentCloudCover : forecast.cloudCover).map { "\(Int($0 * 100))%" } ?? "—"
+            ),
+            (
+                "drop.fill",
+                localizedString("Precipitation", locale: locale),
+                isNow
+                    ? ([.rain, .drizzle, .snow].contains(cityWeather.condition) ? "100%" : "0%")
+                    : (forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "—")
+            ),
+            (
+                "wind",
+                localizedString("Wind Speed", locale: locale),
+                (isNow ? cityWeather.currentWindSpeed : forecast.windSpeed).map { distUnit.displayWindSpeed($0) } ?? "—"
+            ),
+            (
+                "sun.max.fill",
+                localizedString("UV Index", locale: locale),
+                (isNow ? cityWeather.currentUVIndex : forecast.uvIndex).map { "\($0)" } ?? "—"
+            ),
+            (
+                "humidity.fill",
+                localizedString("Humidity", locale: locale),
+                (isNow ? cityWeather.currentHumidity : forecast.maxHumidity).map { "\(Int($0 * 100))%" } ?? "—"
+            ),
+            (
+                "eye",
+                localizedString("Visibility", locale: locale),
+                (isNow ? cityWeather.currentVisibility : forecast.maxVisibility).map { distUnit.display($0) } ?? "—"
+            )
+        ]
+
+        return VStack(spacing: 8) {
+            ForEach(rows, id: \.1) { icon, label, value in
+                HStack(spacing: 10) {
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16)
+                    Text(label)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Text(value)
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+
+            if let sunrise = forecast.sunrise, let sunset = forecast.sunset {
+                HStack(spacing: 10) {
+                    Image(systemName: "sunrise.fill")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 16)
+                    Text(localizedString("Sunrise", locale: locale))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(macExpandedCardTime(sunrise, in: cityWeather.timeZone))
+                        .font(.caption.weight(.semibold))
+                    Text("·")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                    Text(macExpandedCardTime(sunset, in: cityWeather.timeZone))
+                        .font(.caption.weight(.semibold))
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 7)
+                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            }
+        }
+    }
+
+    private func macExpandedCardTime(_ date: Date, in timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        return formatter.string(from: date)
     }
 
     private func macForecastDayLabel(for offset: Int) -> String {

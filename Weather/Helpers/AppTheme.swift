@@ -113,15 +113,15 @@ extension ThemeColors {
     static let light = ThemeColors(
         primaryText: Color(hex: 0x282828),
         secondaryText: .secondary,
-        background: Color(hex: 0xEDE7DE),
-        searchOverlayBackground: Color(hex: 0xEDE7DE).opacity(0.97),
+        background: Color(hex: 0xF4F1EB),
+        searchOverlayBackground: Color(hex: 0xF4F1EB).opacity(0.97),
         modalOverlay: Color.black.opacity(0.3),
-        glassTint: Color(hex: 0xEDE7DE).opacity(0.4),
-        popoverBackground: Color(hex: 0xE3DDD4).opacity(0.7),
-        mapOcean: Color(hex: 0xEDE7DE),
-        mapLand: Color(hex: 0xE0DAD1),
-        mapBorder: Color(hex: 0xD5CFC6),
-        svgCountryFill: Color(hex: 0xE0DAD1),
+        glassTint: Color(hex: 0xF4F1EB).opacity(0.4),
+        popoverBackground: Color(hex: 0xEAE7E1).opacity(0.7),
+        mapOcean: Color(hex: 0xF4F1EB),
+        mapLand: Color(hex: 0xE8E5DF),
+        mapBorder: Color(hex: 0xDDDAD3),
+        svgCountryFill: Color(hex: 0xE8E5DF),
         colorfulOcean: Color(hex: 0xE8F4F0),
         colorfulLand: Color(hex: 0xDFEDE4),
         colorfulLandActive: Color(hex: 0xD8E8DC),
@@ -145,8 +145,8 @@ extension ThemeColors {
         rainIconColor: Color(hex: 0x57D3E5),
         snowIconColor: .white,
         moonIconColor: Color(hex: 0xBE9AED),
-        listCardFill: Color(hex: 0xE8E2D9),
-        glassFill: Color(hex: 0xE8E2D9),
+        listCardFill: Color(hex: 0xEFEBE5),
+        glassFill: Color(hex: 0xEFEBE5),
         filterSunny: Color(hex: 0xFDA409)
     )
 }
@@ -340,4 +340,3 @@ extension View {
         }
     }
 }
-

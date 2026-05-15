@@ -166,6 +166,16 @@ struct ContentView: View {
     @State private var macMapExpandedCardAnchor: CGPoint?
     @State private var macMapExpandedCardBaseOffset: CGSize = .zero
     @State var macMapExpandedCardDragOffset: CGSize = .zero
+    @State private var macHoverPresentedCardCityID: UUID?
+    @State var macExpandedCardShowsDetails: Bool = false
+    @State private var macSidebarContextTarget: String?
+    @State private var macSidebarDropTarget: String?
+    @State private var macSidebarHoveredDisclosureID: String?
+    @State private var macHoveredSearchSuggestionID: UUID?
+    @State var macExpandedCardHoveredDay: Int?
+    @State var macExpandedCardHoveringClose: Bool = false
+    @State var macExpandedCardHoveringRemove: Bool = false
+    @State var macExpandedCardHoveringOpenDetails: Bool = false
     #endif
 
     var toolbarTitle: String {
@@ -322,11 +332,17 @@ struct ContentView: View {
             }
         }
         .overlay(alignment: .top) {
-            Color.clear
-                .frame(height: 48)
-                .contentShape(Rectangle())
-                .gesture(WindowDragGesture())
-                .allowsWindowActivationEvents(true)
+            VStack(spacing: 0) {
+                Color.clear
+                    .frame(height: 54)
+                    .contentShape(Rectangle())
+                    .gesture(WindowDragGesture())
+                    .allowsWindowActivationEvents(true)
+                    .zIndex(50)
+
+                Spacer(minLength: 0)
+            }
+            .ignoresSafeArea(.container, edges: .top)
         }
     }
 
@@ -340,15 +356,7 @@ struct ContentView: View {
     }
 
     private var macMapAndDetailContent: some View {
-        HSplitView {
-            macMapContent
-
-            if showingCityDetail, tappedCity != nil {
-                macDetailSidebar
-                    .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showingCityDetail)
+        macMapContent
     }
 
     private var macMapContent: some View {
@@ -365,6 +373,7 @@ struct ContentView: View {
                                 .padding(.leading, 24)
                                 .padding(.bottom, 24)
                                 .transition(.move(edge: .leading).combined(with: .opacity))
+                                .animation(.smooth(duration: 0.22), value: showLegend)
                         }
                     }
                     .overlay(alignment: .trailing) {
@@ -406,16 +415,10 @@ struct ContentView: View {
         }
     }
 
-    private var macDetailSidebar: some View {
-        AnyView(iOSCityDetailDestination)
-            .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
-            .background(theme.colors.background)
-    }
-
     private var macWindowDragTopArea: some View {
         VStack(spacing: 0) {
             Color.clear
-                .frame(height: 48)
+                .frame(height: 54)
                 .contentShape(Rectangle())
                 .gesture(WindowDragGesture())
                 .allowsWindowActivationEvents(true)
@@ -527,7 +530,8 @@ struct ContentView: View {
     @ViewBuilder
     private var macSearchSuggestions: some View {
         if !inlineSearchText.isEmpty {
-            ForEach(inlineSortedSearchResults) { result in
+            ForEach(Array(inlineSortedSearchResults.prefix(6))) { result in
+                let isHovered = macHoveredSearchSuggestionID == result.id
                 Button {
                     Task {
                         await inlineSelectSearchResult(result)
@@ -535,18 +539,25 @@ struct ContentView: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(result.title)
+                            .foregroundStyle(isHovered ? .white : theme.colors.primaryText)
                         Text(result.subtitle)
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(isHovered ? .white.opacity(0.78) : .secondary)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 7)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(isHovered ? theme.colors.accent.opacity(0.16) : Color.clear)
+                    }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(inlineIsLoadingCity)
+                .onHover { hovering in
+                    macHoveredSearchSuggestionID = hovering ? result.id : nil
+                }
             }
         }
     }
@@ -557,7 +568,7 @@ struct ContentView: View {
                 if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city)
                         .id(city.city.id)
-                        .frame(width: 252, height: 380)
+                        .frame(width: 252, height: macExpandedCardShowsDetails ? 660 : 380)
                         .offset(macExpandedCardOffset(in: geometry.size))
                         .gesture(
                             DragGesture()
@@ -597,13 +608,13 @@ struct ContentView: View {
     }
 
     private func macExpandedCardTopLeft(in size: CGSize) -> CGSize {
-        let cardSize = CGSize(width: 252, height: 380)
+        let cardSize = CGSize(width: 252, height: macExpandedCardShowsDetails ? 660 : 380)
         let margin: CGFloat = 16
         let anchor = macMapExpandedCardAnchor ?? CGPoint(
             x: size.width - cardSize.width - margin,
             y: size.height - cardSize.height - margin
         )
-        let proposed = CGPoint(x: anchor.x + 6, y: anchor.y + 6)
+        let proposed = CGPoint(x: anchor.x - cardSize.width - 8, y: anchor.y + 8)
         let clamped = CGPoint(
             x: min(max(proposed.x, margin), size.width - cardSize.width - margin),
             y: min(max(proposed.y, margin), size.height - cardSize.height - margin)
@@ -629,6 +640,16 @@ struct ContentView: View {
                 .keyboardShortcut(.upArrow, modifiers: [.command, .shift])
             Button("") { switchListByOffset(1) }
                 .keyboardShortcut(.downArrow, modifiers: [.command, .shift])
+            Button("") {
+                if showingMapExpandedCard {
+                    showingMapExpandedCard = false
+                    tappedCity = nil
+                    macMapExpandedCardAnchor = nil
+                    macMapExpandedCardBaseOffset = .zero
+                    macMapExpandedCardDragOffset = .zero
+                }
+            }
+            .keyboardShortcut(.escape, modifiers: [])
         }
         .frame(width: 0, height: 0)
         .opacity(0)
@@ -659,8 +680,8 @@ struct ContentView: View {
                     macSidebarListSection(for: listID)
                 }
             }
-            .padding(.top, 8)
-            .padding(.bottom, 14)
+            .padding(.top, 0)
+            .padding(.bottom, 8)
         }
         .background(theme.colors.background)
         .onAppear {
@@ -673,6 +694,7 @@ struct ContentView: View {
     private func macSidebarListSection(for listID: CityListID) -> some View {
         let isExpanded = sidebarExpandedListIDs.contains(listID.rawValue)
         let cities = weatherService.weatherData(for: listID)
+        let isActive = listID == weatherService.activeListID
 
         return VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -681,7 +703,7 @@ struct ContentView: View {
                 } label: {
                     Text(listID.localizedDisplayName(locale: locale))
                         .font(.headline.weight(.semibold))
-                        .foregroundStyle(theme.colors.accent)
+                        .foregroundStyle(isActive ? theme.colors.accent : theme.colors.secondaryText.opacity(0.68))
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -700,21 +722,67 @@ struct ContentView: View {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 24, height: 24)
+                        .frame(width: 28, height: 28)
+                        .background {
+                            if macSidebarHoveredDisclosureID == listID.rawValue {
+                                Circle()
+                                    .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
+                            }
+                        }
                         .rotationEffect(.degrees(isExpanded ? 0 : -90))
                 }
                 .buttonStyle(.plain)
+                .onHover { hovering in
+                    macSidebarHoveredDisclosureID = hovering ? listID.rawValue : (macSidebarHoveredDisclosureID == listID.rawValue ? nil : macSidebarHoveredDisclosureID)
+                }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.vertical, 5)
             .contentShape(Rectangle())
+            .overlay {
+                if macSidebarContextTarget == macSidebarListContextID(listID) {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(theme.colors.accent, lineWidth: 1.5)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                }
+            }
+            .overlay(alignment: .top) {
+                if macSidebarDropTarget == macSidebarListContextID(listID) {
+                    Capsule()
+                        .fill(theme.colors.accent)
+                        .frame(height: 2)
+                        .padding(.horizontal, 12)
+                        .offset(y: 7)
+                }
+            }
+            .onDrag {
+                NSItemProvider(object: macSidebarListDragPayload(listID) as NSString)
+            } preview: {
+                EmptyView()
+            }
+            .onDrop(
+                of: [UTType.text],
+                delegate: macSidebarDropDelegate(macSidebarListContextID(listID)) { providers in
+                    loadMacSidebarDrop(providers, onList: listID)
+                }
+            )
             .contextMenu {
+                Text("")
+                    .hidden()
+                    .onAppear {
+                        showMacSidebarContextHighlight(macSidebarListContextID(listID))
+                    }
+                    .onDisappear {
+                        clearMacSidebarContextHighlight(macSidebarListContextID(listID))
+                    }
                 listActions(for: listID)
             }
 
             Rectangle()
                 .fill(theme.colors.secondaryText.opacity(0.22))
                 .frame(height: 1)
+                .padding(.horizontal, 14)
 
             if isExpanded {
                 if cities.isEmpty {
@@ -723,7 +791,7 @@ struct ContentView: View {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
-                        .padding(.vertical, 9)
+                        .padding(.vertical, 6)
                 } else {
                     ForEach(cities) { city in
                         macSidebarCityRow(city, in: listID)
@@ -731,12 +799,22 @@ struct ContentView: View {
                 }
             }
         }
-        .padding(.bottom, 14)
+        .padding(.bottom, 6)
+        .onDrop(
+            of: [UTType.text],
+            delegate: macSidebarDropDelegate(macSidebarListContextID(listID)) { providers in
+                loadMacSidebarDrop(providers, onList: listID)
+            }
+        )
     }
 
     private func macSidebarCityRow(_ city: CityWeather, in listID: CityListID) -> some View {
-        Button {
-            revealCityOnMap(city, in: listID)
+        let isActive = listID == weatherService.activeListID
+
+        return Button {
+            if isActive {
+                revealCityOnMap(city, in: listID)
+            }
         } label: {
             HStack(spacing: 10) {
                 Circle()
@@ -746,19 +824,162 @@ struct ContentView: View {
 
                 Text(city.city.localizedName(locale: locale))
                     .font(.callout.weight(.medium))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(isActive ? theme.colors.primaryText : theme.colors.secondaryText.opacity(0.72))
                     .lineLimit(1)
 
                 Spacer(minLength: 8)
             }
             .padding(.horizontal, 18)
-            .padding(.vertical, 5)
+            .padding(.vertical, 4)
             .contentShape(Rectangle())
+            .overlay {
+                if macSidebarContextTarget == macSidebarCityContextID(city, in: listID) {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .strokeBorder(theme.colors.accent, lineWidth: 1.5)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 1)
+                }
+            }
+            .overlay(alignment: .top) {
+                if macSidebarDropTarget == macSidebarCityContextID(city, in: listID) {
+                    Capsule()
+                        .fill(theme.colors.accent)
+                        .frame(height: 2)
+                        .padding(.horizontal, 14)
+                        .offset(y: 7)
+                }
+            }
         }
         .buttonStyle(.plain)
+        .onDrag {
+            NSItemProvider(object: macSidebarCityDragPayload(city, in: listID) as NSString)
+        } preview: {
+            EmptyView()
+        }
+        .onDrop(
+            of: [UTType.text],
+            delegate: macSidebarDropDelegate(macSidebarCityContextID(city, in: listID)) { providers in
+                loadMacSidebarDrop(providers, onCity: city, in: listID)
+            }
+        )
         .contextMenu {
+            Text("")
+                .hidden()
+                .onAppear {
+                    showMacSidebarContextHighlight(macSidebarCityContextID(city, in: listID))
+                }
+                .onDisappear {
+                    clearMacSidebarContextHighlight(macSidebarCityContextID(city, in: listID))
+                }
             cityActions(for: city, in: listID)
         }
+    }
+
+    private func macSidebarListContextID(_ listID: CityListID) -> String {
+        "list:\(listID.rawValue)"
+    }
+
+    private func macSidebarCityContextID(_ city: CityWeather, in listID: CityListID) -> String {
+        "city:\(listID.rawValue):\(city.id.uuidString)"
+    }
+
+    private func macSidebarListDragPayload(_ listID: CityListID) -> String {
+        "list|\(listID.rawValue)"
+    }
+
+    private func macSidebarCityDragPayload(_ city: CityWeather, in listID: CityListID) -> String {
+        "city|\(listID.rawValue)|\(city.id.uuidString)"
+    }
+
+    private func showMacSidebarContextHighlight(_ id: String) {
+        macSidebarContextTarget = id
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            if macSidebarContextTarget == id {
+                macSidebarContextTarget = nil
+            }
+        }
+    }
+
+    private func clearMacSidebarContextHighlight(_ id: String) {
+        if macSidebarContextTarget == id {
+            macSidebarContextTarget = nil
+        }
+    }
+
+    private func macSidebarDropDelegate(_ id: String, perform: @escaping ([NSItemProvider]) -> Bool) -> MacSidebarMoveDropDelegate {
+        MacSidebarMoveDropDelegate(
+            id: id,
+            setTarget: { macSidebarDropTarget = $0 },
+            clearTarget: {
+                if macSidebarDropTarget == $0 {
+                    macSidebarDropTarget = nil
+                }
+            },
+            perform: perform
+        )
+    }
+
+    private func loadMacSidebarDrop(_ providers: [NSItemProvider], onList listID: CityListID) -> Bool {
+        loadMacSidebarDropPayload(from: providers) { payload in
+            _ = handleMacSidebarDrop([payload], onList: listID)
+        }
+    }
+
+    private func loadMacSidebarDrop(_ providers: [NSItemProvider], onCity city: CityWeather, in listID: CityListID) -> Bool {
+        loadMacSidebarDropPayload(from: providers) { payload in
+            _ = handleMacSidebarDrop([payload], onCity: city, in: listID)
+        }
+    }
+
+    private func loadMacSidebarDropPayload(from providers: [NSItemProvider], perform action: @escaping (String) -> Void) -> Bool {
+        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: NSString.self) }) else {
+            macSidebarDropTarget = nil
+            return false
+        }
+
+        provider.loadObject(ofClass: NSString.self) { object, _ in
+            guard let payload = object as? String ?? (object as? NSString).map(String.init) else { return }
+            DispatchQueue.main.async {
+                action(payload)
+                macSidebarDropTarget = nil
+            }
+        }
+        return true
+    }
+
+    private func handleMacSidebarDrop(_ payloads: [String], onList targetListID: CityListID) -> Bool {
+        guard let payload = payloads.first else { return false }
+        let parts = payload.split(separator: "|").map(String.init)
+        guard let kind = parts.first else { return false }
+
+        if kind == "list", parts.count == 2 {
+            var lists = CityListID.allLists
+            guard let source = lists.firstIndex(where: { $0.rawValue == parts[1] }),
+                  let target = lists.firstIndex(of: targetListID),
+                  source != target else { return false }
+            let moved = lists.remove(at: source)
+            lists.insert(moved, at: target)
+            CityListID.saveListOrder(lists)
+            return true
+        }
+
+        if kind == "city", parts.count == 3 {
+            guard let sourceListID = CityListID.allLists.first(where: { $0.rawValue == parts[1] }) else { return false }
+            return weatherService.moveCity(id: parts[2], from: sourceListID, to: targetListID, destination: nil)
+        }
+
+        return false
+    }
+
+    private func handleMacSidebarDrop(_ payloads: [String], onCity targetCity: CityWeather, in targetListID: CityListID) -> Bool {
+        guard let payload = payloads.first else { return false }
+        let parts = payload.split(separator: "|").map(String.init)
+        guard parts.count == 3, parts[0] == "city",
+              let sourceListID = CityListID.allLists.first(where: { $0.rawValue == parts[1] }),
+              let targetIndex = weatherService.weatherData(for: targetListID).firstIndex(where: { $0.id == targetCity.id }) else {
+            return handleMacSidebarDrop(payloads, onList: targetListID)
+        }
+        return weatherService.moveCity(id: parts[2], from: sourceListID, to: targetListID, destination: targetIndex)
     }
 
     private func sidebarDotColor(for cityWeather: CityWeather) -> Color {
@@ -1720,28 +1941,39 @@ struct ContentView: View {
     private var iOSDateSliderOverlay: some View {
         // Date slider only on map tab — list tab uses the date switcher capsule
         if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode {
+            #if os(macOS)
+            GeometryReader { geometry in
+                let topClearance: CGFloat = 78
+                let bottomClearance: CGFloat = 64
+                let availableHeight = max(190, geometry.size.height - topClearance - bottomClearance)
+                let sliderHeight = min(300, max(220, availableHeight * 0.52))
+
+                HStack(spacing: 0) {
+                    Spacer(minLength: 0)
+                    Color.clear
+                        .frame(width: 60, height: sliderHeight)
+                        .contentShape(Rectangle())
+                        .overlay(alignment: .trailing) {
+                            mapDateSlider(height: sliderHeight)
+                        }
+                        .padding(.trailing, 1)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                .padding(.top, topClearance)
+                .padding(.bottom, bottomClearance)
+            }
+            .transition(.opacity)
+            #else
             Color.clear
-                #if os(macOS)
-                .frame(width: 60, height: 300)
-                #else
                 .frame(width: 80, height: 500)
-                #endif
                 .contentShape(Rectangle())
                 .overlay(alignment: .trailing) {
-                    #if os(macOS)
-                    mapDateSlider(height: 280)
-                    #else
                     mapDateSlider(height: 420)
-                    #endif
                 }
-                #if os(macOS)
-                .padding(.top, 88)
-                .padding(.bottom, 88)
-                #else
                 .padding(.bottom, 440)
-                #endif
                 .padding(.trailing, 1)
                 .transition(.opacity)
+            #endif
         }
     }
 
@@ -1884,6 +2116,8 @@ struct ContentView: View {
 
     private func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
         #if os(macOS)
+        macHoverPresentedCardCityID = nil
+        macExpandedCardShowsDetails = false
         macMapExpandedCardAnchor = anchor
         macMapExpandedCardBaseOffset = .zero
         macMapExpandedCardDragOffset = .zero
@@ -1908,6 +2142,33 @@ struct ContentView: View {
             }
         }
     }
+
+    #if os(macOS)
+    private func handleMapMarkerCommandHover(_ city: CityWeather?, anchor: CGPoint?) {
+        guard let city else {
+            if macHoverPresentedCardCityID == tappedCity?.id {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    showingMapExpandedCard = false
+                    tappedCity = nil
+                    macHoverPresentedCardCityID = nil
+                    macExpandedCardShowsDetails = false
+                }
+            }
+            return
+        }
+
+        guard !showingMapExpandedCard || macHoverPresentedCardCityID != nil else { return }
+        macHoverPresentedCardCityID = city.id
+        macMapExpandedCardAnchor = anchor
+        macMapExpandedCardBaseOffset = .zero
+        macMapExpandedCardDragOffset = .zero
+        macExpandedCardShowsDetails = false
+        tappedCity = city
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showingMapExpandedCard = true
+        }
+    }
+    #endif
 
     private func renamedCityMatching(_ city: CityWeather) -> CityWeather? {
         weatherService.cityWeatherData.first { candidate in
@@ -2910,6 +3171,11 @@ struct ContentView: View {
                 leadingFitPadding: macMapLeadingFitPadding,
                 onMarkerTap: { city, point in
                     handleMapMarkerTap(city, anchor: point)
+                },
+                onMarkerCommandHover: { city, point in
+                    #if os(macOS)
+                    handleMapMarkerCommandHover(city, anchor: point)
+                    #endif
                 }
             )
             .ignoresSafeArea()
@@ -3365,6 +3631,34 @@ struct WeatherMarker: View {
             }
         }
         .offset(y: -16)
+    }
+}
+
+private struct MacSidebarMoveDropDelegate: DropDelegate {
+    let id: String
+    let setTarget: (String) -> Void
+    let clearTarget: (String) -> Void
+    let perform: ([NSItemProvider]) -> Bool
+
+    func validateDrop(info: DropInfo) -> Bool {
+        info.hasItemsConforming(to: [UTType.text])
+    }
+
+    func dropEntered(info: DropInfo) {
+        setTarget(id)
+    }
+
+    func dropExited(info: DropInfo) {
+        clearTarget(id)
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        clearTarget(id)
+        return perform(info.itemProviders(for: [UTType.text]))
     }
 }
 

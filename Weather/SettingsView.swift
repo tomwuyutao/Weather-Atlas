@@ -259,8 +259,10 @@ struct SettingsView: View {
                 Button(role: .destructive) {
                     showingResetConfirmation = true
                 } label: {
-                    Label(localizedString("Reset Lists to Defaults", locale: locale), systemImage: "arrow.counterclockwise")
+                    Text(localizedString("Reset Lists to Defaults", locale: locale))
+                        .foregroundStyle(colors.accent)
                 }
+                .buttonStyle(.plain)
             }
 
             Section(localizedString("About", locale: locale)) {
