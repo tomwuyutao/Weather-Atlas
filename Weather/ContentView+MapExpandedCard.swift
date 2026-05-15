@@ -202,15 +202,17 @@ extension ContentView {
                         }
                     }
                 } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 12, weight: .semibold))
-                        .frame(width: 28, height: 28)
-                        .background {
-                            if macExpandedCardHoveringClose {
-                                Circle()
-                                    .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
-                            }
+                    ZStack {
+                        if macExpandedCardHoveringClose {
+                            Circle()
+                                .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
+                                .frame(width: 28, height: 28)
                         }
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .frame(width: 28, height: 28)
+                    .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -300,7 +302,11 @@ extension ContentView {
             .padding(.bottom, 14)
 
             if macExpandedCardShowsDetails {
-                macExpandedCardDetails(for: cityWeather, forecast: selectedForecast, tempUnit: tempUnit, distUnit: distUnit)
+                ScrollView(.vertical, showsIndicators: false) {
+                    macExpandedCardDetails(for: cityWeather, forecast: selectedForecast, tempUnit: tempUnit, distUnit: distUnit)
+                }
+                    .frame(maxHeight: 308)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .padding(.bottom, 14)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -459,6 +465,68 @@ extension ContentView {
         ]
 
         return VStack(spacing: 8) {
+            VStack(alignment: .leading, spacing: 6) {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 0.75)
+                    .padding(.horizontal, -14)
+
+                HStack(spacing: 8) {
+                    macExpandedCardChartMetricMenu
+                    Spacer()
+                    macExpandedCardChartRangeMenu
+                }
+
+                GeometryReader { geo in
+                    if macExpandedCardChartRange == .tenDay {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            DailyTimelineChart(
+                                dailyForecasts: cityWeather.dailyForecasts,
+                                chartMetric: macExpandedCardChartMetric,
+                                selectedDayOffset: selectedDayOffset,
+                                cityTimeZone: cityWeather.timeZone,
+                                lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
+                                compactLayout: true
+                            )
+                            .frame(width: max(geo.size.width * 1.1, 270), height: geo.size.height)
+                        }
+                    } else if macExpandedCardChartRange == .entireDay {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HourlyTimelineChart(
+                                hourlyForecasts: forecast.hourlyForecasts,
+                                chartMetric: macExpandedCardChartMetric,
+                                dayOffset: max(0, selectedDayOffset),
+                                cityTimeZone: cityWeather.timeZone,
+                                previewCurrentHour: nil,
+                                lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
+                                showAllHours: true,
+                                compactLayout: true
+                            )
+                            .frame(width: max(geo.size.width * 1.6, 390), height: geo.size.height)
+                        }
+                    } else {
+                        HourlyTimelineChart(
+                            hourlyForecasts: forecast.hourlyForecasts,
+                            chartMetric: macExpandedCardChartMetric,
+                            dayOffset: max(0, selectedDayOffset),
+                            cityTimeZone: cityWeather.timeZone,
+                            previewCurrentHour: nil,
+                            lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
+                            compactLayout: true
+                        )
+                        .frame(width: geo.size.width, height: geo.size.height)
+                    }
+                }
+                .frame(height: 184)
+                .clipped()
+
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(height: 0.75)
+                    .padding(.horizontal, -14)
+                    .padding(.top, -6)
+            }
+
             ForEach(rows, id: \.1) { icon, label, value in
                 HStack(spacing: 10) {
                     Image(systemName: icon)
@@ -501,6 +569,160 @@ extension ContentView {
                 .padding(.vertical, 7)
                 .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
+        }
+    }
+
+    private var macExpandedCardChartMetricMenu: some View {
+        Menu {
+            ForEach(macExpandedCardChartMetrics, id: \.0) { metric, icon, label in
+                Button {
+                    macExpandedCardChartMetric = metric
+                } label: {
+                    HStack {
+                        if macExpandedCardChartMetric == metric {
+                            Image(systemName: "checkmark")
+                        } else {
+                            Image(systemName: "checkmark")
+                                .hidden()
+                        }
+                        Image(systemName: icon)
+                        Text(label)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: macExpandedCardChartMetricIcon(macExpandedCardChartMetric))
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(macExpandedCardChartLineColor(macExpandedCardChartMetric))
+                Text(macExpandedCardChartMetricLabel(macExpandedCardChartMetric))
+                    .font(.caption2.weight(.semibold))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 7, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(height: 22)
+            .padding(.horizontal, 8)
+            .background(Color.primary.opacity(0.07), in: Capsule())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+    }
+
+    private var macExpandedCardChartRangeMenu: some View {
+        Menu {
+            ForEach(macExpandedCardChartRanges, id: \.0) { range, label in
+                Button {
+                    macExpandedCardChartRange = range
+                } label: {
+                    HStack {
+                        if macExpandedCardChartRange == range {
+                            Image(systemName: "checkmark")
+                        } else {
+                            Image(systemName: "checkmark")
+                                .hidden()
+                        }
+                        Text(label)
+                    }
+                }
+            }
+        } label: {
+            Text(macExpandedCardChartRangeLabel(macExpandedCardChartRange))
+                .font(.system(size: 10, weight: .semibold))
+                .lineLimit(1)
+                .frame(height: 20)
+                .padding(.horizontal, 7)
+                .background(Color.primary.opacity(0.07), in: Capsule())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+    }
+
+    private var macExpandedCardChartRanges: [(WeatherDetailView.ChartTimeRange, String)] {
+        [
+            (.daytime, localizedString("Daytime", locale: locale)),
+            (.entireDay, localizedString("Entire Day", locale: locale)),
+            (.tenDay, localizedString("10 Days", locale: locale))
+        ]
+    }
+
+    private var macExpandedCardChartMetrics: [(WeatherDetailView.ChartMetric, String, String)] {
+        [
+            (.temperature, "thermometer.medium", localizedString("Temperature", locale: locale)),
+            (.feelsLike, "thermometer.variable.and.figure", localizedString("Feels Like", locale: locale)),
+            (.cloudCover, "cloud", localizedString("Cloud Cover", locale: locale)),
+            (.precipitation, "drop.fill", localizedString("Precipitation", locale: locale)),
+            (.windSpeed, "wind", localizedString("Wind Speed", locale: locale)),
+            (.uvIndex, "sun.max.fill", localizedString("UV Index", locale: locale)),
+            (.humidity, "humidity.fill", localizedString("Humidity", locale: locale)),
+            (.visibility, "eye", localizedString("Visibility", locale: locale))
+        ]
+    }
+
+    private func macExpandedCardChartMetricIcon(_ metric: WeatherDetailView.ChartMetric) -> String {
+        macExpandedCardChartMetrics.first(where: { $0.0 == metric })?.1 ?? "chart.xyaxis.line"
+    }
+
+    private func macExpandedCardChartMetricLabel(_ metric: WeatherDetailView.ChartMetric) -> String {
+        macExpandedCardChartMetrics.first(where: { $0.0 == metric })?.2 ?? localizedString("Forecast", locale: locale)
+    }
+
+    private func macExpandedCardChartRangeLabel(_ range: WeatherDetailView.ChartTimeRange) -> String {
+        switch range {
+        case .daytime: return localizedString("Daytime", locale: locale)
+        case .entireDay: return localizedString("Entire Day", locale: locale)
+        case .tenDay: return localizedString("10 Days", locale: locale)
+        }
+    }
+
+    private func macExpandedCardChartLineColor(_ metric: WeatherDetailView.ChartMetric) -> Color {
+        switch metric {
+        case .temperature:   return Color(hex: 0xE8536B)
+        case .feelsLike:     return Color(hex: 0xED8988)
+        case .cloudCover:    return Color(hex: 0x9ABCCE)
+        case .precipitation: return Color(hex: 0x57D3E5)
+        case .windSpeed:     return Color(hex: 0xFDA409)
+        case .uvIndex:       return Color(hex: 0xFB4368)
+        case .humidity:      return Color(hex: 0xBE9AED)
+        case .visibility:    return Color(hex: 0x1579C7)
+        }
+    }
+
+    private func macExpandedCardChartCurrentValue(
+        for cityWeather: CityWeather,
+        forecast: DailyForecast,
+        metric: WeatherDetailView.ChartMetric,
+        tempUnit: TemperatureUnit,
+        distUnit: DistanceUnit
+    ) -> String {
+        let isNow = selectedDayOffset == -1
+        switch metric {
+        case .temperature:
+            return isNow ? tempUnit.display(cityWeather.temperature) : tempUnit.displaySlash(low: forecast.dailyLow, high: forecast.dailyHigh)
+        case .feelsLike:
+            if isNow {
+                return cityWeather.currentFeelsLike.map { tempUnit.display($0) } ?? "-"
+            }
+            if let low = forecast.feelsLikeLow, let high = forecast.feelsLikeHigh {
+                return tempUnit.displaySlash(low: low, high: high)
+            }
+            return "-"
+        case .cloudCover:
+            return (isNow ? cityWeather.currentCloudCover : forecast.cloudCover).map { "\(Int($0 * 100))%" } ?? "-"
+        case .precipitation:
+            if isNow {
+                return [.rain, .drizzle, .snow].contains(cityWeather.condition) ? "100%" : "0%"
+            }
+            return forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "-"
+        case .windSpeed:
+            return (isNow ? cityWeather.currentWindSpeed : forecast.windSpeed).map { distUnit.displayWindSpeed($0) } ?? "-"
+        case .uvIndex:
+            return (isNow ? cityWeather.currentUVIndex : forecast.uvIndex).map { "\($0)" } ?? "-"
+        case .humidity:
+            return (isNow ? cityWeather.currentHumidity : forecast.maxHumidity).map { "\(Int($0 * 100))%" } ?? "-"
+        case .visibility:
+            return (isNow ? cityWeather.currentVisibility : forecast.maxVisibility).map { distUnit.display($0) } ?? "-"
         }
     }
 

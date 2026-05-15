@@ -94,7 +94,6 @@ enum TemperatureUnit: String, CaseIterable {
 struct SettingsView: View {
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.kilometers.rawValue
-    @AppStorage("isGridView") private var isGridView: Bool = false
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     let weatherService: WeatherService
     let onResetLists: () -> Void
@@ -252,9 +251,7 @@ struct SettingsView: View {
                     Text("Dark").tag(AppThemeStyle.dark)
                     Text("Auto").tag(AppThemeStyle.automatic)
                 }
-                .pickerStyle(.segmented)
-
-                Toggle("Grid View", isOn: $isGridView)
+                .pickerStyle(.menu)
 
                 Button(role: .destructive) {
                     showingResetConfirmation = true

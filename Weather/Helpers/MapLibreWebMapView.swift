@@ -115,6 +115,14 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             observers.append(center.addObserver(forName: .weatherZoomOutCommand, object: nil, queue: .main) { [weak self] _ in
                 self?.evaluate("window.weatherMapZoomOut?.();")
             })
+            observers.append(center.addObserver(forName: .weatherPanCommand, object: nil, queue: .main) { [weak self] notification in
+                guard let key = notification.object as? String else { return }
+                self?.evaluate("window.weatherMapStep?.(\(Self.jsString(key)));")
+            })
+            observers.append(center.addObserver(forName: .weatherKeyboardZoomCommand, object: nil, queue: .main) { [weak self] notification in
+                guard let key = notification.object as? String else { return }
+                self?.evaluate("window.weatherMapKeyboardZoom?.(\(Self.jsString(key)));")
+            })
         }
 
         deinit {
@@ -138,6 +146,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             case "markerTap":
                 guard let id = body["id"] as? String,
                       let city = parent.cities.first(where: { $0.id.uuidString == id }) else { return }
+                print("city dot clicked: \(city.city.name)")
                 let point: CGPoint?
                 if let x = body["x"] as? Double, let y = body["y"] as? Double {
                     point = CGPoint(x: x, y: y)
@@ -145,6 +154,12 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                     point = nil
                 }
                 parent.onMarkerTap(city, point)
+            case "mapLeftClick":
+                let hoveredID = body["hoveredID"] as? String ?? ""
+                let source = body["source"] as? String ?? "click"
+                let x = body["x"] as? Double ?? 0
+                let y = body["y"] as? Double ?? 0
+                print("map left click registered (\(source)): x=\(Int(x)) y=\(Int(y)) hoveredID=\(hoveredID.isEmpty ? "none" : hoveredID)")
             case "markerCommandHover":
                 guard let id = body["id"] as? String,
                       let city = parent.cities.first(where: { $0.id.uuidString == id }) else { return }
@@ -339,39 +354,41 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           height: 54px;
           z-index: 4;
           pointer-events: none;
-          background: rgba(237, 231, 222, 0.24);
-          -webkit-backdrop-filter: blur(18px) saturate(1.35);
-          backdrop-filter: blur(18px) saturate(1.35);
-          border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+          background: rgba(237, 231, 222, 0.10);
+          -webkit-backdrop-filter: blur(10px) saturate(1.12);
+          backdrop-filter: blur(10px) saturate(1.12);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.08);
         }
         body.dark-map #window-drag-blur {
-          background: rgba(26, 27, 46, 0.24);
-          border-bottom-color: rgba(255, 255, 255, 0.08);
+          background: rgba(26, 27, 46, 0.10);
+          border-bottom-color: rgba(255, 255, 255, 0.04);
         }
         .maplibregl-map, .maplibregl-canvas-container, .maplibregl-canvas { width: 100% !important; height: 100% !important; cursor: default !important; }
         .maplibregl-ctrl-logo, .maplibregl-ctrl-attrib { display: none !important; }
         #hover-label {
           position: fixed;
           z-index: 5;
-          pointer-events: none;
-          transform: translate(-50%, calc(-100% - 14px));
-          padding: 3px 7px;
-          border-radius: 7px;
-          font: 600 13px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
-          color: #282828;
-          background: rgba(244, 241, 235, 0.86);
+          padding: 4px 8px;
+          border-radius: 999px;
+          font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+          color: #1F1F1F;
+          background: rgba(244, 241, 235, 0.88);
           opacity: 0;
-          transition: opacity 140ms ease, transform 140ms ease;
+          transform: translate(-50%, -100%) translateY(-20px);
+          pointer-events: none;
+          transition: opacity 100ms ease, transform 100ms ease;
+          box-shadow: 0 6px 18px rgba(0, 0, 0, 0.14);
+          -webkit-backdrop-filter: blur(18px) saturate(1.2);
+          backdrop-filter: blur(18px) saturate(1.2);
           white-space: nowrap;
-          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.12);
         }
         body.dark-map #hover-label {
           color: #E8E4DF;
-          background: rgba(26, 27, 46, 0.86);
+          background: rgba(26, 27, 46, 0.88);
         }
         #hover-label.visible {
           opacity: 1;
-          transform: translate(-50%, calc(-100% - 18px));
+          transform: translate(-50%, -100%) translateY(-16px);
         }
       </style>
     </head>
@@ -392,6 +409,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         var pinchVelocity = 0;
         var pinchAnimationFrame = null;
         var baseStylePreferencesApplied = false;
+        var leftMouseDown = null;
 
         function styleURL(mode) {
           return mode === 'dark'
@@ -509,6 +527,16 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           applyWeatherMapStylePreferences();
           if (!map.getSource('weather')) {
             map.addSource('weather', { type: 'geojson', data: emptyCollection() });
+          }
+          if (!map.getLayer('weather-hit')) {
+            map.addLayer({
+              id: 'weather-hit', type: 'circle', source: 'weather',
+              paint: {
+                'circle-radius': 11,
+                'circle-color': 'rgba(0,0,0,0.01)',
+                'circle-opacity': 0.01
+              }
+            });
           }
           if (!map.getLayer('weather-glow')) {
             map.addLayer({
@@ -640,15 +668,94 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           if (map) map.zoomOut({ duration: 220 });
         };
 
-        function refreshHoveredMarker(id, point) {
+        window.weatherMapStep = function(key) {
+          if (!map) return;
+          const step = 80;
+          if (key === 'w') map.panBy([0, -step], { duration: 180 });
+          if (key === 'a') map.panBy([-step, 0], { duration: 180 });
+          if (key === 's') map.panBy([0, step], { duration: 180 });
+          if (key === 'd') map.panBy([step, 0], { duration: 180 });
+        };
+
+        window.weatherMapKeyboardZoom = function(key) {
+          if (!map) return;
+          if (key === 'c') map.zoomTo(map.getZoom() + 0.6, { duration: 180 });
+          if (key === 'v') map.zoomTo(map.getZoom() - 0.6, { duration: 180 });
+        };
+
+        function markerScreenPoint(feature, fallbackPoint) {
+          const coordinates = feature?.geometry?.coordinates;
+          return coordinates ? map.project(coordinates) : fallbackPoint;
+        }
+
+        function nearestMarkerFeature(features, point) {
+          if (!features || !features.length) return null;
+          let best = null;
+          let bestDistance = Infinity;
+          const seen = new Set();
+          features.forEach(feature => {
+            const id = feature?.properties?.id;
+            if (!id || seen.has(id)) return;
+            seen.add(id);
+            const markerPoint = markerScreenPoint(feature, point);
+            const dx = markerPoint.x - point.x;
+            const dy = markerPoint.y - point.y;
+            const distance = dx * dx + dy * dy;
+            if (distance < bestDistance) {
+              bestDistance = distance;
+              best = feature;
+            }
+          });
+          return best;
+        }
+
+        function markerFeatureAtPoint(point, radius = 11) {
+          const hitBox = [
+            [point.x - radius, point.y - radius],
+            [point.x + radius, point.y + radius]
+          ];
+          const features = map.queryRenderedFeatures(hitBox, {
+            layers: ['weather-hit', 'weather-points', 'weather-halo', 'weather-glow']
+          });
+          return nearestMarkerFeature(features, point);
+        }
+
+        function postLeftClickDebug(source, point) {
+          post({
+            type: 'mapLeftClick',
+            source,
+            x: point.x,
+            y: point.y,
+            hoveredID: hoveredMarkerID || ''
+          });
+        }
+
+        function openHoveredMarkerFromPoint(point) {
+          if (!hoveredMarkerID || !hoveredMarkerPoint) return false;
+          post({ type: 'markerTap', id: hoveredMarkerID, x: hoveredMarkerPoint.x, y: hoveredMarkerPoint.y });
+          return true;
+        }
+
+        function updateHoveredMarkerLabel(id, point) {
           const feature = pendingPayload?.features?.find(item => item.id === id);
           const label = document.getElementById('hover-label');
-          if (label && point && feature) {
-            label.textContent = feature.name;
+          if (!label || !feature || !point) return;
+          const clipped = point.x < 18
+            || point.y < 18
+            || point.x > window.innerWidth - 18
+            || point.y > window.innerHeight - 18;
+          if (clipped || !feature.name) {
+            label.classList.remove('visible');
+          } else {
+            label.textContent = feature.name || '';
             label.style.left = `${point.x}px`;
             label.style.top = `${point.y}px`;
             label.classList.add('visible');
           }
+        }
+
+        function refreshHoveredMarker(id, point) {
+          updateHoveredMarkerLabel(id, point);
           if (hoveredMarkerID === id) {
             hoveredMarkerPoint = point;
           } else {
@@ -656,6 +763,18 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             hoveredMarkerPoint = point;
             if (pendingPayload) updateSource(pendingPayload);
           }
+        }
+
+        function updateHoveredMarkerPosition() {
+          if (!hoveredMarkerID || !pendingPayload) return;
+          const feature = pendingPayload.features?.find(item => item.id === hoveredMarkerID);
+          if (!feature) {
+            clearHoveredMarker();
+            return;
+          }
+          const point = map.project([feature.longitude, feature.latitude]);
+          hoveredMarkerPoint = point;
+          updateHoveredMarkerLabel(hoveredMarkerID, point);
         }
 
         function endCommandHoverCard() {
@@ -680,10 +799,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
 
         function clearHoveredMarker() {
-          document.getElementById('hover-label')?.classList.remove('visible');
           if (!hoveredMarkerID) return;
           hoveredMarkerID = '';
           hoveredMarkerPoint = null;
+          document.getElementById('hover-label')?.classList.remove('visible');
           if (pendingPayload) updateSource(pendingPayload);
           endCommandHoverCard();
         }
@@ -731,8 +850,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             event.stopImmediatePropagation();
             const point = new maplibregl.Point(event.offsetX, event.offsetY);
             if (event.ctrlKey) {
-              const delta = -event.deltaY / 420;
-              pinchVelocity = Math.max(-0.12, Math.min(0.12, delta));
+              const delta = -event.deltaY / 72;
+              pinchVelocity = Math.max(-0.62, Math.min(0.62, delta));
               map.zoomTo(map.getZoom() + pinchVelocity, {
                 duration: 0,
                 around: map.unproject(point)
@@ -741,6 +860,39 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             } else {
               stopPinchInertia();
               map.panBy([event.deltaX, event.deltaY], { duration: 0 });
+            }
+          }, { capture: true, passive: false });
+          map.getCanvas().addEventListener('mousedown', event => {
+            if (event.button !== 0) return;
+            leftMouseDown = {
+              x: event.offsetX,
+              y: event.offsetY,
+              time: Date.now(),
+              hoveredID: hoveredMarkerID || '',
+              hoveredPoint: hoveredMarkerPoint ? { x: hoveredMarkerPoint.x, y: hoveredMarkerPoint.y } : null
+            };
+          }, { capture: true, passive: true });
+          map.getCanvas().addEventListener('mouseup', event => {
+            if (event.button !== 0) return;
+            const point = new maplibregl.Point(event.offsetX, event.offsetY);
+            postLeftClickDebug('mouseup', point);
+            const down = leftMouseDown;
+            leftMouseDown = null;
+            if (!down) return;
+            const dx = event.offsetX - down.x;
+            const dy = event.offsetY - down.y;
+            const movement = Math.sqrt(dx * dx + dy * dy);
+            const elapsed = Date.now() - down.time;
+            if (movement <= 12 && elapsed < 1000 && (hoveredMarkerID || down.hoveredID)) {
+              const id = hoveredMarkerID || down.hoveredID;
+              const markerPoint = hoveredMarkerID && hoveredMarkerPoint
+                ? hoveredMarkerPoint
+                : down.hoveredPoint;
+              if (id && markerPoint) {
+                post({ type: 'markerTap', id, x: markerPoint.x, y: markerPoint.y });
+                event.preventDefault();
+                event.stopImmediatePropagation();
+              }
             }
           }, { capture: true, passive: false });
           map.on('load', () => {
@@ -755,29 +907,44 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             if (pendingPayload) updateSource(pendingPayload);
           });
           map.on('click', event => {
-            const hitBox = [
-              [event.point.x - 8, event.point.y - 8],
-              [event.point.x + 8, event.point.y + 8]
-            ];
-            const features = map.queryRenderedFeatures(hitBox, {
-              layers: ['weather-points']
-            });
-            const feature = features && features[0];
-            if (feature?.properties?.id) post({ type: 'markerTap', id: feature.properties.id, x: event.point.x, y: event.point.y });
+            postLeftClickDebug('click', event.point);
+            if (hoveredMarkerID && hoveredMarkerPoint) {
+              post({ type: 'markerTap', id: hoveredMarkerID, x: hoveredMarkerPoint.x, y: hoveredMarkerPoint.y });
+              return;
+            }
+            if (event.originalEvent?._weatherMarkerHandled) return;
+            const feature = markerFeatureAtPoint(event.point);
+            if (feature?.properties?.id) {
+              event.originalEvent._weatherMarkerHandled = true;
+              const markerPoint = markerScreenPoint(feature, event.point);
+              post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y });
+            }
           });
-          map.on('mousemove', 'weather-points', event => {
-            const feature = event.features && event.features[0];
+          map.on('click', 'weather-hit', event => {
+            const feature = nearestMarkerFeature(event.features, event.point);
+            if (!feature?.properties?.id) return;
+            event.originalEvent._weatherMarkerHandled = true;
+            const markerPoint = markerScreenPoint(feature, event.point);
+            post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y });
+          });
+          map.on('contextmenu', event => {
+            event.preventDefault();
+          });
+          map.on('mousemove', 'weather-hit', event => {
+            const feature = nearestMarkerFeature(event.features, event.point);
             if (!feature?.properties?.id) return;
             commandPressed = !!event.originalEvent?.metaKey;
-            refreshHoveredMarker(feature.properties.id, event.point);
+            const markerPoint = markerScreenPoint(feature, event.point);
+            refreshHoveredMarker(feature.properties.id, markerPoint);
             updateCommandHoverCard();
           });
-          map.on('mouseenter', 'weather-points', () => { map.getCanvas().style.cursor = 'default'; });
-          map.on('mouseleave', 'weather-points', () => {
+          map.on('mouseenter', 'weather-hit', () => { map.getCanvas().style.cursor = 'default'; });
+          map.on('mouseleave', 'weather-hit', () => {
             map.getCanvas().style.cursor = 'default';
             clearHoveredMarker();
           });
           map.on('move', () => {
+            updateHoveredMarkerPosition();
             const now = Date.now();
             if (now - lastMovePost < 120) return;
             lastMovePost = now;

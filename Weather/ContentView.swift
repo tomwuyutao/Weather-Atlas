@@ -166,9 +166,11 @@ struct ContentView: View {
     @State private var macMapExpandedCardAnchor: CGPoint?
     @State private var macMapExpandedCardBaseOffset: CGSize = .zero
     @State var macMapExpandedCardDragOffset: CGSize = .zero
+    @GestureState private var macMapExpandedCardGestureOffset: CGSize = .zero
     @State private var macHoverPresentedCardCityID: UUID?
     @State var macExpandedCardShowsDetails: Bool = false
-    @State private var macSidebarContextTarget: String?
+    @State var macExpandedCardChartMetric: WeatherDetailView.ChartMetric = .temperature
+    @State var macExpandedCardChartRange: WeatherDetailView.ChartTimeRange = .daytime
     @State private var macSidebarDropTarget: String?
     @State private var macSidebarHoveredDisclosureID: String?
     @State private var macHoveredSearchSuggestionID: UUID?
@@ -259,11 +261,13 @@ struct ContentView: View {
     }
 
     private var macOSRootView: some View {
-        NavigationSplitView(columnVisibility: $macSidebarVisibility) {
-            macSidebarContent
-        } detail: {
-            macNavigationContent
-        }
+        AnyView(
+            NavigationSplitView(columnVisibility: $macSidebarVisibility) {
+                macSidebarContent
+            } detail: {
+                macNavigationContent
+            }
+        )
         .task { await iOSOnAppear() }
         .onChange(of: weatherService.activeListID) { _, newListID in
             visibleListIDs.insert(newListID.rawValue)
@@ -293,20 +297,8 @@ struct ContentView: View {
         .onChange(of: showingCityDetail) { _, showing in
             iOSHandleCityDetailDismiss(showing: showing)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousDayCommand)) { _ in
-            stepSelectedDay(-1)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .weatherNextDayCommand)) { _ in
-            stepSelectedDay(1)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousListCommand)) { _ in
-            switchListByOffset(-1)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .weatherNextListCommand)) { _ in
-            switchListByOffset(1)
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .weatherCenterMapCommand)) { _ in
-            centerMapOnVisibleCities()
+        .background {
+            macCommandReceivers
         }
         .sheet(isPresented: $showingInfo) {
             InfoView(source: .map)
@@ -319,6 +311,33 @@ struct ContentView: View {
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar(removing: .title)
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
+    }
+
+    private var macCommandReceivers: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousDayCommand)) { _ in
+                stepSelectedDay(-1)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherNextDayCommand)) { _ in
+                stepSelectedDay(1)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousListCommand)) { _ in
+                switchListByOffset(-1)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherNextListCommand)) { _ in
+                switchListByOffset(1)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherCenterMapCommand)) { _ in
+                centerMapOnVisibleCities()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherRefreshCommand), perform: handleWeatherRefreshCommand)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherToggleSunnyFilterCommand), perform: handleWeatherToggleSunnyFilterCommand)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherToggleLegendCommand), perform: handleWeatherToggleLegendCommand)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherOverlayCommand), perform: handleWeatherOverlayCommand)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherSwitchListCommand), perform: handleWeatherSwitchListCommand)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherNewListCommand), perform: handleWeatherNewListCommand)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherToggleSidebarCommand), perform: handleWeatherToggleSidebarCommand)
     }
 
     private var macSidebarContent: some View {
@@ -532,29 +551,28 @@ struct ContentView: View {
         if !inlineSearchText.isEmpty {
             ForEach(Array(inlineSortedSearchResults.prefix(6))) { result in
                 let isHovered = macHoveredSearchSuggestionID == result.id
-                Button {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(result.title)
+                        .foregroundStyle(theme.colors.primaryText)
+                    Text(result.subtitle)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
+                }
+                .contentShape(Rectangle())
+                .animation(nil, value: isHovered)
+                .onTapGesture {
+                    guard !inlineIsLoadingCity else { return }
                     Task {
                         await inlineSelectSearchResult(result)
                     }
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(result.title)
-                            .foregroundStyle(isHovered ? .white : theme.colors.primaryText)
-                        Text(result.subtitle)
-                            .font(.caption)
-                            .foregroundStyle(isHovered ? .white.opacity(0.78) : .secondary)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(isHovered ? theme.colors.accent.opacity(0.16) : Color.clear)
-                    }
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
-                .disabled(inlineIsLoadingCity)
                 .onHover { hovering in
                     macHoveredSearchSuggestionID = hovering ? result.id : nil
                 }
@@ -568,17 +586,16 @@ struct ContentView: View {
                 if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city)
                         .id(city.city.id)
-                        .frame(width: 252, height: macExpandedCardShowsDetails ? 660 : 380)
+                        .frame(width: 252, height: macExpandedCardShowsDetails ? 620 : 400)
                         .offset(macExpandedCardOffset(in: geometry.size))
                         .gesture(
                             DragGesture()
-                                .onChanged { value in
-                                    macMapExpandedCardDragOffset = value.translation
+                                .updating($macMapExpandedCardGestureOffset) { value, state, _ in
+                                    state = value.translation
                                 }
                                 .onEnded { value in
                                     macMapExpandedCardBaseOffset.width += value.translation.width
                                     macMapExpandedCardBaseOffset.height += value.translation.height
-                                    macMapExpandedCardDragOffset = .zero
                                 }
                         )
                         .zIndex(12)
@@ -608,15 +625,19 @@ struct ContentView: View {
     }
 
     private func macExpandedCardTopLeft(in size: CGSize) -> CGSize {
-        let cardSize = CGSize(width: 252, height: macExpandedCardShowsDetails ? 660 : 380)
+        let cardSize = CGSize(width: 252, height: macExpandedCardShowsDetails ? 620 : 400)
         let margin: CGFloat = 16
+        let markerGap: CGFloat = 210
         let anchor = macMapExpandedCardAnchor ?? CGPoint(
             x: size.width - cardSize.width - margin,
             y: size.height - cardSize.height - margin
         )
-        let proposed = CGPoint(x: anchor.x - cardSize.width - 8, y: anchor.y + 8)
+        let proposed = CGPoint(
+            x: anchor.x - cardSize.width - markerGap,
+            y: anchor.y - (cardSize.height / 2)
+        )
         let clamped = CGPoint(
-            x: min(max(proposed.x, margin), size.width - cardSize.width - margin),
+            x: min(proposed.x, size.width - cardSize.width - margin),
             y: min(max(proposed.y, margin), size.height - cardSize.height - margin)
         )
         return CGSize(width: clamped.x, height: clamped.y)
@@ -625,8 +646,8 @@ struct ContentView: View {
     private func macExpandedCardOffset(in size: CGSize) -> CGSize {
         let base = macExpandedCardTopLeft(in: size)
         return CGSize(
-            width: base.width + macMapExpandedCardBaseOffset.width + macMapExpandedCardDragOffset.width,
-            height: base.height + macMapExpandedCardBaseOffset.height + macMapExpandedCardDragOffset.height
+            width: base.width + macMapExpandedCardBaseOffset.width + macMapExpandedCardGestureOffset.width,
+            height: base.height + macMapExpandedCardBaseOffset.height + macMapExpandedCardGestureOffset.height
         )
     }
 
@@ -634,8 +655,10 @@ struct ContentView: View {
         Group {
             Button("") { stepSelectedDay(-1) }
                 .keyboardShortcut(.upArrow, modifiers: [])
+                .disabled(showingInlineSearch)
             Button("") { stepSelectedDay(1) }
                 .keyboardShortcut(.downArrow, modifiers: [])
+                .disabled(showingInlineSearch)
             Button("") { switchListByOffset(-1) }
                 .keyboardShortcut(.upArrow, modifiers: [.command, .shift])
             Button("") { switchListByOffset(1) }
@@ -663,6 +686,9 @@ struct ContentView: View {
     }
 
     private func stepSelectedDay(_ delta: Int) {
+        if showingInlineSearch {
+            return
+        }
         selectedDayOffset = max(-1, min(9, selectedDayOffset + delta))
     }
 
@@ -671,6 +697,46 @@ struct ContentView: View {
         guard let currentIndex = lists.firstIndex(of: weatherService.activeListID), !lists.isEmpty else { return }
         let nextIndex = (currentIndex + delta + lists.count) % lists.count
         Task { await switchToList(lists[nextIndex]) }
+    }
+
+    private func handleWeatherRefreshCommand(_ notification: Notification) {
+        Task { await weatherService.refreshWeather() }
+    }
+
+    private func handleWeatherToggleSunnyFilterCommand(_ notification: Notification) {
+        withAnimation {
+            filterSunny.toggle()
+            UserDefaults.standard.set(filterSunny, forKey: "menuFilterSunnyState")
+        }
+    }
+
+    private func handleWeatherToggleLegendCommand(_ notification: Notification) {
+        withAnimation(.smooth(duration: 0.2)) {
+            showLegend.toggle()
+        }
+    }
+
+    private func handleWeatherOverlayCommand(_ notification: Notification) {
+        guard let mode = notification.object as? String else { return }
+        withAnimation(.easeInOut(duration: 0.2)) {
+            mapOverlayMode = mode
+        }
+    }
+
+    private func handleWeatherSwitchListCommand(_ notification: Notification) {
+        guard let rawValue = notification.object as? String,
+              let listID = CityListID.allLists.first(where: { $0.rawValue == rawValue }) else { return }
+        Task { await switchToList(listID) }
+    }
+
+    private func handleWeatherNewListCommand(_ notification: Notification) {
+        createListAtBottom()
+    }
+
+    private func handleWeatherToggleSidebarCommand(_ notification: Notification) {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            macSidebarVisibility = macSidebarVisibility == .detailOnly ? .all : .detailOnly
+        }
     }
 
     private var macListManagerSidebar: some View {
@@ -710,6 +776,7 @@ struct ContentView: View {
                 .buttonStyle(.plain)
 
                 Button {
+                    print("expand/collapse list button clicked: \(listID.rawValue)")
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         if isExpanded {
                             sidebarExpandedListIDs.remove(listID.rawValue)
@@ -727,11 +794,14 @@ struct ContentView: View {
                             if macSidebarHoveredDisclosureID == listID.rawValue {
                                 Circle()
                                     .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
+                                    .frame(width: 28, height: 28)
                             }
                         }
                         .rotationEffect(.degrees(isExpanded ? 0 : -90))
                 }
                 .buttonStyle(.plain)
+                .frame(width: 28, height: 28)
+                .contentShape(Circle())
                 .onHover { hovering in
                     macSidebarHoveredDisclosureID = hovering ? listID.rawValue : (macSidebarHoveredDisclosureID == listID.rawValue ? nil : macSidebarHoveredDisclosureID)
                 }
@@ -739,43 +809,28 @@ struct ContentView: View {
             .padding(.horizontal, 14)
             .padding(.vertical, 5)
             .contentShape(Rectangle())
-            .overlay {
-                if macSidebarContextTarget == macSidebarListContextID(listID) {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(theme.colors.accent, lineWidth: 1.5)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 2)
-                }
-            }
             .overlay(alignment: .top) {
                 if macSidebarDropTarget == macSidebarListContextID(listID) {
                     Capsule()
                         .fill(theme.colors.accent)
                         .frame(height: 2)
                         .padding(.horizontal, 12)
-                        .offset(y: 7)
                 }
             }
             .onDrag {
-                NSItemProvider(object: macSidebarListDragPayload(listID) as NSString)
+                macSidebarItemProvider(payload: macSidebarListDragPayload(listID), type: .weatherSidebarList)
             } preview: {
-                EmptyView()
+                Color.clear
+                    .frame(width: 1, height: 1)
+                    .opacity(0.01)
             }
             .onDrop(
-                of: [UTType.text],
-                delegate: macSidebarDropDelegate(macSidebarListContextID(listID)) { providers in
+                of: [.weatherSidebarList, .weatherSidebarCity],
+                delegate: macSidebarDropDelegate(macSidebarListContextID(listID), acceptedTypes: [.weatherSidebarList, .weatherSidebarCity]) { providers in
                     loadMacSidebarDrop(providers, onList: listID)
                 }
             )
             .contextMenu {
-                Text("")
-                    .hidden()
-                    .onAppear {
-                        showMacSidebarContextHighlight(macSidebarListContextID(listID))
-                    }
-                    .onDisappear {
-                        clearMacSidebarContextHighlight(macSidebarListContextID(listID))
-                    }
                 listActions(for: listID)
             }
 
@@ -800,22 +855,12 @@ struct ContentView: View {
             }
         }
         .padding(.bottom, 6)
-        .onDrop(
-            of: [UTType.text],
-            delegate: macSidebarDropDelegate(macSidebarListContextID(listID)) { providers in
-                loadMacSidebarDrop(providers, onList: listID)
-            }
-        )
     }
 
     private func macSidebarCityRow(_ city: CityWeather, in listID: CityListID) -> some View {
         let isActive = listID == weatherService.activeListID
 
-        return Button {
-            if isActive {
-                revealCityOnMap(city, in: listID)
-            }
-        } label: {
+        return
             HStack(spacing: 10) {
                 Circle()
                     .fill(sidebarDotColor(for: city))
@@ -832,45 +877,33 @@ struct ContentView: View {
             .padding(.horizontal, 18)
             .padding(.vertical, 4)
             .contentShape(Rectangle())
-            .overlay {
-                if macSidebarContextTarget == macSidebarCityContextID(city, in: listID) {
-                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                        .strokeBorder(theme.colors.accent, lineWidth: 1.5)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 1)
-                }
-            }
             .overlay(alignment: .top) {
                 if macSidebarDropTarget == macSidebarCityContextID(city, in: listID) {
                     Capsule()
                         .fill(theme.colors.accent)
                         .frame(height: 2)
                         .padding(.horizontal, 14)
-                        .offset(y: 7)
                 }
             }
-        }
-        .buttonStyle(.plain)
+            .onTapGesture {
+                if isActive {
+                    revealCityOnMap(city, in: listID)
+                }
+            }
         .onDrag {
-            NSItemProvider(object: macSidebarCityDragPayload(city, in: listID) as NSString)
+            macSidebarItemProvider(payload: macSidebarCityDragPayload(city, in: listID), type: .weatherSidebarCity)
         } preview: {
-            EmptyView()
+            Color.clear
+                .frame(width: 1, height: 1)
+                .opacity(0.01)
         }
         .onDrop(
-            of: [UTType.text],
-            delegate: macSidebarDropDelegate(macSidebarCityContextID(city, in: listID)) { providers in
+            of: [.weatherSidebarCity],
+            delegate: macSidebarDropDelegate(macSidebarCityContextID(city, in: listID), acceptedTypes: [.weatherSidebarCity]) { providers in
                 loadMacSidebarDrop(providers, onCity: city, in: listID)
             }
         )
         .contextMenu {
-            Text("")
-                .hidden()
-                .onAppear {
-                    showMacSidebarContextHighlight(macSidebarCityContextID(city, in: listID))
-                }
-                .onDisappear {
-                    clearMacSidebarContextHighlight(macSidebarCityContextID(city, in: listID))
-                }
             cityActions(for: city, in: listID)
         }
     }
@@ -888,27 +921,37 @@ struct ContentView: View {
     }
 
     private func macSidebarCityDragPayload(_ city: CityWeather, in listID: CityListID) -> String {
-        "city|\(listID.rawValue)|\(city.id.uuidString)"
+        "city|\(listID.rawValue)|\(macSidebarStableCityKey(city))"
     }
 
-    private func showMacSidebarContextHighlight(_ id: String) {
-        macSidebarContextTarget = id
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
-            if macSidebarContextTarget == id {
-                macSidebarContextTarget = nil
-            }
+    private func macSidebarStableCityKey(_ city: CityWeather) -> String {
+        [
+            city.city.name,
+            city.city.country,
+            String(format: "%.5f", city.city.latitude),
+            String(format: "%.5f", city.city.longitude)
+        ].joined(separator: "~")
+    }
+
+    private func macSidebarResolvedCityID(_ payloadID: String, in listID: CityListID) -> String? {
+        weatherService.weatherData(for: listID).first { city in
+            city.id.uuidString == payloadID || macSidebarStableCityKey(city) == payloadID
+        }?.id.uuidString
+    }
+
+    private func macSidebarItemProvider(payload: String, type: UTType) -> NSItemProvider {
+        let provider = NSItemProvider(object: payload as NSString)
+        provider.registerDataRepresentation(forTypeIdentifier: type.identifier, visibility: .all) { completion in
+            completion(payload.data(using: .utf8), nil)
+            return nil
         }
+        return provider
     }
 
-    private func clearMacSidebarContextHighlight(_ id: String) {
-        if macSidebarContextTarget == id {
-            macSidebarContextTarget = nil
-        }
-    }
-
-    private func macSidebarDropDelegate(_ id: String, perform: @escaping ([NSItemProvider]) -> Bool) -> MacSidebarMoveDropDelegate {
+    private func macSidebarDropDelegate(_ id: String, acceptedTypes: [UTType], perform: @escaping ([NSItemProvider]) -> Bool) -> MacSidebarMoveDropDelegate {
         MacSidebarMoveDropDelegate(
             id: id,
+            acceptedTypes: acceptedTypes,
             setTarget: { macSidebarDropTarget = $0 },
             clearTarget: {
                 if macSidebarDropTarget == $0 {
@@ -932,16 +975,21 @@ struct ContentView: View {
     }
 
     private func loadMacSidebarDropPayload(from providers: [NSItemProvider], perform action: @escaping (String) -> Void) -> Bool {
-        guard let provider = providers.first(where: { $0.canLoadObject(ofClass: NSString.self) }) else {
+        let acceptedTypeIDs = [UTType.weatherSidebarList.identifier, UTType.weatherSidebarCity.identifier, UTType.text.identifier]
+        guard let provider = providers.first(where: { provider in
+            acceptedTypeIDs.contains { provider.hasItemConformingToTypeIdentifier($0) }
+        }) else {
             macSidebarDropTarget = nil
             return false
         }
 
-        provider.loadObject(ofClass: NSString.self) { object, _ in
-            guard let payload = object as? String ?? (object as? NSString).map(String.init) else { return }
-            DispatchQueue.main.async {
-                action(payload)
-                macSidebarDropTarget = nil
+        if let typeID = acceptedTypeIDs.first(where: { provider.hasItemConformingToTypeIdentifier($0) }) {
+            provider.loadDataRepresentation(forTypeIdentifier: typeID) { data, _ in
+                guard let data, let payload = String(data: data, encoding: .utf8) else { return }
+                DispatchQueue.main.async {
+                    action(payload)
+                    macSidebarDropTarget = nil
+                }
             }
         }
         return true
@@ -964,8 +1012,9 @@ struct ContentView: View {
         }
 
         if kind == "city", parts.count == 3 {
-            guard let sourceListID = CityListID.allLists.first(where: { $0.rawValue == parts[1] }) else { return false }
-            return weatherService.moveCity(id: parts[2], from: sourceListID, to: targetListID, destination: nil)
+            guard let sourceListID = CityListID.allLists.first(where: { $0.rawValue == parts[1] }),
+                  let cityID = macSidebarResolvedCityID(parts[2], in: sourceListID) else { return false }
+            return weatherService.moveCity(id: cityID, from: sourceListID, to: targetListID, destination: nil)
         }
 
         return false
@@ -974,12 +1023,14 @@ struct ContentView: View {
     private func handleMacSidebarDrop(_ payloads: [String], onCity targetCity: CityWeather, in targetListID: CityListID) -> Bool {
         guard let payload = payloads.first else { return false }
         let parts = payload.split(separator: "|").map(String.init)
+        let targetKey = macSidebarStableCityKey(targetCity)
         guard parts.count == 3, parts[0] == "city",
               let sourceListID = CityListID.allLists.first(where: { $0.rawValue == parts[1] }),
-              let targetIndex = weatherService.weatherData(for: targetListID).firstIndex(where: { $0.id == targetCity.id }) else {
-            return handleMacSidebarDrop(payloads, onList: targetListID)
+              let cityID = macSidebarResolvedCityID(parts[2], in: sourceListID),
+              let targetIndex = weatherService.weatherData(for: targetListID).firstIndex(where: { $0.id == targetCity.id || macSidebarStableCityKey($0) == targetKey }) else {
+            return false
         }
-        return weatherService.moveCity(id: parts[2], from: sourceListID, to: targetListID, destination: targetIndex)
+        return weatherService.moveCity(id: cityID, from: sourceListID, to: targetListID, destination: targetIndex)
     }
 
     private func sidebarDotColor(for cityWeather: CityWeather) -> Color {
@@ -1943,8 +1994,8 @@ struct ContentView: View {
         if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode {
             #if os(macOS)
             GeometryReader { geometry in
-                let topClearance: CGFloat = 78
-                let bottomClearance: CGFloat = 64
+                let topClearance: CGFloat = 34
+                let bottomClearance: CGFloat = 174
                 let availableHeight = max(190, geometry.size.height - topClearance - bottomClearance)
                 let sliderHeight = min(300, max(220, availableHeight * 0.52))
 
@@ -2115,9 +2166,13 @@ struct ContentView: View {
     }
 
     private func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
+        showMapMarkerCard(city, anchor: anchor, expanded: false)
+    }
+
+    private func showMapMarkerCard(_ city: CityWeather, anchor: CGPoint? = nil, expanded: Bool) {
         #if os(macOS)
         macHoverPresentedCardCityID = nil
-        macExpandedCardShowsDetails = false
+        macExpandedCardShowsDetails = expanded
         macMapExpandedCardAnchor = anchor
         macMapExpandedCardBaseOffset = .zero
         macMapExpandedCardDragOffset = .zero
@@ -2132,18 +2187,23 @@ struct ContentView: View {
             #endif
         }
 
-        withAnimation(.smooth(duration: 0.3)) {
-            tappedCity = city
-        }
-        Task {
-            try? await Task.sleep(for: .milliseconds(150))
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                showingMapExpandedCard = true
-            }
-        }
+        tappedCity = city
+        showingMapExpandedCard = true
+        print("city card opened: \(city.city.name)")
     }
 
     #if os(macOS)
+    private func deleteMapCity(_ city: CityWeather) {
+        weatherService.removeCity(city)
+        if previewCity?.id == city.id {
+            previewCity = nil
+        }
+        showingMapExpandedCard = false
+        tappedCity = nil
+        selectedDayOffset = -1
+        recenterOnAllCities = true
+    }
+
     private func handleMapMarkerCommandHover(_ city: CityWeather?, anchor: CGPoint?) {
         guard let city else {
             if macHoverPresentedCardCityID == tappedCity?.id {
@@ -3180,27 +3240,39 @@ struct ContentView: View {
             )
             .ignoresSafeArea()
 
-            // Floating loading popup on map — positioned at 1/3 from top to match list view
             if weatherService.isLoading {
                 GeometryReader { geo in
-                    VStack(spacing: 20) {
+                    VStack(spacing: 12) {
                         Image(systemName: "cloud.sun.fill")
-                            .font(.system(size: 56))
+                            #if os(macOS)
+                            .font(.system(size: 28, weight: .medium))
+                            #else
+                            .font(.system(size: 40, weight: .medium))
+                            #endif
                             .weatherIconStyle(for: "cloud.sun.fill")
                         Text(localizedString("Loading Weather", locale: locale))
-                            .font(.avenir(.title2, weight: .semibold))
+                            #if os(macOS)
+                            .font(.headline.weight(.semibold))
+                            #else
+                            .font(.avenir(.title3, weight: .semibold))
+                            #endif
                         Capsule()
                             .fill(theme.colors.primaryText.opacity(0.15))
-                            .frame(width: 140, height: 4)
+                            .frame(width: 118, height: 3)
                             .overlay(alignment: .leading) {
                                 Capsule()
-                                    .fill(theme.colors.primaryText)
-                                    .frame(width: 140 * weatherService.loadingProgress, height: 4)
+                                    .fill(theme.colors.accent)
+                                    .frame(width: 118 * weatherService.loadingProgress, height: 3)
                             }
                     }
-                    .padding(.horizontal, 32)
-                    .padding(.vertical, 28)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 18)
+                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .strokeBorder(theme.colors.primaryText.opacity(0.12), lineWidth: 1)
+                    }
+                    .shadow(color: .black.opacity(0.14), radius: 20, x: 0, y: 10)
                     .position(x: geo.size.width / 2, y: geo.size.height / 2)
                 }
                 .allowsHitTesting(false)
@@ -3636,15 +3708,17 @@ struct WeatherMarker: View {
 
 private struct MacSidebarMoveDropDelegate: DropDelegate {
     let id: String
+    let acceptedTypes: [UTType]
     let setTarget: (String) -> Void
     let clearTarget: (String) -> Void
     let perform: ([NSItemProvider]) -> Bool
 
     func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: [UTType.text])
+        info.hasItemsConforming(to: acceptedTypes)
     }
 
     func dropEntered(info: DropInfo) {
+        guard validateDrop(info: info) else { return }
         setTarget(id)
     }
 
@@ -3653,13 +3727,19 @@ private struct MacSidebarMoveDropDelegate: DropDelegate {
     }
 
     func dropUpdated(info: DropInfo) -> DropProposal? {
-        DropProposal(operation: .move)
+        guard validateDrop(info: info) else { return nil }
+        return DropProposal(operation: .move)
     }
 
     func performDrop(info: DropInfo) -> Bool {
         clearTarget(id)
-        return perform(info.itemProviders(for: [UTType.text]))
+        return perform(info.itemProviders(for: acceptedTypes + [.text]))
     }
+}
+
+private extension UTType {
+    static let weatherSidebarList = UTType(exportedAs: "com.tomsweather.sidebar-list")
+    static let weatherSidebarCity = UTType(exportedAs: "com.tomsweather.sidebar-city")
 }
 
 

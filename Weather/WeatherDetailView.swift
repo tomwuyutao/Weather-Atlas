@@ -1141,6 +1141,7 @@ struct HourlyTimelineChart: View {
     var previewCurrentHour: Int? = nil
     var lineColor: Color = AppTheme.shared.colors.destructive
     var showAllHours: Bool = false
+    var compactLayout: Bool = false
     
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
@@ -1172,12 +1173,12 @@ struct HourlyTimelineChart: View {
         return hour < currentHour
     }
     
-    private let totalHeight: CGFloat = 250
-    private let hourLabelHeight: CGFloat = 20  // fixed hour label at top
-    private let topPadding: CGFloat = 4        // space below hour label
-    private let iconHeight: CGFloat = 26       // icon sits just below hour label
-    private let iconBottomPadding: CGFloat = 20 // gap between icon bottom and chart top
-    private let valueHeight: CGFloat = 20      // height of value text (sits on line)
+    private var totalHeight: CGFloat { compactLayout ? 168 : 250 }
+    private var hourLabelHeight: CGFloat { compactLayout ? 14 : 20 }
+    private var topPadding: CGFloat { compactLayout ? 0 : 4 }
+    private var iconHeight: CGFloat { compactLayout ? 16 : 26 }
+    private var iconBottomPadding: CGFloat { compactLayout ? 12 : 20 }
+    private var valueHeight: CGFloat { compactLayout ? 14 : 20 }
     
     // Chart zone starts below the fixed header (hour + icon), value text straddles line
     private var chartTop: CGFloat { hourLabelHeight + topPadding + iconHeight + iconBottomPadding }
@@ -1233,7 +1234,7 @@ struct HourlyTimelineChart: View {
             let vals = dataPoints.map { value(for: $0) }
             let minV = vals.min() ?? 10
             let maxV = vals.max() ?? 20
-            let padding = max((maxV - minV) * 0.25, 2.0)
+            let padding = max((maxV - minV) * (compactLayout ? 0.7 : 0.25), compactLayout ? 5.0 : 2.0)
             return (minV - padding, maxV + padding)
         }
     }
@@ -1277,13 +1278,13 @@ struct HourlyTimelineChart: View {
                     pointXPositions: xPositions,
                     gapRadius: 0
                 )
-                .stroke(lineColor, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .stroke(lineColor, style: StrokeStyle(lineWidth: compactLayout ? 2 : 3, lineCap: .round, lineJoin: .round))
 
                 // Layer 2: Dots on line points
                 ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, forecast in
                     Circle()
                         .fill(lineColor)
-                        .frame(width: 10, height: 10)
+                        .frame(width: compactLayout ? 7 : 10, height: compactLayout ? 7 : 10)
                         .position(x: xPositions[index], y: lineYPositions[index])
                 }
 
@@ -1325,15 +1326,15 @@ struct HourlyTimelineChart: View {
                         ZStack {
                             // Hour label — fixed at top
                             Text(forecast.shortFormattedHour(locale: locale))
-                                .font(.avenir(.subheadline))
+                                .font(compactLayout ? .caption2 : .avenir(.subheadline))
                                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                                 .frame(height: hourLabelHeight)
-                                .position(x: columnWidth / 2, y: hourLabelHeight / 2 + 10)
+                                .position(x: columnWidth / 2, y: hourLabelHeight / 2 + (compactLayout ? 4 : 10))
                                 .opacity(pastHour ? 0.3 : 1.0)
 
                             // Icon — fixed just below hour label
                             Image(systemName: forecast.weatherIcon)
-                                .font(.system(size: 17))
+                                .font(.system(size: compactLayout ? 11 : 17))
                                 .weatherIconStyle(for: forecast.weatherIcon)
                                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                                 .frame(height: iconHeight)
@@ -1342,7 +1343,7 @@ struct HourlyTimelineChart: View {
 
                             // Value text — sits below the dot on the line
                             Text(chartValueText(for: forecast))
-                                .font(.avenir(.footnote, weight: .semibold))
+                                .font(compactLayout ? .caption2.weight(.semibold) : .avenir(.footnote, weight: .semibold))
                                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                                 .contentTransition(.numericText())
                                 .frame(height: valueHeight)
@@ -1368,6 +1369,7 @@ struct DailyTimelineChart: View {
     var selectedDayOffset: Int = 0
     var cityTimeZone: TimeZone = .current
     var lineColor: Color = AppTheme.shared.colors.destructive
+    var compactLayout: Bool = false
 
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
@@ -1385,12 +1387,12 @@ struct DailyTimelineChart: View {
         colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25)
     }
 
-    private let totalHeight: CGFloat = 250
-    private let dayLabelHeight: CGFloat = 20
-    private let topPadding: CGFloat = 4
-    private let iconHeight: CGFloat = 26
-    private let iconBottomPadding: CGFloat = 20
-    private let valueHeight: CGFloat = 20
+    private var totalHeight: CGFloat { compactLayout ? 168 : 250 }
+    private var dayLabelHeight: CGFloat { compactLayout ? 14 : 20 }
+    private var topPadding: CGFloat { compactLayout ? 0 : 4 }
+    private var iconHeight: CGFloat { compactLayout ? 16 : 26 }
+    private var iconBottomPadding: CGFloat { compactLayout ? 12 : 20 }
+    private var valueHeight: CGFloat { compactLayout ? 14 : 20 }
 
     private var chartTop: CGFloat { dayLabelHeight + topPadding + iconHeight + iconBottomPadding }
     private var chartBottom: CGFloat { totalHeight - valueHeight - 14 }
@@ -1460,7 +1462,7 @@ struct DailyTimelineChart: View {
             let vals = dataPoints.map { value(for: $0) }
             let minV = vals.min() ?? 10
             let maxV = vals.max() ?? 20
-            let padding = max((maxV - minV) * 0.25, 2.0)
+            let padding = max((maxV - minV) * (compactLayout ? 0.7 : 0.25), compactLayout ? 5.0 : 2.0)
             return (minV - padding, maxV + padding)
         }
     }
@@ -1502,13 +1504,13 @@ struct DailyTimelineChart: View {
                     pointXPositions: xPositions,
                     gapRadius: 0
                 )
-                .stroke(lineColor, style: StrokeStyle(lineWidth: 3, lineCap: .round, lineJoin: .round))
+                .stroke(lineColor, style: StrokeStyle(lineWidth: compactLayout ? 2 : 3, lineCap: .round, lineJoin: .round))
 
                 // Layer 2: Dots on line points
                 ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, _ in
                     Circle()
                         .fill(lineColor)
-                        .frame(width: 10, height: 10)
+                        .frame(width: compactLayout ? 7 : 10, height: compactLayout ? 7 : 10)
                         .position(x: xPositions[index], y: lineYPositions[index])
                 }
 
@@ -1537,14 +1539,14 @@ struct DailyTimelineChart: View {
                         ZStack {
                             // Day label — fixed at top
                             Text(dayLabel(for: forecast))
-                                .font(.avenir(.subheadline))
+                                .font(compactLayout ? .caption2 : .avenir(.subheadline))
                                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                                 .frame(height: dayLabelHeight)
-                                .position(x: columnWidth / 2, y: dayLabelHeight / 2 + 10)
+                                .position(x: columnWidth / 2, y: dayLabelHeight / 2 + (compactLayout ? 4 : 10))
 
                             // Icon — fixed just below day label
                             Image(systemName: forecast.weatherIcon)
-                                .font(.system(size: 17))
+                                .font(.system(size: compactLayout ? 11 : 17))
                                 .weatherIconStyle(for: forecast.weatherIcon)
                                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
                                 .frame(height: iconHeight)
@@ -1552,7 +1554,7 @@ struct DailyTimelineChart: View {
 
                             // Value text — sits below the dot on the line
                             Text(chartValueText(for: forecast))
-                                .font(.avenir(.footnote, weight: .semibold))
+                                .font(compactLayout ? .caption2.weight(.semibold) : .avenir(.footnote, weight: .semibold))
                                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                                 .contentTransition(.numericText())
                                 .frame(height: valueHeight)
@@ -1933,4 +1935,3 @@ struct SunArcCard: View {
         }
     }
 }
-
