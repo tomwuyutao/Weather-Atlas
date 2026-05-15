@@ -183,6 +183,7 @@ struct MapFloatingLegend: View {
                         .font(.system(size: compact ? 10 : 11, weight: .semibold))
                         .foregroundStyle(.secondary)
                         .frame(width: compact ? 18 : 22, height: compact ? 18 : 22)
+                        .background(.secondary.opacity(0.14), in: Circle())
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)

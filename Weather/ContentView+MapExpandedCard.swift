@@ -273,27 +273,58 @@ extension ContentView {
                     }
                 }
             }
-            .padding(.bottom, 8)
+            .padding(.bottom, 14)
 
             HStack {
-                Button(role: .destructive) {
-                    if cityIsInSidebar(cityWeather) {
+                if cityIsInSidebar(cityWeather) {
+                    Button(role: .destructive) {
                         weatherService.removeCity(cityWeather)
-                    }
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         showingMapExpandedCard = false
                         showingCityDetail = false
                         tappedCity = nil
-                        if previewCity != nil {
-                            previewCity = nil
+                        if previewCity != nil { previewCity = nil }
+                        recenterOnAllCities = true
+                    } label: {
+                        Text(localizedString("Remove", locale: locale))
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                } else if CityListID.allLists.count > 1 {
+                    Menu {
+                        ForEach(CityListID.allLists) { listID in
+                            Button(listID.localizedDisplayName(locale: locale)) {
+                                Task {
+                                    await weatherService.addCityToList(cityWeather.city, listID: listID)
+                                    PlatformFeedback.lightImpact()
+                                    showingMapExpandedCard = false
+                                    tappedCity = nil
+                                    if previewCity != nil { previewCity = nil }
+                                    recenterOnAllCities = true
+                                }
+                            }
+                        }
+                    } label: {
+                        Text(localizedString("Add", locale: locale))
+                    }
+                    .menuStyle(.button)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.colors.accent)
+                } else {
+                    Button {
+                        Task {
+                            await weatherService.addCityToList(cityWeather.city, listID: weatherService.activeListID)
+                            PlatformFeedback.lightImpact()
+                            showingMapExpandedCard = false
+                            tappedCity = nil
+                            if previewCity != nil { previewCity = nil }
                             recenterOnAllCities = true
                         }
+                    } label: {
+                        Text(localizedString("Add", locale: locale))
                     }
-                } label: {
-                    Text(localizedString("Remove", locale: locale))
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.colors.accent)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
 
                 Spacer()
 
@@ -316,8 +347,8 @@ extension ContentView {
         .padding(14)
         .background(
             (colorScheme == .dark
-             ? Color(red: 0.06, green: 0.06, blue: 0.08).opacity(0.98)
-             : Color.white.opacity(0.97)),
+             ? theme.colors.mapOcean.opacity(0.96)
+             : theme.colors.mapLand.opacity(0.96)),
             in: RoundedRectangle(cornerRadius: 14, style: .continuous)
         )
         .overlay {
@@ -326,7 +357,6 @@ extension ContentView {
         }
         .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 10)
         .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .gesture(DragGesture(minimumDistance: 1).onChanged { _ in })
     }
 
     private func macForecastDayLabel(for offset: Int) -> String {

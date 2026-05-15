@@ -14,6 +14,31 @@ extension ContentView {
     func mapDateSlider(height: CGFloat, transparent: Bool = false, showsSelectedLabelWhenIdle: Bool = true) -> some View {
         let totalPositions = 11 // -1 (Now) through 9
         let stepHeight = height / CGFloat(totalPositions - 1)
+        #if os(macOS)
+        let touchWidth: CGFloat = 112
+        let touchHeight: CGFloat = 68
+        let labelFont: Font = .callout.weight(.semibold)
+        let idleMinWidth: CGFloat = 48
+        let dragMinWidth: CGFloat = 58
+        let idleHorizontalPadding: CGFloat = 10
+        let dragHorizontalPadding: CGFloat = 12
+        let idleVerticalPadding: CGFloat = 6
+        let dragVerticalPadding: CGFloat = 8
+        let idleTailSize = CGSize(width: 22, height: 14)
+        let dragTailSize = CGSize(width: 26, height: 18)
+        #else
+        let touchWidth: CGFloat = selectedDayOffset > 0 ? 145 : 120
+        let touchHeight: CGFloat = 80
+        let labelFont: Font = .avenir(.subheadline, weight: .semibold)
+        let idleMinWidth: CGFloat = 52
+        let dragMinWidth: CGFloat = 64
+        let idleHorizontalPadding: CGFloat = 12
+        let dragHorizontalPadding: CGFloat = 14
+        let idleVerticalPadding: CGFloat = 7
+        let dragVerticalPadding: CGFloat = 9
+        let idleTailSize = CGSize(width: 24, height: 16)
+        let dragTailSize = CGSize(width: 30, height: 20)
+        #endif
 
         // Convert between slider position (0...10) and dayOffset (-1...9)
         func positionToOffset(_ pos: Int) -> Int { pos - 1 }
@@ -24,7 +49,7 @@ extension ContentView {
         return ZStack(alignment: .topTrailing) {
             // Touch target box behind capsule — moves with it
             Color.clear
-                .frame(width: selectedDayOffset > 0 ? 145 : 120, height: 80)
+                .frame(width: touchWidth, height: touchHeight)
                 .contentShape(Rectangle())
                 .offset(y: capsuleY - 30)
                 .gesture(
@@ -79,16 +104,19 @@ extension ContentView {
 
                 HStack(spacing: isDraggingDateSlider ? 6 : 3) {
                     Text(sliderDateText(for: displayOffset))
-                        .font(.avenir(.subheadline, weight: .semibold))
+                        .font(labelFont)
                         .foregroundStyle(theme.colors.primaryText)
-                        .frame(minWidth: isDraggingDateSlider ? 64 : 52)
+                        .frame(minWidth: isDraggingDateSlider ? dragMinWidth : idleMinWidth)
                         .fixedSize()
-                        .padding(.horizontal, isDraggingDateSlider ? 14 : 12)
-                        .padding(.vertical, isDraggingDateSlider ? 9 : 7)
+                        .padding(.horizontal, isDraggingDateSlider ? dragHorizontalPadding : idleHorizontalPadding)
+                        .padding(.vertical, isDraggingDateSlider ? dragVerticalPadding : idleVerticalPadding)
                         .themedGlass(in: .capsule)
 
                     Color.clear
-                        .frame(width: isDraggingDateSlider ? 30 : 24, height: isDraggingDateSlider ? 20 : 16)
+                        .frame(
+                            width: isDraggingDateSlider ? dragTailSize.width : idleTailSize.width,
+                            height: isDraggingDateSlider ? dragTailSize.height : idleTailSize.height
+                        )
                         .themedGlass(in: .capsule)
                         .offset(x: isDraggingDateSlider ? 12 : 9)
                 }

@@ -68,6 +68,7 @@ struct WeatherApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             SidebarCommands()
+            SettingsCommands()
             CommandGroup(after: .sidebar) {
                 Divider()
                 Button("Center on Map") {
@@ -102,9 +103,14 @@ struct WeatherApp: App {
             }
         }
 
-        Settings {
+        Window("Settings", id: "settings") {
             SettingsRoot(theme: theme, appLocale: appLocale)
         }
+        .defaultSize(width: 390, height: 773)
+        .windowResizability(.contentMinSize)
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.expanded)
+        .keyboardShortcut(",", modifiers: .command)
         #else
         WindowGroup {
             ThemeRoot(theme: theme, appLocale: appLocale)
@@ -112,6 +118,21 @@ struct WeatherApp: App {
         #endif
     }
 }
+
+#if os(macOS)
+private struct SettingsCommands: Commands {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some Commands {
+        CommandGroup(replacing: .appSettings) {
+            Button("Settings") {
+                openWindow(id: "settings")
+            }
+            .keyboardShortcut(",", modifiers: .command)
+        }
+    }
+}
+#endif
 
 extension Notification.Name {
     static let weatherCenterMapCommand = Notification.Name("weatherCenterMapCommand")
@@ -166,14 +187,17 @@ private struct SettingsRoot: View {
 
     var body: some View {
         let resolvedColors = theme.colors(for: colorScheme)
-        SettingsView(
-            weatherService: weatherService,
-            onResetLists: {
-                Task {
-                    await weatherService.resetAllLists()
+        NavigationStack {
+            SettingsView(
+                weatherService: weatherService,
+                onResetLists: {
+                    Task {
+                        await weatherService.resetAllLists()
+                    }
                 }
-            }
-        )
+            )
+            .navigationTitle("Settings")
+        }
         .environment(\.locale, appLocale)
         .defaultFont()
         .environment(\.appTheme, theme)

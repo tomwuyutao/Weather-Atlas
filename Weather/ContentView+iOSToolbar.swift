@@ -99,7 +99,7 @@ extension ContentView {
         Menu {
             Button {
                 #if os(macOS)
-                openSettings()
+                openWindow(id: "settings")
                 #else
                 showingSettings = true
                 #endif

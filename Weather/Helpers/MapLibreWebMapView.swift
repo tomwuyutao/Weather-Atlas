@@ -317,12 +317,30 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         html, body { margin: 0; padding: 0; width: 100%; height: 100%; min-height: 100%; overflow: hidden; background: #EDE7DE; }
         body { -webkit-user-select: none; user-select: none; position: fixed; inset: 0; }
         #map { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: #EDE7DE; }
+        #window-drag-blur {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          height: 48px;
+          z-index: 4;
+          pointer-events: none;
+          background: rgba(237, 231, 222, 0.24);
+          -webkit-backdrop-filter: blur(18px) saturate(1.35);
+          backdrop-filter: blur(18px) saturate(1.35);
+          border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+        }
+        body.dark-map #window-drag-blur {
+          background: rgba(26, 27, 46, 0.24);
+          border-bottom-color: rgba(255, 255, 255, 0.08);
+        }
         .maplibregl-map, .maplibregl-canvas-container, .maplibregl-canvas { width: 100% !important; height: 100% !important; }
         .maplibregl-ctrl-logo, .maplibregl-ctrl-attrib { display: none !important; }
       </style>
     </head>
     <body>
       <div id="map"></div>
+      <div id="window-drag-blur"></div>
       <script>
         let map;
         let loaded = false;
@@ -523,7 +541,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           if (!pendingPayload || !pendingPayload.features || pendingPayload.features.length === 0) return;
           const bounds = new maplibregl.LngLatBounds();
           pendingPayload.features.forEach(item => bounds.extend([item.longitude, item.latitude]));
-          if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 95, duration: 550, maxZoom: 4.6 });
+          if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 180, duration: 550, maxZoom: 2.65 });
         };
 
         window.flyToCity = function(id) {
@@ -533,6 +551,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         window.setMapStyleMode = async function(mode) {
           currentStyleMode = mode;
+          document.body.classList.toggle('dark-map', mode === 'dark');
           baseStylePreferencesApplied = false;
           if (map) map.setStyle(await cleanedStyle(mode));
         };

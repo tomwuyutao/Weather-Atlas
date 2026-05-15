@@ -270,7 +270,14 @@ struct SettingsView: View {
         }
         .formStyle(.grouped)
         .padding(.top, 12)
-        .frame(width: 420, height: 360)
+        .frame(
+            minWidth: 390,
+            idealWidth: 390,
+            maxWidth: .infinity,
+            minHeight: 520,
+            idealHeight: 552,
+            maxHeight: .infinity
+        )
         .alert("Reset Lists", isPresented: $showingResetConfirmation) {
             Button(localizedString("Cancel", locale: locale), role: .cancel) { }
             Button(localizedString("Reset", locale: locale), role: .destructive) {

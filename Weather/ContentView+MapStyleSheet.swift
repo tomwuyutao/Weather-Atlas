@@ -36,7 +36,14 @@ extension ContentView {
             }
         } label: {
             Image(systemName: "square.3.layers.3d")
+                #if os(macOS)
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.primary)
+                #endif
         }
+        #if os(macOS)
+        .tint(.primary)
+        #endif
         .menuIndicator(.hidden)
         .menuOrder(.fixed)
     }

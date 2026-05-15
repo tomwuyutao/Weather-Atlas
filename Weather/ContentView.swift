@@ -67,7 +67,7 @@ struct ContentView: View {
     @Environment(\.locale) var locale
     @Environment(\.colorScheme) var colorScheme
     #if os(macOS)
-    @Environment(\.openSettings) var openSettings
+    @Environment(\.openWindow) var openWindow
     #endif
     
     /// Cities to display on the map — from the active list + preview city
@@ -164,6 +164,7 @@ struct ContentView: View {
     #if os(macOS)
     @State private var macSidebarVisibility: NavigationSplitViewVisibility = .all
     @State private var macMapExpandedCardAnchor: CGPoint?
+    @State var macMapExpandedCardDragOffset: CGSize = .zero
     #endif
 
     var toolbarTitle: String {
@@ -314,6 +315,11 @@ struct ContentView: View {
             macListManagerSidebar
         }
         .frame(minWidth: 180, idealWidth: 220, maxWidth: 300)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                macListSwitcherChevron
+            }
+        }
     }
 
     private var macNavigationContent: some View {
@@ -364,8 +370,7 @@ struct ContentView: View {
         .ignoresSafeArea(.container, edges: .top)
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                mapTopListMenu
-                    .fixedSize()
+                macToolbarListTitle
             }
 
             ToolbarSpacer(.flexible)
@@ -382,13 +387,11 @@ struct ContentView: View {
                 macFilterSunnyButton
             }
 
-            ToolbarSpacer(.fixed)
-
-            ToolbarItem {
-                macRightSidebarButton
-            }
         }
         .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
+        .searchSuggestions {
+            macSearchSuggestions
+        }
         .searchPresentationToolbarBehavior(.avoidHidingContent)
         .background {
             macKeyboardShortcuts
@@ -403,9 +406,8 @@ struct ContentView: View {
 
     private var macWindowDragTopArea: some View {
         VStack(spacing: 0) {
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .frame(height: 34)
+            Color.clear
+                .frame(height: 48)
                 .contentShape(Rectangle())
                 .gesture(WindowDragGesture())
                 .allowsWindowActivationEvents(true)
@@ -420,17 +422,24 @@ struct ContentView: View {
             centerMapOnVisibleCities()
         } label: {
             Image(systemName: "dot.squareshape.split.2x2")
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.primary)
         }
+        .tint(.primary)
         .help(localizedString("Center on Map", locale: locale))
     }
 
     private var macLegendButton: some View {
-        Toggle(isOn: Binding(
-            get: { showLegend },
-            set: { newValue in withAnimation(.smooth(duration: 0.2)) { showLegend = newValue } }
-        )) {
-            Image(systemName: showLegend ? "eye" : "eye.slash")
+        Button {
+            withAnimation(.smooth(duration: 0.2)) {
+                showLegend.toggle()
+            }
+        } label: {
+            Image(systemName: showLegend ? "eye.slash" : "eye")
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.primary)
         }
+        .tint(.primary)
         .help(localizedString("Legend", locale: locale))
     }
 
@@ -439,18 +448,25 @@ struct ContentView: View {
             Task { await weatherService.refreshWeather() }
         } label: {
             Image(systemName: "arrow.clockwise")
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.primary)
         }
+        .tint(.primary)
         .disabled(weatherService.isLoading)
         .help(localizedString("Refresh", locale: locale))
     }
 
     private var macFilterSunnyButton: some View {
-        Toggle(isOn: Binding(
-            get: { filterSunny },
-            set: { newValue in withAnimation { filterSunny = newValue } }
-        )) {
+        Button {
+            withAnimation {
+                filterSunny.toggle()
+            }
+        } label: {
             Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.primary)
         }
+        .tint(.primary)
         .help(localizedString("Filter Sunny", locale: locale))
     }
 
@@ -461,9 +477,70 @@ struct ContentView: View {
             }
         } label: {
             Image(systemName: "sidebar.right")
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.primary)
         }
+        .tint(.primary)
         .disabled(tappedCity == nil)
         .help(localizedString("Details", locale: locale))
+    }
+
+    private var macListSwitcherChevron: some View {
+        Menu {
+            ForEach(CityListID.allLists) { listID in
+                Button(listID.localizedDisplayName(locale: locale)) {
+                    Task {
+                        await switchToList(listID)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "chevron.down")
+                .font(.system(size: 12, weight: .semibold))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.primary)
+        }
+        .menuIndicator(.hidden)
+        .menuOrder(.fixed)
+        .tint(.primary)
+        .help(localizedString("Switch List", locale: locale))
+    }
+
+    private var macToolbarListTitle: some View {
+        Text(toolbarTitle)
+            .font(.headline)
+            .lineLimit(1)
+            .foregroundStyle(.primary)
+            .padding(.leading, 4)
+            .padding(.trailing, 18)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    @ViewBuilder
+    private var macSearchSuggestions: some View {
+        if !inlineSearchText.isEmpty {
+            ForEach(inlineSortedSearchResults) { result in
+                Button {
+                    Task {
+                        await inlineSelectSearchResult(result)
+                    }
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(result.title)
+                        Text(result.subtitle)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(inlineIsLoadingCity)
+            }
+        }
     }
 
     private var macMainOverlays: some View {
@@ -486,15 +563,20 @@ struct ContentView: View {
                         .zIndex(10)
                 }
 
-                if selectedTab == 1, !isMapSpecialMode, let city = tappedCity {
+                if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city)
                         .id(city.city.id)
                         .frame(width: 252, height: 380)
-                        .offset(macExpandedCardTopLeft(in: geometry.size))
-                        .scaleEffect(showingMapExpandedCard ? 1 : 0.05, anchor: .topLeading)
-                        .opacity(showingMapExpandedCard ? 1 : 0)
-                        .allowsHitTesting(showingMapExpandedCard)
-                        .animation(.spring(response: 0.34, dampingFraction: 0.82), value: showingMapExpandedCard)
+                        .offset(macExpandedCardOffset(in: geometry.size))
+                        .gesture(
+                            DragGesture()
+                                .onChanged { value in
+                                    macMapExpandedCardDragOffset = value.translation
+                                }
+                                .onEnded { value in
+                                    macMapExpandedCardDragOffset = value.translation
+                                }
+                        )
                         .zIndex(12)
                 }
 
@@ -510,12 +592,6 @@ struct ContentView: View {
                             }
                         }
                         .zIndex(9)
-                }
-
-                if showingInlineSearch, !inlineSearchText.isEmpty {
-                    iOSInlineSearchResults
-                        .transition(.opacity)
-                        .zIndex(10)
                 }
 
                 if showingCountrySearch, !countrySearchText.isEmpty {
@@ -540,6 +616,14 @@ struct ContentView: View {
             y: min(max(proposed.y, margin), size.height - cardSize.height - margin)
         )
         return CGSize(width: clamped.x, height: clamped.y)
+    }
+
+    private func macExpandedCardOffset(in size: CGSize) -> CGSize {
+        let base = macExpandedCardTopLeft(in: size)
+        return CGSize(
+            width: base.width + macMapExpandedCardDragOffset.width,
+            height: base.height + macMapExpandedCardDragOffset.height
+        )
     }
 
     private var macKeyboardShortcuts: some View {
@@ -604,7 +688,7 @@ struct ContentView: View {
                 } label: {
                     Text(listID.localizedDisplayName(locale: locale))
                         .font(.headline.weight(.semibold))
-                        .foregroundStyle(Color(hex: 0x6EA2FF))
+                        .foregroundStyle(theme.colors.accent)
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -904,12 +988,17 @@ struct ContentView: View {
             }
         } label: {
             #if os(macOS)
-            Text(toolbarTitle)
-                .font(.headline)
-                .lineLimit(1)
-                .foregroundStyle(.primary)
-                .fixedSize(horizontal: true, vertical: false)
-                .contentShape(Rectangle())
+            HStack(spacing: 0) {
+                Text(toolbarTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 4)
+            .frame(minWidth: 88)
+            .fixedSize(horizontal: true, vertical: false)
+            .contentShape(Rectangle())
             #else
             HStack(spacing: 8) {
                 Text(toolbarTitle)
@@ -927,6 +1016,7 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
         #if os(macOS)
+        .tint(.primary)
         .menuIndicator(.hidden)
         #endif
         .menuOrder(.fixed)
@@ -1639,20 +1729,20 @@ struct ContentView: View {
         if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode {
             Color.clear
                 #if os(macOS)
-                .frame(width: 66, height: 400)
+                .frame(width: 60, height: 340)
                 #else
                 .frame(width: 80, height: 500)
                 #endif
                 .contentShape(Rectangle())
                 .overlay(alignment: .trailing) {
                     #if os(macOS)
-                    mapDateSlider(height: 320)
+                    mapDateSlider(height: 280)
                     #else
                     mapDateSlider(height: 420)
                     #endif
                 }
                 #if os(macOS)
-                .padding(.bottom, 320)
+                .padding(.bottom, 290)
                 #else
                 .padding(.bottom, 440)
                 #endif
@@ -1801,6 +1891,7 @@ struct ContentView: View {
     private func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
         #if os(macOS)
         macMapExpandedCardAnchor = anchor
+        macMapExpandedCardDragOffset = .zero
         #endif
 
         if showingMapExpandedCard && tappedCity?.id == city.id {
