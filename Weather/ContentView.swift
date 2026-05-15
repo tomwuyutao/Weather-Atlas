@@ -169,11 +169,14 @@ struct ContentView: View {
     @State var macMapExpandedCardDragOffset: CGSize = .zero
     @GestureState private var macMapExpandedCardGestureOffset: CGSize = .zero
     @State private var macHoverPresentedCardCityID: UUID?
+    @State private var macMapExpandedCardFocusesMarker: Bool = false
     @State var macExpandedCardShowsDetails: Bool = false
     @State var macExpandedCardChartMetric: WeatherDetailView.ChartMetric = .temperature
     @State var macExpandedCardChartRange: WeatherDetailView.ChartTimeRange = .daytime
     @State var macSidebarDropTarget: String?
     @State var macSidebarHoveredDisclosureID: String?
+    @State var macSidebarContextTarget: String?
+    @State var macSidebarRefreshTick: Int = 0
     @State private var macHoveredSearchSuggestionID: UUID?
     @State var macExpandedCardHoveredDay: Int?
     @State var macExpandedCardHoveringClose: Bool = false
@@ -599,6 +602,12 @@ struct ContentView: View {
                                     macMapExpandedCardBaseOffset.height += value.translation.height
                                 }
                         )
+                        .transition(
+                            .asymmetric(
+                                insertion: .scale(scale: 0.12, anchor: .trailing).combined(with: .opacity),
+                                removal: .scale(scale: 0.12, anchor: .trailing).combined(with: .opacity)
+                            )
+                        )
                         .zIndex(12)
                 }
 
@@ -628,6 +637,7 @@ struct ContentView: View {
     private func macExpandedCardTopLeft(in size: CGSize) -> CGSize {
         let cardSize = CGSize(width: 252, height: macExpandedCardShowsDetails ? 620 : 400)
         let margin: CGFloat = 16
+        let toolbarClearance: CGFloat = 58
         let markerGap: CGFloat = 210
         let anchor = macMapExpandedCardAnchor ?? CGPoint(
             x: size.width - cardSize.width - margin,
@@ -638,17 +648,24 @@ struct ContentView: View {
             y: anchor.y - (cardSize.height / 2)
         )
         let clamped = CGPoint(
-            x: min(proposed.x, size.width - cardSize.width - margin),
-            y: min(max(proposed.y, margin), size.height - cardSize.height - margin)
+            x: min(max(proposed.x, margin), size.width - cardSize.width - margin),
+            y: min(max(proposed.y, toolbarClearance), size.height - cardSize.height - margin)
         )
         return CGSize(width: clamped.x, height: clamped.y)
     }
 
     private func macExpandedCardOffset(in size: CGSize) -> CGSize {
+        let cardSize = CGSize(width: 252, height: macExpandedCardShowsDetails ? 620 : 400)
+        let margin: CGFloat = 16
+        let toolbarClearance: CGFloat = 58
         let base = macExpandedCardTopLeft(in: size)
-        return CGSize(
+        let proposed = CGSize(
             width: base.width + macMapExpandedCardBaseOffset.width + macMapExpandedCardGestureOffset.width,
             height: base.height + macMapExpandedCardBaseOffset.height + macMapExpandedCardGestureOffset.height
+        )
+        return CGSize(
+            width: min(max(proposed.width, margin), size.width - cardSize.width - margin),
+            height: min(max(proposed.height, toolbarClearance), size.height - cardSize.height - margin)
         )
     }
 
@@ -1072,12 +1089,13 @@ struct ContentView: View {
     }
 
     private func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
-        showMapMarkerCard(city, anchor: anchor, expanded: false)
+        showMapMarkerCard(city, anchor: anchor, expanded: false, focusesMarker: true)
     }
 
-    private func showMapMarkerCard(_ city: CityWeather, anchor: CGPoint? = nil, expanded: Bool) {
+    private func showMapMarkerCard(_ city: CityWeather, anchor: CGPoint? = nil, expanded: Bool, focusesMarker: Bool) {
         #if os(macOS)
         macHoverPresentedCardCityID = nil
+        macMapExpandedCardFocusesMarker = focusesMarker
         macExpandedCardShowsDetails = expanded
         macMapExpandedCardAnchor = anchor
         macMapExpandedCardBaseOffset = .zero
@@ -1086,6 +1104,8 @@ struct ContentView: View {
 
         if showingMapExpandedCard && tappedCity?.id == city.id {
             #if os(macOS)
+            macHoverPresentedCardCityID = nil
+            macMapExpandedCardFocusesMarker = focusesMarker
             return
             #else
             showingCityDetail = true
@@ -1093,8 +1113,10 @@ struct ContentView: View {
             #endif
         }
 
-        tappedCity = city
-        showingMapExpandedCard = true
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+            tappedCity = city
+            showingMapExpandedCard = true
+        }
         print("city card opened: \(city.city.name)")
     }
 
@@ -1113,26 +1135,24 @@ struct ContentView: View {
     private func handleMapMarkerCommandHover(_ city: CityWeather?, anchor: CGPoint?) {
         guard let city else {
             if macHoverPresentedCardCityID == tappedCity?.id {
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    showingMapExpandedCard = false
-                    tappedCity = nil
-                    macHoverPresentedCardCityID = nil
-                    macExpandedCardShowsDetails = false
-                }
+                showingMapExpandedCard = false
+                tappedCity = nil
+                macHoverPresentedCardCityID = nil
+                macMapExpandedCardFocusesMarker = false
+                macExpandedCardShowsDetails = false
             }
             return
         }
 
         guard !showingMapExpandedCard || macHoverPresentedCardCityID != nil else { return }
         macHoverPresentedCardCityID = city.id
+        macMapExpandedCardFocusesMarker = false
         macMapExpandedCardAnchor = anchor
         macMapExpandedCardBaseOffset = .zero
         macMapExpandedCardDragOffset = .zero
         macExpandedCardShowsDetails = false
         tappedCity = city
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            showingMapExpandedCard = true
-        }
+        showingMapExpandedCard = true
     }
     #endif
 
@@ -1323,6 +1343,9 @@ struct ContentView: View {
                         previewCity = cityWeather
                         previewSearchText = cityWeather.city.name
                         tappedCity = cityWeather
+                        #if os(macOS)
+                        macMapExpandedCardFocusesMarker = false
+                        #endif
                         showingAddCityView = false
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                             centerOnCityTrigger = cityWeather
@@ -1489,6 +1512,7 @@ struct ContentView: View {
                 recenterOnAllCities: $recenterOnAllCities,
                 centerOnCity: centerOnCityTrigger,
                 leadingFitPadding: macMapLeadingFitPadding,
+                focusSelectedMarker: macMapExpandedCardFocusesMarker,
                 onMarkerTap: { city, point in
                     handleMapMarkerTap(city, anchor: point)
                 },

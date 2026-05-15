@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 import UniformTypeIdentifiers
 
 #if os(macOS)
@@ -18,6 +19,7 @@ extension ContentView {
                     macSidebarListSection(for: listID)
                 }
             }
+            .id(macSidebarRefreshTick)
             .padding(.top, 0)
             .padding(.bottom, 8)
         }
@@ -33,6 +35,7 @@ extension ContentView {
         let isExpanded = sidebarExpandedListIDs.contains(listID.rawValue)
         let cities = weatherService.weatherData(for: listID)
         let isActive = listID == weatherService.activeListID
+        let contextID = macSidebarListContextID(listID)
 
         return VStack(spacing: 0) {
             HStack(spacing: 10) {
@@ -61,28 +64,24 @@ extension ContentView {
                     Image(systemName: "chevron.down")
                         .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background {
-                            if macSidebarHoveredDisclosureID == listID.rawValue {
-                                Circle()
-                                    .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
-                                    .frame(width: 28, height: 28)
-                            }
-                        }
+                        .frame(width: 36, height: 32)
                         .rotationEffect(.degrees(isExpanded ? 0 : -90))
                 }
                 .buttonStyle(.plain)
-                .frame(width: 28, height: 28)
-                .contentShape(Circle())
-                .onHover { hovering in
-                    macSidebarHoveredDisclosureID = hovering ? listID.rawValue : (macSidebarHoveredDisclosureID == listID.rawValue ? nil : macSidebarHoveredDisclosureID)
-                }
+                .frame(width: 36, height: 32)
+                .contentShape(Rectangle())
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 5)
             .contentShape(Rectangle())
+            .background {
+                ZStack {
+                    macSidebarContextOutline(isVisible: macSidebarContextTarget == contextID)
+                    macSidebarRightClickReader(contextID)
+                }
+            }
             .overlay(alignment: .top) {
-                if macSidebarDropTarget == macSidebarListContextID(listID) {
+                if macSidebarDropTarget == contextID {
                     Capsule()
                         .fill(theme.colors.accent)
                         .frame(height: 2)
@@ -90,7 +89,8 @@ extension ContentView {
                 }
             }
             .onDrag {
-                macSidebarItemProvider(payload: macSidebarListDragPayload(listID), type: .weatherSidebarList)
+                macSidebarContextTarget = nil
+                return macSidebarItemProvider(payload: macSidebarListDragPayload(listID), type: .weatherSidebarList)
             } preview: {
                 Color.clear
                     .frame(width: 1, height: 1)
@@ -98,11 +98,12 @@ extension ContentView {
             }
             .onDrop(
                 of: [.weatherSidebarList, .weatherSidebarCity],
-                delegate: macSidebarDropDelegate(macSidebarListContextID(listID), acceptedTypes: [.weatherSidebarList, .weatherSidebarCity]) { providers in
+                delegate: macSidebarDropDelegate(contextID, acceptedTypes: [.weatherSidebarList, .weatherSidebarCity]) { providers in
                     loadMacSidebarDrop(providers, onList: listID)
                 }
             )
             .contextMenu {
+                macSidebarContextMenuMarker(contextID)
                 listActions(for: listID)
             }
 
@@ -131,39 +132,43 @@ extension ContentView {
 
     private func macSidebarCityRow(_ city: CityWeather, in listID: CityListID) -> some View {
         let isActive = listID == weatherService.activeListID
+        let contextID = macSidebarCityContextID(city, in: listID)
 
-        return
-            HStack(spacing: 10) {
-                Circle()
-                    .fill(sidebarDotColor(for: city))
-                    .frame(width: 9, height: 9)
-                    .shadow(color: sidebarDotColor(for: city).opacity(0.5), radius: 2)
+        return HStack(spacing: 10) {
+            Circle()
+                .fill(sidebarDotColor(for: city))
+                .frame(width: 9, height: 9)
+                .shadow(color: sidebarDotColor(for: city).opacity(0.5), radius: 2)
 
-                Text(city.city.localizedName(locale: locale))
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(isActive ? theme.colors.primaryText : theme.colors.secondaryText.opacity(0.72))
-                    .lineLimit(1)
+            Text(city.city.localizedName(locale: locale))
+                .font(.callout.weight(.medium))
+                .foregroundStyle(isActive ? theme.colors.primaryText : theme.colors.secondaryText.opacity(0.72))
+                .lineLimit(1)
 
-                Spacer(minLength: 8)
+            Spacer(minLength: 8)
+        }
+        .padding(.horizontal, 18)
+        .padding(.vertical, 4)
+        .contentShape(Rectangle())
+        .background {
+            macSidebarContextOutline(isVisible: macSidebarContextTarget == contextID)
+        }
+        .overlay(alignment: .top) {
+            if macSidebarDropTarget == contextID {
+                Capsule()
+                    .fill(theme.colors.accent)
+                    .frame(height: 2)
+                    .padding(.horizontal, 14)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 4)
-            .contentShape(Rectangle())
-            .overlay(alignment: .top) {
-                if macSidebarDropTarget == macSidebarCityContextID(city, in: listID) {
-                    Capsule()
-                        .fill(theme.colors.accent)
-                        .frame(height: 2)
-                        .padding(.horizontal, 14)
-                }
+        }
+        .onTapGesture {
+            if isActive {
+                revealCityOnMap(city, in: listID)
             }
-            .onTapGesture {
-                if isActive {
-                    revealCityOnMap(city, in: listID)
-                }
-            }
+        }
         .onDrag {
-            macSidebarItemProvider(payload: macSidebarCityDragPayload(city, in: listID), type: .weatherSidebarCity)
+            macSidebarContextTarget = nil
+            return macSidebarItemProvider(payload: macSidebarCityDragPayload(city, in: listID), type: .weatherSidebarCity)
         } preview: {
             Color.clear
                 .frame(width: 1, height: 1)
@@ -171,12 +176,38 @@ extension ContentView {
         }
         .onDrop(
             of: [.weatherSidebarCity],
-            delegate: macSidebarDropDelegate(macSidebarCityContextID(city, in: listID), acceptedTypes: [.weatherSidebarCity]) { providers in
+            delegate: macSidebarDropDelegate(contextID, acceptedTypes: [.weatherSidebarCity]) { providers in
                 loadMacSidebarDrop(providers, onCity: city, in: listID)
             }
         )
         .contextMenu {
+            macSidebarContextMenuMarker(contextID)
             cityActions(for: city, in: listID)
+        }
+    }
+
+    private func macSidebarContextOutline(isVisible: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 8, style: .continuous)
+            .strokeBorder(isVisible ? Color.primary.opacity(0.32) : Color.clear, lineWidth: 1)
+            .padding(.horizontal, 8)
+            .animation(.easeOut(duration: 0.12), value: isVisible)
+    }
+
+    private func macSidebarContextMenuMarker(_ id: String) -> some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onDisappear {
+                DispatchQueue.main.async {
+                    if macSidebarContextTarget == id {
+                        macSidebarContextTarget = nil
+                    }
+                }
+            }
+    }
+
+    private func macSidebarRightClickReader(_ id: String) -> some View {
+        MacSidebarRightClickReader(id: id) { target in
+            macSidebarContextTarget = target
         }
     }
 
@@ -280,13 +311,20 @@ extension ContentView {
             let moved = lists.remove(at: source)
             lists.insert(moved, at: target)
             CityListID.saveListOrder(lists)
+            macSidebarRefreshTick += 1
+            PlatformFeedback.lightImpact()
             return true
         }
 
         if kind == "city", parts.count == 3 {
             guard let sourceListID = CityListID.allLists.first(where: { $0.rawValue == parts[1] }),
                   let cityID = macSidebarResolvedCityID(parts[2], in: sourceListID) else { return false }
-            return weatherService.moveCity(id: cityID, from: sourceListID, to: targetListID, destination: nil)
+            let moved = weatherService.moveCity(id: cityID, from: sourceListID, to: targetListID, destination: nil)
+            if moved {
+                macSidebarRefreshTick += 1
+                PlatformFeedback.lightImpact()
+            }
+            return moved
         }
 
         return false
@@ -302,7 +340,12 @@ extension ContentView {
               let targetIndex = weatherService.weatherData(for: targetListID).firstIndex(where: { $0.id == targetCity.id || macSidebarStableCityKey($0) == targetKey }) else {
             return false
         }
-        return weatherService.moveCity(id: cityID, from: sourceListID, to: targetListID, destination: targetIndex)
+        let moved = weatherService.moveCity(id: cityID, from: sourceListID, to: targetListID, destination: targetIndex)
+        if moved {
+            macSidebarRefreshTick += 1
+            PlatformFeedback.lightImpact()
+        }
+        return moved
     }
 
     private func sidebarDotColor(for cityWeather: CityWeather) -> Color {
@@ -405,6 +448,79 @@ extension ContentView {
                 green: Double(0xA4) / 255.0 + t * Double(0x43 - 0xA4) / 255.0,
                 blue: Double(0x09) / 255.0 + t * Double(0x68 - 0x09) / 255.0
             )
+        }
+    }
+}
+
+private struct MacSidebarRightClickReader: NSViewRepresentable {
+    let id: String
+    let setTarget: (String?) -> Void
+
+    func makeNSView(context: Context) -> EventView {
+        let view = EventView()
+        view.id = id
+        view.setTarget = setTarget
+        return view
+    }
+
+    func updateNSView(_ nsView: EventView, context: Context) {
+        nsView.id = id
+        nsView.setTarget = setTarget
+    }
+
+    final class EventView: NSView {
+        var id: String = ""
+        var setTarget: (String?) -> Void = { _ in }
+        private var monitor: Any?
+        private var menuObserver: NSObjectProtocol?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            updateMonitor()
+        }
+
+        deinit {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+            if let menuObserver {
+                NotificationCenter.default.removeObserver(menuObserver)
+            }
+        }
+
+        private func updateMonitor() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+            if let menuObserver {
+                NotificationCenter.default.removeObserver(menuObserver)
+                self.menuObserver = nil
+            }
+            guard window != nil else { return }
+
+            menuObserver = NotificationCenter.default.addObserver(
+                forName: NSMenu.didEndTrackingNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                self?.setTarget(nil)
+            }
+
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.rightMouseDown, .leftMouseDown]) { [weak self] event in
+                guard let self, self.window === event.window else { return event }
+
+                let point = self.convert(event.locationInWindow, from: nil)
+                if self.bounds.contains(point) {
+                    if event.type == .rightMouseDown {
+                        self.setTarget(self.id)
+                    }
+                } else if event.type == .leftMouseDown {
+                    self.setTarget(nil)
+                }
+
+                return event
+            }
         }
     }
 }

@@ -17,6 +17,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     @Binding var recenterOnAllCities: Bool
     var centerOnCity: CityWeather?
     var leadingFitPadding: Double = 0
+    var focusSelectedMarker: Bool = true
     var onMarkerTap: (CityWeather, CGPoint?) -> Void
     var onMarkerCommandHover: ((CityWeather?, CGPoint?) -> Void)? = nil
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)? = nil
@@ -193,7 +194,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             let features = parent.makeFeatures()
             guard let data = try? JSONEncoder().encode(features),
                   let json = String(data: data, encoding: .utf8) else { return }
-            let selectedID = parent.tappedCity?.id.uuidString ?? ""
+            let selectedID = parent.focusSelectedMarker ? (parent.tappedCity?.id.uuidString ?? "") : ""
             let payload = "{features:\(json),selectedID:\(Self.jsString(selectedID))}"
 
             if force || payload != lastPayload {
@@ -364,6 +365,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           border-bottom-color: rgba(255, 255, 255, 0.04);
         }
         .maplibregl-map, .maplibregl-canvas-container, .maplibregl-canvas { width: 100% !important; height: 100% !important; cursor: default !important; }
+        .maplibregl-canvas { transition: filter 220ms ease; }
+        body.focus-selected .maplibregl-canvas { filter: saturate(0.82) brightness(0.94); }
         .maplibregl-ctrl-logo, .maplibregl-ctrl-attrib { display: none !important; }
         #hover-label {
           position: fixed;
@@ -406,6 +409,9 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         var hoveredMarkerPoint = null;
         var commandPressed = false;
         var commandHoverCardID = '';
+        var selectedMarkerID = '';
+        var markerScales = {};
+        var markerScaleAnimationFrame = null;
         var pinchVelocity = 0;
         var pinchAnimationFrame = null;
         var baseStylePreferencesApplied = false;
@@ -542,17 +548,16 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-glow', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['case',
-                  ['any', ['boolean', ['get', 'selected'], false], ['boolean', ['get', 'hovered'], false]], 20,
-                  13
-                ],
+                'circle-radius': ['+', 13, ['*', ['number', ['get', 'scale'], 0], 6]],
                 'circle-color': ['get', 'color'],
                 'circle-opacity': ['case',
-                  ['any', ['boolean', ['get', 'selected'], false], ['boolean', ['get', 'hovered'], false]], 0.36,
+                  ['boolean', ['get', 'selected'], false], 0.42,
+                  ['boolean', ['get', 'hovered'], false], 0.38,
+                  ['boolean', ['get', 'dimmed'], false], 0.08,
                   0.24
                 ],
-                'circle-radius-transition': { duration: 180, delay: 0 },
-                'circle-opacity-transition': { duration: 180, delay: 0 },
+                'circle-radius-transition': { duration: 300, delay: 0 },
+                'circle-opacity-transition': { duration: 220, delay: 0 },
                 'circle-blur': 0.85
               }
             });
@@ -561,17 +566,16 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-halo', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['case',
-                  ['any', ['boolean', ['get', 'selected'], false], ['boolean', ['get', 'hovered'], false]], 11,
-                  7
-                ],
+                'circle-radius': ['+', 7, ['*', ['number', ['get', 'scale'], 0], 3]],
                 'circle-color': ['get', 'color'],
                 'circle-opacity': ['case',
-                  ['any', ['boolean', ['get', 'selected'], false], ['boolean', ['get', 'hovered'], false]], 0.22,
+                  ['boolean', ['get', 'selected'], false], 0.28,
+                  ['boolean', ['get', 'hovered'], false], 0.24,
+                  ['boolean', ['get', 'dimmed'], false], 0.04,
                   0.14
                 ],
-                'circle-radius-transition': { duration: 180, delay: 0 },
-                'circle-opacity-transition': { duration: 180, delay: 0 },
+                'circle-radius-transition': { duration: 300, delay: 0 },
+                'circle-opacity-transition': { duration: 220, delay: 0 },
                 'circle-blur': 0.45
               }
             });
@@ -580,14 +584,11 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-points', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['case',
-                  ['any', ['boolean', ['get', 'selected'], false], ['boolean', ['get', 'hovered'], false]], 6.5,
-                  4.5
-                ],
+                'circle-radius': ['+', 4.5, ['*', ['number', ['get', 'scale'], 0], 1.5]],
                 'circle-color': ['get', 'color'],
-                'circle-radius-transition': { duration: 180, delay: 0 },
-                'circle-stroke-color': 'rgba(255,255,255,0.0)',
-                'circle-stroke-width': 0
+                'circle-opacity': ['case', ['boolean', ['get', 'dimmed'], false], 0.28, 1],
+                'circle-radius-transition': { duration: 300, delay: 0 },
+                'circle-opacity-transition': { duration: 220, delay: 0 }
               }
             });
           }
@@ -599,6 +600,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         function collectionFromPayload(payload) {
           const selectedID = payload.selectedID || '';
+          const hasSelection = selectedID !== '';
           return {
             type: 'FeatureCollection',
             features: (payload.features || []).map(item => ({
@@ -610,19 +612,56 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 country: item.country,
                 label: item.label,
                 color: item.color,
+                scale: markerScales[item.id] ?? 0,
                 selected: item.id === selectedID,
-                hovered: item.id === hoveredMarkerID
+                hovered: item.id === hoveredMarkerID,
+                dimmed: hasSelection && item.id !== selectedID
               },
               geometry: { type: 'Point', coordinates: [item.longitude, item.latitude] }
             }))
           };
         }
 
+        function markerTargetScale(id) {
+          return (id && (id === hoveredMarkerID || id === selectedMarkerID)) ? 1 : 0;
+        }
+
+        function renderWeatherSource() {
+          const source = map?.getSource('weather');
+          if (source && pendingPayload) source.setData(collectionFromPayload(pendingPayload));
+        }
+
+        function animateMarkerScales() {
+          if (markerScaleAnimationFrame) return;
+          function step() {
+            let needsNextFrame = false;
+            (pendingPayload?.features || []).forEach(item => {
+              const current = markerScales[item.id] ?? 0;
+              const target = markerTargetScale(item.id);
+              const next = current + (target - current) * 0.26;
+              markerScales[item.id] = Math.abs(next - target) < 0.01 ? target : next;
+              if (markerScales[item.id] !== target) needsNextFrame = true;
+            });
+            renderWeatherSource();
+            markerScaleAnimationFrame = needsNextFrame ? requestAnimationFrame(step) : null;
+          }
+          markerScaleAnimationFrame = requestAnimationFrame(step);
+        }
+
+        function updateMarkerScaleTargets() {
+          (pendingPayload?.features || []).forEach(item => {
+            if (markerScales[item.id] === undefined) markerScales[item.id] = 0;
+          });
+          animateMarkerScales();
+        }
+
         function updateSource(payload) {
           pendingPayload = payload;
+          selectedMarkerID = payload?.selectedID || '';
+          document.body.classList.toggle('focus-selected', !!selectedMarkerID);
           ensureLayers();
-          const source = map?.getSource('weather');
-          if (source) source.setData(collectionFromPayload(payload));
+          updateMarkerScaleTargets();
+          renderWeatherSource();
         }
 
         window.updateWeatherData = function(payload) {

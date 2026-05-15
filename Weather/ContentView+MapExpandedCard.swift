@@ -192,31 +192,35 @@ extension ContentView {
 
                 Spacer(minLength: 8)
 
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        showingMapExpandedCard = false
-                        tappedCity = nil
-                        if previewCity != nil {
-                            previewCity = nil
-                            recenterOnAllCities = true
+                if cityIsInSidebar(cityWeather) {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            showingMapExpandedCard = false
+                            tappedCity = nil
+                            if previewCity != nil {
+                                previewCity = nil
+                                recenterOnAllCities = true
+                            }
                         }
-                    }
-                } label: {
-                    ZStack {
-                        if macExpandedCardHoveringClose {
-                            Circle()
-                                .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
-                                .frame(width: 28, height: 28)
+                    } label: {
+                        ZStack {
+                            if macExpandedCardHoveringClose {
+                                Circle()
+                                    .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
+                                    .frame(width: 28, height: 28)
+                            }
+                            Image(systemName: "xmark")
+                                .font(.system(size: 12, weight: .semibold))
                         }
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .semibold))
+                        .frame(width: 28, height: 28)
+                        .contentShape(Circle())
                     }
-                    .frame(width: 28, height: 28)
-                    .contentShape(Circle())
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
+                    .onHover { macExpandedCardHoveringClose = $0 }
+                } else {
+                    macExpandedCardAddMenu(for: cityWeather)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
-                .onHover { macExpandedCardHoveringClose = $0 }
             }
             .padding(.bottom, 14)
 
@@ -240,14 +244,7 @@ extension ContentView {
                 .fill(Color.primary.opacity(0.08))
                 .frame(height: 0.75)
                 .padding(.horizontal, -14)
-                .padding(.bottom, 12)
-
-            Text(localizedString("10 Day Forecast", locale: locale))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(.secondary)
-                .textCase(.uppercase)
-                .tracking(0.8)
-                .padding(.bottom, 12)
+                .padding(.bottom, 10)
 
             VStack(spacing: 8) {
                 ForEach(0..<2, id: \.self) { row in
@@ -299,7 +296,7 @@ extension ContentView {
                     }
                 }
             }
-            .padding(.bottom, 14)
+            .padding(.bottom, 4)
 
             if macExpandedCardShowsDetails {
                 ScrollView(.vertical, showsIndicators: false) {
@@ -312,65 +309,6 @@ extension ContentView {
             }
 
             HStack {
-                if cityIsInSidebar(cityWeather) {
-                    Button(role: .destructive) {
-                        weatherService.removeCity(cityWeather)
-                        showingMapExpandedCard = false
-                        showingCityDetail = false
-                        tappedCity = nil
-                        if previewCity != nil { previewCity = nil }
-                        recenterOnAllCities = true
-                    } label: {
-                        Text(localizedString("Remove", locale: locale))
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 4)
-                            .background {
-                                if macExpandedCardHoveringRemove {
-                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                        .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
-                                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                    .onHover { macExpandedCardHoveringRemove = $0 }
-                } else if CityListID.allLists.count > 1 {
-                    Menu {
-                        ForEach(CityListID.allLists) { listID in
-                            Button(listID.localizedDisplayName(locale: locale)) {
-                                Task {
-                                    await weatherService.addCityToList(cityWeather.city, listID: listID)
-                                    PlatformFeedback.lightImpact()
-                                    showingMapExpandedCard = false
-                                    tappedCity = nil
-                                    if previewCity != nil { previewCity = nil }
-                                    recenterOnAllCities = true
-                                }
-                            }
-                        }
-                    } label: {
-                        Text(localizedString("Add", locale: locale))
-                    }
-                    .menuStyle(.button)
-                    .buttonStyle(.plain)
-                    .foregroundStyle(theme.colors.accent)
-                } else {
-                    Button {
-                        Task {
-                            await weatherService.addCityToList(cityWeather.city, listID: weatherService.activeListID)
-                            PlatformFeedback.lightImpact()
-                            showingMapExpandedCard = false
-                            tappedCity = nil
-                            if previewCity != nil { previewCity = nil }
-                            recenterOnAllCities = true
-                        }
-                    } label: {
-                        Text(localizedString("Add", locale: locale))
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(theme.colors.accent)
-                }
-
                 Spacer()
 
                 Button {
@@ -378,31 +316,61 @@ extension ContentView {
                         macExpandedCardShowsDetails.toggle()
                     }
                 } label: {
-                    HStack(spacing: 8) {
-                        Text(macExpandedCardShowsDetails ? localizedString("Hide Details", locale: locale) : localizedString("Expand Details", locale: locale))
-                        Image(systemName: "chevron.down")
-                            .rotationEffect(.degrees(macExpandedCardShowsDetails ? 180 : 0))
-                    }
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 13, weight: .semibold))
+                        .rotationEffect(.degrees(macExpandedCardShowsDetails ? 180 : 0))
+                        .frame(width: 24, height: 18)
+                        .contentShape(Rectangle())
                 }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.regular)
-                .tint(macExpandedCardHoveringOpenDetails ? theme.colors.accent.opacity(0.82) : theme.colors.accent)
-                .onHover { macExpandedCardHoveringOpenDetails = $0 }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+
+                Spacer()
             }
         }
         .padding(14)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .background(
             (colorScheme == .dark
-             ? Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.98)
-             : Color(red: 0.92, green: 0.90, blue: 0.86).opacity(0.98)),
-            in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+             ? Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.70)
+             : Color(red: 0.92, green: 0.90, blue: 0.86).opacity(0.64)),
+            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 10)
-        .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    private func macExpandedCardAddMenu(for cityWeather: CityWeather) -> some View {
+        Menu {
+            ForEach(CityListID.allLists) { listID in
+                Button(listID.localizedDisplayName(locale: locale)) {
+                    Task {
+                        await weatherService.addCityToList(cityWeather.city, listID: listID)
+                        PlatformFeedback.lightImpact()
+                        if let addedCity = weatherService.weatherData(for: listID).first(where: {
+                            $0.city.name == cityWeather.city.name && $0.city.country == cityWeather.city.country
+                        }) {
+                            tappedCity = addedCity
+                        }
+                        previewCity = nil
+                        recenterOnAllCities = true
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(theme.colors.accent, in: Circle())
+                .contentShape(Circle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
     }
 
     private func macExpandedCardDetails(
