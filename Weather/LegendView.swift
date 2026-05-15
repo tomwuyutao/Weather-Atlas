@@ -159,26 +159,26 @@ struct MapFloatingLegend: View {
         Group {
             if overlayMode == "weather" {
                 legendContent
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, compact ? 10 : 16)
+                    .padding(.vertical, compact ? 6 : 10)
             } else {
-                HStack(spacing: 10) {
+                HStack(spacing: compact ? 7 : 10) {
                     Image(systemName: leadingIcon)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: compact ? 13 : 15, weight: .medium))
                         .foregroundStyle(AppTheme.shared.colors.primaryText)
-                        .frame(width: 18)
+                        .frame(width: compact ? 15 : 18)
 
                     legendContent
                 }
-                .padding(.leading, 14)
-                .padding(.trailing, 16)
-                .padding(.vertical, 10)
+                .padding(.leading, compact ? 10 : 14)
+                .padding(.trailing, compact ? 12 : 16)
+                .padding(.vertical, compact ? 6 : 10)
             }
         }
-        .frame(maxWidth: compact ? 520 : .infinity, alignment: .leading)
-        .padding(6)
+        .frame(maxWidth: compact ? 420 : .infinity, alignment: .leading)
+        .padding(compact ? 3 : 6)
         .themedGlass(in: Capsule())
-        .padding(.horizontal, 12)
+        .padding(.horizontal, compact ? 8 : 12)
     }
 
     @ViewBuilder
@@ -332,10 +332,10 @@ struct MapFloatingLegend: View {
     }
 
     private func dotPairEntry(_ condition: AppWeatherCondition) -> some View {
-        HStack(spacing: 5) {
+        HStack(spacing: compact ? 3 : 5) {
             Circle()
                 .fill(condition.dotColor)
-                .frame(width: 8, height: 8)
+                .frame(width: compact ? 6 : 8, height: compact ? 6 : 8)
                 .shadow(color: condition.dotColor.opacity(0.5), radius: 2)
             separatorLine
             legendIconView(for: condition)
@@ -343,7 +343,7 @@ struct MapFloatingLegend: View {
     }
 
     private var weatherDotLegend: some View {
-        HStack(spacing: compact ? 18 : 0) {
+        HStack(spacing: compact ? 10 : 0) {
             dotPairEntry(.clear)
             if !compact { Spacer() }
             dotPairEntry(.partlyCloudy)
@@ -355,7 +355,7 @@ struct MapFloatingLegend: View {
             // White dot | cloudy, snow, fog, wind icons
             Circle()
                 .fill(AppWeatherCondition.cloudy.dotColor)
-                .frame(width: 8, height: 8)
+                .frame(width: compact ? 6 : 8, height: compact ? 6 : 8)
                 .shadow(color: AppWeatherCondition.cloudy.dotColor.opacity(0.5), radius: 2)
             separatorLine
                 .padding(.leading, 5)

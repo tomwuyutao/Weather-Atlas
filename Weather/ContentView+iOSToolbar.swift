@@ -97,6 +97,14 @@ extension ContentView {
 
     var iOSNativeMenu: some View {
         Menu {
+            Button {
+                showingSettings = true
+            } label: {
+                Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
+            }
+
+            Divider()
+
             if selectedTab == 1 {
                 Toggle(isOn: Binding(
                     get: { showLegend },

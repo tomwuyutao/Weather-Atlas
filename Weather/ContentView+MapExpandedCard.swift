@@ -95,6 +95,16 @@ extension ContentView {
             default: return ""
             }
         }()
+
+        #if os(macOS)
+        return macMapExpandedCard(
+            for: cityWeather,
+            icon: icon,
+            primaryText: isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh),
+            metricLabel: isOverlayActive ? overlayLabel : localizedString("Highest Temperature", locale: locale),
+            tempUnit: tempUnit
+        )
+        #else
         return HStack(alignment: .bottom, spacing: 18) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
@@ -152,5 +162,163 @@ extension ContentView {
         .onTapGesture {
             showingCityDetail = true
         }
+        #endif
     }
+
+    #if os(macOS)
+    private func macMapExpandedCard(
+        for cityWeather: CityWeather,
+        icon: String,
+        primaryText: String,
+        metricLabel: String,
+        tempUnit: TemperatureUnit
+    ) -> some View {
+        let forecasts = Array(cityWeather.dailyForecasts.prefix(7))
+
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(cityWeather.city.localizedName(locale: locale))
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    Text(metricLabel)
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer(minLength: 8)
+
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showingMapExpandedCard = false
+                        tappedCity = nil
+                        if previewCity != nil {
+                            previewCity = nil
+                            recenterOnAllCities = true
+                        }
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+            }
+            .padding(.bottom, 14)
+
+            HStack(alignment: .center, spacing: 12) {
+                Text(primaryText)
+                    .font(.system(size: 52, weight: .regular, design: .default))
+                    .foregroundStyle(.primary)
+                    .contentTransition(.numericText())
+                    .lineLimit(1)
+
+                Image(systemName: icon)
+                    .font(.system(size: 30, weight: .medium))
+                    .weatherIconStyle(for: icon)
+                    .frame(width: 36, height: 32)
+
+                Spacer(minLength: 8)
+            }
+            .padding(.bottom, 16)
+
+            Divider()
+                .padding(.horizontal, -14)
+                .padding(.bottom, 12)
+
+            Text(localizedString("7 Day Forecast", locale: locale))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .textCase(.uppercase)
+                .tracking(0.8)
+                .padding(.bottom, 12)
+
+            HStack(alignment: .top, spacing: 0) {
+                ForEach(Array(forecasts.enumerated()), id: \.element.id) { index, forecast in
+                    VStack(spacing: 7) {
+                        Text(macForecastDayLabel(for: index))
+                            .font(.caption2.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        Circle()
+                            .fill(forecast.condition.dotColor)
+                            .frame(width: index == selectedDayOffset ? 8 : 7, height: index == selectedDayOffset ? 8 : 7)
+                            .shadow(color: forecast.condition.dotColor.opacity(0.45), radius: 2)
+
+                        Text(tempUnit.display(forecast.dailyHigh))
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+
+                        Text(tempUnit.display(forecast.dailyLow))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .padding(.bottom, 18)
+
+            Spacer(minLength: 0)
+
+            HStack {
+                Button(role: .destructive) {
+                    if cityIsInSidebar(cityWeather) {
+                        weatherService.removeCity(cityWeather)
+                    }
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showingMapExpandedCard = false
+                        showingCityDetail = false
+                        tappedCity = nil
+                        if previewCity != nil {
+                            previewCity = nil
+                            recenterOnAllCities = true
+                        }
+                    }
+                } label: {
+                    Text(localizedString("Remove", locale: locale))
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+
+                Spacer()
+
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showingCityDetail = true
+                    }
+                } label: {
+                    Label(localizedString("Open Details", locale: locale), systemImage: "arrow.right")
+                }
+                .labelStyle(.titleAndIcon)
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
+            }
+        }
+        .padding(14)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 10)
+        .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+    }
+
+    private func macForecastDayLabel(for offset: Int) -> String {
+        if offset == 0 {
+            return localizedString("Today", locale: locale).uppercased()
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = "EEE"
+        let date = Calendar.current.date(byAdding: .day, value: offset, to: Date()) ?? Date()
+        return formatter.string(from: date).uppercased()
+    }
+    #endif
 }

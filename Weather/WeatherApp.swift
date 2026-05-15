@@ -66,8 +66,20 @@ struct WeatherApp: App {
         }
         #if os(macOS)
         .windowStyle(.hiddenTitleBar)
+        .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings...") {
+                    NotificationCenter.default.post(name: .openSettingsCommand, object: nil)
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+        }
         #endif
     }
+}
+
+extension Notification.Name {
+    static let openSettingsCommand = Notification.Name("openSettingsCommand")
 }
 /// Outer layer: sets the preferred color scheme so the inner layer reads the correct one.
 private struct ThemeRoot: View {

@@ -278,6 +278,9 @@ struct ContentView: View {
         .onChange(of: showingCityDetail) { _, showing in
             iOSHandleCityDetailDismiss(showing: showing)
         }
+        .onReceive(NotificationCenter.default.publisher(for: .openSettingsCommand)) { _ in
+            showingSettings = true
+        }
         .sheet(isPresented: $showingInfo) {
             InfoView(source: .map)
                 .frame(minWidth: 420, minHeight: 520)
@@ -306,7 +309,7 @@ struct ContentView: View {
         NavigationStack {
             macListManagerSidebar
         }
-        .frame(minWidth: 220, idealWidth: 260, maxWidth: 360)
+        .frame(minWidth: 180, idealWidth: 220, maxWidth: 300)
     }
 
     private var macNavigationContent: some View {
@@ -424,7 +427,7 @@ struct ContentView: View {
 
     private var macDetailSidebar: some View {
         AnyView(iOSCityDetailDestination)
-            .frame(minWidth: 360, idealWidth: 420, maxWidth: 520)
+            .frame(minWidth: 320, idealWidth: 360, maxWidth: 440)
             .background(theme.colors.background)
     }
 
@@ -451,12 +454,12 @@ struct ContentView: View {
                 if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city)
                         .id(city.city.id)
-                        .frame(width: 360, height: 128)
+                        .frame(width: 420, height: 320)
                         .position(macExpandedCardPosition(in: geometry.size))
                         .transition(
                             .asymmetric(
-                                insertion: .scale(scale: 0.4, anchor: .topLeading).combined(with: .opacity),
-                                removal: .scale(scale: 0.4, anchor: .topLeading).combined(with: .opacity)
+                                insertion: .scale(scale: 0.05, anchor: .topLeading).combined(with: .opacity),
+                                removal: .scale(scale: 0.05, anchor: .topLeading).combined(with: .opacity)
                             )
                         )
                         .zIndex(12)
@@ -492,15 +495,15 @@ struct ContentView: View {
     }
 
     private func macExpandedCardPosition(in size: CGSize) -> CGPoint {
-        let cardSize = CGSize(width: 360, height: 128)
+        let cardSize = CGSize(width: 420, height: 320)
         let margin: CGFloat = 16
         let anchor = macMapExpandedCardAnchor ?? CGPoint(
             x: size.width - cardSize.width - margin,
             y: size.height - cardSize.height - margin
         )
         let proposed = CGPoint(
-            x: anchor.x + cardSize.width / 2 + 14,
-            y: anchor.y + cardSize.height / 2 + 14
+            x: anchor.x + cardSize.width / 2 + 6,
+            y: anchor.y + cardSize.height / 2 + 6
         )
 
         return CGPoint(
@@ -516,8 +519,8 @@ struct ContentView: View {
                     macSidebarListSection(for: listID)
                 }
             }
-            .padding(.top, 14)
-            .padding(.bottom, 24)
+            .padding(.top, 8)
+            .padding(.bottom, 14)
         }
         .background(theme.colors.background)
         .onAppear {
@@ -537,7 +540,7 @@ struct ContentView: View {
                     Task { await switchToList(listID) }
                 } label: {
                     Text(listID.localizedDisplayName(locale: locale))
-                        .font(.title3.weight(.bold))
+                        .font(.headline.weight(.semibold))
                         .foregroundStyle(Color(hex: 0x6EA2FF))
                         .lineLimit(1)
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -555,15 +558,15 @@ struct ContentView: View {
                     }
                 } label: {
                     Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .bold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: 28, height: 28)
+                        .frame(width: 24, height: 24)
                         .rotationEffect(.degrees(isExpanded ? 0 : -90))
                 }
                 .buttonStyle(.plain)
             }
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
             .contentShape(Rectangle())
             .contextMenu {
                 listActions(for: listID)
@@ -576,11 +579,11 @@ struct ContentView: View {
             if isExpanded {
                 if cities.isEmpty {
                     Text(localizedString("No cities", locale: locale))
-                        .font(.body.weight(.medium))
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 22)
-                        .padding(.vertical, 14)
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 9)
                 } else {
                     ForEach(cities) { city in
                         macSidebarCityRow(city, in: listID)
@@ -588,28 +591,28 @@ struct ContentView: View {
                 }
             }
         }
-        .padding(.bottom, 30)
+        .padding(.bottom, 14)
     }
 
     private func macSidebarCityRow(_ city: CityWeather, in listID: CityListID) -> some View {
         Button {
             revealCityOnMap(city, in: listID)
         } label: {
-            HStack(spacing: 16) {
+            HStack(spacing: 10) {
                 Circle()
                     .fill(sidebarDotColor(for: city))
-                    .frame(width: 13, height: 13)
-                    .shadow(color: sidebarDotColor(for: city).opacity(0.5), radius: 3)
+                    .frame(width: 9, height: 9)
+                    .shadow(color: sidebarDotColor(for: city).opacity(0.5), radius: 2)
 
                 Text(city.city.localizedName(locale: locale))
-                    .font(.title3.weight(.semibold))
+                    .font(.callout.weight(.medium))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
                 Spacer(minLength: 8)
             }
-            .padding(.horizontal, 22)
-            .padding(.vertical, 10)
+            .padding(.horizontal, 18)
+            .padding(.vertical, 5)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1593,12 +1596,24 @@ struct ContentView: View {
         // Date slider only on map tab — list tab uses the date switcher capsule
         if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode {
             Color.clear
+                #if os(macOS)
+                .frame(width: 66, height: 400)
+                #else
                 .frame(width: 80, height: 500)
+                #endif
                 .contentShape(Rectangle())
                 .overlay(alignment: .trailing) {
+                    #if os(macOS)
+                    mapDateSlider(height: 320)
+                    #else
                     mapDateSlider(height: 420)
+                    #endif
                 }
+                #if os(macOS)
+                .padding(.bottom, 320)
+                #else
                 .padding(.bottom, 440)
+                #endif
                 .padding(.trailing, 1)
                 .transition(.opacity)
         }

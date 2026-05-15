@@ -113,7 +113,11 @@ struct SettingsView: View {
         DistanceUnit(rawValue: distanceUnit) ?? .kilometers
     }
 
+    @ViewBuilder
     var body: some View {
+        #if os(macOS)
+        macSettingsBody
+        #else
         NavigationStack {
             ZStack {
                 colors.background.ignoresSafeArea()
@@ -218,7 +222,65 @@ struct SettingsView: View {
             }
             .animation(.easeOut(duration: 0.2), value: showingResetConfirmation)
         }
+        #endif
     }
+
+    #if os(macOS)
+    private var macSettingsBody: some View {
+        Form {
+            Section(localizedString("General", locale: locale)) {
+                Picker(localizedString("Temperature", locale: locale), selection: Binding(get: { temperatureUnit }, set: { temperatureUnit = $0 })) {
+                    Text("Celsius (°C)").tag(TemperatureUnit.celsius.rawValue)
+                    Text("Fahrenheit (°F)").tag(TemperatureUnit.fahrenheit.rawValue)
+                }
+                .pickerStyle(.menu)
+
+                Picker(localizedString("Distance", locale: locale), selection: Binding(get: { distanceUnit }, set: { distanceUnit = $0 })) {
+                    Text("Kilometers (km)").tag(DistanceUnit.kilometers.rawValue)
+                    Text("Miles (mi)").tag(DistanceUnit.miles.rawValue)
+                }
+                .pickerStyle(.menu)
+
+                Picker(localizedString("Language", locale: locale), selection: Binding(get: { appLanguage }, set: { appLanguage = $0 })) {
+                    Text("English").tag("en")
+                    Text("中文").tag("zh-Hans")
+                }
+                .pickerStyle(.menu)
+
+                Picker(localizedString("Theme", locale: locale), selection: Binding(get: { theme.style }, set: { theme.style = $0 })) {
+                    Text("Light").tag(AppThemeStyle.light)
+                    Text("Dark").tag(AppThemeStyle.dark)
+                    Text("Auto").tag(AppThemeStyle.automatic)
+                }
+                .pickerStyle(.segmented)
+
+                Toggle("Grid View", isOn: $isGridView)
+
+                Button(role: .destructive) {
+                    showingResetConfirmation = true
+                } label: {
+                    Label(localizedString("Reset Lists to Defaults", locale: locale), systemImage: "arrow.counterclockwise")
+                }
+            }
+
+            Section(localizedString("About", locale: locale)) {
+                LabeledContent(localizedString("Version", locale: locale), value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
+                LabeledContent(localizedString("Powered by", locale: locale), value: "Apple Weather")
+            }
+        }
+        .formStyle(.grouped)
+        .padding(.top, 12)
+        .frame(width: 420, height: 360)
+        .alert("Reset Lists", isPresented: $showingResetConfirmation) {
+            Button(localizedString("Cancel", locale: locale), role: .cancel) { }
+            Button(localizedString("Reset", locale: locale), role: .destructive) {
+                onResetLists()
+            }
+        } message: {
+            Text("This will reset all city lists back to their defaults. Any cities you added or removed will be lost.")
+        }
+    }
+    #endif
 
     private var settingsCloseButton: some View {
         Button {
