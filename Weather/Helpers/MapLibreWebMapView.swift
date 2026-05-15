@@ -19,6 +19,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     var leadingFitPadding: Double = 0
     var focusSelectedMarker: Bool = true
     var onMarkerTap: (CityWeather, CGPoint?) -> Void
+    var onMapClick: (() -> Void)? = nil
     var onMarkerCommandHover: ((CityWeather?, CGPoint?) -> Void)? = nil
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)? = nil
 
@@ -161,6 +162,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 let x = body["x"] as? Double ?? 0
                 let y = body["y"] as? Double ?? 0
                 print("map left click registered (\(source)): x=\(Int(x)) y=\(Int(y)) hoveredID=\(hoveredID.isEmpty ? "none" : hoveredID)")
+            case "mapBackgroundClick":
+                parent.onMapClick?()
             case "markerCommandHover":
                 guard let id = body["id"] as? String,
                       let city = parent.cities.first(where: { $0.id.uuidString == id }) else { return }
@@ -957,6 +960,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
               event.originalEvent._weatherMarkerHandled = true;
               const markerPoint = markerScreenPoint(feature, event.point);
               post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y });
+            } else {
+              post({ type: 'mapBackgroundClick' });
             }
           });
           map.on('click', 'weather-hit', event => {

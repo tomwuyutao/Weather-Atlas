@@ -61,18 +61,21 @@ extension ContentView {
                         }
                     }
                 } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 36, height: 32)
-                        .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                    ZStack {
+                        Color.red.opacity(0)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                    }
+                    .frame(width: 28, height: 24)
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .frame(width: 36, height: 32)
-                .contentShape(Rectangle())
+                .frame(width: 28, height: 24)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 5)
+            .padding(.vertical, 7)
             .contentShape(Rectangle())
             .background {
                 ZStack {
@@ -119,7 +122,7 @@ extension ContentView {
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, 18)
-                        .padding(.vertical, 6)
+                        .padding(.vertical, 8)
                 } else {
                     ForEach(cities) { city in
                         macSidebarCityRow(city, in: listID)
@@ -127,7 +130,7 @@ extension ContentView {
                 }
             }
         }
-        .padding(.bottom, 6)
+        .padding(.bottom, 8)
     }
 
     private func macSidebarCityRow(_ city: CityWeather, in listID: CityListID) -> some View {
@@ -148,10 +151,13 @@ extension ContentView {
             Spacer(minLength: 8)
         }
         .padding(.horizontal, 18)
-        .padding(.vertical, 4)
+        .padding(.vertical, 6)
         .contentShape(Rectangle())
         .background {
-            macSidebarContextOutline(isVisible: macSidebarContextTarget == contextID)
+            ZStack {
+                macSidebarContextOutline(isVisible: macSidebarContextTarget == contextID)
+                macSidebarRightClickReader(contextID)
+            }
         }
         .overlay(alignment: .top) {
             if macSidebarDropTarget == contextID {

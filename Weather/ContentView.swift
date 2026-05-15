@@ -604,8 +604,8 @@ struct ContentView: View {
                         )
                         .transition(
                             .asymmetric(
-                                insertion: .scale(scale: 0.12, anchor: .trailing).combined(with: .opacity),
-                                removal: .scale(scale: 0.12, anchor: .trailing).combined(with: .opacity)
+                                insertion: .scale(scale: 0.12, anchor: macExpandedCardRevealAnchor(in: geometry.size)).combined(with: .opacity),
+                                removal: .scale(scale: 0.12, anchor: macExpandedCardRevealAnchor(in: geometry.size)).combined(with: .opacity)
                             )
                         )
                         .zIndex(12)
@@ -669,6 +669,19 @@ struct ContentView: View {
         )
     }
 
+    private func macExpandedCardRevealAnchor(in size: CGSize) -> UnitPoint {
+        guard let markerAnchor = macMapExpandedCardAnchor else {
+            return .trailing
+        }
+
+        let cardSize = CGSize(width: 252, height: macExpandedCardShowsDetails ? 620 : 400)
+        let cardOrigin = macExpandedCardOffset(in: size)
+        return UnitPoint(
+            x: (markerAnchor.x - cardOrigin.width) / cardSize.width,
+            y: (markerAnchor.y - cardOrigin.height) / cardSize.height
+        )
+    }
+
     private var macKeyboardShortcuts: some View {
         Group {
             Button("") { stepSelectedDay(-1) }
@@ -683,11 +696,7 @@ struct ContentView: View {
                 .keyboardShortcut(.downArrow, modifiers: [.command, .shift])
             Button("") {
                 if showingMapExpandedCard {
-                    showingMapExpandedCard = false
-                    tappedCity = nil
-                    macMapExpandedCardAnchor = nil
-                    macMapExpandedCardBaseOffset = .zero
-                    macMapExpandedCardDragOffset = .zero
+                    dismissMapExpandedCard()
                 }
             }
             .keyboardShortcut(.escape, modifiers: [])
@@ -1090,6 +1099,26 @@ struct ContentView: View {
 
     private func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
         showMapMarkerCard(city, anchor: anchor, expanded: false, focusesMarker: true)
+    }
+
+    func dismissMapExpandedCard() {
+        let shouldRecenterAfterDismiss = previewCity != nil
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showingMapExpandedCard = false
+            tappedCity = nil
+            previewCity = nil
+            if shouldRecenterAfterDismiss {
+                recenterOnAllCities = true
+            }
+            #if os(macOS)
+            macHoverPresentedCardCityID = nil
+            macMapExpandedCardFocusesMarker = false
+            macMapExpandedCardAnchor = nil
+            macMapExpandedCardBaseOffset = .zero
+            macMapExpandedCardDragOffset = .zero
+            macExpandedCardShowsDetails = false
+            #endif
+        }
     }
 
     private func showMapMarkerCard(_ city: CityWeather, anchor: CGPoint? = nil, expanded: Bool, focusesMarker: Bool) {
@@ -1515,6 +1544,9 @@ struct ContentView: View {
                 focusSelectedMarker: macMapExpandedCardFocusesMarker,
                 onMarkerTap: { city, point in
                     handleMapMarkerTap(city, anchor: point)
+                },
+                onMapClick: {
+                    dismissMapExpandedCard()
                 },
                 onMarkerCommandHover: { city, point in
                     #if os(macOS)

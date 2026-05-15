@@ -16,26 +16,7 @@ extension ContentView {
         let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
         let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
         let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
-        let baseCondition = isNow ? cityWeather.condition : forecast.condition
-        let baseIcon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
-        let icon: String = {
-            switch baseCondition {
-            case .rain, .drizzle, .snow: return "cloud.fill"
-            default: return baseIcon
-            }
-        }()
-        // Match effect condition to the displayed icon
-        let effectCondition: AppWeatherCondition = {
-            if icon == "cloud.fill" {
-                switch baseCondition {
-                case .rain: return .rain
-                case .drizzle: return .drizzle
-                case .snow: return .snow
-                default: return .cloudy
-                }
-            }
-            return baseCondition
-        }()
+        let icon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
         let isOverlayActive = !["weather", "temperature"].contains(mapOverlayMode)
         let overlayLargeText: String = {
             switch mapOverlayMode {
@@ -130,9 +111,6 @@ extension ContentView {
                         .font(.system(size: 36, weight: .medium))
                         .weatherIconStyle(for: icon)
                         .frame(width: 54, height: 46)
-                        .background(alignment: .top) {
-                            WeatherEffectOverlay(condition: effectCondition, isCompact: false, iconHeight: 46, iconName: icon)
-                        }
                         .offset(y: -6)
 
                     VStack(spacing: 6) {
@@ -194,14 +172,7 @@ extension ContentView {
 
                 if cityIsInSidebar(cityWeather) {
                     Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            showingMapExpandedCard = false
-                            tappedCity = nil
-                            if previewCity != nil {
-                                previewCity = nil
-                                recenterOnAllCities = true
-                            }
-                        }
+                        dismissMapExpandedCard()
                     } label: {
                         ZStack {
                             if macExpandedCardHoveringClose {
@@ -296,7 +267,7 @@ extension ContentView {
                     }
                 }
             }
-            .padding(.bottom, 4)
+            .padding(.bottom, macExpandedCardShowsDetails ? 10 : 4)
 
             if macExpandedCardShowsDetails {
                 ScrollView(.vertical, showsIndicators: false) {
@@ -332,8 +303,8 @@ extension ContentView {
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .background(
             (colorScheme == .dark
-             ? Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.70)
-             : Color(red: 0.92, green: 0.90, blue: 0.86).opacity(0.64)),
+             ? Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.48)
+             : Color(red: 0.92, green: 0.90, blue: 0.86).opacity(0.42)),
             in: RoundedRectangle(cornerRadius: 22, style: .continuous)
         )
         .overlay {
@@ -358,6 +329,10 @@ extension ContentView {
                         }
                         previewCity = nil
                         recenterOnAllCities = true
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            showingMapExpandedCard = false
+                            tappedCity = nil
+                        }
                     }
                 }
             }
@@ -433,17 +408,19 @@ extension ContentView {
         ]
 
         return VStack(spacing: 8) {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 0) {
                 Rectangle()
                     .fill(Color.primary.opacity(0.08))
                     .frame(height: 0.75)
                     .padding(.horizontal, -14)
+                    .padding(.bottom, 10)
 
                 HStack(spacing: 8) {
                     macExpandedCardChartMetricMenu
                     Spacer()
                     macExpandedCardChartRangeMenu
                 }
+                .padding(.bottom, 6)
 
                 GeometryReader { geo in
                     if macExpandedCardChartRange == .tenDay {
@@ -492,7 +469,7 @@ extension ContentView {
                     .fill(Color.primary.opacity(0.08))
                     .frame(height: 0.75)
                     .padding(.horizontal, -14)
-                    .padding(.top, -6)
+                    .padding(.top, -12)
             }
 
             ForEach(rows, id: \.1) { icon, label, value in
@@ -512,7 +489,6 @@ extension ContentView {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
 
             if let sunrise = forecast.sunrise, let sunset = forecast.sunset {
@@ -535,7 +511,6 @@ extension ContentView {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 7)
-                .background(Color.primary.opacity(0.045), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
         }
     }
@@ -547,14 +522,12 @@ extension ContentView {
                     macExpandedCardChartMetric = metric
                 } label: {
                     HStack {
-                        if macExpandedCardChartMetric == metric {
-                            Image(systemName: "checkmark")
-                        } else {
-                            Image(systemName: "checkmark")
-                                .hidden()
-                        }
                         Image(systemName: icon)
                         Text(label)
+                        Spacer()
+                        if macExpandedCardChartMetric == metric {
+                            Image(systemName: "checkmark")
+                        }
                     }
                 }
             }
@@ -585,13 +558,11 @@ extension ContentView {
                     macExpandedCardChartRange = range
                 } label: {
                     HStack {
+                        Text(label)
+                        Spacer()
                         if macExpandedCardChartRange == range {
                             Image(systemName: "checkmark")
-                        } else {
-                            Image(systemName: "checkmark")
-                                .hidden()
                         }
-                        Text(label)
                     }
                 }
             }
@@ -599,8 +570,8 @@ extension ContentView {
             Text(macExpandedCardChartRangeLabel(macExpandedCardChartRange))
                 .font(.system(size: 10, weight: .semibold))
                 .lineLimit(1)
-                .frame(height: 20)
-                .padding(.horizontal, 7)
+                .frame(height: 22)
+                .padding(.horizontal, 8)
                 .background(Color.primary.opacity(0.07), in: Capsule())
         }
         .menuStyle(.button)
