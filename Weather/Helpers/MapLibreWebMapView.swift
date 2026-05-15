@@ -16,6 +16,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     @Binding var tappedCity: CityWeather?
     @Binding var recenterOnAllCities: Bool
     var centerOnCity: CityWeather?
+    var leadingFitPadding: Double = 0
     var onMarkerTap: (CityWeather, CGPoint?) -> Void
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)? = nil
 
@@ -173,7 +174,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             }
 
             if parent.recenterOnAllCities {
-                evaluate("window.fitWeatherData();")
+                evaluate("window.fitWeatherData(\(parent.leadingFitPadding));")
                 DispatchQueue.main.async {
                     self.parent.recenterOnAllCities = false
                 }
@@ -181,7 +182,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
             if let centerOnCity = parent.centerOnCity, centerOnCity.id != lastCenteredCityID {
                 lastCenteredCityID = centerOnCity.id
-                evaluate("window.flyToCity(\(Self.jsString(centerOnCity.id.uuidString))); ")
+                evaluate("window.flyToCity(\(Self.jsString(centerOnCity.id.uuidString)), \(parent.leadingFitPadding)); ")
             }
         }
 
@@ -334,7 +335,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           background: rgba(26, 27, 46, 0.24);
           border-bottom-color: rgba(255, 255, 255, 0.08);
         }
-        .maplibregl-map, .maplibregl-canvas-container, .maplibregl-canvas { width: 100% !important; height: 100% !important; }
+        .maplibregl-map, .maplibregl-canvas-container, .maplibregl-canvas { width: 100% !important; height: 100% !important; cursor: default !important; }
         .maplibregl-ctrl-logo, .maplibregl-ctrl-attrib { display: none !important; }
       </style>
     </head>
@@ -537,16 +538,27 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           updateSource(payload);
         };
 
-        window.fitWeatherData = function() {
+        window.fitWeatherData = function(leadingPadding = 0) {
           if (!pendingPayload || !pendingPayload.features || pendingPayload.features.length === 0) return;
           const bounds = new maplibregl.LngLatBounds();
           pendingPayload.features.forEach(item => bounds.extend([item.longitude, item.latitude]));
-          if (!bounds.isEmpty()) map.fitBounds(bounds, { padding: 180, duration: 550, maxZoom: 2.65 });
+          if (!bounds.isEmpty()) {
+            map.fitBounds(bounds, {
+              padding: { top: 180, right: 180, bottom: 180, left: 180 + leadingPadding },
+              duration: 550,
+              maxZoom: 2.65
+            });
+          }
         };
 
-        window.flyToCity = function(id) {
+        window.flyToCity = function(id, leadingPadding = 0) {
           const item = pendingPayload?.features?.find(feature => feature.id === id);
-          if (item) map.flyTo({ center: [item.longitude, item.latitude], zoom: Math.max(map.getZoom(), 5), duration: 550 });
+          if (item) map.flyTo({
+            center: [item.longitude, item.latitude],
+            zoom: Math.max(map.getZoom(), 5),
+            duration: 550,
+            offset: [leadingPadding / 2, 0]
+          });
         };
 
         window.setMapStyleMode = async function(mode) {
@@ -602,8 +614,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             const feature = features && features[0];
             if (feature?.properties?.id) post({ type: 'markerTap', id: feature.properties.id, x: event.point.x, y: event.point.y });
           });
-          map.on('mouseenter', 'weather-points', () => { map.getCanvas().style.cursor = 'pointer'; });
-          map.on('mouseleave', 'weather-points', () => { map.getCanvas().style.cursor = ''; });
+          map.on('mouseenter', 'weather-points', () => { map.getCanvas().style.cursor = 'default'; });
+          map.on('mouseleave', 'weather-points', () => { map.getCanvas().style.cursor = 'default'; });
           map.on('move', () => {
             const now = Date.now();
             if (now - lastMovePost < 120) return;

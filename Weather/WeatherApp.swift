@@ -65,6 +65,7 @@ struct WeatherApp: App {
         WindowGroup {
             ThemeRoot(theme: theme, appLocale: appLocale)
         }
+        .defaultSize(width: 1400, height: 950)
         .windowStyle(.hiddenTitleBar)
         .commands {
             SidebarCommands()

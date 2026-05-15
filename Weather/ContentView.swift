@@ -164,6 +164,7 @@ struct ContentView: View {
     #if os(macOS)
     @State private var macSidebarVisibility: NavigationSplitViewVisibility = .all
     @State private var macMapExpandedCardAnchor: CGPoint?
+    @State private var macMapExpandedCardBaseOffset: CGSize = .zero
     @State var macMapExpandedCardDragOffset: CGSize = .zero
     #endif
 
@@ -319,6 +320,13 @@ struct ContentView: View {
             ToolbarItem(placement: .navigation) {
                 macListSwitcherChevron
             }
+        }
+        .overlay(alignment: .top) {
+            Color.clear
+                .frame(height: 48)
+                .contentShape(Rectangle())
+                .gesture(WindowDragGesture())
+                .allowsWindowActivationEvents(true)
         }
     }
 
@@ -546,23 +554,6 @@ struct ContentView: View {
     private var macMainOverlays: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
-                if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                showingMapExpandedCard = false
-                                tappedCity = nil
-                                macMapExpandedCardAnchor = nil
-                                if previewCity != nil {
-                                    previewCity = nil
-                                    recenterOnAllCities = true
-                                }
-                            }
-                        }
-                        .zIndex(10)
-                }
-
                 if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city)
                         .id(city.city.id)
@@ -574,7 +565,9 @@ struct ContentView: View {
                                     macMapExpandedCardDragOffset = value.translation
                                 }
                                 .onEnded { value in
-                                    macMapExpandedCardDragOffset = value.translation
+                                    macMapExpandedCardBaseOffset.width += value.translation.width
+                                    macMapExpandedCardBaseOffset.height += value.translation.height
+                                    macMapExpandedCardDragOffset = .zero
                                 }
                         )
                         .zIndex(12)
@@ -621,8 +614,8 @@ struct ContentView: View {
     private func macExpandedCardOffset(in size: CGSize) -> CGSize {
         let base = macExpandedCardTopLeft(in: size)
         return CGSize(
-            width: base.width + macMapExpandedCardDragOffset.width,
-            height: base.height + macMapExpandedCardDragOffset.height
+            width: base.width + macMapExpandedCardBaseOffset.width + macMapExpandedCardDragOffset.width,
+            height: base.height + macMapExpandedCardBaseOffset.height + macMapExpandedCardDragOffset.height
         )
     }
 
@@ -1729,7 +1722,7 @@ struct ContentView: View {
         if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode {
             Color.clear
                 #if os(macOS)
-                .frame(width: 60, height: 340)
+                .frame(width: 60, height: 300)
                 #else
                 .frame(width: 80, height: 500)
                 #endif
@@ -1742,7 +1735,8 @@ struct ContentView: View {
                     #endif
                 }
                 #if os(macOS)
-                .padding(.bottom, 290)
+                .padding(.top, 88)
+                .padding(.bottom, 88)
                 #else
                 .padding(.bottom, 440)
                 #endif
@@ -1891,6 +1885,7 @@ struct ContentView: View {
     private func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
         #if os(macOS)
         macMapExpandedCardAnchor = anchor
+        macMapExpandedCardBaseOffset = .zero
         macMapExpandedCardDragOffset = .zero
         #endif
 
@@ -2912,6 +2907,7 @@ struct ContentView: View {
                 tappedCity: $tappedCity,
                 recenterOnAllCities: $recenterOnAllCities,
                 centerOnCity: centerOnCityTrigger,
+                leadingFitPadding: macMapLeadingFitPadding,
                 onMarkerTap: { city, point in
                     handleMapMarkerTap(city, anchor: point)
                 }
@@ -2947,6 +2943,14 @@ struct ContentView: View {
         }
         .background(Color(hex: 0xDDE9EF).ignoresSafeArea())
         .ignoresSafeArea()
+    }
+
+    private var macMapLeadingFitPadding: Double {
+        #if os(macOS)
+        macSidebarVisibility == .detailOnly ? 0 : 220
+        #else
+        0
+        #endif
     }
 
     func cityIsInSidebar(_ cityWeather: CityWeather) -> Bool {
