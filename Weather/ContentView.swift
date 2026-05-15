@@ -159,7 +159,7 @@ struct ContentView: View {
     @State private var showingAddToListPopover: Bool = false
     @State var inlineAddTargetListID: CityListID?
     #if os(macOS)
-    @State private var macShowsLeftSidebar: Bool = true
+    @State private var macSidebarVisibility: NavigationSplitViewVisibility = .all
     @State private var macMapExpandedCardAnchor: CGPoint?
     #endif
 
@@ -219,12 +219,6 @@ struct ContentView: View {
             InfoView(source: selectedTab == 1 ? .map : .list)
                 .presentationSizing(.form)
         }
-        .sheet(isPresented: $showingMapStyleSheet) {
-            mapStyleSheet
-                .presentationDetents([.height(390)])
-                .presentationDragIndicator(.visible)
-                .presentationBackground(.regularMaterial)
-        }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
                 weatherService: weatherService,
@@ -250,12 +244,9 @@ struct ContentView: View {
     }
 
     private var macOSRootView: some View {
-        HSplitView {
-            if macShowsLeftSidebar {
-                macSidebarContent
-                    .transition(.move(edge: .leading).combined(with: .opacity))
-            }
-
+        NavigationSplitView(columnVisibility: $macSidebarVisibility) {
+            macSidebarContent
+        } detail: {
             macNavigationContent
         }
         .task { await iOSOnAppear() }
@@ -291,11 +282,6 @@ struct ContentView: View {
             InfoView(source: .map)
                 .frame(minWidth: 420, minHeight: 520)
         }
-        .sheet(isPresented: $showingMapStyleSheet) {
-            mapStyleSheet
-                .frame(minWidth: 360, minHeight: 390)
-                .presentationBackground(.regularMaterial)
-        }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
                 weatherService: weatherService,
@@ -314,7 +300,6 @@ struct ContentView: View {
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar(removing: .title)
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: macShowsLeftSidebar)
     }
 
     private var macSidebarContent: some View {
@@ -350,11 +335,12 @@ struct ContentView: View {
         ZStack {
             AnyView(
                 iOSMapView
-                    .overlay(alignment: .top) {
+                    .overlay(alignment: .bottomLeading) {
                         if showLegend {
                             MapFloatingLegend(overlayMode: mapOverlayMode, compact: true)
-                                .padding(.top, 16)
-                                .transition(.move(edge: .top).combined(with: .opacity))
+                                .padding(.leading, 16)
+                                .padding(.bottom, 16)
+                                .transition(.move(edge: .leading).combined(with: .opacity))
                         }
                     }
                     .overlay(alignment: .trailing) {
@@ -366,18 +352,12 @@ struct ContentView: View {
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbar {
-            ToolbarItemGroup(placement: .navigation) {
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        macShowsLeftSidebar.toggle()
-                    }
-                } label: {
-                    Image(systemName: "sidebar.left")
-                }
-
+            ToolbarItem(placement: .navigation) {
                 mapTopListMenu
                     .fixedSize()
             }
+
+            ToolbarSpacer(.flexible)
 
             ToolbarItemGroup {
                 Button {
@@ -389,39 +369,31 @@ struct ContentView: View {
                     Image(systemName: "dot.squareshape.split.2x2")
                 }
 
-                Button {
-                    showingMapStyleSheet = true
-                } label: {
-                    Image(systemName: "square.3.layers.3d")
-                }
-
-                if filterSunny {
-                    Button {
-                        withAnimation {
-                            filterSunny = false
-                        }
-                    } label: {
-                        Image(systemName: "sun.max.fill")
-                    }
-                }
+                mapOverlayMenu
 
                 iOSNativeMenu
+            }
 
+            ToolbarSpacer(.fixed)
+
+            ToolbarItem {
                 if showingInlineSearch {
-                    TextField(localizedString("Search for a city", locale: locale), text: $inlineSearchText)
-                        .textFieldStyle(.roundedBorder)
-                        .focused($inlineSearchFocused)
-                        .frame(width: 240)
+                    HStack(spacing: 6) {
+                        TextField(localizedString("Search for a city", locale: locale), text: $inlineSearchText)
+                            .textFieldStyle(.roundedBorder)
+                            .focused($inlineSearchFocused)
+                            .frame(width: 240)
 
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            showingInlineSearch = false
-                            inlineSearchText = ""
-                            inlineSearchFocused = false
-                            inlineAddTargetListID = nil
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                showingInlineSearch = false
+                                inlineSearchText = ""
+                                inlineSearchFocused = false
+                                inlineAddTargetListID = nil
+                            }
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
                         }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
                     }
                 } else {
                     Button {
@@ -435,7 +407,9 @@ struct ContentView: View {
                         Image(systemName: "magnifyingglass")
                     }
                 }
+            }
 
+            ToolbarItem {
                 Button {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         showingCityDetail.toggle()
@@ -536,98 +510,214 @@ struct ContentView: View {
     }
 
     private var macListManagerSidebar: some View {
-        List {
-            ForEach(CityListID.allLists) { listID in
-                DisclosureGroup(
-                    isExpanded: Binding(
-                        get: { sidebarExpandedListIDs.contains(listID.rawValue) },
-                        set: { isExpanded in
-                            if isExpanded {
-                                sidebarExpandedListIDs.insert(listID.rawValue)
-                                Task { await weatherService.fetchWeatherForList(listID) }
-                            } else {
-                                sidebarExpandedListIDs.remove(listID.rawValue)
-                            }
-                        }
-                    )
-                ) {
-                    let cities = weatherService.weatherData(for: listID)
-                    if cities.isEmpty {
-                        Text(localizedString("No cities", locale: locale))
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(cities) { city in
-                            Button {
-                                revealCityOnMap(city, in: listID)
-                            } label: {
-                                Text(city.city.localizedName(locale: locale))
-                                    .lineLimit(1)
-                            }
-                            .contextMenu {
-                                cityActions(for: city, in: listID)
-                            }
-                        }
-                        .onMove { source, destination in
-                            weatherService.moveCity(in: listID, from: source, to: destination)
-                        }
-                        .onDelete { offsets in
-                            removeCities(at: offsets, from: listID)
-                        }
-                    }
-                } label: {
-                    HStack {
-                        Text(listID.localizedDisplayName(locale: locale))
-                            .lineLimit(1)
-                        Spacer()
-                        if weatherService.activeListID.rawValue == listID.rawValue {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        Task {
-                            await switchToList(listID)
-                        }
-                    }
-                    .contextMenu {
-                        listActions(for: listID)
-                    }
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(CityListID.allLists) { listID in
+                    macSidebarListSection(for: listID)
                 }
             }
-            .onMove { source, destination in
-                weatherService.moveLists(from: source, to: destination)
-            }
-            .onDelete { offsets in
-                Task {
-                    let lists = CityListID.allLists
-                    for listID in offsets.map({ lists[$0] }) {
-                        await weatherService.deleteList(listID)
-                    }
-                }
-            }
+            .padding(.top, 14)
+            .padding(.bottom, 24)
         }
-        .listStyle(.sidebar)
-        .navigationTitle(localizedString("Lists", locale: locale))
-        .toolbar {
-            ToolbarItemGroup {
-                Button {
-                    createListAtBottom()
-                } label: {
-                    Image(systemName: "plus")
-                }
-
-                Button {
-                    listManagerIsEditing.toggle()
-                } label: {
-                    Image(systemName: listManagerIsEditing ? "checkmark" : "pencil")
-                }
-            }
-        }
+        .background(theme.colors.background)
         .onAppear {
             if sidebarExpandedListIDs.isEmpty {
                 sidebarExpandedListIDs = Set(CityListID.allLists.map(\.rawValue))
             }
+        }
+    }
+
+    private func macSidebarListSection(for listID: CityListID) -> some View {
+        let isExpanded = sidebarExpandedListIDs.contains(listID.rawValue)
+        let cities = weatherService.weatherData(for: listID)
+
+        return VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Button {
+                    Task { await switchToList(listID) }
+                } label: {
+                    Text(listID.localizedDisplayName(locale: locale))
+                        .font(.title3.weight(.bold))
+                        .foregroundStyle(Color(hex: 0x6EA2FF))
+                        .lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        if isExpanded {
+                            sidebarExpandedListIDs.remove(listID.rawValue)
+                        } else {
+                            sidebarExpandedListIDs.insert(listID.rawValue)
+                            Task { await weatherService.fetchWeatherForList(listID) }
+                        }
+                    }
+                } label: {
+                    Image(systemName: "chevron.down")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 28, height: 28)
+                        .rotationEffect(.degrees(isExpanded ? 0 : -90))
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 18)
+            .padding(.vertical, 12)
+            .contentShape(Rectangle())
+            .contextMenu {
+                listActions(for: listID)
+            }
+
+            Rectangle()
+                .fill(theme.colors.secondaryText.opacity(0.22))
+                .frame(height: 1)
+
+            if isExpanded {
+                if cities.isEmpty {
+                    Text(localizedString("No cities", locale: locale))
+                        .font(.body.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 22)
+                        .padding(.vertical, 14)
+                } else {
+                    ForEach(cities) { city in
+                        macSidebarCityRow(city, in: listID)
+                    }
+                }
+            }
+        }
+        .padding(.bottom, 30)
+    }
+
+    private func macSidebarCityRow(_ city: CityWeather, in listID: CityListID) -> some View {
+        Button {
+            revealCityOnMap(city, in: listID)
+        } label: {
+            HStack(spacing: 16) {
+                Circle()
+                    .fill(sidebarDotColor(for: city))
+                    .frame(width: 13, height: 13)
+                    .shadow(color: sidebarDotColor(for: city).opacity(0.5), radius: 3)
+
+                Text(city.city.localizedName(locale: locale))
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+            }
+            .padding(.horizontal, 22)
+            .padding(.vertical, 10)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .contextMenu {
+            cityActions(for: city, in: listID)
+        }
+    }
+
+    private func sidebarDotColor(for cityWeather: CityWeather) -> Color {
+        let isNow = selectedDayOffset == -1
+        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
+
+        switch mapOverlayMode {
+        case "temperature":
+            return temperatureOverlayColor(isNow ? cityWeather.temperature : forecast.dailyHigh)
+        case "cloudCover":
+            let cover = isNow ? cityWeather.currentCloudCover : forecast.cloudCover
+            guard let cover else { return .gray }
+            return Color(
+                red: Double(0x15) / 255.0 + cover * (1.0 - Double(0x15) / 255.0),
+                green: Double(0x79) / 255.0 + cover * (1.0 - Double(0x79) / 255.0),
+                blue: Double(0xC7) / 255.0 + cover * (1.0 - Double(0xC7) / 255.0)
+            )
+        case "precipitation":
+            let chance: Double
+            if isNow {
+                chance = [.rain, .drizzle, .snow].contains(cityWeather.condition) ? 1.0 : 0.0
+            } else {
+                guard let precipitation = forecast.precipitationChance else { return .gray }
+                chance = precipitation
+            }
+            return Color(
+                red: 1.0 + chance * (Double(0x57) / 255.0 - 1.0),
+                green: 1.0 + chance * (Double(0xD3) / 255.0 - 1.0),
+                blue: 1.0 + chance * (Double(0xE5) / 255.0 - 1.0)
+            )
+        case "windSpeed":
+            let speed = isNow ? cityWeather.currentWindSpeed : forecast.windSpeed
+            guard let speed else { return .gray }
+            let fraction = min(1.0, speed / 100.0)
+            return Color(
+                red: 1.0 + fraction * (Double(0xFD) / 255.0 - 1.0),
+                green: 1.0 + fraction * (Double(0xA4) / 255.0 - 1.0),
+                blue: 1.0 + fraction * (Double(0x09) / 255.0 - 1.0)
+            )
+        case "uvIndex":
+            let uv = isNow ? cityWeather.currentUVIndex : forecast.uvIndex
+            guard let uv else { return .gray }
+            let fraction = min(1.0, Double(uv) / 11.0)
+            return Color(
+                red: 1.0 + fraction * (Double(0xFB) / 255.0 - 1.0),
+                green: 1.0 + fraction * (Double(0x43) / 255.0 - 1.0),
+                blue: 1.0 + fraction * (Double(0x68) / 255.0 - 1.0)
+            )
+        case "humidity":
+            let humidity = isNow ? cityWeather.currentHumidity : forecast.maxHumidity
+            guard let humidity else { return .gray }
+            return Color(
+                red: 1.0 + humidity * (Double(0xBE) / 255.0 - 1.0),
+                green: 1.0 + humidity * (Double(0x9A) / 255.0 - 1.0),
+                blue: 1.0 + humidity * (Double(0xED) / 255.0 - 1.0)
+            )
+        case "visibility":
+            let visibility = isNow ? cityWeather.currentVisibility : forecast.maxVisibility
+            guard let visibility else { return .gray }
+            let fraction = min(1.0, visibility / 30.0)
+            return Color(
+                red: 1.0 + fraction * (Double(0x15) / 255.0 - 1.0),
+                green: 1.0 + fraction * (Double(0x79) / 255.0 - 1.0),
+                blue: 1.0 + fraction * (Double(0xC7) / 255.0 - 1.0)
+            )
+        default:
+            if isNow && cityWeather.weatherIcon.contains("moon") {
+                return AppTheme.shared.colors.moonIconColor
+            }
+            return (isNow ? cityWeather.condition : forecast.condition).dotColor
+        }
+    }
+
+    private func temperatureOverlayColor(_ tempC: Double) -> Color {
+        if tempC <= 0 {
+            let t = max(0, min(1, (tempC - (-20)) / 20.0))
+            return Color(
+                red: Double(0x15) / 255.0 + t * Double(0x57 - 0x15) / 255.0,
+                green: Double(0x79) / 255.0 + t * Double(0xD3 - 0x79) / 255.0,
+                blue: Double(0xC7) / 255.0 + t * Double(0xE5 - 0xC7) / 255.0
+            )
+        } else if tempC <= 10 {
+            let t = max(0, min(1, tempC / 10.0))
+            return Color(
+                red: Double(0x57) / 255.0 + t * Double(0x7D - 0x57) / 255.0,
+                green: Double(0xD3) / 255.0 + t * Double(0xD4 - 0xD3) / 255.0,
+                blue: Double(0xE5) / 255.0 + t * Double(0xA0 - 0xE5) / 255.0
+            )
+        } else if tempC <= 20 {
+            let t = max(0, min(1, (tempC - 10) / 10.0))
+            return Color(
+                red: Double(0x7D) / 255.0 + t * Double(0xFD - 0x7D) / 255.0,
+                green: Double(0xD4) / 255.0 + t * Double(0xA4 - 0xD4) / 255.0,
+                blue: Double(0xA0) / 255.0 + t * Double(0x09 - 0xA0) / 255.0
+            )
+        } else {
+            let t = max(0, min(1, (tempC - 20) / 20.0))
+            return Color(
+                red: Double(0xFD) / 255.0 + t * Double(0xFB - 0xFD) / 255.0,
+                green: Double(0xA4) / 255.0 + t * Double(0x43 - 0xA4) / 255.0,
+                blue: Double(0x09) / 255.0 + t * Double(0x68 - 0x09) / 255.0
+            )
         }
     }
     #endif
@@ -716,15 +806,10 @@ struct ContentView: View {
                     }
                     .buttonStyle(.plain)
 
-                    Button {
-                        showingMapStyleSheet = true
-                    } label: {
-                        Image(systemName: "square.3.layers.3d")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(width: 44, height: 44)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
+                    mapOverlayMenu
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
 
                     if filterSunny {
                         Button {
@@ -782,10 +867,8 @@ struct ContentView: View {
                 .font(.headline)
                 .lineLimit(1)
                 .foregroundStyle(.primary)
-                .padding(.horizontal, 16)
-                .frame(height: 44)
                 .fixedSize(horizontal: true, vertical: false)
-                .contentShape(Capsule())
+                .contentShape(Rectangle())
             #else
             HStack(spacing: 8) {
                 Text(toolbarTitle)
@@ -1432,11 +1515,12 @@ struct ContentView: View {
         ZStack(alignment: .bottom) {
             AnyView(
                 iOSMapView
-                    .overlay(alignment: .top) {
+                    .overlay(alignment: .bottomLeading) {
                         if selectedTab == 1, showLegend {
                             MapFloatingLegend(overlayMode: mapOverlayMode)
-                                .padding(.top, 58)
-                                .transition(.move(edge: .top).combined(with: .opacity))
+                                .padding(.leading, 16)
+                                .padding(.bottom, 92)
+                                .transition(.move(edge: .leading).combined(with: .opacity))
                         }
                     }
                     .overlay(alignment: .top) {
@@ -1638,16 +1722,11 @@ struct ContentView: View {
             }
             .buttonStyle(.plain)
 
-            Button {
-                showingMapStyleSheet = true
-            } label: {
-                Image(systemName: "square.3.layers.3d")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
+            mapOverlayMenu
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 36, height: 36)
+                .contentShape(Rectangle())
         }
         .padding(6)
         .themedGlass(in: .capsule)
