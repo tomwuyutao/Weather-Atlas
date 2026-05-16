@@ -452,6 +452,23 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             : { ocean: '#F4F1EB', land: '#E8E5DF', subtleLand: '#EFEBE5', road: '#DDDAD3' };
         }
 
+        function isRoadLikeLayer(combined) {
+          return combined.includes('road')
+            || combined.includes('street')
+            || combined.includes('transport')
+            || combined.includes('highway')
+            || combined.includes('motorway')
+            || combined.includes('trunk')
+            || combined.includes('primary')
+            || combined.includes('secondary')
+            || combined.includes('tertiary')
+            || combined.includes('minor')
+            || combined.includes('service')
+            || combined.includes('path')
+            || combined.includes('track')
+            || combined.includes('rail');
+        }
+
         function applyWarmMapPaint(layer, palette) {
           const combined = layerSignature(layer);
           layer.paint = layer.paint || {};
@@ -473,9 +490,13 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             return;
           }
 
-          if (layer.type === 'line' && (combined.includes('road') || combined.includes('path') || combined.includes('track'))) {
+          if (layer.type === 'line' && isRoadLikeLayer(combined)) {
             layer.layout = layer.layout || {};
             layer.layout.visibility = 'none';
+          }
+
+          if (layer.type === 'symbol' && (combined.includes('place') || combined.includes('label') || combined.includes('name'))) {
+            layer.minzoom = Math.max(layer.minzoom || 0, 6.2);
           }
         }
 
@@ -487,10 +508,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
               || combined.includes('admin')
               || combined.includes('border')
               || combined.includes('disputed')
-              || combined.includes('road')
-              || combined.includes('street')
-              || combined.includes('path')
-              || combined.includes('track')
+              || isRoadLikeLayer(combined)
               || combined.includes('ferry')
               || combined.includes('marine')
               || combined.includes('navigation')
@@ -499,19 +517,19 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
           if (layer.type === 'symbol') {
             return combined.includes('country')
-              || combined.includes('road')
-              || combined.includes('street')
+              || combined.includes('ocean')
+              || combined.includes('sea')
+              || combined.includes('marine label')
+              || combined.includes('water label')
+              || combined.includes('water_name')
+              || combined.includes('water-name')
+              || isRoadLikeLayer(combined)
               || combined.includes('ferry')
               || combined.includes('marine')
               || combined.includes('navigation')
               || combined.includes('shipping')
               || combined.includes('state')
-              || combined.includes('province')
-              || combined.includes('place_name:latin')
-              || combined.includes('name:latin')
-              || combined.includes('name:nonlatin')
-              || combined.includes('place')
-              || combined.includes('label');
+              || combined.includes('province');
           }
 
           return false;

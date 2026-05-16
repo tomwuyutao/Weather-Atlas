@@ -257,7 +257,7 @@ extension ContentView {
                     }
                 }
             }
-            .padding(.bottom, macExpandedCardShowsDetails ? 10 : 4)
+            .padding(.bottom, macExpandedCardShowsDetails ? 14 : 10)
 
             if macExpandedCardShowsDetails {
                 macExpandedCardDetails(for: cityWeather, forecast: selectedForecast, tempUnit: tempUnit, distUnit: distUnit)
@@ -286,7 +286,9 @@ extension ContentView {
             }
         }
         }
-        .padding(14)
+        .padding(.horizontal, 14)
+        .padding(.top, 18)
+        .padding(.bottom, 8)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .background(
             (colorScheme == .dark

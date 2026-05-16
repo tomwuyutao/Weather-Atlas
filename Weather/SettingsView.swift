@@ -278,11 +278,11 @@ struct SettingsView: View {
                         } label: {
                             HStack(spacing: 12) {
                                 Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 12, weight: .medium))
+                                    .font(.system(size: 11, weight: .regular))
                                     .foregroundStyle(colors.destructive)
                                     .frame(width: 16)
                                 Text(localizedString("Reset Lists to Defaults", locale: locale))
-                                    .font(.avenir(.subheadline, weight: .medium))
+                                    .font(.avenir(.caption, weight: .regular))
                                     .foregroundStyle(colors.destructive)
                                 Spacer()
                             }
@@ -404,8 +404,8 @@ struct SettingsView: View {
     private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text(title)
-                .font(.avenir(.caption, weight: .semibold))
-                .foregroundStyle(colors.primaryText.opacity(0.75))
+                .font(.avenir(.caption2, weight: .medium))
+                .foregroundStyle(colors.primaryText.opacity(0.62))
                 .padding(.horizontal, 4)
 
             VStack(spacing: 0) {
@@ -425,15 +425,15 @@ struct SettingsView: View {
     private func settingsRow(icon: String, label: String, value: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .regular))
                 .foregroundStyle(colors.accent)
                 .frame(width: 16)
             Text(label)
-                .font(.avenir(.subheadline, weight: .medium))
+                .font(.avenir(.caption, weight: .regular))
                 .foregroundStyle(colors.primaryText)
             Spacer()
             Text(value)
-                .font(.avenir(.subheadline, weight: .medium))
+                .font(.avenir(.caption, weight: .regular))
                 .foregroundStyle(colors.primaryText.opacity(0.55))
         }
         .padding(.horizontal, 13)
@@ -443,12 +443,12 @@ struct SettingsView: View {
     private func settingsMenuRow<Content: View>(icon: String, label: String, value: String, @ViewBuilder content: () -> Content) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .font(.system(size: 12, weight: .medium))
+                .font(.system(size: 11, weight: .regular))
                 .foregroundStyle(colors.accent)
                 .frame(width: 16)
 
             Text(label)
-                .font(.avenir(.subheadline, weight: .medium))
+                .font(.avenir(.caption, weight: .regular))
                 .foregroundStyle(colors.primaryText)
 
             Spacer()
@@ -458,7 +458,7 @@ struct SettingsView: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(value)
-                        .font(.avenir(.subheadline, weight: .medium))
+                        .font(.avenir(.caption, weight: .regular))
                         .foregroundStyle(colors.primaryText.opacity(0.62))
                         .lineLimit(1)
                     Image(systemName: "chevron.up.chevron.down")

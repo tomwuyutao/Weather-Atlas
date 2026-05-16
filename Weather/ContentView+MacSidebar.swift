@@ -193,7 +193,11 @@ extension ContentView {
 
     private func macSidebarContextOutline(isVisible: Bool) -> some View {
         RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .strokeBorder(isVisible ? Color.primary.opacity(0.32) : Color.clear, lineWidth: 1)
+            .fill(isVisible ? theme.colors.accent.opacity(0.10) : Color.clear)
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .strokeBorder(isVisible ? theme.colors.accent.opacity(0.42) : Color.clear, lineWidth: 1)
+            }
             .padding(.horizontal, 8)
             .animation(.easeOut(duration: 0.12), value: isVisible)
     }

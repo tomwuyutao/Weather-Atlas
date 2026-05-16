@@ -9,6 +9,9 @@ import SwiftUI
 import CoreLocation
 import MapKit
 import UniformTypeIdentifiers
+#if os(macOS)
+import AppKit
+#endif
 
 struct ContentView: View {
     @State var weatherService = WeatherService()
@@ -181,6 +184,7 @@ struct ContentView: View {
     @State var macQuickSwitcherVisible: Bool = false
     @State var macQuickSwitcherIndex: Int = 0
     @State var macQuickSwitcherDismissToken: Int = 0
+    @State var macQuickSwitcherPendingListID: CityListID?
     @State var macOverlaySwitcherVisible: Bool = false
     @State var macOverlaySwitcherIndex: Int = 0
     @State var macOverlaySwitcherDismissToken: Int = 0
@@ -473,6 +477,7 @@ struct ContentView: View {
         }
         .background {
             macKeyboardShortcuts
+            macTabSwitcherKeyMonitor
         }
     }
 
@@ -756,14 +761,6 @@ struct ContentView: View {
                 .keyboardShortcut("8", modifiers: .command)
             Button("") { switchListByIndex(8) }
                 .keyboardShortcut("9", modifiers: .command)
-            Button("") { handleMacQuickSwitcher(delta: 1) }
-                .keyboardShortcut(.tab, modifiers: .control)
-            Button("") { handleMacQuickSwitcher(delta: -1) }
-                .keyboardShortcut(.tab, modifiers: [.control, .shift])
-            Button("") { handleMacOverlaySwitcher(delta: 1) }
-                .keyboardShortcut(.tab, modifiers: .option)
-            Button("") { handleMacOverlaySwitcher(delta: -1) }
-                .keyboardShortcut(.tab, modifiers: [.option, .shift])
             Button("") {
                 if showingInlineSearch {
                     dismissInlineSearch()
@@ -778,6 +775,15 @@ struct ContentView: View {
             }
             .keyboardShortcut(.escape, modifiers: [])
         }
+        .frame(width: 0, height: 0)
+        .opacity(0)
+    }
+
+    private var macTabSwitcherKeyMonitor: some View {
+        MacTabSwitcherKeyMonitor(
+            onListSwitch: { delta in handleMacQuickSwitcher(delta: delta) },
+            onOverlaySwitch: { delta in handleMacOverlaySwitcher(delta: delta) }
+        )
         .frame(width: 0, height: 0)
         .opacity(0)
     }
@@ -885,6 +891,7 @@ struct ContentView: View {
             : (lists.firstIndex(of: weatherService.activeListID) ?? 0)
         let nextIndex = (currentIndex + delta + lists.count) % lists.count
         macQuickSwitcherIndex = nextIndex
+        macQuickSwitcherPendingListID = lists[nextIndex]
         macQuickSwitcherDismissToken += 1
         let token = macQuickSwitcherDismissToken
 
@@ -892,12 +899,16 @@ struct ContentView: View {
             macOverlaySwitcherVisible = false
             macQuickSwitcherVisible = true
         }
-        Task { await switchToList(lists[nextIndex]) }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.05) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
             guard macQuickSwitcherDismissToken == token else { return }
+            let pendingListID = macQuickSwitcherPendingListID
+            macQuickSwitcherPendingListID = nil
             withAnimation(.easeOut(duration: 0.16)) {
                 macQuickSwitcherVisible = false
+            }
+            if let pendingListID {
+                Task { await switchToList(pendingListID) }
             }
         }
     }
@@ -919,7 +930,7 @@ struct ContentView: View {
             mapOverlayMode = options[nextIndex].mode
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.05) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
             guard macOverlaySwitcherDismissToken == token else { return }
             withAnimation(.easeOut(duration: 0.16)) {
                 macOverlaySwitcherVisible = false
@@ -2313,6 +2324,67 @@ extension UTType {
     static let weatherSidebarList = UTType(exportedAs: "com.tomsweather.sidebar-list")
     static let weatherSidebarCity = UTType(exportedAs: "com.tomsweather.sidebar-city")
 }
+
+#if os(macOS)
+private struct MacTabSwitcherKeyMonitor: NSViewRepresentable {
+    let onListSwitch: (Int) -> Void
+    let onOverlaySwitch: (Int) -> Void
+
+    func makeNSView(context: Context) -> EventView {
+        let view = EventView()
+        view.onListSwitch = onListSwitch
+        view.onOverlaySwitch = onOverlaySwitch
+        return view
+    }
+
+    func updateNSView(_ nsView: EventView, context: Context) {
+        nsView.onListSwitch = onListSwitch
+        nsView.onOverlaySwitch = onOverlaySwitch
+        nsView.updateMonitor()
+    }
+
+    final class EventView: NSView {
+        var onListSwitch: (Int) -> Void = { _ in }
+        var onOverlaySwitch: (Int) -> Void = { _ in }
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            updateMonitor()
+        }
+
+        deinit {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+            }
+        }
+
+        func updateMonitor() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+            guard window != nil else { return }
+
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard let self, self.window === event.window, event.keyCode == 48 else { return event }
+
+                let flags = event.modifierFlags
+                let delta = flags.contains(.shift) ? -1 : 1
+                if flags.contains(.control), !flags.contains(.command) {
+                    self.onListSwitch(delta)
+                    return nil
+                }
+                if flags.contains(.option), !flags.contains(.command) {
+                    self.onOverlaySwitch(delta)
+                    return nil
+                }
+                return event
+            }
+        }
+    }
+}
+#endif
 
 
 
