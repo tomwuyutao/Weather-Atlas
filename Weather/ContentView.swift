@@ -455,9 +455,6 @@ struct ContentView: View {
 
         }
         .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
-        .searchSuggestions {
-            macSearchSuggestions
-        }
         .searchPresentationToolbarBehavior(.avoidHidingContent)
         .onMoveCommand { direction in
             guard showingInlineSearch, !inlineSearchText.isEmpty else { return }
@@ -597,23 +594,28 @@ struct ContentView: View {
     private var macSearchSuggestions: some View {
         if !inlineSearchText.isEmpty {
             ForEach(Array(inlineSortedSearchResults.prefix(6))) { result in
-                let isHovered = macHoveredSearchSuggestionID == result.id
-                VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
                     Text(result.title)
+                        .font(.avenir(.subheadline, weight: .semibold))
                         .foregroundStyle(theme.colors.primaryText)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 12)
+
                     Text(result.subtitle)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(.avenir(.caption, weight: .medium))
+                        .foregroundStyle(theme.colors.primaryText.opacity(0.58))
+                        .lineLimit(1)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
                 .background {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                        .fill(isHovered ? Color.primary.opacity(0.08) : Color.clear)
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(macHoveredSearchSuggestionID == result.id ? Color.accentColor.opacity(0.16) : Color.clear)
                 }
                 .contentShape(Rectangle())
-                .animation(nil, value: isHovered)
+                .animation(nil, value: macHoveredSearchSuggestionID == result.id)
                 .onTapGesture {
                     guard !inlineIsLoadingCity else { return }
                     Task {
@@ -628,6 +630,67 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    private func macSearchSuggestionsPanel(width: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(inlineSortedSearchResults.prefix(6).enumerated()), id: \.element.id) { index, result in
+                let isSelected = index == inlineSearchSelectionIndex
+                let isHovered = macHoveredSearchSuggestionID == result.id
+
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Text(result.title)
+                        .font(.avenir(.caption, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .lineLimit(1)
+
+                    Spacer(minLength: 12)
+
+                    Text(result.subtitle)
+                        .font(.avenir(.caption2, weight: .medium))
+                        .foregroundStyle(theme.colors.primaryText.opacity(0.58))
+                        .lineLimit(1)
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                        .fill((isSelected || isHovered) ? Color.accentColor.opacity(0.22) : Color.clear)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 2)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    guard !inlineIsLoadingCity else { return }
+                    Task {
+                        await inlineSelectSearchResult(result)
+                    }
+                }
+                .onHover { hovering in
+                    macHoveredSearchSuggestionID = hovering ? result.id : nil
+                    if hovering {
+                        inlineSearchSelectionIndex = index
+                    }
+                }
+
+                if index < min(6, inlineSortedSearchResults.count) - 1 {
+                    Divider()
+                        .opacity(0.18)
+                        .padding(.leading, 16)
+                        .padding(.trailing, 16)
+                }
+            }
+        }
+        .padding(.vertical, 7)
+        .frame(width: width)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(theme.colors.glassFill.opacity(0.12), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(theme.colors.primaryText.opacity(0.08), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 18, y: 10)
     }
 
     private var macMainOverlays: some View {
@@ -664,6 +727,15 @@ struct ContentView: View {
                             dismissInlineSearch()
                         }
                         .zIndex(9)
+                }
+
+                if showingInlineSearch, !inlineSearchText.isEmpty, !inlineSortedSearchResults.isEmpty {
+                    macSearchSuggestionsPanel(width: min(340, max(240, (geometry.size.width - 72) * 0.5)))
+                        .padding(.top, 60)
+                        .padding(.trailing, 18)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98, anchor: .topTrailing)))
+                        .zIndex(11)
                 }
 
                 if showingCountrySearch, !countrySearchText.isEmpty {

@@ -216,10 +216,14 @@ struct SettingsView: View {
             .toolbarBackground(colors.background, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
             #endif
-            .overlay {
-                resetConfirmationOverlay
+            .alert(localizedString("Reset Lists", locale: locale), isPresented: $showingResetConfirmation) {
+                Button(localizedString("Cancel", locale: locale), role: .cancel) {}
+                Button(localizedString("Reset", locale: locale), role: .destructive) {
+                    onResetLists()
+                }
+            } message: {
+                Text(localizedString("This will reset all city lists back to their defaults. Any cities you added or removed will be lost.", locale: locale))
             }
-            .animation(.easeOut(duration: 0.2), value: showingResetConfirmation)
         }
         #endif
     }
@@ -312,10 +316,14 @@ struct SettingsView: View {
             idealHeight: 430,
             maxHeight: .infinity
         )
-        .overlay {
-            resetConfirmationOverlay
+        .alert(localizedString("Reset Lists", locale: locale), isPresented: $showingResetConfirmation) {
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {}
+            Button(localizedString("Reset", locale: locale), role: .destructive) {
+                onResetLists()
+            }
+        } message: {
+            Text(localizedString("This will reset all city lists back to their defaults. Any cities you added or removed will be lost.", locale: locale))
         }
-        .animation(.easeOut(duration: 0.2), value: showingResetConfirmation)
     }
     #endif
 
@@ -330,75 +338,6 @@ struct SettingsView: View {
                 .themedGlass(in: .circle)
         }
         .buttonStyle(.plain)
-    }
-
-    @ViewBuilder
-    private var resetConfirmationOverlay: some View {
-        if showingResetConfirmation {
-            colors.modalOverlay
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        showingResetConfirmation = false
-                    }
-                }
-
-            VStack(spacing: 0) {
-                Text("Reset Lists")
-                    .font(.avenir(.headline, weight: .bold))
-                    .foregroundStyle(colors.primaryText)
-                    .padding(.top, 28)
-                    .padding(.bottom, 10)
-
-                Text("This will reset all city lists back to their defaults. Any cities you added or removed will be lost.")
-                    .font(.avenir(.subheadline, weight: .regular))
-                    .foregroundStyle(colors.primaryText.opacity(0.6))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 24)
-
-                Divider()
-                    .background(colors.primaryText.opacity(0.1))
-
-                HStack(spacing: 0) {
-                    Button {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            showingResetConfirmation = false
-                        }
-                    } label: {
-                        Text(localizedString("Cancel", locale: locale))
-                            .font(.avenir(.body, weight: .medium))
-                            .foregroundStyle(colors.primaryText)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    Divider()
-                        .frame(height: 44)
-                        .background(colors.primaryText.opacity(0.1))
-
-                    Button {
-                        onResetLists()
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            showingResetConfirmation = false
-                        }
-                    } label: {
-                        Text(localizedString("Reset", locale: locale))
-                            .font(.avenir(.body, weight: .semibold))
-                            .foregroundStyle(colors.destructive)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .frame(width: 280)
-            .background(colors.listCardFill, in: RoundedRectangle(cornerRadius: 16))
-            .transition(.scale(scale: 0.9).combined(with: .opacity))
-        }
     }
 
     private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {

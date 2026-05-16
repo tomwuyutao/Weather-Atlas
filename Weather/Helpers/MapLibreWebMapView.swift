@@ -416,6 +416,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         var commandHoverCardID = '';
         var selectedMarkerID = '';
         var markerScales = {};
+        var markerVisibilityScales = {};
         var markerScaleAnimationFrame = null;
         var selectedPulseAnimationFrame = null;
         var selectedPulse = 0;
@@ -577,7 +578,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-hit', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['case', ['boolean', ['get', 'hidden'], false], 0, 11],
+                'circle-radius': ['*', ['number', ['get', 'visibleScale'], 1], 11],
                 'circle-color': 'rgba(0,0,0,0.01)',
                 'circle-opacity': 0.01
               }
@@ -587,14 +588,16 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-glow', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['+', 13, ['*', ['number', ['get', 'selectedPulse'], 0], 13]],
+                'circle-radius': ['*', ['number', ['get', 'visibleScale'], 1], ['+', 13, ['*', ['number', ['get', 'selectedPulse'], 0], 13]]],
                 'circle-color': ['get', 'color'],
-                'circle-opacity': ['case',
-                  ['boolean', ['get', 'hidden'], false], 0,
-                  ['boolean', ['get', 'selected'], false], ['-', 0.62, ['*', ['number', ['get', 'selectedPulse'], 0], 0.42]],
-                  ['boolean', ['get', 'hovered'], false], 0.38,
-                  ['boolean', ['get', 'dimmed'], false], 0.08,
-                  0.24
+                'circle-opacity': ['*',
+                  ['number', ['get', 'visibleScale'], 1],
+                  ['case',
+                    ['boolean', ['get', 'selected'], false], ['-', 0.62, ['*', ['number', ['get', 'selectedPulse'], 0], 0.42]],
+                    ['boolean', ['get', 'hovered'], false], 0.38,
+                    ['boolean', ['get', 'dimmed'], false], 0.08,
+                    0.24
+                  ]
                 ],
                 'circle-radius-transition': { duration: 300, delay: 0 },
                 'circle-color-transition': { duration: 360, delay: 0 },
@@ -607,14 +610,16 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-halo', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['+', 7, ['*', ['number', ['get', 'selectedPulse'], 0], 5]],
+                'circle-radius': ['*', ['number', ['get', 'visibleScale'], 1], ['+', 7, ['*', ['number', ['get', 'selectedPulse'], 0], 5]]],
                 'circle-color': ['get', 'color'],
-                'circle-opacity': ['case',
-                  ['boolean', ['get', 'hidden'], false], 0,
-                  ['boolean', ['get', 'selected'], false], 0.42,
-                  ['boolean', ['get', 'hovered'], false], 0.24,
-                  ['boolean', ['get', 'dimmed'], false], 0.04,
-                  0.14
+                'circle-opacity': ['*',
+                  ['number', ['get', 'visibleScale'], 1],
+                  ['case',
+                    ['boolean', ['get', 'selected'], false], 0.42,
+                    ['boolean', ['get', 'hovered'], false], 0.24,
+                    ['boolean', ['get', 'dimmed'], false], 0.04,
+                    0.14
+                  ]
                 ],
                 'circle-radius-transition': { duration: 300, delay: 0 },
                 'circle-color-transition': { duration: 360, delay: 0 },
@@ -627,13 +632,15 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-points', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['case', ['boolean', ['get', 'hidden'], false], 0, ['+', 4.5, ['*', ['number', ['get', 'scale'], 0], 2.5]]],
+                'circle-radius': ['*', ['number', ['get', 'visibleScale'], 1], ['+', 4.5, ['*', ['number', ['get', 'scale'], 0], 2.5]]],
                 'circle-color': ['get', 'color'],
-                'circle-opacity': ['case',
-                  ['boolean', ['get', 'hidden'], false], 0,
-                  ['boolean', ['get', 'selected'], false], 1,
-                  ['boolean', ['get', 'dimmed'], false], 0.28,
-                  1
+                'circle-opacity': ['*',
+                  ['number', ['get', 'visibleScale'], 1],
+                  ['case',
+                    ['boolean', ['get', 'selected'], false], 1,
+                    ['boolean', ['get', 'dimmed'], false], 0.28,
+                    1
+                  ]
                 ],
                 'circle-radius-transition': { duration: 300, delay: 0 },
                 'circle-color-transition': { duration: 360, delay: 0 },
@@ -663,6 +670,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 color: item.color,
                 hidden: !!item.hidden,
                 scale: markerScales[item.id] ?? 0,
+                visibleScale: markerVisibilityScales[item.id] ?? (item.hidden ? 0 : 1),
                 selectedPulse: item.id === selectedID ? selectedPulse : 0,
                 selected: item.id === selectedID,
                 hovered: item.id === hoveredMarkerID,
@@ -675,6 +683,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         function markerTargetScale(id) {
           return (id && id === selectedMarkerID) ? 1.35 : (id && id === hoveredMarkerID ? 1 : 0);
+        }
+
+        function markerVisibilityTarget(item) {
+          return item.hidden ? 0 : 1;
         }
 
         function renderWeatherSource() {
@@ -692,6 +704,12 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
               const next = current + (target - current) * 0.26;
               markerScales[item.id] = Math.abs(next - target) < 0.01 ? target : next;
               if (markerScales[item.id] !== target) needsNextFrame = true;
+
+              const currentVisibility = markerVisibilityScales[item.id] ?? (item.hidden ? 0 : 1);
+              const visibilityTarget = markerVisibilityTarget(item);
+              const nextVisibility = currentVisibility + (visibilityTarget - currentVisibility) * 0.22;
+              markerVisibilityScales[item.id] = Math.abs(nextVisibility - visibilityTarget) < 0.01 ? visibilityTarget : nextVisibility;
+              if (markerVisibilityScales[item.id] !== visibilityTarget) needsNextFrame = true;
             });
             renderWeatherSource();
             markerScaleAnimationFrame = needsNextFrame ? requestAnimationFrame(step) : null;
@@ -702,6 +720,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         function updateMarkerScaleTargets() {
           (pendingPayload?.features || []).forEach(item => {
             if (markerScales[item.id] === undefined) markerScales[item.id] = 0;
+            if (markerVisibilityScales[item.id] === undefined) markerVisibilityScales[item.id] = item.hidden ? 0 : 1;
           });
           animateMarkerScales();
         }
