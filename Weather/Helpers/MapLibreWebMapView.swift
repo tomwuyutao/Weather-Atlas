@@ -862,6 +862,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           const feature = pendingPayload?.features?.find(item => item.id === id);
           const label = document.getElementById('hover-label');
           if (!label || !feature || !point) return;
+          if (id && id === selectedMarkerID) {
+            label.classList.remove('visible');
+            return;
+          }
           const clipped = point.x < 18
             || point.y < 18
             || point.x > window.innerWidth - 18

@@ -15,25 +15,262 @@ import UniformTypeIdentifiers
 extension ContentView {
 
     var macListManagerSidebar: some View {
-        ScrollView {
-            LazyVStack(spacing: 0) {
+        List(selection: $macSidebarSelection) {
+            Section(localizedString("Lists", locale: locale)) {
                 if sidebarAddingList {
                     macSidebarNewListRow
                 }
 
                 ForEach(CityListID.allLists) { listID in
-                    macSidebarListSection(for: listID)
+                    macSidebarNativeListFolder(for: listID)
                 }
+                .onMove(perform: moveMacSidebarLists)
             }
-            .id(macSidebarRefreshTick)
-            .padding(.top, 0)
-            .padding(.bottom, 8)
         }
-        .background(theme.colors.background)
+        .listStyle(.sidebar)
+        .tint(theme.colors.accent)
+        .id(macSidebarRefreshTick)
         .onAppear {
             if sidebarExpandedListIDs.isEmpty {
-                sidebarExpandedListIDs = Set(CityListID.allLists.map(\.rawValue))
+                sidebarExpandedListIDs.insert(weatherService.activeListID.rawValue)
             }
+            macSidebarSelection = macSidebarListContextID(weatherService.activeListID)
+        }
+        .onChange(of: weatherService.activeListID) { _, newListID in
+            let selection = macSidebarListContextID(newListID)
+            if macSidebarSelection != selection {
+                macSidebarSelection = selection
+            }
+        }
+        .onChange(of: macSidebarSelection) { _, newSelection in
+            handleMacSidebarSelection(newSelection)
+        }
+    }
+
+    @ViewBuilder
+    private func macSidebarNativeListFolder(for listID: CityListID) -> some View {
+        let cities = weatherService.weatherData(for: listID)
+        let isExpanded = sidebarExpandedListIDs.contains(listID.rawValue)
+
+        HStack(spacing: 4) {
+            Button {
+                macSidebarSetList(listID, expanded: !isExpanded)
+            } label: {
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .rotationEffect(.degrees(isExpanded ? 90 : 0))
+                    .frame(width: 14, height: 18)
+            }
+            .buttonStyle(.plain)
+
+            if sidebarRenamingListID == listID {
+                TextField(localizedString("Name", locale: locale), text: $sidebarRenameText)
+                    .textFieldStyle(.plain)
+                    .focused($sidebarRenameFocused)
+                    .submitLabel(.done)
+                    .onSubmit { commitMacSidebarListRename(listID) }
+                    .onChange(of: sidebarRenameFocused) { _, focused in
+                        if !focused, sidebarRenamingListID == listID {
+                            commitMacSidebarListRename(listID)
+                        }
+                    }
+            } else {
+                Text(listID.localizedDisplayName(locale: locale))
+                    .lineLimit(1)
+            }
+        }
+        .badge(cities.count)
+        .tag(macSidebarListContextID(listID))
+        .contextMenu {
+            macSidebarListActions(for: listID)
+        }
+
+        if isExpanded {
+            if cities.isEmpty {
+                Text(localizedString("No cities", locale: locale))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 36)
+                    .tag("empty:\(listID.rawValue)")
+            } else {
+                ForEach(cities) { city in
+                    let contextID = macSidebarCityContextID(city, in: listID)
+                    Group {
+                        if sidebarRenamingCityContextID == contextID {
+                            TextField(localizedString("Name", locale: locale), text: $sidebarRenameText)
+                                .textFieldStyle(.plain)
+                                .focused($sidebarRenameFocused)
+                                .submitLabel(.done)
+                                .onSubmit { commitMacSidebarCityRename(city, in: listID) }
+                                .onChange(of: sidebarRenameFocused) { _, focused in
+                                    if !focused, sidebarRenamingCityContextID == contextID {
+                                        commitMacSidebarCityRename(city, in: listID)
+                                    }
+                                }
+                        } else {
+                            Text(city.city.localizedName(locale: locale))
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.leading, 36)
+                    .tag(contextID)
+                    .contextMenu {
+                        macSidebarCityActions(for: city, in: listID)
+                    }
+                }
+                .onMove { source, destination in
+                    moveMacSidebarCities(in: listID, from: source, to: destination)
+                }
+            }
+        }
+    }
+
+    private func macSidebarSetList(_ listID: CityListID, expanded: Bool) {
+        if expanded {
+            sidebarExpandedListIDs.insert(listID.rawValue)
+            Task { await weatherService.fetchWeatherForList(listID) }
+        } else {
+            sidebarExpandedListIDs.remove(listID.rawValue)
+        }
+    }
+
+    private func moveMacSidebarLists(from source: IndexSet, to destination: Int) {
+        weatherService.moveLists(from: source, to: destination)
+        macSidebarRefreshTick += 1
+        PlatformFeedback.lightImpact()
+    }
+
+    private func moveMacSidebarCities(in listID: CityListID, from source: IndexSet, to destination: Int) {
+        weatherService.moveCity(in: listID, from: source, to: destination)
+        macSidebarRefreshTick += 1
+        PlatformFeedback.lightImpact()
+    }
+
+    @ViewBuilder
+    private func macSidebarListActions(for listID: CityListID) -> some View {
+        Button {
+            Task { await switchToList(listID) }
+        } label: {
+            Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+        }
+
+        Button {
+            beginMacSidebarListRename(listID)
+        } label: {
+            Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+        }
+
+        Button {
+            beginMacSidebarAddingCity(to: listID)
+        } label: {
+            Label(localizedString("Add City", locale: locale), systemImage: "plus")
+        }
+
+        Button(role: .destructive) {
+            Task { await weatherService.deleteList(listID) }
+        } label: {
+            Label(localizedString("Delete", locale: locale), systemImage: "trash")
+        }
+    }
+
+    @ViewBuilder
+    private func macSidebarCityActions(for city: CityWeather, in listID: CityListID) -> some View {
+        Button {
+            revealCityOnMap(city, in: listID)
+        } label: {
+            Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+        }
+
+        Button {
+            beginMacSidebarCityRename(city, in: listID)
+        } label: {
+            Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+        }
+
+        Button(role: .destructive) {
+            weatherService.removeCity(city, from: listID)
+        } label: {
+            Label(localizedString("Delete", locale: locale), systemImage: "trash")
+        }
+    }
+
+    private func beginMacSidebarAddingCity(to listID: CityListID) {
+        inlineAddTargetListID = listID
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showingInlineSearch = true
+            inlineSearchText = ""
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            inlineSearchFocused = true
+        }
+    }
+
+    private func beginMacSidebarListRename(_ listID: CityListID) {
+        sidebarRenamingCityContextID = nil
+        sidebarRenamingListID = listID
+        sidebarRenameText = listID.localizedDisplayName(locale: locale)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            sidebarRenameFocused = true
+        }
+    }
+
+    private func beginMacSidebarCityRename(_ city: CityWeather, in listID: CityListID) {
+        sidebarRenamingListID = nil
+        sidebarRenamingCityContextID = macSidebarCityContextID(city, in: listID)
+        sidebarRenameText = city.city.localizedName(locale: locale)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            sidebarRenameFocused = true
+        }
+    }
+
+    private func commitMacSidebarListRename(_ listID: CityListID) {
+        let trimmed = sidebarRenameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            weatherService.renameList(listID, to: trimmed)
+        }
+        sidebarRenamingListID = nil
+        sidebarRenameText = ""
+        macSidebarRefreshTick += 1
+    }
+
+    private func commitMacSidebarCityRename(_ city: CityWeather, in listID: CityListID) {
+        let trimmed = sidebarRenameText.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            weatherService.renameCity(city, in: listID, to: trimmed)
+        }
+        sidebarRenamingCityContextID = nil
+        sidebarRenameText = ""
+        macSidebarRefreshTick += 1
+    }
+
+    private func macSidebarListExpansionBinding(for listID: CityListID) -> Binding<Bool> {
+        Binding {
+            sidebarExpandedListIDs.contains(listID.rawValue)
+        } set: { isExpanded in
+            if isExpanded {
+                sidebarExpandedListIDs.insert(listID.rawValue)
+                Task { await weatherService.fetchWeatherForList(listID) }
+            } else {
+                sidebarExpandedListIDs.remove(listID.rawValue)
+            }
+        }
+    }
+
+    private func handleMacSidebarSelection(_ selection: String?) {
+        guard let selection else { return }
+        let parts = selection.split(separator: ":").map(String.init)
+        guard let kind = parts.first else { return }
+
+        if kind == "list", parts.count == 2,
+           let listID = CityListID.allLists.first(where: { $0.rawValue == parts[1] }),
+           listID != weatherService.activeListID {
+            Task { await switchToList(listID) }
+            return
+        }
+
+        if kind == "city", parts.count == 3,
+           let listID = CityListID.allLists.first(where: { $0.rawValue == parts[1] }),
+           let city = weatherService.weatherData(for: listID).first(where: { $0.id.uuidString == parts[2] }) {
+            revealCityOnMap(city, in: listID)
         }
     }
 

@@ -173,6 +173,7 @@ struct ContentView: View {
     @State var sidebarAddingList: Bool = false
     @State var sidebarNewListName: String = ""
     @State var sidebarRenamingListID: CityListID?
+    @State var sidebarRenamingCityContextID: String?
     @State var sidebarRenameText: String = ""
     @FocusState var sidebarNewListFocused: Bool
     @FocusState var sidebarRenameFocused: Bool
@@ -198,6 +199,7 @@ struct ContentView: View {
     @State var macExpandedCardShowsDetails: Bool = false
     @State var macExpandedCardChartMetric: WeatherDetailView.ChartMetric = .temperature
     @State var macExpandedCardChartRange: WeatherDetailView.ChartTimeRange = .daytime
+    @State var macSidebarSelection: String?
     @State var macSidebarDropTarget: String?
     @State var macSidebarContextTarget: String?
     @State var macSidebarRefreshTick: Int = 0
@@ -397,11 +399,6 @@ struct ContentView: View {
             macListManagerSidebar
         }
         .frame(minWidth: 180, idealWidth: 220, maxWidth: 300)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                macListSwitcherChevron
-            }
-        }
         .overlay(alignment: .top) {
             VStack(spacing: 0) {
                 Color.clear
@@ -616,13 +613,34 @@ struct ContentView: View {
     }
 
     private var macToolbarListTitle: some View {
-        Text(toolbarTitle)
-            .font(.headline)
-            .lineLimit(1)
+        Menu {
+            ForEach(CityListID.allLists) { listID in
+                Button(listID.localizedDisplayName(locale: locale)) {
+                    Task {
+                        await switchToList(listID)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "chevron.down")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 8, height: 8)
+                    .fontWeight(.semibold)
+                Text(toolbarTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+            }
             .foregroundStyle(.primary)
             .padding(.leading, 4)
             .padding(.trailing, 18)
             .fixedSize(horizontal: true, vertical: false)
+        }
+        .menuIndicator(.hidden)
+        .menuOrder(.fixed)
+        .tint(.primary)
+        .help(localizedString("Switch List", locale: locale))
     }
 
     @ViewBuilder
@@ -889,7 +907,14 @@ struct ContentView: View {
     private var macTabSwitcherKeyMonitor: some View {
         MacTabSwitcherKeyMonitor(
             onListSwitch: { delta in handleMacQuickSwitcher(delta: delta) },
-            onOverlaySwitch: { delta in handleMacOverlaySwitcher(delta: delta) }
+            onOverlaySwitch: { delta in handleMacOverlaySwitcher(delta: delta) },
+            onSearchMove: { delta in
+                guard showingInlineSearch, !inlineSearchText.isEmpty, !inlineSortedSearchResults.isEmpty else {
+                    return false
+                }
+                moveInlineSearchSelection(delta)
+                return true
+            }
         )
         .frame(width: 0, height: 0)
         .opacity(0)
@@ -2691,23 +2716,27 @@ extension UTType {
 private struct MacTabSwitcherKeyMonitor: NSViewRepresentable {
     let onListSwitch: (Int) -> Void
     let onOverlaySwitch: (Int) -> Void
+    let onSearchMove: (Int) -> Bool
 
     func makeNSView(context: Context) -> EventView {
         let view = EventView()
         view.onListSwitch = onListSwitch
         view.onOverlaySwitch = onOverlaySwitch
+        view.onSearchMove = onSearchMove
         return view
     }
 
     func updateNSView(_ nsView: EventView, context: Context) {
         nsView.onListSwitch = onListSwitch
         nsView.onOverlaySwitch = onOverlaySwitch
+        nsView.onSearchMove = onSearchMove
         nsView.updateMonitor()
     }
 
     final class EventView: NSView {
         var onListSwitch: (Int) -> Void = { _ in }
         var onOverlaySwitch: (Int) -> Void = { _ in }
+        var onSearchMove: (Int) -> Bool = { _ in false }
         private var monitor: Any?
 
         override func viewDidMoveToWindow() {
@@ -2729,9 +2758,22 @@ private struct MacTabSwitcherKeyMonitor: NSViewRepresentable {
             guard window != nil else { return }
 
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                guard let self, self.window === event.window, event.keyCode == 48 else { return event }
+                guard let self, self.window === event.window else { return event }
 
                 let flags = event.modifierFlags
+                let relevantModifiers = flags.intersection([.command, .control, .option, .shift])
+
+                if relevantModifiers.isEmpty {
+                    if event.keyCode == 126, self.onSearchMove(-1) {
+                        return nil
+                    }
+                    if event.keyCode == 125, self.onSearchMove(1) {
+                        return nil
+                    }
+                }
+
+                guard event.keyCode == 48 else { return event }
+
                 let delta = flags.contains(.shift) ? -1 : 1
                 if flags.contains(.control), !flags.contains(.command) {
                     self.onListSwitch(delta)
