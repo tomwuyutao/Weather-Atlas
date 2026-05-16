@@ -11,12 +11,16 @@ import AppKit
 #endif
 import UniformTypeIdentifiers
 
-#if os(macOS)
+#if os(macOS) || os(iOS)
 extension ContentView {
 
     var macListManagerSidebar: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
+                if sidebarAddingList {
+                    macSidebarNewListRow
+                }
+
                 ForEach(CityListID.allLists) { listID in
                     macSidebarListSection(for: listID)
                 }
@@ -31,6 +35,37 @@ extension ContentView {
                 sidebarExpandedListIDs = Set(CityListID.allLists.map(\.rawValue))
             }
         }
+    }
+
+    private var macSidebarNewListRow: some View {
+        HStack(spacing: 8) {
+            TextField(localizedString("New List", locale: locale), text: $sidebarNewListName)
+                .textFieldStyle(.plain)
+                .focused($sidebarNewListFocused)
+                .submitLabel(.done)
+                .onSubmit { commitListManagerNewList() }
+
+            Button {
+                commitListManagerNewList()
+            } label: {
+                Image(systemName: "checkmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                sidebarAddingList = false
+                sidebarNewListName = ""
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+        }
+        .font(.subheadline)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
     }
 
     private func macSidebarListSection(for listID: CityListID) -> some View {
@@ -216,10 +251,15 @@ extension ContentView {
             }
     }
 
+    @ViewBuilder
     private func macSidebarRightClickReader(_ id: String) -> some View {
+        #if os(macOS)
         MacSidebarRightClickReader(id: id) { target in
             macSidebarContextTarget = target
         }
+        #else
+        Color.clear
+        #endif
     }
 
     private func macSidebarListContextID(_ listID: CityListID) -> String {
@@ -463,6 +503,7 @@ extension ContentView {
     }
 }
 
+#if os(macOS)
 private struct MacSidebarRightClickReader: NSViewRepresentable {
     let id: String
     let setTarget: (String?) -> Void
@@ -535,4 +576,5 @@ private struct MacSidebarRightClickReader: NSViewRepresentable {
         }
     }
 }
+#endif
 #endif

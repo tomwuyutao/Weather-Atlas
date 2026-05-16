@@ -11,7 +11,7 @@ extension ContentView {
 
     // MARK: - Map Expanded Card
 
-    func mapExpandedCard(for cityWeather: CityWeather) -> some View {
+    func mapExpandedCard(for cityWeather: CityWeather) -> AnyView {
         let isNow = selectedDayOffset == -1
         let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
         let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
@@ -77,16 +77,19 @@ extension ContentView {
             }
         }()
 
-        #if os(macOS)
-        return macMapExpandedCard(
-            for: cityWeather,
-            icon: icon,
-            primaryText: isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh),
-            metricLabel: isOverlayActive ? overlayLabel : localizedString("Highest Temperature", locale: locale),
-            tempUnit: tempUnit
-        )
-        #else
-        return HStack(alignment: .bottom, spacing: 18) {
+        #if os(macOS) || os(iOS)
+        if usesFloatingMapCardLayout {
+            return AnyView(macMapExpandedCard(
+                for: cityWeather,
+                icon: icon,
+                primaryText: isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh),
+                metricLabel: isOverlayActive ? overlayLabel : localizedString("Highest Temperature", locale: locale),
+                tempUnit: tempUnit
+            ))
+        }
+        #endif
+
+        return AnyView(HStack(alignment: .bottom, spacing: 18) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
                         .font(.system(size: 40, weight: .semibold, design: .default))
@@ -139,11 +142,10 @@ extension ContentView {
         .contentShape(RoundedRectangle(cornerRadius: 24))
         .onTapGesture {
             showingCityDetail = true
-        }
-        #endif
+        })
     }
 
-    #if os(macOS)
+    #if os(macOS) || os(iOS)
     private func macMapExpandedCard(
         for cityWeather: CityWeather,
         icon: String,

@@ -338,7 +338,7 @@ extension ContentView {
         }
     }
 
-    private func commitListManagerNewList() {
+    func commitListManagerNewList() {
         let trimmed = sidebarNewListName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let newList = CityListID.createList(name: trimmed)

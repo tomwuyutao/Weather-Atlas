@@ -9,6 +9,9 @@ import SwiftUI
 import CoreLocation
 import MapKit
 import UniformTypeIdentifiers
+#if os(iOS)
+import UIKit
+#endif
 #if os(macOS)
 import AppKit
 #endif
@@ -72,6 +75,9 @@ struct ContentView: View {
     @State var visibleListIDs: Set<String> = []
     @Environment(\.locale) var locale
     @Environment(\.colorScheme) var colorScheme
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
+    #endif
     #if os(macOS)
     @Environment(\.openWindow) var openWindow
     #endif
@@ -116,6 +122,22 @@ struct ContentView: View {
         macOSView
         #else
         iOSView
+        #endif
+    }
+
+    #if os(iOS)
+    private var shouldUseIPadLayout: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
+    #endif
+
+    var usesFloatingMapCardLayout: Bool {
+        #if os(macOS)
+        true
+        #elseif os(iOS)
+        shouldUseIPadLayout
+        #else
+        false
         #endif
     }
 
@@ -166,7 +188,7 @@ struct ContentView: View {
     @State var showingMapStylePopover: Bool = false
     @State var showingMapStyleSheet: Bool = false
     @State var inlineAddTargetListID: CityListID?
-    #if os(macOS)
+    #if os(macOS) || os(iOS)
     @State private var macSidebarVisibility: NavigationSplitViewVisibility = .all
     @State private var macMapExpandedCardAnchor: CGPoint?
     @State private var macMapExpandedCardBaseOffset: CGSize = .zero
@@ -192,6 +214,10 @@ struct ContentView: View {
     @State var macMapLookupPreviewCityID: UUID?
     @State var macMapViewportSize: CGSize = .zero
     #endif
+    #if os(iOS)
+    @State private var iPadSidebarVisibility: NavigationSplitViewVisibility = .all
+    @State private var iPadPreferredCompactColumn: NavigationSplitViewColumn = .detail
+    #endif
 
     var toolbarTitle: String {
         weatherService.activeListID.localizedDisplayName(locale: locale)
@@ -215,7 +241,17 @@ struct ContentView: View {
     }
 
     private var iOSView: some View {
-        AnyView(iPhoneNavigationStack)
+        Group {
+            #if os(iOS)
+            if shouldUseIPadLayout {
+                iPadRootView
+            } else {
+                iPhoneNavigationStack
+            }
+            #else
+            iPhoneNavigationStack
+            #endif
+        }
         .task { await iOSOnAppear() }
         .onChange(of: weatherService.activeListID) { _, newListID in
             visibleListIDs.insert(newListID.rawValue)
@@ -1051,6 +1087,238 @@ struct ContentView: View {
 
     #endif
 
+    #if os(iOS)
+    private var iPadRootView: some View {
+        NavigationSplitView(columnVisibility: $iPadSidebarVisibility, preferredCompactColumn: $iPadPreferredCompactColumn) {
+            NavigationStack {
+                iPadSidebarContent
+            }
+            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+        } detail: {
+            NavigationStack {
+                iPadMapContent
+                    .navigationTitle("")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .navigationDestination(isPresented: $showingCityDetail) {
+                        AnyView(iOSCityDetailDestination)
+                    }
+                    .navigationDestination(isPresented: $showingAddCityDetail) {
+                        AnyView(iOSAddCityDetailDestination)
+                    }
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            selectedTab = 1
+            if sidebarExpandedListIDs.isEmpty {
+                sidebarExpandedListIDs = Set(CityListID.allLists.map(\.rawValue))
+            }
+        }
+    }
+
+    private var iPadSidebarContent: some View {
+        macListManagerSidebar
+            .navigationTitle(localizedString("Lists", locale: locale))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            sidebarAddingList = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            sidebarNewListFocused = true
+                        }
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                }
+            }
+            .toolbarBackground(theme.colors.background, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
+    }
+
+    private var iPadMapContent: some View {
+        ZStack {
+            iOSMapView
+                .overlay(alignment: .bottomLeading) {
+                    if showLegend {
+                        MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
+                            withAnimation(.smooth(duration: 0.2)) {
+                                showLegend = false
+                            }
+                        }
+                        .padding(.leading, 24)
+                        .padding(.bottom, 24)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                    }
+                }
+                .overlay(alignment: .trailing) {
+                    AnyView(iOSDateSliderOverlay)
+                }
+
+            iPadFloatingMapOverlays
+        }
+        .ignoresSafeArea(.container, edges: .top)
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Text(toolbarTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+            }
+
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    recenterOnAllCities = false
+                    DispatchQueue.main.async {
+                        recenterOnAllCities = true
+                    }
+                } label: {
+                    Image(systemName: "dot.squareshape.split.2x2")
+                }
+                .help(localizedString("Center on Map", locale: locale))
+
+                mapOverlayMenu
+
+                Button {
+                    withAnimation(.smooth(duration: 0.2)) {
+                        showLegend.toggle()
+                    }
+                } label: {
+                    Image(systemName: showLegend ? "eye.slash" : "eye")
+                }
+                .help(localizedString("Legend", locale: locale))
+
+                Button {
+                    Task { await weatherService.refreshWeather() }
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .disabled(weatherService.isLoading)
+                .help(localizedString("Refresh", locale: locale))
+
+                Button {
+                    withAnimation {
+                        filterSunny.toggle()
+                    }
+                } label: {
+                    Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
+                }
+                .help(localizedString("Filter Sunny", locale: locale))
+
+                iOSNativeMenu
+            }
+        }
+        .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
+        .searchPresentationToolbarBehavior(.avoidHidingContent)
+    }
+
+    private var iPadFloatingMapOverlays: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                if showingMapExpandedCard, let city = tappedCity {
+                    mapExpandedCard(for: city)
+                        .id(city.city.id)
+                        .frame(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
+                        .offset(iPadExpandedCardOffset(in: geometry.size))
+                        .gesture(
+                            DragGesture()
+                                .updating($macMapExpandedCardGestureOffset) { value, state, _ in
+                                    state = value.translation
+                                }
+                                .onEnded { value in
+                                    macMapExpandedCardBaseOffset.width += value.translation.width
+                                    macMapExpandedCardBaseOffset.height += value.translation.height
+                                }
+                        )
+                        .transition(
+                            .asymmetric(
+                                insertion: .scale(scale: 0.12, anchor: iPadExpandedCardRevealAnchor(in: geometry.size)).combined(with: .opacity),
+                                removal: .scale(scale: 0.12, anchor: iPadExpandedCardRevealAnchor(in: geometry.size)).combined(with: .opacity)
+                            )
+                        )
+                        .zIndex(12)
+                }
+
+                if showingInlineSearch {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            dismissInlineSearch()
+                        }
+                        .zIndex(9)
+                }
+
+                if showingInlineSearch, !inlineSearchText.isEmpty {
+                    iOSInlineSearchResults
+                        .transition(.opacity)
+                        .zIndex(10)
+                }
+
+                if showingCountrySearch, !countrySearchText.isEmpty {
+                    iOSCountrySearchResults
+                        .transition(.opacity)
+                        .zIndex(10)
+                }
+            }
+            .onAppear {
+                macMapViewportSize = geometry.size
+            }
+            .onChange(of: geometry.size) { _, newSize in
+                macMapViewportSize = newSize
+            }
+        }
+    }
+
+    private func iPadExpandedCardTopLeft(in size: CGSize) -> CGSize {
+        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
+        let margin: CGFloat = 16
+        let toolbarClearance: CGFloat = 58
+        let markerGap: CGFloat = 210
+        let anchor = macMapExpandedCardAnchor ?? CGPoint(
+            x: size.width - cardSize.width - margin,
+            y: size.height - cardSize.height - margin
+        )
+        let proposed = CGPoint(
+            x: anchor.x - cardSize.width - markerGap,
+            y: anchor.y - (cardSize.height / 2)
+        )
+        let clamped = CGPoint(
+            x: min(max(proposed.x, margin), size.width - cardSize.width - margin),
+            y: min(max(proposed.y, toolbarClearance), size.height - cardSize.height - margin)
+        )
+        return CGSize(width: clamped.x, height: clamped.y)
+    }
+
+    private func iPadExpandedCardOffset(in size: CGSize) -> CGSize {
+        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
+        let margin: CGFloat = 16
+        let toolbarClearance: CGFloat = 58
+        let base = iPadExpandedCardTopLeft(in: size)
+        let proposed = CGSize(
+            width: base.width + macMapExpandedCardBaseOffset.width + macMapExpandedCardGestureOffset.width,
+            height: base.height + macMapExpandedCardBaseOffset.height + macMapExpandedCardGestureOffset.height
+        )
+        return CGSize(
+            width: min(max(proposed.width, margin), size.width - cardSize.width - margin),
+            height: min(max(proposed.height, toolbarClearance), size.height - cardSize.height - margin)
+        )
+    }
+
+    private func iPadExpandedCardRevealAnchor(in size: CGSize) -> UnitPoint {
+        guard let markerAnchor = macMapExpandedCardAnchor else {
+            return .trailing
+        }
+
+        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
+        let cardOrigin = iPadExpandedCardOffset(in: size)
+        return UnitPoint(
+            x: (markerAnchor.x - cardOrigin.width) / cardSize.width,
+            y: (markerAnchor.y - cardOrigin.height) / cardSize.height
+        )
+    }
+    #endif
+
     private var iPhoneNavigationStack: some View {
         NavigationStack {
             iPhoneMapTabContent
@@ -1380,7 +1648,12 @@ struct ContentView: View {
     }
 
     private func handleMapBackgroundClick(_ coordinate: CLLocationCoordinate2D, anchor: CGPoint? = nil) {
-        #if os(macOS)
+        #if os(macOS) || os(iOS)
+        guard usesFloatingMapCardLayout else {
+            dismissMapExpandedCard()
+            return
+        }
+
         if showingMapExpandedCard {
             dismissMapExpandedCard()
             return
@@ -1443,7 +1716,7 @@ struct ContentView: View {
             if shouldRecenterAfterDismiss {
                 recenterOnAllCities = true
             }
-            #if os(macOS)
+            #if os(macOS) || os(iOS)
             macHoverPresentedCardCityID = nil
             macMapExpandedCardFocusesMarker = false
             macMapExpandedCardAnchor = nil
@@ -1455,23 +1728,27 @@ struct ContentView: View {
     }
 
     func showMapMarkerCard(_ city: CityWeather, anchor: CGPoint? = nil, expanded: Bool, focusesMarker: Bool) {
-        #if os(macOS)
-        macHoverPresentedCardCityID = nil
-        macMapExpandedCardFocusesMarker = focusesMarker
-        macExpandedCardShowsDetails = expanded
-        macMapExpandedCardAnchor = anchor ?? (focusesMarker ? macCenteredMapMarkerAnchor() : nil)
-        macMapExpandedCardBaseOffset = .zero
+        #if os(macOS) || os(iOS)
+        if usesFloatingMapCardLayout {
+            macHoverPresentedCardCityID = nil
+            macMapExpandedCardFocusesMarker = focusesMarker
+            macExpandedCardShowsDetails = expanded
+            macMapExpandedCardAnchor = anchor ?? (focusesMarker ? macCenteredMapMarkerAnchor() : nil)
+            macMapExpandedCardBaseOffset = .zero
+        }
         #endif
 
         if showingMapExpandedCard && tappedCity?.id == city.id {
-            #if os(macOS)
-            macHoverPresentedCardCityID = nil
-            macMapExpandedCardFocusesMarker = focusesMarker
-            return
-            #else
-            showingCityDetail = true
-            return
-            #endif
+            if usesFloatingMapCardLayout {
+                #if os(macOS) || os(iOS)
+                macHoverPresentedCardCityID = nil
+                macMapExpandedCardFocusesMarker = focusesMarker
+                #endif
+                return
+            } else {
+                showingCityDetail = true
+                return
+            }
         }
 
         withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
@@ -1481,7 +1758,7 @@ struct ContentView: View {
     }
 
     private func macCenteredMapMarkerAnchor() -> CGPoint? {
-        #if os(macOS)
+        #if os(macOS) || os(iOS)
         guard macMapViewportSize.width > 0, macMapViewportSize.height > 0 else { return nil }
         return CGPoint(
             x: macMapViewportSize.width / 2 + CGFloat(macMapLeadingFitPadding) * 0.88,
@@ -1492,7 +1769,7 @@ struct ContentView: View {
         #endif
     }
 
-    #if os(macOS)
+    #if os(macOS) || os(iOS)
     private func deleteMapCity(_ city: CityWeather) {
         weatherService.removeCity(city)
         if previewCity?.id == city.id {
@@ -1891,8 +2168,10 @@ struct ContentView: View {
                     handleMapBackgroundClick(coordinate, anchor: point)
                 },
                 onMarkerCommandHover: { city, point in
-                    #if os(macOS)
-                    handleMapMarkerCommandHover(city, anchor: point)
+                    #if os(macOS) || os(iOS)
+                    if usesFloatingMapCardLayout {
+                        handleMapMarkerCommandHover(city, anchor: point)
+                    }
                     #endif
                 }
             )
@@ -1950,8 +2229,8 @@ struct ContentView: View {
     }
 
     private var mapFocusSelectedMarker: Bool {
-        #if os(macOS)
-        macMapExpandedCardFocusesMarker
+        #if os(macOS) || os(iOS)
+        usesFloatingMapCardLayout ? macMapExpandedCardFocusesMarker : false
         #else
         false
         #endif
