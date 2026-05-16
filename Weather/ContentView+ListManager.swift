@@ -14,51 +14,20 @@ extension ContentView {
             ZStack {
                 theme.colors.background.ignoresSafeArea()
 
-                List {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
                     if sidebarAddingList {
-                        Section {
-                            TextField(localizedString("New List", locale: locale), text: $sidebarNewListName)
-                                .focused($sidebarNewListFocused)
-                                .submitLabel(.done)
-                                .onSubmit { commitListManagerNewList() }
-                        }
+                        listManagerNewListRow
                     }
 
                     ForEach(CityListID.allLists) { listID in
-                        Section {
-                            listManagerListRow(for: listID)
-
-                            if sidebarExpandedListIDs.contains(listID.rawValue) {
-                                ForEach(weatherService.weatherData(for: listID)) { city in
-                                    listManagerCityRow(city, in: listID)
-                                }
-                                .onDelete { offsets in
-                                    removeCities(at: offsets, from: listID)
-                                }
-                                .onMove { source, destination in
-                                    weatherService.moveCity(in: listID, from: source, to: destination)
-                                }
-                            }
-                        }
-                        .textCase(nil)
-                        .listSectionSeparator(.visible)
+                        sidebarListRow(for: listID)
                     }
-                    .onDelete { offsets in
-                        Task {
-                            let lists = CityListID.allLists
-                            for listID in offsets.map({ lists[$0] }) {
-                                await weatherService.deleteList(listID)
-                            }
-                        }
                     }
-                    .onMove { source, destination in
-                        weatherService.moveLists(from: source, to: destination)
-                    }
+                    .padding(.horizontal, 14)
+                    .padding(.top, 12)
+                    .padding(.bottom, 110)
                 }
-                .scrollContentBackground(.hidden)
-                .listStyle(.plain)
-                .contentMargins(.horizontal, 28, for: .scrollContent)
-                .contentMargins(.bottom, 110, for: .scrollContent)
                 .onAppear {
                     if sidebarExpandedListIDs.isEmpty {
                         sidebarExpandedListIDs = Set(CityListID.allLists.map(\.rawValue))
@@ -81,7 +50,12 @@ extension ContentView {
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        createListAtBottom()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            sidebarAddingList = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            sidebarNewListFocused = true
+                        }
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -97,7 +71,12 @@ extension ContentView {
                 }
                 ToolbarItem {
                     Button {
-                        createListAtBottom()
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            sidebarAddingList = true
+                        }
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                            sidebarNewListFocused = true
+                        }
                     } label: {
                         Image(systemName: "plus")
                     }
@@ -109,6 +88,35 @@ extension ContentView {
             .toolbarBackground(.visible, for: .navigationBar)
             #endif
         }
+    }
+
+    private var listManagerNewListRow: some View {
+        HStack(spacing: 8) {
+            TextField(localizedString("New List", locale: locale), text: $sidebarNewListName)
+                .textFieldStyle(.plain)
+                .focused($sidebarNewListFocused)
+                .submitLabel(.done)
+                .onSubmit { commitListManagerNewList() }
+
+            Button {
+                commitListManagerNewList()
+            } label: {
+                Image(systemName: "checkmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                sidebarAddingList = false
+                sidebarNewListName = ""
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+            }
+            .buttonStyle(.plain)
+        }
+        .font(.subheadline)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(.thinMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
     private func listManagerListRow(for listID: CityListID) -> some View {

@@ -12,81 +12,76 @@ extension WeatherDetailView {
     // MARK: - Inline Scrollable Header
 
     var inlineHeader: some View {
-        GeometryReader { geo in
-            let topInset = geo.safeAreaInsets.top
-            ZStack(alignment: .topLeading) {
-                // Large decorative icon — right side, semi-transparent
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(cityWeather.city.localizedName(locale: locale))
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(1)
+
+                    Text(isNow ? detailDisplayCondition.localizedDisplayName(locale: locale) : forecast.condition.localizedDisplayName(locale: locale))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer(minLength: 8)
+
                 Image(systemName: detailDisplayIcon)
-                    .font(.system(size: 180))
-                    .foregroundStyle(.white)
+                    .font(.system(size: 30, weight: .medium))
+                    .weatherIconStyle(for: detailDisplayIcon)
                     .contentTransition(.symbolEffect(.replace))
-                    .opacity(0.35)
-                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+                    .frame(width: 38, height: 34)
                     .background(alignment: .top) {
                         if !detailDisplayIcon.contains("moon") {
                             WeatherEffectOverlay(
                                 condition: detailDisplayCondition,
-                                isCompact: false,
-                                iconHeight: 220,
+                                isCompact: true,
+                                iconHeight: 48,
                                 iconName: detailDisplayIcon,
                                 dropColor: detailDisplayCondition == .drizzle ? AppTheme.shared.colors.dotRain : nil
                             )
                             .id("detail-header-effect-\(internalSelectedDay)-\(detailDisplayCondition.displayName)")
                         }
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
-                    .padding(.trailing, -40)
-                    .offset(y: -10 + topInset)
-
-                // Temperature + condition — bottom left
-                VStack(alignment: .leading, spacing: 6) {
-                    Spacer()
-
-                    if isNow {
-                        HStack(alignment: .firstTextBaseline, spacing: 0) {
-                            Text(tempUnit.display(cityWeather.temperature))
-                                .font(.avenir(.largeTitle, weight: .bold))
-                                .dynamicTypeSize(...DynamicTypeSize.large)
-                                .contentTransition(.numericText())
-                        }
-                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-
-                        Text(detailDisplayCondition.localizedDisplayName(locale: locale))
-                            .font(.avenir(.title3, weight: .medium))
-                            .dynamicTypeSize(...DynamicTypeSize.large)
-                            .contentTransition(.opacity)
-                            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                    } else {
-                        HStack(alignment: .firstTextBaseline, spacing: 0) {
-                            Text(tempUnit.display(forecast.dailyHigh))
-                                .font(.avenir(.largeTitle, weight: .bold))
-                                .dynamicTypeSize(...DynamicTypeSize.large)
-                                .contentTransition(.numericText())
-                            Text(" ")
-                                .font(.avenir(.largeTitle, weight: .bold))
-                            Text(tempUnit.display(forecast.dailyLow))
-                                .font(.avenir(.largeTitle, weight: .bold))
-                                .dynamicTypeSize(...DynamicTypeSize.large)
-                                .contentTransition(.numericText())
-                                .opacity(0.6)
-                        }
-                        .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-
-                        Text(forecast.condition.localizedDisplayName(locale: locale))
-                            .font(.avenir(.title3, weight: .medium))
-                            .dynamicTypeSize(...DynamicTypeSize.large)
-                            .contentTransition(.opacity)
-                            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
-                    }
-                }
-                .foregroundStyle(.white)
-                .padding(.leading, 28)
-                .padding(.bottom, 48)
+                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(headerBackgroundColor)
+
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if isNow {
+                    Text(tempUnit.display(cityWeather.temperature))
+                        .font(.system(size: 46, weight: .regular))
+                        .contentTransition(.numericText())
+                } else {
+                    Text(tempUnit.display(forecast.dailyHigh))
+                        .font(.system(size: 46, weight: .regular))
+                        .contentTransition(.numericText())
+                    Text(tempUnit.display(forecast.dailyLow))
+                        .font(.system(size: 34, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .contentTransition(.numericText())
+                }
+
+                Spacer(minLength: 8)
+            }
+            .animation(.smooth(duration: 0.3), value: internalSelectedDay)
         }
-        .frame(height: expandedHeaderHeight)
-        .clipped()
+        .padding(.horizontal, 16)
+        .padding(.vertical, 18)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(
+            (colorScheme == .dark
+             ? Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.48)
+             : Color.white.opacity(0.62)),
+            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.10), radius: 18, x: 0, y: 8)
+        .padding(.horizontal, 16)
+        .padding(.top, 12)
     }
 }

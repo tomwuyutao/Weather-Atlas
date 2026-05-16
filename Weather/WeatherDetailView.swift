@@ -327,7 +327,7 @@ struct WeatherDetailView: View {
         false
     }
 
-    var expandedHeaderHeight: CGFloat { 320 }
+    var expandedHeaderHeight: CGFloat { 184 }
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -881,10 +881,11 @@ struct WeatherDetailView: View {
                                 await detailSelectSearchResult(result)
                             }
                         } label: {
-                            HStack(spacing: 12) {
+                            HStack(alignment: .firstTextBaseline, spacing: 10) {
                                 Text(result.title)
                                     .font(.avenir(.body, weight: existing ? .semibold : .regular))
                                     .foregroundStyle(.primary)
+                                    .lineLimit(1)
 
                                 if existing {
                                     Text(localizedString("Added", locale: locale))
@@ -902,15 +903,16 @@ struct WeatherDetailView: View {
                                         .controlSize(.small)
                                 } else {
                                     Text(result.subtitle)
-                                        .font(.avenir(.headline, weight: .semibold))
+                                        .font(.avenir(.caption, weight: .medium))
                                         .foregroundStyle(.secondary)
+                                        .lineLimit(1)
                                 }
                             }
-                            .padding(.vertical, 4)
+                            .padding(.vertical, 2)
                         }
                         .buttonStyle(.plain)
                         .disabled(detailSearchLoading)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        .listRowInsets(EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18))
                         .listRowSeparator(.visible)
                         .listRowBackground(Color.clear)
                     }

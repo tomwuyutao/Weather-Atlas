@@ -264,7 +264,6 @@ struct ContentView: View {
         .overlay {
             iOSDeleteListConfirmationOverlay
         }
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .toolbar(removing: .title)
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
     }
@@ -1432,7 +1431,11 @@ struct ContentView: View {
     }
 
     func dismissMapExpandedCard() {
+        #if os(macOS)
         let shouldRecenterAfterDismiss = previewCity != nil && previewCity?.id != macMapLookupPreviewCityID
+        #else
+        let shouldRecenterAfterDismiss = previewCity != nil
+        #endif
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showingMapExpandedCard = false
             tappedCity = nil
@@ -1880,7 +1883,7 @@ struct ContentView: View {
                 recenterOnAllCities: $recenterOnAllCities,
                 centerOnCity: centerOnCityTrigger,
                 leadingFitPadding: macMapLeadingFitPadding,
-                focusSelectedMarker: macMapExpandedCardFocusesMarker,
+                focusSelectedMarker: mapFocusSelectedMarker,
                 onMarkerTap: { city, point in
                     handleMapMarkerTap(city, anchor: point)
                 },
@@ -1943,6 +1946,14 @@ struct ContentView: View {
         macSidebarVisibility == .detailOnly ? 0 : 220
         #else
         0
+        #endif
+    }
+
+    private var mapFocusSelectedMarker: Bool {
+        #if os(macOS)
+        macMapExpandedCardFocusesMarker
+        #else
+        false
         #endif
     }
 

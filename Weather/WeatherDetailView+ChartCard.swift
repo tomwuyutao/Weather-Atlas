@@ -187,7 +187,7 @@ extension WeatherDetailView {
                 }
                 .clipped()
             }
-            .frame(height: 250)
+            .frame(height: 184)
             .contentShape(Rectangle())
             .highPriorityGesture(
                 chartTimeRange == .daytime
@@ -219,8 +219,13 @@ extension WeatherDetailView {
             )
             .padding(.top, 8)
         }
-        .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(AppTheme.shared.colors.listCardFill.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(AppTheme.shared.colors.primaryText.opacity(0.08), lineWidth: 1)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         .padding(.horizontal, 8)
     }
 }
