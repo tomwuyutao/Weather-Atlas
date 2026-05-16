@@ -1302,16 +1302,16 @@ struct HourlyTimelineChart: View {
                         let h1 = CGFloat(hours[lastIdx + 1])
                         let fraction = h1 > h0 ? CGFloat(currentHour - hours[lastIdx]) / (h1 - h0) : 0
                         let nowX = xPositions[lastIdx] + fraction * (xPositions[lastIdx + 1] - xPositions[lastIdx])
-                        Rectangle()
+                        RoundedRectangle(cornerRadius: 1, style: .continuous)
                             .fill(indicatorLineColor)
-                            .frame(width: 3, height: lineHeight)
+                            .frame(width: 1.5, height: lineHeight)
                             .position(x: nowX, y: lineCenterY)
                             .opacity(0.5)
                     } else if let firstHour = hours.first, currentHour < firstHour {
                         let nowX = xPositions[0] * CGFloat(currentHour) / CGFloat(firstHour)
-                        Rectangle()
+                        RoundedRectangle(cornerRadius: 1, style: .continuous)
                             .fill(indicatorLineColor)
-                            .frame(width: 3, height: lineHeight)
+                            .frame(width: 1.5, height: lineHeight)
                             .position(x: max(nowX, 4), y: lineCenterY)
                             .opacity(0.5)
                     }

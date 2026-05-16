@@ -51,7 +51,6 @@ extension ContentView {
                 .buttonStyle(.plain)
 
                 Button {
-                    print("expand/collapse list button clicked: \(listID.rawValue)")
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
                         if isExpanded {
                             sidebarExpandedListIDs.remove(listID.rawValue)
@@ -62,7 +61,7 @@ extension ContentView {
                     }
                 } label: {
                     ZStack {
-                        Color.red.opacity(0)
+                        Color.clear
                         Image(systemName: "chevron.down")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)

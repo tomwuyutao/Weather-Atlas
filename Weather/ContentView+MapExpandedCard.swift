@@ -155,7 +155,8 @@ extension ContentView {
         let selectedForecast = cityWeather.forecast(for: max(0, selectedDayOffset))
         let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
 
-        return VStack(alignment: .leading, spacing: 0) {
+        return ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(cityWeather.city.localizedName(locale: locale))
@@ -174,21 +175,13 @@ extension ContentView {
                     Button {
                         dismissMapExpandedCard()
                     } label: {
-                        ZStack {
-                            if macExpandedCardHoveringClose {
-                                Circle()
-                                    .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
-                                    .frame(width: 28, height: 28)
-                            }
-                            Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .semibold))
-                        }
-                        .frame(width: 28, height: 28)
-                        .contentShape(Circle())
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .semibold))
+                            .frame(width: 28, height: 28)
+                            .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(.secondary)
-                    .onHover { macExpandedCardHoveringClose = $0 }
                 } else {
                     macExpandedCardAddMenu(for: cityWeather)
                 }
@@ -211,10 +204,7 @@ extension ContentView {
             }
             .padding(.bottom, 14)
 
-            Rectangle()
-                .fill(Color.primary.opacity(0.08))
-                .frame(height: 0.75)
-                .padding(.horizontal, -14)
+            macExpandedCardDivider
                 .padding(.bottom, 10)
 
             VStack(spacing: 8) {
@@ -270,11 +260,7 @@ extension ContentView {
             .padding(.bottom, macExpandedCardShowsDetails ? 10 : 4)
 
             if macExpandedCardShowsDetails {
-                ScrollView(.vertical, showsIndicators: false) {
-                    macExpandedCardDetails(for: cityWeather, forecast: selectedForecast, tempUnit: tempUnit, distUnit: distUnit)
-                }
-                    .frame(maxHeight: 308)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                macExpandedCardDetails(for: cityWeather, forecast: selectedForecast, tempUnit: tempUnit, distUnit: distUnit)
                     .padding(.bottom, 14)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -299,12 +285,13 @@ extension ContentView {
                 Spacer()
             }
         }
+        }
         .padding(14)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .background(
             (colorScheme == .dark
              ? Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.48)
-             : Color(red: 0.92, green: 0.90, blue: 0.86).opacity(0.42)),
+             : Color.white.opacity(0.62)),
             in: RoundedRectangle(cornerRadius: 22, style: .continuous)
         )
         .overlay {
@@ -409,10 +396,7 @@ extension ContentView {
 
         return VStack(spacing: 8) {
             VStack(alignment: .leading, spacing: 0) {
-                Rectangle()
-                    .fill(Color.primary.opacity(0.08))
-                    .frame(height: 0.75)
-                    .padding(.horizontal, -14)
+                macExpandedCardDivider
                     .padding(.bottom, 10)
 
                 HStack(spacing: 8) {
@@ -465,10 +449,7 @@ extension ContentView {
                 .frame(height: 184)
                 .clipped()
 
-                Rectangle()
-                    .fill(Color.primary.opacity(0.08))
-                    .frame(height: 0.75)
-                    .padding(.horizontal, -14)
+                macExpandedCardDivider
                     .padding(.top, -12)
             }
 
@@ -515,6 +496,13 @@ extension ContentView {
         }
     }
 
+    private var macExpandedCardDivider: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.08))
+            .frame(height: 0.75)
+            .padding(.horizontal, -14)
+    }
+
     private var macExpandedCardChartMetricMenu: some View {
         Menu {
             ForEach(macExpandedCardChartMetrics, id: \.0) { metric, icon, label in
@@ -522,12 +510,10 @@ extension ContentView {
                     macExpandedCardChartMetric = metric
                 } label: {
                     HStack {
-                        Image(systemName: icon)
+                        Image(systemName: macExpandedCardChartMetric == metric ? "checkmark" : "")
+                            .foregroundStyle(.primary)
+                            .frame(width: 14)
                         Text(label)
-                        Spacer()
-                        if macExpandedCardChartMetric == metric {
-                            Image(systemName: "checkmark")
-                        }
                     }
                 }
             }
@@ -558,11 +544,10 @@ extension ContentView {
                     macExpandedCardChartRange = range
                 } label: {
                     HStack {
+                        Image(systemName: macExpandedCardChartRange == range ? "checkmark" : "")
+                            .foregroundStyle(.primary)
+                            .frame(width: 14)
                         Text(label)
-                        Spacer()
-                        if macExpandedCardChartRange == range {
-                            Image(systemName: "checkmark")
-                        }
                     }
                 }
             }

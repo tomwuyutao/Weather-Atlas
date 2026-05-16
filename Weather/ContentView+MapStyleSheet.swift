@@ -31,7 +31,13 @@ extension ContentView {
                         mapOverlayMode = option.mode
                     }
                 } label: {
-                    Label(option.label, systemImage: option.icon)
+                    HStack(spacing: 8) {
+                        Image(systemName: mapOverlayMode == option.mode ? "checkmark" : "")
+                            .foregroundStyle(theme.colors.accent)
+                            .frame(width: 14)
+
+                        Text(option.label)
+                    }
                 }
             }
         } label: {

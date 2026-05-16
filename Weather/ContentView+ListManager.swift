@@ -317,10 +317,16 @@ extension ContentView {
             let revealedCity = weatherService.cityWeatherData.first {
                 $0.city.latitude == city.city.latitude && $0.city.longitude == city.city.longitude
             } ?? city
-            tappedCity = revealedCity
-            centerOnCityTrigger = revealedCity
-            showingMapExpandedCard = true
             showingMapSidebar = false
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                showingMapExpandedCard = false
+                tappedCity = nil
+            }
+            centerOnCityTrigger = revealedCity
+            try? await Task.sleep(for: .milliseconds(500))
+            await MainActor.run {
+                showMapMarkerCard(revealedCity, expanded: false, focusesMarker: true)
+            }
         }
     }
 

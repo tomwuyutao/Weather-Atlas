@@ -85,10 +85,9 @@ struct WeatherApp: App {
         Window("Settings", id: "settings") {
             SettingsRoot(theme: theme, appLocale: appLocale)
         }
-        .defaultSize(width: 390, height: 773)
+        .defaultSize(width: 360, height: 430)
         .windowResizability(.contentMinSize)
         .windowStyle(.titleBar)
-        .windowToolbarStyle(.expanded)
         .keyboardShortcut(",", modifiers: .command)
         #else
         WindowGroup {
@@ -126,6 +125,11 @@ private struct SettingsCommands: Commands {
 private struct WeatherMapCommands: Commands {
     var body: some Commands {
         CommandMenu("Map") {
+            Button("Search") {
+                NotificationCenter.default.post(name: .weatherSearchCommand, object: nil)
+            }
+            .keyboardShortcut("f", modifiers: .command)
+
             Button("Refresh Weather") {
                 NotificationCenter.default.post(name: .weatherRefreshCommand, object: nil)
             }
@@ -268,6 +272,7 @@ extension Notification.Name {
     static let weatherPreviousListCommand = Notification.Name("weatherPreviousListCommand")
     static let weatherNextListCommand = Notification.Name("weatherNextListCommand")
     static let weatherRefreshCommand = Notification.Name("weatherRefreshCommand")
+    static let weatherSearchCommand = Notification.Name("weatherSearchCommand")
     static let weatherToggleSunnyFilterCommand = Notification.Name("weatherToggleSunnyFilterCommand")
     static let weatherToggleLegendCommand = Notification.Name("weatherToggleLegendCommand")
     static let weatherOverlayCommand = Notification.Name("weatherOverlayCommand")

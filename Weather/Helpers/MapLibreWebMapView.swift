@@ -19,7 +19,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     var leadingFitPadding: Double = 0
     var focusSelectedMarker: Bool = true
     var onMarkerTap: (CityWeather, CGPoint?) -> Void
-    var onMapClick: (() -> Void)? = nil
+    var onMapClick: ((CLLocationCoordinate2D, CGPoint?) -> Void)? = nil
     var onMarkerCommandHover: ((CityWeather?, CGPoint?) -> Void)? = nil
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)? = nil
 
@@ -148,7 +148,6 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             case "markerTap":
                 guard let id = body["id"] as? String,
                       let city = parent.cities.first(where: { $0.id.uuidString == id }) else { return }
-                print("city dot clicked: \(city.city.name)")
                 let point: CGPoint?
                 if let x = body["x"] as? Double, let y = body["y"] as? Double {
                     point = CGPoint(x: x, y: y)
@@ -156,14 +155,16 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                     point = nil
                 }
                 parent.onMarkerTap(city, point)
-            case "mapLeftClick":
-                let hoveredID = body["hoveredID"] as? String ?? ""
-                let source = body["source"] as? String ?? "click"
-                let x = body["x"] as? Double ?? 0
-                let y = body["y"] as? Double ?? 0
-                print("map left click registered (\(source)): x=\(Int(x)) y=\(Int(y)) hoveredID=\(hoveredID.isEmpty ? "none" : hoveredID)")
             case "mapBackgroundClick":
-                parent.onMapClick?()
+                guard let lat = body["lat"] as? Double,
+                      let lng = body["lng"] as? Double else { return }
+                let point: CGPoint?
+                if let x = body["x"] as? Double, let y = body["y"] as? Double {
+                    point = CGPoint(x: x, y: y)
+                } else {
+                    point = nil
+                }
+                parent.onMapClick?(CLLocationCoordinate2D(latitude: lat, longitude: lng), point)
             case "markerCommandHover":
                 guard let id = body["id"] as? String,
                       let city = parent.cities.first(where: { $0.id.uuidString == id }) else { return }
@@ -231,7 +232,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
     private func makeFeatures() -> [MapLibreWeatherFeature] {
         return cities.compactMap { cityWeather in
-            guard passesFilter(cityWeather) else { return nil }
+            let isHiddenByFilter = filterSunny && !passesFilter(cityWeather)
             let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
             let hasData = selectedDayOffset == -1
                 ? cityWeather.hasCurrentData(forOverlay: overlayMode)
@@ -246,7 +247,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 latitude: cityWeather.city.latitude,
                 longitude: cityWeather.city.longitude,
                 label: "",
-                color: color
+                color: color,
+                hidden: isHiddenByFilter
             )
         }
     }
@@ -415,6 +417,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         var selectedMarkerID = '';
         var markerScales = {};
         var markerScaleAnimationFrame = null;
+        var selectedPulseAnimationFrame = null;
+        var selectedPulse = 0;
         var pinchVelocity = 0;
         var pinchAnimationFrame = null;
         var baseStylePreferencesApplied = false;
@@ -470,8 +474,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           }
 
           if (layer.type === 'line' && (combined.includes('road') || combined.includes('path') || combined.includes('track'))) {
-            layer.paint['line-color'] = palette.road;
-            layer.paint['line-opacity'] = 0.55;
+            layer.layout = layer.layout || {};
+            layer.layout.visibility = 'none';
           }
         }
 
@@ -482,11 +486,25 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             return combined.includes('boundary')
               || combined.includes('admin')
               || combined.includes('border')
-              || combined.includes('disputed');
+              || combined.includes('disputed')
+              || combined.includes('road')
+              || combined.includes('street')
+              || combined.includes('path')
+              || combined.includes('track')
+              || combined.includes('ferry')
+              || combined.includes('marine')
+              || combined.includes('navigation')
+              || combined.includes('shipping');
           }
 
           if (layer.type === 'symbol') {
             return combined.includes('country')
+              || combined.includes('road')
+              || combined.includes('street')
+              || combined.includes('ferry')
+              || combined.includes('marine')
+              || combined.includes('navigation')
+              || combined.includes('shipping')
               || combined.includes('state')
               || combined.includes('province')
               || combined.includes('place_name:latin')
@@ -541,7 +559,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-hit', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': 11,
+                'circle-radius': ['case', ['boolean', ['get', 'hidden'], false], 0, 11],
                 'circle-color': 'rgba(0,0,0,0.01)',
                 'circle-opacity': 0.01
               }
@@ -551,15 +569,17 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-glow', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['+', 13, ['*', ['number', ['get', 'scale'], 0], 6]],
+                'circle-radius': ['+', 13, ['*', ['number', ['get', 'selectedPulse'], 0], 13]],
                 'circle-color': ['get', 'color'],
                 'circle-opacity': ['case',
-                  ['boolean', ['get', 'selected'], false], 0.42,
+                  ['boolean', ['get', 'hidden'], false], 0,
+                  ['boolean', ['get', 'selected'], false], ['-', 0.62, ['*', ['number', ['get', 'selectedPulse'], 0], 0.42]],
                   ['boolean', ['get', 'hovered'], false], 0.38,
                   ['boolean', ['get', 'dimmed'], false], 0.08,
                   0.24
                 ],
                 'circle-radius-transition': { duration: 300, delay: 0 },
+                'circle-color-transition': { duration: 360, delay: 0 },
                 'circle-opacity-transition': { duration: 220, delay: 0 },
                 'circle-blur': 0.85
               }
@@ -569,15 +589,17 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-halo', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['+', 7, ['*', ['number', ['get', 'scale'], 0], 3]],
+                'circle-radius': ['+', 7, ['*', ['number', ['get', 'selectedPulse'], 0], 5]],
                 'circle-color': ['get', 'color'],
                 'circle-opacity': ['case',
-                  ['boolean', ['get', 'selected'], false], 0.28,
+                  ['boolean', ['get', 'hidden'], false], 0,
+                  ['boolean', ['get', 'selected'], false], 0.42,
                   ['boolean', ['get', 'hovered'], false], 0.24,
                   ['boolean', ['get', 'dimmed'], false], 0.04,
                   0.14
                 ],
                 'circle-radius-transition': { duration: 300, delay: 0 },
+                'circle-color-transition': { duration: 360, delay: 0 },
                 'circle-opacity-transition': { duration: 220, delay: 0 },
                 'circle-blur': 0.45
               }
@@ -587,10 +609,16 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-points', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['+', 4.5, ['*', ['number', ['get', 'scale'], 0], 1.5]],
+                'circle-radius': ['case', ['boolean', ['get', 'hidden'], false], 0, ['+', 4.5, ['*', ['number', ['get', 'scale'], 0], 2.5]]],
                 'circle-color': ['get', 'color'],
-                'circle-opacity': ['case', ['boolean', ['get', 'dimmed'], false], 0.28, 1],
+                'circle-opacity': ['case',
+                  ['boolean', ['get', 'hidden'], false], 0,
+                  ['boolean', ['get', 'selected'], false], 1,
+                  ['boolean', ['get', 'dimmed'], false], 0.28,
+                  1
+                ],
                 'circle-radius-transition': { duration: 300, delay: 0 },
+                'circle-color-transition': { duration: 360, delay: 0 },
                 'circle-opacity-transition': { duration: 220, delay: 0 }
               }
             });
@@ -615,7 +643,9 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 country: item.country,
                 label: item.label,
                 color: item.color,
+                hidden: !!item.hidden,
                 scale: markerScales[item.id] ?? 0,
+                selectedPulse: item.id === selectedID ? selectedPulse : 0,
                 selected: item.id === selectedID,
                 hovered: item.id === hoveredMarkerID,
                 dimmed: hasSelection && item.id !== selectedID
@@ -626,7 +656,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
 
         function markerTargetScale(id) {
-          return (id && (id === hoveredMarkerID || id === selectedMarkerID)) ? 1 : 0;
+          return (id && id === selectedMarkerID) ? 1.35 : (id && id === hoveredMarkerID ? 1 : 0);
         }
 
         function renderWeatherSource() {
@@ -658,12 +688,31 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           animateMarkerScales();
         }
 
+        function updateSelectedPulse() {
+          if (!selectedMarkerID) {
+            if (selectedPulseAnimationFrame) cancelAnimationFrame(selectedPulseAnimationFrame);
+            selectedPulseAnimationFrame = null;
+            selectedPulse = 0;
+            renderWeatherSource();
+            return;
+          }
+          if (selectedPulseAnimationFrame) return;
+          const start = performance.now();
+          function step(now) {
+            selectedPulse = (Math.sin((now - start) / 520) + 1) / 2;
+            renderWeatherSource();
+            selectedPulseAnimationFrame = selectedMarkerID ? requestAnimationFrame(step) : null;
+          }
+          selectedPulseAnimationFrame = requestAnimationFrame(step);
+        }
+
         function updateSource(payload) {
           pendingPayload = payload;
           selectedMarkerID = payload?.selectedID || '';
           document.body.classList.toggle('focus-selected', !!selectedMarkerID);
           ensureLayers();
           updateMarkerScaleTargets();
+          updateSelectedPulse();
           renderWeatherSource();
         }
 
@@ -700,6 +749,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           document.body.classList.toggle('dark-map', mode === 'dark');
           baseStylePreferencesApplied = false;
           if (map) map.setStyle(await cleanedStyle(mode));
+          setTimeout(() => {
+            ensureLayers();
+            renderWeatherSource();
+          }, 0);
         };
 
         window.weatherMapZoomIn = function() {
@@ -760,16 +813,6 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             layers: ['weather-hit', 'weather-points', 'weather-halo', 'weather-glow']
           });
           return nearestMarkerFeature(features, point);
-        }
-
-        function postLeftClickDebug(source, point) {
-          post({
-            type: 'mapLeftClick',
-            source,
-            x: point.x,
-            y: point.y,
-            hoveredID: hoveredMarkerID || ''
-          });
         }
 
         function openHoveredMarkerFromPoint(point) {
@@ -917,7 +960,6 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           map.getCanvas().addEventListener('mouseup', event => {
             if (event.button !== 0) return;
             const point = new maplibregl.Point(event.offsetX, event.offsetY);
-            postLeftClickDebug('mouseup', point);
             const down = leftMouseDown;
             leftMouseDown = null;
             if (!down) return;
@@ -949,7 +991,6 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             if (pendingPayload) updateSource(pendingPayload);
           });
           map.on('click', event => {
-            postLeftClickDebug('click', event.point);
             if (hoveredMarkerID && hoveredMarkerPoint) {
               post({ type: 'markerTap', id: hoveredMarkerID, x: hoveredMarkerPoint.x, y: hoveredMarkerPoint.y });
               return;
@@ -961,7 +1002,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
               const markerPoint = markerScreenPoint(feature, event.point);
               post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y });
             } else {
-              post({ type: 'mapBackgroundClick' });
+              const lngLat = event.lngLat;
+              post({ type: 'mapBackgroundClick', lat: lngLat.lat, lng: lngLat.lng, x: event.point.x, y: event.point.y });
             }
           });
           map.on('click', 'weather-hit', event => {
@@ -1082,4 +1124,5 @@ private struct MapLibreWeatherFeature: Codable {
     let longitude: Double
     let label: String
     let color: String
+    let hidden: Bool
 }

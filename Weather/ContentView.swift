@@ -7,6 +7,7 @@
 
 import SwiftUI
 import CoreLocation
+import MapKit
 import UniformTypeIdentifiers
 
 struct ContentView: View {
@@ -53,6 +54,7 @@ struct ContentView: View {
     @FocusState var inlineSearchFocused: Bool
     @State var inlineSearchManager = CitySearchManager()
     @State var inlineIsLoadingCity = false
+    @State var inlineSearchSelectionIndex: Int = 0
     
     @State var recenterOnAllCities: Bool = false
     @State var detailOpenedFromList: Bool = false
@@ -160,13 +162,11 @@ struct ContentView: View {
     @State var allCountries: [String] = []
     @State var showingMapStylePopover: Bool = false
     @State var showingMapStyleSheet: Bool = false
-    @State private var showingAddToListPopover: Bool = false
     @State var inlineAddTargetListID: CityListID?
     #if os(macOS)
     @State private var macSidebarVisibility: NavigationSplitViewVisibility = .all
     @State private var macMapExpandedCardAnchor: CGPoint?
     @State private var macMapExpandedCardBaseOffset: CGSize = .zero
-    @State var macMapExpandedCardDragOffset: CGSize = .zero
     @GestureState private var macMapExpandedCardGestureOffset: CGSize = .zero
     @State private var macHoverPresentedCardCityID: UUID?
     @State private var macMapExpandedCardFocusesMarker: Bool = false
@@ -174,14 +174,19 @@ struct ContentView: View {
     @State var macExpandedCardChartMetric: WeatherDetailView.ChartMetric = .temperature
     @State var macExpandedCardChartRange: WeatherDetailView.ChartTimeRange = .daytime
     @State var macSidebarDropTarget: String?
-    @State var macSidebarHoveredDisclosureID: String?
     @State var macSidebarContextTarget: String?
     @State var macSidebarRefreshTick: Int = 0
     @State private var macHoveredSearchSuggestionID: UUID?
     @State var macExpandedCardHoveredDay: Int?
-    @State var macExpandedCardHoveringClose: Bool = false
-    @State var macExpandedCardHoveringRemove: Bool = false
-    @State var macExpandedCardHoveringOpenDetails: Bool = false
+    @State var macQuickSwitcherVisible: Bool = false
+    @State var macQuickSwitcherIndex: Int = 0
+    @State var macQuickSwitcherDismissToken: Int = 0
+    @State var macOverlaySwitcherVisible: Bool = false
+    @State var macOverlaySwitcherIndex: Int = 0
+    @State var macOverlaySwitcherDismissToken: Int = 0
+    @State var macMapLookupTaskID: Int = 0
+    @State var macMapLookupPreviewCityID: UUID?
+    @State var macMapViewportSize: CGSize = .zero
     #endif
 
     var toolbarTitle: String {
@@ -212,6 +217,7 @@ struct ContentView: View {
             visibleListIDs.insert(newListID.rawValue)
         }
         .onChange(of: inlineSearchText) { _, newValue in
+            inlineSearchSelectionIndex = 0
             inlineSearchManager.search(query: newValue)
         }
         .onChange(of: selectedTab) { _, _ in
@@ -336,6 +342,9 @@ struct ContentView: View {
                 centerMapOnVisibleCities()
             }
             .onReceive(NotificationCenter.default.publisher(for: .weatherRefreshCommand), perform: handleWeatherRefreshCommand)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherSearchCommand)) { _ in
+                activateInlineSearch()
+            }
             .onReceive(NotificationCenter.default.publisher(for: .weatherToggleSunnyFilterCommand), perform: handleWeatherToggleSunnyFilterCommand)
             .onReceive(NotificationCenter.default.publisher(for: .weatherToggleLegendCommand), perform: handleWeatherToggleLegendCommand)
             .onReceive(NotificationCenter.default.publisher(for: .weatherOverlayCommand), perform: handleWeatherOverlayCommand)
@@ -405,6 +414,19 @@ struct ContentView: View {
             )
 
             macMainOverlays
+
+            if macQuickSwitcherVisible {
+                macQuickSwitcherOverlay
+                    .transition(.scale(scale: 0.94).combined(with: .opacity))
+                    .zIndex(40)
+            }
+
+            if macOverlaySwitcherVisible {
+                macOverlaySwitcherOverlay
+                    .transition(.scale(scale: 0.94).combined(with: .opacity))
+                    .zIndex(41)
+            }
+
             macWindowDragTopArea
         }
         .ignoresSafeArea(.container, edges: .top)
@@ -433,6 +455,22 @@ struct ContentView: View {
             macSearchSuggestions
         }
         .searchPresentationToolbarBehavior(.avoidHidingContent)
+        .onMoveCommand { direction in
+            guard showingInlineSearch, !inlineSearchText.isEmpty else { return }
+            switch direction {
+            case .up:
+                moveInlineSearchSelection(-1)
+            case .down:
+                moveInlineSearchSelection(1)
+            default:
+                break
+            }
+        }
+        .onSubmit(of: .search) {
+            if showingInlineSearch, !inlineSearchText.isEmpty {
+                confirmInlineSearchSelection()
+            }
+        }
         .background {
             macKeyboardShortcuts
         }
@@ -579,6 +617,9 @@ struct ContentView: View {
                 }
                 .onHover { hovering in
                     macHoveredSearchSuggestionID = hovering ? result.id : nil
+                    if hovering, let index = inlineSortedSearchResults.prefix(6).firstIndex(where: { $0.id == result.id }) {
+                        inlineSearchSelectionIndex = index
+                    }
                 }
             }
         }
@@ -590,7 +631,7 @@ struct ContentView: View {
                 if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city)
                         .id(city.city.id)
-                        .frame(width: 252, height: macExpandedCardShowsDetails ? 620 : 400)
+                        .frame(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
                         .offset(macExpandedCardOffset(in: geometry.size))
                         .gesture(
                             DragGesture()
@@ -615,12 +656,7 @@ struct ContentView: View {
                     Color.clear
                         .contentShape(Rectangle())
                         .onTapGesture {
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                showingInlineSearch = false
-                                inlineSearchText = ""
-                                inlineSearchFocused = false
-                                inlineAddTargetListID = nil
-                            }
+                            dismissInlineSearch()
                         }
                         .zIndex(9)
                 }
@@ -631,11 +667,17 @@ struct ContentView: View {
                         .zIndex(10)
                 }
             }
+            .onAppear {
+                macMapViewportSize = geometry.size
+            }
+            .onChange(of: geometry.size) { _, newSize in
+                macMapViewportSize = newSize
+            }
         }
     }
 
     private func macExpandedCardTopLeft(in size: CGSize) -> CGSize {
-        let cardSize = CGSize(width: 252, height: macExpandedCardShowsDetails ? 620 : 400)
+        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
         let margin: CGFloat = 16
         let toolbarClearance: CGFloat = 58
         let markerGap: CGFloat = 210
@@ -655,7 +697,7 @@ struct ContentView: View {
     }
 
     private func macExpandedCardOffset(in size: CGSize) -> CGSize {
-        let cardSize = CGSize(width: 252, height: macExpandedCardShowsDetails ? 620 : 400)
+        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
         let margin: CGFloat = 16
         let toolbarClearance: CGFloat = 58
         let base = macExpandedCardTopLeft(in: size)
@@ -674,7 +716,7 @@ struct ContentView: View {
             return .trailing
         }
 
-        let cardSize = CGSize(width: 252, height: macExpandedCardShowsDetails ? 620 : 400)
+        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
         let cardOrigin = macExpandedCardOffset(in: size)
         return UnitPoint(
             x: (markerAnchor.x - cardOrigin.width) / cardSize.width,
@@ -690,12 +732,47 @@ struct ContentView: View {
             Button("") { stepSelectedDay(1) }
                 .keyboardShortcut(.downArrow, modifiers: [])
                 .disabled(showingInlineSearch)
+            Button("") { activateInlineSearch() }
+                .keyboardShortcut("f", modifiers: .command)
             Button("") { switchListByOffset(-1) }
                 .keyboardShortcut(.upArrow, modifiers: [.command, .shift])
             Button("") { switchListByOffset(1) }
                 .keyboardShortcut(.downArrow, modifiers: [.command, .shift])
+            Button("") { switchListByIndex(0) }
+                .keyboardShortcut("1", modifiers: .command)
+            Button("") { switchListByIndex(1) }
+                .keyboardShortcut("2", modifiers: .command)
+            Button("") { switchListByIndex(2) }
+                .keyboardShortcut("3", modifiers: .command)
+            Button("") { switchListByIndex(3) }
+                .keyboardShortcut("4", modifiers: .command)
+            Button("") { switchListByIndex(4) }
+                .keyboardShortcut("5", modifiers: .command)
+            Button("") { switchListByIndex(5) }
+                .keyboardShortcut("6", modifiers: .command)
+            Button("") { switchListByIndex(6) }
+                .keyboardShortcut("7", modifiers: .command)
+            Button("") { switchListByIndex(7) }
+                .keyboardShortcut("8", modifiers: .command)
+            Button("") { switchListByIndex(8) }
+                .keyboardShortcut("9", modifiers: .command)
+            Button("") { handleMacQuickSwitcher(delta: 1) }
+                .keyboardShortcut(.tab, modifiers: .control)
+            Button("") { handleMacQuickSwitcher(delta: -1) }
+                .keyboardShortcut(.tab, modifiers: [.control, .shift])
+            Button("") { handleMacOverlaySwitcher(delta: 1) }
+                .keyboardShortcut(.tab, modifiers: .option)
+            Button("") { handleMacOverlaySwitcher(delta: -1) }
+                .keyboardShortcut(.tab, modifiers: [.option, .shift])
             Button("") {
-                if showingMapExpandedCard {
+                if showingInlineSearch {
+                    dismissInlineSearch()
+                } else if macQuickSwitcherVisible || macOverlaySwitcherVisible {
+                    withAnimation(.easeOut(duration: 0.12)) {
+                        macQuickSwitcherVisible = false
+                        macOverlaySwitcherVisible = false
+                    }
+                } else if showingMapExpandedCard {
                     dismissMapExpandedCard()
                 }
             }
@@ -724,6 +801,130 @@ struct ContentView: View {
         guard let currentIndex = lists.firstIndex(of: weatherService.activeListID), !lists.isEmpty else { return }
         let nextIndex = (currentIndex + delta + lists.count) % lists.count
         Task { await switchToList(lists[nextIndex]) }
+    }
+
+    private func switchListByIndex(_ index: Int) {
+        let lists = CityListID.allLists
+        guard lists.indices.contains(index) else { return }
+        Task { await switchToList(lists[index]) }
+    }
+
+    private var macQuickSwitcherOverlay: some View {
+        let lists = CityListID.allLists
+        return VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(lists.enumerated()), id: \.element.id) { index, listID in
+                let isSelected = index == macQuickSwitcherIndex
+                HStack(spacing: 10) {
+                    Text(listID.localizedDisplayName(locale: locale))
+                        .font(.headline.weight(isSelected ? .semibold : .medium))
+                        .foregroundStyle(isSelected ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.68))
+                        .lineLimit(1)
+
+                    Spacer(minLength: 12)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(isSelected ? theme.colors.accent.opacity(colorScheme == .dark ? 0.22 : 0.14) : Color.clear)
+                }
+            }
+        }
+        .frame(width: 220)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(theme.colors.primaryText.opacity(0.12), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.14), radius: 20, x: 0, y: 10)
+    }
+
+    private var macOverlaySwitcherOverlay: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array(mapOverlayOptions.enumerated()), id: \.element.mode) { index, option in
+                let isSelected = index == macOverlaySwitcherIndex
+                HStack(spacing: 10) {
+                    Image(systemName: option.icon)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(isSelected ? theme.colors.accent : theme.colors.primaryText.opacity(0.54))
+                        .frame(width: 18)
+
+                    Text(option.label)
+                        .font(.headline.weight(isSelected ? .semibold : .medium))
+                        .foregroundStyle(isSelected ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.68))
+                        .lineLimit(1)
+
+                    Spacer(minLength: 12)
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
+                .background {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(isSelected ? theme.colors.accent.opacity(colorScheme == .dark ? 0.22 : 0.14) : Color.clear)
+                }
+            }
+        }
+        .frame(width: 220)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(theme.colors.primaryText.opacity(0.12), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.14), radius: 20, x: 0, y: 10)
+    }
+
+    private func handleMacQuickSwitcher(delta: Int) {
+        let lists = CityListID.allLists
+        guard !lists.isEmpty else { return }
+        let currentIndex = macQuickSwitcherVisible
+            ? macQuickSwitcherIndex
+            : (lists.firstIndex(of: weatherService.activeListID) ?? 0)
+        let nextIndex = (currentIndex + delta + lists.count) % lists.count
+        macQuickSwitcherIndex = nextIndex
+        macQuickSwitcherDismissToken += 1
+        let token = macQuickSwitcherDismissToken
+
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+            macOverlaySwitcherVisible = false
+            macQuickSwitcherVisible = true
+        }
+        Task { await switchToList(lists[nextIndex]) }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.05) {
+            guard macQuickSwitcherDismissToken == token else { return }
+            withAnimation(.easeOut(duration: 0.16)) {
+                macQuickSwitcherVisible = false
+            }
+        }
+    }
+
+    private func handleMacOverlaySwitcher(delta: Int) {
+        let options = mapOverlayOptions
+        guard !options.isEmpty else { return }
+        let currentIndex = macOverlaySwitcherVisible
+            ? macOverlaySwitcherIndex
+            : (options.firstIndex(where: { $0.mode == mapOverlayMode }) ?? 0)
+        let nextIndex = (currentIndex + delta + options.count) % options.count
+        macOverlaySwitcherIndex = nextIndex
+        macOverlaySwitcherDismissToken += 1
+        let token = macOverlaySwitcherDismissToken
+
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.86)) {
+            macQuickSwitcherVisible = false
+            macOverlaySwitcherVisible = true
+            mapOverlayMode = options[nextIndex].mode
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.05) {
+            guard macOverlaySwitcherDismissToken == token else { return }
+            withAnimation(.easeOut(duration: 0.16)) {
+                macOverlaySwitcherVisible = false
+            }
+        }
     }
 
     private func handleWeatherRefreshCommand(_ notification: Notification) {
@@ -1030,12 +1231,7 @@ struct ContentView: View {
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                        showingInlineSearch = false
-                        inlineSearchText = ""
-                        inlineSearchFocused = false
-                        inlineAddTargetListID = nil
-                    }
+                    dismissInlineSearch()
                 }
                 .zIndex(9)
         }
@@ -1101,8 +1297,59 @@ struct ContentView: View {
         showMapMarkerCard(city, anchor: anchor, expanded: false, focusesMarker: true)
     }
 
+    private func handleMapBackgroundClick(_ coordinate: CLLocationCoordinate2D, anchor: CGPoint? = nil) {
+        #if os(macOS)
+        if showingMapExpandedCard {
+            dismissMapExpandedCard()
+            return
+        }
+
+        macMapLookupTaskID += 1
+        let taskID = macMapLookupTaskID
+        macMapLookupPreviewCityID = nil
+        macMapExpandedCardAnchor = anchor
+        macMapExpandedCardBaseOffset = .zero
+        Task {
+            let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
+            let mapItems: [MKMapItem]
+            if let request = MKReverseGeocodingRequest(location: location) {
+                mapItems = (try? await request.mapItems) ?? []
+            } else {
+                mapItems = []
+            }
+            let mapItem = mapItems.first
+            let address = mapItem?.addressRepresentations
+            let name = address?.cityName
+                ?? mapItem?.name
+                ?? address?.regionName
+                ?? String(format: "%.2f, %.2f", coordinate.latitude, coordinate.longitude)
+            let country = address?.regionName ?? ""
+            let city = City(name: name, country: country, latitude: coordinate.latitude, longitude: coordinate.longitude)
+            guard let cityWeather = await weatherService.fetchWeatherForCity(city) else {
+                return
+            }
+            guard taskID == macMapLookupTaskID else { return }
+
+            await MainActor.run {
+                macMapLookupPreviewCityID = cityWeather.id
+                previewCity = cityWeather
+                tappedCity = cityWeather
+                macMapExpandedCardFocusesMarker = true
+                macMapExpandedCardAnchor = anchor
+                macMapExpandedCardBaseOffset = .zero
+                macExpandedCardShowsDetails = false
+                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                    showingMapExpandedCard = true
+                }
+            }
+        }
+        #else
+        dismissMapExpandedCard()
+        #endif
+    }
+
     func dismissMapExpandedCard() {
-        let shouldRecenterAfterDismiss = previewCity != nil
+        let shouldRecenterAfterDismiss = previewCity != nil && previewCity?.id != macMapLookupPreviewCityID
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showingMapExpandedCard = false
             tappedCity = nil
@@ -1115,20 +1362,19 @@ struct ContentView: View {
             macMapExpandedCardFocusesMarker = false
             macMapExpandedCardAnchor = nil
             macMapExpandedCardBaseOffset = .zero
-            macMapExpandedCardDragOffset = .zero
             macExpandedCardShowsDetails = false
+            macMapLookupPreviewCityID = nil
             #endif
         }
     }
 
-    private func showMapMarkerCard(_ city: CityWeather, anchor: CGPoint? = nil, expanded: Bool, focusesMarker: Bool) {
+    func showMapMarkerCard(_ city: CityWeather, anchor: CGPoint? = nil, expanded: Bool, focusesMarker: Bool) {
         #if os(macOS)
         macHoverPresentedCardCityID = nil
         macMapExpandedCardFocusesMarker = focusesMarker
         macExpandedCardShowsDetails = expanded
-        macMapExpandedCardAnchor = anchor
+        macMapExpandedCardAnchor = anchor ?? (focusesMarker ? macCenteredMapMarkerAnchor() : nil)
         macMapExpandedCardBaseOffset = .zero
-        macMapExpandedCardDragOffset = .zero
         #endif
 
         if showingMapExpandedCard && tappedCity?.id == city.id {
@@ -1146,7 +1392,18 @@ struct ContentView: View {
             tappedCity = city
             showingMapExpandedCard = true
         }
-        print("city card opened: \(city.city.name)")
+    }
+
+    private func macCenteredMapMarkerAnchor() -> CGPoint? {
+        #if os(macOS)
+        guard macMapViewportSize.width > 0, macMapViewportSize.height > 0 else { return nil }
+        return CGPoint(
+            x: macMapViewportSize.width / 2 + CGFloat(macMapLeadingFitPadding) * 0.88,
+            y: macMapViewportSize.height / 2
+        )
+        #else
+        return nil
+        #endif
     }
 
     #if os(macOS)
@@ -1178,7 +1435,6 @@ struct ContentView: View {
         macMapExpandedCardFocusesMarker = false
         macMapExpandedCardAnchor = anchor
         macMapExpandedCardBaseOffset = .zero
-        macMapExpandedCardDragOffset = .zero
         macExpandedCardShowsDetails = false
         tappedCity = city
         showingMapExpandedCard = true
@@ -1545,8 +1801,8 @@ struct ContentView: View {
                 onMarkerTap: { city, point in
                     handleMapMarkerTap(city, anchor: point)
                 },
-                onMapClick: {
-                    dismissMapExpandedCard()
+                onMapClick: { coordinate, point in
+                    handleMapBackgroundClick(coordinate, anchor: point)
                 },
                 onMarkerCommandHover: { city, point in
                     #if os(macOS)

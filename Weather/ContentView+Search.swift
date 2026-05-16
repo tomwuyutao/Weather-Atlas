@@ -16,8 +16,9 @@ extension ContentView {
         VStack(spacing: 0) {
             if !inlineSearchManager.searchResults.isEmpty {
                 List {
-                    ForEach(inlineSortedSearchResults) { result in
+                    ForEach(Array(inlineSortedSearchResults.enumerated()), id: \.element.id) { index, result in
                         let existing = inlineIsExistingCity(result)
+                        let isSelected = index == inlineSearchSelectionIndex
                         Button {
                             Task {
                                 await inlineSelectSearchResult(result)
@@ -49,6 +50,10 @@ extension ContentView {
                                 }
                             }
                             .padding(.vertical, 4)
+                            .background {
+                                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                    .fill(isSelected ? theme.colors.accent.opacity(0.12) : Color.clear)
+                            }
                         }
                         .buttonStyle(.plain)
                         .disabled(inlineIsLoadingCity)
@@ -188,6 +193,38 @@ extension ContentView {
             let bExists = inlineIsExistingCity(b)
             if aExists != bExists { return aExists }
             return false
+        }
+    }
+
+    func activateInlineSearch() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showingInlineSearch = true
+            inlineSearchFocused = true
+        }
+    }
+
+    func dismissInlineSearch() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showingInlineSearch = false
+            inlineSearchText = ""
+            inlineSearchFocused = false
+            inlineAddTargetListID = nil
+            inlineSearchSelectionIndex = 0
+        }
+    }
+
+    func moveInlineSearchSelection(_ delta: Int) {
+        let count = min(6, inlineSortedSearchResults.count)
+        guard count > 0 else { return }
+        inlineSearchSelectionIndex = (inlineSearchSelectionIndex + delta + count) % count
+    }
+
+    func confirmInlineSearchSelection() {
+        let results = Array(inlineSortedSearchResults.prefix(6))
+        guard results.indices.contains(inlineSearchSelectionIndex), !inlineIsLoadingCity else { return }
+        let result = results[inlineSearchSelectionIndex]
+        Task {
+            await inlineSelectSearchResult(result)
         }
     }
 
