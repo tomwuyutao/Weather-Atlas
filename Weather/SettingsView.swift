@@ -165,6 +165,7 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(localizedString("Temperature", locale: locale), systemImage: "thermometer.medium")
                 }
+                .tint(.secondary)
 
                 Picker(selection: Binding(get: { distanceUnit }, set: { distanceUnit = $0 })) {
                     Text("Kilometers (km)").tag(DistanceUnit.kilometers.rawValue)
@@ -172,6 +173,7 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(localizedString("Distance", locale: locale), systemImage: "ruler")
                 }
+                .tint(.secondary)
 
                 Picker(selection: Binding(get: { appLanguage }, set: { appLanguage = $0 })) {
                     Text("English").tag("en")
@@ -179,6 +181,7 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(localizedString("Language", locale: locale), systemImage: "globe")
                 }
+                .tint(.secondary)
 
                 Picker(selection: Binding(get: { theme.style }, set: { theme.style = $0 })) {
                     Text("Light").tag(AppThemeStyle.light)
@@ -187,6 +190,7 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(localizedString("Theme", locale: locale), systemImage: "circle.lefthalf.filled")
                 }
+                .tint(.secondary)
             }
             .listRowBackground(theme.colors.mapLand)
 

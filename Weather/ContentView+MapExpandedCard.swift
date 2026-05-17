@@ -91,7 +91,8 @@ extension ContentView {
                 metricLabel: isOverlayActive ? overlayLabel : localizedString("Highest Temperature", locale: locale),
                 tempUnit: tempUnit,
                 hideCityName: hideCityName,
-                plainBackground: plainBackground
+                plainBackground: plainBackground,
+                usesIPhoneDetailSizing: forceMacStyle && !usesFloatingMapCardLayout
             ))
         }
 #endif
@@ -105,7 +106,7 @@ extension ContentView {
                         .lineLimit(1)
 
                     Text(isOverlayActive ? overlayLabel : localizedString("Highest Temperature", locale: locale))
-                        .font(.subheadline.weight(.medium))
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                         .padding(.top, 4)
@@ -150,7 +151,7 @@ extension ContentView {
                         }
                     }
                     .frame(height: 30, alignment: .bottom)
-                    .offset(y: -9)
+                    .offset(y: -1)
                 }
                 .frame(minHeight: 80, alignment: .topTrailing)
         }
@@ -173,7 +174,8 @@ extension ContentView {
         metricLabel: String,
         tempUnit: TemperatureUnit,
         hideCityName: Bool = false,
-        plainBackground: Bool = false
+        plainBackground: Bool = false,
+        usesIPhoneDetailSizing: Bool = false
     ) -> some View {
         let forecasts = Array(cityWeather.dailyForecasts.prefix(10))
         let selectedForecast = cityWeather.forecast(for: max(0, selectedDayOffset))
@@ -185,57 +187,59 @@ extension ContentView {
                 VStack(alignment: .leading, spacing: 2) {
                     if !hideCityName {
                         Text(cityWeather.city.localizedName(locale: locale))
-                            .font(.title3.weight(.semibold))
+                            .font((usesIPhoneDetailSizing ? Font.title2 : Font.title3).weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
 
                     Text(metricLabel)
-                        .font(.caption.weight(.medium))
+                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.medium))
                         .foregroundStyle(.secondary)
                 }
 
                 Spacer(minLength: 8)
 
-                if cityIsInSidebar(cityWeather) {
-                    Button {
-                        dismissMapExpandedCard()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .semibold))
-                            .frame(width: 28, height: 28)
-                            .contentShape(Circle())
+                if !usesIPhoneDetailSizing {
+                    if cityIsInSidebar(cityWeather) {
+                        Button {
+                            dismissMapExpandedCard()
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 12, weight: .semibold))
+                                .frame(width: 28, height: 28)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
+                    } else {
+                        macExpandedCardAddMenu(for: cityWeather)
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
-                } else {
-                    macExpandedCardAddMenu(for: cityWeather)
                 }
             }
             .padding(.bottom, 14)
 
             HStack(alignment: .center, spacing: 12) {
                 Text(primaryText)
-                    .font(.system(size: 42, weight: .regular, design: .default))
+                    .font(.system(size: usesIPhoneDetailSizing ? 56 : 42, weight: .regular, design: .default))
                     .foregroundStyle(.primary)
                     .contentTransition(.numericText())
                     .lineLimit(1)
 
                 Image(systemName: icon)
-                    .font(.system(size: 30, weight: .medium))
+                    .font(.system(size: usesIPhoneDetailSizing ? 40 : 30, weight: .medium))
                     .weatherIconStyle(for: icon)
-                    .frame(width: 36, height: 32)
+                    .frame(width: usesIPhoneDetailSizing ? 48 : 36, height: usesIPhoneDetailSizing ? 44 : 32)
 
                 Spacer(minLength: 8)
             }
             .padding(.bottom, 14)
 
             macExpandedCardDivider
-                .padding(.bottom, 10)
+                .padding(.bottom, usesIPhoneDetailSizing ? 18 : 10)
 
-            VStack(spacing: 8) {
+            VStack(spacing: usesIPhoneDetailSizing ? 14 : 8) {
                 ForEach(0..<2, id: \.self) { row in
-                    HStack(alignment: .top, spacing: 6) {
+                    HStack(alignment: .top, spacing: usesIPhoneDetailSizing ? 4 : 6) {
                         ForEach(0..<5, id: \.self) { column in
                             let index = row * 5 + column
                             if index < forecasts.count {
@@ -245,24 +249,24 @@ extension ContentView {
                                         selectedDayOffset = index
                                     }
                                 } label: {
-                                    VStack(spacing: 7) {
+                                    VStack(spacing: usesIPhoneDetailSizing ? 5 : 7) {
                                         Text(macForecastDayLabel(for: index))
-                                            .font(.caption2.weight(.medium))
+                                            .font((usesIPhoneDetailSizing ? Font.footnote : Font.caption2).weight(.medium))
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
 
                                         Circle()
                                             .fill(forecast.condition.dotColor)
-                                            .frame(width: index == selectedDayOffset ? 8 : 7, height: index == selectedDayOffset ? 8 : 7)
+                                            .frame(width: index == selectedDayOffset ? (usesIPhoneDetailSizing ? 9 : 8) : (usesIPhoneDetailSizing ? 7 : 7), height: index == selectedDayOffset ? (usesIPhoneDetailSizing ? 9 : 8) : (usesIPhoneDetailSizing ? 7 : 7))
                                             .shadow(color: forecast.condition.dotColor.opacity(0.45), radius: 2)
 
                                         Text(tempUnit.display(forecast.dailyHigh))
-                                            .font(.caption.weight(.semibold))
+                                            .font((usesIPhoneDetailSizing ? Font.subheadline : Font.caption).weight(.semibold))
                                             .foregroundStyle(.primary)
                                             .lineLimit(1)
                                     }
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 6)
+                                    .padding(.vertical, usesIPhoneDetailSizing ? 6 : 6)
                                     .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                     .background {
                                         if index == selectedDayOffset {
@@ -283,38 +287,40 @@ extension ContentView {
                     }
                 }
             }
-            .padding(.bottom, macExpandedCardShowsDetails ? 14 : 10)
+            .padding(.bottom, usesIPhoneDetailSizing ? 22 : (macExpandedCardShowsDetails ? 14 : 10))
 
             if macExpandedCardShowsDetails {
-                macExpandedCardDetails(for: cityWeather, forecast: selectedForecast, tempUnit: tempUnit, distUnit: distUnit)
+                macExpandedCardDetails(for: cityWeather, forecast: selectedForecast, tempUnit: tempUnit, distUnit: distUnit, usesIPhoneDetailSizing: usesIPhoneDetailSizing)
                     .padding(.bottom, 14)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            HStack {
-                Spacer()
+            if !usesIPhoneDetailSizing {
+                HStack {
+                    Spacer()
 
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        macExpandedCardShowsDetails.toggle()
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            macExpandedCardShowsDetails.toggle()
+                        }
+                    } label: {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 13, weight: .semibold))
+                            .rotationEffect(.degrees(macExpandedCardShowsDetails ? 180 : 0))
+                            .frame(width: 24, height: 18)
+                            .contentShape(Rectangle())
                     }
-                } label: {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 13, weight: .semibold))
-                        .rotationEffect(.degrees(macExpandedCardShowsDetails ? 180 : 0))
-                        .frame(width: 24, height: 18)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(.secondary)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
 
-                Spacer()
+                    Spacer()
+                }
             }
         }
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 18)
-        .padding(.bottom, 8)
+        .padding(.horizontal, usesIPhoneDetailSizing ? 20 : 14)
+        .padding(.top, usesIPhoneDetailSizing ? 18 : 18)
+        .padding(.bottom, usesIPhoneDetailSizing ? 8 : 8)
         .modifier(MapExpandedCardContainer(plainBackground: plainBackground, colorScheme: colorScheme))
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
@@ -356,7 +362,8 @@ extension ContentView {
         for cityWeather: CityWeather,
         forecast: DailyForecast,
         tempUnit: TemperatureUnit,
-        distUnit: DistanceUnit
+        distUnit: DistanceUnit,
+        usesIPhoneDetailSizing: Bool = false
     ) -> some View {
         let isNow = selectedDayOffset == -1
         let rows: [(String, String, String)] = [
@@ -416,12 +423,12 @@ extension ContentView {
                 macExpandedCardDivider
                     .padding(.bottom, 10)
 
-                HStack(spacing: 8) {
-                    macExpandedCardChartMetricMenu
+                HStack(spacing: usesIPhoneDetailSizing ? 12 : 8) {
+                    macExpandedCardChartMetricMenu(usesIPhoneDetailSizing: usesIPhoneDetailSizing)
                     Spacer()
-                    macExpandedCardChartRangeMenu
+                    macExpandedCardChartRangeMenu(usesIPhoneDetailSizing: usesIPhoneDetailSizing)
                 }
-                .padding(.bottom, 6)
+                .padding(.bottom, usesIPhoneDetailSizing ? 0 : 6)
 
                 GeometryReader { geo in
                     if macExpandedCardChartRange == .tenDay {
@@ -463,7 +470,7 @@ extension ContentView {
                         .frame(width: geo.size.width, height: geo.size.height)
                     }
                 }
-                .frame(height: 184)
+                .frame(height: usesIPhoneDetailSizing ? 250 : 184)
                 .clipped()
 
                 macExpandedCardDivider
@@ -471,44 +478,44 @@ extension ContentView {
             }
 
             ForEach(rows, id: \.1) { icon, label, value in
-                HStack(spacing: 10) {
+                HStack(spacing: usesIPhoneDetailSizing ? 14 : 10) {
                     Image(systemName: icon)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: usesIPhoneDetailSizing ? 18 : 12, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: 16)
+                        .frame(width: usesIPhoneDetailSizing ? 24 : 16)
                     Text(label)
-                        .font(.caption.weight(.medium))
+                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.medium))
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 8)
                     Text(value)
-                        .font(.caption.weight(.semibold))
+                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .padding(.horizontal, usesIPhoneDetailSizing ? 14 : 10)
+                .padding(.vertical, usesIPhoneDetailSizing ? 12 : 7)
             }
 
             if let sunrise = forecast.sunrise, let sunset = forecast.sunset {
-                HStack(spacing: 10) {
+                HStack(spacing: usesIPhoneDetailSizing ? 14 : 10) {
                     Image(systemName: "sunrise.fill")
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: usesIPhoneDetailSizing ? 18 : 12, weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: 16)
+                        .frame(width: usesIPhoneDetailSizing ? 24 : 16)
                     Text(localizedString("Sunrise", locale: locale))
-                        .font(.caption.weight(.medium))
+                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.medium))
                         .foregroundStyle(.secondary)
                     Spacer()
                     Text(macExpandedCardTime(sunrise, in: cityWeather.timeZone))
-                        .font(.caption.weight(.semibold))
+                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.semibold))
                     Text("·")
-                        .font(.caption.weight(.semibold))
+                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.semibold))
                         .foregroundStyle(.secondary)
                     Text(macExpandedCardTime(sunset, in: cityWeather.timeZone))
-                        .font(.caption.weight(.semibold))
+                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.semibold))
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 7)
+                .padding(.horizontal, usesIPhoneDetailSizing ? 14 : 10)
+                .padding(.vertical, usesIPhoneDetailSizing ? 12 : 7)
             }
         }
     }
@@ -520,7 +527,7 @@ extension ContentView {
             .padding(.horizontal, -14)
     }
 
-    private var macExpandedCardChartMetricMenu: some View {
+    private func macExpandedCardChartMetricMenu(usesIPhoneDetailSizing: Bool = false) -> some View {
         Menu {
             ForEach(macExpandedCardChartMetrics, id: \.0) { metric, icon, label in
                 Button {
@@ -537,24 +544,24 @@ extension ContentView {
         } label: {
             HStack(spacing: 5) {
                 Image(systemName: macExpandedCardChartMetricIcon(macExpandedCardChartMetric))
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: usesIPhoneDetailSizing ? 15 : 10, weight: .semibold))
                     .foregroundStyle(macExpandedCardChartLineColor(macExpandedCardChartMetric))
                 Text(macExpandedCardChartMetricLabel(macExpandedCardChartMetric))
-                    .font(.caption2.weight(.semibold))
+                    .font((usesIPhoneDetailSizing ? Font.body : Font.caption2).weight(.medium))
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 7, weight: .semibold))
+                    .font(.system(size: usesIPhoneDetailSizing ? 10 : 7, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
-            .frame(height: 22)
-            .padding(.horizontal, 8)
+            .frame(height: usesIPhoneDetailSizing ? 34 : 22)
+            .padding(.horizontal, usesIPhoneDetailSizing ? 12 : 8)
             .background(Color.primary.opacity(0.07), in: Capsule())
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
     }
 
-    private var macExpandedCardChartRangeMenu: some View {
+    private func macExpandedCardChartRangeMenu(usesIPhoneDetailSizing: Bool = false) -> some View {
         Menu {
             ForEach(macExpandedCardChartRanges, id: \.0) { range, label in
                 Button {
@@ -570,10 +577,10 @@ extension ContentView {
             }
         } label: {
             Text(macExpandedCardChartRangeLabel(macExpandedCardChartRange))
-                .font(.system(size: 10, weight: .semibold))
+                .font(.system(size: usesIPhoneDetailSizing ? 16 : 10, weight: usesIPhoneDetailSizing ? .medium : .semibold))
                 .lineLimit(1)
-                .frame(height: 22)
-                .padding(.horizontal, 8)
+                .frame(height: usesIPhoneDetailSizing ? 34 : 22)
+                .padding(.horizontal, usesIPhoneDetailSizing ? 12 : 8)
                 .background(Color.primary.opacity(0.07), in: Capsule())
         }
         .menuStyle(.button)

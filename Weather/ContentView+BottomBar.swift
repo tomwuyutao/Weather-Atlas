@@ -61,6 +61,8 @@ extension ContentView {
 
                     mapOverlayMenu
                         .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .tint(theme.colors.primaryText)
                         .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
 
@@ -480,8 +482,27 @@ extension ContentView {
                 countrySearchFocused = false
             }
         }
+        .onChange(of: showingRenameAlert) { _, isShowing in
+            if isShowing {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    renameAlertFocused = true
+                }
+            } else {
+                renameAlertFocused = false
+            }
+        }
+        .onChange(of: showingCityRenameAlert) { _, isShowing in
+            if isShowing {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    cityRenameFocused = true
+                }
+            } else {
+                cityRenameFocused = false
+            }
+        }
         .alert(localizedString("Rename", locale: locale), isPresented: $showingRenameAlert) {
             TextField(localizedString("Name", locale: locale), text: $renameAlertText)
+                .focused($renameAlertFocused)
             Button(localizedString("Cancel", locale: locale), role: .cancel) { }
             Button(localizedString("OK", locale: locale)) {
                 let trimmed = renameAlertText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -497,6 +518,7 @@ extension ContentView {
         }
         .alert(localizedString("Rename", locale: locale), isPresented: $showingCityRenameAlert) {
             TextField(localizedString("Name", locale: locale), text: $cityRenameText)
+                .focused($cityRenameFocused)
             Button(localizedString("Cancel", locale: locale), role: .cancel) { }
             Button(localizedString("OK", locale: locale)) {
                 let trimmed = cityRenameText.trimmingCharacters(in: .whitespacesAndNewlines)

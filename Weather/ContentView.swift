@@ -161,8 +161,10 @@ struct ContentView: View {
     @State var showingDeleteListConfirmation: Bool = false
     @State var showingRenameAlert: Bool = false
     @State var renameAlertText: String = ""
+    @FocusState var renameAlertFocused: Bool
     @State var showingCityRenameAlert: Bool = false
     @State var cityRenameText: String = ""
+    @FocusState var cityRenameFocused: Bool
     @State var cityToRename: CityWeather?
     @State var cityToRenameListID: CityListID?
     @State var listToRenameID: CityListID?
@@ -1151,7 +1153,7 @@ struct ContentView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: $showingCityDetail) {
-                AnyView(iOSCityDetailDestination)
+                AnyView(selectedCityDetailDestination)
             }
             .navigationDestination(isPresented: $showingAddCityDetail) {
                 AnyView(iOSAddCityDetailDestination)
@@ -1171,7 +1173,7 @@ struct ContentView: View {
                     .navigationTitle("")
                     .navigationBarTitleDisplayMode(.inline)
                     .navigationDestination(isPresented: $showingCityDetail) {
-                        AnyView(iOSCityDetailDestination)
+                        AnyView(selectedCityDetailDestination)
                     }
                     .navigationDestination(isPresented: $showingAddCityDetail) {
                         AnyView(iOSAddCityDetailDestination)
@@ -1416,7 +1418,7 @@ struct ContentView: View {
                 .toolbar(.hidden, for: .navigationBar)
                 #endif
                 .navigationDestination(isPresented: $showingCityDetail) {
-                    AnyView(iOSCityDetailDestination)
+                    AnyView(selectedCityDetailDestination)
                 }
                 .navigationDestination(isPresented: $showingAddCityDetail) {
                     AnyView(iOSAddCityDetailDestination)
@@ -2022,39 +2024,67 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private var iOSCityDetailDestination: some View {
+    private var selectedCityDetailDestination: some View {
         if let city = tappedCity {
             #if os(iOS)
             if !shouldUseIPadLayout {
-                iOSExpandedCardDetailDestination(for: city)
+                iPhoneMapExpandedCardDetailDestination(for: city)
             } else {
-                iOSWeatherDetailDestination(for: city)
+                fullWeatherDetailDestination(for: city)
             }
             #else
-            iOSWeatherDetailDestination(for: city)
+            fullWeatherDetailDestination(for: city)
             #endif
         }
     }
 
-    private func iOSExpandedCardDetailDestination(for city: CityWeather) -> some View {
+    private func iPhoneDetailBottomToolbar(for city: CityWeather) -> some View {
+        HStack(spacing: 12) {
+            Button {
+                showingCityDetail = false
+                selectedDayOffset = -1
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 0)
+
+            detailActionsMenu(for: city)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .tint(theme.colors.primaryText)
+                .frame(width: 44, height: 44)
+                .themedGlass(in: .circle)
+                .contentShape(Circle())
+        }
+    }
+
+    private func iPhoneMapExpandedCardDetailDestination(for city: CityWeather) -> some View {
         ScrollView(.vertical, showsIndicators: false) {
             mapExpandedCard(for: city, forceMacStyle: true, plainBackground: true)
-                .padding(.horizontal, 18)
-                .padding(.top, 20)
-                .padding(.bottom, 32)
+                .padding(.horizontal, 6)
+                .padding(.top, 12)
+                .padding(.bottom, 96)
                 .frame(maxWidth: .infinity)
         }
         .scrollContentBackground(.hidden)
         .background(theme.colors.background.ignoresSafeArea())
-        .navigationTitle(city.city.localizedName(locale: locale))
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                detailActionsMenu(for: city)
-            }
+        .overlay(alignment: .bottom) {
+            iPhoneDetailBottomToolbar(for: city)
+                .padding(.horizontal, 28)
+                .padding(.bottom, -6)
+                .frame(maxWidth: .infinity, minHeight: 62, alignment: .bottom)
+                .zIndex(100)
         }
+        .navigationTitle("")
+        #if os(iOS)
+        .navigationBarBackButtonHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
         #endif
         .onAppear {
             macExpandedCardShowsDetails = true
@@ -2065,7 +2095,7 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func iOSWeatherDetailDestination(for city: CityWeather) -> some View {
+    private func fullWeatherDetailDestination(for city: CityWeather) -> some View {
             let cityInSidebar = cityIsInSidebar(city)
             let previousCity = navigatableCity(offset: -1, from: city)
             let nextCity = navigatableCity(offset: 1, from: city)

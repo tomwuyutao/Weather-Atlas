@@ -35,7 +35,7 @@ struct InfoView: View {
         }
     }
 
-    // A stat card matching WeatherStatCard exactly, with annotations to the right
+    // A stat card matching the app's weather stat styling, with annotations to the right
     private func statCard(label: String, value: String, isSelected: Bool = false, annotations: [String]) -> some View {
         HStack(alignment: .center, spacing: 16) {
             VStack(spacing: 10) {

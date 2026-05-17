@@ -33,7 +33,7 @@ extension ContentView {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: mapOverlayMode == option.mode ? "checkmark" : "")
-                            .foregroundStyle(theme.colors.accent)
+                            .foregroundStyle(theme.colors.primaryText)
                             .frame(width: 14)
 
                         Text(option.label)
@@ -43,9 +43,9 @@ extension ContentView {
         } label: {
             Image(systemName: "square.3.layers.3d")
                 .symbolRenderingMode(.monochrome)
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
         }
-        .tint(.primary)
+        .tint(theme.colors.primaryText)
         .menuIndicator(.hidden)
         .menuOrder(.fixed)
     }
