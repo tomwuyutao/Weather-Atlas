@@ -211,6 +211,14 @@ struct WeatherDetailView: View {
         }
     }
 
+    func iosDetailValue<T>(_ iOSValue: T, _ otherValue: T) -> T {
+        #if os(iOS)
+        iOSValue
+        #else
+        otherValue
+        #endif
+    }
+
     var chartMetricCurrentValue: String {
         switch chartMetric {
         case .temperature:
@@ -244,6 +252,7 @@ struct WeatherDetailView: View {
         }
     }
 
+    @ViewBuilder
     var chartMetricMenu: some View {
         let allMetrics: [(ChartMetric, String, String)] = [
             (.temperature, "thermometer.medium", localizedString("Temperature", locale: locale)),
@@ -256,7 +265,27 @@ struct WeatherDetailView: View {
             (.visibility, "eye", localizedString("Visibility", locale: locale)),
         ]
 
-        return Menu {
+        #if os(iOS)
+        Menu {
+            Picker(selection: $chartMetric) {
+                ForEach(allMetrics, id: \.0) { metric, icon, label in
+                    Label(label, systemImage: icon)
+                        .tag(metric)
+                }
+            } label: {
+                EmptyView()
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Label(chartMetricLabel, systemImage: chartMetricIcon)
+                .font(.body.weight(.semibold))
+                .lineLimit(1)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        #else
+        Menu {
             Picker(selection: $chartMetric) {
                 ForEach(allMetrics, id: \.0) { metric, icon, label in
                     Label(label, systemImage: icon)
@@ -287,9 +316,34 @@ struct WeatherDetailView: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        #endif
     }
 
+    @ViewBuilder
     var chartTimeRangeMenu: some View {
+        #if os(iOS)
+        Menu {
+            Picker(selection: $chartTimeRange) {
+                Text(localizedString("Daytime", locale: locale)).tag(ChartTimeRange.daytime)
+                Text(localizedString("Entire Day", locale: locale)).tag(ChartTimeRange.entireDay)
+                Text(localizedString("10 Days", locale: locale)).tag(ChartTimeRange.tenDay)
+            } label: {
+                EmptyView()
+            }
+            .pickerStyle(.inline)
+        } label: {
+            Text(chartTimeRange == .daytime
+                 ? localizedString("Daytime", locale: locale)
+                 : chartTimeRange == .entireDay
+                 ? localizedString("Entire Day", locale: locale)
+                 : localizedString("10 Days", locale: locale))
+                .font(.body.weight(.semibold))
+                .lineLimit(1)
+        }
+        .menuStyle(.button)
+        .buttonStyle(.bordered)
+        .controlSize(.regular)
+        #else
         Menu {
             Picker(selection: $chartTimeRange) {
                 Text(localizedString("Daytime", locale: locale)).tag(ChartTimeRange.daytime)
@@ -321,6 +375,7 @@ struct WeatherDetailView: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
+        #endif
     }
 
     var isPopup: Bool {
@@ -410,19 +465,19 @@ struct WeatherDetailView: View {
                         HStack(spacing: 0) {
                             // "Now" box before daily forecasts
                             let r: CGFloat = 8
-                            VStack(spacing: 4) {
+                            VStack(spacing: iosDetailValue(6, 4)) {
                                 Image(systemName: cityWeather.weatherIcon)
-                                    .font(.body)
+                                    .font(iosDetailValue(.title3, .body))
                                     .weatherIconStyle(for: cityWeather.weatherIcon)
                                     .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                                    .frame(height: 22)
+                                    .frame(height: iosDetailValue(28, 22))
                                 Text(localizedString("Now", locale: locale))
-                                    .font(.avenir(.caption, weight: internalSelectedDay == -1 ? .semibold : .medium))
+                                    .font(iosDetailValue(.subheadline.weight(internalSelectedDay == -1 ? .semibold : .medium), .avenir(.caption, weight: internalSelectedDay == -1 ? .semibold : .medium)))
                                     .foregroundStyle(internalSelectedDay == -1 ? .primary : .secondary)
                             }
-                            .frame(minWidth: 50)
+                            .frame(minWidth: iosDetailValue(64, 50))
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, iosDetailValue(16, 14))
                             .background(
                                 UnevenRoundedRectangle(cornerRadii: .init(topLeading: r, bottomLeading: r))
                                     .fill(internalSelectedDay == -1 ? AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06) : AppTheme.shared.colors.listCardFill)
@@ -447,7 +502,8 @@ struct WeatherDetailView: View {
                                     isSelected: internalSelectedDay == dailyForecast.dayOffset,
                                     cornerRadius: cr,
                                     showCloudCover: showCloudCover,
-                                    cityTimeZone: cityWeather.timeZone
+                                    cityTimeZone: cityWeather.timeZone,
+                                    usesIOSDetailSizing: iosDetailValue(true, false)
                                 )
                                 .id(dailyForecast.dayOffset)
                                 .onTapGesture {
@@ -505,7 +561,8 @@ struct WeatherDetailView: View {
                     SunArcCard(
                         sunrise: sunrise,
                         sunset: sunset,
-                        cityTimeZone: cityWeather.timeZone
+                        cityTimeZone: cityWeather.timeZone,
+                        usesIOSDetailSizing: iosDetailValue(true, false)
                     )
                     .padding(.horizontal, 8)
                 }
@@ -1579,16 +1636,18 @@ struct DayForecastBox: View {
     let cornerRadius: RectangleCornerRadii
     let showCloudCover: Bool
     let cityTimeZone: TimeZone
+    let usesIOSDetailSizing: Bool
     
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
     
-    init(dailyForecast: DailyForecast, isSelected: Bool, cornerRadius: RectangleCornerRadii = .init(), showCloudCover: Bool = false, cityTimeZone: TimeZone = .current) {
+    init(dailyForecast: DailyForecast, isSelected: Bool, cornerRadius: RectangleCornerRadii = .init(), showCloudCover: Bool = false, cityTimeZone: TimeZone = .current, usesIOSDetailSizing: Bool = false) {
         self.dailyForecast = dailyForecast
         self.isSelected = isSelected
         self.cornerRadius = cornerRadius
         self.showCloudCover = showCloudCover
         self.cityTimeZone = cityTimeZone
+        self.usesIOSDetailSizing = usesIOSDetailSizing
     }
     
     private var dayOfWeek: String {
@@ -1612,22 +1671,22 @@ struct DayForecastBox: View {
     }
     
     var body: some View {
-        VStack(spacing: 4) {
+        VStack(spacing: usesIOSDetailSizing ? 6 : 4) {
             // Weather icon - always shown
             Image(systemName: dailyForecast.weatherIcon)
-                .font(.body)
+                .font(usesIOSDetailSizing ? .title3 : .body)
                 .weatherIconStyle(for: dailyForecast.weatherIcon)
                 .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                .frame(height: 22)
+                .frame(height: usesIOSDetailSizing ? 28 : 22)
             
             // Day of week
             Text(dayOfWeek)
-                .font(.avenir(.caption, weight: isSelected ? .semibold : .medium))
+                .font(usesIOSDetailSizing ? .subheadline.weight(isSelected ? .semibold : .medium) : .avenir(.caption, weight: isSelected ? .semibold : .medium))
                 .foregroundStyle(isSelected ? .primary : .secondary)
         }
-        .frame(minWidth: 50)
+        .frame(minWidth: usesIOSDetailSizing ? 64 : 50)
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
+        .padding(.vertical, usesIOSDetailSizing ? 16 : 14)
         .background(
             UnevenRoundedRectangle(cornerRadii: cornerRadius)
                 .fill(isSelected ? AppTheme.shared.colors.listCardFill.mix(with: .black, by: colorScheme == .dark ? 0.25 : 0.06) : AppTheme.shared.colors.listCardFill)
@@ -1668,6 +1727,14 @@ struct SunArcCard: View {
     let sunrise: Date
     let sunset: Date
     let cityTimeZone: TimeZone
+    let usesIOSDetailSizing: Bool
+
+    init(sunrise: Date, sunset: Date, cityTimeZone: TimeZone, usesIOSDetailSizing: Bool = false) {
+        self.sunrise = sunrise
+        self.sunset = sunset
+        self.cityTimeZone = cityTimeZone
+        self.usesIOSDetailSizing = usesIOSDetailSizing
+    }
     
     private var now: Date { Date() }
     
@@ -1700,9 +1767,9 @@ struct SunArcCard: View {
             let startX = labelInset + labelWidth / 2
             let endX   = width - labelInset - labelWidth / 2
             // Baseline for arc endpoints — leaves room for labels below
-            let baseY: CGFloat = height - 50
+            let baseY: CGFloat = height - (usesIOSDetailSizing ? 58 : 50)
             // Arc peak height — flat elliptical feel
-            let peakY: CGFloat = 6
+            let peakY: CGFloat = usesIOSDetailSizing ? 10 : 6
             // Bézier control point: directly above the midpoint at peakY
             let ctrlX = width / 2
             let ctrlY = peakY
@@ -1731,7 +1798,7 @@ struct SunArcCard: View {
                         .fill(AppTheme.shared.colors.listCardFill)
                         .frame(width: 44, height: 44)
                     Image(systemName: "sun.max.fill")
-                        .font(.system(size: 20))
+                        .font(.system(size: usesIOSDetailSizing ? 24 : 20))
                         .foregroundStyle(sunColor)
                 }
                 .position(x: sunCentreX, y: sunCentreY)
@@ -1740,19 +1807,19 @@ struct SunArcCard: View {
                 HStack {
                     HStack(spacing: 5) {
                         Image(systemName: "sunrise.fill")
-                            .font(.system(size: 13))
+                            .font(.system(size: usesIOSDetailSizing ? 16 : 13))
                             .foregroundStyle(sunColor)
                         Text(timeFormatter.string(from: sunrise))
-                            .font(.avenir(.footnote, weight: .medium))
+                            .font(usesIOSDetailSizing ? .body.weight(.medium) : .avenir(.footnote, weight: .medium))
                             .foregroundStyle(AppTheme.shared.colors.primaryText)
                     }
                     Spacer()
                     HStack(spacing: 5) {
                         Text(timeFormatter.string(from: sunset))
-                            .font(.avenir(.footnote, weight: .medium))
+                            .font(usesIOSDetailSizing ? .body.weight(.medium) : .avenir(.footnote, weight: .medium))
                             .foregroundStyle(AppTheme.shared.colors.primaryText)
                         Image(systemName: "sunset.fill")
-                            .font(.system(size: 13))
+                            .font(.system(size: usesIOSDetailSizing ? 16 : 13))
                             .foregroundStyle(sunColor)
                     }
                 }
@@ -1760,9 +1827,9 @@ struct SunArcCard: View {
                 .padding(.bottom, 24)
             }
         }
-        .frame(height: 110)
+        .frame(height: usesIOSDetailSizing ? 132 : 110)
         .padding(.horizontal, 8)
-        .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
+        .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: usesIOSDetailSizing ? 16 : 12))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
 }

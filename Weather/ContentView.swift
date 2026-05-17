@@ -175,7 +175,6 @@ struct ContentView: View {
     @State var sidebarRenamingListID: CityListID?
     @State var sidebarRenamingCityContextID: String?
     @State var sidebarRenameText: String = ""
-    @State var sidebarEditMode: EditMode = .inactive
     @State var sidebarShowingAddListAlert: Bool = false
     @FocusState var sidebarNewListFocused: Bool
     @FocusState var sidebarRenameFocused: Bool
@@ -191,6 +190,9 @@ struct ContentView: View {
     @State var showingMapStylePopover: Bool = false
     @State var showingMapStyleSheet: Bool = false
     @State var inlineAddTargetListID: CityListID?
+    #if os(iOS)
+    @State var sidebarEditMode: EditMode = .inactive
+    #endif
     #if os(macOS) || os(iOS)
     @State private var macSidebarVisibility: NavigationSplitViewVisibility = .all
     @State private var macMapExpandedCardAnchor: CGPoint?
@@ -1680,27 +1682,36 @@ struct ContentView: View {
     @ViewBuilder
     private var _iOSMainOverlaysContent: some View {
         if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard {
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        showingMapExpandedCard = false
-                        tappedCity = nil
-                        if previewCity != nil {
-                            previewCity = nil
-                            recenterOnAllCities = true
+            GeometryReader { geometry in
+                HStack(spacing: 0) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                showingMapExpandedCard = false
+                                tappedCity = nil
+                                if previewCity != nil {
+                                    previewCity = nil
+                                    recenterOnAllCities = true
+                                }
+                            }
                         }
-                    }
+                        .frame(width: max(0, geometry.size.width - 92))
+
+                    Color.clear
+                        .frame(width: 92)
+                        .allowsHitTesting(false)
                 }
-                .zIndex(10)
+            }
+            .zIndex(10)
         }
 
         if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
-            mapExpandedCard(for: city, hideCityName: !shouldUseIPadLayout)
+            mapExpandedCard(for: city, hideCityName: shouldHideInlineMapCardCityName)
                 .id(city.city.id)
-                .padding(.horizontal, 16)
-                .padding(.vertical, shouldUseIPadLayout ? 0 : 8)
-                .padding(.bottom, previewCity != nil ? 104 : 76)
+                .padding(.horizontal, 26)
+                .padding(.vertical, shouldAddInlineMapCardVerticalPadding ? 8 : 0)
+                .padding(.bottom, previewCity != nil ? 92 : 64)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),
@@ -2421,6 +2432,18 @@ struct ContentView: View {
         shouldUseIPadLayout
         #else
         true
+        #endif
+    }
+
+    private var shouldHideInlineMapCardCityName: Bool {
+        false
+    }
+
+    private var shouldAddInlineMapCardVerticalPadding: Bool {
+        #if os(iOS)
+        !shouldUseIPadLayout
+        #else
+        false
         #endif
     }
 

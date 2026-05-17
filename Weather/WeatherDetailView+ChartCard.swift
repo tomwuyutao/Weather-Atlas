@@ -26,6 +26,24 @@ extension WeatherDetailView {
     var chartCard: some View {
         VStack(spacing: 0) {
             // Metric value + switchers
+            #if os(iOS)
+            VStack(alignment: .leading, spacing: 12) {
+                Text(chartMetricCurrentValue)
+                    .font(.title2.weight(.semibold))
+                    .contentTransition(.numericText())
+                    .animation(.smooth(duration: 0.3), value: chartMetric)
+                    .animation(.smooth(duration: 0.3), value: internalSelectedDay)
+
+                HStack(spacing: 10) {
+                    chartMetricMenu
+                    chartTimeRangeMenu
+                    Spacer(minLength: 0)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+            .padding(.bottom, 12)
+            #else
             HStack {
                 Text(chartMetricCurrentValue)
                     .font(.avenir(.title3, weight: .semibold))
@@ -44,6 +62,7 @@ extension WeatherDetailView {
             .padding(.horizontal, 12)
             .padding(.top, 10)
             .padding(.bottom, 8)
+            #endif
 
             // Separator
             Rectangle()
@@ -187,7 +206,7 @@ extension WeatherDetailView {
                 }
                 .clipped()
             }
-            .frame(height: 184)
+            .frame(height: iosDetailValue(220, 184))
             .contentShape(Rectangle())
             .highPriorityGesture(
                 chartTimeRange == .daytime
@@ -219,13 +238,13 @@ extension WeatherDetailView {
             )
             .padding(.top, 8)
         }
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-        .background(AppTheme.shared.colors.listCardFill.opacity(0.72), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: iosDetailValue(18, 14), style: .continuous))
+        .background(AppTheme.shared.colors.listCardFill.opacity(0.72), in: RoundedRectangle(cornerRadius: iosDetailValue(18, 14), style: .continuous))
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: iosDetailValue(18, 14), style: .continuous)
                 .strokeBorder(AppTheme.shared.colors.primaryText.opacity(0.08), lineWidth: 1)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: iosDetailValue(18, 14), style: .continuous))
         .padding(.horizontal, 8)
     }
 }

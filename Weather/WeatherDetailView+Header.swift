@@ -12,16 +12,24 @@ extension WeatherDetailView {
     // MARK: - Inline Scrollable Header
 
     var inlineHeader: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(alignment: .top, spacing: 14) {
+                VStack(alignment: .leading, spacing: 5) {
                     Text(cityWeather.city.localizedName(locale: locale))
+                        #if os(iOS)
+                        .font(.title.weight(.semibold))
+                        #else
                         .font(.title3.weight(.semibold))
+                        #endif
                         .foregroundStyle(.primary)
                         .lineLimit(1)
 
                     Text(isNow ? detailDisplayCondition.localizedDisplayName(locale: locale) : forecast.condition.localizedDisplayName(locale: locale))
+                        #if os(iOS)
+                        .font(.body.weight(.medium))
+                        #else
                         .font(.caption.weight(.medium))
+                        #endif
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
                 }
@@ -29,16 +37,24 @@ extension WeatherDetailView {
                 Spacer(minLength: 8)
 
                 Image(systemName: detailDisplayIcon)
+                    #if os(iOS)
+                    .font(.system(size: 38, weight: .medium))
+                    #else
                     .font(.system(size: 30, weight: .medium))
+                    #endif
                     .weatherIconStyle(for: detailDisplayIcon)
                     .contentTransition(.symbolEffect(.replace))
+                    #if os(iOS)
+                    .frame(width: 50, height: 46)
+                    #else
                     .frame(width: 38, height: 34)
+                    #endif
                     .background(alignment: .top) {
                         if !detailDisplayIcon.contains("moon") {
                             WeatherEffectOverlay(
                                 condition: detailDisplayCondition,
                                 isCompact: true,
-                                iconHeight: 48,
+                                iconHeight: iosDetailValue(58, 48),
                                 iconName: detailDisplayIcon,
                                 dropColor: detailDisplayCondition == .drizzle ? AppTheme.shared.colors.dotRain : nil
                             )
@@ -51,14 +67,14 @@ extension WeatherDetailView {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if isNow {
                     Text(tempUnit.display(cityWeather.temperature))
-                        .font(.system(size: 46, weight: .regular))
+                        .font(.system(size: iosDetailValue(60, 46), weight: .regular))
                         .contentTransition(.numericText())
                 } else {
                     Text(tempUnit.display(forecast.dailyHigh))
-                        .font(.system(size: 46, weight: .regular))
+                        .font(.system(size: iosDetailValue(60, 46), weight: .regular))
                         .contentTransition(.numericText())
                     Text(tempUnit.display(forecast.dailyLow))
-                        .font(.system(size: 34, weight: .regular))
+                        .font(.system(size: iosDetailValue(42, 34), weight: .regular))
                         .foregroundStyle(.secondary)
                         .contentTransition(.numericText())
                 }
@@ -67,8 +83,8 @@ extension WeatherDetailView {
             }
             .animation(.smooth(duration: 0.3), value: internalSelectedDay)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 18)
+        .padding(.horizontal, iosDetailValue(20, 16))
+        .padding(.vertical, iosDetailValue(24, 18))
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .background(
             (colorScheme == .dark

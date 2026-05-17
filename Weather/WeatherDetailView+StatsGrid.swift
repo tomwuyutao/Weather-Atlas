@@ -68,25 +68,25 @@ extension WeatherDetailView {
 
         return VStack(spacing: 0) {
             ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
-                HStack(spacing: 10) {
+                HStack(spacing: iosDetailValue(12, 10)) {
                     Image(systemName: row.0)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: iosDetailValue(17, 13), weight: .medium))
                         .foregroundStyle(.secondary)
-                        .frame(width: 18)
+                        .frame(width: iosDetailValue(24, 18))
 
                     Text(row.1)
-                        .font(.caption.weight(.medium))
+                        .font(iosDetailValue(.body.weight(.medium), .caption.weight(.medium)))
                         .foregroundStyle(.secondary)
 
                     Spacer(minLength: 8)
 
                     Text(row.2)
-                        .font(.caption.weight(.semibold))
+                        .font(iosDetailValue(.body.weight(.semibold), .caption.weight(.semibold)))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 10)
+                .padding(.horizontal, iosDetailValue(16, 12))
+                .padding(.vertical, iosDetailValue(14, 10))
 
                 if index < rows.count - 1 {
                     Divider()
@@ -95,7 +95,7 @@ extension WeatherDetailView {
                 }
             }
         }
-        .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .background(AppTheme.shared.colors.listCardFill, in: RoundedRectangle(cornerRadius: iosDetailValue(16, 12), style: .continuous))
         .padding(.horizontal, 8)
     }
 }

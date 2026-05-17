@@ -96,57 +96,68 @@ extension ContentView {
         }
 #endif
 
-        return AnyView(HStack(alignment: .bottom, spacing: 18) {
-                VStack(alignment: .leading, spacing: 8) {
+        return AnyView(HStack(alignment: .top, spacing: 16) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
-                        .font(.system(size: 40, weight: .semibold, design: .default))
+                        .font(.system(size: 38, weight: .semibold, design: .default))
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText())
+                        .lineLimit(1)
 
-                    Text(isOverlayActive ? overlayLabel : "Highest Temperature")
+                    Text(isOverlayActive ? overlayLabel : localizedString("Highest Temperature", locale: locale))
                         .font(.subheadline.weight(.medium))
                         .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .padding(.top, 4)
 
                     if !hideCityName {
                         Text(cityWeather.city.localizedName(locale: locale))
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
+                            .padding(.top, 5)
                     }
                 }
+                .frame(minHeight: 80, alignment: .topLeading)
                 .animation(.smooth(duration: 0.4), value: mapOverlayMode)
 
                 Spacer(minLength: 8)
 
-                VStack(spacing: 12) {
+                VStack(alignment: .trailing, spacing: 0) {
                     Image(systemName: icon)
-                        .font(.system(size: 36, weight: .medium))
+                        .font(.system(size: 40, weight: .medium))
                         .weatherIconStyle(for: icon)
-                        .frame(width: 54, height: 46)
-                        .offset(y: -6)
+                        .frame(width: 56, height: 48, alignment: .center)
 
-                    VStack(spacing: 6) {
+                    Spacer(minLength: 8)
+
+                    VStack(spacing: 4) {
                         ForEach(0..<2, id: \.self) { row in
-                            HStack(spacing: 6) {
-                                ForEach(0..<5, id: \.self) { col in
-                                    let i = row * 5 + col
-                                    if i < cityWeather.dailyForecasts.count {
-                                        let dayForecast = cityWeather.dailyForecasts[i]
+                            HStack(spacing: 4) {
+                                ForEach(0..<5, id: \.self) { column in
+                                    let index = row * 5 + column
+                                    if index < cityWeather.dailyForecasts.count {
+                                        let dayForecast = cityWeather.dailyForecasts[index]
                                         Circle()
                                             .fill(dayForecast.condition.dotColor)
-                                            .frame(width: i == selectedDayOffset ? 8 : 6, height: i == selectedDayOffset ? 8 : 6)
+                                            .frame(width: index == selectedDayOffset ? 8 : 6, height: index == selectedDayOffset ? 8 : 6)
+                                            .frame(width: 8, height: 8, alignment: .center)
                                             .shadow(color: dayForecast.condition.dotColor.opacity(0.55), radius: 3)
-                                            .opacity(i == selectedDayOffset ? 1 : 0.58)
+                                            .opacity(index == selectedDayOffset ? 1 : 0.58)
                                     }
                                 }
                             }
                         }
                     }
+                    .frame(height: 30, alignment: .bottom)
+                    .offset(y: -9)
                 }
+                .frame(minHeight: 80, alignment: .topTrailing)
         }
         .padding(.horizontal, 22)
-        .padding(.vertical, 18)
+        .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
+        .frame(height: 128)
         .themedGlass(in: .rect(cornerRadius: 24))
         .contentShape(RoundedRectangle(cornerRadius: 24))
         .onTapGesture {

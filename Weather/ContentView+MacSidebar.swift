@@ -29,7 +29,9 @@ extension ContentView {
         }
         .listStyle(.sidebar)
         .tint(theme.colors.accent)
+        #if os(iOS)
         .environment(\.editMode, $sidebarEditMode)
+        #endif
         .id(macSidebarRefreshTick)
         .onAppear {
             if sidebarExpandedListIDs.isEmpty {
