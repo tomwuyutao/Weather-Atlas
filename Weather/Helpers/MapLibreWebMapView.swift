@@ -18,6 +18,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     var centerOnCity: CityWeather?
     var leadingFitPadding: Double = 0
     var focusSelectedMarker: Bool = true
+    var cameraProfile: MapCameraProfile = .desktop
     var onMarkerTap: (CityWeather, CGPoint?) -> Void
     var onMapClick: ((CLLocationCoordinate2D, CGPoint?) -> Void)? = nil
     var onMarkerCommandHover: ((CityWeather?, CGPoint?) -> Void)? = nil
@@ -194,6 +195,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 lastStyleKey = styleKey
                 evaluate("window.setMapStyleMode(\(Self.jsString(styleKey)));")
             }
+
+            evaluate("window.setWeatherMapCameraProfile?.(\(Self.jsString(parent.cameraProfile.rawValue)));")
 
             let features = parent.makeFeatures()
             guard let data = try? JSONEncoder().encode(features),
@@ -424,6 +427,25 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         var pinchAnimationFrame = null;
         var baseStylePreferencesApplied = false;
         var leftMouseDown = null;
+        var cameraProfile = (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) ? 'mobile' : 'desktop';
+        const cameraProfiles = {
+          desktop: {
+            initialCenter: [0, 20],
+            initialZoom: 1.45,
+            fitPadding: { top: 180, right: 180, bottom: 180, left: 180 },
+            fitMaxZoom: 2.65,
+            cityZoom: 5,
+            useLeadingOffset: true
+          },
+          mobile: {
+            initialCenter: [0, 12],
+            initialZoom: 1.15,
+            fitPadding: { top: 104, right: 52, bottom: 168, left: 52 },
+            fitMaxZoom: 4.2,
+            cityZoom: 4.35,
+            useLeadingOffset: false
+          }
+        };
 
         function styleURL(mode) {
           return mode === 'dark'
@@ -433,6 +455,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         function post(message) {
           window.webkit?.messageHandlers?.mapEvent?.postMessage(message);
+        }
+
+        function activeCameraProfile() {
+          return cameraProfiles[cameraProfile] || cameraProfiles.desktop;
         }
 
         function layerTextField(layer) {
@@ -758,26 +784,38 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           updateSource(payload);
         };
 
+        window.setWeatherMapCameraProfile = function(profile) {
+          cameraProfile = cameraProfiles[profile] ? profile : 'desktop';
+        };
+
         window.fitWeatherData = function(leadingPadding = 0) {
           if (!pendingPayload || !pendingPayload.features || pendingPayload.features.length === 0) return;
           const bounds = new maplibregl.LngLatBounds();
           pendingPayload.features.forEach(item => bounds.extend([item.longitude, item.latitude]));
           if (!bounds.isEmpty()) {
+            const camera = activeCameraProfile();
+            const padding = {
+              top: camera.fitPadding.top,
+              right: camera.fitPadding.right,
+              bottom: camera.fitPadding.bottom,
+              left: camera.fitPadding.left + (camera.useLeadingOffset ? leadingPadding : 0)
+            };
             map.fitBounds(bounds, {
-              padding: { top: 180, right: 180, bottom: 180, left: 180 + leadingPadding },
+              padding,
               duration: 550,
-              maxZoom: 2.65
+              maxZoom: camera.fitMaxZoom
             });
           }
         };
 
         window.flyToCity = function(id, leadingPadding = 0) {
           const item = pendingPayload?.features?.find(feature => feature.id === id);
+          const camera = activeCameraProfile();
           if (item) map.flyTo({
             center: [item.longitude, item.latitude],
-            zoom: Math.max(map.getZoom(), 5),
+            zoom: Math.max(map.getZoom(), camera.cityZoom),
             duration: 550,
-            offset: [leadingPadding / 2, 0]
+            offset: [camera.useLeadingOffset ? leadingPadding / 2 : 0, 0]
           });
         };
 
@@ -958,12 +996,13 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
 
         async function init() {
+          const camera = activeCameraProfile();
           map = new maplibregl.Map({
             container: 'map',
             style: await cleanedStyle(currentStyleMode),
             preserveDrawingBuffer: false,
-            center: [0, 20],
-            zoom: 1.45,
+            center: camera.initialCenter,
+            zoom: camera.initialZoom,
             minZoom: 1,
             maxZoom: 12,
             attributionControl: false
@@ -1155,6 +1194,11 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     </body>
     </html>
     """
+}
+
+enum MapCameraProfile: String {
+    case desktop
+    case mobile
 }
 
 private struct MapLibreWeatherFeature: Codable {

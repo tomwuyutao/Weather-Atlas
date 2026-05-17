@@ -486,8 +486,11 @@ struct ContentView: View {
             }
 
         }
-        .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
-        .searchPresentationToolbarBehavior(.avoidHidingContent)
+        .if(showingInlineSearch) { view in
+            view
+                .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
+                .searchPresentationToolbarBehavior(.avoidHidingContent)
+        }
         .onMoveCommand { direction in
             guard showingInlineSearch, !inlineSearchText.isEmpty else { return }
             switch direction {
@@ -1166,7 +1169,7 @@ struct ContentView: View {
     private var iPadMapContent: some View {
         ZStack {
             iOSMapView
-                .overlay(alignment: .bottomLeading) {
+                .overlay(alignment: .topLeading) {
                     if showLegend {
                         MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
                             withAnimation(.smooth(duration: 0.2)) {
@@ -1174,8 +1177,8 @@ struct ContentView: View {
                             }
                         }
                         .padding(.leading, 24)
-                        .padding(.bottom, 24)
-                        .transition(.move(edge: .leading).combined(with: .opacity))
+                        .padding(.top, 68)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
                 .overlay(alignment: .trailing) {
@@ -1234,8 +1237,11 @@ struct ContentView: View {
                 iOSNativeMenu
             }
         }
-        .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
-        .searchPresentationToolbarBehavior(.avoidHidingContent)
+        .if(showingInlineSearch) { view in
+            view
+                .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
+                .searchPresentationToolbarBehavior(.avoidHidingContent)
+        }
     }
 
     private var iPadFloatingMapOverlays: some View {
@@ -1362,8 +1368,6 @@ struct ContentView: View {
         .onAppear {
             selectedTab = 1
         }
-        .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
-        .searchPresentationToolbarBehavior(.avoidHidingContent)
     }
 
     private var mapTopListMenu: some View {
@@ -1419,7 +1423,7 @@ struct ContentView: View {
         ZStack(alignment: .bottom) {
             AnyView(
                 iOSMapView
-                    .overlay(alignment: .bottomLeading) {
+                    .overlay(alignment: .topLeading) {
                         if selectedTab == 1, showLegend {
                             MapFloatingLegend(overlayMode: mapOverlayMode) {
                                 withAnimation(.smooth(duration: 0.2)) {
@@ -1427,8 +1431,8 @@ struct ContentView: View {
                                 }
                             }
                                 .padding(.leading, 16)
-                                .padding(.bottom, 92)
-                                .transition(.move(edge: .leading).combined(with: .opacity))
+                                .padding(.top, 72)
+                                .transition(.move(edge: .top).combined(with: .opacity))
                         }
                     }
                     .overlay(alignment: .top) {
@@ -2186,6 +2190,7 @@ struct ContentView: View {
                 centerOnCity: centerOnCityTrigger,
                 leadingFitPadding: macMapLeadingFitPadding,
                 focusSelectedMarker: mapFocusSelectedMarker,
+                cameraProfile: mapCameraProfile,
                 onMarkerTap: { city, point in
                     handleMapMarkerTap(city, anchor: point)
                 },
@@ -2258,6 +2263,14 @@ struct ContentView: View {
         usesFloatingMapCardLayout ? macMapExpandedCardFocusesMarker : false
         #else
         false
+        #endif
+    }
+
+    private var mapCameraProfile: MapCameraProfile {
+        #if os(macOS)
+        .desktop
+        #else
+        .mobile
         #endif
     }
 

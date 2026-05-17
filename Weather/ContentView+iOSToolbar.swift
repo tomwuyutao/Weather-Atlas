@@ -156,6 +156,10 @@ extension ContentView {
         } label: {
             Image(systemName: "ellipsis")
                 .foregroundStyle(.primary)
+                #if os(iOS)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+                #endif
         }
         .tint(.primary)
         #if os(macOS)

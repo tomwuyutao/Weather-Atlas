@@ -12,7 +12,14 @@ extension ContentView {
     @ViewBuilder
     var mapBottomToolbar: some View {
         if showingInlineSearch {
-            EmptyView()
+            GlassEffectContainer(spacing: 12) {
+                HStack(spacing: 12) {
+                    bottomBarSearchState
+                }
+            }
+            .onAppear {
+                inlineSearchFocused = true
+            }
         } else {
             HStack(spacing: 14) {
                 Button {
@@ -400,7 +407,7 @@ extension ContentView {
         GlassEffectContainer(spacing: 12) {
         HStack(spacing: 12) {
             if showingInlineSearch {
-                EmptyView()
+                bottomBarSearchState
             } else if showingCountrySearch, let pending = pendingCountryList {
                 bottomBarCountryConfirmState(pending: pending)
             } else if showingCountrySearch {
@@ -415,7 +422,7 @@ extension ContentView {
         }
         }
         .padding(.horizontal, 16)
-        .padding(.bottom, showingInlineSearch ? 12 : 4)
+        .padding(.bottom, 4)
         .padding(.top, showingInlineSearch || previewCity != nil ? 0 : 20)
         .background {
             if !showingInlineSearch && previewCity == nil {
