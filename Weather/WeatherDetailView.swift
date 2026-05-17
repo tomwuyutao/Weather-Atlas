@@ -70,7 +70,6 @@ struct WeatherDetailView: View {
     @State private var showingDetailSearch: Bool = false
     @State private var detailSearchText: String = ""
     @State private var detailSearchManager = CitySearchManager()
-    @FocusState private var detailSearchFocused: Bool
     @State private var detailSearchLoading: Bool = false
     @State private var showingSearchedCity: Bool = false
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
@@ -647,15 +646,8 @@ struct WeatherDetailView: View {
 
         }
         .frame(maxHeight: isPopup ? nil : .infinity, alignment: .top)
-        .overlay {
-            if showingDetailSearch, !detailSearchText.isEmpty {
-                detailSearchResultsOverlay
-                    .transition(.opacity)
-                    .zIndex(10)
-            }
-        }
         .overlay(alignment: .bottom) {
-            if !isPopup && !usesNativeToolbar {
+            if !isPopup && !usesNativeToolbar && !showingDetailSearch {
                 detailBottomBar
                     .zIndex(16)
             }
@@ -663,17 +655,24 @@ struct WeatherDetailView: View {
         .onChange(of: cityWeather.city.name) {
             displayCityName = cityWeather.city.localizedName(locale: locale)
         }
+        .if(showingDetailSearch) { view in
+            view
+                .searchable(
+                    text: $detailSearchText,
+                    isPresented: $showingDetailSearch,
+                    prompt: Text(localizedString("Search for a city or place", locale: locale))
+                )
+                .searchSuggestions {
+                    detailNativeSearchSuggestions
+                }
+        }
         .onChange(of: detailSearchText) { _, newValue in
             detailSearchManager.search(query: newValue)
         }
         .onChange(of: showingDetailSearch) { _, newValue in
-            if newValue {
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    detailSearchFocused = true
-                }
-            } else {
+            if !newValue {
                 detailSearchManager.search(query: "")
-                detailSearchFocused = false
+                detailSearchText = ""
             }
         }
         .contentShape(Rectangle())
@@ -696,61 +695,12 @@ struct WeatherDetailView: View {
 
     private var detailBottomBar: some View {
         HStack(spacing: 8) {
-            if showingDetailSearch {
-                detailBottomBarSearchState
-            } else {
-                detailBottomBarNormalState
-            }
+            detailBottomBarNormalState
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
         .padding(.top, 20)
         .animation(.spring(response: 0.5, dampingFraction: 0.8), value: showingDetailSearch)
-    }
-
-    @ViewBuilder
-    private var detailBottomBarSearchState: some View {
-        // Search text field capsule
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.tertiary)
-            TextField(localizedString("Search for a city", locale: locale), text: $detailSearchText)
-                .textFieldStyle(.plain)
-                .font(.avenir(.subheadline, weight: .medium))
-                .autocorrectionDisabled()
-                .focused($detailSearchFocused)
-            if !detailSearchText.isEmpty {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.tertiary)
-                    .font(.system(size: 14, weight: .medium))
-                    .contentShape(Circle())
-                    .onTapGesture { detailSearchText = "" }
-                    .transition(.scale.combined(with: .opacity))
-            }
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 14)
-        .frame(height: 36)
-        .padding(6)
-        .themedGlass(in: .capsule)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: detailSearchText.isEmpty)
-
-        // X close button
-        Image(systemName: "xmark")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.primary)
-            .frame(width: 36, height: 36)
-            .padding(6)
-            .themedGlass(in: .circle)
-            .contentShape(Circle())
-            .onTapGesture {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                    showingDetailSearch = false
-                    detailSearchText = ""
-                    detailSearchFocused = false
-                }
-            }
     }
 
     @ViewBuilder
@@ -925,80 +875,55 @@ struct WeatherDetailView: View {
         }
     }
 
-    // MARK: - Detail Search Results
+    // MARK: - Detail Search
 
-    private var detailSearchResultsOverlay: some View {
-        VStack(spacing: 0) {
-            if !detailSearchManager.searchResults.isEmpty {
-                List {
-                    ForEach(detailSortedSearchResults) { result in
-                        let existing = detailIsExistingCity(result)
-                        Button {
-                            Task {
-                                await detailSelectSearchResult(result)
-                            }
-                        } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                Text(result.title)
-                                    .font(.avenir(.body, weight: existing ? .semibold : .regular))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-
-                                if existing {
-                                    Text(localizedString("Added", locale: locale))
-                                        .font(.avenir(.caption2, weight: .medium))
-                                        .foregroundStyle(AppTheme.shared.colors.accent)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(AppTheme.shared.colors.accent.opacity(0.12), in: Capsule())
-                                }
-
-                                Spacer()
-
-                                if detailSearchLoading {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    Text(result.subtitle)
-                                        .font(.avenir(.caption, weight: .medium))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .padding(.vertical, 2)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(detailSearchLoading)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18))
-                        .listRowSeparator(.visible)
-                        .listRowBackground(Color.clear)
-                    }
+    @ViewBuilder
+    private var detailNativeSearchSuggestions: some View {
+        ForEach(detailSortedSearchResults) { result in
+            Button {
+                guard !detailSearchLoading else { return }
+                Task {
+                    await detailSelectSearchResult(result)
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .contentMargins(.bottom, 80)
-            } else {
-                VStack(spacing: 16) {
-                    Spacer()
+            } label: {
+                detailNativeSearchSuggestionRow(for: result)
+            }
+            .disabled(detailSearchLoading)
+        }
+    }
 
-                    Image(systemName: "map")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.tertiary)
+    private func detailNativeSearchSuggestionRow(for result: CitySearchResult) -> some View {
+        let existing = detailIsExistingCity(result)
 
-                    Text(localizedString("No results", locale: locale))
-                        .font(.avenir(.title3, weight: .medium))
+        return HStack(spacing: 10) {
+            Image(systemName: existing ? "checkmark.circle.fill" : "magnifyingglass")
+                .foregroundStyle(existing ? Color.secondary : Color.primary.opacity(0.7))
+                .frame(width: 20)
 
-                    Text(localizedString("Try a different search term", locale: locale))
-                        .font(.avenir(.body))
-                        .foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(result.title)
+                    .font(.avenir(.body, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
 
-                    Spacer()
-                }
+                Text(result.subtitle)
+                    .font(.avenir(.caption, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            if existing {
+                Text(localizedString("Added", locale: locale))
+                    .font(.avenir(.caption2, weight: .medium))
+                    .foregroundStyle(.secondary)
+            } else if detailSearchLoading {
+                ProgressView()
+                    .controlSize(.small)
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppTheme.shared.colors.background)
-        .ignoresSafeArea(edges: .bottom)
+        .padding(.vertical, 3)
     }
 
     private func detailIsExistingCity(_ result: CitySearchResult) -> Bool {

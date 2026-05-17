@@ -10,85 +10,112 @@ import CoreLocation
 
 extension ContentView {
 
-    // MARK: - Inline Search Results (shown when typing)
+    // MARK: - Native City Search
 
-    var iOSInlineSearchResults: some View {
-        VStack(spacing: 0) {
-            if !inlineSearchManager.searchResults.isEmpty {
-                List {
-                    ForEach(Array(inlineSortedSearchResults.enumerated()), id: \.element.id) { index, result in
-                        let existing = inlineIsExistingCity(result)
-                        let isSelected = index == inlineSearchSelectionIndex
-                        Button {
-                            Task {
-                                await inlineSelectSearchResult(result)
-                            }
-                        } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                Text(result.title)
-                                    .font(.avenir(.body, weight: existing ? .semibold : .regular))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
+    var nativeCitySearchScreen: some View {
+        VStack(spacing: 14) {
+            Spacer()
 
-                                if existing {
-                                    Text(localizedString("Added", locale: locale))
-                                        .font(.avenir(.caption2, weight: .medium))
-                                        .foregroundStyle(theme.colors.accent)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(theme.colors.accent.opacity(0.12), in: Capsule())
-                                }
+            Image(systemName: inlineSearchText.isEmpty ? "magnifyingglass" : "map")
+                .font(.system(size: 44, weight: .regular))
+                .foregroundStyle(theme.colors.secondaryText.opacity(0.7))
 
-                                Spacer()
+            Text(inlineSearchText.isEmpty ? localizedString("Search for a city or place", locale: locale) : localizedString("No results", locale: locale))
+                .font(.avenir(.title3, weight: .medium))
+                .foregroundStyle(theme.colors.primaryText)
 
-                                if inlineIsLoadingCity {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    Text(result.subtitle)
-                                        .font(.avenir(.caption, weight: .medium))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .padding(.vertical, 2)
-                            .background {
-                                RoundedRectangle(cornerRadius: 7, style: .continuous)
-                                    .fill(isSelected ? theme.colors.accent.opacity(0.18) : Color.clear)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(inlineIsLoadingCity)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18))
-                        .listRowSeparator(.visible)
-                        .listRowBackground(Color.clear)
-                    }
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .contentMargins(.bottom, 80)
-            } else {
-                VStack(spacing: 16) {
-                    Spacer()
-
-                    Image(systemName: "map")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.tertiary)
-
-                    Text(localizedString("No results", locale: locale))
-                        .font(.avenir(.title3, weight: .medium))
-
-                    Text(localizedString("Try a different search term", locale: locale))
-                        .font(.avenir(.body))
-                        .foregroundStyle(.secondary)
-
-                    Spacer()
-                }
+            if !inlineSearchText.isEmpty {
+                Text(localizedString("Try a different search term", locale: locale))
+                    .font(.avenir(.body, weight: .regular))
+                    .foregroundStyle(theme.colors.secondaryText)
             }
+
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(selectedTab == 0 ? theme.colors.background : theme.colors.searchOverlayBackground)
-        .ignoresSafeArea(edges: .bottom)
+        .background(theme.colors.background.ignoresSafeArea())
+    }
+
+    @ViewBuilder
+    func nativeCitySearch<Content: View>(
+        _ content: Content,
+        placement: SearchFieldPlacement = .automatic
+    ) -> some View {
+        if showingInlineSearch {
+            content
+                .searchable(
+                    text: $inlineSearchText,
+                    isPresented: $showingInlineSearch,
+                    placement: placement,
+                    prompt: Text(localizedString("Search for a city", locale: locale))
+                )
+                .searchSuggestions {
+                    nativeCitySearchSuggestions
+                }
+                .onChange(of: inlineSearchText) { _, newValue in
+                    inlineSearchManager.search(query: newValue)
+                    inlineSearchSelectionIndex = 0
+                }
+                .onChange(of: showingInlineSearch) { _, isPresented in
+                    if !isPresented {
+                        resetNativeCitySearch()
+                    }
+                }
+                .onSubmit(of: .search) {
+                    confirmInlineSearchSelection()
+                }
+        } else {
+            content
+        }
+    }
+
+    @ViewBuilder
+    var nativeCitySearchSuggestions: some View {
+        ForEach(Array(inlineSortedSearchResults.prefix(8))) { result in
+            Button {
+                guard !inlineIsLoadingCity else { return }
+                Task {
+                    await inlineSelectSearchResult(result)
+                }
+            } label: {
+                nativeCitySearchSuggestionRow(for: result)
+            }
+            .disabled(inlineIsLoadingCity)
+        }
+    }
+
+    private func nativeCitySearchSuggestionRow(for result: CitySearchResult) -> some View {
+        let existing = inlineIsExistingCity(result)
+
+        return HStack(spacing: 10) {
+            Image(systemName: existing ? "checkmark.circle.fill" : "magnifyingglass")
+                .foregroundStyle(existing ? theme.colors.secondaryText : theme.colors.primaryText.opacity(0.7))
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(result.title)
+                    .font(.avenir(.body, weight: .medium))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+
+                Text(result.subtitle)
+                    .font(.avenir(.caption, weight: .regular))
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            if existing {
+                Text(localizedString("Added", locale: locale))
+                    .font(.avenir(.caption2, weight: .medium))
+                    .foregroundStyle(theme.colors.secondaryText)
+            } else if inlineIsLoadingCity {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .padding(.vertical, 3)
     }
 
     // MARK: - Country Search Results
@@ -201,18 +228,21 @@ extension ContentView {
     func activateInlineSearch() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showingInlineSearch = true
-            inlineSearchFocused = true
         }
     }
 
     func dismissInlineSearch() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showingInlineSearch = false
-            inlineSearchText = ""
-            inlineSearchFocused = false
-            inlineAddTargetListID = nil
-            inlineSearchSelectionIndex = 0
         }
+        resetNativeCitySearch()
+    }
+
+    func resetNativeCitySearch() {
+        inlineSearchText = ""
+        inlineSearchManager.search(query: "")
+        inlineAddTargetListID = nil
+        inlineSearchSelectionIndex = 0
     }
 
     func moveInlineSearchSelection(_ delta: Int) {

@@ -302,13 +302,8 @@ extension ContentView {
     private func beginAddingCity(to listID: CityListID) {
         inlineAddTargetListID = listID
         showingMapSidebar = false
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            showingInlineSearch = true
-            inlineSearchText = ""
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            inlineSearchFocused = true
-        }
+        inlineSearchText = ""
+        activateInlineSearch()
     }
 
     func createListAtBottom() {

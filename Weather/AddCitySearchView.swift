@@ -13,23 +13,18 @@ struct AddCitySearchView: View {
     @State var citySearchManager: CitySearchManager
     let weatherService: WeatherService
     let onCitySelected: (CityWeather) -> Void
-    
+
     @State private var searchText: String = ""
+    @State private var isSearchPresented = true
     @State private var isLoadingCity = false
-    @State private var isSearchFieldFocused = false
     @Environment(\.dismiss) private var dismiss
-    @FocusState private var searchFieldFocus: Bool
-    
-    private var shouldShowSearchResults: Bool {
-        !searchText.isEmpty && !citySearchManager.searchResults.isEmpty
-    }
-    
+
     private func isExistingCity(_ result: CitySearchResult) -> Bool {
         let name = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
         let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
         return cities.contains(where: { $0.city.name == name && $0.city.country == country })
     }
-    
+
     private var sortedSearchResults: [CitySearchResult] {
         citySearchManager.searchResults.sorted { a, b in
             let aExists = isExistingCity(a)
@@ -38,175 +33,129 @@ struct AddCitySearchView: View {
             return false
         }
     }
-    
-    var body: some View {
-        VStack(spacing: 0) {
-            // Search bar with dismiss button
-            HStack(spacing: 12) {
-                // Search bar
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.tertiary)
-                        .font(.system(size: 16, weight: .medium))
-                    
-                    TextField("Search for a city", text: $searchText)
-                        .textFieldStyle(.plain)
-                        .font(.avenir(.body))
-                        .autocorrectionDisabled()
-                        .focused($searchFieldFocus)
-                    
-                    if !searchText.isEmpty {
-                        Button {
-                            searchText = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.tertiary)
-                                .font(.system(size: 16, weight: .medium))
-                        }
-                        .buttonStyle(.plain)
-                        .transition(.scale.combined(with: .opacity))
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 12)
-                .glassEffect(.regular, in: .capsule)
 
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                        .themedGlass(in: .circle)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 16)
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: searchText.isEmpty)
-            
-            // Search results
-            if shouldShowSearchResults {
-                List {
-                    ForEach(sortedSearchResults) { result in
-                        let existing = isExistingCity(result)
-                        Button {
-                            Task {
-                                await selectSearchResult(result)
-                            }
-                        } label: {
-                            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                                Text(result.title)
-                                    .font(.avenir(.body, weight: existing ? .semibold : .regular))
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-                                
-                                if existing {
-                                    Text("Added")
-                                        .font(.avenir(.caption2, weight: .medium))
-                                        .foregroundStyle(AppTheme.shared.colors.accent)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 2)
-                                        .background(AppTheme.shared.colors.accent.opacity(0.12), in: Capsule())
-                                }
-                                
-                                Spacer()
-                                
-                                if isLoadingCity {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    Text(result.subtitle)
-                                        .font(.avenir(.caption, weight: .medium))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                            }
-                            .padding(.vertical, 2)
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(isLoadingCity)
-                        .listRowInsets(EdgeInsets(top: 4, leading: 18, bottom: 4, trailing: 18))
-                        .listRowSeparator(.visible)
-                        .listRowBackground(Color.clear)
+    var body: some View {
+        searchContent
+            .navigationTitle("Add City")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            #endif
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") {
+                        dismiss()
                     }
                 }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-            } else if searchText.isEmpty {
-                VStack(spacing: 16) {
-                    Spacer()
-                    
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.tertiary)
-                    
-                    Text("Search for a city")
-                        .font(.avenir(.title3, weight: .medium))
-                    
-                    Spacer()
-                }
-            } else {
-                VStack(spacing: 16) {
-                    Spacer()
-                    
-                    Image(systemName: "map")
-                        .font(.system(size: 48))
-                        .foregroundStyle(.tertiary)
-                    
-                    Text("No results")
-                        .font(.avenir(.title3, weight: .medium))
-                    
-                    Text("Try a different search term")
-                        .font(.avenir(.body))
-                        .foregroundStyle(.secondary)
-                    
-                    Spacer()
-                }
             }
-        }
-        #if os(iOS)
-        .navigationBarHidden(true)
-        #endif
-        .onChange(of: searchText) { oldValue, newValue in
-            citySearchManager.search(query: newValue)
-        }
-        .onChange(of: searchFieldFocus) { oldValue, newValue in
-            isSearchFieldFocused = newValue
-        }
-        .onAppear {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                searchFieldFocus = true
+            .searchable(
+                text: $searchText,
+                isPresented: $isSearchPresented,
+                prompt: Text("Search for a city or place")
+            )
+            .searchSuggestions {
+                nativeSearchSuggestions
             }
+            .onChange(of: searchText) { _, newValue in
+                citySearchManager.search(query: newValue)
+            }
+            .onAppear {
+                isSearchPresented = true
+            }
+    }
+
+    private var searchContent: some View {
+        VStack(spacing: 14) {
+            Spacer()
+
+            Image(systemName: searchText.isEmpty ? "magnifyingglass" : "map")
+                .font(.system(size: 48))
+                .foregroundStyle(.tertiary)
+
+            Text(searchText.isEmpty ? "Search for a city or place" : "No results")
+                .font(.avenir(.title3, weight: .medium))
+
+            if !searchText.isEmpty {
+                Text("Try a different search term")
+                    .font(.avenir(.body))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(AppTheme.shared.colors.background.ignoresSafeArea())
+    }
+
+    @ViewBuilder
+    private var nativeSearchSuggestions: some View {
+        ForEach(sortedSearchResults) { result in
+            Button {
+                guard !isLoadingCity else { return }
+                Task {
+                    await selectSearchResult(result)
+                }
+            } label: {
+                nativeSearchSuggestionRow(for: result)
+            }
+            .disabled(isLoadingCity)
         }
     }
-    
+
+    private func nativeSearchSuggestionRow(for result: CitySearchResult) -> some View {
+        let existing = isExistingCity(result)
+
+        return HStack(spacing: 10) {
+            Image(systemName: existing ? "checkmark.circle.fill" : "magnifyingglass")
+                .foregroundStyle(existing ? Color.secondary : Color.primary.opacity(0.7))
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(result.title)
+                    .font(.avenir(.body, weight: .medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Text(result.subtitle)
+                    .font(.avenir(.caption, weight: .regular))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            if existing {
+                Text("Added")
+                    .font(.avenir(.caption2, weight: .medium))
+                    .foregroundStyle(.secondary)
+            } else if isLoadingCity {
+                ProgressView()
+                    .controlSize(.small)
+            }
+        }
+        .padding(.vertical, 3)
+    }
+
     private func selectSearchResult(_ result: CitySearchResult) async {
         isLoadingCity = true
         defer { isLoadingCity = false }
-        
+
         let cityName = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
         let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
-        
-        // Check if city already exists (match by name + country)
+
         if let existingCity = cities.first(where: { $0.city.name == cityName && $0.city.country == country }) {
             onCitySelected(existingCity)
             return
         }
-        
-        // Resolve coordinates
+
         guard let coordinate = await citySearchManager.resolveCoordinate(for: result) else {
             return
         }
-        
-        // Create and fetch weather for new city
+
         let tempCity = City(name: cityName, country: country, latitude: coordinate.latitude, longitude: coordinate.longitude)
         guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
             return
         }
-        
+
         onCitySelected(tempCityWeather)
     }
 }

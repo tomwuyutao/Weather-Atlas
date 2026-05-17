@@ -234,13 +234,8 @@ extension ContentView {
 
     private func beginMacSidebarAddingCity(to listID: CityListID) {
         inlineAddTargetListID = listID
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            showingInlineSearch = true
-            inlineSearchText = ""
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            inlineSearchFocused = true
-        }
+        inlineSearchText = ""
+        activateInlineSearch()
     }
 
     private func beginMacSidebarListRename(_ listID: CityListID) {

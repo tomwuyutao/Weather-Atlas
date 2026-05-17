@@ -11,176 +11,92 @@ extension ContentView {
 
     @ViewBuilder
     var mapBottomToolbar: some View {
-        if showingInlineSearch {
-            HStack(spacing: 12) {
-                bottomBarSearchState
+        HStack(spacing: 14) {
+            Button {
+                PlatformFeedback.lightImpact()
+                #if os(iOS)
+                if shouldUseIPadLayout {
+                    iPadPreferredCompactColumn = .sidebar
+                    iPadSidebarVisibility = .all
+                } else {
+                    showingMapSidebar = true
+                }
+                #else
+                showingMapSidebar = true
+                #endif
+            } label: {
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 50, height: 50)
+                    .themedGlass(in: .circle)
+                    .contentShape(Circle())
             }
-            .onAppear {
-                focusInlineSearchField()
-            }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else {
-            HStack(spacing: 14) {
+            .buttonStyle(.plain)
+
+            Spacer()
+
+            HStack(spacing: 4) {
                 Button {
                     PlatformFeedback.lightImpact()
-                    #if os(iOS)
-                    if shouldUseIPadLayout {
-                        iPadPreferredCompactColumn = .sidebar
-                        iPadSidebarVisibility = .all
-                    } else {
-                        showingMapSidebar = true
+                    recenterOnAllCities = false
+                    DispatchQueue.main.async {
+                        recenterOnAllCities = true
                     }
-                    #else
-                    showingMapSidebar = true
-                    #endif
                 } label: {
-                    Image(systemName: "list.bullet")
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(width: 50, height: 50)
-                        .themedGlass(in: .circle)
-                        .contentShape(Circle())
+                    Image(systemName: "dot.squareshape.split.2x2")
+                        .font(.system(size: 16, weight: .semibold))
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
-                Spacer()
+                mapOverlayMenu
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .tint(theme.colors.primaryText)
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
 
-                HStack(spacing: 4) {
+                if filterSunny {
                     Button {
-                        PlatformFeedback.lightImpact()
-                        recenterOnAllCities = false
-                        DispatchQueue.main.async {
-                            recenterOnAllCities = true
+                        withAnimation {
+                            filterSunny = false
                         }
                     } label: {
-                        Image(systemName: "dot.squareshape.split.2x2")
+                        Image(systemName: "sun.max.fill")
                             .font(.system(size: 16, weight: .semibold))
                             .frame(width: 44, height: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-
-                    mapOverlayMenu
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .tint(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-
-                    if filterSunny {
-                        Button {
-                            withAnimation {
-                                filterSunny = false
-                            }
-                        } label: {
-                            Image(systemName: "sun.max.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    iOSNativeMenu
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
                 }
-                .padding(3)
-                .themedGlass(in: .capsule)
-                .contentShape(Capsule())
 
-                Spacer()
-
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        showingInlineSearch = true
-                    }
-                    focusInlineSearchField()
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(width: 50, height: 50)
-                        .themedGlass(in: .circle)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
+                iOSNativeMenu
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
-        }
-    }
+            .padding(3)
+            .themedGlass(in: .capsule)
+            .contentShape(Capsule())
 
+            Spacer()
 
-    // MARK: - Inline Search Overlay (iPhone)
-
-    // MARK: - Unified Bottom Bar (morphs between toolbar and search)
-
-    // MARK: - Bottom Bar State Views (extracted to reduce stack depth)
-
-    @ViewBuilder
-    private var bottomBarSearchState: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.tertiary)
-            TextField(localizedString("Search for a city", locale: locale), text: $inlineSearchText)
-                .textFieldStyle(.plain)
-                .font(.avenir(.subheadline, weight: .medium))
-                .autocorrectionDisabled()
-                .focused($inlineSearchFocused)
-                .submitLabel(.search)
-                .onSubmit {
-                    if !inlineSearchText.isEmpty {
-                        confirmInlineSearchSelection()
-                    }
-                }
-                .onAppear {
-                    focusInlineSearchField()
-                }
-            if !inlineSearchText.isEmpty {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(.tertiary)
-                    .font(.system(size: 14, weight: .medium))
+            Button {
+                activateInlineSearch()
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(width: 50, height: 50)
+                    .themedGlass(in: .circle)
                     .contentShape(Circle())
-                    .onTapGesture { inlineSearchText = "" }
-                    .transition(.scale.combined(with: .opacity))
             }
+            .buttonStyle(.plain)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.horizontal, 14)
-        .frame(height: 36)
-        .padding(6)
-        .frame(maxWidth: .infinity)
-        .matchedGeometryEffect(id: "bottomBarCenter", in: bottomBarNS)
-        .themedGlass(in: .capsule)
-        .glassEffectID("bottomBarCenter", in: bottomBarNS)
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: inlineSearchText.isEmpty)
-
-        Image(systemName: "xmark")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.primary)
-            .frame(width: 36, height: 36)
-            .padding(6)
-            .matchedGeometryEffect(id: "bottomBarRight", in: bottomBarNS)
-            .themedGlass(in: .circle)
-            .glassEffectID("bottomBarRight", in: bottomBarNS)
-            .contentShape(Circle())
-            .onTapGesture {
-                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                    showingInlineSearch = false
-                    inlineSearchText = ""
-                    inlineSearchFocused = false
-                }
-            }
     }
 
-    private func focusInlineSearchField() {
-        #if os(iOS)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            inlineSearchFocused = true
-        }
-        #else
-        inlineSearchFocused = true
-        #endif
-    }
+
+    // MARK: - Bottom Bar State Views
 
     @ViewBuilder
     private func bottomBarCountryConfirmState(pending: String) -> some View {
@@ -389,9 +305,7 @@ extension ContentView {
 
         Button {
             PlatformFeedback.lightImpact()
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                showingInlineSearch = true
-            }
+            activateInlineSearch()
         } label: {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 22, weight: .semibold))
@@ -434,9 +348,7 @@ extension ContentView {
     var iOSUnifiedBottomBar: some View {
         GlassEffectContainer(spacing: 12) {
         HStack(spacing: 12) {
-            if showingInlineSearch {
-                bottomBarSearchState
-            } else if showingCountrySearch, let pending = pendingCountryList {
+            if showingCountrySearch, let pending = pendingCountryList {
                 bottomBarCountryConfirmState(pending: pending)
             } else if showingCountrySearch {
                 bottomBarCountrySearchState
@@ -451,23 +363,12 @@ extension ContentView {
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 4)
-        .padding(.top, showingInlineSearch || previewCity != nil ? 0 : 20)
+        .padding(.top, previewCity != nil ? 0 : 20)
         .background {
-            if !showingInlineSearch && previewCity == nil {
+            if previewCity == nil {
                 Color.clear
                     .contentShape(Rectangle())
                     .onTapGesture { }
-            }
-        }
-        .onChange(of: inlineSearchText) { _, newValue in
-            inlineSearchManager.search(query: newValue)
-        }
-        .onChange(of: showingInlineSearch) { _, newValue in
-            if newValue {
-                inlineSearchFocused = true
-            } else {
-                inlineSearchManager.search(query: "")
-                inlineSearchFocused = false
             }
         }
         .onChange(of: showingCountrySearch) { _, newValue in
