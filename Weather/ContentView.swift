@@ -79,7 +79,7 @@ struct ContentView: View {
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     #endif
     #if os(macOS)
-    @Environment(\.openWindow) var openWindow
+    @Environment(\.openSettings) var openSettings
     #endif
     
     /// Cities to display on the map — from the active list + preview city
@@ -126,7 +126,7 @@ struct ContentView: View {
     }
 
     #if os(iOS)
-    private var shouldUseIPadLayout: Bool {
+    var shouldUseIPadLayout: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
     }
     #endif
@@ -175,6 +175,8 @@ struct ContentView: View {
     @State var sidebarRenamingListID: CityListID?
     @State var sidebarRenamingCityContextID: String?
     @State var sidebarRenameText: String = ""
+    @State var sidebarEditMode: EditMode = .inactive
+    @State var sidebarShowingAddListAlert: Bool = false
     @FocusState var sidebarNewListFocused: Bool
     @FocusState var sidebarRenameFocused: Bool
     @State var listManagerIsEditing: Bool = false
@@ -217,8 +219,8 @@ struct ContentView: View {
     @State var macMapViewportSize: CGSize = .zero
     #endif
     #if os(iOS)
-    @State private var iPadSidebarVisibility: NavigationSplitViewVisibility = .all
-    @State private var iPadPreferredCompactColumn: NavigationSplitViewColumn = .detail
+    @State var iPadSidebarVisibility: NavigationSplitViewVisibility = .all
+    @State var iPadPreferredCompactColumn: NavigationSplitViewColumn = .detail
     #endif
 
     var toolbarTitle: String {
@@ -246,7 +248,7 @@ struct ContentView: View {
         Group {
             #if os(iOS)
             if shouldUseIPadLayout {
-                iPadRootView
+                iOSNavigationSplitRoot
             } else {
                 iPhoneNavigationStack
             }
@@ -1116,6 +1118,45 @@ struct ContentView: View {
     #endif
 
     #if os(iOS)
+    private var iOSNavigationSplitRoot: some View {
+        NavigationSplitView(columnVisibility: $iPadSidebarVisibility, preferredCompactColumn: $iPadPreferredCompactColumn) {
+            NavigationStack {
+                iPadSidebarContent
+            }
+            .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+        } detail: {
+            iOSNativeDetailNavigationStack
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onAppear {
+            selectedTab = 1
+            iPadPreferredCompactColumn = .detail
+            if sidebarExpandedListIDs.isEmpty {
+                sidebarExpandedListIDs = Set(CityListID.allLists.map(\.rawValue))
+            }
+        }
+    }
+
+    private var iOSNativeDetailNavigationStack: some View {
+        NavigationStack {
+            Group {
+                if shouldUseIPadLayout {
+                    iPadMapContent
+                } else {
+                    iPhoneMapTabContent
+                }
+            }
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationDestination(isPresented: $showingCityDetail) {
+                AnyView(iOSCityDetailDestination)
+            }
+            .navigationDestination(isPresented: $showingAddCityDetail) {
+                AnyView(iOSAddCityDetailDestination)
+            }
+        }
+    }
+
     private var iPadRootView: some View {
         NavigationSplitView(columnVisibility: $iPadSidebarVisibility, preferredCompactColumn: $iPadPreferredCompactColumn) {
             NavigationStack {
@@ -1146,24 +1187,40 @@ struct ContentView: View {
 
     private var iPadSidebarContent: some View {
         macListManagerSidebar
+            .scrollContentBackground(.hidden)
+            .background(theme.colors.mapOcean)
             .navigationTitle(localizedString("Lists", locale: locale))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            sidebarAddingList = true
-                        }
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            sidebarNewListFocused = true
-                        }
+                        sidebarShowingAddListAlert = true
                     } label: {
                         Image(systemName: "plus")
                     }
                 }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            sidebarEditMode = sidebarEditMode.isEditing ? .inactive : .active
+                        }
+                    } label: {
+                        Image(systemName: sidebarEditMode.isEditing ? "checkmark" : "pencil")
+                    }
+                }
             }
-            .toolbarBackground(theme.colors.background, for: .navigationBar)
+            .toolbarBackground(theme.colors.mapOcean, for: .navigationBar)
             .toolbarBackground(.visible, for: .navigationBar)
+            .alert(localizedString("New List", locale: locale), isPresented: $sidebarShowingAddListAlert) {
+                TextField(localizedString("Name", locale: locale), text: $sidebarNewListName)
+                Button(localizedString("Cancel", locale: locale), role: .cancel) {
+                    sidebarNewListName = ""
+                }
+                Button(localizedString("Add", locale: locale)) {
+                    commitListManagerNewList()
+                }
+            }
     }
 
     private var iPadMapContent: some View {
@@ -1239,8 +1296,6 @@ struct ContentView: View {
         }
         .if(showingInlineSearch) { view in
             view
-                .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
-                .searchPresentationToolbarBehavior(.avoidHidingContent)
         }
     }
 
@@ -1356,7 +1411,7 @@ struct ContentView: View {
                 .navigationTitle("")
                 #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
-                .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
+                .toolbar(.hidden, for: .navigationBar)
                 #endif
                 .navigationDestination(isPresented: $showingCityDetail) {
                     AnyView(iOSCityDetailDestination)
@@ -1442,7 +1497,7 @@ struct ContentView: View {
                             Spacer()
                         }
                         .frame(maxWidth: .infinity)
-                            .padding(.top, 8)
+                        .safeAreaPadding(.top, 8)
                     }
                     .overlay(alignment: .trailing) {
                         AnyView(iOSDateSliderOverlay)
@@ -1454,14 +1509,14 @@ struct ContentView: View {
         .overlay(alignment: .bottom) {
             mapBottomToolbar
                 .padding(.horizontal, 28)
-                .padding(.bottom, -6)
+                .padding(.bottom, showingInlineSearch ? 10 : -6)
                 .frame(maxWidth: .infinity, minHeight: 62, alignment: .bottom)
                 .contentShape(Rectangle())
                 .zIndex(100)
         }
         #if os(iOS)
         .fullScreenCover(isPresented: $showingMapSidebar) {
-            listManagerNavigation
+            iPhoneNativeListManager
         }
         #else
         .sheet(isPresented: $showingMapSidebar) {
@@ -1469,6 +1524,55 @@ struct ContentView: View {
         }
         #endif
     }
+
+    #if os(iOS)
+    private var iPhoneNativeListManager: some View {
+        NavigationStack {
+            macListManagerSidebar
+                .scrollContentBackground(.hidden)
+                .background(theme.colors.mapOcean)
+                .navigationTitle(localizedString("Lists", locale: locale))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button {
+                            showingMapSidebar = false
+                        } label: {
+                            Image(systemName: "xmark")
+                        }
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            sidebarShowingAddListAlert = true
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                sidebarEditMode = sidebarEditMode.isEditing ? .inactive : .active
+                            }
+                        } label: {
+                            Image(systemName: sidebarEditMode.isEditing ? "checkmark" : "pencil")
+                        }
+                    }
+                }
+                .alert(localizedString("New List", locale: locale), isPresented: $sidebarShowingAddListAlert) {
+                    TextField(localizedString("Name", locale: locale), text: $sidebarNewListName)
+                    Button(localizedString("Cancel", locale: locale), role: .cancel) {
+                        sidebarNewListName = ""
+                    }
+                    Button(localizedString("Add", locale: locale)) {
+                        commitListManagerNewList()
+                    }
+                }
+        }
+        .background(theme.colors.mapOcean.ignoresSafeArea())
+    }
+    #endif
 
     private func iOSOnAppear() async {
         if hasLaunchedBefore {
@@ -1533,7 +1637,7 @@ struct ContentView: View {
                 .overlay(alignment: .trailing) {
                     mapDateSlider(height: 420)
                 }
-                .padding(.bottom, 440)
+                .padding(.bottom, 380)
                 .padding(.trailing, 1)
                 .transition(.opacity)
             #endif
@@ -1592,9 +1696,10 @@ struct ContentView: View {
         }
 
         if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
-            mapExpandedCard(for: city)
+            mapExpandedCard(for: city, hideCityName: !shouldUseIPadLayout)
                 .id(city.city.id)
                 .padding(.horizontal, 16)
+                .padding(.vertical, shouldUseIPadLayout ? 0 : 8)
                 .padding(.bottom, previewCity != nil ? 104 : 76)
                 .transition(
                     .asymmetric(
@@ -1673,6 +1778,11 @@ struct ContentView: View {
     }
 
     private func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
+        #if os(iOS)
+        if !shouldUseIPadLayout, showingMapExpandedCard, tappedCity?.id == city.id {
+            return
+        }
+        #endif
         showMapMarkerCard(city, anchor: anchor, expanded: false, focusesMarker: true)
     }
 
@@ -1847,27 +1957,18 @@ struct ContentView: View {
                 Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
             }
 
-            Button {
-                let revealCity = city
-                showingCityDetail = false
-                centerOnCityTrigger = nil
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    selectedTab = 1
-                }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                    centerOnCityTrigger = revealCity
-                }
-            } label: {
-                Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
-            }
-
             if cityIsInSidebar(city) {
                 Button {
                     cityToRename = city
                     cityRenameText = city.city.localizedName(locale: locale)
                     showingCityRenameAlert = true
                 } label: {
-                    Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+                    Label {
+                        Text(localizedString("Rename", locale: locale))
+                    } icon: {
+                        Image(systemName: "pencil")
+                            .foregroundStyle(.primary)
+                    }
                 }
 
                 Button(role: .destructive) {
@@ -1880,7 +1981,12 @@ struct ContentView: View {
                         recenterOnAllCities = true
                     }
                 } label: {
-                    Label(localizedString("Delete City", locale: locale), systemImage: "trash")
+                    Label {
+                        Text(localizedString("Delete City", locale: locale))
+                    } icon: {
+                        Image(systemName: "trash")
+                            .foregroundStyle(.red)
+                    }
                 }
             } else {
                 Button {
@@ -1907,6 +2013,48 @@ struct ContentView: View {
     @ViewBuilder
     private var iOSCityDetailDestination: some View {
         if let city = tappedCity {
+            #if os(iOS)
+            if !shouldUseIPadLayout {
+                iOSExpandedCardDetailDestination(for: city)
+            } else {
+                iOSWeatherDetailDestination(for: city)
+            }
+            #else
+            iOSWeatherDetailDestination(for: city)
+            #endif
+        }
+    }
+
+    private func iOSExpandedCardDetailDestination(for city: CityWeather) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            mapExpandedCard(for: city, forceMacStyle: true, plainBackground: true)
+                .padding(.horizontal, 18)
+                .padding(.top, 20)
+                .padding(.bottom, 32)
+                .frame(maxWidth: .infinity)
+        }
+        .scrollContentBackground(.hidden)
+        .background(theme.colors.background.ignoresSafeArea())
+        .navigationTitle(city.city.localizedName(locale: locale))
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                detailActionsMenu(for: city)
+            }
+        }
+        #endif
+        .onAppear {
+            macExpandedCardShowsDetails = true
+        }
+        .onDisappear {
+            macExpandedCardShowsDetails = false
+        }
+    }
+
+    @ViewBuilder
+    private func iOSWeatherDetailDestination(for city: CityWeather) -> some View {
             let cityInSidebar = cityIsInSidebar(city)
             let previousCity = navigatableCity(offset: -1, from: city)
             let nextCity = navigatableCity(offset: 1, from: city)
@@ -2005,7 +2153,6 @@ struct ContentView: View {
                 }
             }
             #endif
-        }
     }
 
     private var iOSAddCitySheet: some View {
@@ -2190,6 +2337,7 @@ struct ContentView: View {
                 centerOnCity: centerOnCityTrigger,
                 leadingFitPadding: macMapLeadingFitPadding,
                 focusSelectedMarker: mapFocusSelectedMarker,
+                allowsMarkerHover: mapAllowsMarkerHover,
                 cameraProfile: mapCameraProfile,
                 onMarkerTap: { city, point in
                     handleMapMarkerTap(city, anchor: point)
@@ -2259,10 +2407,20 @@ struct ContentView: View {
     }
 
     private var mapFocusSelectedMarker: Bool {
-        #if os(macOS) || os(iOS)
+        #if os(iOS)
+        shouldUseIPadLayout ? macMapExpandedCardFocusesMarker : showingMapExpandedCard
+        #elseif os(macOS)
         usesFloatingMapCardLayout ? macMapExpandedCardFocusesMarker : false
         #else
         false
+        #endif
+    }
+
+    private var mapAllowsMarkerHover: Bool {
+        #if os(iOS)
+        shouldUseIPadLayout
+        #else
+        true
         #endif
     }
 

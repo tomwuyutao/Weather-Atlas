@@ -12,21 +12,27 @@ extension ContentView {
     @ViewBuilder
     var mapBottomToolbar: some View {
         if showingInlineSearch {
-            GlassEffectContainer(spacing: 12) {
-                HStack(spacing: 12) {
-                    bottomBarSearchState
-                }
+            HStack(spacing: 12) {
+                bottomBarSearchState
             }
             .onAppear {
-                inlineSearchFocused = true
+                focusInlineSearchField()
             }
+            .transition(.move(edge: .bottom).combined(with: .opacity))
         } else {
             HStack(spacing: 14) {
                 Button {
                     PlatformFeedback.lightImpact()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    #if os(iOS)
+                    if shouldUseIPadLayout {
+                        iPadPreferredCompactColumn = .sidebar
+                        iPadSidebarVisibility = .all
+                    } else {
                         showingMapSidebar = true
                     }
+                    #else
+                    showingMapSidebar = true
+                    #endif
                 } label: {
                     Image(systemName: "list.bullet")
                         .font(.system(size: 18, weight: .semibold))
@@ -87,6 +93,7 @@ extension ContentView {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         showingInlineSearch = true
                     }
+                    focusInlineSearchField()
                 } label: {
                     Image(systemName: "magnifyingglass")
                         .font(.system(size: 18, weight: .semibold))
@@ -117,6 +124,15 @@ extension ContentView {
                 .font(.avenir(.subheadline, weight: .medium))
                 .autocorrectionDisabled()
                 .focused($inlineSearchFocused)
+                .submitLabel(.search)
+                .onSubmit {
+                    if !inlineSearchText.isEmpty {
+                        confirmInlineSearchSelection()
+                    }
+                }
+                .onAppear {
+                    focusInlineSearchField()
+                }
             if !inlineSearchText.isEmpty {
                 Image(systemName: "xmark.circle.fill")
                     .foregroundStyle(.tertiary)
@@ -152,6 +168,16 @@ extension ContentView {
                     inlineSearchFocused = false
                 }
             }
+    }
+
+    private func focusInlineSearchField() {
+        #if os(iOS)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            inlineSearchFocused = true
+        }
+        #else
+        inlineSearchFocused = true
+        #endif
     }
 
     @ViewBuilder

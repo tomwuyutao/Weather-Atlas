@@ -16,19 +16,20 @@ extension ContentView {
 
     var macListManagerSidebar: some View {
         List(selection: $macSidebarSelection) {
-            Section(localizedString("Lists", locale: locale)) {
-                if sidebarAddingList {
-                    macSidebarNewListRow
-                }
-
-                ForEach(CityListID.allLists) { listID in
-                    macSidebarNativeListFolder(for: listID)
-                }
-                .onMove(perform: moveMacSidebarLists)
+            #if os(iOS)
+            Section {
+                macSidebarListRows
             }
+            .listRowBackground(theme.colors.mapLand)
+            #else
+            Section(localizedString("Lists", locale: locale)) {
+                macSidebarListRows
+            }
+            #endif
         }
         .listStyle(.sidebar)
         .tint(theme.colors.accent)
+        .environment(\.editMode, $sidebarEditMode)
         .id(macSidebarRefreshTick)
         .onAppear {
             if sidebarExpandedListIDs.isEmpty {
@@ -45,6 +46,19 @@ extension ContentView {
         .onChange(of: macSidebarSelection) { _, newSelection in
             handleMacSidebarSelection(newSelection)
         }
+    }
+
+    @ViewBuilder
+    private var macSidebarListRows: some View {
+        if sidebarAddingList {
+            macSidebarNewListRow
+        }
+
+        ForEach(CityListID.allLists) { listID in
+            macSidebarNativeListFolder(for: listID)
+        }
+        .onMove(perform: moveMacSidebarLists)
+        .onDelete(perform: deleteMacSidebarLists)
     }
 
     @ViewBuilder
@@ -120,6 +134,9 @@ extension ContentView {
                 .onMove { source, destination in
                     moveMacSidebarCities(in: listID, from: source, to: destination)
                 }
+                .onDelete { offsets in
+                    deleteMacSidebarCities(in: listID, at: offsets)
+                }
             }
         }
     }
@@ -139,8 +156,28 @@ extension ContentView {
         PlatformFeedback.lightImpact()
     }
 
+    private func deleteMacSidebarLists(at offsets: IndexSet) {
+        let lists = CityListID.allLists
+        for index in offsets {
+            guard lists.indices.contains(index) else { continue }
+            Task { await weatherService.deleteList(lists[index]) }
+        }
+        macSidebarRefreshTick += 1
+        PlatformFeedback.lightImpact()
+    }
+
     private func moveMacSidebarCities(in listID: CityListID, from source: IndexSet, to destination: Int) {
         weatherService.moveCity(in: listID, from: source, to: destination)
+        macSidebarRefreshTick += 1
+        PlatformFeedback.lightImpact()
+    }
+
+    private func deleteMacSidebarCities(in listID: CityListID, at offsets: IndexSet) {
+        let cities = weatherService.weatherData(for: listID)
+        for index in offsets {
+            guard cities.indices.contains(index) else { continue }
+            weatherService.removeCity(cities[index], from: listID)
+        }
         macSidebarRefreshTick += 1
         PlatformFeedback.lightImpact()
     }

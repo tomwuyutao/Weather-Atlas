@@ -95,64 +95,69 @@ extension ContentView {
 
     // MARK: - Native Menu
 
+    @ViewBuilder
+    private var nativeMenuItems: some View {
+        Button {
+            #if os(macOS)
+            openSettings()
+            #else
+            showingSettings = true
+            #endif
+        } label: {
+            Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
+        }
+
+        Divider()
+
+        if selectedTab == 1 {
+            Toggle(isOn: Binding(
+                get: { showLegend },
+                set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
+            )) {
+                Label(localizedString("Legend", locale: locale), systemImage: "eye")
+            }
+        }
+
+        Button {
+            Task { await weatherService.refreshWeather() }
+        } label: {
+            Label(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"), systemImage: "arrow.clockwise")
+        }
+        .disabled(weatherService.isLoading)
+
+        Toggle(isOn: Binding(
+            get: { filterSunny },
+            set: { newValue in withAnimation { filterSunny = newValue } }
+        )) {
+            Label(localizedString("Filter Sunny", locale: locale), systemImage: "sun.max")
+        }
+
+        Divider()
+
+        if !isEditingListName {
+            if let city = selectedTab == 1 ? (showingMapExpandedCard ? tappedCity : nil) : selectedCity,
+               cityIsInSidebar(city) {
+                Button(role: .destructive) {
+                    weatherService.removeCity(city)
+                    if selectedTab == 1 {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            showingMapExpandedCard = false
+                            tappedCity = nil
+                            recenterOnAllCities = true
+                        }
+                    } else if selectedCity?.id == city.id {
+                        selectedCity = nil
+                    }
+                } label: {
+                    Label(localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"", systemImage: "trash")
+                }
+            }
+        }
+    }
+
     var iOSNativeMenu: some View {
         Menu {
-            Button {
-                #if os(macOS)
-                openWindow(id: "settings")
-                #else
-                showingSettings = true
-                #endif
-            } label: {
-                Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
-            }
-
-            Divider()
-
-            if selectedTab == 1 {
-                Toggle(isOn: Binding(
-                    get: { showLegend },
-                    set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
-                )) {
-                    Label(localizedString("Legend", locale: locale), systemImage: "eye")
-                }
-            }
-
-            Button {
-                Task { await weatherService.refreshWeather() }
-            } label: {
-                Label(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"), systemImage: "arrow.clockwise")
-            }
-            .disabled(weatherService.isLoading)
-
-            Toggle(isOn: Binding(
-                get: { filterSunny },
-                set: { newValue in withAnimation { filterSunny = newValue } }
-            )) {
-                Label(localizedString("Filter Sunny", locale: locale), systemImage: "sun.max")
-            }
-
-            Divider()
-
-            if !isEditingListName {
-                if let city = selectedTab == 1 ? (showingMapExpandedCard ? tappedCity : nil) : selectedCity,
-                   cityIsInSidebar(city) {
-                    Button(role: .destructive) {
-                        weatherService.removeCity(city)
-                        if selectedTab == 1 {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                showingMapExpandedCard = false
-                                tappedCity = nil
-                                recenterOnAllCities = true
-                            }
-                        } else if selectedCity?.id == city.id {
-                            selectedCity = nil
-                        }
-                    } label: {
-                        Label(localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"", systemImage: "trash")
-                    }
-                }
-            }
+            nativeMenuItems
         } label: {
             Image(systemName: "ellipsis")
                 .foregroundStyle(.primary)

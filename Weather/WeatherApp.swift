@@ -82,13 +82,9 @@ struct WeatherApp: App {
             WeatherNavigateCommands()
         }
 
-        Window("Settings", id: "settings") {
+        Settings {
             SettingsRoot(theme: theme, appLocale: appLocale)
         }
-        .defaultSize(width: 360, height: 430)
-        .windowResizability(.contentMinSize)
-        .windowStyle(.titleBar)
-        .keyboardShortcut(",", modifiers: .command)
         #else
         WindowGroup {
             ThemeRoot(theme: theme, appLocale: appLocale)
@@ -110,12 +106,12 @@ private struct WeatherSidebarCommands: Commands {
 }
 
 private struct SettingsCommands: Commands {
-    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
 
     var body: some Commands {
         CommandGroup(replacing: .appSettings) {
             Button("Settings") {
-                openWindow(id: "settings")
+                openSettings()
             }
             .keyboardShortcut(",", modifiers: .command)
         }
@@ -326,17 +322,14 @@ private struct SettingsRoot: View {
 
     var body: some View {
         let resolvedColors = theme.colors(for: colorScheme)
-        NavigationStack {
-            SettingsView(
-                weatherService: weatherService,
-                onResetLists: {
-                    Task {
-                        await weatherService.resetAllLists()
-                    }
+        SettingsView(
+            weatherService: weatherService,
+            onResetLists: {
+                Task {
+                    await weatherService.resetAllLists()
                 }
-            )
-            .navigationTitle("Settings")
-        }
+            }
+        )
         .environment(\.locale, appLocale)
         .defaultFont()
         .environment(\.appTheme, theme)

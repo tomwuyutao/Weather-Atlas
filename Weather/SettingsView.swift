@@ -99,7 +99,6 @@ struct SettingsView: View {
     let onResetLists: () -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var theme
-    @Environment(\.themeColors) private var colors
     @Environment(\.locale) private var locale
 
     @State private var showingResetConfirmation = false
@@ -115,303 +114,146 @@ struct SettingsView: View {
     @ViewBuilder
     var body: some View {
         #if os(macOS)
-        macSettingsBody
+        nativeMacSettingsBody
         #else
         NavigationStack {
-            ZStack {
-                colors.background.ignoresSafeArea()
-
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 28) {
-                        settingsSection(title: localizedString("General", locale: locale)) {
-                            settingsMenuRow(icon: "thermometer.medium", label: localizedString("Temperature", locale: locale), value: selectedUnit.symbol) {
-                                Picker(selection: Binding(get: { temperatureUnit }, set: { temperatureUnit = $0 })) {
-                                    Text("Celsius (°C)").tag(TemperatureUnit.celsius.rawValue)
-                                    Text("Fahrenheit (°F)").tag(TemperatureUnit.fahrenheit.rawValue)
-                                } label: { EmptyView() }
-                                .pickerStyle(.inline)
-                            }
-
-                            rowDivider()
-
-                            settingsMenuRow(icon: "ruler", label: localizedString("Distance", locale: locale), value: selectedDistanceUnit.symbol) {
-                                Picker(selection: Binding(get: { distanceUnit }, set: { distanceUnit = $0 })) {
-                                    Text("Kilometers (km)").tag(DistanceUnit.kilometers.rawValue)
-                                    Text("Miles (mi)").tag(DistanceUnit.miles.rawValue)
-                                } label: { EmptyView() }
-                                .pickerStyle(.inline)
-                            }
-
-                            rowDivider()
-
-                            settingsMenuRow(icon: "globe", label: localizedString("Language", locale: locale), value: appLanguage == "zh-Hans" ? "中文" : "English") {
-                                Picker(selection: Binding(get: { appLanguage }, set: { appLanguage = $0 })) {
-                                    Text("English").tag("en")
-                                    Text("中文").tag("zh-Hans")
-                                } label: { EmptyView() }
-                                .pickerStyle(.inline)
-                            }
-
-                            rowDivider()
-
-                            settingsMenuRow(icon: "circle.lefthalf.filled", label: localizedString("Theme", locale: locale), value: theme.style.displayName) {
-                                Picker(selection: Binding(get: { theme.style }, set: { theme.style = $0 })) {
-                                    Text("Light").tag(AppThemeStyle.light)
-                                    Text("Dark").tag(AppThemeStyle.dark)
-                                    Text("Auto").tag(AppThemeStyle.automatic)
-                                } label: { EmptyView() }
-                                .pickerStyle(.inline)
-                            }
-
-                            rowDivider()
-
-                            Button {
-                                showingResetConfirmation = true
-                            } label: {
-                                HStack(spacing: 12) {
-                                    Image(systemName: "arrow.counterclockwise")
-                                        .font(.system(size: 15, weight: .medium))
-                                        .foregroundStyle(colors.accent)
-                                        .frame(width: 22)
-                                    Text(localizedString("Reset Lists to Defaults", locale: locale))
-                                        .font(.avenir(.body, weight: .medium))
-                                        .foregroundStyle(colors.accent)
-                                    Spacer()
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 16)
-                                .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-
-                        settingsSection(title: localizedString("About", locale: locale)) {
-                            settingsRow(icon: "info.circle", label: localizedString("Version", locale: locale), value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
-                            rowDivider()
-                            settingsRow(icon: "cloud.sun", label: localizedString("Powered by", locale: locale), value: "Apple Weather")
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.top, 12)
-                    .padding(.bottom, 40)
-                }
-            }
+            settingsForm
             .navigationTitle(localizedString("Settings", locale: locale))
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
-            #endif
             .toolbar {
-                #if os(iOS)
                 ToolbarItem(placement: .topBarTrailing) {
-                    settingsCloseButton
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "checkmark")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(theme.colors.accent)
                 }
-                .sharedBackgroundVisibility(.hidden)
-                #else
-                ToolbarItem {
-                    settingsCloseButton
-                }
-                #endif
             }
-            #if os(iOS)
-            .toolbarBackground(colors.background, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
             #endif
-            .alert(localizedString("Reset Lists", locale: locale), isPresented: $showingResetConfirmation) {
-                Button(localizedString("Cancel", locale: locale), role: .cancel) {}
-                Button(localizedString("Reset", locale: locale), role: .destructive) {
-                    onResetLists()
-                }
-            } message: {
-                Text(localizedString("This will reset all city lists back to their defaults. Any cities you added or removed will be lost.", locale: locale))
-            }
         }
+        .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
         #endif
     }
 
     #if os(macOS)
-    private var macSettingsBody: some View {
-        ZStack {
-            colors.background.ignoresSafeArea()
+    private var nativeMacSettingsBody: some View {
+        TabView {
+            Tab(localizedString("General", locale: locale), systemImage: "gear") {
+                settingsForm
+            }
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
-                    settingsSection(title: localizedString("General", locale: locale)) {
-                        settingsMenuRow(icon: "thermometer.medium", label: localizedString("Temperature", locale: locale), value: selectedUnit.symbol) {
-                            Picker(selection: Binding(get: { temperatureUnit }, set: { temperatureUnit = $0 })) {
-                                Text("Celsius (°C)").tag(TemperatureUnit.celsius.rawValue)
-                                Text("Fahrenheit (°F)").tag(TemperatureUnit.fahrenheit.rawValue)
-                            } label: { EmptyView() }
-                            .pickerStyle(.inline)
-                        }
-
-                        rowDivider()
-
-                        settingsMenuRow(icon: "ruler", label: localizedString("Distance", locale: locale), value: selectedDistanceUnit.symbol) {
-                            Picker(selection: Binding(get: { distanceUnit }, set: { distanceUnit = $0 })) {
-                                Text("Kilometers (km)").tag(DistanceUnit.kilometers.rawValue)
-                                Text("Miles (mi)").tag(DistanceUnit.miles.rawValue)
-                            } label: { EmptyView() }
-                            .pickerStyle(.inline)
-                        }
-
-                        rowDivider()
-
-                        settingsMenuRow(icon: "globe", label: localizedString("Language", locale: locale), value: appLanguage == "zh-Hans" ? "中文" : "English") {
-                            Picker(selection: Binding(get: { appLanguage }, set: { appLanguage = $0 })) {
-                                Text("English").tag("en")
-                                Text("中文").tag("zh-Hans")
-                            } label: { EmptyView() }
-                            .pickerStyle(.inline)
-                        }
-
-                        rowDivider()
-
-                        settingsMenuRow(icon: "circle.lefthalf.filled", label: localizedString("Theme", locale: locale), value: theme.style.displayName) {
-                            Picker(selection: Binding(get: { theme.style }, set: { theme.style = $0 })) {
-                                Text("Light").tag(AppThemeStyle.light)
-                                Text("Dark").tag(AppThemeStyle.dark)
-                                Text("Auto").tag(AppThemeStyle.automatic)
-                            } label: { EmptyView() }
-                            .pickerStyle(.inline)
-                        }
-
-                        rowDivider()
-
-                        Button {
-                            showingResetConfirmation = true
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: "arrow.counterclockwise")
-                                    .font(.system(size: 11, weight: .regular))
-                                    .foregroundStyle(colors.destructive)
-                                    .frame(width: 16)
-                                Text(localizedString("Reset Lists to Defaults", locale: locale))
-                                    .font(.avenir(.caption, weight: .regular))
-                                    .foregroundStyle(colors.destructive)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 13)
-                            .padding(.vertical, 8)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    settingsSection(title: localizedString("About", locale: locale)) {
-                        settingsRow(icon: "info.circle", label: localizedString("Version", locale: locale), value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")
-                        rowDivider()
-                        settingsRow(icon: "cloud.sun", label: localizedString("Powered by", locale: locale), value: "Apple Weather")
-                    }
-                }
-                .padding(.horizontal, 18)
-                .padding(.top, 16)
-                .padding(.bottom, 18)
+            Tab(localizedString("About", locale: locale), systemImage: "info.circle") {
+                aboutForm
             }
         }
-        .frame(
-            minWidth: 340,
-            idealWidth: 360,
-            maxWidth: .infinity,
-            minHeight: 390,
-            idealHeight: 430,
-            maxHeight: .infinity
-        )
-        .alert(localizedString("Reset Lists", locale: locale), isPresented: $showingResetConfirmation) {
+        .scenePadding()
+        .frame(width: 420)
+        .frame(minHeight: 260)
+        .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
+    }
+    #endif
+
+    private var settingsForm: some View {
+        Form {
+            Section(localizedString("General", locale: locale)) {
+                Picker(selection: Binding(get: { temperatureUnit }, set: { temperatureUnit = $0 })) {
+                    Text("Celsius (°C)").tag(TemperatureUnit.celsius.rawValue)
+                    Text("Fahrenheit (°F)").tag(TemperatureUnit.fahrenheit.rawValue)
+                } label: {
+                    settingsLabel(localizedString("Temperature", locale: locale), systemImage: "thermometer.medium")
+                }
+
+                Picker(selection: Binding(get: { distanceUnit }, set: { distanceUnit = $0 })) {
+                    Text("Kilometers (km)").tag(DistanceUnit.kilometers.rawValue)
+                    Text("Miles (mi)").tag(DistanceUnit.miles.rawValue)
+                } label: {
+                    settingsLabel(localizedString("Distance", locale: locale), systemImage: "ruler")
+                }
+
+                Picker(selection: Binding(get: { appLanguage }, set: { appLanguage = $0 })) {
+                    Text("English").tag("en")
+                    Text("中文").tag("zh-Hans")
+                } label: {
+                    settingsLabel(localizedString("Language", locale: locale), systemImage: "globe")
+                }
+
+                Picker(selection: Binding(get: { theme.style }, set: { theme.style = $0 })) {
+                    Text("Light").tag(AppThemeStyle.light)
+                    Text("Dark").tag(AppThemeStyle.dark)
+                    Text("Auto").tag(AppThemeStyle.automatic)
+                } label: {
+                    settingsLabel(localizedString("Theme", locale: locale), systemImage: "circle.lefthalf.filled")
+                }
+            }
+            .listRowBackground(theme.colors.mapLand)
+
+            Section {
+                Button(role: .destructive) {
+                    showingResetConfirmation = true
+                } label: {
+                    Label(localizedString("Reset Lists to Defaults", locale: locale), systemImage: "arrow.counterclockwise")
+                        .foregroundStyle(.red)
+                }
+            }
+            .listRowBackground(theme.colors.mapLand)
+        }
+        .scrollContentBackground(.hidden)
+        .background(theme.colors.mapOcean)
+        #if os(macOS)
+        .formStyle(.grouped)
+        #endif
+    }
+
+    private var aboutForm: some View {
+        Form {
+            Section(localizedString("About", locale: locale)) {
+                settingsInfoRow(
+                    localizedString("Version", locale: locale),
+                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
+                    systemImage: "info.circle"
+                )
+                settingsInfoRow(localizedString("Powered by", locale: locale), value: "Apple Weather", systemImage: "cloud.sun")
+            }
+            .listRowBackground(theme.colors.mapLand)
+        }
+        .scrollContentBackground(.hidden)
+        .background(theme.colors.mapOcean)
+        #if os(macOS)
+        .formStyle(.grouped)
+        #endif
+    }
+
+    private func settingsLabel(_ title: String, systemImage: String) -> some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(.primary)
+        }
+    }
+
+    private func settingsInfoRow(_ title: String, value: String, systemImage: String) -> some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .foregroundStyle(.primary)
+                .frame(width: 20)
+            LabeledContent(title, value: value)
+        }
+    }
+}
+
+private extension View {
+    func settingsResetAlert(isPresented: Binding<Bool>, locale: Locale, onReset: @escaping () -> Void) -> some View {
+        alert(localizedString("Reset Lists", locale: locale), isPresented: isPresented) {
             Button(localizedString("Cancel", locale: locale), role: .cancel) {}
             Button(localizedString("Reset", locale: locale), role: .destructive) {
-                onResetLists()
+                onReset()
             }
         } message: {
             Text(localizedString("This will reset all city lists back to their defaults. Any cities you added or removed will be lost.", locale: locale))
         }
-    }
-    #endif
-
-    private var settingsCloseButton: some View {
-        Button {
-            dismiss()
-        } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(colors.primaryText)
-                .frame(width: 44, height: 44)
-                .themedGlass(in: .circle)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func settingsSection<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.avenir(.caption2, weight: .medium))
-                .foregroundStyle(colors.primaryText.opacity(0.62))
-                .padding(.horizontal, 4)
-
-            VStack(spacing: 0) {
-                content()
-            }
-            .background(colors.listCardFill, in: RoundedRectangle(cornerRadius: 12))
-        }
-    }
-
-    private func rowDivider() -> some View {
-        Rectangle()
-            .fill(colors.primaryText.opacity(0.08))
-            .frame(height: 1)
-            .padding(.leading, 42)
-    }
-
-    private func settingsRow(icon: String, label: String, value: String) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .regular))
-                .foregroundStyle(colors.accent)
-                .frame(width: 16)
-            Text(label)
-                .font(.avenir(.caption, weight: .regular))
-                .foregroundStyle(colors.primaryText)
-            Spacer()
-            Text(value)
-                .font(.avenir(.caption, weight: .regular))
-                .foregroundStyle(colors.primaryText.opacity(0.55))
-        }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 8)
-    }
-
-    private func settingsMenuRow<Content: View>(icon: String, label: String, value: String, @ViewBuilder content: () -> Content) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 11, weight: .regular))
-                .foregroundStyle(colors.accent)
-                .frame(width: 16)
-
-            Text(label)
-                .font(.avenir(.caption, weight: .regular))
-                .foregroundStyle(colors.primaryText)
-
-            Spacer()
-
-            Menu {
-                content()
-            } label: {
-                HStack(spacing: 6) {
-                    Text(value)
-                        .font(.avenir(.caption, weight: .regular))
-                        .foregroundStyle(colors.primaryText.opacity(0.62))
-                        .lineLimit(1)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(colors.primaryText.opacity(0.35))
-                }
-                .frame(minWidth: 58, alignment: .trailing)
-                .contentShape(Rectangle())
-            }
-            .menuStyle(.button)
-            .buttonStyle(.plain)
-            .fixedSize(horizontal: true, vertical: false)
-        }
-        .padding(.horizontal, 13)
-        .padding(.vertical, 8)
     }
 }

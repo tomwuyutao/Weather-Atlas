@@ -18,6 +18,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     var centerOnCity: CityWeather?
     var leadingFitPadding: Double = 0
     var focusSelectedMarker: Bool = true
+    var allowsMarkerHover: Bool = true
     var cameraProfile: MapCameraProfile = .desktop
     var onMarkerTap: (CityWeather, CGPoint?) -> Void
     var onMapClick: ((CLLocationCoordinate2D, CGPoint?) -> Void)? = nil
@@ -202,7 +203,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             guard let data = try? JSONEncoder().encode(features),
                   let json = String(data: data, encoding: .utf8) else { return }
             let selectedID = parent.focusSelectedMarker ? (parent.tappedCity?.id.uuidString ?? "") : ""
-            let payload = "{features:\(json),selectedID:\(Self.jsString(selectedID))}"
+            let payload = "{features:\(json),selectedID:\(Self.jsString(selectedID)),allowsMarkerHover:\(parent.allowsMarkerHover ? "true" : "false")}"
 
             if force || payload != lastPayload {
                 lastPayload = payload
@@ -367,6 +368,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           -webkit-backdrop-filter: blur(10px) saturate(1.12);
           backdrop-filter: blur(10px) saturate(1.12);
           border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+          display: none;
+        }
+        body.desktop-camera #window-drag-blur {
+          display: block;
         }
         body.dark-map #window-drag-blur {
           background: rgba(26, 27, 46, 0.10);
@@ -459,6 +464,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         function activeCameraProfile() {
           return cameraProfiles[cameraProfile] || cameraProfiles.desktop;
+        }
+
+        function applyCameraProfileClass() {
+          document.body.classList.toggle('desktop-camera', cameraProfile === 'desktop');
         }
 
         function layerTextField(layer) {
@@ -683,6 +692,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         function collectionFromPayload(payload) {
           const selectedID = payload.selectedID || '';
           const hasSelection = selectedID !== '';
+          const hoverEnabled = payload.allowsMarkerHover !== false;
           return {
             type: 'FeatureCollection',
             features: (payload.features || []).map(item => ({
@@ -699,7 +709,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 visibleScale: markerVisibilityScales[item.id] ?? (item.hidden ? 0 : 1),
                 selectedPulse: item.id === selectedID ? selectedPulse : 0,
                 selected: item.id === selectedID,
-                hovered: item.id === hoveredMarkerID,
+                hovered: hoverEnabled && item.id === hoveredMarkerID,
                 dimmed: hasSelection && item.id !== selectedID
               },
               geometry: { type: 'Point', coordinates: [item.longitude, item.latitude] }
@@ -708,7 +718,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
 
         function markerTargetScale(id) {
-          return (id && id === selectedMarkerID) ? 1.35 : (id && id === hoveredMarkerID ? 1 : 0);
+          const hoverEnabled = pendingPayload?.allowsMarkerHover !== false;
+          return (id && id === selectedMarkerID) ? 1.35 : (hoverEnabled && id && id === hoveredMarkerID ? 1 : 0);
         }
 
         function markerVisibilityTarget(item) {
@@ -771,6 +782,14 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         function updateSource(payload) {
           pendingPayload = payload;
+          if (payload?.allowsMarkerHover === false) {
+            hoveredMarkerID = '';
+            hoveredMarkerPoint = null;
+            document.getElementById('hover-label')?.classList.remove('visible');
+            if (!(payload?.selectedID || '')) {
+              Object.keys(markerScales).forEach(id => { markerScales[id] = 0; });
+            }
+          }
           selectedMarkerID = payload?.selectedID || '';
           document.body.classList.toggle('focus-selected', !!selectedMarkerID);
           ensureLayers();
@@ -786,6 +805,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         window.setWeatherMapCameraProfile = function(profile) {
           cameraProfile = cameraProfiles[profile] ? profile : 'desktop';
+          applyCameraProfileClass();
         };
 
         window.fitWeatherData = function(leadingPadding = 0) {
@@ -897,6 +917,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
 
         function updateHoveredMarkerLabel(id, point) {
+          if (pendingPayload?.allowsMarkerHover === false) {
+            document.getElementById('hover-label')?.classList.remove('visible');
+            return;
+          }
           const feature = pendingPayload?.features?.find(item => item.id === id);
           const label = document.getElementById('hover-label');
           if (!label || !feature || !point) return;
@@ -919,6 +943,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
 
         function refreshHoveredMarker(id, point) {
+          if (pendingPayload?.allowsMarkerHover === false) return;
           updateHoveredMarkerLabel(id, point);
           if (hoveredMarkerID === id) {
             hoveredMarkerPoint = point;
@@ -996,6 +1021,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
 
         async function init() {
+          applyCameraProfileClass();
           const camera = activeCameraProfile();
           map = new maplibregl.Map({
             container: 'map',
@@ -1097,6 +1123,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             event.preventDefault();
           });
           map.on('mousemove', 'weather-hit', event => {
+            if (pendingPayload?.allowsMarkerHover === false) return;
             const feature = nearestMarkerFeature(event.features, event.point);
             if (!feature?.properties?.id) return;
             commandPressed = !!event.originalEvent?.metaKey;
