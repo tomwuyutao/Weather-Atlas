@@ -133,7 +133,6 @@ struct ContentView: View {
 
     // MARK: - iOS View
     @Namespace private var tabBarNamespace
-    @Namespace var bottomBarNS
     @State var iOSPreviousDayOffset: Int = 0
     @State var dateSwitcherForward: Bool = true
     @State var showingDatePopover: Bool = false
@@ -170,17 +169,6 @@ struct ContentView: View {
     @State var sidebarShowingAddListAlert: Bool = false
     @FocusState var sidebarNewListFocused: Bool
     @FocusState var sidebarRenameFocused: Bool
-    @State var listManagerIsEditing: Bool = false
-    @State var listRenameDrafts: [String: String] = [:]
-    @State var listSheetDetent: PresentationDetent = .medium
-    @State var showingCountrySearch: Bool = false
-    @State var countrySearchText: String = ""
-    @FocusState var countrySearchFocused: Bool
-    @State var pendingCountryList: String?
-    @State var isLoadingPendingCountry: Bool = false
-    @State var allCountries: [String] = []
-    @State var showingMapStylePopover: Bool = false
-    @State var showingMapStyleSheet: Bool = false
     @State var inlineAddTargetListID: CityListID?
     #if os(iOS)
     @State var sidebarEditMode: EditMode = .inactive
@@ -223,7 +211,7 @@ struct ContentView: View {
     @State var isLoadingMapList: Bool = false
     @State var capsuleSwipeFromTrailing: Bool = true
 
-    // Map style sheet is in ContentView+MapStyleSheet.swift
+    // Map overlay menu is in ContentView+MapStyleSheet.swift
 
     // Map expanded card is in ContentView+MapExpandedCard.swift
     // Map date slider is in ContentView+MapDateSlider.swift
@@ -296,6 +284,56 @@ struct ContentView: View {
         }
         .overlay {
             iOSDeleteListConfirmationOverlay
+        }
+        .onChange(of: showingRenameAlert) { _, isShowing in
+            if isShowing {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    renameAlertFocused = true
+                }
+            } else {
+                renameAlertFocused = false
+            }
+        }
+        .onChange(of: showingCityRenameAlert) { _, isShowing in
+            if isShowing {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    cityRenameFocused = true
+                }
+            } else {
+                cityRenameFocused = false
+            }
+        }
+        .alert(localizedString("Rename", locale: locale), isPresented: $showingRenameAlert) {
+            TextField(localizedString("Name", locale: locale), text: $renameAlertText)
+                .focused($renameAlertFocused)
+            Button(localizedString("Cancel", locale: locale), role: .cancel) { }
+            Button(localizedString("OK", locale: locale)) {
+                let trimmed = renameAlertText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    if let listToRenameID {
+                        weatherService.renameList(listToRenameID, to: trimmed)
+                    } else {
+                        weatherService.renameCurrentList(to: trimmed)
+                    }
+                }
+                listToRenameID = nil
+            }
+        }
+        .alert(localizedString("Rename", locale: locale), isPresented: $showingCityRenameAlert) {
+            TextField(localizedString("Name", locale: locale), text: $cityRenameText)
+                .focused($cityRenameFocused)
+            Button(localizedString("Cancel", locale: locale), role: .cancel) { }
+            Button(localizedString("OK", locale: locale)) {
+                let trimmed = cityRenameText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty, let city = cityToRename {
+                    if let cityToRenameListID {
+                        weatherService.renameCity(city, in: cityToRenameListID, to: trimmed)
+                    } else {
+                        weatherService.renameCity(city, to: trimmed)
+                    }
+                }
+                cityToRenameListID = nil
+            }
         }
         .toolbar(removing: .title)
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
@@ -686,11 +724,6 @@ struct ContentView: View {
                         .zIndex(12)
                 }
 
-                if showingCountrySearch, !countrySearchText.isEmpty {
-                    iOSCountrySearchResults
-                        .transition(.opacity)
-                        .zIndex(10)
-                }
             }
             .onAppear {
                 macMapViewportSize = geometry.size
@@ -1222,11 +1255,6 @@ struct ContentView: View {
                         .zIndex(12)
                 }
 
-                if showingCountrySearch, !countrySearchText.isEmpty {
-                    iOSCountrySearchResults
-                        .transition(.opacity)
-                        .zIndex(10)
-                }
             }
             .onAppear {
                 macMapViewportSize = geometry.size
@@ -1354,7 +1382,7 @@ struct ContentView: View {
     }
 
     private var iPhoneShowsNativeToolbar: Bool {
-        selectedTab != 2 && !isMapSpecialMode && !showingInlineSearch && !showingCountrySearch && previewCity == nil
+        selectedTab != 2 && !isMapSpecialMode && !showingInlineSearch && previewCity == nil
     }
 
     private var iPhoneMapTabContent: some View {
@@ -1393,24 +1421,14 @@ struct ContentView: View {
                 iOSMainOverlays
             }
         }
-        .overlay(alignment: .bottom) {
+        .toolbar {
             if !showingInlineSearch {
-                mapBottomToolbar
-                    .padding(.horizontal, 28)
-                    .padding(.bottom, -6)
-                    .frame(maxWidth: .infinity, minHeight: 62, alignment: .bottom)
-                    .contentShape(Rectangle())
-                    .zIndex(100)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                iPhoneNativeBottomToolbar
             }
         }
         #if os(iOS)
         .fullScreenCover(isPresented: $showingMapSidebar) {
             iPhoneNativeListManager
-        }
-        #else
-        .sheet(isPresented: $showingMapSidebar) {
-            listManagerNavigation
         }
         #endif
     }
@@ -1609,18 +1627,6 @@ struct ContentView: View {
                 .zIndex(12)
         }
 
-        // Country search results overlay
-        if showingCountrySearch, !countrySearchText.isEmpty {
-            iOSCountrySearchResults
-                .transition(.opacity)
-                .zIndex(10)
-        }
-
-        // Preview flows still use the transitional bottom bar; the native search tab owns search UI.
-        if false {
-            iOSUnifiedBottomBar
-                .zIndex(11)
-        }
     }
 
     private var iOSMapControlsCapsule: some View {

@@ -1,4 +1,5 @@
 import SwiftUI
+import Charts
 
 enum WeatherChartMetric: Hashable {
     case temperature, feelsLike, cloudCover, precipitation
@@ -9,90 +10,14 @@ enum WeatherChartTimeRange: Hashable {
     case daytime, entireDay, tenDay
 }
 
-struct AnimatablePointList: VectorArithmetic {
-    var values: [Double]
-
-    static var zero: AnimatablePointList { .init(values: []) }
-
-    static func + (lhs: AnimatablePointList, rhs: AnimatablePointList) -> AnimatablePointList {
-        let count = max(lhs.values.count, rhs.values.count)
-        var result = [Double](repeating: 0, count: count)
-        for index in 0..<count {
-            result[index] = (index < lhs.values.count ? lhs.values[index] : 0) + (index < rhs.values.count ? rhs.values[index] : 0)
-        }
-        return .init(values: result)
-    }
-
-    static func - (lhs: AnimatablePointList, rhs: AnimatablePointList) -> AnimatablePointList {
-        let count = max(lhs.values.count, rhs.values.count)
-        var result = [Double](repeating: 0, count: count)
-        for index in 0..<count {
-            result[index] = (index < lhs.values.count ? lhs.values[index] : 0) - (index < rhs.values.count ? rhs.values[index] : 0)
-        }
-        return .init(values: result)
-    }
-
-    mutating func scale(by rhs: Double) {
-        for index in values.indices { values[index] *= rhs }
-    }
-
-    var magnitudeSquared: Double {
-        values.reduce(0) { $0 + $1 * $1 }
-    }
-}
-
-struct HourlyChartLineShape: Shape {
-    var pointYValues: AnimatablePointList
-    let pointXPositions: [CGFloat]
-    let gapRadius: CGFloat
-
-    var animatableData: AnimatablePointList {
-        get { pointYValues }
-        set { pointYValues = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        let points = zip(pointXPositions, pointYValues.values).map { CGPoint(x: $0, y: $1) }
-        guard points.count >= 2 else { return path }
-
-        let segmentSteps = 40
-        var allPoints: [CGPoint] = []
-        for index in 0..<(points.count - 1) {
-            let p0 = index > 0 ? points[index - 1] : CGPoint(x: 2 * points[index].x - points[index + 1].x, y: 2 * points[index].y - points[index + 1].y)
-            let p1 = points[index]
-            let p2 = points[index + 1]
-            let p3 = index + 2 < points.count ? points[index + 2] : CGPoint(x: 2 * p2.x - p1.x, y: 2 * p2.y - p1.y)
-
-            for step in 0...segmentSteps {
-                let t = CGFloat(step) / CGFloat(segmentSteps)
-                allPoints.append(CGPoint(
-                    x: catmullRom(t: t, p0: p0.x, p1: p1.x, p2: p2.x, p3: p3.x),
-                    y: catmullRom(t: t, p0: p0.y, p1: p1.y, p2: p2.y, p3: p3.y)
-                ))
-            }
-        }
-
-        var drawing = false
-        for point in allPoints {
-            let nearDataPoint = points.contains { abs(point.x - $0.x) < gapRadius }
-            if nearDataPoint {
-                drawing = false
-            } else if drawing {
-                path.addLine(to: point)
-            } else {
-                path.move(to: point)
-                drawing = true
-            }
-        }
-        return path
-    }
-
-    private func catmullRom(t: CGFloat, p0: CGFloat, p1: CGFloat, p2: CGFloat, p3: CGFloat) -> CGFloat {
-        let t2 = t * t
-        let t3 = t2 * t
-        return 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3)
-    }
+private struct ChartPoint: Identifiable {
+    let id: String
+    let index: Int
+    let label: String
+    let icon: String
+    let value: Double
+    let valueText: String
+    let isPast: Bool
 }
 
 struct HourlyTimelineChart: View {
@@ -113,6 +38,9 @@ struct HourlyTimelineChart: View {
     private var tempUnit: TemperatureUnit { TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius }
     private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers }
     private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25) }
+    private var totalHeight: CGFloat { compactLayout ? 230 : 250 }
+    private var chartHeight: CGFloat { compactLayout ? 132 : 146 }
+    private var labelSpacing: CGFloat { compactLayout ? 6 : 10 }
 
     private var currentCityHour: Int? {
         guard dayOffset == 0 || dayOffset == -1 else { return nil }
@@ -122,23 +50,45 @@ struct HourlyTimelineChart: View {
         return calendar.component(.hour, from: Date())
     }
 
+    private var dataPoints: [HourlyForecast] {
+        showAllHours ? hourlyForecasts.sorted { $0.hour < $1.hour } : hourlyForecasts.filter { [7, 9, 11, 13, 15, 17, 19].contains($0.hour) }
+    }
+
+    private var chartPoints: [ChartPoint] {
+        dataPoints.enumerated().map { index, forecast in
+            ChartPoint(
+                id: forecast.id.uuidString,
+                index: index,
+                label: forecast.shortFormattedHour(locale: locale),
+                icon: forecast.weatherIcon,
+                value: value(for: forecast),
+                valueText: chartValueText(for: forecast),
+                isPast: isPastHour(forecast.hour)
+            )
+        }
+    }
+
+    private var chartDomain: ClosedRange<Double> {
+        let values = chartPoints.map(\.value)
+        let minValue = values.min() ?? 0
+        let maxValue = values.max() ?? 1
+        let padding = max((maxValue - minValue) * (compactLayout ? 0.55 : 0.35), compactLayout ? 4.0 : 2.0)
+        return (minValue - padding)...(maxValue + padding)
+    }
+
+    private var currentHourIndex: Double? {
+        guard let currentCityHour else { return nil }
+        let hours = dataPoints.map(\.hour)
+        guard let lastIndex = hours.lastIndex(where: { $0 <= currentCityHour }), lastIndex < hours.count - 1 else { return nil }
+        let h0 = Double(hours[lastIndex])
+        let h1 = Double(hours[lastIndex + 1])
+        let fraction = h1 > h0 ? Double(currentCityHour - hours[lastIndex]) / (h1 - h0) : 0
+        return Double(lastIndex) + fraction
+    }
+
     private func isPastHour(_ hour: Int) -> Bool {
         guard let currentCityHour else { return false }
         return hour < currentCityHour
-    }
-
-    private var totalHeight: CGFloat { compactLayout ? 230 : 250 }
-    private var hourLabelHeight: CGFloat { compactLayout ? 14 : 20 }
-    private var topPadding: CGFloat { compactLayout ? 0 : 4 }
-    private var iconHeight: CGFloat { compactLayout ? 16 : 26 }
-    private var iconBottomPadding: CGFloat { compactLayout ? 6 : 20 }
-    private var valueHeight: CGFloat { compactLayout ? 14 : 20 }
-    private var chartTop: CGFloat { hourLabelHeight + topPadding + iconHeight + iconBottomPadding }
-    private var chartBottom: CGFloat { totalHeight - valueHeight - 14 }
-    private var chartZone: CGFloat { chartBottom - chartTop }
-
-    private var dataPoints: [HourlyForecast] {
-        showAllHours ? hourlyForecasts.sorted { $0.hour < $1.hour } : hourlyForecasts.filter { [7, 9, 11, 13, 15, 17, 19].contains($0.hour) }
     }
 
     private func chartValueText(for forecast: HourlyForecast) -> String {
@@ -167,116 +117,19 @@ struct HourlyTimelineChart: View {
         }
     }
 
-    private var valueRange: (min: Double, max: Double) {
-        switch chartMetric {
-        case .cloudCover, .precipitation, .humidity: return (0, 100)
-        case .uvIndex: return (0, 11)
-        case .windSpeed: return (0, 100)
-        case .visibility:
-            let maxValue = dataPoints.map { value(for: $0) }.max() ?? 30
-            return (0, max(30, maxValue + 5))
-        case .temperature, .feelsLike:
-            let values = dataPoints.map { value(for: $0) }
-            let minValue = values.min() ?? 10
-            let maxValue = values.max() ?? 20
-            let padding = max((maxValue - minValue) * (compactLayout ? 0.7 : 0.25), compactLayout ? 5.0 : 2.0)
-            return (minValue - padding, maxValue + padding)
-        }
-    }
-
-    private func lineY(for value: Double) -> CGFloat {
-        let range = valueRange.max - valueRange.min
-        guard range > 0 else { return chartTop + chartZone * 0.5 }
-        return chartTop + (1.0 - CGFloat((value - valueRange.min) / range)) * chartZone
-    }
-
     var body: some View {
-        if dataPoints.isEmpty {
-            VStack(spacing: 8) {
-                Image(systemName: "chart.line.downtrend.xyaxis")
-                    .font(.system(size: 28))
-                    .foregroundStyle(.secondary.opacity(0.5))
-                Text("No hourly data")
-                    .font(.avenir(.subheadline, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            .frame(height: totalHeight)
-            .frame(maxWidth: .infinity)
-        } else {
-            GeometryReader { geometry in
-                let width = geometry.size.width
-                let count = CGFloat(dataPoints.count)
-                let columnWidth = count > 0 ? width / count : width
-                let xPositions = dataPoints.indices.map { (CGFloat($0) + 0.5) * columnWidth }
-                let lineYPositions = dataPoints.map { lineY(for: value(for: $0)) }
-
-                ZStack(alignment: .topLeading) {
-                    HourlyChartLineShape(pointYValues: AnimatablePointList(values: lineYPositions.map { Double($0) }), pointXPositions: xPositions, gapRadius: 0)
-                        .stroke(AppTheme.shared.colors.accent, style: StrokeStyle(lineWidth: compactLayout ? 3 : 4, lineCap: .round, lineJoin: .round))
-
-                    ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, _ in
-                        Circle()
-                            .fill(AppTheme.shared.colors.accent)
-                            .frame(width: compactLayout ? 9 : 12, height: compactLayout ? 9 : 12)
-                            .position(x: xPositions[index], y: lineYPositions[index])
-                    }
-
-                    if let currentCityHour {
-                        let hours = dataPoints.map { $0.hour }
-                        let lineTop = chartTop - 4
-                        let lineBottom = chartBottom + valueHeight
-                        let lineHeight = lineBottom - lineTop
-                        let lineCenterY = lineTop + lineHeight / 2
-                        if let lastIndex = hours.lastIndex(where: { $0 <= currentCityHour }), lastIndex < hours.count - 1 {
-                            let h0 = CGFloat(hours[lastIndex])
-                            let h1 = CGFloat(hours[lastIndex + 1])
-                            let fraction = h1 > h0 ? CGFloat(currentCityHour - hours[lastIndex]) / (h1 - h0) : 0
-                            let nowX = xPositions[lastIndex] + fraction * (xPositions[lastIndex + 1] - xPositions[lastIndex])
-                            RoundedRectangle(cornerRadius: 1, style: .continuous)
-                                .fill(indicatorLineColor)
-                                .frame(width: 1.5, height: lineHeight)
-                                .position(x: nowX, y: lineCenterY)
-                                .opacity(0.5)
-                        }
-                    }
-
-                    HStack(spacing: 0) {
-                        ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, forecast in
-                            let pointY = lineYPositions[index]
-                            let pastHour = isPastHour(forecast.hour)
-                            let iconY = hourLabelHeight + topPadding + iconHeight / 2 + 10
-                            ZStack {
-                                Text(forecast.shortFormattedHour(locale: locale))
-                                    .font(compactLayout ? .caption.weight(.medium) : .avenir(.subheadline))
-                                    .foregroundStyle(AppTheme.shared.colors.primaryText)
-                                    .frame(height: hourLabelHeight)
-                                    .position(x: columnWidth / 2, y: hourLabelHeight / 2 + (compactLayout ? 4 : 10))
-                                    .opacity(pastHour ? 0.3 : 1.0)
-
-                                Image(systemName: forecast.weatherIcon)
-                                    .font(.system(size: compactLayout ? 14 : 17))
-                                    .weatherIconStyle(for: forecast.weatherIcon)
-                                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                                    .frame(height: iconHeight)
-                                    .position(x: columnWidth / 2, y: iconY)
-                                    .opacity(pastHour ? 0.3 : 1.0)
-
-                                Text(chartValueText(for: forecast))
-                                    .font(compactLayout ? .caption.weight(.semibold) : .avenir(.footnote, weight: .semibold))
-                                    .foregroundStyle(AppTheme.shared.colors.primaryText)
-                                    .contentTransition(.numericText())
-                                    .frame(height: valueHeight)
-                                    .position(x: columnWidth / 2 + 2, y: pointY + valueHeight * 0.85 + 2)
-                                    .opacity(pastHour ? 0.3 : 1.0)
-                            }
-                            .frame(width: columnWidth, height: totalHeight)
-                        }
-                    }
-                }
-            }
-            .frame(height: totalHeight)
-            .animation(.smooth(duration: 0.3), value: chartMetric)
-        }
+        TimelineChartBody(
+            points: chartPoints,
+            domain: chartDomain,
+            selectedIndex: currentHourIndex,
+            lineColor: lineColor,
+            indicatorColor: indicatorLineColor,
+            totalHeight: totalHeight,
+            chartHeight: chartHeight,
+            labelSpacing: labelSpacing,
+            compactLayout: compactLayout,
+            emptyTitle: "No hourly data"
+        )
     }
 }
 
@@ -297,15 +150,35 @@ struct DailyTimelineChart: View {
     private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers }
     private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25) }
     private var totalHeight: CGFloat { compactLayout ? 230 : 250 }
-    private var dayLabelHeight: CGFloat { compactLayout ? 14 : 20 }
-    private var topPadding: CGFloat { compactLayout ? 0 : 4 }
-    private var iconHeight: CGFloat { compactLayout ? 16 : 26 }
-    private var iconBottomPadding: CGFloat { compactLayout ? 6 : 20 }
-    private var valueHeight: CGFloat { compactLayout ? 14 : 20 }
-    private var chartTop: CGFloat { dayLabelHeight + topPadding + iconHeight + iconBottomPadding }
-    private var chartBottom: CGFloat { totalHeight - valueHeight - 14 }
-    private var chartZone: CGFloat { chartBottom - chartTop }
+    private var chartHeight: CGFloat { compactLayout ? 132 : 146 }
+    private var labelSpacing: CGFloat { compactLayout ? 6 : 10 }
     private var dataPoints: [DailyForecast] { dailyForecasts.sorted { $0.dayOffset < $1.dayOffset } }
+
+    private var chartPoints: [ChartPoint] {
+        dataPoints.enumerated().map { index, forecast in
+            ChartPoint(
+                id: forecast.id.uuidString,
+                index: index,
+                label: dayLabel(for: forecast),
+                icon: forecast.weatherIcon,
+                value: value(for: forecast),
+                valueText: chartValueText(for: forecast),
+                isPast: false
+            )
+        }
+    }
+
+    private var selectedIndex: Double? {
+        dataPoints.firstIndex(where: { $0.dayOffset == (selectedDayOffset == -1 ? 0 : selectedDayOffset) }).map(Double.init)
+    }
+
+    private var chartDomain: ClosedRange<Double> {
+        let values = chartPoints.map(\.value)
+        let minValue = values.min() ?? 0
+        let maxValue = values.max() ?? 1
+        let padding = max((maxValue - minValue) * (compactLayout ? 0.55 : 0.35), compactLayout ? 4.0 : 2.0)
+        return (minValue - padding)...(maxValue + padding)
+    }
 
     private func dayLabel(for forecast: DailyForecast) -> String {
         var cityCalendar = Calendar.current
@@ -346,103 +219,118 @@ struct DailyTimelineChart: View {
         }
     }
 
-    private var valueRange: (min: Double, max: Double) {
-        switch chartMetric {
-        case .cloudCover, .precipitation, .humidity: return (0, 100)
-        case .uvIndex: return (0, 11)
-        case .windSpeed: return (0, 100)
-        case .visibility:
-            let maxValue = dataPoints.map { value(for: $0) }.max() ?? 30
-            return (0, max(30, maxValue + 5))
-        case .temperature, .feelsLike:
-            let values = dataPoints.map { value(for: $0) }
-            let minValue = values.min() ?? 10
-            let maxValue = values.max() ?? 20
-            let padding = max((maxValue - minValue) * (compactLayout ? 0.7 : 0.25), compactLayout ? 5.0 : 2.0)
-            return (minValue - padding, maxValue + padding)
-        }
+    var body: some View {
+        TimelineChartBody(
+            points: chartPoints,
+            domain: chartDomain,
+            selectedIndex: selectedIndex,
+            lineColor: lineColor,
+            indicatorColor: indicatorLineColor,
+            totalHeight: totalHeight,
+            chartHeight: chartHeight,
+            labelSpacing: labelSpacing,
+            compactLayout: compactLayout,
+            emptyTitle: "No daily data"
+        )
     }
+}
 
-    private func lineY(for value: Double) -> CGFloat {
-        let range = valueRange.max - valueRange.min
-        guard range > 0 else { return chartTop + chartZone * 0.5 }
-        return chartTop + (1.0 - CGFloat((value - valueRange.min) / range)) * chartZone
-    }
+private struct TimelineChartBody: View {
+    let points: [ChartPoint]
+    let domain: ClosedRange<Double>
+    let selectedIndex: Double?
+    let lineColor: Color
+    let indicatorColor: Color
+    let totalHeight: CGFloat
+    let chartHeight: CGFloat
+    let labelSpacing: CGFloat
+    let compactLayout: Bool
+    let emptyTitle: String
 
     var body: some View {
-        if dataPoints.isEmpty {
+        if points.isEmpty {
             VStack(spacing: 8) {
                 Image(systemName: "chart.line.downtrend.xyaxis")
                     .font(.system(size: 28))
                     .foregroundStyle(.secondary.opacity(0.5))
-                Text("No daily data")
+                Text(emptyTitle)
                     .font(.avenir(.subheadline, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             .frame(height: totalHeight)
             .frame(maxWidth: .infinity)
         } else {
-            GeometryReader { geometry in
-                let width = geometry.size.width
-                let count = CGFloat(dataPoints.count)
-                let columnWidth = count > 0 ? width / count : width
-                let xPositions = dataPoints.indices.map { (CGFloat($0) + 0.5) * columnWidth }
-                let lineYPositions = dataPoints.map { lineY(for: value(for: $0)) }
-
-                ZStack(alignment: .topLeading) {
-                    HourlyChartLineShape(pointYValues: AnimatablePointList(values: lineYPositions.map { Double($0) }), pointXPositions: xPositions, gapRadius: 0)
-                        .stroke(AppTheme.shared.colors.accent, style: StrokeStyle(lineWidth: compactLayout ? 3 : 4, lineCap: .round, lineJoin: .round))
-
-                    ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, _ in
-                        Circle()
-                            .fill(AppTheme.shared.colors.accent)
-                            .frame(width: compactLayout ? 9 : 12, height: compactLayout ? 9 : 12)
-                            .position(x: xPositions[index], y: lineYPositions[index])
-                    }
-
-                    if let selectedIndex = dataPoints.firstIndex(where: { $0.dayOffset == (selectedDayOffset == -1 ? 0 : selectedDayOffset) }) {
-                        let lineTop = chartTop - 4
-                        let lineBottom = chartBottom + valueHeight
-                        let lineHeight = lineBottom - lineTop
-                        Rectangle()
-                            .fill(indicatorLineColor)
-                            .frame(width: 3, height: lineHeight)
-                            .position(x: xPositions[selectedIndex], y: lineTop + lineHeight / 2)
-                            .opacity(0.5)
-                    }
-
-                    HStack(spacing: 0) {
-                        ForEach(Array(dataPoints.enumerated()), id: \.element.id) { index, forecast in
-                            let pointY = lineYPositions[index]
-                            let iconY = dayLabelHeight + topPadding + iconHeight / 2 + 10
-                            ZStack {
-                                Text(dayLabel(for: forecast))
-                                    .font(compactLayout ? .caption.weight(.medium) : .avenir(.subheadline))
-                                    .foregroundStyle(AppTheme.shared.colors.primaryText)
-                                    .frame(height: dayLabelHeight)
-                                    .position(x: columnWidth / 2, y: dayLabelHeight / 2 + (compactLayout ? 4 : 10))
-
-                                Image(systemName: forecast.weatherIcon)
-                                    .font(.system(size: compactLayout ? 14 : 17))
-                                    .weatherIconStyle(for: forecast.weatherIcon)
-                                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                                    .frame(height: iconHeight)
-                                    .position(x: columnWidth / 2, y: iconY)
-
-                                Text(chartValueText(for: forecast))
-                                    .font(compactLayout ? .caption.weight(.semibold) : .avenir(.footnote, weight: .semibold))
-                                    .foregroundStyle(AppTheme.shared.colors.primaryText)
-                                    .contentTransition(.numericText())
-                                    .frame(height: valueHeight)
-                                    .position(x: columnWidth / 2 + 2, y: pointY + valueHeight * 0.85 + 2)
-                            }
-                            .frame(width: columnWidth, height: totalHeight)
-                        }
-                    }
-                }
+            VStack(spacing: labelSpacing) {
+                labelRow
+                chart
+                valueRow
             }
             .frame(height: totalHeight)
-            .animation(.smooth(duration: 0.3), value: chartMetric)
+            .animation(.smooth(duration: 0.3), value: points.map(\.value))
+        }
+    }
+
+    private var labelRow: some View {
+        HStack(spacing: 0) {
+            ForEach(points) { point in
+                VStack(spacing: compactLayout ? 4 : 7) {
+                    Text(point.label)
+                        .font(compactLayout ? .caption.weight(.medium) : .avenir(.subheadline))
+                        .foregroundStyle(AppTheme.shared.colors.primaryText)
+                    Image(systemName: point.icon)
+                        .font(.system(size: compactLayout ? 14 : 17))
+                        .weatherIconStyle(for: point.icon)
+                        .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                }
+                .opacity(point.isPast ? 0.3 : 1.0)
+                .frame(maxWidth: .infinity)
+            }
+        }
+    }
+
+    private var chart: some View {
+        Chart {
+            ForEach(points) { point in
+                LineMark(
+                    x: .value("Index", Double(point.index)),
+                    y: .value("Value", point.value)
+                )
+                .interpolationMethod(.catmullRom)
+                .foregroundStyle(lineColor)
+                .lineStyle(StrokeStyle(lineWidth: compactLayout ? 3 : 4, lineCap: .round, lineJoin: .round))
+
+                PointMark(
+                    x: .value("Index", Double(point.index)),
+                    y: .value("Value", point.value)
+                )
+                .foregroundStyle(lineColor)
+                .symbolSize(compactLayout ? 72 : 110)
+            }
+
+            if let selectedIndex {
+                RuleMark(x: .value("Selected", selectedIndex))
+                    .foregroundStyle(indicatorColor.opacity(0.5))
+                    .lineStyle(StrokeStyle(lineWidth: compactLayout ? 1.5 : 2))
+            }
+        }
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .chartXScale(domain: -0.2...Double(max(points.count - 1, 0)) + 0.2)
+        .chartYScale(domain: domain)
+        .frame(height: chartHeight)
+    }
+
+    private var valueRow: some View {
+        HStack(spacing: 0) {
+            ForEach(points) { point in
+                Text(point.valueText)
+                    .font(compactLayout ? .caption.weight(.semibold) : .avenir(.footnote, weight: .semibold))
+                    .foregroundStyle(AppTheme.shared.colors.primaryText)
+                    .contentTransition(.numericText())
+                    .opacity(point.isPast ? 0.3 : 1.0)
+                    .frame(maxWidth: .infinity)
+            }
         }
     }
 }

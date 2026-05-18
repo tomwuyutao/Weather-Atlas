@@ -41,7 +41,6 @@ struct ThemeColors {
     let mapOcean: Color
     let mapLand: Color
     let mapBorder: Color
-    let svgCountryFill: Color
 
     // Colorful map mode
     let colorfulOcean: Color
@@ -51,7 +50,7 @@ struct ThemeColors {
 
     // Accent / Interactive
     let accent: Color          // add-to-list, radial search handle
-    let destructive: Color     // delete, country search pin
+    let destructive: Color     // delete actions
 
     // Weather dots
     let dotSun: Color
@@ -121,7 +120,6 @@ extension ThemeColors {
         mapOcean: Color(hex: 0xF4F1EB),
         mapLand: Color(hex: 0xE8E5DF),
         mapBorder: Color(hex: 0xDDDAD3),
-        svgCountryFill: Color(hex: 0xE8E5DF),
         colorfulOcean: Color(hex: 0xE8F4F0),
         colorfulLand: Color(hex: 0xDFEDE4),
         colorfulLandActive: Color(hex: 0xD8E8DC),
@@ -165,7 +163,6 @@ extension ThemeColors {
         mapOcean: Color(hex: 0x1A1B2E),
         mapLand: Color(hex: 0x252640),
         mapBorder: Color(hex: 0x353660),
-        svgCountryFill: Color(hex: 0x252640),
         colorfulOcean: Color(hex: 0x1A2A3D),
         colorfulLand: Color(hex: 0x2A4A3A),
         colorfulLandActive: Color(hex: 0x345A45),

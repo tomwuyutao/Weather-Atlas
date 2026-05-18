@@ -10,7 +10,6 @@ import SwiftUI
 import WeatherKit
 import CoreLocation
 import MapKit
-import Combine
 
 /// Look up a localized string for a specific locale (respects SwiftUI environment locale).
 func localizedString(_ key: String.LocalizationValue, locale: Locale) -> String {
@@ -100,98 +99,6 @@ enum AppWeatherCondition {
         case .fog: return theme.dotFog
         case .wind: return theme.dotWind
         }
-    }
-}
-
-struct WorldCitiesParser {
-    struct CSVCity {
-        let name: String
-        let lat: Double
-        let lng: Double
-        let country: String
-        let population: Int
-    }
-    
-    private static var cachedEntries: [CSVCity]?
-    
-    /// Returns a sorted list of country names that have ≥5 cities in worldcities.csv
-    static func countriesWithEnoughCities() -> [String] {
-        let entries = loadEntries()
-        var countByCountry: [String: Int] = [:]
-        for entry in entries {
-            countByCountry[entry.country, default: 0] += 1
-        }
-        return countByCountry
-            .filter { $0.value >= 5 }
-            .keys
-            .sorted()
-    }
-    
-    /// Returns up to 15 cities with the largest population for the given country
-    static func topCities(for country: String, limit: Int = 15) -> [City] {
-        let entries = loadEntries()
-            .filter { $0.country == country }
-            .sorted { $0.population > $1.population }
-            .prefix(limit)
-        
-        return entries.map { City(name: $0.name, country: $0.country, latitude: $0.lat, longitude: $0.lng) }
-    }
-    
-    private static func loadEntries() -> [CSVCity] {
-        if let cached = cachedEntries { return cached }
-        let parsed = parseCSV()
-        cachedEntries = parsed
-        return parsed
-    }
-    
-    private static func parseCSV() -> [CSVCity] {
-        guard let url = Bundle.main.url(forResource: "worldcities", withExtension: "csv"),
-              let content = try? String(contentsOf: url, encoding: .utf8) else {
-            return []
-        }
-        
-        var results: [CSVCity] = []
-        let lines = content.components(separatedBy: .newlines)
-        
-        // Skip header (line 0), process remaining
-        for i in 1..<lines.count {
-            let line = lines[i].trimmingCharacters(in: .whitespaces)
-            if line.isEmpty { continue }
-            
-            let fields = parseCSVLine(line)
-            // Expected: city, city_ascii, lat, lng, country, iso2, iso3, admin_name, capital, population, id
-            guard fields.count >= 11,
-                  let lat = Double(fields[2]),
-                  let lng = Double(fields[3]) else { continue }
-            
-            let name = fields[0]
-            let country = fields[4]
-            let population = Int(fields[9]) ?? 0
-            
-            results.append(CSVCity(name: name, lat: lat, lng: lng, country: country, population: population))
-        }
-        
-        return results
-    }
-    
-    /// Parse a single CSV line handling quoted fields
-    private static func parseCSVLine(_ line: String) -> [String] {
-        var fields: [String] = []
-        var current = ""
-        var inQuotes = false
-        
-        for char in line {
-            if char == "\"" {
-                inQuotes.toggle()
-            } else if char == "," && !inQuotes {
-                fields.append(current)
-                current = ""
-            } else {
-                current.append(char)
-            }
-        }
-        fields.append(current)
-        return fields
     }
 }
 
@@ -507,26 +414,6 @@ class WeatherService {
         UserDefaults.standard.set(newList.rawValue, forKey: Self.activeListKey)
         lastFetchDate = nil
         // New list starts empty, no fetch needed
-    }
-    
-    func addCountryList(country: String) async {
-        let cities = WorldCitiesParser.topCities(for: country)
-        guard !cities.isEmpty else { return }
-        
-        let newList = CityListID.createList(name: country)
-        cityWeatherData = []
-        activeListID = newList
-        UserDefaults.standard.set(newList.rawValue, forKey: Self.activeListKey)
-        lastFetchDate = nil
-        
-        // Save the cities list for this new list
-        let listKey = "savedCitiesList_\(newList.rawValue)"
-        if let encoded = try? JSONEncoder().encode(cities.map { CachedCity(from: $0) }) {
-            UserDefaults.standard.set(encoded, forKey: listKey)
-        }
-        
-        // Fetch weather for all cities
-        await fetchWeatherForAllCities()
     }
     
     func renameCurrentList(to newName: String) {

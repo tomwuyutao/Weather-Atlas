@@ -31,13 +31,7 @@ extension ContentView {
                         mapOverlayMode = option.mode
                     }
                 } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: mapOverlayMode == option.mode ? "checkmark" : "")
-                            .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 14)
-
-                        Text(option.label)
-                    }
+                    Label(option.label, systemImage: mapOverlayMode == option.mode ? "checkmark" : option.icon)
                 }
             }
         } label: {
@@ -46,68 +40,9 @@ extension ContentView {
                 .foregroundStyle(theme.colors.primaryText)
         }
         .tint(theme.colors.primaryText)
+        #if os(macOS)
         .menuIndicator(.hidden)
+        #endif
         .menuOrder(.fixed)
-    }
-
-    // MARK: - Map Overlay Sheet
-
-    var mapStyleSheet: some View {
-        return ZStack(alignment: .top) {
-            VStack(spacing: 0) {
-                Capsule()
-                    .fill(theme.colors.secondaryText.opacity(0.35))
-                    .frame(width: 36, height: 5)
-                    .padding(.top, 10)
-                    .padding(.bottom, 14)
-
-                ScrollView {
-                    VStack(spacing: 10) {
-                        ForEach(mapOverlayOptions, id: \.mode) { option in
-                            Button {
-                                PlatformFeedback.lightImpact()
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    mapOverlayMode = option.mode
-                                }
-                                showingMapStyleSheet = false
-                            } label: {
-                                HStack(spacing: 14) {
-                                    Image(systemName: option.icon)
-                                        .font(.system(size: 16, weight: .medium))
-                                        .frame(width: 24)
-                                        .foregroundStyle(theme.colors.primaryText)
-
-                                    Text(option.label)
-                                        .font(.avenir(.body, weight: mapOverlayMode == option.mode ? .semibold : .medium))
-                                        .foregroundStyle(theme.colors.primaryText)
-
-                                    Spacer()
-
-                                    if mapOverlayMode == option.mode {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 18))
-                                            .foregroundStyle(Color(hex: 0x1579C7))
-                                    }
-                                }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 14)
-                                .themedGlass(in: .rect(cornerRadius: 12))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .fill(mapOverlayMode == option.mode ? Color(hex: 0x1579C7).opacity(0.08) : Color.clear)
-                                )
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .strokeBorder(mapOverlayMode == option.mode ? Color(hex: 0x1579C7).opacity(0.4) : theme.colors.primaryText.opacity(0.08), lineWidth: 1)
-                                )
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 20)
-                }
-            }
-        }
     }
 }

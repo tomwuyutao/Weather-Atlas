@@ -169,4 +169,40 @@ extension ContentView {
         #endif
         .menuOrder(.fixed)
     }
+
+    #if os(iOS)
+    @ToolbarContentBuilder
+    var iPhoneNativeBottomToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .bottomBar) {
+            Button {
+                showingMapSidebar = true
+            } label: {
+                Image(systemName: "list.bullet")
+            }
+
+            Spacer()
+
+            Button {
+                recenterOnAllCities = false
+                DispatchQueue.main.async {
+                    recenterOnAllCities = true
+                }
+            } label: {
+                Image(systemName: "dot.squareshape.split.2x2")
+            }
+
+            mapOverlayMenu
+
+            iOSNativeMenu
+
+            Spacer()
+
+            Button {
+                activateInlineSearch()
+            } label: {
+                Image(systemName: "magnifyingglass")
+            }
+        }
+    }
+    #endif
 }
