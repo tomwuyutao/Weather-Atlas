@@ -180,6 +180,8 @@ extension ContentView {
         let forecasts = Array(cityWeather.dailyForecasts.prefix(10))
         let selectedForecast = cityWeather.forecast(for: max(0, selectedDayOffset))
         let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+        let usesDetailCardLayout = usesIPhoneDetailSizing || plainBackground || macExpandedCardShowsDetails
+        let detailCardCornerRadius: CGFloat = usesIPhoneDetailSizing ? 28 : 20
 
         return ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
@@ -248,7 +250,7 @@ extension ContentView {
                     .padding(.bottom, 10)
             }
 
-            VStack(spacing: usesIPhoneDetailSizing ? 20 : 8) {
+            VStack(spacing: usesIPhoneDetailSizing ? 20 : (usesDetailCardLayout ? 12 : 8)) {
                 ForEach(0..<2, id: \.self) { row in
                     HStack(alignment: .top, spacing: usesIPhoneDetailSizing ? 8 : 6) {
                         ForEach(0..<5, id: \.self) { column in
@@ -298,24 +300,24 @@ extension ContentView {
                     }
                 }
             }
-            .padding(.horizontal, usesIPhoneDetailSizing ? 22 : 0)
-            .padding(.vertical, usesIPhoneDetailSizing ? 20 : 0)
+            .padding(.horizontal, usesIPhoneDetailSizing ? 22 : (usesDetailCardLayout ? 12 : 0))
+            .padding(.vertical, usesIPhoneDetailSizing ? 20 : (usesDetailCardLayout ? 12 : 0))
             .background {
-                if usesIPhoneDetailSizing {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                if usesDetailCardLayout {
+                    RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
                         .fill(theme.colors.mapLand)
                 }
             }
             .overlay {
-                if usesIPhoneDetailSizing {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                if usesDetailCardLayout {
+                    RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
                 }
             }
-            .padding(.bottom, usesIPhoneDetailSizing ? 18 : (macExpandedCardShowsDetails ? 14 : 10))
+            .padding(.bottom, usesIPhoneDetailSizing ? 18 : (usesDetailCardLayout ? 12 : (macExpandedCardShowsDetails ? 14 : 10)))
 
             if macExpandedCardShowsDetails {
-                macExpandedCardDetails(for: cityWeather, forecast: selectedForecast, tempUnit: tempUnit, distUnit: distUnit, usesIPhoneDetailSizing: usesIPhoneDetailSizing)
+                macExpandedCardDetails(for: cityWeather, forecast: selectedForecast, tempUnit: tempUnit, distUnit: distUnit, usesIPhoneDetailSizing: usesIPhoneDetailSizing, usesDetailCardLayout: usesDetailCardLayout)
                     .padding(.bottom, 14)
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
@@ -388,7 +390,8 @@ extension ContentView {
         forecast: DailyForecast,
         tempUnit: TemperatureUnit,
         distUnit: DistanceUnit,
-        usesIPhoneDetailSizing: Bool = false
+        usesIPhoneDetailSizing: Bool = false,
+        usesDetailCardLayout: Bool = false
     ) -> some View {
         let isNow = selectedDayOffset == -1
         let rows: [(String, String, String)] = [
@@ -443,9 +446,11 @@ extension ContentView {
             )
         ]
 
-        return VStack(spacing: usesIPhoneDetailSizing ? 14 : 8) {
+        let detailCardCornerRadius: CGFloat = usesIPhoneDetailSizing ? 28 : 20
+
+        return VStack(spacing: usesIPhoneDetailSizing ? 14 : (usesDetailCardLayout ? 12 : 8)) {
             VStack(alignment: .leading, spacing: 0) {
-                if !usesIPhoneDetailSizing {
+                if !usesDetailCardLayout {
                     macExpandedCardDivider
                         .padding(.bottom, 10)
                 }
@@ -500,22 +505,22 @@ extension ContentView {
                 .frame(height: usesIPhoneDetailSizing ? 220 : 184)
                 .clipped()
 
-                if !usesIPhoneDetailSizing {
+                if !usesDetailCardLayout {
                     macExpandedCardDivider
                         .padding(.top, -12)
                 }
             }
-            .padding(.horizontal, usesIPhoneDetailSizing ? 16 : 0)
-            .padding(.vertical, usesIPhoneDetailSizing ? 16 : 0)
+            .padding(.horizontal, usesIPhoneDetailSizing ? 16 : (usesDetailCardLayout ? 12 : 0))
+            .padding(.vertical, usesIPhoneDetailSizing ? 16 : (usesDetailCardLayout ? 12 : 0))
             .background {
-                if usesIPhoneDetailSizing {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                if usesDetailCardLayout {
+                    RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
                         .fill(theme.colors.mapLand)
                 }
             }
             .overlay {
-                if usesIPhoneDetailSizing {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                if usesDetailCardLayout {
+                    RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
                 }
             }
@@ -562,17 +567,17 @@ extension ContentView {
                     .padding(.vertical, usesIPhoneDetailSizing ? 10 : 7)
                 }
             }
-            .padding(.horizontal, usesIPhoneDetailSizing ? 8 : 0)
-            .padding(.vertical, usesIPhoneDetailSizing ? 10 : 0)
+            .padding(.horizontal, usesIPhoneDetailSizing ? 8 : (usesDetailCardLayout ? 8 : 0))
+            .padding(.vertical, usesIPhoneDetailSizing ? 10 : (usesDetailCardLayout ? 8 : 0))
             .background {
-                if usesIPhoneDetailSizing {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                if usesDetailCardLayout {
+                    RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
                         .fill(theme.colors.mapLand)
                 }
             }
             .overlay {
-                if usesIPhoneDetailSizing {
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                if usesDetailCardLayout {
+                    RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
                         .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
                 }
             }
