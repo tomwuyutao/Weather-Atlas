@@ -31,7 +31,10 @@ extension ContentView {
                 dismissAction()
             } label: {
                 Image(systemName: "chevron.left")
+                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
             }
+            .tint(.primary)
 
             Spacer()
 
@@ -42,14 +45,22 @@ extension ContentView {
 
     private func iPhoneMapExpandedCardDetailDestination(for city: CityWeather) -> some View {
         expandedCardDetailDestination(for: city, dismissAction: {
-            showingCityDetail = false
+            dismissIPhoneRoute(.cityDetail)
             selectedDayOffset = -1
         })
     }
 
     private func fullWeatherDetailDestination(for city: CityWeather) -> some View {
         expandedCardDetailDestination(for: city, dismissAction: {
+            #if os(iOS)
+            if !shouldUseIPadLayout {
+                dismissIPhoneRoute(.cityDetail)
+            } else {
+                showingCityDetail = false
+            }
+            #else
             showingCityDetail = false
+            #endif
             selectedDayOffset = -1
         })
     }
@@ -72,6 +83,7 @@ extension ContentView {
         .toolbar {
             iPhoneDetailBottomToolbar(for: city, dismissAction: dismissAction)
         }
+        .tint(.primary)
         #endif
         .onAppear {
             if let overlayChartMetric {

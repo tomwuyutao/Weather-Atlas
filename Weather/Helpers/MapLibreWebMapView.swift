@@ -1,6 +1,9 @@
 import SwiftUI
 import WebKit
 import CoreLocation
+#if os(iOS)
+import UIKit
+#endif
 
 #if os(macOS)
 typealias PlatformWebViewRepresentable = NSViewRepresentable
@@ -70,7 +73,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         webView.navigationDelegate = context.coordinator
         #if os(iOS)
         webView.isOpaque = true
-        webView.backgroundColor = UIColor(red: 0xED / 255.0, green: 0xE7 / 255.0, blue: 0xDE / 255.0, alpha: 1)
+        webView.backgroundColor = platformMapBackgroundColor
         webView.scrollView.backgroundColor = webView.backgroundColor
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.contentInset = .zero
@@ -91,8 +94,23 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     private func updateWebView(_ webView: WKWebView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.webView = webView
+        #if os(iOS)
+        webView.backgroundColor = platformMapBackgroundColor
+        webView.scrollView.backgroundColor = platformMapBackgroundColor
+        if #available(iOS 15.0, *) {
+            webView.underPageBackgroundColor = platformMapBackgroundColor
+        }
+        #endif
         context.coordinator.pushStateIfReady()
     }
+
+    #if os(iOS)
+    private var platformMapBackgroundColor: UIColor {
+        colorScheme == .dark
+            ? UIColor(red: 0x1A / 255.0, green: 0x1B / 255.0, blue: 0x2E / 255.0, alpha: 1)
+            : UIColor(red: 0xF4 / 255.0, green: 0xF1 / 255.0, blue: 0xEB / 255.0, alpha: 1)
+    }
+    #endif
 
     private static func dismantleWebView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "mapEvent")
@@ -308,7 +326,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         if icon.contains("moon") { return "#BE9AED" }
         switch condition {
         case .clear: return "#FDA409"
-        case .partlyCloudy: return "#F5C563"
+        case .partlySunny: return "#F5C563"
+        case .partlyCloudy: return "#FFFFFF"
         case .cloudy: return "#FFFFFF"
         case .rain: return "#1579C7"
         case .drizzle: return "#57D3E5"

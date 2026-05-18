@@ -31,15 +31,21 @@ extension ContentView {
                         mapOverlayMode = option.mode
                     }
                 } label: {
-                    Label(option.label, systemImage: mapOverlayMode == option.mode ? "checkmark" : option.icon)
+                    Label {
+                        Text(option.label)
+                    } icon: {
+                        Image(systemName: mapOverlayMode == option.mode ? "checkmark" : option.icon)
+                            .foregroundStyle(.primary)
+                    }
                 }
             }
         } label: {
             Image(systemName: "square.3.layers.3d")
                 .symbolRenderingMode(.monochrome)
-                .foregroundStyle(theme.colors.primaryText)
+                .foregroundStyle(.primary)
+                .foregroundColor(.primary)
         }
-        .tint(theme.colors.primaryText)
+        .tint(.primary)
         #if os(macOS)
         .menuIndicator(.hidden)
         #endif

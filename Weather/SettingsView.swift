@@ -203,6 +203,29 @@ struct SettingsView: View {
                 }
             }
             .listRowBackground(theme.colors.mapLand)
+
+            #if os(iOS)
+            Section(localizedString("About", locale: locale)) {
+                settingsInfoRow(
+                    localizedString("Version", locale: locale),
+                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
+                    systemImage: "info.circle"
+                )
+                settingsInfoRow(
+                    localizedString("Weather Data", locale: locale),
+                    value: "Apple Weather",
+                    systemImage: "cloud.sun"
+                )
+                HStack(alignment: .top, spacing: 8) {
+                    Image(systemName: "apple.logo")
+                        .foregroundStyle(.primary)
+                        .frame(width: 20)
+                    Text("Weather data and weather maps are provided by Apple Weather.")
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .listRowBackground(theme.colors.mapLand)
+            #endif
         }
         .scrollContentBackground(.hidden)
         .background(theme.colors.mapOcean)
@@ -264,4 +287,3 @@ private extension View {
 #Preview("Settings") {
     SettingsView(weatherService: WeatherService(), onResetLists: {})
 }
-

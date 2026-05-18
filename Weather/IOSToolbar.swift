@@ -104,7 +104,12 @@ extension ContentView {
             showingSettings = true
             #endif
         } label: {
-            Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
+            Label {
+                Text(localizedString("Settings", locale: locale))
+            } icon: {
+                Image(systemName: "gearshape")
+                    .foregroundStyle(.primary)
+            }
         }
 
         Divider()
@@ -114,14 +119,24 @@ extension ContentView {
                 get: { showLegend },
                 set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
             )) {
-                Label(localizedString("Legend", locale: locale), systemImage: "eye")
+                Label {
+                    Text(localizedString("Legend", locale: locale))
+                } icon: {
+                    Image(systemName: "eye")
+                        .foregroundStyle(.primary)
+                }
             }
         }
 
         Button {
             Task { await weatherService.refreshWeather() }
         } label: {
-            Label(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"), systemImage: "arrow.clockwise")
+            Label {
+                Text(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"))
+            } icon: {
+                Image(systemName: "arrow.clockwise")
+                    .foregroundStyle(.primary)
+            }
         }
         .disabled(weatherService.isLoading)
 
@@ -129,7 +144,12 @@ extension ContentView {
             get: { filterSunny },
             set: { newValue in withAnimation { filterSunny = newValue } }
         )) {
-            Label(localizedString("Filter Sunny", locale: locale), systemImage: "sun.max")
+            Label {
+                Text(localizedString("Filter Sunny", locale: locale))
+            } icon: {
+                Image(systemName: "sun.max")
+                    .foregroundStyle(.primary)
+            }
         }
 
         Divider()
@@ -139,16 +159,19 @@ extension ContentView {
            showingMapExpandedCard,
            let city = tappedCity,
            cityIsInSidebar(city) {
-            Button(role: .destructive) {
+            Button(
+                localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"",
+                systemImage: "trash",
+                role: .destructive
+            ) {
                 weatherService.removeCity(city)
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                     showingMapExpandedCard = false
                     tappedCity = nil
                     recenterOnAllCities = true
                 }
-            } label: {
-                Label(localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"", systemImage: "trash")
             }
+            .tint(theme.colors.destructive)
         }
     }
 
@@ -158,12 +181,12 @@ extension ContentView {
         } label: {
             Image(systemName: "ellipsis")
                 .foregroundStyle(.primary)
+                .foregroundColor(.primary)
                 #if os(iOS)
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
                 #endif
         }
-        .tint(.primary)
         #if os(macOS)
         .menuIndicator(.hidden)
         #endif
@@ -176,9 +199,13 @@ extension ContentView {
         ToolbarItemGroup(placement: .bottomBar) {
             Button {
                 showingMapSidebar = true
+                pushIPhoneRoute(.listManager)
             } label: {
                 Image(systemName: "list.bullet")
+                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
             }
+            .tint(.primary)
 
             Spacer()
 
@@ -190,8 +217,11 @@ extension ContentView {
                     }
                 } label: {
                     Image(systemName: "dot.squareshape.split.2x2")
+                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
                         .frame(width: 44, height: 44)
                 }
+                .tint(.primary)
 
                 mapOverlayMenu
                     .frame(width: 44, height: 44)
@@ -206,7 +236,10 @@ extension ContentView {
                 activateInlineSearch()
             } label: {
                 Image(systemName: "magnifyingglass")
+                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
             }
+            .tint(.primary)
         }
     }
     #endif

@@ -9,36 +9,72 @@ import SwiftUI
 
 extension ContentView {
 
+    var sidebarLists: [CityListID] {
+        _ = listOrderRevision
+        return CityListID.allLists
+    }
+
+    func sidebarCities(for listID: CityListID) -> [CityWeather] {
+        _ = cityOrderRevision
+        return weatherService.weatherData(for: listID)
+    }
+
+    func refreshSidebarListOrder() {
+        listOrderRevision += 1
+    }
+
+    func refreshSidebarCityOrder() {
+        cityOrderRevision += 1
+    }
+
     @ViewBuilder
     func listActions(for listID: CityListID) -> some View {
         Button {
             Task {
                 await switchToList(listID)
+                #if os(iOS)
+                dismissIPhoneRoute(.listManager)
+                #else
                 showingMapSidebar = false
+                #endif
             }
         } label: {
-            Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+            Label {
+                Text(localizedString("Reveal on Map", locale: locale))
+            } icon: {
+                Image(systemName: "map")
+                    .foregroundStyle(.primary)
+            }
         }
 
         Button {
             beginRenamingList(listID)
         } label: {
-            Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+            Label {
+                Text(localizedString("Rename", locale: locale))
+            } icon: {
+                Image(systemName: "pencil")
+                    .foregroundStyle(.primary)
+            }
         }
 
         Button {
             beginAddingCity(to: listID)
         } label: {
-            Label(localizedString("Add City", locale: locale), systemImage: "plus")
+            Label {
+                Text(localizedString("Add City", locale: locale))
+            } icon: {
+                Image(systemName: "plus")
+                    .foregroundStyle(.primary)
+            }
         }
 
-        Button(role: .destructive) {
+        Button(localizedString("Delete", locale: locale), systemImage: "trash", role: .destructive) {
             Task {
                 await weatherService.deleteList(listID)
             }
-        } label: {
-            Label(localizedString("Delete", locale: locale), systemImage: "trash")
         }
+        .tint(theme.colors.destructive)
     }
 
     @ViewBuilder
@@ -46,24 +82,35 @@ extension ContentView {
         Button {
             revealCityOnMap(city, in: listID)
         } label: {
-            Label(localizedString("Reveal on Map", locale: locale), systemImage: "map")
+            Label {
+                Text(localizedString("Reveal on Map", locale: locale))
+            } icon: {
+                Image(systemName: "map")
+                    .foregroundStyle(.primary)
+            }
         }
 
         Button {
             beginRenamingCity(city, in: listID)
         } label: {
-            Label(localizedString("Rename", locale: locale), systemImage: "pencil")
+            Label {
+                Text(localizedString("Rename", locale: locale))
+            } icon: {
+                Image(systemName: "pencil")
+                    .foregroundStyle(.primary)
+            }
         }
 
-        Button(role: .destructive) {
+        Button(localizedString("Delete", locale: locale), systemImage: "trash", role: .destructive) {
             weatherService.removeCity(city, from: listID)
-        } label: {
-            Label(localizedString("Delete", locale: locale), systemImage: "trash")
+            refreshSidebarCityOrder()
         }
+        .tint(theme.colors.destructive)
     }
 
     func createListAtBottom() {
         let newList = CityListID.createList(name: localizedString("New List", locale: locale))
+        refreshSidebarListOrder()
         sidebarExpandedListIDs.insert(newList.rawValue)
         listToRenameID = newList
         renameAlertText = newList.localizedDisplayName(locale: locale)
@@ -76,7 +123,11 @@ extension ContentView {
             let revealedCity = weatherService.cityWeatherData.first {
                 $0.city.latitude == city.city.latitude && $0.city.longitude == city.city.longitude
             } ?? city
+            #if os(iOS)
+            dismissIPhoneRoute(.listManager)
+            #else
             showingMapSidebar = false
+            #endif
             withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
                 showingMapExpandedCard = false
                 tappedCity = nil
@@ -93,6 +144,7 @@ extension ContentView {
         let trimmed = sidebarNewListName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         let newList = CityListID.createList(name: trimmed)
+        refreshSidebarListOrder()
         sidebarExpandedListIDs.insert(newList.rawValue)
         sidebarNewListName = ""
     }
@@ -118,7 +170,11 @@ extension ContentView {
 
     private func beginAddingCity(to listID: CityListID) {
         inlineAddTargetListID = listID
+        #if os(iOS)
+        dismissIPhoneRoute(.listManager)
+        #else
         showingMapSidebar = false
+        #endif
         inlineSearchText = ""
         activateInlineSearch()
     }

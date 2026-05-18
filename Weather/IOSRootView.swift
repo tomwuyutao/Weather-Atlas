@@ -125,18 +125,22 @@ extension ContentView {
 
     var iPhoneNavigationStack: some View {
         nativeCitySearch(
-            NavigationStack {
+            NavigationStack(path: $iPhoneNavigationPath) {
                 iPhoneMapTabContent
                     .navigationTitle("")
                     #if os(iOS)
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
                     #endif
-                    .navigationDestination(isPresented: $showingCityDetail) {
-                        AnyView(self.selectedCityDetailDestination)
-                    }
-                    .navigationDestination(isPresented: $showingAddCityDetail) {
-                        AnyView(iOSAddCityDetailDestination)
+                    .navigationDestination(for: IPhoneNavigationRoute.self) { route in
+                        switch route {
+                        case .cityDetail:
+                            AnyView(self.selectedCityDetailDestination)
+                        case .addCityDetail:
+                            AnyView(iOSAddCityDetailDestination)
+                        case .listManager:
+                            AnyView(iPhoneNativeListManager)
+                        }
                     }
             }
         )
@@ -147,7 +151,7 @@ extension ContentView {
 
     var mapTopListMenu: some View {
         Menu {
-            ForEach(CityListID.allLists) { listID in
+            ForEach(sidebarLists) { listID in
                 Button(listID.localizedDisplayName(locale: locale)) {
                     Task {
                         await switchToList(listID)
@@ -196,24 +200,22 @@ extension ContentView {
 
     var iPhoneMapTabContent: some View {
         ZStack(alignment: .bottom) {
-            if showingInlineSearch {
-                nativeCitySearchScreen
-            } else {
-                AnyView(
-                    iOSMapView
-                        .overlay(alignment: .topLeading) {
-                            if selectedTab == 1, showLegend {
-                                MapFloatingLegend(overlayMode: mapOverlayMode) {
-                                    withAnimation(.smooth(duration: 0.2)) {
-                                        showLegend = false
-                                    }
+            AnyView(
+                iOSMapView
+                    .overlay(alignment: .topLeading) {
+                        if selectedTab == 1, showLegend, !showingInlineSearch {
+                            MapFloatingLegend(overlayMode: mapOverlayMode) {
+                                withAnimation(.smooth(duration: 0.2)) {
+                                    showLegend = false
                                 }
-                                    .padding(.leading, 16)
-                                    .padding(.top, 72)
-                                    .transition(.move(edge: .top).combined(with: .opacity))
                             }
+                                .padding(.leading, 16)
+                                .padding(.top, 72)
+                                .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                         }
-                        .overlay(alignment: .top) {
+                    }
+                    .overlay(alignment: .top) {
+                        if !showingInlineSearch {
                             HStack {
                                 Spacer()
                                 mapTopListMenu
@@ -222,11 +224,18 @@ extension ContentView {
                             .frame(maxWidth: .infinity)
                             .safeAreaPadding(.top, 8)
                         }
-                        .overlay(alignment: .trailing) {
-                            AnyView(iOSDateSliderOverlay)
-                        }
-                )
+                    }
+                    .overlay(alignment: .trailing) {
+                        AnyView(iOSDateSliderOverlay)
+                    }
+            )
+            .opacity(showingInlineSearch ? 0 : 1)
+            .allowsHitTesting(!showingInlineSearch)
 
+            if showingInlineSearch {
+                nativeCitySearchScreen
+                    .transition(.opacity)
+            } else {
                 iOSMainOverlays
             }
         }
@@ -235,61 +244,83 @@ extension ContentView {
                 iPhoneNativeBottomToolbar
             }
         }
-        #if os(iOS)
-        .fullScreenCover(isPresented: $showingMapSidebar) {
-            iPhoneNativeListManager
-        }
-        #endif
+        .tint(.primary)
     }
 
     #if os(iOS)
     var iPhoneNativeListManager: some View {
-        NavigationStack {
-            macListManagerSidebar
-                .scrollContentBackground(.hidden)
-                .background(theme.colors.mapOcean)
-                .navigationTitle(localizedString("Lists", locale: locale))
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .topBarLeading) {
-                        Button {
-                            showingMapSidebar = false
-                        } label: {
-                            Image(systemName: "xmark")
-                        }
+        macListManagerSidebar
+            .scrollContentBackground(.hidden)
+            .background(theme.colors.mapOcean)
+            .navigationTitle(localizedString("Lists", locale: locale))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItemGroup(placement: .bottomBar) {
+                    Button {
+                        dismissIPhoneRoute(.listManager)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .foregroundStyle(.primary)
+                            .foregroundColor(.primary)
                     }
+                    .tint(.primary)
 
-                    ToolbarItem(placement: .topBarTrailing) {
+                    Spacer()
+
+                    HStack(spacing: 0) {
                         Button {
                             sidebarShowingAddListAlert = true
                         } label: {
                             Image(systemName: "plus")
+                                .foregroundStyle(.primary)
+                                .foregroundColor(.primary)
+                                .frame(width: 44, height: 44)
                         }
-                    }
+                        .tint(.primary)
 
-                    ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             withAnimation(.easeInOut(duration: 0.2)) {
                                 sidebarEditMode = sidebarEditMode.isEditing ? .inactive : .active
                             }
                         } label: {
                             Image(systemName: sidebarEditMode.isEditing ? "checkmark" : "pencil")
+                                .foregroundStyle(.primary)
+                                .foregroundColor(.primary)
+                                .frame(width: 44, height: 44)
                         }
+                        .tint(.primary)
                     }
                 }
-                .alert(localizedString("New List", locale: locale), isPresented: $sidebarShowingAddListAlert) {
-                    TextField(localizedString("Name", locale: locale), text: $sidebarNewListName)
-                    Button(localizedString("Cancel", locale: locale), role: .cancel) {
-                        sidebarNewListName = ""
-                    }
-                    Button(localizedString("Add", locale: locale)) {
-                        commitListManagerNewList()
-                    }
+            }
+            .toolbarBackground(.visible, for: .bottomBar)
+            .alert(localizedString("New List", locale: locale), isPresented: $sidebarShowingAddListAlert) {
+                TextField(localizedString("Name", locale: locale), text: $sidebarNewListName)
+                Button(localizedString("Cancel", locale: locale), role: .cancel) {
+                    sidebarNewListName = ""
                 }
-        }
-        .background(theme.colors.mapOcean.ignoresSafeArea())
+                Button(localizedString("Add", locale: locale)) {
+                    commitListManagerNewList()
+                }
+            }
     }
     #endif
+
+    func pushIPhoneRoute(_ route: IPhoneNavigationRoute) {
+        guard !iPhoneNavigationPath.contains(route) else { return }
+        iPhoneNavigationPath.append(route)
+    }
+
+    func dismissIPhoneRoute(_ route: IPhoneNavigationRoute) {
+        iPhoneNavigationPath.removeAll { $0 == route }
+        switch route {
+        case .cityDetail:
+            showingCityDetail = false
+        case .addCityDetail:
+            showingAddCityDetail = false
+        case .listManager:
+            showingMapSidebar = false
+        }
+    }
 
     func iOSOnAppear() async {
         if hasLaunchedBefore {
@@ -349,6 +380,7 @@ extension ContentView {
                     } else {
                         addCityDetailCity = cityWeather
                         showingAddCityDetail = true
+                        pushIPhoneRoute(.addCityDetail)
                     }
                 }
             )
@@ -362,7 +394,7 @@ extension ContentView {
     var iOSAddCityDetailDestination: some View {
         if let city = addCityDetailCity {
             expandedCardDetailDestination(for: city, dismissAction: {
-                showingAddCityDetail = false
+                dismissIPhoneRoute(.addCityDetail)
             })
         }
     }

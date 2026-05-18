@@ -19,7 +19,6 @@ extension ContentView {
             .listRowBackground(theme.colors.mapLand)
         }
         .listStyle(.sidebar)
-        .tint(.primary)
         .environment(\.editMode, $sidebarEditMode)
         .onAppear {
             if sidebarExpandedListIDs.isEmpty {
@@ -54,9 +53,9 @@ extension ContentView {
 
     @ViewBuilder
     private var iOSSidebarListRows: some View {
-        ForEach(CityListID.allLists) { listID in
+        ForEach(sidebarLists) { listID in
             DisclosureGroup(isExpanded: macSidebarListExpansionBinding(for: listID)) {
-                let cities = weatherService.weatherData(for: listID)
+                let cities = sidebarCities(for: listID)
                 if cities.isEmpty {
                     Text(localizedString("No cities", locale: locale))
                         .foregroundStyle(.secondary)
@@ -86,7 +85,7 @@ extension ContentView {
                     Text(listID.localizedDisplayName(locale: locale))
                         .lineLimit(1)
                     Spacer(minLength: 8)
-                    Text("\(weatherService.weatherData(for: listID).count)")
+                    Text("\(sidebarCities(for: listID).count)")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -101,9 +100,9 @@ extension ContentView {
 
     @ViewBuilder
     private var macSidebarSelectableListRows: some View {
-        ForEach(CityListID.allLists) { listID in
+        ForEach(sidebarLists) { listID in
             DisclosureGroup(isExpanded: macSidebarListExpansionBinding(for: listID)) {
-                let cities = weatherService.weatherData(for: listID)
+                let cities = sidebarCities(for: listID)
                 if cities.isEmpty {
                     Text(localizedString("No cities", locale: locale))
                         .foregroundStyle(.secondary)
@@ -128,7 +127,7 @@ extension ContentView {
                 Text(listID.localizedDisplayName(locale: locale))
                     .lineLimit(1)
             }
-            .badge(weatherService.weatherData(for: listID).count)
+            .badge(sidebarCities(for: listID).count)
             .tag(macSidebarListContextID(listID))
             .contextMenu {
                 listActions(for: listID)
@@ -140,29 +139,37 @@ extension ContentView {
 
     private func moveMacSidebarLists(from source: IndexSet, to destination: Int) {
         weatherService.moveLists(from: source, to: destination)
+        refreshSidebarListOrder()
         PlatformFeedback.lightImpact()
     }
 
     private func deleteMacSidebarLists(at offsets: IndexSet) {
-        let lists = CityListID.allLists
+        let lists = sidebarLists
         for index in offsets {
             guard lists.indices.contains(index) else { continue }
-            Task { await weatherService.deleteList(lists[index]) }
+            Task {
+                await weatherService.deleteList(lists[index])
+                await MainActor.run {
+                    refreshSidebarListOrder()
+                }
+            }
         }
         PlatformFeedback.lightImpact()
     }
 
     private func moveMacSidebarCities(in listID: CityListID, from source: IndexSet, to destination: Int) {
         weatherService.moveCity(in: listID, from: source, to: destination)
+        refreshSidebarCityOrder()
         PlatformFeedback.lightImpact()
     }
 
     private func deleteMacSidebarCities(in listID: CityListID, at offsets: IndexSet) {
-        let cities = weatherService.weatherData(for: listID)
+        let cities = sidebarCities(for: listID)
         for index in offsets {
             guard cities.indices.contains(index) else { continue }
             weatherService.removeCity(cities[index], from: listID)
         }
+        refreshSidebarCityOrder()
         PlatformFeedback.lightImpact()
     }
 

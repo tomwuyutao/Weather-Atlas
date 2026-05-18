@@ -318,7 +318,7 @@ import AppKit
 
     var macListSwitcherChevron: some View {
         Menu {
-            ForEach(CityListID.allLists) { listID in
+            ForEach(sidebarLists) { listID in
                 Button(listID.localizedDisplayName(locale: locale)) {
                     Task {
                         await switchToList(listID)
@@ -339,7 +339,7 @@ import AppKit
 
     var macToolbarListTitle: some View {
         Menu {
-            ForEach(CityListID.allLists) { listID in
+            ForEach(sidebarLists) { listID in
                 Button(listID.localizedDisplayName(locale: locale)) {
                     Task {
                         await switchToList(listID)
@@ -534,20 +534,20 @@ import AppKit
     }
 
     func switchListByOffset(_ delta: Int) {
-        let lists = CityListID.allLists
+        let lists = sidebarLists
         guard let currentIndex = lists.firstIndex(of: weatherService.activeListID), !lists.isEmpty else { return }
         let nextIndex = (currentIndex + delta + lists.count) % lists.count
         Task { await switchToList(lists[nextIndex]) }
     }
 
     func switchListByIndex(_ index: Int) {
-        let lists = CityListID.allLists
+        let lists = sidebarLists
         guard lists.indices.contains(index) else { return }
         Task { await switchToList(lists[index]) }
     }
 
     var macQuickSwitcherOverlay: some View {
-        let lists = CityListID.allLists
+        let lists = sidebarLists
         return VStack(alignment: .leading, spacing: 6) {
             ForEach(Array(lists.enumerated()), id: \.element.id) { index, listID in
                 let isSelected = index == macQuickSwitcherIndex
@@ -615,7 +615,7 @@ import AppKit
     }
 
     func handleMacQuickSwitcher(delta: Int) {
-        let lists = CityListID.allLists
+        let lists = sidebarLists
         guard !lists.isEmpty else { return }
         let currentIndex = macQuickSwitcherVisible
             ? macQuickSwitcherIndex
@@ -695,7 +695,7 @@ import AppKit
 
     func handleWeatherSwitchListCommand(_ notification: Notification) {
         guard let rawValue = notification.object as? String,
-              let listID = CityListID.allLists.first(where: { $0.rawValue == rawValue }) else { return }
+              let listID = sidebarLists.first(where: { $0.rawValue == rawValue }) else { return }
         Task { await switchToList(listID) }
     }
 

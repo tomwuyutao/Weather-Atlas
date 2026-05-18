@@ -92,7 +92,7 @@ private struct IOSFloatingMapCardPreview: View {
                 dailyLow: 16 + Double(offset % 3),
                 dailyHigh: 22 + Double(offset % 5),
                 symbolName: offset == 2 ? "cloud.sun.fill" : "sun.max.fill",
-                condition: offset == 2 ? .partlyCloudy : .clear,
+                condition: offset == 2 ? .partlySunny : .clear,
                 hourlyForecasts: hourly,
                 cloudCover: offset == 2 ? 0.4 : 0.14,
                 precipitationChance: 0.04,

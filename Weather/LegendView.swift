@@ -19,13 +19,14 @@ struct MapFloatingLegend: View {
     }
 
     private let conditions: [AppWeatherCondition] = [
-        .clear, .partlyCloudy, .cloudy, .rain, .drizzle, .snow, .fog, .wind
+        .clear, .partlySunny, .partlyCloudy, .cloudy, .rain, .drizzle, .snow, .fog, .wind
     ]
 
     private func conditionIcon(_ condition: AppWeatherCondition) -> String {
         switch condition {
         case .clear:        return "sun.max.fill"
-        case .partlyCloudy: return "cloud.sun.fill"
+        case .partlySunny:  return "cloud.sun.fill"
+        case .partlyCloudy: return "cloud.fill"
         case .cloudy:       return "cloud.fill"
         case .rain:         return "cloud.rain.fill"
         case .drizzle:      return "cloud.drizzle.fill"
@@ -157,44 +158,41 @@ struct MapFloatingLegend: View {
     // MARK: - Body
 
     var body: some View {
-        HStack(spacing: compact ? 8 : 10) {
-            Group {
-                if overlayMode == "weather" {
-                    legendContent
-                        .padding(.leading, compact ? 10 : 16)
-                        .padding(.vertical, compact ? 6 : 10)
-                } else {
-                    HStack(spacing: compact ? 7 : 10) {
-                        Image(systemName: leadingIcon)
-                            .font(.system(size: compact ? 13 : 15, weight: .medium))
-                            .foregroundStyle(AppTheme.shared.colors.primaryText)
-                            .frame(width: compact ? 15 : 18)
-
-                        legendContent
-                    }
-                    .padding(.leading, compact ? 10 : 14)
-                    .padding(.vertical, compact ? 6 : 10)
-                }
-            }
-
+        VStack(alignment: .leading, spacing: compact ? 8 : 10) {
+            legendContent
+        }
+        .padding(.horizontal, compact ? 12 : 14)
+        .padding(.vertical, compact ? 10 : 12)
+        .padding(.trailing, onClose == nil ? 0 : 20)
+        .frame(width: compact ? 178 : 206, alignment: .leading)
+        .background(themeCardFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+        .overlay(alignment: .topTrailing) {
             if let onClose {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
                         .font(.system(size: compact ? 10 : 11, weight: .semibold))
                         .foregroundStyle(.secondary)
-                        .frame(width: compact ? 18 : 22, height: compact ? 18 : 22)
-                        .background(.secondary.opacity(0.14), in: Circle())
+                        .frame(width: compact ? 26 : 28, height: compact ? 26 : 28)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .padding(.trailing, compact ? 8 : 10)
+                .padding(.top, 4)
+                .padding(.trailing, 4)
             }
         }
-        .frame(maxWidth: compact ? 320 : .infinity, alignment: .leading)
-        .padding(compact ? 3 : 6)
-        .themedGlass(in: Capsule())
-        .padding(.horizontal, compact ? 8 : 12)
-        .fixedSize(horizontal: compact, vertical: false)
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.12), radius: 18, x: 0, y: 10)
+        .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var themeCardFill: Color {
+        colorScheme == .dark
+            ? AppTheme.shared.colors.listCardFill.opacity(0.96)
+            : AppTheme.shared.colors.listCardFill.opacity(0.92)
     }
 
     @ViewBuilder
@@ -292,7 +290,8 @@ struct MapFloatingLegend: View {
         guard colorScheme == .light else { return conditionIcon(condition) }
         switch condition {
         case .clear:        return "sun.max.fill"
-        case .partlyCloudy: return "cloud.sun"
+        case .partlySunny:  return "cloud.sun"
+        case .partlyCloudy: return "cloud"
         case .cloudy:       return "cloud"
         case .rain:         return "cloud.rain"
         case .drizzle:      return "cloud.drizzle"
@@ -339,45 +338,50 @@ struct MapFloatingLegend: View {
             .offset(y: yOffset)
     }
 
-    // MARK: - Weather dot legend (single row with separators)
+    // MARK: - Weather dot legend
 
-    private var separatorLine: some View {
-        Text("|")
-            .font(.system(size: 11, weight: .light))
-            .foregroundStyle(.secondary.opacity(0.5))
+    private func conditionTitle(_ condition: AppWeatherCondition) -> String {
+        switch condition {
+        case .clear: return "Clear"
+        case .partlySunny: return "Partly Sunny"
+        case .partlyCloudy: return "Partly Cloudy"
+        case .cloudy: return "Cloudy"
+        case .rain: return "Rain"
+        case .drizzle: return "Drizzle"
+        case .snow: return "Snow"
+        case .fog: return "Fog"
+        case .wind: return "Wind"
+        }
     }
 
-    private func dotPairEntry(_ condition: AppWeatherCondition) -> some View {
-        HStack(spacing: compact ? 3 : 5) {
+    private func conditionEntry(_ condition: AppWeatherCondition) -> some View {
+        HStack(spacing: compact ? 6 : 7) {
             Circle()
                 .fill(condition.dotColor)
                 .frame(width: compact ? 6 : 8, height: compact ? 6 : 8)
                 .shadow(color: condition.dotColor.opacity(0.5), radius: 2)
-            separatorLine
             legendIconView(for: condition)
+                .frame(width: 18)
+            Text(conditionTitle(condition))
+                .font(.avenir(.caption2, weight: .medium))
+                .foregroundStyle(AppTheme.shared.colors.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+            Spacer(minLength: 0)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var weatherDotLegend: some View {
-        HStack(spacing: compact ? 7 : 0) {
-            dotPairEntry(.clear)
-            if !compact { Spacer() }
-            dotPairEntry(.partlyCloudy)
-            if !compact { Spacer() }
-            dotPairEntry(.rain)
-            if !compact { Spacer() }
-            dotPairEntry(.drizzle)
-            if !compact { Spacer() }
-            // White dot | cloudy, snow, fog, wind icons
-            Circle()
-                .fill(AppWeatherCondition.cloudy.dotColor)
-                .frame(width: compact ? 6 : 8, height: compact ? 6 : 8)
-                .shadow(color: AppWeatherCondition.cloudy.dotColor.opacity(0.5), radius: 2)
-            separatorLine
-                .padding(.leading, 5)
-            ForEach(Array([AppWeatherCondition.cloudy, .snow, .fog, .wind].enumerated()), id: \.offset) { index, condition in
-                legendIconView(for: condition)
-                    .padding(.leading, 5)
+        LazyVGrid(
+            columns: [
+                GridItem(.flexible(minimum: 132), spacing: 0)
+            ],
+            alignment: .leading,
+            spacing: compact ? 7 : 8
+        ) {
+            ForEach(conditions, id: \.self) { condition in
+                conditionEntry(condition)
             }
         }
     }

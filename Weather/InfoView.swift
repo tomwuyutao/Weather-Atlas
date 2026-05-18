@@ -127,7 +127,7 @@ struct InfoView: View {
                         HStack(spacing: 6) {
                             ForEach(0..<5, id: \.self) { i in
                                 Circle()
-                                    .fill(i == 0 ? AppWeatherCondition.clear.dotColor : AppWeatherCondition.partlyCloudy.dotColor)
+                                    .fill(i == 0 ? AppWeatherCondition.clear.dotColor : AppWeatherCondition.partlySunny.dotColor)
                                     .frame(width: 8, height: 8)
                                     .opacity(i == 0 ? 1 : 0.6)
                             }
@@ -135,7 +135,7 @@ struct InfoView: View {
                         HStack(spacing: 6) {
                             ForEach(0..<5, id: \.self) { _ in
                                 Circle()
-                                    .fill(AppWeatherCondition.partlyCloudy.dotColor)
+                                    .fill(AppWeatherCondition.partlySunny.dotColor)
                                     .frame(width: 8, height: 8)
                                     .opacity(0.6)
                             }

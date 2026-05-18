@@ -289,36 +289,58 @@ private struct TimelineChartBody: View {
     }
 
     private var chart: some View {
-        Chart {
-            ForEach(points) { point in
-                LineMark(
-                    x: .value("Index", Double(point.index)),
-                    y: .value("Value", point.value)
-                )
-                .interpolationMethod(.catmullRom)
-                .foregroundStyle(lineColor)
-                .lineStyle(StrokeStyle(lineWidth: compactLayout ? 3 : 4, lineCap: .round, lineJoin: .round))
+        GeometryReader { geometry in
+            let chartPoints = positionedPoints(in: geometry.size)
+            let selectedX = selectedIndex.map { chartX(for: $0, width: geometry.size.width) }
 
-                PointMark(
-                    x: .value("Index", Double(point.index)),
-                    y: .value("Value", point.value)
-                )
-                .foregroundStyle(lineColor)
-                .symbolSize(compactLayout ? 72 : 110)
-            }
+            ZStack {
+                if let selectedX {
+                    Rectangle()
+                        .fill(indicatorColor.opacity(0.5))
+                        .frame(width: compactLayout ? 1.5 : 2)
+                        .position(x: selectedX, y: geometry.size.height / 2)
+                }
 
-            if let selectedIndex {
-                RuleMark(x: .value("Selected", selectedIndex))
-                    .foregroundStyle(indicatorColor.opacity(0.5))
-                    .lineStyle(StrokeStyle(lineWidth: compactLayout ? 1.5 : 2))
+                Path { path in
+                    guard let first = chartPoints.first else { return }
+                    path.move(to: first)
+                    chartPoints.dropFirst().forEach { point in
+                        path.addLine(to: point)
+                    }
+                }
+                .stroke(lineColor, style: StrokeStyle(lineWidth: compactLayout ? 3 : 4, lineCap: .round, lineJoin: .round))
+
+                ForEach(Array(chartPoints.enumerated()), id: \.offset) { _, point in
+                    Circle()
+                        .fill(lineColor)
+                        .frame(width: compactLayout ? 8.5 : 10.5, height: compactLayout ? 8.5 : 10.5)
+                        .position(point)
+                }
             }
         }
-        .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
-        .chartLegend(.hidden)
-        .chartXScale(domain: -0.2...Double(max(points.count - 1, 0)) + 0.2)
-        .chartYScale(domain: domain)
         .frame(height: chartHeight)
+    }
+
+    private func positionedPoints(in size: CGSize) -> [CGPoint] {
+        points.map { point in
+            CGPoint(
+                x: chartX(for: Double(point.index), width: size.width),
+                y: chartY(for: point.value, height: size.height)
+            )
+        }
+    }
+
+    private func chartX(for index: Double, width: CGFloat) -> CGFloat {
+        guard !points.isEmpty else { return 0 }
+        return (CGFloat(index) + 0.5) * width / CGFloat(points.count)
+    }
+
+    private func chartY(for value: Double, height: CGFloat) -> CGFloat {
+        let lower = domain.lowerBound
+        let upper = domain.upperBound
+        guard upper > lower else { return height / 2 }
+        let progress = (value - lower) / (upper - lower)
+        return height * (1 - CGFloat(progress))
     }
 
     private var valueRow: some View {

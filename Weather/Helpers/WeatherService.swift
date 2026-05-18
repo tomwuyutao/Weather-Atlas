@@ -20,6 +20,7 @@ func localizedString(_ key: String.LocalizationValue, locale: Locale) -> String 
 
 enum AppWeatherCondition {
     case clear
+    case partlySunny
     case partlyCloudy
     case cloudy
     case rain
@@ -33,6 +34,8 @@ enum AppWeatherCondition {
         switch self {
         case .clear:
             return "Clear"
+        case .partlySunny:
+            return "Partly Sunny"
         case .partlyCloudy:
             return "Partly Cloudy"
         case .cloudy:
@@ -54,6 +57,8 @@ enum AppWeatherCondition {
         switch self {
         case .clear:
             return localizedString("Clear", locale: locale)
+        case .partlySunny:
+            return localizedString("Partly Sunny", locale: locale)
         case .partlyCloudy:
             return localizedString("Partly Cloudy", locale: locale)
         case .cloudy:
@@ -74,7 +79,8 @@ enum AppWeatherCondition {
     var estimatedCloudCover: Int {
         switch self {
         case .clear: return 5
-        case .partlyCloudy: return 35
+        case .partlySunny: return 35
+        case .partlyCloudy: return 65
         case .cloudy: return 80
         case .rain: return 90
         case .drizzle: return 90
@@ -91,7 +97,8 @@ enum AppWeatherCondition {
     func dotColor(for theme: ThemeColors) -> Color {
         switch self {
         case .clear: return theme.dotSun
-        case .partlyCloudy: return theme.dotPartlyCloudy
+        case .partlySunny: return theme.dotPartlyCloudy
+        case .partlyCloudy: return theme.dotCloudy
         case .cloudy: return theme.dotCloudy
         case .rain: return theme.dotRain
         case .drizzle: return theme.dotDrizzle
@@ -301,6 +308,7 @@ class WeatherService {
     var forecastDays: [ForecastDay] = []
     var lastFetchDate: Date?
     var activeListID: CityListID = .europe
+    private var activeFetchToken = UUID()
     
     var hasSavedCities: Bool {
         UserDefaults.standard.data(forKey: citiesListKey) != nil
@@ -324,17 +332,22 @@ class WeatherService {
     }
     
     func fetchWeatherForAllCities() async {
+        let fetchToken = UUID()
+        activeFetchToken = fetchToken
+        let targetListID = activeListID
         isLoading = true
         loadingProgress = 0
         defer {
-            isLoading = false
+            if activeFetchToken == fetchToken {
+                isLoading = false
+            }
         }
         
         // Generate 10 days of forecast data
         generateForecastDays()
         
         // Load the saved cities list, or use defaults for active list
-        let citiesToFetch = loadSavedCities() ?? activeListID.defaultCities
+        let citiesToFetch = loadSavedCities(for: targetListID) ?? targetListID.defaultCities
         
         var weatherData: [CityWeather] = []
         
@@ -344,19 +357,26 @@ class WeatherService {
                 let weather = try await weatherService.weather(for: location)
                 let cityWeather = await convertWeatherKitData(weather: weather, for: city)
                 weatherData.append(cityWeather)
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
+                if activeFetchToken == fetchToken {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
+                    }
                 }
             } catch {
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
+                if activeFetchToken == fetchToken {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
+                    }
                 }
             }
         }
         
         print("\(weatherData.count)/\(citiesToFetch.count) cities fetched")
+        otherListData[targetListID.rawValue] = weatherData
+        guard activeFetchToken == fetchToken, activeListID.rawValue == targetListID.rawValue else {
+            return
+        }
         self.cityWeatherData = weatherData
-        otherListData[activeListID.rawValue] = weatherData
         
         // Cache the fetched data
         cacheData(weatherData)
@@ -389,6 +409,7 @@ class WeatherService {
     
     func switchList(to listID: CityListID) async {
         guard listID != activeListID else { return }
+        activeFetchToken = UUID()
         cityWeatherData = []
         activeListID = listID
         UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
@@ -644,7 +665,12 @@ class WeatherService {
     
     /// Load the saved cities list (returns nil if no list was saved)
     private func loadSavedCities() -> [City]? {
-        guard let data = UserDefaults.standard.data(forKey: citiesListKey) else {
+        loadSavedCities(for: activeListID)
+    }
+
+    private func loadSavedCities(for listID: CityListID) -> [City]? {
+        let key = "savedCitiesList_\(listID.rawValue)"
+        guard let data = UserDefaults.standard.data(forKey: key) else {
             return nil
         }
         
@@ -662,11 +688,11 @@ class WeatherService {
                 return isValidPersistedCity(city) ? city : nil
             }
             if cities.count != cachedCities.count {
-                saveCities(cities, for: activeListID)
+                saveCities(cities, for: listID)
             }
             return cities
         } catch {
-            UserDefaults.standard.removeObject(forKey: citiesListKey)
+            UserDefaults.standard.removeObject(forKey: key)
             return nil
         }
     }
@@ -696,8 +722,8 @@ class WeatherService {
     private func convertWeatherKitData(weather: Weather, for city: City, timeZone: TimeZone) -> CityWeather {
         // Current weather
         let currentTemp = weather.currentWeather.temperature.value
-        let currentCondition = mapWeatherKitCondition(weather.currentWeather.condition)
         let currentSymbol = weather.currentWeather.symbolName
+        let currentCondition = mapWeatherKitCondition(weather.currentWeather.condition, symbolName: currentSymbol)
         
         // Current weather overlay data
         let currentFeelsLike = weather.currentWeather.apparentTemperature.converted(to: .celsius).value
@@ -711,7 +737,7 @@ class WeatherService {
         // Daily forecasts
         let dailyForecasts = weather.dailyForecast.forecast.prefix(10).enumerated().map { (index, day) -> DailyForecast in
             let daySymbol = day.symbolName
-            let dayCondition = mapWeatherKitCondition(day.condition)
+            let dayCondition = mapWeatherKitCondition(day.condition, symbolName: daySymbol)
             
             // Generate hourly forecasts for this day
             let hourlyForecasts = generateHourlyFromDaily(day: day, dayOffset: index, allHourly: weather.hourlyForecast.forecast, timeZone: timeZone)
@@ -794,7 +820,7 @@ class WeatherService {
                 temperature: hourWeather.temperature.value,
                 apparentTemperature: hourWeather.apparentTemperature.value,
                 symbolName: hourWeather.symbolName,
-                condition: mapWeatherKitCondition(hourWeather.condition),
+                condition: mapWeatherKitCondition(hourWeather.condition, symbolName: hourWeather.symbolName),
                 precipitationChance: hourWeather.precipitationChance,
                 cloudCover: hourWeather.cloudCover,
                 windSpeed: hourWeather.wind.speed.converted(to: .kilometersPerHour).value,
@@ -806,11 +832,13 @@ class WeatherService {
     }
     
     
-    private func mapWeatherKitCondition(_ condition: WeatherCondition) -> AppWeatherCondition {
+    private func mapWeatherKitCondition(_ condition: WeatherCondition, symbolName: String) -> AppWeatherCondition {
         switch condition {
         case .clear, .mostlyClear:
             return .clear
-        case .partlyCloudy, .mostlyCloudy:
+        case .partlyCloudy:
+            return symbolName.contains("sun") ? .partlySunny : .partlyCloudy
+        case .mostlyCloudy:
             return .partlyCloudy
         case .cloudy:
             return .cloudy
@@ -939,7 +967,9 @@ class WeatherService {
     }
     
     func moveCity(from source: IndexSet, to destination: Int) {
-        cityWeatherData.move(fromOffsets: source, toOffset: destination)
+        var reorderedCities = cityWeatherData
+        reorderedCities.move(fromOffsets: source, toOffset: destination)
+        cityWeatherData = reorderedCities
         // Update cache after reordering cities
         cacheData(cityWeatherData)
         // Save the updated cities list
@@ -1705,6 +1735,8 @@ extension AppWeatherCondition {
         switch name {
         case "Clear":
             return .clear
+        case "Partly Sunny":
+            return .partlySunny
         case "Partly Cloudy":
             return .partlyCloudy
         case "Cloudy":

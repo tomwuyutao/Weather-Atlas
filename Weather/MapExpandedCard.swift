@@ -88,7 +88,7 @@ extension ContentView {
                 for: cityWeather,
                 icon: icon,
                 primaryText: isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh),
-                metricLabel: isOverlayActive ? overlayLabel : localizedString("Highest Temperature", locale: locale),
+                metricLabel: isOverlayActive ? overlayLabel : localizedString(isNow ? "Current Temperature" : "Highest Temperature", locale: locale),
                 tempUnit: tempUnit,
                 hideCityName: hideCityName,
                 plainBackground: plainBackground,
@@ -105,7 +105,7 @@ extension ContentView {
                         .contentTransition(.numericText())
                         .lineLimit(1)
 
-                    Text(isOverlayActive ? overlayLabel : localizedString("Highest Temperature", locale: locale))
+                    Text(isOverlayActive ? overlayLabel : localizedString(isNow ? "Current Temperature" : "Highest Temperature", locale: locale))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
@@ -162,6 +162,13 @@ extension ContentView {
         .themedGlass(in: .rect(cornerRadius: 24))
         .contentShape(RoundedRectangle(cornerRadius: 24))
         .onTapGesture {
+            #if os(iOS)
+            if !shouldUseIPadLayout {
+                showingCityDetail = true
+                pushIPhoneRoute(.cityDetail)
+                return
+            }
+            #endif
             showingCityDetail = true
         })
     }
@@ -250,43 +257,51 @@ extension ContentView {
                     .padding(.bottom, 10)
             }
 
-            VStack(spacing: usesIPhoneDetailSizing ? 20 : (usesDetailCardLayout ? 12 : 8)) {
+            VStack(spacing: usesIPhoneDetailSizing ? 10 : (usesDetailCardLayout ? 12 : 8)) {
                 ForEach(0..<2, id: \.self) { row in
-                    HStack(alignment: .top, spacing: usesIPhoneDetailSizing ? 8 : 6) {
+                    HStack(alignment: .top, spacing: usesIPhoneDetailSizing ? 12 : 6) {
                         ForEach(0..<5, id: \.self) { column in
                             let index = row * 5 + column
                             if index < forecasts.count {
                                 let forecast = forecasts[index]
+                                let representsNow = index == 0
+                                let daySelectionOffset = representsNow ? -1 : index
+                                let isSelectedDay = selectedDayOffset == daySelectionOffset
+                                let dayCondition = representsNow ? cityWeather.condition : forecast.condition
+                                let dayTemperature = representsNow ? cityWeather.temperature : forecast.dailyHigh
+
                                 Button {
-                                    withAnimation(.smooth(duration: 0.18)) {
-                                        selectedDayOffset = index
+                                    withAnimation(.snappy(duration: 0.24)) {
+                                        selectedDayOffset = daySelectionOffset
                                     }
                                 } label: {
                                     VStack(spacing: usesIPhoneDetailSizing ? 6 : 7) {
-                                        Text(macForecastDayLabel(for: index))
+                                        Text(macForecastDayLabel(for: daySelectionOffset))
                                             .font((usesIPhoneDetailSizing ? Font.subheadline : Font.caption2).weight(.semibold))
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
 
                                         Circle()
-                                            .fill(forecast.condition.dotColor)
-                                            .frame(width: index == selectedDayOffset ? (usesIPhoneDetailSizing ? 11 : 8) : (usesIPhoneDetailSizing ? 10 : 7), height: index == selectedDayOffset ? (usesIPhoneDetailSizing ? 11 : 8) : (usesIPhoneDetailSizing ? 10 : 7))
-                                            .shadow(color: forecast.condition.dotColor.opacity(0.45), radius: 2)
+                                            .fill(dayCondition.dotColor)
+                                            .frame(width: isSelectedDay ? (usesIPhoneDetailSizing ? 11 : 8) : (usesIPhoneDetailSizing ? 10 : 7), height: isSelectedDay ? (usesIPhoneDetailSizing ? 11 : 8) : (usesIPhoneDetailSizing ? 10 : 7))
+                                            .shadow(color: dayCondition.dotColor.opacity(0.45), radius: 2)
 
-                                        Text(tempUnit.display(forecast.dailyHigh))
+                                        Text(tempUnit.display(dayTemperature))
                                             .font((usesIPhoneDetailSizing ? Font.headline : Font.caption).weight(.semibold))
                                             .foregroundStyle(.primary)
                                             .lineLimit(1)
                                     }
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, usesIPhoneDetailSizing ? 6 : 6)
-                                    .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                    .padding(.horizontal, usesIPhoneDetailSizing ? 6 : 0)
+                                    .padding(.vertical, usesIPhoneDetailSizing ? 10 : 6)
+                                    .contentShape(RoundedRectangle(cornerRadius: usesIPhoneDetailSizing ? 12 : 8, style: .continuous))
                                     .background {
-                                        if index == selectedDayOffset {
-                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                        if isSelectedDay {
+                                            RoundedRectangle(cornerRadius: usesIPhoneDetailSizing ? 12 : 8, style: .continuous)
                                                 .fill(Color.primary.opacity(0.09))
+                                                .matchedGeometryEffect(id: "detail-day-selection", in: detailDaySelectionNamespace)
                                         } else if macExpandedCardHoveredDay == index {
-                                            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                                            RoundedRectangle(cornerRadius: usesIPhoneDetailSizing ? 12 : 8, style: .continuous)
                                                 .strokeBorder(Color.primary.opacity(0.18), lineWidth: 1)
                                         }
                                     }
@@ -300,8 +315,9 @@ extension ContentView {
                     }
                 }
             }
-            .padding(.horizontal, usesIPhoneDetailSizing ? 22 : (usesDetailCardLayout ? 12 : 0))
-            .padding(.vertical, usesIPhoneDetailSizing ? 20 : (usesDetailCardLayout ? 12 : 0))
+            .padding(.horizontal, usesIPhoneDetailSizing ? 18 : (usesDetailCardLayout ? 12 : 0))
+            .padding(.vertical, usesIPhoneDetailSizing ? 16 : (usesDetailCardLayout ? 12 : 0))
+            .animation(.snappy(duration: 0.24), value: selectedDayOffset)
             .background {
                 if usesDetailCardLayout {
                     RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
@@ -354,7 +370,7 @@ extension ContentView {
 
     private func macExpandedCardAddMenu(for cityWeather: CityWeather) -> some View {
         Menu {
-            ForEach(CityListID.allLists) { listID in
+            ForEach(sidebarLists) { listID in
                 Button(listID.localizedDisplayName(locale: locale)) {
                     Task {
                         await weatherService.addCityToList(cityWeather.city, listID: listID)
@@ -448,7 +464,7 @@ extension ContentView {
 
         let detailCardCornerRadius: CGFloat = usesIPhoneDetailSizing ? 28 : 20
 
-        return VStack(spacing: usesIPhoneDetailSizing ? 14 : (usesDetailCardLayout ? 12 : 8)) {
+        return VStack(spacing: usesIPhoneDetailSizing ? 18 : (usesDetailCardLayout ? 12 : 8)) {
             VStack(alignment: .leading, spacing: 0) {
                 if !usesDetailCardLayout {
                     macExpandedCardDivider
@@ -613,7 +629,7 @@ extension ContentView {
             HStack(spacing: 5) {
                 Image(systemName: macExpandedCardChartMetricIcon(macExpandedCardChartMetric))
                     .font(.system(size: usesIPhoneDetailSizing ? 15 : 10, weight: .semibold))
-                    .foregroundStyle(macExpandedCardChartLineColor(macExpandedCardChartMetric))
+                    .foregroundStyle(.primary)
                 Text(macExpandedCardChartMetricLabel(macExpandedCardChartMetric))
                     .font((usesIPhoneDetailSizing ? Font.callout : Font.caption2).weight(.medium))
                     .lineLimit(1)
@@ -697,16 +713,7 @@ extension ContentView {
     }
 
     private func macExpandedCardChartLineColor(_ metric: WeatherChartMetric) -> Color {
-        switch metric {
-        case .temperature:   return Color(hex: 0xE8536B)
-        case .feelsLike:     return Color(hex: 0xED8988)
-        case .cloudCover:    return Color(hex: 0x9ABCCE)
-        case .precipitation: return Color(hex: 0x57D3E5)
-        case .windSpeed:     return Color(hex: 0xFDA409)
-        case .uvIndex:       return Color(hex: 0xFB4368)
-        case .humidity:      return Color(hex: 0xBE9AED)
-        case .visibility:    return Color(hex: 0x1579C7)
-        }
+        theme.colors.accent
     }
 
     private func macExpandedCardChartCurrentValue(
@@ -756,6 +763,9 @@ extension ContentView {
     }
 
     private func macForecastDayLabel(for offset: Int) -> String {
+        if offset == -1 {
+            return localizedString("Now", locale: locale).uppercased()
+        }
         if offset == 0 {
             return localizedString("Today", locale: locale).uppercased()
         }

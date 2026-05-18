@@ -214,6 +214,9 @@ extension ContentView {
                 return
             } else {
                 showingCityDetail = true
+                #if os(iOS)
+                pushIPhoneRoute(.cityDetail)
+                #endif
                 return
             }
         }
@@ -344,7 +347,7 @@ extension ContentView {
             }
 
         }
-        .background(Color(hex: 0xDDE9EF).ignoresSafeArea())
+        .background(theme.colors.mapOcean.ignoresSafeArea())
         .ignoresSafeArea()
     }
 

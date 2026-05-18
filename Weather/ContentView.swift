@@ -23,6 +23,14 @@ enum PlatformFeedback {
     }
 }
 
+#if os(iOS)
+enum IPhoneNavigationRoute: Hashable {
+    case cityDetail
+    case addCityDetail
+    case listManager
+}
+#endif
+
 struct ContentView: View {
     @State var weatherService = WeatherService()
     @Environment(\.appTheme) var theme
@@ -31,6 +39,7 @@ struct ContentView: View {
     @State var centerOnCityTrigger: CityWeather?
 
     @State var selectedDayOffset: Int = -1
+    @Namespace var detailDaySelectionNamespace
     @State var showingCityDetail: Bool = false
     @State var tappedCity: CityWeather?
     @State var showingMapExpandedCard: Bool = false
@@ -167,6 +176,8 @@ struct ContentView: View {
     @State var showingListSwitcher: Bool = false
     @State var showingMapSidebar: Bool = false
     @State var sidebarExpandedListIDs: Set<String> = []
+    @State var listOrderRevision: Int = 0
+    @State var cityOrderRevision: Int = 0
     @State var sidebarNewListName: String = ""
     @State var sidebarShowingAddListAlert: Bool = false
     @State var inlineAddTargetListID: CityListID?
@@ -199,6 +210,7 @@ struct ContentView: View {
     #if os(iOS)
     @State var iPadSidebarVisibility: NavigationSplitViewVisibility = .all
     @State var iPadPreferredCompactColumn: NavigationSplitViewColumn = .detail
+    @State var iPhoneNavigationPath: [IPhoneNavigationRoute] = []
     #endif
 
     var toolbarTitle: String {
@@ -238,7 +250,12 @@ struct ContentView: View {
             Button {
                 showingSettings = true
             } label: {
-                Label(localizedString("Settings", locale: locale), systemImage: "gearshape")
+                Label {
+                    Text(localizedString("Settings", locale: locale))
+                } icon: {
+                    Image(systemName: "gearshape")
+                        .foregroundStyle(.primary)
+                }
             }
 
             if cityIsInSidebar(city) {
@@ -255,7 +272,7 @@ struct ContentView: View {
                     }
                 }
 
-                Button(role: .destructive) {
+                Button(localizedString("Delete City", locale: locale), systemImage: "trash", role: .destructive) {
                     weatherService.removeCity(city)
                     showingCityDetail = false
                     showingMapExpandedCard = false
@@ -264,14 +281,8 @@ struct ContentView: View {
                     if selectedTab == 1 {
                         recenterOnAllCities = true
                     }
-                } label: {
-                    Label {
-                        Text(localizedString("Delete City", locale: locale))
-                    } icon: {
-                        Image(systemName: "trash")
-                            .foregroundStyle(.red)
-                    }
                 }
+                .tint(theme.colors.destructive)
             } else {
                 Button {
                     Task {
@@ -282,14 +293,19 @@ struct ContentView: View {
                         }
                     }
                 } label: {
-                    Label(localizedString("Add City", locale: locale), systemImage: "plus")
+                    Label {
+                        Text(localizedString("Add City", locale: locale))
+                    } icon: {
+                        Image(systemName: "plus")
+                            .foregroundStyle(.primary)
+                    }
                 }
             }
         } label: {
             Image(systemName: "ellipsis")
                 .foregroundStyle(.primary)
+                .foregroundColor(.primary)
         }
-        .tint(.primary)
         #if os(macOS)
         .menuIndicator(.hidden)
         #endif
@@ -299,7 +315,7 @@ struct ContentView: View {
 
     @ViewBuilder
     func addCityButton(dismissExpanded: Bool) -> some View {
-        let allLists = CityListID.allLists
+        let allLists = sidebarLists
         if allLists.count > 1 {
             Menu {
                 ForEach(allLists) { listID in
@@ -361,7 +377,7 @@ private enum WeatherPreviewData {
                 temperature: [16, 18, 21, 23, 24, 23, 21][index],
                 apparentTemperature: [15, 18, 21, 23, 24, 23, 20][index],
                 symbolName: index == 4 ? "cloud.sun.fill" : "sun.max.fill",
-                condition: index == 4 ? .partlyCloudy : .clear,
+                condition: index == 4 ? .partlySunny : .clear,
                 precipitationChance: 0.05,
                 cloudCover: index == 4 ? 0.35 : 0.12,
                 windSpeed: 12 + Double(index),
@@ -374,7 +390,7 @@ private enum WeatherPreviewData {
         let forecasts = (0..<10).map { offset in
             let date = calendar.date(byAdding: .day, value: offset, to: now) ?? now
             let symbol = ["sun.max.fill", "sun.max.fill", "cloud.sun.fill", "sun.max.fill", "cloud.fill"][offset % 5]
-            let condition: AppWeatherCondition = symbol == "cloud.fill" ? .cloudy : (symbol == "cloud.sun.fill" ? .partlyCloudy : .clear)
+            let condition: AppWeatherCondition = symbol == "cloud.fill" ? .cloudy : (symbol == "cloud.sun.fill" ? .partlySunny : .clear)
             return DailyForecast(
                 dayOffset: offset,
                 dailyLow: [16, 17, 18, 19, 18, 17, 18, 19, 18, 17][offset],
@@ -438,4 +454,3 @@ private extension ContentView {
     ContentView.iOSDetailPreview
 }
 #endif
-

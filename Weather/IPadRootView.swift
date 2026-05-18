@@ -2,7 +2,7 @@
 //  IPadRootView.swift
 //  Weather
 //
-//  iPad split-view shell.
+//  iPad split -view shell.
 //
 
 import SwiftUI
@@ -23,7 +23,7 @@ extension ContentView {
             selectedTab = 1
             iPadPreferredCompactColumn = .detail
             if sidebarExpandedListIDs.isEmpty {
-                sidebarExpandedListIDs = Set(CityListID.allLists.map(\.rawValue))
+                sidebarExpandedListIDs = Set(sidebarLists.map(\.rawValue))
             }
         }
     }
@@ -73,7 +73,7 @@ extension ContentView {
         .onAppear {
             selectedTab = 1
             if sidebarExpandedListIDs.isEmpty {
-                sidebarExpandedListIDs = Set(CityListID.allLists.map(\.rawValue))
+                sidebarExpandedListIDs = Set(sidebarLists.map(\.rawValue))
             }
         }
     }
@@ -118,26 +118,29 @@ extension ContentView {
 
     var iPadMapContent: some View {
         ZStack {
+            iOSMapView
+                .overlay(alignment: .topLeading) {
+                    if showLegend && !showingInlineSearch {
+                        MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
+                            withAnimation(.smooth(duration: 0.2)) {
+                                showLegend = false
+                            }
+                        }
+                        .padding(.leading, 24)
+                        .padding(.top, 68)
+                        .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+                    }
+                }
+                .overlay(alignment: .trailing) {
+                    AnyView(iOSDateSliderOverlay)
+                }
+                .opacity(showingInlineSearch ? 0 : 1)
+                .allowsHitTesting(!showingInlineSearch)
+
             if showingInlineSearch {
                 nativeCitySearchScreen
+                    .transition(.opacity)
             } else {
-                iOSMapView
-                    .overlay(alignment: .topLeading) {
-                        if showLegend {
-                            MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
-                                withAnimation(.smooth(duration: 0.2)) {
-                                    showLegend = false
-                                }
-                            }
-                            .padding(.leading, 24)
-                            .padding(.top, 68)
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                        }
-                    }
-                    .overlay(alignment: .trailing) {
-                        AnyView(iOSDateSliderOverlay)
-                    }
-
                 iPadFloatingMapOverlays
             }
         }
@@ -157,7 +160,10 @@ extension ContentView {
                     }
                 } label: {
                     Image(systemName: "dot.squareshape.split.2x2")
+                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
                 }
+                .tint(.primary)
                 .help(localizedString("Center on Map", locale: locale))
 
                 mapOverlayMenu
@@ -168,14 +174,20 @@ extension ContentView {
                     }
                 } label: {
                     Image(systemName: showLegend ? "eye.slash" : "eye")
+                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
                 }
+                .tint(.primary)
                 .help(localizedString("Legend", locale: locale))
 
                 Button {
                     Task { await weatherService.refreshWeather() }
                 } label: {
                     Image(systemName: "arrow.clockwise")
+                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
                 }
+                .tint(.primary)
                 .disabled(weatherService.isLoading)
                 .help(localizedString("Refresh", locale: locale))
 
@@ -185,12 +197,16 @@ extension ContentView {
                     }
                 } label: {
                     Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
+                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
                 }
+                .tint(.primary)
                 .help(localizedString("Filter Sunny", locale: locale))
 
                 iOSNativeMenu
             }
         }
+        .tint(.primary)
         .if(showingInlineSearch) { view in
             view
         }
