@@ -184,20 +184,24 @@ extension ContentView {
         return ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
-                VStack(alignment: .leading, spacing: usesIPhoneDetailSizing ? 6 : 2) {
+                if usesIPhoneDetailSizing {
+                    Spacer(minLength: 0)
+                }
+
+                VStack(alignment: usesIPhoneDetailSizing ? .center : .leading, spacing: usesIPhoneDetailSizing ? 6 : 2) {
                     if !hideCityName {
                         Text(cityWeather.city.localizedName(locale: locale))
-                            .font((usesIPhoneDetailSizing ? Font.largeTitle : Font.title3).weight(.semibold))
+                            .font((usesIPhoneDetailSizing ? Font.title : Font.title3).weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
 
                     Text(metricLabel)
-                        .font((usesIPhoneDetailSizing ? Font.title3 : Font.caption).weight(.medium))
+                        .font((usesIPhoneDetailSizing ? Font.callout : Font.caption).weight(.medium))
                         .foregroundStyle(.secondary)
                 }
 
-                Spacer(minLength: 8)
+                Spacer(minLength: usesIPhoneDetailSizing ? 0 : 8)
 
                 if !usesIPhoneDetailSizing {
                     if cityIsInSidebar(cityWeather) {
@@ -216,32 +220,37 @@ extension ContentView {
                     }
                 }
             }
-            .padding(.bottom, 14)
+            .multilineTextAlignment(usesIPhoneDetailSizing ? .center : .leading)
+            .padding(.bottom, usesIPhoneDetailSizing ? 10 : 14)
 
-            HStack(alignment: .center, spacing: 12) {
+            HStack(alignment: .center, spacing: usesIPhoneDetailSizing ? 2 : 12) {
+                if usesIPhoneDetailSizing {
+                    Spacer(minLength: 0)
+                }
+
                 Text(primaryText)
-                    .font(.system(size: usesIPhoneDetailSizing ? 92 : 42, weight: .regular, design: .default))
+                    .font(.system(size: usesIPhoneDetailSizing ? 62 : 42, weight: .regular, design: .default))
                     .foregroundStyle(.primary)
                     .contentTransition(.numericText())
                     .lineLimit(1)
 
                 Image(systemName: icon)
-                    .font(.system(size: usesIPhoneDetailSizing ? 66 : 30, weight: .medium))
+                    .font(.system(size: usesIPhoneDetailSizing ? 44 : 30, weight: .medium))
                     .weatherIconStyle(for: icon)
-                    .frame(width: usesIPhoneDetailSizing ? 96 : 36, height: usesIPhoneDetailSizing ? 76 : 32)
+                    .frame(width: usesIPhoneDetailSizing ? 60 : 36, height: usesIPhoneDetailSizing ? 52 : 32)
 
-                Spacer(minLength: 8)
+                Spacer(minLength: usesIPhoneDetailSizing ? 0 : 8)
             }
-            .padding(.bottom, 14)
+            .padding(.bottom, usesIPhoneDetailSizing ? 18 : 14)
 
             if !usesIPhoneDetailSizing {
                 macExpandedCardDivider
                     .padding(.bottom, 10)
             }
 
-            VStack(spacing: usesIPhoneDetailSizing ? 24 : 8) {
+            VStack(spacing: usesIPhoneDetailSizing ? 20 : 8) {
                 ForEach(0..<2, id: \.self) { row in
-                    HStack(alignment: .top, spacing: usesIPhoneDetailSizing ? 4 : 6) {
+                    HStack(alignment: .top, spacing: usesIPhoneDetailSizing ? 8 : 6) {
                         ForEach(0..<5, id: \.self) { column in
                             let index = row * 5 + column
                             if index < forecasts.count {
@@ -251,19 +260,19 @@ extension ContentView {
                                         selectedDayOffset = index
                                     }
                                 } label: {
-                                    VStack(spacing: usesIPhoneDetailSizing ? 5 : 7) {
+                                    VStack(spacing: usesIPhoneDetailSizing ? 6 : 7) {
                                         Text(macForecastDayLabel(for: index))
-                                            .font((usesIPhoneDetailSizing ? Font.callout : Font.caption2).weight(.semibold))
+                                            .font((usesIPhoneDetailSizing ? Font.subheadline : Font.caption2).weight(.semibold))
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
 
                                         Circle()
                                             .fill(forecast.condition.dotColor)
-                                            .frame(width: index == selectedDayOffset ? (usesIPhoneDetailSizing ? 14 : 8) : (usesIPhoneDetailSizing ? 12 : 7), height: index == selectedDayOffset ? (usesIPhoneDetailSizing ? 14 : 8) : (usesIPhoneDetailSizing ? 12 : 7))
+                                            .frame(width: index == selectedDayOffset ? (usesIPhoneDetailSizing ? 11 : 8) : (usesIPhoneDetailSizing ? 10 : 7), height: index == selectedDayOffset ? (usesIPhoneDetailSizing ? 11 : 8) : (usesIPhoneDetailSizing ? 10 : 7))
                                             .shadow(color: forecast.condition.dotColor.opacity(0.45), radius: 2)
 
                                         Text(tempUnit.display(forecast.dailyHigh))
-                                            .font((usesIPhoneDetailSizing ? Font.title3 : Font.caption).weight(.semibold))
+                                            .font((usesIPhoneDetailSizing ? Font.headline : Font.caption).weight(.semibold))
                                             .foregroundStyle(.primary)
                                             .lineLimit(1)
                                     }
@@ -289,14 +298,12 @@ extension ContentView {
                     }
                 }
             }
-            .padding(.horizontal, usesIPhoneDetailSizing ? 20 : 0)
-            .padding(.vertical, usesIPhoneDetailSizing ? 24 : 0)
+            .padding(.horizontal, usesIPhoneDetailSizing ? 22 : 0)
+            .padding(.vertical, usesIPhoneDetailSizing ? 20 : 0)
             .background {
                 if usesIPhoneDetailSizing {
                     RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.58))
+                        .fill(theme.colors.mapLand)
                 }
             }
             .overlay {
@@ -436,7 +443,7 @@ extension ContentView {
             )
         ]
 
-        return VStack(spacing: 8) {
+        return VStack(spacing: usesIPhoneDetailSizing ? 14 : 8) {
             VStack(alignment: .leading, spacing: 0) {
                 if !usesIPhoneDetailSizing {
                     macExpandedCardDivider
@@ -490,7 +497,7 @@ extension ContentView {
                         .frame(width: geo.size.width, height: geo.size.height)
                     }
                 }
-                .frame(height: usesIPhoneDetailSizing ? 250 : 184)
+                .frame(height: usesIPhoneDetailSizing ? 220 : 184)
                 .clipped()
 
                 if !usesIPhoneDetailSizing {
@@ -498,14 +505,12 @@ extension ContentView {
                         .padding(.top, -12)
                 }
             }
-            .padding(.horizontal, usesIPhoneDetailSizing ? 18 : 0)
-            .padding(.vertical, usesIPhoneDetailSizing ? 18 : 0)
+            .padding(.horizontal, usesIPhoneDetailSizing ? 16 : 0)
+            .padding(.vertical, usesIPhoneDetailSizing ? 16 : 0)
             .background {
                 if usesIPhoneDetailSizing {
                     RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(.ultraThinMaterial)
-                    RoundedRectangle(cornerRadius: 28, style: .continuous)
-                        .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.58))
+                        .fill(theme.colors.mapLand)
                 }
             }
             .overlay {
@@ -515,61 +520,61 @@ extension ContentView {
                 }
             }
 
-            ForEach(rows, id: \.1) { icon, label, value in
-                HStack(spacing: usesIPhoneDetailSizing ? 14 : 10) {
-                    Image(systemName: icon)
-                        .font(.system(size: usesIPhoneDetailSizing ? 18 : 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: usesIPhoneDetailSizing ? 24 : 16)
-                    Text(label)
-                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.medium))
-                        .foregroundStyle(.secondary)
-                    Spacer(minLength: 8)
-                    Text(value)
-                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.semibold))
-                        .foregroundStyle(.primary)
-                        .lineLimit(1)
+            VStack(spacing: 0) {
+                ForEach(rows, id: \.1) { icon, label, value in
+                    HStack(spacing: usesIPhoneDetailSizing ? 12 : 10) {
+                        Image(systemName: icon)
+                            .font(.system(size: usesIPhoneDetailSizing ? 16 : 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: usesIPhoneDetailSizing ? 22 : 16)
+                        Text(label)
+                            .font((usesIPhoneDetailSizing ? Font.callout : Font.caption).weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Spacer(minLength: 8)
+                        Text(value)
+                            .font((usesIPhoneDetailSizing ? Font.callout : Font.caption).weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                    }
+                    .padding(.horizontal, usesIPhoneDetailSizing ? 14 : 10)
+                    .padding(.vertical, usesIPhoneDetailSizing ? 10 : 7)
                 }
-                .padding(.horizontal, usesIPhoneDetailSizing ? 14 : 10)
-                .padding(.vertical, usesIPhoneDetailSizing ? 12 : 7)
-            }
 
-            if let sunrise = forecast.sunrise, let sunset = forecast.sunset {
-                HStack(spacing: usesIPhoneDetailSizing ? 14 : 10) {
-                    Image(systemName: "sunrise.fill")
-                        .font(.system(size: usesIPhoneDetailSizing ? 18 : 12, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(width: usesIPhoneDetailSizing ? 24 : 16)
-                    Text(localizedString("Sunrise", locale: locale))
-                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.medium))
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(macExpandedCardTime(sunrise, in: cityWeather.timeZone))
-                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.semibold))
-                    Text("·")
-                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.semibold))
-                        .foregroundStyle(.secondary)
-                    Text(macExpandedCardTime(sunset, in: cityWeather.timeZone))
-                        .font((usesIPhoneDetailSizing ? Font.body : Font.caption).weight(.semibold))
+                if let sunrise = forecast.sunrise, let sunset = forecast.sunset {
+                    HStack(spacing: usesIPhoneDetailSizing ? 12 : 10) {
+                        Image(systemName: "sunrise.fill")
+                            .font(.system(size: usesIPhoneDetailSizing ? 16 : 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: usesIPhoneDetailSizing ? 22 : 16)
+                        Text(localizedString("Sunrise", locale: locale))
+                            .font((usesIPhoneDetailSizing ? Font.callout : Font.caption).weight(.medium))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text(macExpandedCardTime(sunrise, in: cityWeather.timeZone))
+                            .font((usesIPhoneDetailSizing ? Font.callout : Font.caption).weight(.semibold))
+                        Text("·")
+                            .font((usesIPhoneDetailSizing ? Font.callout : Font.caption).weight(.semibold))
+                            .foregroundStyle(.secondary)
+                        Text(macExpandedCardTime(sunset, in: cityWeather.timeZone))
+                            .font((usesIPhoneDetailSizing ? Font.callout : Font.caption).weight(.semibold))
+                    }
+                    .padding(.horizontal, usesIPhoneDetailSizing ? 14 : 10)
+                    .padding(.vertical, usesIPhoneDetailSizing ? 10 : 7)
                 }
-                .padding(.horizontal, usesIPhoneDetailSizing ? 14 : 10)
-                .padding(.vertical, usesIPhoneDetailSizing ? 12 : 7)
             }
-        }
-        .padding(.horizontal, usesIPhoneDetailSizing ? 18 : 0)
-        .padding(.vertical, usesIPhoneDetailSizing ? 18 : 0)
-        .background {
-            if usesIPhoneDetailSizing {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .fill(colorScheme == .dark ? Color.white.opacity(0.06) : Color.white.opacity(0.58))
+            .padding(.horizontal, usesIPhoneDetailSizing ? 8 : 0)
+            .padding(.vertical, usesIPhoneDetailSizing ? 10 : 0)
+            .background {
+                if usesIPhoneDetailSizing {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .fill(theme.colors.mapLand)
+                }
             }
-        }
-        .overlay {
-            if usesIPhoneDetailSizing {
-                RoundedRectangle(cornerRadius: 28, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            .overlay {
+                if usesIPhoneDetailSizing {
+                    RoundedRectangle(cornerRadius: 28, style: .continuous)
+                        .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+                }
             }
         }
     }
@@ -601,14 +606,14 @@ extension ContentView {
                     .font(.system(size: usesIPhoneDetailSizing ? 15 : 10, weight: .semibold))
                     .foregroundStyle(macExpandedCardChartLineColor(macExpandedCardChartMetric))
                 Text(macExpandedCardChartMetricLabel(macExpandedCardChartMetric))
-                    .font((usesIPhoneDetailSizing ? Font.body : Font.caption2).weight(.medium))
+                    .font((usesIPhoneDetailSizing ? Font.callout : Font.caption2).weight(.medium))
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
-                    .font(.system(size: usesIPhoneDetailSizing ? 10 : 7, weight: .semibold))
+                    .font(.system(size: usesIPhoneDetailSizing ? 9 : 7, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
-            .frame(height: usesIPhoneDetailSizing ? 34 : 22)
-            .padding(.horizontal, usesIPhoneDetailSizing ? 12 : 8)
+            .frame(height: usesIPhoneDetailSizing ? 30 : 22)
+            .padding(.horizontal, usesIPhoneDetailSizing ? 11 : 8)
             .background(Color.primary.opacity(0.07), in: Capsule())
         }
         .menuStyle(.button)
@@ -631,10 +636,10 @@ extension ContentView {
             }
         } label: {
             Text(macExpandedCardChartRangeLabel(macExpandedCardChartRange))
-                .font(.system(size: usesIPhoneDetailSizing ? 16 : 10, weight: usesIPhoneDetailSizing ? .medium : .semibold))
+                .font(.system(size: usesIPhoneDetailSizing ? 15 : 10, weight: usesIPhoneDetailSizing ? .medium : .semibold))
                 .lineLimit(1)
-                .frame(height: usesIPhoneDetailSizing ? 34 : 22)
-                .padding(.horizontal, usesIPhoneDetailSizing ? 12 : 8)
+                .frame(height: usesIPhoneDetailSizing ? 30 : 22)
+                .padding(.horizontal, usesIPhoneDetailSizing ? 11 : 8)
                 .background(Color.primary.opacity(0.07), in: Capsule())
         }
         .menuStyle(.button)

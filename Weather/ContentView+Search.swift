@@ -136,6 +136,8 @@ extension ContentView {
 
     func activateInlineSearch() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showingMapExpandedCard = false
+            tappedCity = nil
             showingInlineSearch = true
         }
     }

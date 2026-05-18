@@ -182,18 +182,23 @@ extension ContentView {
 
             Spacer()
 
-            Button {
-                recenterOnAllCities = false
-                DispatchQueue.main.async {
-                    recenterOnAllCities = true
+            HStack(spacing: 0) {
+                Button {
+                    recenterOnAllCities = false
+                    DispatchQueue.main.async {
+                        recenterOnAllCities = true
+                    }
+                } label: {
+                    Image(systemName: "dot.squareshape.split.2x2")
+                        .frame(width: 44, height: 44)
                 }
-            } label: {
-                Image(systemName: "dot.squareshape.split.2x2")
+
+                mapOverlayMenu
+                    .frame(width: 44, height: 44)
+
+                iOSNativeMenu
+                    .frame(width: 44, height: 44)
             }
-
-            mapOverlayMenu
-
-            iOSNativeMenu
 
             Spacer()
 

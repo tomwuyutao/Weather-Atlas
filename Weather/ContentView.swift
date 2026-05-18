@@ -1617,7 +1617,7 @@ struct ContentView: View {
                 .id(city.city.id)
                 .padding(.horizontal, 26)
                 .padding(.vertical, shouldAddInlineMapCardVerticalPadding ? 8 : 0)
-                .padding(.bottom, previewCity != nil ? 92 : 64)
+                .padding(.bottom, previewCity != nil ? 58 : 30)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),
@@ -1883,7 +1883,13 @@ struct ContentView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .frame(width: 44, height: 44)
+                .themedGlass(in: .circle)
+                .contentShape(Circle())
         }
+        .tint(theme.colors.primaryText)
         #if os(macOS)
         .menuIndicator(.hidden)
         #endif
@@ -1921,12 +1927,6 @@ struct ContentView: View {
             Spacer(minLength: 0)
 
             detailActionsMenu(for: city)
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .tint(theme.colors.primaryText)
-                .frame(width: 44, height: 44)
-                .themedGlass(in: .circle)
-                .contentShape(Circle())
         }
     }
 
@@ -1942,7 +1942,7 @@ struct ContentView: View {
             mapExpandedCard(for: city, forceMacStyle: true, plainBackground: true)
                 .padding(.horizontal, 6)
                 .padding(.top, 12)
-                .padding(.bottom, 96)
+                .padding(.bottom, 58)
                 .frame(maxWidth: .infinity)
         }
         .scrollContentBackground(.hidden)
