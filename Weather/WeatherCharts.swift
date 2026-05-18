@@ -29,6 +29,7 @@ struct HourlyTimelineChart: View {
     var lineColor: Color = AppTheme.shared.colors.accent
     var showAllHours: Bool = false
     var compactLayout: Bool = false
+    var transitionDirection: Int = 1
     var onHorizontalSwipe: ((Int) -> Void)? = nil
 
     @Environment(\.locale) private var locale
@@ -130,6 +131,8 @@ struct HourlyTimelineChart: View {
             labelSpacing: labelSpacing,
             compactLayout: compactLayout,
             emptyTitle: "No hourly data",
+            transitionID: "hourly-\(dayOffset)-\(chartMetric)-\(showAllHours)",
+            transitionDirection: transitionDirection,
             onHorizontalSwipe: onHorizontalSwipe
         )
     }
@@ -233,6 +236,8 @@ struct DailyTimelineChart: View {
             labelSpacing: labelSpacing,
             compactLayout: compactLayout,
             emptyTitle: "No daily data",
+            transitionID: "daily-\(selectedDayOffset)-\(chartMetric)",
+            transitionDirection: 1,
             onHorizontalSwipe: nil
         )
     }
@@ -249,6 +254,8 @@ private struct TimelineChartBody: View {
     let labelSpacing: CGFloat
     let compactLayout: Bool
     let emptyTitle: String
+    let transitionID: String
+    let transitionDirection: Int
     let onHorizontalSwipe: ((Int) -> Void)?
 
     var body: some View {
@@ -264,14 +271,28 @@ private struct TimelineChartBody: View {
             .frame(height: totalHeight)
             .frame(maxWidth: .infinity)
         } else {
-            VStack(spacing: labelSpacing) {
-                labelRow
-                chart
-                valueRow
+            ZStack {
+                VStack(spacing: labelSpacing) {
+                    labelRow
+                    chart
+                    valueRow
+                }
+                .id(transitionID)
+                .transition(chartSwipeTransition)
             }
             .frame(height: totalHeight)
-            .animation(.smooth(duration: 0.3), value: points.map(\.value))
+            .clipped()
+            .animation(.snappy(duration: 0.28), value: transitionID)
         }
+    }
+
+    private var chartSwipeTransition: AnyTransition {
+        let insertionEdge: Edge = transitionDirection >= 0 ? .trailing : .leading
+        let removalEdge: Edge = transitionDirection >= 0 ? .leading : .trailing
+        return .asymmetric(
+            insertion: .move(edge: insertionEdge).combined(with: .opacity),
+            removal: .move(edge: removalEdge).combined(with: .opacity)
+        )
     }
 
     private var labelRow: some View {

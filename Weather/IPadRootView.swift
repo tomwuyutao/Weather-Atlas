@@ -134,13 +134,9 @@ extension ContentView {
                 .overlay(alignment: .trailing) {
                     AnyView(iOSDateSliderOverlay)
                 }
-                .opacity(showingInlineSearch ? 0 : 1)
                 .allowsHitTesting(!showingInlineSearch)
 
-            if showingInlineSearch {
-                nativeCitySearchScreen
-                    .transition(.opacity)
-            } else {
+            if !showingInlineSearch {
                 iPadFloatingMapOverlays
             }
         }

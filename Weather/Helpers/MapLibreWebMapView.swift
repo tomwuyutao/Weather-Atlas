@@ -862,11 +862,15 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           currentStyleMode = mode;
           document.body.classList.toggle('dark-map', mode === 'dark');
           baseStylePreferencesApplied = false;
-          if (map) map.setStyle(await cleanedStyle(mode));
-          setTimeout(() => {
+          if (!map) return;
+          const restoreWeatherLayers = () => {
+            baseStylePreferencesApplied = false;
             ensureLayers();
+            if (pendingPayload) updateSource(pendingPayload);
             renderWeatherSource();
-          }, 0);
+          };
+          map.once('style.load', restoreWeatherLayers);
+          map.setStyle(await cleanedStyle(mode));
         };
 
         window.weatherMapZoomIn = function() {

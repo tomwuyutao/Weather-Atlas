@@ -100,6 +100,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var showingResetConfirmation = false
 
@@ -134,6 +135,9 @@ struct SettingsView: View {
             }
             #endif
         }
+        .background(theme.colors.mapOcean.ignoresSafeArea())
+        .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
+        .presentationBackground(theme.colors.mapOcean)
         .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
         #endif
     }

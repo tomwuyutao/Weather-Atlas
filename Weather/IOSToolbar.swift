@@ -198,8 +198,7 @@ extension ContentView {
     var iPhoneNativeBottomToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .bottomBar) {
             Button {
-                showingMapSidebar = true
-                pushIPhoneRoute(.listManager)
+                dismissIPhoneRoute(.map)
             } label: {
                 Image(systemName: "list.bullet")
                     .foregroundStyle(.primary)

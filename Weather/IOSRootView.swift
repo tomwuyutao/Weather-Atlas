@@ -124,29 +124,33 @@ extension ContentView {
     }
 
     var iPhoneNavigationStack: some View {
-        nativeCitySearch(
-            NavigationStack(path: $iPhoneNavigationPath) {
-                iPhoneMapTabContent
-                    .navigationTitle("")
-                    #if os(iOS)
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
-                    #endif
-                    .navigationDestination(for: IPhoneNavigationRoute.self) { route in
-                        switch route {
-                        case .cityDetail:
-                            AnyView(self.selectedCityDetailDestination)
-                        case .addCityDetail:
-                            AnyView(iOSAddCityDetailDestination)
-                        case .listManager:
-                            AnyView(iPhoneNativeListManager)
-                        }
+        NavigationStack(path: $iPhoneNavigationPath) {
+            iPhoneNativeListManager
+                .navigationDestination(for: IPhoneNavigationRoute.self) { route in
+                    switch route {
+                    case .map:
+                        AnyView(nativeCitySearch(iPhoneMapDestination))
+                    case .cityDetail:
+                        AnyView(self.selectedCityDetailDestination)
+                    case .addCityDetail:
+                        AnyView(iOSAddCityDetailDestination)
+                    case .listManager:
+                        EmptyView()
                     }
-            }
-        )
+                }
+        }
         .onAppear {
             selectedTab = 1
         }
+    }
+
+    var iPhoneMapDestination: some View {
+        iPhoneMapTabContent
+            .navigationTitle("")
+            #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
+            #endif
     }
 
     var mapTopListMenu: some View {
@@ -229,15 +233,12 @@ extension ContentView {
                         AnyView(iOSDateSliderOverlay)
                     }
             )
-            .opacity(showingInlineSearch ? 0 : 1)
             .allowsHitTesting(!showingInlineSearch)
 
-            if showingInlineSearch {
-                nativeCitySearchScreen
-                    .transition(.opacity)
-            } else {
+            if !showingInlineSearch {
                 iOSMainOverlays
             }
+
         }
         .toolbar {
             if !showingInlineSearch {
@@ -252,14 +253,15 @@ extension ContentView {
         macListManagerSidebar
             .scrollContentBackground(.hidden)
             .background(theme.colors.mapOcean)
-            .navigationTitle(localizedString("Lists", locale: locale))
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button {
-                        dismissIPhoneRoute(.listManager)
+                        pushIPhoneRoute(.map)
                     } label: {
-                        Image(systemName: "chevron.left")
+                        Image(systemName: "map")
                             .foregroundStyle(.primary)
                             .foregroundColor(.primary)
                     }
@@ -311,8 +313,16 @@ extension ContentView {
     }
 
     func dismissIPhoneRoute(_ route: IPhoneNavigationRoute) {
-        iPhoneNavigationPath.removeAll { $0 == route }
+        if route == .map {
+            iPhoneNavigationPath = []
+        } else {
+            iPhoneNavigationPath.removeAll { $0 == route }
+        }
         switch route {
+        case .map:
+            showingMapSidebar = false
+            showingMapExpandedCard = false
+            tappedCity = nil
         case .cityDetail:
             showingCityDetail = false
         case .addCityDetail:

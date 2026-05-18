@@ -25,6 +25,7 @@ enum PlatformFeedback {
 
 #if os(iOS)
 enum IPhoneNavigationRoute: Hashable {
+    case map
     case cityDetail
     case addCityDetail
     case listManager
@@ -194,6 +195,7 @@ struct ContentView: View {
     @State var macExpandedCardShowsDetails: Bool = false
     @State var macExpandedCardChartMetric: WeatherChartMetric = .temperature
     @State var macExpandedCardChartRange: WeatherChartTimeRange = .daytime
+    @State var detailChartSwipeDirection: Int = 1
     @State var macSidebarSelection: String?
     @State var macExpandedCardHoveredDay: Int?
     @State var macQuickSwitcherVisible: Bool = false
@@ -210,7 +212,7 @@ struct ContentView: View {
     #if os(iOS)
     @State var iPadSidebarVisibility: NavigationSplitViewVisibility = .all
     @State var iPadPreferredCompactColumn: NavigationSplitViewColumn = .detail
-    @State var iPhoneNavigationPath: [IPhoneNavigationRoute] = []
+    @State var iPhoneNavigationPath: [IPhoneNavigationRoute] = [.map]
     #endif
 
     var toolbarTitle: String {
@@ -247,17 +249,6 @@ struct ContentView: View {
 
     func detailActionsMenu(for city: CityWeather) -> some View {
         Menu {
-            Button {
-                showingSettings = true
-            } label: {
-                Label {
-                    Text(localizedString("Settings", locale: locale))
-                } icon: {
-                    Image(systemName: "gearshape")
-                        .foregroundStyle(.primary)
-                }
-            }
-
             if cityIsInSidebar(city) {
                 Button {
                     cityToRename = city

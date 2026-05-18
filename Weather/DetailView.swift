@@ -79,10 +79,10 @@ extension ContentView {
         .navigationTitle("")
         #if os(iOS)
         .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
         .toolbar {
             iPhoneDetailBottomToolbar(for: city, dismissAction: dismissAction)
         }
+        .toolbar(.hidden, for: .navigationBar)
         .tint(.primary)
         #endif
         .onAppear {

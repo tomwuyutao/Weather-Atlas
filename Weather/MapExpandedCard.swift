@@ -498,13 +498,14 @@ extension ContentView {
                                 chartMetric: macExpandedCardChartMetric,
                                 dayOffset: max(0, selectedDayOffset),
                                 cityTimeZone: cityWeather.timeZone,
-                                previewCurrentHour: nil,
-                                lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
-                                showAllHours: true,
-                                compactLayout: true
-                            )
-                            .frame(width: max(geo.size.width * 1.6, 390), height: geo.size.height)
-                        }
+                            previewCurrentHour: nil,
+                            lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
+                            showAllHours: true,
+                            compactLayout: true,
+                            transitionDirection: detailChartSwipeDirection
+                        )
+                        .frame(width: max(geo.size.width * 1.6, 390), height: geo.size.height)
+                    }
                     } else {
                         HourlyTimelineChart(
                             hourlyForecasts: forecast.hourlyForecasts,
@@ -514,6 +515,7 @@ extension ContentView {
                             previewCurrentHour: nil,
                             lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
                             compactLayout: true,
+                            transitionDirection: detailChartSwipeDirection,
                             onHorizontalSwipe: { direction in
                                 shiftExpandedCardChartDate(by: direction)
                             }
@@ -723,8 +725,10 @@ extension ContentView {
         let currentDay = max(0, selectedDayOffset)
         let nextDay = min(9, max(0, currentDay + direction))
         guard nextDay != selectedDayOffset else { return }
+        detailChartSwipeDirection = direction
+        dateSwitcherForward = direction > 0
         PlatformFeedback.lightImpact()
-        withAnimation(.snappy(duration: 0.24)) {
+        withAnimation(.snappy(duration: 0.28)) {
             selectedDayOffset = nextDay
         }
     }

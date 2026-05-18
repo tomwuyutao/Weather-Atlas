@@ -33,7 +33,7 @@ extension ContentView {
             Task {
                 await switchToList(listID)
                 #if os(iOS)
-                dismissIPhoneRoute(.listManager)
+                pushIPhoneRoute(.map)
                 #else
                 showingMapSidebar = false
                 #endif
@@ -124,7 +124,7 @@ extension ContentView {
                 $0.city.latitude == city.city.latitude && $0.city.longitude == city.city.longitude
             } ?? city
             #if os(iOS)
-            dismissIPhoneRoute(.listManager)
+            pushIPhoneRoute(.map)
             #else
             showingMapSidebar = false
             #endif
@@ -171,7 +171,7 @@ extension ContentView {
     private func beginAddingCity(to listID: CityListID) {
         inlineAddTargetListID = listID
         #if os(iOS)
-        dismissIPhoneRoute(.listManager)
+        pushIPhoneRoute(.map)
         #else
         showingMapSidebar = false
         #endif

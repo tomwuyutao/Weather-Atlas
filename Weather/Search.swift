@@ -256,32 +256,30 @@ extension ContentView {
         _ content: Content,
         placement: SearchFieldPlacement = .automatic
     ) -> some View {
-        if showingInlineSearch {
-            content
-                .searchable(
-                    text: $inlineSearchText,
-                    isPresented: $showingInlineSearch,
-                    placement: placement,
-                    prompt: Text(localizedString("Search for a city", locale: locale))
-                )
-                .searchSuggestions {
+        content
+            .searchable(
+                text: $inlineSearchText,
+                isPresented: $showingInlineSearch,
+                placement: placement,
+                prompt: Text(localizedString("Search for a city", locale: locale))
+            )
+            .searchSuggestions {
+                if showingInlineSearch {
                     nativeCitySearchSuggestions
                 }
-                .onChange(of: inlineSearchText) { _, newValue in
-                    inlineSearchManager.search(query: newValue)
-                    inlineSearchSelectionIndex = 0
+            }
+            .onChange(of: inlineSearchText) { _, newValue in
+                inlineSearchManager.search(query: newValue)
+                inlineSearchSelectionIndex = 0
+            }
+            .onChange(of: showingInlineSearch) { _, isPresented in
+                if !isPresented {
+                    resetNativeCitySearch()
                 }
-                .onChange(of: showingInlineSearch) { _, isPresented in
-                    if !isPresented {
-                        resetNativeCitySearch()
-                    }
-                }
-                .onSubmit(of: .search) {
-                    confirmInlineSearchSelection()
-                }
-        } else {
-            content
-        }
+            }
+            .onSubmit(of: .search) {
+                confirmInlineSearchSelection()
+            }
     }
 
     @ViewBuilder
