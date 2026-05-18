@@ -23,19 +23,12 @@ struct ContentView: View {
 
     @State var centerOnCityTrigger: CityWeather?
 
-    @State var selectedCity: CityWeather?
     @State var selectedDayOffset: Int = -1
-    @State var isEditMode: Bool = false
     @State var showingCityDetail: Bool = false
     @State var tappedCity: CityWeather?
     @State var showingMapExpandedCard: Bool = false
-    @Namespace private var popupNamespace
-    @State var searchText: String = ""
-    @State private var citySearchManager = CitySearchManager()
     @AppStorage("hasLaunchedBefore") private var hasLaunchedBefore: Bool = false
     @State var selectedTab: Int = 0
-    @State private var showingSearchSheet: Bool = true
-    @State private var selectedDetent: PresentationDetent = .height(80)
     @State private var lastRefreshText: String = ""
     @State var showingAddCityView: Bool = false
     @State var showingAddCityDetail: Bool = false
@@ -43,7 +36,7 @@ struct ContentView: View {
     @State var previewCity: CityWeather?
     @State var previewSearchText: String = ""
     private var showCloudCover: Bool { mapOverlayMode == "cloudCover" }
-    private var overlayChartMetric: WeatherDetailView.ChartMetric? {
+    private var overlayChartMetric: WeatherChartMetric? {
         switch mapOverlayMode {
         case "cloudCover":     return .cloudCover
         case "precipitation":  return .precipitation
@@ -62,8 +55,6 @@ struct ContentView: View {
     @State var inlineSearchSelectionIndex: Int = 0
     
     @State var recenterOnAllCities: Bool = false
-    @State var detailOpenedFromList: Bool = false
-    @State var listTappedCityID: UUID?
     @AppStorage("temperatureUnit") var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
     @State var showingSettings: Bool = false
@@ -202,8 +193,8 @@ struct ContentView: View {
     @State private var macHoverPresentedCardCityID: UUID?
     @State private var macMapExpandedCardFocusesMarker: Bool = false
     @State var macExpandedCardShowsDetails: Bool = false
-    @State var macExpandedCardChartMetric: WeatherDetailView.ChartMetric = .temperature
-    @State var macExpandedCardChartRange: WeatherDetailView.ChartTimeRange = .daytime
+    @State var macExpandedCardChartMetric: WeatherChartMetric = .temperature
+    @State var macExpandedCardChartRange: WeatherChartTimeRange = .daytime
     @State var macSidebarSelection: String?
     @State var macSidebarDropTarget: String?
     @State var macSidebarContextTarget: String?
@@ -1660,14 +1651,6 @@ struct ContentView: View {
         .transition(.scale.combined(with: .opacity))
     }
 
-    private func navigatableCity(offset: Int, from city: CityWeather) -> CityWeather? {
-        let cities = detailOpenedFromList ? listViewCities : mapCities
-        guard let idx = cities.firstIndex(where: { $0.city.name == city.city.name }) else { return nil }
-        let newIdx = idx + offset
-        guard cities.indices.contains(newIdx) else { return nil }
-        return cities[newIdx]
-    }
-
     private func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
         #if os(iOS)
         if !shouldUseIPadLayout, showingMapExpandedCard, tappedCity?.id == city.id {
@@ -1916,11 +1899,10 @@ struct ContentView: View {
         }
     }
 
-    private func iPhoneDetailBottomToolbar(for city: CityWeather) -> some View {
+    private func iPhoneDetailBottomToolbar(for city: CityWeather, dismissAction: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
             Button {
-                showingCityDetail = false
-                selectedDayOffset = -1
+                dismissAction()
             } label: {
                 Image(systemName: "chevron.left")
                     .font(.system(size: 18, weight: .semibold))
@@ -1943,6 +1925,13 @@ struct ContentView: View {
     }
 
     private func iPhoneMapExpandedCardDetailDestination(for city: CityWeather) -> some View {
+        expandedCardDetailDestination(for: city, dismissAction: {
+            showingCityDetail = false
+            selectedDayOffset = -1
+        })
+    }
+
+    private func expandedCardDetailDestination(for city: CityWeather, dismissAction: @escaping () -> Void) -> some View {
         ScrollView(.vertical, showsIndicators: false) {
             mapExpandedCard(for: city, forceMacStyle: true, plainBackground: true)
                 .padding(.horizontal, 6)
@@ -1953,7 +1942,7 @@ struct ContentView: View {
         .scrollContentBackground(.hidden)
         .background(theme.colors.background.ignoresSafeArea())
         .overlay(alignment: .bottom) {
-            iPhoneDetailBottomToolbar(for: city)
+            iPhoneDetailBottomToolbar(for: city, dismissAction: dismissAction)
                 .padding(.horizontal, 28)
                 .padding(.bottom, -6)
                 .frame(maxWidth: .infinity, minHeight: 62, alignment: .bottom)
@@ -1965,6 +1954,9 @@ struct ContentView: View {
         .toolbar(.hidden, for: .navigationBar)
         #endif
         .onAppear {
+            if let overlayChartMetric {
+                macExpandedCardChartMetric = overlayChartMetric
+            }
             macExpandedCardShowsDetails = true
         }
         .onDisappear {
@@ -1972,106 +1964,11 @@ struct ContentView: View {
         }
     }
 
-    @ViewBuilder
     private func fullWeatherDetailDestination(for city: CityWeather) -> some View {
-            let cityInSidebar = cityIsInSidebar(city)
-            let previousCity = navigatableCity(offset: -1, from: city)
-            let nextCity = navigatableCity(offset: 1, from: city)
-
-            WeatherDetailView(
-                cityWeather: city,
-                selectedDayOffset: $selectedDayOffset,
-                namespace: popupNamespace,
-                onDismiss: {
-                    showingCityDetail = false
-                    selectedDayOffset = -1
-                },
-                onAddCity: cityInSidebar ? nil : {
-                    Task {
-                        await addCityToSidebar(city)
-                        showingCityDetail = false
-                        if selectedTab == 1 {
-                            recenterOnAllCities = true
-                        }
-                    }
-                },
-                onAddCityToList: cityInSidebar ? nil : { listID in
-                    Task {
-                        await weatherService.addCityToList(city.city, listID: listID)
-                        PlatformFeedback.lightImpact()
-                        showingCityDetail = false
-                        if selectedTab == 1 {
-                            recenterOnAllCities = true
-                        }
-                    }
-                },
-                availableLists: cityInSidebar ? [] : CityListID.allLists,
-                onDeleteCity: cityInSidebar ? {
-                    weatherService.removeCity(city)
-                    showingCityDetail = false
-                    showingMapExpandedCard = false
-                    tappedCity = nil
-                    selectedDayOffset = -1
-                    if selectedTab == 1 {
-                        recenterOnAllCities = true
-                    }
-                } : nil,
-                onRenameCity: cityInSidebar ? { newName in
-                    weatherService.renameCity(city, to: newName)
-                    tappedCity = renamedCityMatching(city)
-                } : nil,
-                onRevealOnMap: {
-                    let revealCity = city
-                    showingCityDetail = false
-                    centerOnCityTrigger = nil
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        selectedTab = 1
-                    }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        centerOnCityTrigger = revealCity
-                    }
-                },
-                onPreviousCity: previousCity != nil ? {
-                    if let prev = previousCity {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            tappedCity = prev
-                        }
-                    }
-                } : nil,
-                onNextCity: nextCity != nil ? {
-                    if let next = nextCity {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            tappedCity = next
-                        }
-                    }
-                } : nil,
-                onShowSettings: {
-                    showingSettings = true
-                },
-                onSearch: { },
-                onSearchCitySelected: { selectedCity in
-                    // Navigate to the selected city in the detail view
-                    tappedCity = selectedCity
-                },
-                weatherService: weatherService,
-                isInSidebar: cityInSidebar,
-                showCloudCover: showCloudCover,
-                usesNativeToolbar: true,
-                initialChartMetric: overlayChartMetric
-            )
-            .background(theme.colors.background)
-            .navigationTitle(city.city.localizedName(locale: locale))
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            #endif
-            #if os(iOS)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    detailActionsMenu(for: city)
-                }
-            }
-            #endif
+        expandedCardDetailDestination(for: city, dismissAction: {
+            showingCityDetail = false
+            selectedDayOffset = -1
+        })
     }
 
     private var iOSAddCitySheet: some View {
@@ -2111,53 +2008,9 @@ struct ContentView: View {
     @ViewBuilder
     private var iOSAddCityDetailDestination: some View {
         if let city = addCityDetailCity {
-            WeatherDetailView(
-                cityWeather: city,
-                selectedDayOffset: $selectedDayOffset,
-                namespace: popupNamespace,
-                onDismiss: {
-                    showingAddCityDetail = false
-                },
-                onAddCity: cityIsInSidebar(city) ? nil : {
-                    Task {
-                        await addCityToSidebar(city)
-                        showingAddCityView = false
-                        showingAddCityDetail = false
-                        if selectedTab == 1 {
-                            recenterOnAllCities = true
-                        }
-                    }
-                },
-                onAddCityToList: cityIsInSidebar(city) ? nil : { listID in
-                    Task {
-                        await weatherService.addCityToList(city.city, listID: listID)
-                        PlatformFeedback.lightImpact()
-                        showingAddCityView = false
-                        showingAddCityDetail = false
-                        if selectedTab == 1 {
-                            recenterOnAllCities = true
-                        }
-                    }
-                },
-                availableLists: cityIsInSidebar(city) ? [] : CityListID.allLists,
-                isInSidebar: cityIsInSidebar(city),
-                showCloudCover: showCloudCover,
-                usesNativeToolbar: true,
-                initialChartMetric: overlayChartMetric
-            )
-            .background(theme.colors.background)
-            .navigationTitle(city.city.localizedName(locale: locale))
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
-            #endif
-            #if os(iOS)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    detailActionsMenu(for: city)
-                }
-            }
-            #endif
+            expandedCardDetailDestination(for: city, dismissAction: {
+                showingAddCityDetail = false
+            })
         }
     }
 

@@ -134,23 +134,20 @@ extension ContentView {
 
         Divider()
 
-        if !isEditingListName {
-            if let city = selectedTab == 1 ? (showingMapExpandedCard ? tappedCity : nil) : selectedCity,
-               cityIsInSidebar(city) {
-                Button(role: .destructive) {
-                    weatherService.removeCity(city)
-                    if selectedTab == 1 {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            showingMapExpandedCard = false
-                            tappedCity = nil
-                            recenterOnAllCities = true
-                        }
-                    } else if selectedCity?.id == city.id {
-                        selectedCity = nil
-                    }
-                } label: {
-                    Label(localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"", systemImage: "trash")
+        if !isEditingListName,
+           selectedTab == 1,
+           showingMapExpandedCard,
+           let city = tappedCity,
+           cityIsInSidebar(city) {
+            Button(role: .destructive) {
+                weatherService.removeCity(city)
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    showingMapExpandedCard = false
+                    tappedCity = nil
+                    recenterOnAllCities = true
                 }
+            } label: {
+                Label(localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"", systemImage: "trash")
             }
         }
     }

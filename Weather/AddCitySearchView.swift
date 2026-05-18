@@ -4,7 +4,7 @@
 //
 
 import SwiftUI
-import MapKit
+import CoreLocation
 
 // MARK: - Add City Search View
 
@@ -71,10 +71,10 @@ struct AddCitySearchView: View {
                 .font(.system(size: 48))
                 .foregroundStyle(.tertiary)
 
-            Text(searchText.isEmpty ? "Search for a city or place" : "No results")
-                .font(.avenir(.title3, weight: .medium))
-
             if !searchText.isEmpty {
+                Text("No results")
+                    .font(.avenir(.title3, weight: .medium))
+
                 Text("Try a different search term")
                     .font(.avenir(.body))
                     .foregroundStyle(.secondary)

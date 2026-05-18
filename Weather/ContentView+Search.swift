@@ -20,11 +20,11 @@ extension ContentView {
                 .font(.system(size: 44, weight: .regular))
                 .foregroundStyle(theme.colors.secondaryText.opacity(0.7))
 
-            Text(inlineSearchText.isEmpty ? localizedString("Search for a city or place", locale: locale) : localizedString("No results", locale: locale))
-                .font(.avenir(.title3, weight: .medium))
-                .foregroundStyle(theme.colors.primaryText)
-
             if !inlineSearchText.isEmpty {
+                Text(localizedString("No results", locale: locale))
+                    .font(.avenir(.title3, weight: .medium))
+                    .foregroundStyle(theme.colors.primaryText)
+
                 Text(localizedString("Try a different search term", locale: locale))
                     .font(.avenir(.body, weight: .regular))
                     .foregroundStyle(theme.colors.secondaryText)
