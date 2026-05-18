@@ -1,5 +1,5 @@
 //
-//  ContentView+MacSidebar.swift
+//  MacSidebar.swift
 //  Weather
 //
 //  Native list/sidebar management.

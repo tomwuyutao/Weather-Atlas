@@ -261,3 +261,7 @@ private extension View {
         }
     }
 }
+#Preview("Settings") {
+    SettingsView(weatherService: WeatherService(), onResetLists: {})
+}
+

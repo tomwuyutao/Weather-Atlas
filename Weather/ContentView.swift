@@ -15,6 +15,14 @@ import UIKit
 import AppKit
 #endif
 
+enum PlatformFeedback {
+    static func lightImpact() {
+        #if os(iOS)
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        #endif
+    }
+}
+
 struct ContentView: View {
     @State var weatherService = WeatherService()
     @Environment(\.appTheme) var theme
@@ -200,10 +208,10 @@ struct ContentView: View {
     @State var isLoadingMapList: Bool = false
     @State var capsuleSwipeFromTrailing: Bool = true
 
-    // Map overlay menu is in ContentView+MapStyleSheet.swift
+    // Map overlay menu is in MapOverlayMenu.swift
 
-    // Map expanded card is in ContentView+MapExpandedCard.swift
-    // Map date slider is in ContentView+MapDateSlider.swift
+    // Map expanded card is in MapExpandedCard.swift
+    // Map date slider is in MapDateSlider.swift
 
     var iOSDateText: String {
         if selectedDayOffset == -1 { return localizedString("Now", locale: locale) }
@@ -1568,56 +1576,6 @@ struct ContentView: View {
         .presentationCompactAdaptation(.popover)
     }
 
-    // Overlays for country/radial search, expanded card, toolbar
-    // Uses AnyView to type-erase and prevent stack overflow from deep generic nesting on device
-    private var iOSMainOverlays: some View {
-        AnyView(_iOSMainOverlaysContent)
-    }
-
-    @ViewBuilder
-    private var _iOSMainOverlaysContent: some View {
-        if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard {
-            GeometryReader { geometry in
-                HStack(spacing: 0) {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                showingMapExpandedCard = false
-                                tappedCity = nil
-                                if previewCity != nil {
-                                    previewCity = nil
-                                    recenterOnAllCities = true
-                                }
-                            }
-                        }
-                        .frame(width: max(0, geometry.size.width - 92))
-
-                    Color.clear
-                        .frame(width: 92)
-                        .allowsHitTesting(false)
-                }
-            }
-            .zIndex(10)
-        }
-
-        if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
-            mapExpandedCard(for: city, hideCityName: shouldHideInlineMapCardCityName)
-                .id(city.city.id)
-                .padding(.horizontal, 26)
-                .padding(.vertical, shouldAddInlineMapCardVerticalPadding ? 8 : 0)
-                .padding(.bottom, previewCity != nil ? 58 : 30)
-                .transition(
-                    .asymmetric(
-                        insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),
-                        removal: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20))
-                    )
-                )
-                .zIndex(12)
-        }
-
-    }
-
     private var iOSMapControlsCapsule: some View {
         HStack(spacing: 8) {
             Button {
@@ -1872,13 +1830,9 @@ struct ContentView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 44, height: 44)
-                .themedGlass(in: .circle)
-                .contentShape(Circle())
+                .foregroundStyle(.primary)
         }
-        .tint(theme.colors.primaryText)
+        .tint(.primary)
         #if os(macOS)
         .menuIndicator(.hidden)
         #endif
@@ -1900,24 +1854,22 @@ struct ContentView: View {
         }
     }
 
-    private func iPhoneDetailBottomToolbar(for city: CityWeather, dismissAction: @escaping () -> Void) -> some View {
-        HStack(spacing: 12) {
+    #if os(iOS)
+    @ToolbarContentBuilder
+    private func iPhoneDetailBottomToolbar(for city: CityWeather, dismissAction: @escaping () -> Void) -> some ToolbarContent {
+        ToolbarItemGroup(placement: .bottomBar) {
             Button {
                 dismissAction()
             } label: {
                 Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .semibold))
-                    .frame(width: 44, height: 44)
-                    .themedGlass(in: .circle)
-                    .contentShape(Circle())
             }
-            .buttonStyle(.plain)
 
-            Spacer(minLength: 0)
+            Spacer()
 
             detailActionsMenu(for: city)
         }
     }
+    #endif
 
     private func iPhoneMapExpandedCardDetailDestination(for city: CityWeather) -> some View {
         expandedCardDetailDestination(for: city, dismissAction: {
@@ -1931,22 +1883,18 @@ struct ContentView: View {
             mapExpandedCard(for: city, forceMacStyle: true, plainBackground: true)
                 .padding(.horizontal, 6)
                 .padding(.top, 12)
-                .padding(.bottom, 58)
+                .padding(.bottom, 24)
                 .frame(maxWidth: .infinity)
         }
         .scrollContentBackground(.hidden)
         .background(theme.colors.background.ignoresSafeArea())
-        .overlay(alignment: .bottom) {
-            iPhoneDetailBottomToolbar(for: city, dismissAction: dismissAction)
-                .padding(.horizontal, 28)
-                .padding(.bottom, -6)
-                .frame(maxWidth: .infinity, minHeight: 62, alignment: .bottom)
-                .zIndex(100)
-        }
         .navigationTitle("")
         #if os(iOS)
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
+        .toolbar {
+            iPhoneDetailBottomToolbar(for: city, dismissAction: dismissAction)
+        }
         #endif
         .onAppear {
             if let overlayChartMetric {
@@ -2191,11 +2139,11 @@ struct ContentView: View {
         #endif
     }
 
-    private var shouldHideInlineMapCardCityName: Bool {
+    var shouldHideInlineMapCardCityName: Bool {
         false
     }
 
-    private var shouldAddInlineMapCardVerticalPadding: Bool {
+    var shouldAddInlineMapCardVerticalPadding: Bool {
         #if os(iOS)
         !shouldUseIPadLayout
         #else
@@ -2706,6 +2654,79 @@ private struct MacTabSwitcherKeyMonitor: NSViewRepresentable {
 
 
 
+private enum WeatherPreviewData {
+    static var athens: CityWeather {
+        let now = Date()
+        let calendar = Calendar.current
+        let hourly = [7, 9, 11, 13, 15, 17, 19].enumerated().map { index, hour in
+            HourlyForecast(
+                hour: hour,
+                temperature: [16, 18, 21, 23, 24, 23, 21][index],
+                apparentTemperature: [15, 18, 21, 23, 24, 23, 20][index],
+                symbolName: index == 4 ? "cloud.sun.fill" : "sun.max.fill",
+                condition: index == 4 ? .partlyCloudy : .clear,
+                precipitationChance: 0.05,
+                cloudCover: index == 4 ? 0.35 : 0.12,
+                windSpeed: 12 + Double(index),
+                uvIndex: max(1, 7 - abs(index - 3)),
+                humidity: 0.45,
+                visibility: 22
+            )
+        }
+
+        let forecasts = (0..<10).map { offset in
+            let date = calendar.date(byAdding: .day, value: offset, to: now) ?? now
+            let symbol = ["sun.max.fill", "sun.max.fill", "cloud.sun.fill", "sun.max.fill", "cloud.fill"][offset % 5]
+            let condition: AppWeatherCondition = symbol == "cloud.fill" ? .cloudy : (symbol == "cloud.sun.fill" ? .partlyCloudy : .clear)
+            return DailyForecast(
+                dayOffset: offset,
+                dailyLow: [16, 17, 18, 19, 18, 17, 18, 19, 18, 17][offset],
+                dailyHigh: [21, 23, 24, 25, 23, 22, 23, 25, 25, 24][offset],
+                symbolName: symbol,
+                condition: condition,
+                hourlyForecasts: hourly,
+                cloudCover: condition == .cloudy ? 0.75 : 0.2,
+                precipitationChance: 0.08,
+                visibility: 22,
+                feelsLikeLow: [15, 16, 17, 18, 18, 17, 18, 18, 17, 16][offset],
+                feelsLikeHigh: [20, 22, 24, 25, 23, 22, 23, 24, 24, 23][offset],
+                humidity: 0.48,
+                windSpeed: 14,
+                uvIndex: 5,
+                maxHumidity: 0.58,
+                maxVisibility: 24,
+                sunrise: calendar.date(bySettingHour: 6, minute: 10, second: 0, of: date),
+                sunset: calendar.date(bySettingHour: 20, minute: 20, second: 0, of: date)
+            )
+        }
+
+        return CityWeather(
+            city: City(name: "Athens", country: "Greece", latitude: 37.9838, longitude: 23.7275),
+            condition: .clear,
+            temperature: 21,
+            symbolName: "sun.max.fill",
+            dailyForecasts: forecasts,
+            timeZone: TimeZone(identifier: "Europe/Athens") ?? .current,
+            currentFeelsLike: 20,
+            currentCloudCover: 0.15,
+            currentWindSpeed: 13,
+            currentUVIndex: 5,
+            currentHumidity: 0.48,
+            currentVisibility: 22
+        )
+    }
+}
+
+#if os(iOS)
+private extension ContentView {
+    static var iOSDetailPreview: some View {
+        NavigationStack {
+            ContentView().expandedCardDetailDestination(for: WeatherPreviewData.athens, dismissAction: {})
+        }
+    }
+}
+#endif
+
 #Preview {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
     let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
@@ -2715,3 +2736,9 @@ private struct MacTabSwitcherKeyMonitor: NSViewRepresentable {
 #Preview("Loading") {
     ContentView(previewLoading: true)
 }
+#if os(iOS)
+#Preview("iOS Detail") {
+    ContentView.iOSDetailPreview
+}
+#endif
+

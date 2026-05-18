@@ -1,5 +1,5 @@
 //
-//  ContentView+iOSToolbar.swift
+//  IOSToolbar.swift
 //  Weather
 //
 //  Shared toolbar helpers.

@@ -1,5 +1,5 @@
 //
-//  ContentView+ListManager.swift
+//  ListManager.swift
 //  Weather
 //
 //  Shared list-management actions used by the native List sidebars.

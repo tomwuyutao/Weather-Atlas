@@ -1,5 +1,5 @@
 //
-//  ContentView+MapStyleSheet.swift
+//  MapOverlayMenu.swift
 //  Weather
 //
 //  Map overlay selector for the MapLibre map.

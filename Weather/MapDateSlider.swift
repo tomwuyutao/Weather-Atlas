@@ -1,5 +1,5 @@
 //
-//  ContentView+MapDateSlider.swift
+//  MapDateSlider.swift
 //  Weather
 //
 //  Extracted from ContentView.swift

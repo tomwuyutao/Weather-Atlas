@@ -1,5 +1,5 @@
 //
-//  ContentView+MapExpandedCard.swift
+//  MapExpandedCard.swift
 //  Weather
 //
 //  Extracted from ContentView.swift
