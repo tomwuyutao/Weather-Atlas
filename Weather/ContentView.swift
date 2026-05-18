@@ -8,7 +8,6 @@
 import SwiftUI
 import CoreLocation
 import MapKit
-import UniformTypeIdentifiers
 #if os(iOS)
 import UIKit
 #endif
@@ -100,10 +99,10 @@ struct ContentView: View {
         if minutes < 1 {
             return localizedString("Now", locale: locale)
         } else if minutes < 60 {
-            return localizedString("\(minutes) m", locale: locale)
+            return "\(minutes) m"
         } else {
             let hours = minutes / 60
-            return localizedString("\(hours) h", locale: locale)
+            return "\(hours) h"
         }
     }
 
@@ -160,15 +159,8 @@ struct ContentView: View {
     @State var showingListSwitcher: Bool = false
     @State var showingMapSidebar: Bool = false
     @State var sidebarExpandedListIDs: Set<String> = []
-    @State var sidebarEditing: Bool = false
-    @State var sidebarAddingList: Bool = false
     @State var sidebarNewListName: String = ""
-    @State var sidebarRenamingListID: CityListID?
-    @State var sidebarRenamingCityContextID: String?
-    @State var sidebarRenameText: String = ""
     @State var sidebarShowingAddListAlert: Bool = false
-    @FocusState var sidebarNewListFocused: Bool
-    @FocusState var sidebarRenameFocused: Bool
     @State var inlineAddTargetListID: CityListID?
     #if os(iOS)
     @State var sidebarEditMode: EditMode = .inactive
@@ -184,9 +176,6 @@ struct ContentView: View {
     @State var macExpandedCardChartMetric: WeatherChartMetric = .temperature
     @State var macExpandedCardChartRange: WeatherChartTimeRange = .daytime
     @State var macSidebarSelection: String?
-    @State var macSidebarDropTarget: String?
-    @State var macSidebarContextTarget: String?
-    @State var macSidebarRefreshTick: Int = 0
     @State var macExpandedCardHoveredDay: Int?
     @State var macQuickSwitcherVisible: Bool = false
     @State var macQuickSwitcherIndex: Int = 0
@@ -2635,42 +2624,6 @@ struct WeatherMarker: View {
         }
         .offset(y: -16)
     }
-}
-
-struct MacSidebarMoveDropDelegate: DropDelegate {
-    let id: String
-    let acceptedTypes: [UTType]
-    let setTarget: (String) -> Void
-    let clearTarget: (String) -> Void
-    let perform: ([NSItemProvider]) -> Bool
-
-    func validateDrop(info: DropInfo) -> Bool {
-        info.hasItemsConforming(to: acceptedTypes)
-    }
-
-    func dropEntered(info: DropInfo) {
-        guard validateDrop(info: info) else { return }
-        setTarget(id)
-    }
-
-    func dropExited(info: DropInfo) {
-        clearTarget(id)
-    }
-
-    func dropUpdated(info: DropInfo) -> DropProposal? {
-        guard validateDrop(info: info) else { return nil }
-        return DropProposal(operation: .move)
-    }
-
-    func performDrop(info: DropInfo) -> Bool {
-        clearTarget(id)
-        return perform(info.itemProviders(for: acceptedTypes + [.text]))
-    }
-}
-
-extension UTType {
-    static let weatherSidebarList = UTType(exportedAs: "com.tomsweather.sidebar-list")
-    static let weatherSidebarCity = UTType(exportedAs: "com.tomsweather.sidebar-city")
 }
 
 #if os(macOS)

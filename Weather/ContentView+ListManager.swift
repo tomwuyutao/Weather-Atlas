@@ -95,7 +95,6 @@ extension ContentView {
         let newList = CityListID.createList(name: trimmed)
         sidebarExpandedListIDs.insert(newList.rawValue)
         sidebarNewListName = ""
-        sidebarAddingList = false
     }
 
     func switchToList(_ listID: CityListID) async {

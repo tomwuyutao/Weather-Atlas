@@ -593,9 +593,13 @@ extension ContentView {
                     macExpandedCardChartMetric = metric
                 } label: {
                     HStack {
-                        Image(systemName: macExpandedCardChartMetric == metric ? "checkmark" : "")
-                            .foregroundStyle(.primary)
-                            .frame(width: 14)
+                        if macExpandedCardChartMetric == metric {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.primary)
+                                .frame(width: 14)
+                        } else {
+                            Color.clear.frame(width: 14)
+                        }
                         Text(label)
                     }
                 }
@@ -627,9 +631,13 @@ extension ContentView {
                     macExpandedCardChartRange = range
                 } label: {
                     HStack {
-                        Image(systemName: macExpandedCardChartRange == range ? "checkmark" : "")
-                            .foregroundStyle(.primary)
-                            .frame(width: 14)
+                        if macExpandedCardChartRange == range {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.primary)
+                                .frame(width: 14)
+                        } else {
+                            Color.clear.frame(width: 14)
+                        }
                         Text(label)
                     }
                 }
