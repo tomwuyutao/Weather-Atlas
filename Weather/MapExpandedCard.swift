@@ -513,7 +513,10 @@ extension ContentView {
                             cityTimeZone: cityWeather.timeZone,
                             previewCurrentHour: nil,
                             lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
-                            compactLayout: true
+                            compactLayout: true,
+                            onHorizontalSwipe: { direction in
+                                shiftExpandedCardChartDate(by: direction)
+                            }
                         )
                         .frame(width: geo.size.width, height: geo.size.height)
                     }
@@ -714,6 +717,16 @@ extension ContentView {
 
     private func macExpandedCardChartLineColor(_ metric: WeatherChartMetric) -> Color {
         theme.colors.accent
+    }
+
+    private func shiftExpandedCardChartDate(by direction: Int) {
+        let currentDay = max(0, selectedDayOffset)
+        let nextDay = min(9, max(0, currentDay + direction))
+        guard nextDay != selectedDayOffset else { return }
+        PlatformFeedback.lightImpact()
+        withAnimation(.snappy(duration: 0.24)) {
+            selectedDayOffset = nextDay
+        }
     }
 
     private func macExpandedCardChartCurrentValue(

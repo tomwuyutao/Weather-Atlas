@@ -29,6 +29,7 @@ struct HourlyTimelineChart: View {
     var lineColor: Color = AppTheme.shared.colors.accent
     var showAllHours: Bool = false
     var compactLayout: Bool = false
+    var onHorizontalSwipe: ((Int) -> Void)? = nil
 
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
@@ -128,7 +129,8 @@ struct HourlyTimelineChart: View {
             chartHeight: chartHeight,
             labelSpacing: labelSpacing,
             compactLayout: compactLayout,
-            emptyTitle: "No hourly data"
+            emptyTitle: "No hourly data",
+            onHorizontalSwipe: onHorizontalSwipe
         )
     }
 }
@@ -230,7 +232,8 @@ struct DailyTimelineChart: View {
             chartHeight: chartHeight,
             labelSpacing: labelSpacing,
             compactLayout: compactLayout,
-            emptyTitle: "No daily data"
+            emptyTitle: "No daily data",
+            onHorizontalSwipe: nil
         )
     }
 }
@@ -246,6 +249,7 @@ private struct TimelineChartBody: View {
     let labelSpacing: CGFloat
     let compactLayout: Bool
     let emptyTitle: String
+    let onHorizontalSwipe: ((Int) -> Void)?
 
     var body: some View {
         if points.isEmpty {
@@ -288,59 +292,62 @@ private struct TimelineChartBody: View {
         }
     }
 
+    @ViewBuilder
     private var chart: some View {
-        GeometryReader { geometry in
-            let chartPoints = positionedPoints(in: geometry.size)
-            let selectedX = selectedIndex.map { chartX(for: $0, width: geometry.size.width) }
+        if let onHorizontalSwipe {
+            chartContent
+                .contentShape(Rectangle())
+                .gesture(horizontalSwipeGesture(action: onHorizontalSwipe))
+                .frame(height: chartHeight)
+        } else {
+            chartContent
+                .frame(height: chartHeight)
+        }
+    }
 
-            ZStack {
-                if let selectedX {
-                    Rectangle()
-                        .fill(indicatorColor.opacity(0.5))
-                        .frame(width: compactLayout ? 1.5 : 2)
-                        .position(x: selectedX, y: geometry.size.height / 2)
-                }
+    private var chartContent: some View {
+        Chart {
+            if let selectedIndex {
+                RuleMark(x: .value("Selected", selectedIndex))
+                    .foregroundStyle(indicatorColor.opacity(0.5))
+                    .lineStyle(StrokeStyle(lineWidth: compactLayout ? 1.5 : 2))
+            }
 
-                Path { path in
-                    guard let first = chartPoints.first else { return }
-                    path.move(to: first)
-                    chartPoints.dropFirst().forEach { point in
-                        path.addLine(to: point)
-                    }
-                }
-                .stroke(lineColor, style: StrokeStyle(lineWidth: compactLayout ? 3 : 4, lineCap: .round, lineJoin: .round))
+            ForEach(points) { point in
+                LineMark(
+                    x: .value("Index", Double(point.index)),
+                    y: .value("Value", point.value)
+                )
+                .foregroundStyle(lineColor)
+                .lineStyle(StrokeStyle(lineWidth: compactLayout ? 3 : 4, lineCap: .round, lineJoin: .round))
 
-                ForEach(Array(chartPoints.enumerated()), id: \.offset) { _, point in
-                    Circle()
-                        .fill(lineColor)
-                        .frame(width: compactLayout ? 8.5 : 10.5, height: compactLayout ? 8.5 : 10.5)
-                        .position(point)
-                }
+                PointMark(
+                    x: .value("Index", Double(point.index)),
+                    y: .value("Value", point.value)
+                )
+                .foregroundStyle(lineColor)
+                .symbolSize(compactLayout ? 72 : 110)
             }
         }
-        .frame(height: chartHeight)
-    }
-
-    private func positionedPoints(in size: CGSize) -> [CGPoint] {
-        points.map { point in
-            CGPoint(
-                x: chartX(for: Double(point.index), width: size.width),
-                y: chartY(for: point.value, height: size.height)
-            )
+        .chartXScale(domain: -0.5...(Double(points.count) - 0.5))
+        .chartYScale(domain: domain)
+        .chartXAxis(.hidden)
+        .chartYAxis(.hidden)
+        .chartLegend(.hidden)
+        .chartPlotStyle { plotArea in
+            plotArea
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    private func chartX(for index: Double, width: CGFloat) -> CGFloat {
-        guard !points.isEmpty else { return 0 }
-        return (CGFloat(index) + 0.5) * width / CGFloat(points.count)
-    }
-
-    private func chartY(for value: Double, height: CGFloat) -> CGFloat {
-        let lower = domain.lowerBound
-        let upper = domain.upperBound
-        guard upper > lower else { return height / 2 }
-        let progress = (value - lower) / (upper - lower)
-        return height * (1 - CGFloat(progress))
+    private func horizontalSwipeGesture(action: @escaping (Int) -> Void) -> some Gesture {
+        DragGesture(minimumDistance: 24)
+            .onEnded { value in
+                let horizontalDistance = value.translation.width
+                let verticalDistance = value.translation.height
+                guard abs(horizontalDistance) > max(abs(verticalDistance) * 1.5, 36) else { return }
+                action(horizontalDistance < 0 ? 1 : -1)
+            }
     }
 
     private var valueRow: some View {
