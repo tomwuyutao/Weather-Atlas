@@ -32,6 +32,11 @@ extension ContentView {
         .onChange(of: selectedTab) { _, _ in
             AppTheme.shared.isDetailedMapMode = false
         }
+        .onChange(of: theme.style) { _, _ in
+            if selectedTab == 1 {
+                centerMapOnDots()
+            }
+        }
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
         }

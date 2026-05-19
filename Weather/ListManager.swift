@@ -189,3 +189,15 @@ extension ContentView {
         activateInlineSearch()
     }
 }
+#Preview("List Manager") {
+    #if os(iOS)
+    NavigationStack {
+        ContentView().iPhoneNativeListManager
+    }
+    #else
+    ContentView()
+        .macListManagerSidebar
+        .frame(width: 280, height: 520)
+    #endif
+}
+

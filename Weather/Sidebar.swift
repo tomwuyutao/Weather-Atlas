@@ -16,9 +16,12 @@ extension ContentView {
             Section {
                 iOSSidebarListRows
             }
-            .listRowBackground(theme.colors.mapLand)
+            .listRowBackground(theme.colors.background)
         }
-        .listStyle(.sidebar)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(theme.colors.background)
+        .tint(theme.colors.accent)
         .environment(\.editMode, $sidebarEditMode)
         .onAppear {
             if sidebarExpandedListIDs.isEmpty {
@@ -58,20 +61,23 @@ extension ContentView {
                 let cities = sidebarCities(for: listID)
                 if cities.isEmpty {
                     Text(localizedString("No cities", locale: locale))
+                        .font(.body)
                         .foregroundStyle(.secondary)
+                        .padding(.vertical, 10)
+                        .padding(.leading, 22)
+                        .listRowSeparator(.hidden)
                 } else {
                     ForEach(cities) { city in
                         Button {
                             revealCityOnMap(city, in: listID)
                         } label: {
-                            Text(city.city.localizedName(locale: locale))
-                                .lineLimit(1)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                            iOSSidebarCityRow(city)
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
                             cityActions(for: city, in: listID)
                         }
+                        .listRowSeparator(.hidden)
                     }
                     .onMove { source, destination in
                         moveMacSidebarCities(in: listID, from: source, to: destination)
@@ -81,21 +87,72 @@ extension ContentView {
                     }
                 }
             } label: {
-                HStack(spacing: 8) {
-                    Text(listID.localizedDisplayName(locale: locale))
-                        .lineLimit(1)
-                    Spacer(minLength: 8)
-                    Text("\(sidebarCities(for: listID).count)")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                .contextMenu {
-                    listActions(for: listID)
-                }
+                iOSSidebarListHeader(listID)
+                    .contextMenu {
+                        listActions(for: listID)
+                    }
             }
+            .listRowSeparator(.hidden)
+            .listRowInsets(EdgeInsets(top: 6, leading: 28, bottom: 6, trailing: 28))
         }
         .onMove(perform: moveMacSidebarLists)
         .onDelete(perform: deleteMacSidebarLists)
+    }
+
+    private func iOSSidebarListHeader(_ listID: CityListID) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Image(systemName: "list.bullet")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 10, height: 18)
+
+                Text(listID.localizedDisplayName(locale: locale))
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Text("\(sidebarCities(for: listID).count)")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(theme.colors.mapLand, in: Capsule())
+            }
+            .padding(.top, 10)
+            .padding(.bottom, 8)
+
+            Rectangle()
+                .fill(theme.colors.primaryText.opacity(0.18))
+                .frame(height: 1)
+                .padding(.trailing, -16)
+        }
+        .contentShape(Rectangle())
+    }
+
+    private func iOSSidebarCityRow(_ city: CityWeather) -> some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(city.condition.dotColor(for: theme.colors))
+                .frame(width: 10, height: 10)
+                .shadow(color: city.condition.dotColor(for: theme.colors).opacity(0.35), radius: 3)
+
+            Text(city.city.localizedName(locale: locale))
+                .font(.body)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            Spacer(minLength: 10)
+
+            Text(tempUnit.display(city.temperature))
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 9)
+        .padding(.leading, -18)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
@@ -214,3 +271,17 @@ extension ContentView {
     }
 }
 #endif
+#if os(iOS)
+#Preview("iOS List Manager") {
+    NavigationStack {
+        ContentView().iPhoneNativeListManager
+    }
+}
+#elseif os(macOS)
+#Preview("Sidebar") {
+    ContentView()
+        .macListManagerSidebar
+        .frame(width: 280, height: 520)
+}
+#endif
+

@@ -139,7 +139,7 @@ extension ThemeColors {
         cloudEffect: Color(hex: 0xD3E3EC),
         windEffect: Color(hex: 0xD3E3EC).opacity(0.28),
         sunIconColor: Color(hex: 0xFF8A65),
-        cloudIconColor: Color(hex: 0xD3E3EC),
+        cloudIconColor: Color(hex: 0xD5D5D5),
         rainIconColor: Color(hex: 0x6EACE8),
         snowIconColor: Color(hex: 0xD3E3EC),
         moonIconColor: Color(hex: 0xD3E3EC),

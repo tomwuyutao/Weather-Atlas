@@ -77,14 +77,18 @@ extension ContentView {
         .presentationCompactAdaptation(.popover)
     }
 
+    func centerMapOnDots() {
+        recenterOnAllCities = false
+        DispatchQueue.main.async {
+            recenterOnAllCities = true
+        }
+    }
+
     var iOSMapControlsCapsule: some View {
         HStack(spacing: 8) {
             Button {
                 PlatformFeedback.lightImpact()
-                recenterOnAllCities = false
-                DispatchQueue.main.async {
-                    recenterOnAllCities = true
-                }
+                centerMapOnDots()
             } label: {
                 Image(systemName: "dot.squareshape.split.2x2")
                     .font(.system(size: 14, weight: .semibold))

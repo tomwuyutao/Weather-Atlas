@@ -30,6 +30,9 @@ import AppKit
         .onAppear {
             AppTheme.shared.isDetailedMapMode = false
         }
+        .onChange(of: theme.style) { _, _ in
+            centerMapOnDots()
+        }
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
         }
