@@ -73,6 +73,8 @@ struct ContentView: View {
     @State var inlineSearchSelectionIndex: Int = 0
     
     @State var recenterOnAllCities: Bool = false
+    @State var mapMarkerReloadID: Int = 0
+    @State var settingsOpenedThemeStyle: AppThemeStyle?
     @AppStorage("temperatureUnit") var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
     @State var showingSettings: Bool = false
@@ -221,6 +223,7 @@ struct ContentView: View {
     }
 
     @State var isLoadingMapList: Bool = false
+    @State var loadingWeatherIcon: String = "sun.max.fill"
     @State var capsuleSwipeFromTrailing: Bool = true
 
     // Map overlay menu is in MapOverlayMenu.swift

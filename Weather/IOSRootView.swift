@@ -53,6 +53,17 @@ extension ContentView {
                 }
             }
         }
+        .onChange(of: showingSettings) { wasShowing, isShowing in
+            if isShowing {
+                settingsOpenedThemeStyle = theme.style
+            } else if wasShowing {
+                if settingsOpenedThemeStyle != theme.style, selectedTab == 1 {
+                    forceReloadMapDots()
+                    centerMapOnDots()
+                }
+                settingsOpenedThemeStyle = nil
+            }
+        }
         .onChange(of: showingCityDetail) { _, showing in
             iOSHandleCityDetailDismiss(showing: showing)
         }

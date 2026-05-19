@@ -16,6 +16,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     let selectedDayOffset: Int
     var overlayMode: String = "weather"
     let filterSunny: Bool
+    var markerReloadID: Int = 0
     @Binding var tappedCity: CityWeather?
     @Binding var recenterOnAllCities: Bool
     var centerOnCity: CityWeather?
@@ -124,6 +125,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         private var isReady = false
         private var lastPayload = ""
         private var lastStyleKey = ""
+        private var lastMarkerReloadID = 0
         private var lastCenteredCityID: UUID?
         private var observers: [NSObjectProtocol] = []
 
@@ -223,7 +225,11 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             let selectedID = parent.focusSelectedMarker ? (parent.tappedCity?.id.uuidString ?? "") : ""
             let payload = "{features:\(json),selectedID:\(Self.jsString(selectedID)),allowsMarkerHover:\(parent.allowsMarkerHover ? "true" : "false")}"
 
-            if force || payload != lastPayload {
+            let shouldReloadMarkers = parent.markerReloadID != lastMarkerReloadID
+            if shouldReloadMarkers {
+                lastMarkerReloadID = parent.markerReloadID
+            }
+            if force || shouldReloadMarkers || payload != lastPayload {
                 lastPayload = payload
                 evaluate("window.updateWeatherData(\(payload));")
             }

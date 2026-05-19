@@ -240,12 +240,11 @@ extension ContentView {
                 Text(primaryText)
                     .font(.system(size: usesIPhoneDetailSizing ? 62 : 42, weight: .regular, design: .default))
                     .foregroundStyle(.primary)
-                    .contentTransition(.numericText())
                     .lineLimit(1)
                     .id("primary-\(selectedDayOffset)-\(primaryText)")
                     .transition(.asymmetric(
-                        insertion: .move(edge: .trailing).combined(with: .opacity),
-                        removal: .move(edge: .leading).combined(with: .opacity)
+                        insertion: .scale(scale: 0.82).combined(with: .opacity),
+                        removal: .scale(scale: 0.82).combined(with: .opacity)
                     ))
 
                 Image(systemName: icon)

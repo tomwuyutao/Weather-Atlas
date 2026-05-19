@@ -84,6 +84,10 @@ extension ContentView {
         }
     }
 
+    func forceReloadMapDots() {
+        mapMarkerReloadID += 1
+    }
+
     var iOSMapControlsCapsule: some View {
         HStack(spacing: 8) {
             Button {
@@ -289,6 +293,7 @@ extension ContentView {
                 selectedDayOffset: selectedDayOffset,
                 overlayMode: mapOverlayMode,
                 filterSunny: filterSunny,
+                markerReloadID: mapMarkerReloadID,
                 tappedCity: $tappedCity,
                 recenterOnAllCities: $recenterOnAllCities,
                 centerOnCity: centerOnCityTrigger,
@@ -313,41 +318,52 @@ extension ContentView {
             .ignoresSafeArea()
 
             if weatherService.isLoading {
-                GeometryReader { geo in
-                    VStack(spacing: 12) {
-                        Image(systemName: "cloud.sun.fill")
-                            #if os(macOS)
-                            .font(.system(size: 28, weight: .medium))
-                            #else
-                            .font(.system(size: 40, weight: .medium))
-                            #endif
-                            .weatherIconStyle(for: "cloud.sun.fill")
-                        Text(localizedString("Loading Weather", locale: locale))
-                            #if os(macOS)
-                            .font(.headline.weight(.semibold))
-                            #else
-                            .font(.avenir(.title3, weight: .semibold))
-                            #endif
-                        Capsule()
-                            .fill(theme.colors.primaryText.opacity(0.15))
-                            .frame(width: 118, height: 3)
-                            .overlay(alignment: .leading) {
-                                Capsule()
-                                    .fill(theme.colors.accent)
-                                    .frame(width: 118 * weatherService.loadingProgress, height: 3)
-                            }
-                    }
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 18)
-                    .themedGlass(in: .rect(cornerRadius: 24))
-                    .position(x: geo.size.width / 2, y: geo.size.height / 2)
-                }
+                LoadingWeatherOverlay(
+                    iconName: loadingWeatherIcon,
+                    progress: weatherService.loadingProgress,
+                    locale: locale
+                )
                 .allowsHitTesting(false)
             }
 
         }
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .ignoresSafeArea()
+        .task(id: weatherService.isLoading) {
+            await animateLoadingWeatherIconIfNeeded()
+        }
+    }
+
+    func animateLoadingWeatherIconIfNeeded() async {
+        guard weatherService.isLoading else { return }
+
+        let loadingIcons = [
+            "cloud.sun.fill",
+            "cloud.fill",
+            "cloud.rain.fill",
+            "cloud.drizzle.fill",
+            "snowflake",
+            "cloud.fog.fill",
+            "wind"
+        ]
+
+        await MainActor.run {
+            withAnimation(.snappy(duration: 0.28)) {
+                loadingWeatherIcon = "sun.max.fill"
+            }
+        }
+
+        while !Task.isCancelled && weatherService.isLoading {
+            try? await Task.sleep(for: .milliseconds(2500))
+            guard !Task.isCancelled && weatherService.isLoading else { break }
+
+            let nextIcon = loadingIcons.filter { $0 != loadingWeatherIcon }.randomElement() ?? "cloud.sun.fill"
+            await MainActor.run {
+                withAnimation(.snappy(duration: 0.28)) {
+                    loadingWeatherIcon = nextIcon
+                }
+            }
+        }
     }
 
     var macMapLeadingFitPadding: Double {
