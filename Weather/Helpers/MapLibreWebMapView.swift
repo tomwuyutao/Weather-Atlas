@@ -291,7 +291,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
         if overlayMode == "cloudCover" {
             let value = isNow ? cityWeather.currentCloudCover : forecast.cloudCover
-            return blendHex(from: 0x1579C7, to: 0xFFFFFF, amount: value ?? 0.5)
+            return blendHex(from: 0xFFFFFF, to: 0xBCCFDC, amount: value ?? 0.5)
         }
         if overlayMode == "precipitation" {
             let chance: Double
@@ -300,54 +300,54 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             } else {
                 chance = forecast.precipitationChance ?? 0.5
             }
-            return blendHex(from: 0xFFFFFF, to: 0x57D3E5, amount: chance)
+            return blendHex(from: 0xFFFFFF, to: 0xBCCFDC, amount: chance)
         }
         if overlayMode == "windSpeed" {
             let windSpeed = (isNow ? cityWeather.currentWindSpeed : forecast.windSpeed) ?? 0
             let wind = min(1, windSpeed / 100)
-            return blendHex(from: 0xFFFFFF, to: 0xFDA409, amount: wind)
+            return blendHex(from: 0xFFFFFF, to: 0xEEB368, amount: wind)
         }
         if overlayMode == "uvIndex" {
             let uv = min(1, Double((isNow ? cityWeather.currentUVIndex : forecast.uvIndex) ?? 0) / 11)
-            return blendHex(from: 0xFFFFFF, to: 0xFB4368, amount: uv)
+            return blendHex(from: 0xFFFFFF, to: 0xE87957, amount: uv)
         }
         if overlayMode == "humidity" {
-            return blendHex(from: 0xFFFFFF, to: 0xBE9AED, amount: (isNow ? cityWeather.currentHumidity : forecast.maxHumidity) ?? 0.5)
+            return blendHex(from: 0xFFFFFF, to: 0xBCCFDC, amount: (isNow ? cityWeather.currentHumidity : forecast.maxHumidity) ?? 0.5)
         }
         if overlayMode == "visibility" {
             let visibility = min(1, ((isNow ? cityWeather.currentVisibility : forecast.maxVisibility) ?? 15) / 30)
-            return blendHex(from: 0xFFFFFF, to: 0x1579C7, amount: visibility)
+            return blendHex(from: 0xFFFFFF, to: 0xBCCFDC, amount: visibility)
         }
         let condition = isNow ? cityWeather.condition : forecast.condition
         return color(for: condition, icon: isNow ? cityWeather.weatherIcon : forecast.weatherIcon)
     }
 
     private func color(for condition: AppWeatherCondition, icon: String) -> String {
-        if icon.contains("moon") { return "#BE9AED" }
+        if icon.contains("moon") { return "#BCCFDC" }
         switch condition {
-        case .clear: return "#FDA409"
-        case .partlySunny: return "#F5C563"
-        case .partlyCloudy: return "#FFFFFF"
-        case .cloudy: return "#FFFFFF"
-        case .rain: return "#1579C7"
-        case .drizzle: return "#57D3E5"
-        case .snow: return "#FFFFFF"
-        case .fog: return "#FFFFFF"
-        case .wind: return "#FFFFFF"
+        case .clear: return "#E87957"
+        case .partlySunny: return "#EEB368"
+        case .partlyCloudy: return "#BCCFDC"
+        case .cloudy: return "#BCCFDC"
+        case .rain: return "#BCCFDC"
+        case .drizzle: return "#6EACE8"
+        case .snow: return "#BCCFDC"
+        case .fog: return "#BCCFDC"
+        case .wind: return "#BCCFDC"
         }
     }
 
     private func temperatureColor(_ tempC: Double) -> String {
         if tempC <= 0 {
-            return blendHex(from: 0x1579C7, to: 0x57D3E5, amount: max(0, min(1, (tempC + 20) / 20)))
+            return blendHex(from: 0xBCCFDC, to: 0x6EACE8, amount: max(0, min(1, (tempC + 20) / 20)))
         }
         if tempC <= 10 {
-            return blendHex(from: 0x57D3E5, to: 0x7DD4A0, amount: max(0, min(1, tempC / 10)))
+            return blendHex(from: 0x6EACE8, to: 0xEEB368, amount: max(0, min(1, tempC / 10)))
         }
         if tempC <= 20 {
-            return blendHex(from: 0x7DD4A0, to: 0xFDA409, amount: max(0, min(1, (tempC - 10) / 10)))
+            return blendHex(from: 0xEEB368, to: 0xE87957, amount: max(0, min(1, (tempC - 10) / 10)))
         }
-        return blendHex(from: 0xFDA409, to: 0xFB4368, amount: max(0, min(1, (tempC - 20) / 20)))
+        return blendHex(from: 0xE87957, to: 0xFB4368, amount: max(0, min(1, (tempC - 20) / 20)))
     }
 
     private func blendHex(from: Int, to: Int, amount: Double) -> String {
@@ -372,11 +372,11 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
       <link rel="stylesheet" href="https://unpkg.com/maplibre-gl/dist/maplibre-gl.css">
       <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
       <style>
-        html, body { margin: 0; padding: 0; width: 100%; height: 100%; min-height: 100%; overflow: hidden; background: #F4F1EB; }
+        html, body { margin: 0; padding: 0; width: 100%; height: 100%; min-height: 100%; overflow: hidden; background: #FFFFFF; }
         body { -webkit-user-select: none; user-select: none; position: fixed; inset: 0; }
-        #map { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: #F4F1EB; }
+        #map { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: #FFFFFF; }
         @media (prefers-color-scheme: dark) {
-          html, body, #map { background: #1A1B2E; }
+          html, body, #map { background: #2E2961; }
         }
         #window-drag-blur {
           position: fixed;
@@ -409,8 +409,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           padding: 4px 8px;
           border-radius: 999px;
           font: 600 12px -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
-          color: #1F1F1F;
-          background: rgba(244, 241, 235, 0.88);
+          color: #444444;
+          background: rgba(248, 244, 241, 0.9);
           opacity: 0;
           transform: translate(-50%, -100%) translateY(-20px);
           pointer-events: none;
@@ -421,8 +421,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           white-space: nowrap;
         }
         body.dark-map #hover-label {
-          color: #E8E4DF;
-          background: rgba(26, 27, 46, 0.88);
+          color: #E7E7E8;
+          background: rgba(46, 41, 97, 0.9);
         }
         #hover-label.visible {
           opacity: 1;
@@ -506,8 +506,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         function themePalette(mode) {
           return mode === 'dark'
-            ? { ocean: '#1A1B2E', land: '#252640', subtleLand: '#2D2E4A', road: '#353660' }
-            : { ocean: '#F4F1EB', land: '#E8E5DF', subtleLand: '#EFEBE5', road: '#DDDAD3' };
+            ? { ocean: '#2E2961', land: '#423D74', subtleLand: '#423D74', road: '#56508B' }
+            : { ocean: '#FFFFFF', land: '#F8F4F1', subtleLand: '#F8F4F1', road: '#E6DDD7' };
         }
 
         function isRoadLikeLayer(combined) {

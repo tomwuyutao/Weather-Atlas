@@ -32,84 +32,46 @@ struct MapFloatingLegend: View {
 
     private func temperatureColor(celsius: Double) -> Color {
         if celsius <= 0 {
-            let t = max(0, min(1, (celsius - (-20)) / 20.0))
-            return Color(
-                red: Double(0x15) / 255.0 + t * Double(0x57 - 0x15) / 255.0,
-                green: Double(0x79) / 255.0 + t * Double(0xD3 - 0x79) / 255.0,
-                blue: Double(0xC7) / 255.0 + t * Double(0xE5 - 0xC7) / 255.0
-            )
+            return Color(hex: 0xBCCFDC).mix(with: Color(hex: 0x6EACE8), by: max(0, min(1, (celsius + 20) / 20)))
         } else if celsius <= 10 {
-            let t = max(0, min(1, celsius / 10.0))
-            return Color(
-                red: Double(0x57) / 255.0 + t * Double(0x7D - 0x57) / 255.0,
-                green: Double(0xD3) / 255.0 + t * Double(0xD4 - 0xD3) / 255.0,
-                blue: Double(0xE5) / 255.0 + t * Double(0xA0 - 0xE5) / 255.0
-            )
+            return Color(hex: 0x6EACE8).mix(with: Color(hex: 0xEEB368), by: max(0, min(1, celsius / 10)))
         } else if celsius <= 20 {
-            let t = max(0, min(1, (celsius - 10) / 10.0))
-            return Color(
-                red: Double(0x7D) / 255.0 + t * Double(0xFD - 0x7D) / 255.0,
-                green: Double(0xD4) / 255.0 + t * Double(0xA4 - 0xD4) / 255.0,
-                blue: Double(0xA0) / 255.0 + t * Double(0x09 - 0xA0) / 255.0
-            )
+            return Color(hex: 0xEEB368).mix(with: Color(hex: 0xE87957), by: max(0, min(1, (celsius - 10) / 10)))
         } else {
-            let t = max(0, min(1, (celsius - 20) / 20.0))
-            return Color(
-                red: Double(0xFD) / 255.0 + t * Double(0xFB - 0xFD) / 255.0,
-                green: Double(0xA4) / 255.0 + t * Double(0x43 - 0xA4) / 255.0,
-                blue: Double(0x09) / 255.0 + t * Double(0x68 - 0x09) / 255.0
-            )
+            return Color(hex: 0xE87957).mix(with: Color(hex: 0xFB4368), by: max(0, min(1, (celsius - 20) / 20)))
         }
     }
 
     private func cloudColor(percent: Double) -> Color {
-        let cover = percent / 100.0
-        return Color(
-            red: Double(0x15) / 255.0 + cover * (1.0 - Double(0x15) / 255.0),
-            green: Double(0x79) / 255.0 + cover * (1.0 - Double(0x79) / 255.0),
-            blue: Double(0xC7) / 255.0 + cover * (1.0 - Double(0xC7) / 255.0)
-        )
+        Color.white.mix(with: Color(hex: 0xBCCFDC), by: max(0, min(1, percent / 100.0)))
     }
 
     private func precipitationColor(percent: Double) -> Color {
-        let chance = percent / 100.0
-        return Color(
-            red: 1.0 + chance * (Double(0x57) / 255.0 - 1.0),
-            green: 1.0 + chance * (Double(0xD3) / 255.0 - 1.0),
-            blue: 1.0 + chance * (Double(0xE5) / 255.0 - 1.0)
-        )
+        Color.white.mix(with: Color(hex: 0xBCCFDC), by: max(0, min(1, percent / 100.0)))
     }
 
     private func windColor(fraction: Double) -> Color {
-        return Color(
-            red: 1.0 + fraction * (Double(0xFD) / 255.0 - 1.0),
-            green: 1.0 + fraction * (Double(0xA4) / 255.0 - 1.0),
-            blue: 1.0 + fraction * (Double(0x09) / 255.0 - 1.0)
-        )
+        Color.white.mix(with: Color(hex: 0xEEB368), by: max(0, min(1, fraction)))
     }
 
     private func uvColor(fraction: Double) -> Color {
         return Color(
-            red: 1.0 + fraction * (Double(0xFB) / 255.0 - 1.0),
-            green: 1.0 + fraction * (Double(0x43) / 255.0 - 1.0),
-            blue: 1.0 + fraction * (Double(0x68) / 255.0 - 1.0)
+            red: 1.0 + fraction * (Double(0xE8) / 255.0 - 1.0),
+            green: 1.0 + fraction * (Double(0x79) / 255.0 - 1.0),
+            blue: 1.0 + fraction * (Double(0x57) / 255.0 - 1.0)
         )
     }
 
     private func humidityColor(fraction: Double) -> Color {
         return Color(
-            red: 1.0 + fraction * (Double(0xBE) / 255.0 - 1.0),
-            green: 1.0 + fraction * (Double(0x9A) / 255.0 - 1.0),
-            blue: 1.0 + fraction * (Double(0xED) / 255.0 - 1.0)
+            red: 1.0 + fraction * (Double(0xBC) / 255.0 - 1.0),
+            green: 1.0 + fraction * (Double(0xCF) / 255.0 - 1.0),
+            blue: 1.0 + fraction * (Double(0xDC) / 255.0 - 1.0)
         )
     }
 
     private func visibilityColor(fraction: Double) -> Color {
-        return Color(
-            red: 1.0 + fraction * (Double(0x15) / 255.0 - 1.0),
-            green: 1.0 + fraction * (Double(0x79) / 255.0 - 1.0),
-            blue: 1.0 + fraction * (Double(0xC7) / 255.0 - 1.0)
-        )
+        Color.white.mix(with: Color(hex: 0xBCCFDC), by: max(0, min(1, fraction)))
     }
 
     // MARK: - Gradient legend

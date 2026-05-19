@@ -148,55 +148,23 @@ struct WeatherMarker: View {
     var dotColor: Color {
         // Temperature overlay: use current temp for "Now", daily high otherwise
         let tempForColor = isNow ? cityWeather.temperature : forecast.dailyHigh
-        // Temperature overlay: dark blue #1579C7 (≤-20°C) → cyan #57D3E5 (0°C) → green #8BBD9F (10°C) → yellow #FDA409 (20°C) → red #FB4368 (≥40°C)
         if overlayMode == "temperature" {
             let tempC = tempForColor
             if tempC <= 0 {
-                // Dark blue → Cyan: -20 to 0
-                let t = Double(max(0, min(1, (tempC - (-20)) / 20.0)))
-                return Color(
-                    red: Double(0x15) / 255.0 + t * Double(0x57 - 0x15) / 255.0,
-                    green: Double(0x79) / 255.0 + t * Double(0xD3 - 0x79) / 255.0,
-                    blue: Double(0xC7) / 255.0 + t * Double(0xE5 - 0xC7) / 255.0
-                )
+                return Color(hex: 0xBCCFDC).mix(with: Color(hex: 0x6EACE8), by: max(0, min(1, (tempC + 20) / 20)))
             } else if tempC <= 10 {
-                // Cyan → Green: 0 to 10
-                let t = Double(max(0, min(1, tempC / 10.0)))
-                return Color(
-                    red: Double(0x57) / 255.0 + t * Double(0x7D - 0x57) / 255.0,
-                    green: Double(0xD3) / 255.0 + t * Double(0xD4 - 0xD3) / 255.0,
-                    blue: Double(0xE5) / 255.0 + t * Double(0xA0 - 0xE5) / 255.0
-                )
+                return Color(hex: 0x6EACE8).mix(with: Color(hex: 0xEEB368), by: max(0, min(1, tempC / 10)))
             } else if tempC <= 20 {
-                // Green → Yellow: 10 to 20
-                let t = Double(max(0, min(1, (tempC - 10) / 10.0)))
-                return Color(
-                    red: Double(0x7D) / 255.0 + t * Double(0xFD - 0x7D) / 255.0,
-                    green: Double(0xD4) / 255.0 + t * Double(0xA4 - 0xD4) / 255.0,
-                    blue: Double(0xA0) / 255.0 + t * Double(0x09 - 0xA0) / 255.0
-                )
+                return Color(hex: 0xEEB368).mix(with: Color(hex: 0xE87957), by: max(0, min(1, (tempC - 10) / 10)))
             } else {
-                // Yellow → Red: 20 to 40
-                let t = Double(max(0, min(1, (tempC - 20) / 20.0)))
-                return Color(
-                    red: Double(0xFD) / 255.0 + t * Double(0xFB - 0xFD) / 255.0,
-                    green: Double(0xA4) / 255.0 + t * Double(0x43 - 0xA4) / 255.0,
-                    blue: Double(0x09) / 255.0 + t * Double(0x68 - 0x09) / 255.0
-                )
+                return Color(hex: 0xE87957).mix(with: Color(hex: 0xFB4368), by: max(0, min(1, (tempC - 20) / 20)))
             }
         }
-        // Cloud cover overlay: dark blue #1579C7 (0% clear) → white (100% cloudy)
         if overlayMode == "cloudCover" {
             let cloudCoverVal: Double? = isNow ? cityWeather.currentCloudCover : forecast.cloudCover
             guard let cloudCoverVal else { return .gray }
-            let cover = CGFloat(cloudCoverVal) // 0.0 (clear) to 1.0 (cloudy)
-            return Color(
-                red: Double(0x15) / 255.0 + Double(cover) * (1.0 - Double(0x15) / 255.0),
-                green: Double(0x79) / 255.0 + Double(cover) * (1.0 - Double(0x79) / 255.0),
-                blue: Double(0xC7) / 255.0 + Double(cover) * (1.0 - Double(0xC7) / 255.0)
-            )
+            return Color.white.mix(with: Color(hex: 0xBCCFDC), by: max(0, min(1, cloudCoverVal)))
         }
-        // Precipitation overlay: white (0%) → cyan #57D3E5 (100%)
         if overlayMode == "precipitation" {
             let chance: CGFloat
             if isNow {
@@ -205,22 +173,12 @@ struct WeatherMarker: View {
                 guard let precipVal = forecast.precipitationChance else { return .gray }
                 chance = CGFloat(precipVal)
             }
-            return Color(
-                red: 1.0 + Double(chance) * (Double(0x57) / 255.0 - 1.0),
-                green: 1.0 + Double(chance) * (Double(0xD3) / 255.0 - 1.0),
-                blue: 1.0 + Double(chance) * (Double(0xE5) / 255.0 - 1.0)
-            )
+            return Color.white.mix(with: Color(hex: 0xBCCFDC), by: Double(chance))
         }
-        // Wind speed overlay: white (0 km/h) → yellow #FDA409 (100 km/h)
         if overlayMode == "windSpeed" {
             let ws: Double? = isNow ? cityWeather.currentWindSpeed : forecast.windSpeed
             guard let ws else { return .gray }
-            let wind = min(1.0, ws / 100.0)
-            return Color(
-                red: 1.0 + wind * (Double(0xFD) / 255.0 - 1.0),
-                green: 1.0 + wind * (Double(0xA4) / 255.0 - 1.0),
-                blue: 1.0 + wind * (Double(0x09) / 255.0 - 1.0)
-            )
+            return Color.white.mix(with: Color(hex: 0xEEB368), by: min(1.0, ws / 100.0))
         }
         // UV index overlay: white (0) → red #FB4368 (11+)
         if overlayMode == "uvIndex" {
@@ -228,33 +186,25 @@ struct WeatherMarker: View {
             guard let uvVal else { return .gray }
             let uv = min(1.0, Double(uvVal) / 11.0)
             return Color(
-                red: 1.0 + uv * (Double(0xFB) / 255.0 - 1.0),
-                green: 1.0 + uv * (Double(0x43) / 255.0 - 1.0),
-                blue: 1.0 + uv * (Double(0x68) / 255.0 - 1.0)
+                red: 1.0 + uv * (Double(0xE8) / 255.0 - 1.0),
+                green: 1.0 + uv * (Double(0x79) / 255.0 - 1.0),
+                blue: 1.0 + uv * (Double(0x57) / 255.0 - 1.0)
             )
         }
-        // Humidity overlay: white (0%) → purple #BE9AED (100%)
         if overlayMode == "humidity" {
             let hum: Double? = isNow ? cityWeather.currentHumidity : forecast.maxHumidity
             guard let hum else { return .gray }
             return Color(
-                red: 1.0 + hum * (Double(0xBE) / 255.0 - 1.0),
-                green: 1.0 + hum * (Double(0x9A) / 255.0 - 1.0),
-                blue: 1.0 + hum * (Double(0xED) / 255.0 - 1.0)
+                red: 1.0 + hum * (Double(0xBC) / 255.0 - 1.0),
+                green: 1.0 + hum * (Double(0xCF) / 255.0 - 1.0),
+                blue: 1.0 + hum * (Double(0xDC) / 255.0 - 1.0)
             )
         }
-        // Visibility overlay: white (0 km) → dark blue #1579C7 (30+ km)
         if overlayMode == "visibility" {
             let visVal: Double? = isNow ? cityWeather.currentVisibility : forecast.maxVisibility
             guard let visVal else { return .gray }
-            let vis = min(1.0, visVal / 30.0)
-            return Color(
-                red: 1.0 + vis * (Double(0x15) / 255.0 - 1.0),
-                green: 1.0 + vis * (Double(0x79) / 255.0 - 1.0),
-                blue: 1.0 + vis * (Double(0xC7) / 255.0 - 1.0)
-            )
+            return Color.white.mix(with: Color(hex: 0xBCCFDC), by: min(1.0, visVal / 30.0))
         }
-        // Moon icon in "Now" mode uses purple
         if isNow && baseIcon.contains("moon") {
             return AppTheme.shared.colors.moonIconColor
         }
