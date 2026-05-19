@@ -29,8 +29,9 @@ struct IPadNativeSearchBar: UIViewRepresentable {
         searchBar.returnKeyType = .search
         searchBar.backgroundImage = UIImage()
         searchBar.setBackgroundImage(UIImage(), for: .any, barMetrics: .default)
-        searchBar.searchTextField.clearButtonMode = .whileEditing
+        searchBar.searchTextField.clearButtonMode = .never
         searchBar.searchTextField.borderStyle = .none
+        searchBar.showsCancelButton = false
         return searchBar
     }
 
@@ -45,8 +46,12 @@ struct IPadNativeSearchBar: UIViewRepresentable {
         if searchBar.placeholder != placeholder {
             searchBar.placeholder = placeholder
         }
+        searchBar.searchTextField.clearButtonMode = text.isEmpty ? .never : .whileEditing
+        searchBar.setShowsCancelButton(false, animated: false)
         if isPresented && !searchBar.isFirstResponder {
             searchBar.becomeFirstResponder()
+        } else if !isPresented && searchBar.isFirstResponder {
+            searchBar.resignFirstResponder()
         }
     }
 

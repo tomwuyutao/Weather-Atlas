@@ -132,54 +132,7 @@ extension ContentView {
 
             mapOverlayMenu
 
-            Button {
-                showingSettings = true
-            } label: {
-                Image(systemName: "gearshape")
-                    .foregroundStyle(.primary)
-                    .foregroundColor(.primary)
-            }
-            .tint(.primary)
-            .help(localizedString("Settings", locale: locale))
-        }
-
-        ToolbarSpacer(.fixed, placement: .topBarTrailing)
-
-        ToolbarItemGroup(placement: .topBarTrailing) {
-            Button {
-                withAnimation(.smooth(duration: 0.2)) {
-                    showLegend.toggle()
-                }
-            } label: {
-                Image(systemName: showLegend ? "eye.slash" : "eye")
-                    .foregroundStyle(.primary)
-                    .foregroundColor(.primary)
-            }
-            .tint(.primary)
-            .help(localizedString("Legend", locale: locale))
-
-            Button {
-                Task { await weatherService.refreshWeather() }
-            } label: {
-                Image(systemName: "arrow.clockwise")
-                    .foregroundStyle(.primary)
-                    .foregroundColor(.primary)
-            }
-            .tint(.primary)
-            .disabled(weatherService.isLoading)
-            .help(localizedString("Refresh", locale: locale))
-
-            Button {
-                withAnimation {
-                    filterSunny.toggle()
-                }
-            } label: {
-                Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
-                    .foregroundStyle(.primary)
-                    .foregroundColor(.primary)
-            }
-            .tint(.primary)
-            .help(localizedString("Filter Sunny", locale: locale))
+            iPadToolbarMoreMenu
         }
 
         ToolbarSpacer(.fixed, placement: .topBarTrailing)
@@ -195,12 +148,69 @@ extension ContentView {
                 }
                 .tint(.primary)
                 .help(localizedString("Search", locale: locale))
+                .popover(isPresented: $inlineSearchFieldPresented) {
+                    iPadInspectorSearchPopover
+                }
             }
         } else {
             ToolbarItem(placement: .topBarTrailing) {
                 iPadToolbarSearchBar
             }
         }
+    }
+
+    var iPadToolbarMoreMenu: some View {
+        Menu {
+            Button {
+                showingSettings = true
+            } label: {
+                Label {
+                    Text(localizedString("Settings", locale: locale))
+                } icon: {
+                    Image(systemName: "gearshape")
+                }
+            }
+
+            Divider()
+
+            Toggle(isOn: Binding(
+                get: { showLegend },
+                set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
+            )) {
+                Label {
+                    Text(localizedString("Legend", locale: locale))
+                } icon: {
+                    Image(systemName: "eye")
+                }
+            }
+
+            Button {
+                Task { await weatherService.refreshWeather() }
+            } label: {
+                Label {
+                    Text(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"))
+                } icon: {
+                    Image(systemName: "arrow.clockwise")
+                }
+            }
+            .disabled(weatherService.isLoading)
+
+            Toggle(isOn: Binding(
+                get: { filterSunny },
+                set: { newValue in withAnimation { filterSunny = newValue } }
+            )) {
+                Label {
+                    Text(localizedString("Filter Sunny", locale: locale))
+                } icon: {
+                    Image(systemName: "sun.max")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .foregroundStyle(.primary)
+                .foregroundColor(.primary)
+        }
+        .menuOrder(.fixed)
     }
 
     var iPadToolbarSearchBar: some View {
@@ -219,13 +229,36 @@ extension ContentView {
                 }
             }
         )) {
-            VStack(alignment: .leading, spacing: 0) {
-                nativeCitySearchSuggestions
-            }
-            .padding(10)
-            .frame(width: 320)
-            .presentationCompactAdaptation(.popover)
+            iPadSearchSuggestionsList
         }
+    }
+
+    var iPadInspectorSearchPopover: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            IPadNativeSearchBar(
+                text: $inlineSearchText,
+                isPresented: $inlineSearchFieldPresented,
+                placeholder: localizedString("Search for a city", locale: locale),
+                onSubmit: confirmInlineSearchSelection
+            )
+            .frame(width: 300, height: 36)
+
+            if !inlineSearchText.isEmpty && !inlineSortedSearchResults.isEmpty {
+                iPadSearchSuggestionsList
+            }
+        }
+        .padding(12)
+        .frame(width: 340)
+        .presentationCompactAdaptation(.popover)
+    }
+
+    var iPadSearchSuggestionsList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            nativeCitySearchSuggestions
+        }
+        .padding(10)
+        .frame(width: 320)
+        .presentationCompactAdaptation(.popover)
     }
 
     var iPadSidebarContent: some View {
@@ -341,6 +374,10 @@ extension ContentView {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showingMapExpandedCard)
     }
 
+    var iPadInspectorBackground: Color {
+        colorScheme == .dark ? Color(hex: 0x262052) : theme.colors.background
+    }
+
     func iPadFixedDetailInspector(for city: CityWeather) -> some View {
         NavigationStack {
             ScrollView(.vertical, showsIndicators: false) {
@@ -355,7 +392,7 @@ extension ContentView {
                 .padding(.bottom, 16)
             }
             .scrollContentBackground(.hidden)
-            .background(theme.colors.background.ignoresSafeArea())
+            .background(iPadInspectorBackground.ignoresSafeArea())
             .navigationTitle(city.city.localizedName(locale: locale))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
