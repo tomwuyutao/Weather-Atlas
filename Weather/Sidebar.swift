@@ -142,7 +142,7 @@ extension ContentView {
             Rectangle()
                 .fill(theme.colors.primaryText.opacity(0.18))
                 .frame(height: 1)
-                .padding(.trailing, -16)
+                .padding(.horizontal, shouldUseIPadLayout ? -12 : 0)
         }
         .contentShape(Rectangle())
     }
@@ -155,6 +155,7 @@ extension ContentView {
                 .fill(dotColor)
                 .frame(width: 10, height: 10)
                 .shadow(color: dotColor.opacity(0.35), radius: 3)
+                .frame(width: 10, alignment: .center)
 
             Text(city.city.localizedName(locale: locale))
                 .font(.body)
@@ -168,7 +169,7 @@ extension ContentView {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 9)
-        .padding(.leading, shouldUseIPadLayout ? -6 : -18)
+        .padding(.leading, shouldUseIPadLayout ? -24 : -18)
         .contentShape(Rectangle())
     }
 

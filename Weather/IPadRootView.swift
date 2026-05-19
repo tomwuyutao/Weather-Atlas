@@ -41,6 +41,7 @@ extension ContentView {
                         },
                     placement: .toolbar
                 )
+                .searchToolbarBehavior(.minimize)
             }
         } else {
             nativeCitySearch(
@@ -76,6 +77,7 @@ extension ContentView {
                         },
                     placement: .toolbar
                 )
+                .searchToolbarBehavior(.minimize)
             }
         }
         .navigationSplitViewStyle(.balanced)
@@ -153,10 +155,6 @@ extension ContentView {
             if !showingInlineSearch {
                 iPadFloatingMapOverlays
             }
-
-            if !showingInlineSearch {
-                iPadFloatingDetailOverlay
-            }
         }
         .ignoresSafeArea(.container, edges: .top)
         .toolbar {
@@ -227,6 +225,12 @@ extension ContentView {
                 .help(localizedString("Filter Sunny", locale: locale))
             }
         }
+        .inspector(isPresented: $showingCityDetail) {
+            if let city = tappedCity {
+                iPadFixedDetailInspector(for: city)
+                    .inspectorColumnWidth(min: 360, ideal: 420, max: 520)
+            }
+        }
         .tint(.primary)
         .if(showingInlineSearch) { view in
             view
@@ -248,7 +252,6 @@ extension ContentView {
                 if showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city, forceIPhoneStyle: true)
                         .id(city.city.id)
-                        .matchedGeometryEffect(id: iPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, isSource: true)
                         .frame(width: iPadFloatingCardSize.width, height: iPadFloatingCardSize.height)
                         .offset(iPadFloatingCardOffset(in: geometry.size))
                         .transition(
@@ -271,62 +274,50 @@ extension ContentView {
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showingMapExpandedCard)
     }
 
-    var iPadFloatingDetailOverlay: some View {
-        GeometryReader { geometry in
-            if showingCityDetail, let city = tappedCity {
-                iPadFloatingDetailPanel(for: city, in: geometry.size)
-                    .transition(.asymmetric(
-                        insertion: .scale(scale: 0.72, anchor: .center).combined(with: .opacity),
-                        removal: .scale(scale: 0.72, anchor: .center).combined(with: .opacity)
-                    ))
-                    .zIndex(20)
+    func iPadFixedDetailInspector(for city: CityWeather) -> some View {
+        NavigationStack {
+            ScrollView(.vertical, showsIndicators: false) {
+                mapExpandedCard(
+                    for: city,
+                    forceMacStyle: true,
+                    forceIPhoneDetailSizing: true,
+                    plainBackground: true
+                )
+                .padding(.horizontal, 10)
+                .padding(.top, 12)
+                .padding(.bottom, 16)
             }
-        }
-        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: showingCityDetail)
-    }
-
-    func iPadFloatingDetailPanel(for city: CityWeather, in size: CGSize) -> some View {
-        let panelWidth = min(max(size.width * 0.34, 380), 460)
-        let margin: CGFloat = 16
-        let topClearance: CGFloat = 64
-        let panelHeight = max(360, size.height - topClearance - margin)
-
-        return ScrollView(.vertical, showsIndicators: false) {
-            mapExpandedCard(
-                for: city,
-                forceMacStyle: true,
-                forceIPhoneDetailSizing: true,
-                plainBackground: true
-            )
-            .padding(.horizontal, 10)
-            .padding(.top, 12)
-            .padding(.bottom, 16)
-        }
-        .scrollContentBackground(.hidden)
-        .frame(width: panelWidth, height: panelHeight)
-        .modifier(MapGlassCardContainer(cornerRadius: 28, colorScheme: colorScheme))
-        .matchedGeometryEffect(id: iPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, isSource: false)
-        .overlay(alignment: .topTrailing) {
-            Button {
-                withAnimation(.spring(response: 0.36, dampingFraction: 0.9)) {
-                    showingCityDetail = false
-                    iPadInspectorPresentedCityID = nil
-                    selectedDayOffset = -1
+            .scrollContentBackground(.hidden)
+            .background(theme.colors.background.ignoresSafeArea())
+            .navigationTitle(city.city.localizedName(locale: locale))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(role: .close) {
+                        withAnimation(.spring(response: 0.36, dampingFraction: 0.9)) {
+                            showingCityDetail = false
+                            iPadInspectorPresentedCityID = nil
+                            selectedDayOffset = -1
+                        }
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.primary)
+                            .foregroundColor(.primary)
+                    }
+                    .tint(.primary)
+                    .help(localizedString("Close", locale: locale))
                 }
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30, height: 30)
-                    .contentShape(Circle())
             }
-            .buttonStyle(.plain)
-            .padding(12)
+            .onAppear {
+                if let overlayChartMetric {
+                    macExpandedCardChartMetric = overlayChartMetric
+                }
+                macExpandedCardShowsDetails = true
+            }
+            .onDisappear {
+                macExpandedCardShowsDetails = false
+            }
         }
-        .offset(
-            x: size.width - panelWidth - margin,
-            y: topClearance
-        )
     }
 
     var iPadFloatingCardSize: CGSize {
@@ -337,7 +328,7 @@ extension ContentView {
         let cardSize = iPadFloatingCardSize
         let margin: CGFloat = 16
         let toolbarClearance: CGFloat = 58
-        let markerGap: CGFloat = 50
+        let markerGap: CGFloat = 100
         let anchor = macMapExpandedCardAnchor ?? CGPoint(
             x: size.width / 2,
             y: size.height / 2
