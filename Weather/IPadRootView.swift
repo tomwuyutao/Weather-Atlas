@@ -31,18 +31,7 @@ extension ContentView {
     @ViewBuilder
     var iOSNativeDetailNavigationStack: some View {
         if shouldUseIPadLayout {
-            NavigationStack {
-                nativeCitySearch(
-                    iPadMapContent
-                        .navigationTitle("")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .navigationDestination(isPresented: $showingAddCityDetail) {
-                            AnyView(iOSAddCityDetailDestination)
-                        },
-                    placement: .toolbar
-                )
-                .searchToolbarBehavior(.minimize)
-            }
+            iPadMapNavigationStack
         } else {
             nativeCitySearch(
                 NavigationStack {
@@ -67,18 +56,7 @@ extension ContentView {
             }
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
         } detail: {
-            NavigationStack {
-                nativeCitySearch(
-                    iPadMapContent
-                        .navigationTitle("")
-                        .navigationBarTitleDisplayMode(.inline)
-                        .navigationDestination(isPresented: $showingAddCityDetail) {
-                            AnyView(iOSAddCityDetailDestination)
-                        },
-                    placement: .toolbar
-                )
-                .searchToolbarBehavior(.minimize)
-            }
+            iPadMapNavigationStack
         }
         .navigationSplitViewStyle(.balanced)
         .onAppear {
@@ -86,6 +64,167 @@ extension ContentView {
             if sidebarExpandedListIDs.isEmpty {
                 sidebarExpandedListIDs = Set(sidebarLists.map(\.rawValue))
             }
+        }
+    }
+
+    var iPadMapNavigationStack: some View {
+        NavigationStack {
+            iPadMapContent
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .navigationDestination(isPresented: $showingAddCityDetail) {
+                    AnyView(iOSAddCityDetailDestination)
+                }
+        }
+        .inspector(isPresented: $showingCityDetail) {
+            if let city = tappedCity {
+                iPadFixedDetailInspector(for: city)
+                    .inspectorColumnWidth(min: 360, ideal: 420, max: 520)
+            }
+        }
+        .onChange(of: inlineSearchText) { _, newValue in
+            inlineSearchManager.search(query: newValue)
+            inlineSearchSelectionIndex = 0
+        }
+        .onChange(of: inlineSearchFieldPresented) { _, isPresented in
+            if !isPresented {
+                showingInlineSearch = false
+                resetNativeCitySearch()
+            }
+        }
+        .onChange(of: showingCityDetail) { _, isShowing in
+            guard isShowing else { return }
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                showingMapExpandedCard = false
+                previewCity = nil
+                macHoverPresentedCardCityID = nil
+                macMapExpandedCardFocusesMarker = false
+                macExpandedCardShowsDetails = true
+            }
+        }
+        .onSubmit(of: .search) {
+            confirmInlineSearchSelection()
+        }
+        .toolbar {
+            iPadMapToolbarContent
+        }
+    }
+
+    @ToolbarContentBuilder
+    var iPadMapToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            mapTopListMenu
+                .foregroundStyle(theme.colors.primaryText)
+                .tint(theme.colors.primaryText)
+        }
+
+
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button {
+                centerMapOnDots()
+            } label: {
+                Image(systemName: "dot.squareshape.split.2x2")
+                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
+            }
+            .tint(.primary)
+            .help(localizedString("Center on Map", locale: locale))
+
+            mapOverlayMenu
+
+            Button {
+                showingSettings = true
+            } label: {
+                Image(systemName: "gearshape")
+                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
+            }
+            .tint(.primary)
+            .help(localizedString("Settings", locale: locale))
+        }
+
+        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            Button {
+                withAnimation(.smooth(duration: 0.2)) {
+                    showLegend.toggle()
+                }
+            } label: {
+                Image(systemName: showLegend ? "eye.slash" : "eye")
+                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
+            }
+            .tint(.primary)
+            .help(localizedString("Legend", locale: locale))
+
+            Button {
+                Task { await weatherService.refreshWeather() }
+            } label: {
+                Image(systemName: "arrow.clockwise")
+                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
+            }
+            .tint(.primary)
+            .disabled(weatherService.isLoading)
+            .help(localizedString("Refresh", locale: locale))
+
+            Button {
+                withAnimation {
+                    filterSunny.toggle()
+                }
+            } label: {
+                Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
+                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
+            }
+            .tint(.primary)
+            .help(localizedString("Filter Sunny", locale: locale))
+        }
+
+        ToolbarSpacer(.fixed, placement: .topBarTrailing)
+
+        if showingCityDetail {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    inlineSearchFieldPresented = true
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
+                }
+                .tint(.primary)
+                .help(localizedString("Search", locale: locale))
+            }
+        } else {
+            ToolbarItem(placement: .topBarTrailing) {
+                iPadToolbarSearchBar
+            }
+        }
+    }
+
+    var iPadToolbarSearchBar: some View {
+        IPadNativeSearchBar(
+            text: $inlineSearchText,
+            isPresented: $inlineSearchFieldPresented,
+            placeholder: localizedString("Search for a city", locale: locale),
+            onSubmit: confirmInlineSearchSelection
+        )
+        .frame(width: 230, height: 36)
+        .popover(isPresented: Binding(
+            get: { !inlineSearchText.isEmpty && !inlineSortedSearchResults.isEmpty },
+            set: { isPresented in
+                if !isPresented && !inlineSearchFieldPresented {
+                    resetNativeCitySearch()
+                }
+            }
+        )) {
+            VStack(alignment: .leading, spacing: 0) {
+                nativeCitySearchSuggestions
+            }
+            .padding(10)
+            .frame(width: 320)
+            .presentationCompactAdaptation(.popover)
         }
     }
 
@@ -148,7 +287,9 @@ extension ContentView {
                 }
                 .animation(.smooth(duration: 0.22), value: showLegend)
                 .overlay(alignment: .trailing) {
-                    AnyView(iOSDateSliderOverlay)
+                    if !showingCityDetail {
+                        AnyView(iOSDateSliderOverlay)
+                    }
                 }
                 .allowsHitTesting(!showingInlineSearch)
 
@@ -157,80 +298,6 @@ extension ContentView {
             }
         }
         .ignoresSafeArea(.container, edges: .top)
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                mapTopListMenu
-            }
-
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    centerMapOnDots()
-                } label: {
-                    Image(systemName: "dot.squareshape.split.2x2")
-                        .foregroundStyle(.primary)
-                        .foregroundColor(.primary)
-                }
-                .tint(.primary)
-                .help(localizedString("Center on Map", locale: locale))
-
-                mapOverlayMenu
-
-                Button {
-                    showingSettings = true
-                } label: {
-                    Image(systemName: "gearshape")
-                        .foregroundStyle(.primary)
-                        .foregroundColor(.primary)
-                }
-                .tint(.primary)
-                .help(localizedString("Settings", locale: locale))
-            }
-
-            ToolbarSpacer(.fixed, placement: .topBarTrailing)
-
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    withAnimation(.smooth(duration: 0.2)) {
-                        showLegend.toggle()
-                    }
-                } label: {
-                    Image(systemName: showLegend ? "eye.slash" : "eye")
-                        .foregroundStyle(.primary)
-                        .foregroundColor(.primary)
-                }
-                .tint(.primary)
-                .help(localizedString("Legend", locale: locale))
-
-                Button {
-                    Task { await weatherService.refreshWeather() }
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                        .foregroundStyle(.primary)
-                        .foregroundColor(.primary)
-                }
-                .tint(.primary)
-                .disabled(weatherService.isLoading)
-                .help(localizedString("Refresh", locale: locale))
-
-                Button {
-                    withAnimation {
-                        filterSunny.toggle()
-                    }
-                } label: {
-                    Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
-                        .foregroundStyle(.primary)
-                        .foregroundColor(.primary)
-                }
-                .tint(.primary)
-                .help(localizedString("Filter Sunny", locale: locale))
-            }
-        }
-        .inspector(isPresented: $showingCityDetail) {
-            if let city = tappedCity {
-                iPadFixedDetailInspector(for: city)
-                    .inspectorColumnWidth(min: 360, ideal: 420, max: 520)
-            }
-        }
         .tint(.primary)
         .if(showingInlineSearch) { view in
             view
@@ -328,7 +395,7 @@ extension ContentView {
         let cardSize = iPadFloatingCardSize
         let margin: CGFloat = 16
         let toolbarClearance: CGFloat = 58
-        let markerGap: CGFloat = 100
+        let markerGap: CGFloat = 50
         let anchor = macMapExpandedCardAnchor ?? CGPoint(
             x: size.width / 2,
             y: size.height / 2

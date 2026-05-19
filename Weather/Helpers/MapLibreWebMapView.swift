@@ -173,7 +173,11 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 guard let id = body["id"] as? String,
                       let city = parent.cities.first(where: { $0.id.uuidString == id }) else { return }
                 let point: CGPoint?
-                if let x = body["x"] as? Double, let y = body["y"] as? Double {
+                if parent.cameraProfile == .mobile,
+                   let tapX = body["tapX"] as? Double,
+                   let tapY = body["tapY"] as? Double {
+                    point = CGPoint(x: tapX, y: tapY)
+                } else if let x = body["x"] as? Double, let y = body["y"] as? Double {
                     point = CGPoint(x: x, y: y)
                 } else {
                     point = nil
@@ -1142,7 +1146,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             if (feature?.properties?.id) {
               event.originalEvent._weatherMarkerHandled = true;
               const markerPoint = markerScreenPoint(feature, event.point);
-              post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y });
+              post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y, tapX: event.point.x, tapY: event.point.y });
             } else {
               const lngLat = event.lngLat;
               post({ type: 'mapBackgroundClick', lat: lngLat.lat, lng: lngLat.lng, x: event.point.x, y: event.point.y });
@@ -1153,7 +1157,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             if (!feature?.properties?.id) return;
             event.originalEvent._weatherMarkerHandled = true;
             const markerPoint = markerScreenPoint(feature, event.point);
-            post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y });
+            post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y, tapX: event.point.x, tapY: event.point.y });
           });
           map.on('contextmenu', event => {
             event.preventDefault();

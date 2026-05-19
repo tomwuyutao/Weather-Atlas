@@ -169,7 +169,7 @@ extension ContentView {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 9)
-        .padding(.leading, shouldUseIPadLayout ? -24 : -18)
+        .padding(.leading, shouldUseIPadLayout ? -20 : -18)
         .contentShape(Rectangle())
     }
 
