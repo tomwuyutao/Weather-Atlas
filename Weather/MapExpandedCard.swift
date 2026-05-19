@@ -242,15 +242,27 @@ extension ContentView {
                     .foregroundStyle(.primary)
                     .contentTransition(.numericText())
                     .lineLimit(1)
+                    .id("primary-\(selectedDayOffset)-\(primaryText)")
+                    .transition(.asymmetric(
+                        insertion: .move(edge: .trailing).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    ))
 
                 Image(systemName: icon)
                     .font(.system(size: usesIPhoneDetailSizing ? 44 : 30, weight: .medium))
                     .weatherIconStyle(for: icon)
+                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                    .id("icon-\(selectedDayOffset)-\(icon)")
+                    .transition(.asymmetric(
+                        insertion: .scale(scale: 0.82).combined(with: .opacity),
+                        removal: .scale(scale: 0.82).combined(with: .opacity)
+                    ))
                     .frame(width: usesIPhoneDetailSizing ? 60 : 36, height: usesIPhoneDetailSizing ? 52 : 32)
 
                 Spacer(minLength: usesIPhoneDetailSizing ? 0 : 8)
             }
             .padding(.bottom, usesIPhoneDetailSizing ? 18 : 14)
+            .animation(.snappy(duration: 0.28), value: selectedDayOffset)
 
             if !usesIPhoneDetailSizing {
                 macExpandedCardDivider
@@ -718,7 +730,7 @@ extension ContentView {
     }
 
     private func macExpandedCardChartLineColor(_ metric: WeatherChartMetric) -> Color {
-        theme.colors.accent
+        theme.colors.dotRain
     }
 
     private func shiftExpandedCardChartDate(by direction: Int) {
@@ -805,18 +817,28 @@ private struct MapExpandedCardContainer: ViewModifier {
             content
         } else {
             content
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                .background(
-                    (colorScheme == .dark
-                     ? Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.48)
-                     : Color.white.opacity(0.62)),
-                    in: RoundedRectangle(cornerRadius: 22, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: 22, style: .continuous)
-                        .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
-                }
-                .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 10)
+                .modifier(MapGlassCardContainer(cornerRadius: 22, colorScheme: colorScheme))
         }
+    }
+}
+
+struct MapGlassCardContainer: ViewModifier {
+    let cornerRadius: CGFloat
+    let colorScheme: ColorScheme
+
+    func body(content: Content) -> some View {
+        content
+            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+            .background(
+                (colorScheme == .dark
+                 ? Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.48)
+                 : Color.white.opacity(0.62)),
+                in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+            }
+            .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 10)
     }
 }

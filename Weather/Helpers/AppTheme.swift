@@ -87,7 +87,7 @@ struct ThemeColors {
     /// Returns palette foreground styles for a weather SF Symbol icon name.
     func weatherIconPalette(for iconName: String) -> (primary: Color, secondary: Color) {
         if iconName.contains("sun") && iconName.contains("cloud") {
-            return (cloudIconColor, sunIconColor)
+            return (cloudIconColor, dotPartlyCloudy)
         } else if iconName.contains("moon") && iconName.contains("cloud") {
             return (cloudIconColor, moonIconColor)
         } else if iconName.contains("rain") || iconName.contains("drizzle") {
@@ -126,26 +126,26 @@ extension ThemeColors {
         colorfulBorder: Color(hex: 0xE6DDD7),
         accent: Color(hex: 0xBCCFDC),
         destructive: Color(hex: 0xC94949),
-        dotSun: Color(hex: 0xE87957),
+        dotSun: Color(hex: 0xFF8A65),
         dotPartlyCloudy: Color(hex: 0xEEB368),
-        dotCloudy: Color(hex: 0xBCCFDC),
+        dotCloudy: Color(hex: 0xD3E3EC),
         dotRain: Color(hex: 0xBCCFDC),
         dotDrizzle: Color(hex: 0x6EACE8),
-        dotSnow: Color(hex: 0xBCCFDC),
-        dotFog: Color(hex: 0xBCCFDC),
-        dotWind: Color(hex: 0xBCCFDC),
+        dotSnow: Color(hex: 0xD3E3EC),
+        dotFog: Color(hex: 0xD3E3EC),
+        dotWind: Color(hex: 0xD3E3EC),
         rainEffect: Color(hex: 0xBCCFDC).opacity(0.62),
-        snowEffect: Color(hex: 0xBCCFDC).opacity(0.52),
-        cloudEffect: Color(hex: 0xBCCFDC),
-        windEffect: Color(hex: 0xBCCFDC).opacity(0.28),
-        sunIconColor: Color(hex: 0xE87957),
-        cloudIconColor: Color(hex: 0xBCCFDC),
+        snowEffect: Color(hex: 0xD3E3EC).opacity(0.52),
+        cloudEffect: Color(hex: 0xD3E3EC),
+        windEffect: Color(hex: 0xD3E3EC).opacity(0.28),
+        sunIconColor: Color(hex: 0xFF8A65),
+        cloudIconColor: Color(hex: 0xD3E3EC),
         rainIconColor: Color(hex: 0x6EACE8),
-        snowIconColor: Color(hex: 0xBCCFDC),
-        moonIconColor: Color(hex: 0xBCCFDC),
+        snowIconColor: Color(hex: 0xD3E3EC),
+        moonIconColor: Color(hex: 0xD3E3EC),
         listCardFill: Color(hex: 0xF8F4F1),
         glassFill: Color(hex: 0xF8F4F1),
-        filterSunny: Color(hex: 0xE87957)
+        filterSunny: Color(hex: 0xFF8A65)
     )
 }
 
@@ -167,28 +167,28 @@ extension ThemeColors {
         colorfulLand: Color(hex: 0x423D74),
         colorfulLandActive: Color(hex: 0x423D74),
         colorfulBorder: Color(hex: 0x56508B),
-        accent: Color(hex: 0xBCCFDC),
+        accent: Color(hex: 0x4D70D4),
         destructive: Color(hex: 0xC94949),
-        dotSun: Color(hex: 0xE77756),
+        dotSun: Color(hex: 0xFF8A65),
         dotPartlyCloudy: Color(hex: 0xF4DC85),
-        dotCloudy: Color(hex: 0xBCCFDC),
+        dotCloudy: Color(hex: 0xD3E3EC),
         dotRain: Color(hex: 0x4D70D4),
         dotDrizzle: Color(hex: 0x65ABE3),
-        dotSnow: Color(hex: 0xBCCFDC),
-        dotFog: Color(hex: 0xBCCFDC),
-        dotWind: Color(hex: 0xBCCFDC),
+        dotSnow: Color(hex: 0xD3E3EC),
+        dotFog: Color(hex: 0xD3E3EC),
+        dotWind: Color(hex: 0xD3E3EC),
         rainEffect: Color(hex: 0x4D70D4).opacity(0.55),
-        snowEffect: Color(hex: 0xBCCFDC).opacity(0.6),
-        cloudEffect: Color(hex: 0xBCCFDC),
-        windEffect: Color(hex: 0xBCCFDC).opacity(0.18),
-        sunIconColor: Color(hex: 0xE77756),
-        cloudIconColor: Color(hex: 0xBCCFDC),
+        snowEffect: Color(hex: 0xD3E3EC).opacity(0.6),
+        cloudEffect: Color(hex: 0xD3E3EC),
+        windEffect: Color(hex: 0xD3E3EC).opacity(0.18),
+        sunIconColor: Color(hex: 0xFF8A65),
+        cloudIconColor: Color(hex: 0xD3E3EC),
         rainIconColor: Color(hex: 0x65ABE3),
-        snowIconColor: Color(hex: 0xBCCFDC),
-        moonIconColor: Color(hex: 0xBCCFDC),
+        snowIconColor: Color(hex: 0xD3E3EC),
+        moonIconColor: Color(hex: 0xD3E3EC),
         listCardFill: Color(hex: 0x423D74),
         glassFill: Color(hex: 0x423D74),
-        filterSunny: Color(hex: 0xE77756)
+        filterSunny: Color(hex: 0xFF8A65)
     )
 }
 

@@ -291,7 +291,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
         if overlayMode == "cloudCover" {
             let value = isNow ? cityWeather.currentCloudCover : forecast.cloudCover
-            return blendHex(from: 0xFFFFFF, to: 0xBCCFDC, amount: value ?? 0.5)
+            return blendHex(from: 0xFFFFFF, to: 0xD3E3EC, amount: value ?? 0.5)
         }
         if overlayMode == "precipitation" {
             let chance: Double
@@ -309,7 +309,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
         if overlayMode == "uvIndex" {
             let uv = min(1, Double((isNow ? cityWeather.currentUVIndex : forecast.uvIndex) ?? 0) / 11)
-            return blendHex(from: 0xFFFFFF, to: 0xE87957, amount: uv)
+            return blendHex(from: 0xFFFFFF, to: 0xFF8A65, amount: uv)
         }
         if overlayMode == "humidity" {
             return blendHex(from: 0xFFFFFF, to: 0xBCCFDC, amount: (isNow ? cityWeather.currentHumidity : forecast.maxHumidity) ?? 0.5)
@@ -323,31 +323,31 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     }
 
     private func color(for condition: AppWeatherCondition, icon: String) -> String {
-        if icon.contains("moon") { return "#BCCFDC" }
+        if icon.contains("moon") { return "#D3E3EC" }
         switch condition {
-        case .clear: return "#E87957"
+        case .clear: return "#FF8A65"
         case .partlySunny: return "#EEB368"
-        case .partlyCloudy: return "#BCCFDC"
-        case .cloudy: return "#BCCFDC"
+        case .partlyCloudy: return "#D3E3EC"
+        case .cloudy: return "#D3E3EC"
         case .rain: return "#BCCFDC"
         case .drizzle: return "#6EACE8"
-        case .snow: return "#BCCFDC"
-        case .fog: return "#BCCFDC"
-        case .wind: return "#BCCFDC"
+        case .snow: return "#D3E3EC"
+        case .fog: return "#D3E3EC"
+        case .wind: return "#D3E3EC"
         }
     }
 
     private func temperatureColor(_ tempC: Double) -> String {
         if tempC <= 0 {
-            return blendHex(from: 0xBCCFDC, to: 0x6EACE8, amount: max(0, min(1, (tempC + 20) / 20)))
+            return blendHex(from: 0xD3E3EC, to: 0x6EACE8, amount: max(0, min(1, (tempC + 20) / 20)))
         }
         if tempC <= 10 {
             return blendHex(from: 0x6EACE8, to: 0xEEB368, amount: max(0, min(1, tempC / 10)))
         }
         if tempC <= 20 {
-            return blendHex(from: 0xEEB368, to: 0xE87957, amount: max(0, min(1, (tempC - 10) / 10)))
+            return blendHex(from: 0xEEB368, to: 0xFF8A65, amount: max(0, min(1, (tempC - 10) / 10)))
         }
-        return blendHex(from: 0xE87957, to: 0xFB4368, amount: max(0, min(1, (tempC - 20) / 20)))
+        return blendHex(from: 0xFF8A65, to: 0xFB4368, amount: max(0, min(1, (tempC - 20) / 20)))
     }
 
     private func blendHex(from: Int, to: Int, amount: Double) -> String {

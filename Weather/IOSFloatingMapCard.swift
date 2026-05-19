@@ -38,7 +38,7 @@ extension ContentView {
                     .id(city.city.id)
                     .padding(.horizontal, 26)
                     .padding(.vertical, shouldAddInlineMapCardVerticalPadding ? 8 : 0)
-                    .padding(.bottom, previewCity != nil ? 42 : 14)
+                    .padding(.bottom, 14)
                     .transition(
                         .asymmetric(
                             insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),

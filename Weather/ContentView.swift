@@ -267,7 +267,15 @@ struct ContentView: View {
 
                 Button(localizedString("Delete City", locale: locale), systemImage: "trash", role: .destructive) {
                     weatherService.removeCity(city)
+                    #if os(iOS)
+                    if !shouldUseIPadLayout {
+                        dismissIPhoneRoute(.cityDetail)
+                    } else {
+                        showingCityDetail = false
+                    }
+                    #else
                     showingCityDetail = false
+                    #endif
                     showingMapExpandedCard = false
                     tappedCity = nil
                     selectedDayOffset = -1
@@ -305,6 +313,47 @@ struct ContentView: View {
         .menuOrder(.fixed)
     }
 
+    @ViewBuilder
+    func detailToolbarTrailingAction(for city: CityWeather) -> some View {
+        if shouldShowPreviewCityAddButton(for: city) {
+            Button {
+                Task {
+                    await addCityToSidebar(city)
+                    showingCityDetail = false
+                    if selectedTab == 1 {
+                        recenterOnAllCities = true
+                    }
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        previewCity = nil
+                    }
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
+                    .frame(width: 32, height: 32)
+                    .contentShape(Circle())
+            }
+            .tint(.primary)
+        } else {
+            detailActionsMenu(for: city)
+        }
+    }
+
+    func shouldShowPreviewCityAddButton(for city: CityWeather) -> Bool {
+        guard let previewCity else { return false }
+        return !cityIsInSidebar(city) && citiesMatch(previewCity, city)
+    }
+
+    func citiesMatch(_ lhs: CityWeather, _ rhs: CityWeather) -> Bool {
+        lhs.id == rhs.id ||
+        (
+            lhs.city.name == rhs.city.name &&
+            lhs.city.country == rhs.city.country &&
+            lhs.city.latitude == rhs.city.latitude &&
+            lhs.city.longitude == rhs.city.longitude
+        )
+    }
 
     @ViewBuilder
     func addCityButton(dismissExpanded: Bool) -> some View {

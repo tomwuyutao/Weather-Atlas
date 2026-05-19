@@ -32,18 +32,18 @@ struct MapFloatingLegend: View {
 
     private func temperatureColor(celsius: Double) -> Color {
         if celsius <= 0 {
-            return Color(hex: 0xBCCFDC).mix(with: Color(hex: 0x6EACE8), by: max(0, min(1, (celsius + 20) / 20)))
+            return Color(hex: 0xD3E3EC).mix(with: Color(hex: 0x6EACE8), by: max(0, min(1, (celsius + 20) / 20)))
         } else if celsius <= 10 {
             return Color(hex: 0x6EACE8).mix(with: Color(hex: 0xEEB368), by: max(0, min(1, celsius / 10)))
         } else if celsius <= 20 {
-            return Color(hex: 0xEEB368).mix(with: Color(hex: 0xE87957), by: max(0, min(1, (celsius - 10) / 10)))
+            return Color(hex: 0xEEB368).mix(with: Color(hex: 0xFF8A65), by: max(0, min(1, (celsius - 10) / 10)))
         } else {
-            return Color(hex: 0xE87957).mix(with: Color(hex: 0xFB4368), by: max(0, min(1, (celsius - 20) / 20)))
+            return Color(hex: 0xFF8A65).mix(with: Color(hex: 0xFB4368), by: max(0, min(1, (celsius - 20) / 20)))
         }
     }
 
     private func cloudColor(percent: Double) -> Color {
-        Color.white.mix(with: Color(hex: 0xBCCFDC), by: max(0, min(1, percent / 100.0)))
+        Color.white.mix(with: Color(hex: 0xD3E3EC), by: max(0, min(1, percent / 100.0)))
     }
 
     private func precipitationColor(percent: Double) -> Color {
@@ -107,11 +107,7 @@ struct MapFloatingLegend: View {
         .padding(.vertical, compact ? 10 : 12)
         .padding(.trailing, onClose == nil ? 0 : 20)
         .frame(width: compact ? 154 : 178, alignment: .leading)
-        .background(themeCardFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        }
+        .themedGlass(in: .rect(cornerRadius: 24))
         .overlay(alignment: .topTrailing) {
             if let onClose {
                 Button(action: onClose) {
@@ -126,16 +122,11 @@ struct MapFloatingLegend: View {
                 .padding(.trailing, 4)
             }
         }
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.12), radius: 18, x: 0, y: 10)
+        .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .gesture(DragGesture(minimumDistance: 0).onChanged { _ in })
         .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
         .fixedSize(horizontal: true, vertical: false)
         .id("\(overlayMode)-\(colorScheme == .dark ? "dark" : "light")")
-    }
-
-    private var themeCardFill: Color {
-        colorScheme == .dark
-            ? AppTheme.shared.colors.listCardFill.opacity(0.96)
-            : AppTheme.shared.colors.listCardFill.opacity(0.92)
     }
 
     @ViewBuilder

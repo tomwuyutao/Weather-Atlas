@@ -151,19 +151,19 @@ struct WeatherMarker: View {
         if overlayMode == "temperature" {
             let tempC = tempForColor
             if tempC <= 0 {
-                return Color(hex: 0xBCCFDC).mix(with: Color(hex: 0x6EACE8), by: max(0, min(1, (tempC + 20) / 20)))
+                return Color(hex: 0xD3E3EC).mix(with: Color(hex: 0x6EACE8), by: max(0, min(1, (tempC + 20) / 20)))
             } else if tempC <= 10 {
                 return Color(hex: 0x6EACE8).mix(with: Color(hex: 0xEEB368), by: max(0, min(1, tempC / 10)))
             } else if tempC <= 20 {
-                return Color(hex: 0xEEB368).mix(with: Color(hex: 0xE87957), by: max(0, min(1, (tempC - 10) / 10)))
+                return Color(hex: 0xEEB368).mix(with: Color(hex: 0xFF8A65), by: max(0, min(1, (tempC - 10) / 10)))
             } else {
-                return Color(hex: 0xE87957).mix(with: Color(hex: 0xFB4368), by: max(0, min(1, (tempC - 20) / 20)))
+                return Color(hex: 0xFF8A65).mix(with: Color(hex: 0xFB4368), by: max(0, min(1, (tempC - 20) / 20)))
             }
         }
         if overlayMode == "cloudCover" {
             let cloudCoverVal: Double? = isNow ? cityWeather.currentCloudCover : forecast.cloudCover
             guard let cloudCoverVal else { return .gray }
-            return Color.white.mix(with: Color(hex: 0xBCCFDC), by: max(0, min(1, cloudCoverVal)))
+            return Color.white.mix(with: Color(hex: 0xD3E3EC), by: max(0, min(1, cloudCoverVal)))
         }
         if overlayMode == "precipitation" {
             let chance: CGFloat

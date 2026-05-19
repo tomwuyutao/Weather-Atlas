@@ -24,29 +24,22 @@ extension ContentView {
     }
 
     #if os(iOS)
-    private func iPhoneDetailBottomBar(for city: CityWeather, dismissAction: @escaping () -> Void) -> some View {
-        HStack {
+    @ToolbarContentBuilder
+    private func iPhoneDetailBottomToolbar(for city: CityWeather, dismissAction: @escaping () -> Void) -> some ToolbarContent {
+        ToolbarItemGroup(placement: .bottomBar) {
             Button {
                 dismissAction()
             } label: {
                 Image(systemName: "chevron.left")
                     .foregroundStyle(.primary)
                     .foregroundColor(.primary)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             .tint(.primary)
 
             Spacer()
 
-            detailActionsMenu(for: city)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            detailToolbarTrailingAction(for: city)
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 6)
-        .background(.bar)
     }
     #endif
 
@@ -86,11 +79,10 @@ extension ContentView {
         .navigationTitle("")
         #if os(iOS)
         .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
-        .toolbar(.hidden, for: .bottomBar)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            iPhoneDetailBottomBar(for: city, dismissAction: dismissAction)
+        .toolbar {
+            iPhoneDetailBottomToolbar(for: city, dismissAction: dismissAction)
         }
+        .toolbar(.hidden, for: .navigationBar)
         .tint(.primary)
         #endif
         .onAppear {
