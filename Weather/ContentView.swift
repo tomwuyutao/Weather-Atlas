@@ -66,6 +66,7 @@ struct ContentView: View {
     }
     @State var filterSunny: Bool = false
     @State var showingInlineSearch: Bool = false
+    @State var inlineSearchFieldPresented: Bool = false
     @State var inlineSearchText: String = ""
     @State var inlineSearchManager = CitySearchManager()
     @State var inlineIsLoadingCity = false
@@ -212,7 +213,7 @@ struct ContentView: View {
     #if os(iOS)
     @State var iPadSidebarVisibility: NavigationSplitViewVisibility = .all
     @State var iPadPreferredCompactColumn: NavigationSplitViewColumn = .detail
-    @State var iPhoneNavigationPath: [IPhoneNavigationRoute] = [.map]
+    @State var iPhoneNavigationPath: [IPhoneNavigationRoute] = []
     #endif
 
     var toolbarTitle: String {
@@ -262,6 +263,7 @@ struct ContentView: View {
                             .foregroundStyle(.primary)
                     }
                 }
+                .tint(.primary)
 
                 Button(localizedString("Delete City", locale: locale), systemImage: "trash", role: .destructive) {
                     weatherService.removeCity(city)

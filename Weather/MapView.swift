@@ -335,12 +335,18 @@ extension ContentView {
                     }
                     .padding(.horizontal, 22)
                     .padding(.vertical, 18)
-                    .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    .background(
+                        (colorScheme == .dark
+                         ? Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.48)
+                         : Color.white.opacity(0.62)),
+                        in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    )
                     .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .strokeBorder(theme.colors.primaryText.opacity(0.12), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: 22, style: .continuous)
+                            .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
                     }
-                    .shadow(color: .black.opacity(0.14), radius: 20, x: 0, y: 10)
+                    .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 10)
                     .position(x: geo.size.width / 2, y: geo.size.height / 2)
                 }
                 .allowsHitTesting(false)

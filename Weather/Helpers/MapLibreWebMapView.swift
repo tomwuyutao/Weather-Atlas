@@ -72,9 +72,9 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         #if os(iOS)
-        webView.isOpaque = true
-        webView.backgroundColor = platformMapBackgroundColor
-        webView.scrollView.backgroundColor = webView.backgroundColor
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.backgroundColor = platformMapBackgroundColor
         webView.scrollView.contentInsetAdjustmentBehavior = .never
         webView.scrollView.contentInset = .zero
         webView.scrollView.scrollIndicatorInsets = .zero
@@ -95,7 +95,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         context.coordinator.parent = self
         context.coordinator.webView = webView
         #if os(iOS)
-        webView.backgroundColor = platformMapBackgroundColor
+        webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = platformMapBackgroundColor
         if #available(iOS 15.0, *) {
             webView.underPageBackgroundColor = platformMapBackgroundColor
@@ -375,6 +375,9 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         html, body { margin: 0; padding: 0; width: 100%; height: 100%; min-height: 100%; overflow: hidden; background: #F4F1EB; }
         body { -webkit-user-select: none; user-select: none; position: fixed; inset: 0; }
         #map { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: #F4F1EB; }
+        @media (prefers-color-scheme: dark) {
+          html, body, #map { background: #1A1B2E; }
+        }
         #window-drag-blur {
           position: fixed;
           top: 0;
@@ -435,7 +438,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         var map;
         var loaded = false;
         var pendingPayload = null;
-        var currentStyleMode = 'bright';
+        var currentStyleMode = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'bright';
         var lastMovePost = 0;
         var hoveredMarkerID = '';
         var hoveredMarkerPoint = null;
@@ -805,9 +808,6 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             hoveredMarkerID = '';
             hoveredMarkerPoint = null;
             document.getElementById('hover-label')?.classList.remove('visible');
-            if (!(payload?.selectedID || '')) {
-              Object.keys(markerScales).forEach(id => { markerScales[id] = 0; });
-            }
           }
           selectedMarkerID = payload?.selectedID || '';
           document.body.classList.toggle('focus-selected', !!selectedMarkerID);

@@ -259,12 +259,12 @@ extension ContentView {
         content
             .searchable(
                 text: $inlineSearchText,
-                isPresented: $showingInlineSearch,
+                isPresented: $inlineSearchFieldPresented,
                 placement: placement,
                 prompt: Text(localizedString("Search for a city", locale: locale))
             )
             .searchSuggestions {
-                if showingInlineSearch {
+                if showingInlineSearch || inlineSearchFieldPresented {
                     nativeCitySearchSuggestions
                 }
             }
@@ -272,8 +272,9 @@ extension ContentView {
                 inlineSearchManager.search(query: newValue)
                 inlineSearchSelectionIndex = 0
             }
-            .onChange(of: showingInlineSearch) { _, isPresented in
+            .onChange(of: inlineSearchFieldPresented) { _, isPresented in
                 if !isPresented {
+                    showingInlineSearch = false
                     resetNativeCitySearch()
                 }
             }
@@ -353,11 +354,15 @@ extension ContentView {
             tappedCity = nil
             showingInlineSearch = true
         }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            inlineSearchFieldPresented = true
+        }
     }
 
     func dismissInlineSearch() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showingInlineSearch = false
+            inlineSearchFieldPresented = false
         }
         resetNativeCitySearch()
     }
@@ -399,6 +404,7 @@ extension ContentView {
                 inlineAddTargetListID = nil
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                     showingInlineSearch = false
+                    inlineSearchFieldPresented = false
                     inlineSearchText = ""
                 }
                 revealCityOnMap(existingCity, in: targetListID)
@@ -422,6 +428,7 @@ extension ContentView {
             inlineAddTargetListID = nil
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 showingInlineSearch = false
+                inlineSearchFieldPresented = false
                 inlineSearchText = ""
             }
             revealCityOnMap(tempCityWeather, in: targetListID)
@@ -437,6 +444,7 @@ extension ContentView {
             tappedCity = cityWeather
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 showingInlineSearch = false
+                inlineSearchFieldPresented = false
                 inlineSearchText = ""
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
@@ -449,6 +457,7 @@ extension ContentView {
             addCityDetailCity = cityWeather
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 showingInlineSearch = false
+                inlineSearchFieldPresented = false
                 inlineSearchText = ""
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {

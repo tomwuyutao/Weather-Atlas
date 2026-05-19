@@ -89,9 +89,9 @@ extension ContentView {
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
-            }
-            .contextMenu {
-                listActions(for: listID)
+                .contextMenu {
+                    listActions(for: listID)
+                }
             }
         }
         .onMove(perform: moveMacSidebarLists)

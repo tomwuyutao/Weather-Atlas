@@ -13,47 +13,42 @@ extension ContentView {
         AnyView(iOSFloatingMapCardOverlay)
     }
 
-    @ViewBuilder
     private var iOSFloatingMapCardOverlay: some View {
-        if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard {
-            GeometryReader { geometry in
-                HStack(spacing: 0) {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                showingMapExpandedCard = false
-                                tappedCity = nil
-                                if previewCity != nil {
-                                    previewCity = nil
-                                    recenterOnAllCities = true
-                                }
+        Group {
+            if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard {
+                GeometryReader { geometry in
+                    HStack(spacing: 0) {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                dismissMapExpandedCard()
                             }
-                        }
-                        .frame(width: max(0, geometry.size.width - 92))
+                            .frame(width: max(0, geometry.size.width - 92))
 
-                    Color.clear
-                        .frame(width: 92)
-                        .allowsHitTesting(false)
+                        Color.clear
+                            .frame(width: 92)
+                            .allowsHitTesting(false)
+                    }
                 }
+                .zIndex(10)
             }
-            .zIndex(10)
-        }
 
-        if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
-            mapExpandedCard(for: city, hideCityName: shouldHideInlineMapCardCityName)
-                .id(city.city.id)
-                .padding(.horizontal, 26)
-                .padding(.vertical, shouldAddInlineMapCardVerticalPadding ? 8 : 0)
-                .padding(.bottom, previewCity != nil ? 42 : 14)
-                .transition(
-                    .asymmetric(
-                        insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),
-                        removal: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20))
+            if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
+                mapExpandedCard(for: city, hideCityName: shouldHideInlineMapCardCityName)
+                    .id(city.city.id)
+                    .padding(.horizontal, 26)
+                    .padding(.vertical, shouldAddInlineMapCardVerticalPadding ? 8 : 0)
+                    .padding(.bottom, previewCity != nil ? 42 : 14)
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),
+                            removal: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20))
+                        )
                     )
-                )
-                .zIndex(12)
+                    .zIndex(12)
+            }
         }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showingMapExpandedCard)
     }
 }
 

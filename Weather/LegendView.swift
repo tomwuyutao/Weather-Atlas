@@ -18,36 +18,14 @@ struct MapFloatingLegend: View {
         DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
     }
 
-    private let conditions: [AppWeatherCondition] = [
-        .clear, .partlySunny, .partlyCloudy, .cloudy, .rain, .drizzle, .snow, .fog, .wind
-    ]
-
-    private func conditionIcon(_ condition: AppWeatherCondition) -> String {
-        switch condition {
-        case .clear:        return "sun.max.fill"
-        case .partlySunny:  return "cloud.sun.fill"
-        case .partlyCloudy: return "cloud.fill"
-        case .cloudy:       return "cloud.fill"
-        case .rain:         return "cloud.rain.fill"
-        case .drizzle:      return "cloud.drizzle.fill"
-        case .snow:         return "cloud.snow.fill"
-        case .fog:          return "cloud.fog.fill"
-        case .wind:         return "wind"
-        }
-    }
-
-    private var leadingIcon: String {
-        switch overlayMode {
-        case "weather":       return "cloud.sun.fill"
-        case "temperature":   return "thermometer.medium"
-        case "cloudCover":    return "cloud.fill"
-        case "precipitation": return "drop.fill"
-        case "windSpeed":     return "wind"
-        case "uvIndex":       return "sun.max.fill"
-        case "humidity":      return "humidity.fill"
-        case "visibility":    return "eye.fill"
-        default:              return "circle.grid.2x2"
-        }
+    private var weatherLegendItems: [(title: String, color: Color)] {
+        [
+            (localizedString("Clear", locale: locale), AppWeatherCondition.clear.dotColor),
+            (localizedString("Partly Sunny", locale: locale), AppWeatherCondition.partlySunny.dotColor),
+            (localizedString("Rain", locale: locale), AppWeatherCondition.rain.dotColor),
+            (localizedString("Drizzle", locale: locale), AppWeatherCondition.drizzle.dotColor),
+            ("Cloudy / Snow /\nWind / Fog", AppWeatherCondition.cloudy.dotColor)
+        ]
     }
 
     // MARK: - Color functions (same as before)
@@ -136,23 +114,25 @@ struct MapFloatingLegend: View {
 
     // MARK: - Gradient legend
 
-    private func gradientLegend(colors gradColors: [Color], labels: [String]) -> some View {
-        VStack(spacing: 4) {
-            Spacer().frame(height: 2)
-
-            LinearGradient(colors: gradColors, startPoint: .leading, endPoint: .trailing)
-                .frame(height: 8)
+    private func verticalGradientLegend(colors gradColors: [Color], labels: [String]) -> some View {
+        HStack(alignment: .center, spacing: 10) {
+            LinearGradient(colors: gradColors, startPoint: .top, endPoint: .bottom)
+                .frame(width: compact ? 8 : 10, height: compact ? 112 : 132)
                 .clipShape(Capsule())
 
-            HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
-                    if index > 0 { Spacer() }
                     Text(label)
                         .font(.avenir(.caption2, weight: .medium))
                         .foregroundStyle(.secondary)
+                    if index < labels.count - 1 {
+                        Spacer(minLength: 0)
+                    }
                 }
             }
+            .frame(height: compact ? 112 : 132)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Body
@@ -164,7 +144,7 @@ struct MapFloatingLegend: View {
         .padding(.horizontal, compact ? 12 : 14)
         .padding(.vertical, compact ? 10 : 12)
         .padding(.trailing, onClose == nil ? 0 : 20)
-        .frame(width: compact ? 178 : 206, alignment: .leading)
+        .frame(width: compact ? 154 : 178, alignment: .leading)
         .background(themeCardFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -187,6 +167,7 @@ struct MapFloatingLegend: View {
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.12), radius: 18, x: 0, y: 10)
         .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
         .fixedSize(horizontal: true, vertical: false)
+        .id("\(overlayMode)-\(colorScheme == .dark ? "dark" : "light")")
     }
 
     private var themeCardFill: Color {
@@ -201,187 +182,114 @@ struct MapFloatingLegend: View {
         case "weather":
             weatherDotLegend
         case "temperature":
-            gradientLegend(
+            verticalGradientLegend(
                 colors: [
-                    temperatureColor(celsius: -20),
-                    temperatureColor(celsius: 0),
-                    temperatureColor(celsius: 10),
+                    temperatureColor(celsius: 40),
                     temperatureColor(celsius: 20),
-                    temperatureColor(celsius: 40)
+                    temperatureColor(celsius: 10),
+                    temperatureColor(celsius: 0),
+                    temperatureColor(celsius: -20)
                 ],
                 labels: tempUnit == .fahrenheit
-                    ? ["-4°F", "32°F", "50°F", "68°F", "104°F"]
-                    : ["-20°C", "0°C", "10°C", "20°C", "40°C"]
+                    ? ["104°F", "68°F", "50°F", "32°F", "-4°F"]
+                    : ["40°C", "20°C", "10°C", "0°C", "-20°C"]
             )
         case "cloudCover":
-            gradientLegend(
+            verticalGradientLegend(
                 colors: [
-                    cloudColor(percent: 0),
-                    cloudColor(percent: 33),
+                    cloudColor(percent: 100),
                     cloudColor(percent: 66),
-                    cloudColor(percent: 100)
+                    cloudColor(percent: 33),
+                    cloudColor(percent: 0)
                 ],
-                labels: ["0%", "25%", "50%", "75%", "100%"]
+                labels: ["100%", "75%", "50%", "25%", "0%"]
             )
         case "precipitation":
-            gradientLegend(
+            verticalGradientLegend(
                 colors: [
-                    precipitationColor(percent: 0),
-                    precipitationColor(percent: 33),
+                    precipitationColor(percent: 100),
                     precipitationColor(percent: 66),
-                    precipitationColor(percent: 100)
+                    precipitationColor(percent: 33),
+                    precipitationColor(percent: 0)
                 ],
-                labels: ["0%", "25%", "50%", "75%", "100%"]
+                labels: ["100%", "75%", "50%", "25%", "0%"]
             )
         case "windSpeed":
-            gradientLegend(
+            verticalGradientLegend(
                 colors: [
-                    windColor(fraction: 0),
-                    windColor(fraction: 0.25),
-                    windColor(fraction: 0.5),
+                    windColor(fraction: 1.0),
                     windColor(fraction: 0.75),
-                    windColor(fraction: 1.0)
+                    windColor(fraction: 0.5),
+                    windColor(fraction: 0.25),
+                    windColor(fraction: 0)
                 ],
-                labels: distUnit == .miles ? ["0", "15", "30", "45", "60 mph"] : ["0", "25", "50", "75", "100 km/h"]
+                labels: distUnit == .miles ? ["60 mph", "45", "30", "15", "0"] : ["100 km/h", "75", "50", "25", "0"]
             )
         case "uvIndex":
-            gradientLegend(
+            verticalGradientLegend(
                 colors: [
-                    uvColor(fraction: 0),
-                    uvColor(fraction: 0.27),
-                    uvColor(fraction: 0.55),
+                    uvColor(fraction: 1.0),
                     uvColor(fraction: 0.82),
-                    uvColor(fraction: 1.0)
+                    uvColor(fraction: 0.55),
+                    uvColor(fraction: 0.27),
+                    uvColor(fraction: 0)
                 ],
-                labels: ["0", "3", "6", "9", "11+"]
+                labels: ["11+", "9", "6", "3", "0"]
             )
         case "humidity":
-            gradientLegend(
+            verticalGradientLegend(
                 colors: [
-                    humidityColor(fraction: 0),
-                    humidityColor(fraction: 0.25),
-                    humidityColor(fraction: 0.5),
+                    humidityColor(fraction: 1.0),
                     humidityColor(fraction: 0.75),
-                    humidityColor(fraction: 1.0)
+                    humidityColor(fraction: 0.5),
+                    humidityColor(fraction: 0.25),
+                    humidityColor(fraction: 0)
                 ],
-                labels: ["0%", "25%", "50%", "75%", "100%"]
+                labels: ["100%", "75%", "50%", "25%", "0%"]
             )
         case "visibility":
-            gradientLegend(
+            verticalGradientLegend(
                 colors: [
-                    visibilityColor(fraction: 0),
-                    visibilityColor(fraction: 0.25),
-                    visibilityColor(fraction: 0.5),
+                    visibilityColor(fraction: 1.0),
                     visibilityColor(fraction: 0.75),
-                    visibilityColor(fraction: 1.0)
+                    visibilityColor(fraction: 0.5),
+                    visibilityColor(fraction: 0.25),
+                    visibilityColor(fraction: 0)
                 ],
-                labels: distUnit == .miles ? ["0", "5", "9", "14", "19 mi"] : ["0", "8", "15", "23", "30 km"]
+                labels: distUnit == .miles ? ["19 mi", "14", "9", "5", "0"] : ["30 km", "23", "15", "8", "0"]
             )
         default:
             EmptyView()
         }
     }
 
-    // MARK: - Legend icon style (light mode: outlined clouds, colored accents)
-
-    private let legendGrey = Color(white: 0.35)
-
-    private func legendConditionIcon(_ condition: AppWeatherCondition) -> String {
-        guard colorScheme == .light else { return conditionIcon(condition) }
-        switch condition {
-        case .clear:        return "sun.max.fill"
-        case .partlySunny:  return "cloud.sun"
-        case .partlyCloudy: return "cloud"
-        case .cloudy:       return "cloud"
-        case .rain:         return "cloud.rain"
-        case .drizzle:      return "cloud.drizzle"
-        case .snow:         return "cloud.snow"
-        case .fog:          return "cloud.fog"
-        case .wind:         return "wind"
-        }
-    }
-
-    private func legendIconPalette(for iconName: String) -> (primary: Color, secondary: Color) {
-        if colorScheme == .dark {
-            return AppTheme.shared.colors.weatherIconPalette(for: iconName)
-        }
-        let theme = AppTheme.shared.colors
-        if iconName.contains("sun") && iconName.contains("cloud") {
-            return (legendGrey, theme.sunIconColor)
-        } else if iconName.contains("rain") || iconName.contains("drizzle") {
-            return (legendGrey, theme.rainIconColor)
-        } else if iconName.contains("snow") {
-            return (legendGrey, theme.snowIconColor)
-        } else if iconName.contains("fog") {
-            return (legendGrey, legendGrey.opacity(0.5))
-        } else if iconName.contains("sun") {
-            return (theme.sunIconColor, theme.sunIconColor)
-        } else if iconName.contains("wind") {
-            return (legendGrey, legendGrey)
-        } else {
-            return (legendGrey, legendGrey)
-        }
-    }
-
-    private func legendIconView(for condition: AppWeatherCondition) -> some View {
-        let icon = legendConditionIcon(condition)
-        let palette = legendIconPalette(for: icon)
-        let yOffset: CGFloat = switch condition {
-        case .rain, .drizzle, .snow: 3
-        case .fog: 2
-        default: 0
-        }
-        return Image(systemName: icon)
-            .font(.system(size: 13))
-            .symbolRenderingMode(.palette)
-            .foregroundStyle(palette.primary, palette.secondary)
-            .offset(y: yOffset)
-    }
-
     // MARK: - Weather dot legend
 
-    private func conditionTitle(_ condition: AppWeatherCondition) -> String {
-        switch condition {
-        case .clear: return "Clear"
-        case .partlySunny: return "Partly Sunny"
-        case .partlyCloudy: return "Partly Cloudy"
-        case .cloudy: return "Cloudy"
-        case .rain: return "Rain"
-        case .drizzle: return "Drizzle"
-        case .snow: return "Snow"
-        case .fog: return "Fog"
-        case .wind: return "Wind"
-        }
-    }
+    private func conditionEntry(title: String, color: Color) -> some View {
+        let isWrappedCondition = title.contains("\n")
+        let rowAlignment: VerticalAlignment = isWrappedCondition ? .top : .center
 
-    private func conditionEntry(_ condition: AppWeatherCondition) -> some View {
-        HStack(spacing: compact ? 6 : 7) {
+        return HStack(alignment: rowAlignment, spacing: compact ? 10 : 12) {
             Circle()
-                .fill(condition.dotColor)
+                .fill(color)
                 .frame(width: compact ? 6 : 8, height: compact ? 6 : 8)
-                .shadow(color: condition.dotColor.opacity(0.5), radius: 2)
-            legendIconView(for: condition)
-                .frame(width: 18)
-            Text(conditionTitle(condition))
-                .font(.avenir(.caption2, weight: .medium))
+                .shadow(color: color.opacity(0.5), radius: 2)
+                .padding(.top, isWrappedCondition ? (compact ? 4 : 5) : 0)
+
+            Text(title)
+                .font(.avenir(.caption, weight: .medium))
                 .foregroundStyle(AppTheme.shared.colors.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.85)
+                .fixedSize(horizontal: false, vertical: true)
+
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var weatherDotLegend: some View {
-        LazyVGrid(
-            columns: [
-                GridItem(.flexible(minimum: 132), spacing: 0)
-            ],
-            alignment: .leading,
-            spacing: compact ? 7 : 8
-        ) {
-            ForEach(conditions, id: \.self) { condition in
-                conditionEntry(condition)
+        VStack(alignment: .leading, spacing: compact ? 9 : 11) {
+            ForEach(Array(weatherLegendItems.enumerated()), id: \.offset) { _, item in
+                conditionEntry(title: item.title, color: item.color)
             }
         }
     }

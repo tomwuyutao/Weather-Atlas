@@ -131,6 +131,7 @@ extension ContentView {
                         .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                     }
                 }
+                .animation(.smooth(duration: 0.22), value: showLegend)
                 .overlay(alignment: .trailing) {
                     AnyView(iOSDateSliderOverlay)
                 }

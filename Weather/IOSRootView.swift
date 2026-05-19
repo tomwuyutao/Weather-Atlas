@@ -125,19 +125,29 @@ extension ContentView {
 
     var iPhoneNavigationStack: some View {
         NavigationStack(path: $iPhoneNavigationPath) {
-            iPhoneNativeListManager
-                .navigationDestination(for: IPhoneNavigationRoute.self) { route in
-                    switch route {
-                    case .map:
-                        AnyView(nativeCitySearch(iPhoneMapDestination))
-                    case .cityDetail:
-                        AnyView(self.selectedCityDetailDestination)
-                    case .addCityDetail:
-                        AnyView(iOSAddCityDetailDestination)
-                    case .listManager:
-                        EmptyView()
-                    }
+            ZStack {
+                nativeCitySearch(iPhoneMapDestination)
+                    .allowsHitTesting(!showingMapSidebar)
+
+                if showingMapSidebar {
+                    iPhoneNativeListManager
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                        .zIndex(1)
                 }
+            }
+            .animation(.smooth(duration: 0.24), value: showingMapSidebar)
+            .navigationDestination(for: IPhoneNavigationRoute.self) { route in
+                switch route {
+                case .map:
+                    EmptyView()
+                case .cityDetail:
+                    AnyView(self.selectedCityDetailDestination)
+                case .addCityDetail:
+                    AnyView(iOSAddCityDetailDestination)
+                case .listManager:
+                    AnyView(iPhoneNativeListManager)
+                }
+            }
         }
         .onAppear {
             selectedTab = 1
@@ -218,6 +228,7 @@ extension ContentView {
                                 .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                         }
                     }
+                    .animation(.smooth(duration: 0.22), value: showLegend)
                     .overlay(alignment: .top) {
                         if !showingInlineSearch {
                             HStack {
@@ -241,7 +252,7 @@ extension ContentView {
 
         }
         .toolbar {
-            if !showingInlineSearch {
+            if !showingInlineSearch && !showingMapSidebar {
                 iPhoneNativeBottomToolbar
             }
         }
@@ -253,13 +264,16 @@ extension ContentView {
         macListManagerSidebar
             .scrollContentBackground(.hidden)
             .background(theme.colors.mapOcean)
+            .tint(.primary)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItemGroup(placement: .bottomBar) {
                     Button {
-                        pushIPhoneRoute(.map)
+                        withAnimation(.smooth(duration: 0.24)) {
+                            pushIPhoneRoute(.map)
+                        }
                     } label: {
                         Image(systemName: "map")
                             .foregroundStyle(.primary)
@@ -308,26 +322,31 @@ extension ContentView {
     #endif
 
     func pushIPhoneRoute(_ route: IPhoneNavigationRoute) {
+        if route == .map {
+            iPhoneNavigationPath = []
+            showingMapSidebar = false
+            return
+        }
         guard !iPhoneNavigationPath.contains(route) else { return }
         iPhoneNavigationPath.append(route)
     }
 
     func dismissIPhoneRoute(_ route: IPhoneNavigationRoute) {
-        if route == .map {
-            iPhoneNavigationPath = []
-        } else {
-            iPhoneNavigationPath.removeAll { $0 == route }
-        }
         switch route {
         case .map:
-            showingMapSidebar = false
-            showingMapExpandedCard = false
-            tappedCity = nil
+            withAnimation(.smooth(duration: 0.24)) {
+                showingMapSidebar = true
+                showingMapExpandedCard = false
+                tappedCity = nil
+            }
         case .cityDetail:
+            iPhoneNavigationPath.removeAll { $0 == route }
             showingCityDetail = false
         case .addCityDetail:
+            iPhoneNavigationPath.removeAll { $0 == route }
             showingAddCityDetail = false
         case .listManager:
+            iPhoneNavigationPath.removeAll { $0 == route }
             showingMapSidebar = false
         }
     }

@@ -175,7 +175,7 @@ extension ThemeColors {
         dotRain: Color(hex: 0x4A9EE0),
         dotDrizzle: Color(hex: 0x57D3E5),
         dotSnow: Color(hex: 0xE8E4DF),
-        dotFog: Color(hex: 0x8A8A9A),
+        dotFog: Color(hex: 0xE8E4DF),
         dotWind: Color(hex: 0xE8E4DF),
         rainEffect: Color(hex: 0x57D3E5).opacity(0.55),
         snowEffect: Color(hex: 0xE8E4DF).opacity(0.6),
@@ -248,8 +248,8 @@ class AppTheme {
     }
 
     private init() {
-        let raw = UserDefaults.standard.string(forKey: "appThemeStyle") ?? "automatic"
-        self.style = AppThemeStyle(rawValue: raw) ?? .automatic
+        let raw = UserDefaults.standard.string(forKey: "appThemeStyle") ?? "dark"
+        self.style = AppThemeStyle(rawValue: raw) ?? .dark
     }
 }
 

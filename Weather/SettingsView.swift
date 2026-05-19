@@ -220,13 +220,6 @@ struct SettingsView: View {
                     value: "Apple Weather",
                     systemImage: "cloud.sun"
                 )
-                HStack(alignment: .top, spacing: 8) {
-                    Image(systemName: "apple.logo")
-                        .foregroundStyle(.primary)
-                        .frame(width: 20)
-                    Text("Weather data and weather maps are provided by Apple Weather.")
-                        .foregroundStyle(.secondary)
-                }
             }
             .listRowBackground(theme.colors.mapLand)
             #endif
@@ -267,11 +260,10 @@ struct SettingsView: View {
     }
 
     private func settingsInfoRow(_ title: String, value: String, systemImage: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .foregroundStyle(.primary)
-                .frame(width: 20)
-            LabeledContent(title, value: value)
+        LabeledContent {
+            Text(value)
+        } label: {
+            settingsLabel(title, systemImage: systemImage)
         }
     }
 }

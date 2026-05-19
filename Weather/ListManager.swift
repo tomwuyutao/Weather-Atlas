@@ -46,6 +46,7 @@ extension ContentView {
                     .foregroundStyle(.primary)
             }
         }
+        .tint(.primary)
 
         Button {
             beginRenamingList(listID)
@@ -57,6 +58,7 @@ extension ContentView {
                     .foregroundStyle(.primary)
             }
         }
+        .tint(.primary)
 
         Button {
             beginAddingCity(to: listID)
@@ -68,6 +70,7 @@ extension ContentView {
                     .foregroundStyle(.primary)
             }
         }
+        .tint(.primary)
 
         Button(localizedString("Delete", locale: locale), systemImage: "trash", role: .destructive) {
             Task {
@@ -89,6 +92,7 @@ extension ContentView {
                     .foregroundStyle(.primary)
             }
         }
+        .tint(.primary)
 
         Button {
             beginRenamingCity(city, in: listID)
@@ -100,6 +104,7 @@ extension ContentView {
                     .foregroundStyle(.primary)
             }
         }
+        .tint(.primary)
 
         Button(localizedString("Delete", locale: locale), systemImage: "trash", role: .destructive) {
             weatherService.removeCity(city, from: listID)
@@ -156,12 +161,17 @@ extension ContentView {
     }
 
     private func beginRenamingList(_ listID: CityListID) {
+        cityToRename = nil
+        cityToRenameListID = nil
+        showingCityRenameAlert = false
         listToRenameID = listID
         renameAlertText = listID.localizedDisplayName(locale: locale)
         showingRenameAlert = true
     }
 
     private func beginRenamingCity(_ city: CityWeather, in listID: CityListID) {
+        listToRenameID = nil
+        showingRenameAlert = false
         cityToRename = city
         cityToRenameListID = listID
         cityRenameText = city.city.localizedName(locale: locale)
