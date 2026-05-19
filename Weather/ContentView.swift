@@ -41,6 +41,7 @@ struct ContentView: View {
 
     @State var selectedDayOffset: Int = -1
     @Namespace var detailDaySelectionNamespace
+    @Namespace var iPadMapDetailNamespace
     @State var showingCityDetail: Bool = false
     @State var tappedCity: CityWeather?
     @State var showingMapExpandedCard: Bool = false
@@ -75,6 +76,7 @@ struct ContentView: View {
     @State var recenterOnAllCities: Bool = false
     @State var mapMarkerReloadID: Int = 0
     @State var settingsOpenedThemeStyle: AppThemeStyle?
+    @State var iPadInspectorPresentedCityID: UUID?
     @AppStorage("temperatureUnit") var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
     @State var showingSettings: Bool = false

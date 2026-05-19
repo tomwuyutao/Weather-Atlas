@@ -205,7 +205,7 @@ struct WeatherMarker: View {
             guard let visVal else { return .gray }
             return Color.white.mix(with: Color(hex: 0xBCCFDC), by: min(1.0, visVal / 30.0))
         }
-        if isNow && baseIcon.contains("moon") {
+        if baseIcon.contains("moon") {
             return AppTheme.shared.colors.moonIconColor
         }
         // Default weather dot color

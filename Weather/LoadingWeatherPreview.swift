@@ -18,7 +18,7 @@ struct LoadingWeatherOverlay: View {
                     #endif
                     .weatherIconStyle(for: iconName)
                     .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                    .id(iconName)
+                    .animation(.snappy(duration: 0.42), value: iconName)
 
                 Text(localizedString("Loading Weather", locale: locale))
                     #if os(macOS)
@@ -77,7 +77,7 @@ private struct LoadingWeatherAnimationPreview: View {
                 try? await Task.sleep(for: .milliseconds(900))
                 guard !Task.isCancelled else { break }
                 await MainActor.run {
-                    withAnimation(.snappy(duration: 0.28)) {
+                    withAnimation(.snappy(duration: 0.42)) {
                         iconIndex = (iconIndex + 1) % icons.count
                         progress = progress >= 0.92 ? 0.12 : progress + 0.16
                     }

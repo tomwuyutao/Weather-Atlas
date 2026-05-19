@@ -14,6 +14,8 @@ extension ContentView {
     func mapExpandedCard(
         for cityWeather: CityWeather,
         forceMacStyle: Bool = false,
+        forceIPhoneStyle: Bool = false,
+        forceIPhoneDetailSizing: Bool = false,
         hideCityName: Bool = false,
         plainBackground: Bool = false
     ) -> AnyView {
@@ -83,7 +85,7 @@ extension ContentView {
         }()
 
         #if os(macOS) || os(iOS)
-        if usesFloatingMapCardLayout || forceMacStyle {
+        if !forceIPhoneStyle && (usesFloatingMapCardLayout || forceMacStyle) {
             return AnyView(macMapExpandedCard(
                 for: cityWeather,
                 icon: icon,
@@ -92,7 +94,7 @@ extension ContentView {
                 tempUnit: tempUnit,
                 hideCityName: hideCityName,
                 plainBackground: plainBackground,
-                usesIPhoneDetailSizing: forceMacStyle && !usesFloatingMapCardLayout
+                usesIPhoneDetailSizing: forceIPhoneDetailSizing || (forceMacStyle && !usesFloatingMapCardLayout)
             ))
         }
 #endif
@@ -139,11 +141,12 @@ extension ContentView {
                                     let index = row * 5 + column
                                     if index < cityWeather.dailyForecasts.count {
                                         let dayForecast = cityWeather.dailyForecasts[index]
+                                        let dayDotColor = dayForecast.weatherIcon.contains("moon") ? theme.colors.moonIconColor : dayForecast.condition.dotColor
                                         Circle()
-                                            .fill(dayForecast.condition.dotColor)
+                                            .fill(dayDotColor)
                                             .frame(width: index == selectedDayOffset ? 8 : 6, height: index == selectedDayOffset ? 8 : 6)
                                             .frame(width: 8, height: 8, alignment: .center)
-                                            .shadow(color: dayForecast.condition.dotColor.opacity(0.55), radius: 3)
+                                            .shadow(color: dayDotColor.opacity(0.55), radius: 3)
                                             .opacity(index == selectedDayOffset ? 1 : 0.58)
                                     }
                                 }
@@ -166,10 +169,16 @@ extension ContentView {
             if !shouldUseIPadLayout {
                 showingCityDetail = true
                 pushIPhoneRoute(.cityDetail)
-                return
+            } else {
+                withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+                    showingMapExpandedCard = false
+                    showingCityDetail = true
+                    iPadInspectorPresentedCityID = cityWeather.id
+                }
             }
-            #endif
+            #else
             showingCityDetail = true
+            #endif
         })
     }
 
@@ -279,6 +288,8 @@ extension ContentView {
                                 let daySelectionOffset = representsNow ? -1 : index
                                 let isSelectedDay = selectedDayOffset == daySelectionOffset
                                 let dayCondition = representsNow ? cityWeather.condition : forecast.condition
+                                let dayIcon = representsNow ? cityWeather.weatherIcon : forecast.weatherIcon
+                                let dayDotColor = dayIcon.contains("moon") ? theme.colors.moonIconColor : dayCondition.dotColor
                                 let dayTemperature = representsNow ? cityWeather.temperature : forecast.dailyHigh
 
                                 Button {
@@ -293,9 +304,9 @@ extension ContentView {
                                             .lineLimit(1)
 
                                         Circle()
-                                            .fill(dayCondition.dotColor)
+                                            .fill(dayDotColor)
                                             .frame(width: isSelectedDay ? (usesIPhoneDetailSizing ? 11 : 8) : (usesIPhoneDetailSizing ? 10 : 7), height: isSelectedDay ? (usesIPhoneDetailSizing ? 11 : 8) : (usesIPhoneDetailSizing ? 10 : 7))
-                                            .shadow(color: dayCondition.dotColor.opacity(0.45), radius: 2)
+                                            .shadow(color: dayDotColor.opacity(0.45), radius: 2)
 
                                         Text(tempUnit.display(dayTemperature))
                                             .font((usesIPhoneDetailSizing ? Font.headline : Font.caption).weight(.semibold))

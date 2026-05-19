@@ -294,6 +294,8 @@ extension ContentView {
                 overlayMode: mapOverlayMode,
                 filterSunny: filterSunny,
                 markerReloadID: mapMarkerReloadID,
+                markerSizeScale: mapMarkerSizeScale,
+                showsMarkerHoverLabels: mapShowsMarkerHoverLabels,
                 tappedCity: $tappedCity,
                 recenterOnAllCities: $recenterOnAllCities,
                 centerOnCity: centerOnCityTrigger,
@@ -348,7 +350,7 @@ extension ContentView {
         ]
 
         await MainActor.run {
-            withAnimation(.snappy(duration: 0.28)) {
+            withAnimation(.snappy(duration: 0.42)) {
                 loadingWeatherIcon = "sun.max.fill"
             }
         }
@@ -359,7 +361,7 @@ extension ContentView {
 
             let nextIcon = loadingIcons.filter { $0 != loadingWeatherIcon }.randomElement() ?? "cloud.sun.fill"
             await MainActor.run {
-                withAnimation(.snappy(duration: 0.28)) {
+                withAnimation(.snappy(duration: 0.42)) {
                     loadingWeatherIcon = nextIcon
                 }
             }
@@ -386,7 +388,23 @@ extension ContentView {
 
     var mapAllowsMarkerHover: Bool {
         #if os(iOS)
-        shouldUseIPadLayout
+        false
+        #else
+        true
+        #endif
+    }
+
+    var mapMarkerSizeScale: Double {
+        #if os(iOS)
+        shouldUseIPadLayout ? 1.28 : 1.0
+        #else
+        1.0
+        #endif
+    }
+
+    var mapShowsMarkerHoverLabels: Bool {
+        #if os(iOS)
+        false
         #else
         true
         #endif

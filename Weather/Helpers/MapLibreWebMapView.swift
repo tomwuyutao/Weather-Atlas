@@ -17,6 +17,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     var overlayMode: String = "weather"
     let filterSunny: Bool
     var markerReloadID: Int = 0
+    var markerSizeScale: Double = 1
+    var showsMarkerHoverLabels: Bool = true
     @Binding var tappedCity: CityWeather?
     @Binding var recenterOnAllCities: Bool
     var centerOnCity: CityWeather?
@@ -223,7 +225,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             guard let data = try? JSONEncoder().encode(features),
                   let json = String(data: data, encoding: .utf8) else { return }
             let selectedID = parent.focusSelectedMarker ? (parent.tappedCity?.id.uuidString ?? "") : ""
-            let payload = "{features:\(json),selectedID:\(Self.jsString(selectedID)),allowsMarkerHover:\(parent.allowsMarkerHover ? "true" : "false")}"
+            let payload = "{features:\(json),selectedID:\(Self.jsString(selectedID)),allowsMarkerHover:\(parent.allowsMarkerHover ? "true" : "false"),showsMarkerHoverLabels:\(parent.showsMarkerHoverLabels ? "true" : "false"),markerSizeScale:\(parent.markerSizeScale)}"
 
             let shouldReloadMarkers = parent.markerReloadID != lastMarkerReloadID
             if shouldReloadMarkers {
@@ -329,7 +331,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     }
 
     private func color(for condition: AppWeatherCondition, icon: String) -> String {
-        if icon.contains("moon") { return "#D3E3EC" }
+        if icon.contains("moon") { return "#A285B7" }
         switch condition {
         case .clear: return "#FF8A65"
         case .partlySunny: return "#EEB368"
@@ -641,7 +643,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-hit', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['*', ['number', ['get', 'visibleScale'], 1], 11],
+                'circle-radius': ['*', ['number', ['get', 'markerSizeScale'], 1], ['*', ['number', ['get', 'visibleScale'], 1], 11]],
                 'circle-color': 'rgba(0,0,0,0.01)',
                 'circle-opacity': 0.01
               }
@@ -651,7 +653,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-glow', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['*', ['number', ['get', 'visibleScale'], 1], ['+', 13, ['*', ['number', ['get', 'selectedPulse'], 0], 13]]],
+                'circle-radius': ['*', ['number', ['get', 'markerSizeScale'], 1], ['*', ['number', ['get', 'visibleScale'], 1], ['+', 13, ['*', ['number', ['get', 'selectedPulse'], 0], 13]]]],
                 'circle-color': ['get', 'color'],
                 'circle-opacity': ['*',
                   ['number', ['get', 'visibleScale'], 1],
@@ -673,7 +675,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-halo', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['*', ['number', ['get', 'visibleScale'], 1], ['+', 7, ['*', ['number', ['get', 'selectedPulse'], 0], 5]]],
+                'circle-radius': ['*', ['number', ['get', 'markerSizeScale'], 1], ['*', ['number', ['get', 'visibleScale'], 1], ['+', 7, ['*', ['number', ['get', 'selectedPulse'], 0], 5]]]],
                 'circle-color': ['get', 'color'],
                 'circle-opacity': ['*',
                   ['number', ['get', 'visibleScale'], 1],
@@ -695,7 +697,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-points', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['*', ['number', ['get', 'visibleScale'], 1], ['+', 4.5, ['*', ['number', ['get', 'scale'], 0], 2.5]]],
+                'circle-radius': ['*', ['number', ['get', 'markerSizeScale'], 1], ['*', ['number', ['get', 'visibleScale'], 1], ['+', 4.5, ['*', ['number', ['get', 'scale'], 0], 2.5]]]],
                 'circle-color': ['get', 'color'],
                 'circle-opacity': ['*',
                   ['number', ['get', 'visibleScale'], 1],
@@ -738,7 +740,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 selectedPulse: item.id === selectedID ? selectedPulse : 0,
                 selected: item.id === selectedID,
                 hovered: hoverEnabled && item.id === hoveredMarkerID,
-                dimmed: hasSelection && item.id !== selectedID
+                dimmed: hasSelection && item.id !== selectedID,
+                markerSizeScale: payload.markerSizeScale || 1
               },
               geometry: { type: 'Point', coordinates: [item.longitude, item.latitude] }
             }))
@@ -810,7 +813,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         function updateSource(payload) {
           pendingPayload = payload;
-          if (payload?.allowsMarkerHover === false) {
+          if (payload?.allowsMarkerHover === false || payload?.showsMarkerHoverLabels === false) {
             hoveredMarkerID = '';
             hoveredMarkerPoint = null;
             document.getElementById('hover-label')?.classList.remove('visible');
@@ -946,7 +949,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
 
         function updateHoveredMarkerLabel(id, point) {
-          if (pendingPayload?.allowsMarkerHover === false) {
+          if (pendingPayload?.allowsMarkerHover === false || pendingPayload?.showsMarkerHoverLabels === false) {
             document.getElementById('hover-label')?.classList.remove('visible');
             return;
           }
@@ -973,7 +976,11 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         function refreshHoveredMarker(id, point) {
           if (pendingPayload?.allowsMarkerHover === false) return;
-          updateHoveredMarkerLabel(id, point);
+          if (pendingPayload?.showsMarkerHoverLabels === false) {
+            document.getElementById('hover-label')?.classList.remove('visible');
+          } else {
+            updateHoveredMarkerLabel(id, point);
+          }
           if (hoveredMarkerID === id) {
             hoveredMarkerPoint = point;
           } else {

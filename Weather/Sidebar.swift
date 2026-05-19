@@ -12,16 +12,28 @@ extension ContentView {
 
     var macListManagerSidebar: some View {
         #if os(iOS)
-        List {
-            Section {
-                iOSSidebarListRows
+        Group {
+            if shouldUseIPadLayout {
+                List {
+                    Section {
+                        iOSSidebarListRows
+                    }
+                }
+                .listStyle(.sidebar)
+                .tint(theme.colors.primaryText)
+            } else {
+                List {
+                    Section {
+                        iOSSidebarListRows
+                    }
+                    .listRowBackground(theme.colors.background)
+                }
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .background(theme.colors.background)
+                .tint(theme.colors.accent)
             }
-            .listRowBackground(theme.colors.background)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(theme.colors.background)
-        .tint(theme.colors.accent)
         .environment(\.editMode, $sidebarEditMode)
         .onAppear {
             if sidebarExpandedListIDs.isEmpty {
@@ -93,7 +105,10 @@ extension ContentView {
                     }
             }
             .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 6, leading: 28, bottom: 6, trailing: 28))
+            .listRowInsets(shouldUseIPadLayout
+                ? EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14)
+                : EdgeInsets(top: 6, leading: 28, bottom: 6, trailing: 28)
+            )
         }
         .onMove(perform: moveMacSidebarLists)
         .onDelete(perform: deleteMacSidebarLists)
@@ -133,11 +148,13 @@ extension ContentView {
     }
 
     private func iOSSidebarCityRow(_ city: CityWeather) -> some View {
-        HStack(spacing: 10) {
+        let dotColor = city.weatherIcon.contains("moon") ? theme.colors.moonIconColor : city.condition.dotColor(for: theme.colors)
+
+        return HStack(spacing: 10) {
             Circle()
-                .fill(city.condition.dotColor(for: theme.colors))
+                .fill(dotColor)
                 .frame(width: 10, height: 10)
-                .shadow(color: city.condition.dotColor(for: theme.colors).opacity(0.35), radius: 3)
+                .shadow(color: dotColor.opacity(0.35), radius: 3)
 
             Text(city.city.localizedName(locale: locale))
                 .font(.body)
@@ -151,7 +168,7 @@ extension ContentView {
                 .foregroundStyle(.secondary)
         }
         .padding(.vertical, 9)
-        .padding(.leading, -18)
+        .padding(.leading, shouldUseIPadLayout ? -6 : -18)
         .contentShape(Rectangle())
     }
 

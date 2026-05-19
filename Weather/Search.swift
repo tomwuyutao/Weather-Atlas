@@ -168,9 +168,11 @@ struct AddCitySearchView: View {
         let existing = isExistingCity(result)
 
         return HStack(spacing: 10) {
-            Image(systemName: existing ? "checkmark.circle.fill" : "magnifyingglass")
-                .foregroundStyle(existing ? Color.secondary : Color.primary.opacity(0.7))
-                .frame(width: 20)
+            if existing {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(Color.secondary)
+                    .frame(width: 20)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.title)
@@ -302,9 +304,11 @@ extension ContentView {
         let existing = inlineIsExistingCity(result)
 
         return HStack(spacing: 10) {
-            Image(systemName: existing ? "checkmark.circle.fill" : "magnifyingglass")
-                .foregroundStyle(existing ? theme.colors.secondaryText : theme.colors.primaryText.opacity(0.7))
-                .frame(width: 20)
+            if existing {
+                Image(systemName: "checkmark.circle.fill")
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .frame(width: 20)
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.title)

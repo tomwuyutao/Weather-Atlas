@@ -142,7 +142,7 @@ extension ThemeColors {
         cloudIconColor: Color(hex: 0xE8E8E8),
         rainIconColor: Color(hex: 0x6EACE8),
         snowIconColor: Color(hex: 0xD3E3EC),
-        moonIconColor: Color(hex: 0xD3E3EC),
+        moonIconColor: Color(hex: 0xA285B7),
         listCardFill: Color(hex: 0xF8F4F1),
         glassFill: Color(hex: 0xF8F4F1),
         filterSunny: Color(hex: 0xFF8A65)
@@ -185,7 +185,7 @@ extension ThemeColors {
         cloudIconColor: Color(hex: 0xD3E3EC),
         rainIconColor: Color(hex: 0x65ABE3),
         snowIconColor: Color(hex: 0xD3E3EC),
-        moonIconColor: Color(hex: 0xD3E3EC),
+        moonIconColor: Color(hex: 0xA285B7),
         listCardFill: Color(hex: 0x423D74),
         glassFill: Color(hex: 0x423D74),
         filterSunny: Color(hex: 0xFF8A65)

@@ -67,7 +67,12 @@ extension ContentView {
 
     func expandedCardDetailDestination(for city: CityWeather, dismissAction: @escaping () -> Void) -> some View {
         ScrollView(.vertical, showsIndicators: false) {
-            mapExpandedCard(for: city, forceMacStyle: true, plainBackground: true)
+            mapExpandedCard(
+                for: city,
+                forceMacStyle: true,
+                forceIPhoneDetailSizing: detailViewUsesIPhoneSizing,
+                plainBackground: true
+            )
                 .padding(.horizontal, detailViewHorizontalPadding)
                 .padding(.top, detailViewTopPadding)
                 .padding(.bottom, detailViewBottomPadding)
@@ -94,6 +99,14 @@ extension ContentView {
         .onDisappear {
             macExpandedCardShowsDetails = false
         }
+    }
+
+    private var detailViewUsesIPhoneSizing: Bool {
+        #if os(iOS)
+        true
+        #else
+        false
+        #endif
     }
 
     private var detailViewHorizontalPadding: CGFloat {
