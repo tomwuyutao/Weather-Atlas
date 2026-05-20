@@ -18,13 +18,21 @@ struct MapFloatingLegend: View {
         DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
     }
 
+    private var palette: ThemeColors {
+        colorScheme == .dark ? .dark : .light
+    }
+
+    private var saturatedPartlySunnyColor: Color {
+        palette.dotPartlyCloudy.mix(with: palette.filterSunny, by: 0.18)
+    }
+
     private var weatherLegendItems: [(title: String, color: Color)] {
         [
-            (localizedString("Clear", locale: locale), AppWeatherCondition.clear.dotColor),
-            (localizedString("Partly Sunny", locale: locale), AppWeatherCondition.partlySunny.dotColor),
-            (localizedString("Rain", locale: locale), AppWeatherCondition.rain.dotColor),
-            (localizedString("Drizzle", locale: locale), AppWeatherCondition.drizzle.dotColor),
-            ("Cloudy / Snow /\nWind / Fog", AppWeatherCondition.cloudy.dotColor)
+            (localizedString("Clear", locale: locale), palette.dotSun),
+            (localizedString("Partly Sunny", locale: locale), palette.dotPartlyCloudy),
+            (localizedString("Rain", locale: locale), palette.dotRain),
+            (localizedString("Drizzle", locale: locale), palette.dotDrizzle),
+            ("Cloudy / Snow /\nWind / Fog", palette.dotCloudy)
         ]
     }
 
@@ -32,46 +40,38 @@ struct MapFloatingLegend: View {
 
     private func temperatureColor(celsius: Double) -> Color {
         if celsius <= 0 {
-            return Color(hex: 0xD3E3EC).mix(with: Color(hex: 0x6EACE8), by: max(0, min(1, (celsius + 20) / 20)))
+            return palette.dotRain.mix(with: palette.dotDrizzle, by: max(0, min(1, (celsius + 20) / 20)))
         } else if celsius <= 10 {
-            return Color(hex: 0x6EACE8).mix(with: Color(hex: 0xEEB368), by: max(0, min(1, celsius / 10)))
+            return palette.dotDrizzle.mix(with: palette.dotCloudy, by: max(0, min(1, celsius / 10)))
         } else if celsius <= 20 {
-            return Color(hex: 0xEEB368).mix(with: Color(hex: 0xFF8A65), by: max(0, min(1, (celsius - 10) / 10)))
+            return palette.dotCloudy.mix(with: saturatedPartlySunnyColor, by: max(0, min(1, (celsius - 10) / 10)))
         } else {
-            return Color(hex: 0xFF8A65).mix(with: Color(hex: 0xFB4368), by: max(0, min(1, (celsius - 20) / 20)))
+            return saturatedPartlySunnyColor.mix(with: palette.destructive, by: max(0, min(1, (celsius - 20) / 20)))
         }
     }
 
     private func cloudColor(percent: Double) -> Color {
-        Color.white.mix(with: Color(hex: 0xD3E3EC), by: max(0, min(1, percent / 100.0)))
+        palette.dotRain.mix(with: palette.dotCloudy, by: max(0, min(1, percent / 100.0)))
     }
 
     private func precipitationColor(percent: Double) -> Color {
-        Color.white.mix(with: Color(hex: 0xBCCFDC), by: max(0, min(1, percent / 100.0)))
+        Color.white.mix(with: palette.dotDrizzle, by: max(0, min(1, percent / 100.0)))
     }
 
     private func windColor(fraction: Double) -> Color {
-        Color.white.mix(with: Color(hex: 0xEEB368), by: max(0, min(1, fraction)))
+        Color.white.mix(with: saturatedPartlySunnyColor, by: max(0, min(1, fraction)))
     }
 
     private func uvColor(fraction: Double) -> Color {
-        return Color(
-            red: 1.0 + fraction * (Double(0xE8) / 255.0 - 1.0),
-            green: 1.0 + fraction * (Double(0x79) / 255.0 - 1.0),
-            blue: 1.0 + fraction * (Double(0x57) / 255.0 - 1.0)
-        )
+        Color.white.mix(with: palette.destructive, by: max(0, min(1, fraction)))
     }
 
     private func humidityColor(fraction: Double) -> Color {
-        return Color(
-            red: 1.0 + fraction * (Double(0xBC) / 255.0 - 1.0),
-            green: 1.0 + fraction * (Double(0xCF) / 255.0 - 1.0),
-            blue: 1.0 + fraction * (Double(0xDC) / 255.0 - 1.0)
-        )
+        Color.white.mix(with: palette.dotDrizzle, by: max(0, min(1, fraction)))
     }
 
     private func visibilityColor(fraction: Double) -> Color {
-        Color.white.mix(with: Color(hex: 0xBCCFDC), by: max(0, min(1, fraction)))
+        Color.white.mix(with: palette.dotRain, by: max(0, min(1, fraction)))
     }
 
     // MARK: - Gradient legend
@@ -246,4 +246,22 @@ struct MapFloatingLegend: View {
             }
         }
     }
+}
+
+#Preview("Legend - Light") {
+    ZStack(alignment: .topLeading) {
+        Color(hex: 0xF8F4F1).ignoresSafeArea()
+        MapFloatingLegend(overlayMode: "weather", compact: true) {}
+            .padding(24)
+    }
+    .preferredColorScheme(.light)
+}
+
+#Preview("Legend - Dark") {
+    ZStack(alignment: .topLeading) {
+        Color(hex: 0x2E2961).ignoresSafeArea()
+        MapFloatingLegend(overlayMode: "weather", compact: true) {}
+            .padding(24)
+    }
+    .preferredColorScheme(.dark)
 }

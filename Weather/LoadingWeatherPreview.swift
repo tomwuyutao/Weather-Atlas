@@ -10,15 +10,22 @@ struct LoadingWeatherOverlay: View {
     var body: some View {
         GeometryReader { geo in
             VStack(spacing: 12) {
-                Image(systemName: iconName)
-                    #if os(macOS)
-                    .font(.system(size: 28, weight: .medium))
-                    #else
-                    .font(.system(size: 40, weight: .medium))
-                    #endif
-                    .weatherIconStyle(for: iconName)
-                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-                    .animation(.snappy(duration: 0.42), value: iconName)
+                ZStack {
+                    Image(systemName: iconName)
+                        #if os(macOS)
+                        .font(.system(size: 28, weight: .medium))
+                        #else
+                        .font(.system(size: 40, weight: .medium))
+                        #endif
+                        .weatherIconStyle(for: iconName)
+                        .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                        .animation(.snappy(duration: 0.42), value: iconName)
+                }
+                #if os(macOS)
+                .frame(width: 44, height: 34)
+                #else
+                .frame(width: 62, height: 50)
+                #endif
 
                 Text(localizedString("Loading Weather", locale: locale))
                     #if os(macOS)
