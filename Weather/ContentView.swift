@@ -388,9 +388,10 @@ struct ContentView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 32, height: 32)
+                    .background(AppTheme.shared.colors.accent.opacity(0.85), in: Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.24), lineWidth: 0.5))
             }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.circle)
+            .buttonStyle(.plain)
         } else {
             Button {
                 if let city = previewCity {
@@ -407,9 +408,10 @@ struct ContentView: View {
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.white)
                     .frame(width: 32, height: 32)
+                    .background(AppTheme.shared.colors.accent.opacity(0.85), in: Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.24), lineWidth: 0.5))
             }
-            .buttonStyle(.glassProminent)
-            .buttonBorderShape(.circle)
+            .buttonStyle(.plain)
         }
     }
 }

@@ -259,7 +259,7 @@ extension ContentView {
                 Image(systemName: icon)
                     .font(.system(size: usesIPhoneDetailSizing ? 44 : 30, weight: .medium))
                     .weatherIconStyle(for: icon)
-                    .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                    .compatSymbolReplaceTransition()
                     .id("icon-\(selectedDayOffset)-\(icon)")
                     .transition(.asymmetric(
                         insertion: .scale(scale: 0.82).combined(with: .opacity),

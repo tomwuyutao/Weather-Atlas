@@ -39,7 +39,7 @@ struct HourlyTimelineChart: View {
 
     private var tempUnit: TemperatureUnit { TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius }
     private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers }
-    private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25) }
+    private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.compatMix(with: .black, by: 0.25) }
     private var totalHeight: CGFloat { compactLayout ? 230 : 250 }
     private var chartHeight: CGFloat { compactLayout ? 132 : 146 }
     private var labelSpacing: CGFloat { compactLayout ? 6 : 10 }
@@ -153,7 +153,7 @@ struct DailyTimelineChart: View {
 
     private var tempUnit: TemperatureUnit { TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius }
     private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers }
-    private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.mix(with: .black, by: 0.25) }
+    private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.compatMix(with: .black, by: 0.25) }
     private var totalHeight: CGFloat { compactLayout ? 230 : 250 }
     private var chartHeight: CGFloat { compactLayout ? 132 : 146 }
     private var labelSpacing: CGFloat { compactLayout ? 6 : 10 }
@@ -305,7 +305,7 @@ private struct TimelineChartBody: View {
                     Image(systemName: point.icon)
                         .font(.system(size: compactLayout ? 14 : 17))
                         .weatherIconStyle(for: point.icon)
-                        .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                        .compatSymbolReplaceTransition()
                 }
                 .opacity(point.isPast ? 0.3 : 1.0)
                 .frame(maxWidth: .infinity)

@@ -69,7 +69,6 @@ extension ContentView {
         }
         .sheet(isPresented: $showingInfo) {
             InfoView(source: selectedTab == 1 ? .map : .list)
-                .presentationSizing(.form)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView(
@@ -80,7 +79,6 @@ extension ContentView {
                     }
                 }
             )
-            .presentationSizing(.form)
         }
         .overlay {
             iOSDeleteListConfirmationOverlay
@@ -135,7 +133,6 @@ extension ContentView {
                 cityToRenameListID = nil
             }
         }
-        .toolbar(removing: .title)
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
     }
 

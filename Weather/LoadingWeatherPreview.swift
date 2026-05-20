@@ -18,7 +18,7 @@ struct LoadingWeatherOverlay: View {
                         .font(.system(size: 40, weight: .medium))
                         #endif
                         .weatherIconStyle(for: iconName)
-                        .contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
+                        .compatSymbolReplaceTransition()
                         .animation(.snappy(duration: 0.42), value: iconName)
                 }
                 #if os(macOS)

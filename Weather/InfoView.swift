@@ -51,7 +51,7 @@ struct InfoView: View {
             .background(
                 RoundedRectangle(cornerRadius: 12)
                     .fill(isSelected
-                          ? colors.listCardFill.mix(with: .black, by: 0.25)
+                          ? colors.listCardFill.compatMix(with: .black, by: 0.25)
                           : colors.listCardFill)
             )
 

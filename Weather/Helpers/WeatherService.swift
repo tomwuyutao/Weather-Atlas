@@ -699,15 +699,12 @@ class WeatherService {
     
     // Helper function to get timezone for a location
     private func getTimeZone(for location: CLLocation) async -> TimeZone {
-        if let request = MKReverseGeocodingRequest(location: location) {
-            do {
-                let mapItems = try await request.mapItems
-                if let timeZone = mapItems.first?.timeZone {
-                    return timeZone
-                }
-            } catch {
-
+        do {
+            if let timeZone = try await CLGeocoder().reverseGeocodeLocation(location).first?.timeZone {
+                return timeZone
             }
+        } catch {
+
         }
         // Fallback to UTC if we can't determine the timezone
         return TimeZone(identifier: "UTC") ?? TimeZone.current
@@ -731,8 +728,7 @@ class WeatherService {
         let currentHumidity = weather.currentWeather.humidity
         let currentWindSpeedKmh = weather.currentWeather.wind.speed.converted(to: .kilometersPerHour).value
         let currentUV = weather.currentWeather.uvIndex.value
-        let cca = weather.currentWeather.cloudCoverByAltitude
-        let currentCloudCover = min(1.0, cca.low + cca.medium + cca.high)
+        let currentCloudCover = weather.currentWeather.cloudCover
         
         // Daily forecasts
         let dailyForecasts = weather.dailyForecast.forecast.prefix(10).enumerated().map { (index, day) -> DailyForecast in
@@ -752,9 +748,13 @@ class WeatherService {
                 print("⚠️ [WeatherService] No apparent temperature data in hourly forecasts for day \(index).")
             }
             
-            // Compute full-day precipitation chance from hourly data (max of all hours)
+            // Compute full-day values from hourly data so the app remains compatible with iOS 17.
             let hourlyPrecipChances = hourlyForecasts.compactMap(\.precipitationChance)
-            let fullDayPrecipChance: Double? = hourlyPrecipChances.isEmpty ? day.daytimeForecast.precipitationChance : hourlyPrecipChances.max()
+            let hourlyCloudCover = hourlyForecasts.compactMap(\.cloudCover)
+            let hourlyHumidity = hourlyForecasts.compactMap(\.humidity)
+            let hourlyVisibility = hourlyForecasts.compactMap(\.visibility)
+            let fullDayPrecipChance: Double? = hourlyPrecipChances.max()
+            let fullDayCloudCover = hourlyCloudCover.isEmpty ? nil : hourlyCloudCover.reduce(0, +) / Double(hourlyCloudCover.count)
 
             return DailyForecast(
                 dayOffset: index,
@@ -763,7 +763,7 @@ class WeatherService {
                 symbolName: daySymbol,
                 condition: dayCondition,
                 hourlyForecasts: hourlyForecasts,
-                cloudCover: day.daytimeForecast.cloudCover,
+                cloudCover: index == 0 ? currentCloudCover : fullDayCloudCover,
                 precipitationChance: fullDayPrecipChance,
                 visibility: index == 0 ? currentVisibilityKm : nil,
                 feelsLikeLow: feelsLikeLow,
@@ -771,8 +771,8 @@ class WeatherService {
                 humidity: index == 0 ? currentHumidity : nil,
                 windSpeed: day.wind.speed.converted(to: .kilometersPerHour).value,
                 uvIndex: day.uvIndex.value,
-                maxHumidity: day.maximumHumidity,
-                maxVisibility: day.maximumVisibility / 1000.0,
+                maxHumidity: hourlyHumidity.max(),
+                maxVisibility: hourlyVisibility.max(),
                 sunrise: day.sun.sunrise,
                 sunset: day.sun.sunset
             )

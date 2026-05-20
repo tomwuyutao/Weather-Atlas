@@ -23,7 +23,7 @@ struct MapFloatingLegend: View {
     }
 
     private var saturatedPartlySunnyColor: Color {
-        palette.dotPartlyCloudy.mix(with: palette.filterSunny, by: 0.18)
+        palette.dotPartlyCloudy.compatMix(with: palette.filterSunny, by: 0.18)
     }
 
     private var weatherLegendItems: [(title: String, color: Color)] {
@@ -40,38 +40,38 @@ struct MapFloatingLegend: View {
 
     private func temperatureColor(celsius: Double) -> Color {
         if celsius <= 0 {
-            return palette.dotRain.mix(with: palette.dotDrizzle, by: max(0, min(1, (celsius + 20) / 20)))
+            return palette.dotRain.compatMix(with: palette.dotDrizzle, by: max(0, min(1, (celsius + 20) / 20)))
         } else if celsius <= 10 {
-            return palette.dotDrizzle.mix(with: palette.dotCloudy, by: max(0, min(1, celsius / 10)))
+            return palette.dotDrizzle.compatMix(with: palette.dotCloudy, by: max(0, min(1, celsius / 10)))
         } else if celsius <= 20 {
-            return palette.dotCloudy.mix(with: saturatedPartlySunnyColor, by: max(0, min(1, (celsius - 10) / 10)))
+            return palette.dotCloudy.compatMix(with: saturatedPartlySunnyColor, by: max(0, min(1, (celsius - 10) / 10)))
         } else {
-            return saturatedPartlySunnyColor.mix(with: palette.destructive, by: max(0, min(1, (celsius - 20) / 20)))
+            return saturatedPartlySunnyColor.compatMix(with: palette.destructive, by: max(0, min(1, (celsius - 20) / 20)))
         }
     }
 
     private func cloudColor(percent: Double) -> Color {
-        palette.dotRain.mix(with: palette.dotCloudy, by: max(0, min(1, percent / 100.0)))
+        palette.dotRain.compatMix(with: palette.dotCloudy, by: max(0, min(1, percent / 100.0)))
     }
 
     private func precipitationColor(percent: Double) -> Color {
-        Color.white.mix(with: palette.dotDrizzle, by: max(0, min(1, percent / 100.0)))
+        Color.white.compatMix(with: palette.dotDrizzle, by: max(0, min(1, percent / 100.0)))
     }
 
     private func windColor(fraction: Double) -> Color {
-        Color.white.mix(with: saturatedPartlySunnyColor, by: max(0, min(1, fraction)))
+        Color.white.compatMix(with: saturatedPartlySunnyColor, by: max(0, min(1, fraction)))
     }
 
     private func uvColor(fraction: Double) -> Color {
-        Color.white.mix(with: palette.destructive, by: max(0, min(1, fraction)))
+        Color.white.compatMix(with: palette.destructive, by: max(0, min(1, fraction)))
     }
 
     private func humidityColor(fraction: Double) -> Color {
-        Color.white.mix(with: palette.dotDrizzle, by: max(0, min(1, fraction)))
+        Color.white.compatMix(with: palette.dotDrizzle, by: max(0, min(1, fraction)))
     }
 
     private func visibilityColor(fraction: Double) -> Color {
-        Color.white.mix(with: palette.dotRain, by: max(0, min(1, fraction)))
+        Color.white.compatMix(with: palette.dotRain, by: max(0, min(1, fraction)))
     }
 
     // MARK: - Gradient legend

@@ -141,19 +141,13 @@ extension ContentView {
         macMapExpandedCardBaseOffset = .zero
         Task {
             let location = CLLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
-            let mapItems: [MKMapItem]
-            if let request = MKReverseGeocodingRequest(location: location) {
-                mapItems = (try? await request.mapItems) ?? []
-            } else {
-                mapItems = []
-            }
-            let mapItem = mapItems.first
-            let address = mapItem?.addressRepresentations
-            let name = address?.cityName
-                ?? mapItem?.name
-                ?? address?.regionName
+            let placemark = try? await CLGeocoder().reverseGeocodeLocation(location).first
+            let name = placemark?.locality
+                ?? placemark?.subAdministrativeArea
+                ?? placemark?.administrativeArea
+                ?? placemark?.name
                 ?? String(format: "%.2f, %.2f", coordinate.latitude, coordinate.longitude)
-            let country = address?.regionName ?? ""
+            let country = placemark?.country ?? ""
             let city = City(name: name, country: country, latitude: coordinate.latitude, longitude: coordinate.longitude)
             guard let cityWeather = await weatherService.fetchWeatherForCity(city) else {
                 return

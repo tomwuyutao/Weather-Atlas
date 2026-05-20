@@ -49,7 +49,7 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
         let search = MKLocalSearch(request: request)
         do {
             let response = try await search.start()
-            return response.mapItems.first?.location.coordinate
+            return response.mapItems.first?.placemark.location?.coordinate
         } catch {
             return nil
         }

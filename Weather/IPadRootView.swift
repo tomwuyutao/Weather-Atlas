@@ -135,7 +135,6 @@ extension ContentView {
             iPadToolbarMoreMenu
         }
 
-        ToolbarSpacer(.fixed, placement: .topBarTrailing)
 
         if showingCityDetail {
             ToolbarItem(placement: .topBarTrailing) {
@@ -397,7 +396,7 @@ extension ContentView {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(role: .close) {
+                    Button {
                         withAnimation(.spring(response: 0.36, dampingFraction: 0.9)) {
                             showingCityDetail = false
                             iPadInspectorPresentedCityID = nil
