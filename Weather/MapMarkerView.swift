@@ -71,6 +71,14 @@ struct WeatherMarker: View {
     var showAsDot: Bool { displayMode == .dot }
     var showAsCard: Bool { displayMode == .card }
 
+    private var palette: ThemeColors {
+        colorScheme == .dark ? .dark : .light
+    }
+
+    private var saturatedPartlySunnyColor: Color {
+        palette.dotPartlyCloudy.compatMix(with: palette.filterSunny, by: 0.18)
+    }
+
     /// Whether the data required by the current overlay mode is available.
     /// When false the entire marker should be hidden.
     var hasOverlayData: Bool {
@@ -151,19 +159,19 @@ struct WeatherMarker: View {
         if overlayMode == "temperature" {
             let tempC = tempForColor
             if tempC <= 0 {
-                return Color(hex: 0xD3E3EC).compatMix(with: Color(hex: 0x6EACE8), by: max(0, min(1, (tempC + 20) / 20)))
+                return palette.dotRain.compatMix(with: palette.dotDrizzle, by: max(0, min(1, (tempC + 20) / 20)))
             } else if tempC <= 10 {
-                return Color(hex: 0x6EACE8).compatMix(with: Color(hex: 0xEEB368), by: max(0, min(1, tempC / 10)))
+                return palette.dotDrizzle.compatMix(with: palette.dotCloudy, by: max(0, min(1, tempC / 10)))
             } else if tempC <= 20 {
-                return Color(hex: 0xEEB368).compatMix(with: Color(hex: 0xFF8A65), by: max(0, min(1, (tempC - 10) / 10)))
+                return palette.dotCloudy.compatMix(with: saturatedPartlySunnyColor, by: max(0, min(1, (tempC - 10) / 10)))
             } else {
-                return Color(hex: 0xFF8A65).compatMix(with: Color(hex: 0xFB4368), by: max(0, min(1, (tempC - 20) / 20)))
+                return saturatedPartlySunnyColor.compatMix(with: palette.destructive, by: max(0, min(1, (tempC - 20) / 20)))
             }
         }
         if overlayMode == "cloudCover" {
             let cloudCoverVal: Double? = isNow ? cityWeather.currentCloudCover : forecast.cloudCover
             guard let cloudCoverVal else { return .gray }
-            return Color.white.compatMix(with: Color(hex: 0xD3E3EC), by: max(0, min(1, cloudCoverVal)))
+            return palette.dotRain.compatMix(with: palette.dotCloudy, by: max(0, min(1, cloudCoverVal)))
         }
         if overlayMode == "precipitation" {
             let chance: CGFloat
@@ -173,37 +181,28 @@ struct WeatherMarker: View {
                 guard let precipVal = forecast.precipitationChance else { return .gray }
                 chance = CGFloat(precipVal)
             }
-            return Color.white.compatMix(with: Color(hex: 0xBCCFDC), by: Double(chance))
+            return Color.white.compatMix(with: palette.dotDrizzle, by: Double(chance))
         }
         if overlayMode == "windSpeed" {
             let ws: Double? = isNow ? cityWeather.currentWindSpeed : forecast.windSpeed
             guard let ws else { return .gray }
-            return Color.white.compatMix(with: Color(hex: 0xEEB368), by: min(1.0, ws / 100.0))
+            return Color.white.compatMix(with: saturatedPartlySunnyColor, by: min(1.0, ws / 100.0))
         }
-        // UV index overlay: white (0) → red #FB4368 (11+)
         if overlayMode == "uvIndex" {
             let uvVal: Int? = isNow ? cityWeather.currentUVIndex : forecast.uvIndex
             guard let uvVal else { return .gray }
             let uv = min(1.0, Double(uvVal) / 11.0)
-            return Color(
-                red: 1.0 + uv * (Double(0xE8) / 255.0 - 1.0),
-                green: 1.0 + uv * (Double(0x79) / 255.0 - 1.0),
-                blue: 1.0 + uv * (Double(0x57) / 255.0 - 1.0)
-            )
+            return Color.white.compatMix(with: palette.destructive, by: uv)
         }
         if overlayMode == "humidity" {
             let hum: Double? = isNow ? cityWeather.currentHumidity : forecast.maxHumidity
             guard let hum else { return .gray }
-            return Color(
-                red: 1.0 + hum * (Double(0xBC) / 255.0 - 1.0),
-                green: 1.0 + hum * (Double(0xCF) / 255.0 - 1.0),
-                blue: 1.0 + hum * (Double(0xDC) / 255.0 - 1.0)
-            )
+            return Color.white.compatMix(with: palette.dotDrizzle, by: hum)
         }
         if overlayMode == "visibility" {
             let visVal: Double? = isNow ? cityWeather.currentVisibility : forecast.maxVisibility
             guard let visVal else { return .gray }
-            return Color.white.compatMix(with: Color(hex: 0xBCCFDC), by: min(1.0, visVal / 30.0))
+            return Color.white.compatMix(with: palette.dotRain, by: min(1.0, visVal / 30.0))
         }
         if baseIcon.contains("moon") {
             return AppTheme.shared.colors.moonIconColor

@@ -303,7 +303,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
         if overlayMode == "cloudCover" {
             let value = isNow ? cityWeather.currentCloudCover : forecast.cloudCover
-            return blendHex(from: 0xFFFFFF, to: 0xD3E3EC, amount: value ?? 0.5)
+            return blendHex(from: dotRainHex, to: dotCloudyHex, amount: value ?? 0.5)
         }
         if overlayMode == "precipitation" {
             let chance: Double
@@ -312,23 +312,23 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             } else {
                 chance = forecast.precipitationChance ?? 0.5
             }
-            return blendHex(from: 0xFFFFFF, to: 0xBCCFDC, amount: chance)
+            return blendHex(from: 0xFFFFFF, to: dotDrizzleHex, amount: chance)
         }
         if overlayMode == "windSpeed" {
             let windSpeed = (isNow ? cityWeather.currentWindSpeed : forecast.windSpeed) ?? 0
             let wind = min(1, windSpeed / 100)
-            return blendHex(from: 0xFFFFFF, to: 0xEEB368, amount: wind)
+            return blendHex(from: 0xFFFFFF, to: saturatedPartlySunnyHex, amount: wind)
         }
         if overlayMode == "uvIndex" {
             let uv = min(1, Double((isNow ? cityWeather.currentUVIndex : forecast.uvIndex) ?? 0) / 11)
-            return blendHex(from: 0xFFFFFF, to: 0xFF8A65, amount: uv)
+            return blendHex(from: 0xFFFFFF, to: destructiveHex, amount: uv)
         }
         if overlayMode == "humidity" {
-            return blendHex(from: 0xFFFFFF, to: 0xBCCFDC, amount: (isNow ? cityWeather.currentHumidity : forecast.maxHumidity) ?? 0.5)
+            return blendHex(from: 0xFFFFFF, to: dotDrizzleHex, amount: (isNow ? cityWeather.currentHumidity : forecast.maxHumidity) ?? 0.5)
         }
         if overlayMode == "visibility" {
             let visibility = min(1, ((isNow ? cityWeather.currentVisibility : forecast.maxVisibility) ?? 15) / 30)
-            return blendHex(from: 0xFFFFFF, to: 0xBCCFDC, amount: visibility)
+            return blendHex(from: 0xFFFFFF, to: dotRainHex, amount: visibility)
         }
         let condition = isNow ? cityWeather.condition : forecast.condition
         return color(for: condition, icon: isNow ? cityWeather.weatherIcon : forecast.weatherIcon)
@@ -351,18 +351,47 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
     private func temperatureColor(_ tempC: Double) -> String {
         if tempC <= 0 {
-            return blendHex(from: 0xD3E3EC, to: 0x6EACE8, amount: max(0, min(1, (tempC + 20) / 20)))
+            return blendHex(from: dotRainHex, to: dotDrizzleHex, amount: max(0, min(1, (tempC + 20) / 20)))
         }
         if tempC <= 10 {
-            return blendHex(from: 0x6EACE8, to: 0xEEB368, amount: max(0, min(1, tempC / 10)))
+            return blendHex(from: dotDrizzleHex, to: dotCloudyHex, amount: max(0, min(1, tempC / 10)))
         }
         if tempC <= 20 {
-            return blendHex(from: 0xEEB368, to: 0xFF8A65, amount: max(0, min(1, (tempC - 10) / 10)))
+            return blendHex(from: dotCloudyHex, to: saturatedPartlySunnyHex, amount: max(0, min(1, (tempC - 10) / 10)))
         }
-        return blendHex(from: 0xFF8A65, to: 0xFB4368, amount: max(0, min(1, (tempC - 20) / 20)))
+        return blendHex(from: saturatedPartlySunnyHex, to: destructiveHex, amount: max(0, min(1, (tempC - 20) / 20)))
+    }
+
+    private var dotCloudyHex: Int {
+        0xD3E3EC
+    }
+
+    private var dotRainHex: Int {
+        colorScheme == .dark ? 0x4D70D4 : 0xBCCFDC
+    }
+
+    private var dotDrizzleHex: Int {
+        colorScheme == .dark ? 0x65ABE3 : 0x6EACE8
+    }
+
+    private var dotPartlyCloudyHex: Int {
+        colorScheme == .dark ? 0xF4DC85 : 0xEEB368
+    }
+
+    private var destructiveHex: Int {
+        0xC94949
+    }
+
+    private var saturatedPartlySunnyHex: Int {
+        blendInt(from: dotPartlyCloudyHex, to: 0xFF8A65, amount: 0.18)
     }
 
     private func blendHex(from: Int, to: Int, amount: Double) -> String {
+        let color = blendInt(from: from, to: to, amount: amount)
+        return String(format: "#%02X%02X%02X", (color >> 16) & 0xFF, (color >> 8) & 0xFF, color & 0xFF)
+    }
+
+    private func blendInt(from: Int, to: Int, amount: Double) -> Int {
         let t = max(0, min(1, amount))
         let r1 = Double((from >> 16) & 0xFF)
         let g1 = Double((from >> 8) & 0xFF)
@@ -373,7 +402,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         let r = Int(r1 + (r2 - r1) * t)
         let g = Int(g1 + (g2 - g1) * t)
         let b = Int(b1 + (b2 - b1) * t)
-        return String(format: "#%02X%02X%02X", r, g, b)
+        return (r << 16) | (g << 8) | b
     }
 
     private static let html = """
