@@ -181,7 +181,16 @@ struct SettingsView: View {
 
                 Picker(selection: Binding(get: { appLanguage }, set: { appLanguage = $0 })) {
                     Text("English").tag("en")
-                    Text("中文").tag("zh-Hans")
+                    Text("Français").tag("fr")
+                    Text("Deutsch").tag("de")
+                    Text("Italiano").tag("it")
+                    Text("日本語").tag("ja")
+                    Text("한국어").tag("ko")
+                    Text("Português").tag("pt")
+                    Text("Русский").tag("ru")
+                    Text("简体中文").tag("zh-Hans")
+                    Text("Español").tag("es")
+                    Text("繁體中文").tag("zh-Hant")
                 } label: {
                     settingsLabel(localizedString("Language", locale: locale), systemImage: "globe")
                 }
