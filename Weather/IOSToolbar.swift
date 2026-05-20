@@ -25,6 +25,14 @@ extension View {
             .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 0.6))
             .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
     }
+
+    func iPhoneFloatingToolbarCircle() -> some View {
+        self
+            .padding(3)
+            .background(AppTheme.shared.colors.glassFill, in: Circle())
+            .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 0.6))
+            .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
+    }
 }
 
 extension ContentView {
@@ -214,6 +222,84 @@ extension ContentView {
     }
 
     #if os(iOS)
+    private var shouldShowIPhonePreviewAddButton: Bool {
+        guard selectedTab == 1,
+              showingMapExpandedCard,
+              let previewCity,
+              !cityIsInSidebar(previewCity) else {
+            return false
+        }
+        return true
+    }
+
+    private func addPreviewCityToList(_ listID: CityListID) {
+        guard let city = previewCity else { return }
+        Task {
+            if listID == weatherService.activeListID {
+                await addCityToSidebar(city)
+            } else {
+                await weatherService.addCityToList(city.city, listID: listID)
+                PlatformFeedback.lightImpact()
+                if let addedCity = weatherService.weatherData(for: listID).first(where: {
+                    $0.city.name == city.city.name && $0.city.country == city.city.country
+                }) {
+                    tappedCity = addedCity
+                }
+            }
+
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                previewCity = nil
+                showingMapExpandedCard = false
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func iPhoneSearchOrAddButton(iconSize: CGFloat, frameSize: CGFloat) -> some View {
+        if shouldShowIPhonePreviewAddButton {
+            let lists = sidebarLists
+            if lists.count > 1 {
+                Menu {
+                    ForEach(lists) { listID in
+                        Button(listID.localizedDisplayName(locale: locale)) {
+                            addPreviewCityToList(listID)
+                        }
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: iconSize, weight: .regular))
+                        .foregroundStyle(.primary)
+                        .frame(width: frameSize, height: frameSize)
+                }
+                .menuOrder(.fixed)
+            } else {
+                Button {
+                    if let listID = lists.first {
+                        addPreviewCityToList(listID)
+                    }
+                } label: {
+                    Image(systemName: "plus")
+                        .font(.system(size: iconSize, weight: .regular))
+                        .foregroundStyle(.primary)
+                        .frame(width: frameSize, height: frameSize)
+                }
+                .buttonStyle(.plain)
+                .tint(.primary)
+            }
+        } else {
+            Button {
+                activateInlineSearch()
+            } label: {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: iconSize, weight: .regular))
+                    .foregroundStyle(.primary)
+                    .frame(width: frameSize, height: frameSize)
+            }
+            .buttonStyle(.plain)
+            .tint(.primary)
+        }
+    }
+
     @ViewBuilder
     var iPhoneFloatingBottomToolbarFallback: some View {
         if #available(iOS 26.0, *) {
@@ -261,17 +347,13 @@ extension ContentView {
 
                 Spacer(minLength: 12)
 
-                Button {
-                    activateInlineSearch()
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 25, weight: .regular))
-                        .foregroundStyle(.primary)
-                        .frame(width: 46, height: 46)
-                }
-                .buttonStyle(.plain)
-                .tint(.primary)
-                .iPhoneFloatingToolbarCapsule()
+                iPhoneSearchOrAddButton(iconSize: 25, frameSize: 46)
+                    .if(shouldShowIPhonePreviewAddButton) { view in
+                        view.iPhoneFloatingToolbarCircle()
+                    }
+                    .if(!shouldShowIPhonePreviewAddButton) { view in
+                        view.iPhoneFloatingToolbarCapsule()
+                    }
             }
             .frame(maxWidth: .infinity)
         }
@@ -314,14 +396,7 @@ extension ContentView {
 
             Spacer()
 
-            Button {
-                activateInlineSearch()
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .foregroundStyle(.primary)
-                    .foregroundColor(.primary)
-            }
-            .tint(.primary)
+            iPhoneSearchOrAddButton(iconSize: 22, frameSize: 44)
         }
     }
     #endif
