@@ -99,7 +99,7 @@ extension ContentView {
         }
 #endif
 
-        return AnyView(HStack(alignment: .top, spacing: 16) {
+        return AnyView(HStack(alignment: .bottom, spacing: 16) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
                         .font(.system(size: 38, weight: .semibold, design: .default))
@@ -121,7 +121,7 @@ extension ContentView {
                             .padding(.top, 5)
                     }
                 }
-                .frame(minHeight: 80, alignment: .topLeading)
+                .frame(maxHeight: .infinity, alignment: .bottomLeading)
                 .animation(.smooth(duration: 0.4), value: mapOverlayMode)
 
                 Spacer(minLength: 8)
@@ -156,12 +156,12 @@ extension ContentView {
                     .frame(height: 30, alignment: .bottom)
                     .offset(y: -1)
                 }
-                .frame(minHeight: 80, alignment: .topTrailing)
+                .frame(maxHeight: .infinity, alignment: .topTrailing)
         }
         .padding(.horizontal, 22)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity)
-        .frame(height: 128)
+        .frame(height: iOSFloatingMapCardHeight)
         .themedGlass(in: .rect(cornerRadius: 24))
         .contentShape(RoundedRectangle(cornerRadius: 24))
         .onTapGesture {
@@ -180,6 +180,29 @@ extension ContentView {
             showingCityDetail = true
             #endif
         })
+    }
+
+    private var iOSFloatingMapCardHeight: CGFloat {
+        #if os(iOS)
+        if dynamicTypeSize.isAccessibilitySize {
+            return 178
+        }
+
+        switch dynamicTypeSize {
+        case .xSmall, .small, .medium, .large:
+            return 128
+        case .xLarge:
+            return 138
+        case .xxLarge:
+            return 150
+        case .xxxLarge:
+            return 162
+        default:
+            return 178
+        }
+        #else
+        return 128
+        #endif
     }
 
     #if os(macOS) || os(iOS)

@@ -28,7 +28,7 @@ extension View {
 
     func iPhoneFloatingToolbarCircle() -> some View {
         self
-            .padding(3)
+            .frame(width: 52, height: 52)
             .background(AppTheme.shared.colors.glassFill, in: Circle())
             .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 0.6))
             .shadow(color: .black.opacity(0.12), radius: 12, y: 5)

@@ -87,6 +87,7 @@ struct ContentView: View {
     @State var visibleListIDs: Set<String> = []
     @Environment(\.locale) var locale
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.dynamicTypeSize) var dynamicTypeSize
     #if os(iOS)
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     #endif
