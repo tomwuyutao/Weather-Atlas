@@ -124,13 +124,7 @@ struct SettingsView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "checkmark")
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(theme.colors.accent)
+                    settingsDoneButton
                 }
             }
             #endif
@@ -141,6 +135,39 @@ struct SettingsView: View {
         .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
         #endif
     }
+
+    #if os(iOS)
+    @ViewBuilder
+    private var settingsDoneButton: some View {
+        Button {
+            dismiss()
+        } label: {
+            Image(systemName: "checkmark")
+                .font(.system(size: 18, weight: .semibold))
+                .if(!isIOS26OrLater) { view in
+                    view
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .background(theme.colors.accent, in: Circle())
+                        .contentShape(Circle())
+                }
+        }
+        .if(isIOS26OrLater) { view in
+            view
+                .buttonStyle(.borderedProminent)
+                .tint(theme.colors.accent)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var isIOS26OrLater: Bool {
+        if #available(iOS 26.0, *) {
+            true
+        } else {
+            false
+        }
+    }
+    #endif
 
     #if os(macOS)
     private var nativeMacSettingsBody: some View {

@@ -26,19 +26,51 @@ extension ContentView {
     #if os(iOS)
     @ToolbarContentBuilder
     private func iPhoneDetailBottomToolbar(for city: CityWeather, dismissAction: @escaping () -> Void) -> some ToolbarContent {
-        ToolbarItemGroup(placement: .bottomBar) {
-            Button {
-                dismissAction()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .foregroundStyle(.primary)
-                    .foregroundColor(.primary)
+        if #available(iOS 26.0, *) {
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button {
+                    dismissAction()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
+                }
+                .tint(.primary)
+
+                Spacer()
+
+                detailToolbarTrailingAction(for: city)
             }
-            .tint(.primary)
+        }
+    }
 
-            Spacer()
+    @ViewBuilder
+    private func iPhoneDetailBottomToolbarFallback(for city: CityWeather, dismissAction: @escaping () -> Void) -> some View {
+        if #available(iOS 26.0, *) {
+            EmptyView()
+        } else {
+            HStack(spacing: 0) {
+                Button {
+                    dismissAction()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 21, weight: .regular))
+                        .foregroundStyle(.primary)
+                        .frame(width: 46, height: 46)
+                }
+                .buttonStyle(.plain)
+                .tint(.primary)
+                .iPhoneFloatingToolbarCapsule()
 
-            detailToolbarTrailingAction(for: city)
+                Spacer(minLength: 12)
+
+                detailToolbarTrailingAction(for: city)
+                    .font(.system(size: 21, weight: .regular))
+                    .frame(width: 46, height: 46)
+                    .iPhoneFloatingToolbarCapsule()
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, -2)
         }
     }
     #endif
@@ -66,20 +98,26 @@ extension ContentView {
     }
 
     func expandedCardDetailDestination(for city: CityWeather, dismissAction: @escaping () -> Void) -> some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            mapExpandedCard(
-                for: city,
-                forceMacStyle: true,
-                forceIPhoneDetailSizing: detailViewUsesIPhoneSizing,
-                plainBackground: true
-            )
-                .padding(.horizontal, detailViewHorizontalPadding)
-                .padding(.top, detailViewTopPadding)
-                .padding(.bottom, detailViewBottomPadding)
-                .frame(maxWidth: detailViewMaxWidth)
-                .frame(maxWidth: .infinity)
+        ZStack(alignment: .bottom) {
+            ScrollView(.vertical, showsIndicators: false) {
+                mapExpandedCard(
+                    for: city,
+                    forceMacStyle: true,
+                    forceIPhoneDetailSizing: detailViewUsesIPhoneSizing,
+                    plainBackground: true
+                )
+                    .padding(.horizontal, detailViewHorizontalPadding)
+                    .padding(.top, detailViewTopPadding)
+                    .padding(.bottom, detailViewBottomPadding)
+                    .frame(maxWidth: detailViewMaxWidth)
+                    .frame(maxWidth: .infinity)
+            }
+            .scrollContentBackground(.hidden)
+
+            #if os(iOS)
+            iPhoneDetailBottomToolbarFallback(for: city, dismissAction: dismissAction)
+            #endif
         }
-        .scrollContentBackground(.hidden)
         .background(theme.colors.background.ignoresSafeArea())
         .navigationTitle("")
         #if os(iOS)

@@ -7,6 +7,26 @@
 
 import SwiftUI
 
+extension View {
+    @ViewBuilder
+    func iPhoneNativeBottomToolbarBackground() -> some View {
+        if #available(iOS 26.0, *) {
+            self.toolbarBackground(.visible, for: .bottomBar)
+        } else {
+            self
+        }
+    }
+
+    func iPhoneFloatingToolbarCapsule() -> some View {
+        self
+            .padding(.vertical, 3)
+            .padding(.horizontal, 4)
+            .background(AppTheme.shared.colors.glassFill, in: Capsule())
+            .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 0.6))
+            .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
+    }
+}
+
 extension ContentView {
 
     /// Whether the map is in a special full-screen mode.
@@ -194,6 +214,69 @@ extension ContentView {
     }
 
     #if os(iOS)
+    @ViewBuilder
+    var iPhoneFloatingBottomToolbarFallback: some View {
+        if #available(iOS 26.0, *) {
+            EmptyView()
+        } else {
+            HStack(spacing: 0) {
+                Button {
+                    dismissIPhoneRoute(.map)
+                } label: {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 21, weight: .regular))
+                        .foregroundStyle(.primary)
+                        .frame(width: 46, height: 46)
+                }
+                .buttonStyle(.plain)
+                .tint(.primary)
+                .iPhoneFloatingToolbarCapsule()
+
+                Spacer(minLength: 12)
+
+                HStack(spacing: 0) {
+                    Button {
+                        recenterOnAllCities = false
+                        DispatchQueue.main.async {
+                            recenterOnAllCities = true
+                        }
+                    } label: {
+                        Image(systemName: "dot.squareshape.split.2x2")
+                            .font(.system(size: 21, weight: .regular))
+                            .foregroundStyle(.primary)
+                            .frame(width: 46, height: 46)
+                    }
+                    .buttonStyle(.plain)
+                    .tint(.primary)
+
+                    mapOverlayMenu
+                        .font(.system(size: 21, weight: .regular))
+                        .frame(width: 46, height: 46)
+
+                    iOSNativeMenu
+                        .font(.system(size: 21, weight: .regular))
+                        .frame(width: 46, height: 46)
+                }
+                .iPhoneFloatingToolbarCapsule()
+
+                Spacer(minLength: 12)
+
+                Button {
+                    activateInlineSearch()
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 25, weight: .regular))
+                        .foregroundStyle(.primary)
+                        .frame(width: 46, height: 46)
+                }
+                .buttonStyle(.plain)
+                .tint(.primary)
+                .iPhoneFloatingToolbarCapsule()
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
     @ToolbarContentBuilder
     var iPhoneNativeBottomToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .bottomBar) {

@@ -13,6 +13,22 @@ extension ContentView {
         AnyView(iOSFloatingMapCardOverlay)
     }
 
+    private var iOSFloatingMapCardHorizontalPadding: CGFloat {
+        if #available(iOS 26.0, *) {
+            return 26
+        } else {
+            return 18
+        }
+    }
+
+    private var iOSFloatingMapCardBottomPadding: CGFloat {
+        if #available(iOS 26.0, *) {
+            return 14
+        } else {
+            return 70
+        }
+    }
+
     private var iOSFloatingMapCardOverlay: some View {
         Group {
             if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard {
@@ -36,9 +52,9 @@ extension ContentView {
             if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
                 mapExpandedCard(for: city, hideCityName: shouldHideInlineMapCardCityName)
                     .id(city.city.id)
-                    .padding(.horizontal, 26)
+                    .padding(.horizontal, iOSFloatingMapCardHorizontalPadding)
                     .padding(.vertical, shouldAddInlineMapCardVerticalPadding ? 8 : 0)
-                    .padding(.bottom, 14)
+                    .padding(.bottom, iOSFloatingMapCardBottomPadding)
                     .transition(
                         .asymmetric(
                             insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),

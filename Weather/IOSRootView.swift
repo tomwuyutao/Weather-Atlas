@@ -263,9 +263,16 @@ extension ContentView {
                 iOSMainOverlays
             }
 
+            if !showingInlineSearch && !showingMapSidebar {
+                iPhoneFloatingBottomToolbarFallback
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, -2)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
         }
         .toolbar {
-            if !showingInlineSearch && !showingMapSidebar {
+            if #available(iOS 26.0, *), !showingInlineSearch && !showingMapSidebar {
                 iPhoneNativeBottomToolbar
             }
         }
@@ -274,54 +281,63 @@ extension ContentView {
 
     #if os(iOS)
     var iPhoneNativeListManager: some View {
-        macListManagerSidebar
-            .scrollContentBackground(.hidden)
-            .background(theme.colors.mapOcean)
-            .tint(.primary)
+        ZStack(alignment: .bottom) {
+            macListManagerSidebar
+                .scrollContentBackground(.hidden)
+                .background(theme.colors.mapOcean)
+                .tint(.primary)
+
+            iPhoneListManagerFloatingToolbarFallback
+                .padding(.horizontal, 16)
+                .padding(.bottom, -2)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .toolbar {
-                ToolbarItemGroup(placement: .bottomBar) {
-                    Button {
-                        withAnimation(.smooth(duration: 0.24)) {
-                            pushIPhoneRoute(.map)
-                        }
-                    } label: {
-                        Image(systemName: "map")
-                            .foregroundStyle(.primary)
-                            .foregroundColor(.primary)
-                    }
-                    .tint(.primary)
-
-                    Spacer()
-
-                    HStack(spacing: 0) {
+                if #available(iOS 26.0, *) {
+                    ToolbarItemGroup(placement: .bottomBar) {
                         Button {
-                            sidebarShowingAddListAlert = true
-                        } label: {
-                            Image(systemName: "plus")
-                                .foregroundStyle(.primary)
-                                .foregroundColor(.primary)
-                                .frame(width: 44, height: 44)
-                        }
-                        .tint(.primary)
-
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                sidebarEditMode = sidebarEditMode.isEditing ? .inactive : .active
+                            withAnimation(.smooth(duration: 0.24)) {
+                                pushIPhoneRoute(.map)
                             }
                         } label: {
-                            Image(systemName: sidebarEditMode.isEditing ? "checkmark" : "pencil")
+                            Image(systemName: "map")
                                 .foregroundStyle(.primary)
                                 .foregroundColor(.primary)
-                                .frame(width: 44, height: 44)
                         }
                         .tint(.primary)
+
+                        Spacer()
+
+                        HStack(spacing: 0) {
+                            Button {
+                                sidebarShowingAddListAlert = true
+                            } label: {
+                                Image(systemName: "plus")
+                                    .foregroundStyle(.primary)
+                                    .foregroundColor(.primary)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .tint(.primary)
+
+                            Button {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    sidebarEditMode = sidebarEditMode.isEditing ? .inactive : .active
+                                }
+                            } label: {
+                                Image(systemName: sidebarEditMode.isEditing ? "checkmark" : "pencil")
+                                    .foregroundStyle(.primary)
+                                    .foregroundColor(.primary)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .tint(.primary)
+                        }
                     }
                 }
             }
-            .toolbarBackground(.visible, for: .bottomBar)
+            .iPhoneNativeBottomToolbarBackground()
             .alert(localizedString("New List", locale: locale), isPresented: $sidebarShowingAddListAlert) {
                 TextField(localizedString("Name", locale: locale), text: $sidebarNewListName)
                 Button(localizedString("Cancel", locale: locale), role: .cancel) {
@@ -331,6 +347,57 @@ extension ContentView {
                     commitListManagerNewList()
                 }
             }
+    }
+    @ViewBuilder
+    var iPhoneListManagerFloatingToolbarFallback: some View {
+        if #available(iOS 26.0, *) {
+            EmptyView()
+        } else {
+            HStack(spacing: 0) {
+                Button {
+                    withAnimation(.smooth(duration: 0.24)) {
+                        pushIPhoneRoute(.map)
+                    }
+                } label: {
+                    Image(systemName: "map")
+                        .font(.system(size: 21, weight: .regular))
+                        .foregroundStyle(.primary)
+                        .frame(width: 46, height: 46)
+                }
+                .buttonStyle(.plain)
+                .tint(.primary)
+                .iPhoneFloatingToolbarCapsule()
+
+                Spacer(minLength: 12)
+
+                HStack(spacing: 0) {
+                    Button {
+                        sidebarShowingAddListAlert = true
+                    } label: {
+                        Image(systemName: "plus")
+                            .font(.system(size: 21, weight: .regular))
+                            .foregroundStyle(.primary)
+                            .frame(width: 46, height: 46)
+                    }
+                    .buttonStyle(.plain)
+                    .tint(.primary)
+
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            sidebarEditMode = sidebarEditMode.isEditing ? .inactive : .active
+                        }
+                    } label: {
+                        Image(systemName: sidebarEditMode.isEditing ? "checkmark" : "pencil")
+                            .font(.system(size: 21, weight: .regular))
+                            .foregroundStyle(.primary)
+                            .frame(width: 46, height: 46)
+                    }
+                    .buttonStyle(.plain)
+                    .tint(.primary)
+                }
+                .iPhoneFloatingToolbarCapsule()
+            }
+        }
     }
     #endif
 
