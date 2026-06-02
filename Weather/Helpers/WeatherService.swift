@@ -9,7 +9,6 @@ import Foundation
 import SwiftUI
 import WeatherKit
 import CoreLocation
-import MapKit
 
 /// Look up a localized string for a specific locale (respects SwiftUI environment locale).
 func localizedString(_ key: String.LocalizationValue, locale: Locale) -> String {
@@ -309,10 +308,8 @@ class WeatherService {
     var lastFetchDate: Date?
     var activeListID: CityListID = .europe
     private var activeFetchToken = UUID()
-    
-    var hasSavedCities: Bool {
-        UserDefaults.standard.data(forKey: citiesListKey) != nil
-    }
+    private let weatherCacheDuration: TimeInterval = 2 * 60 * 60
+    private var listFetchDates: [String: Date] = [:]
     
     private let weatherService = WeatherKit.WeatherService.shared
     
@@ -331,7 +328,14 @@ class WeatherService {
         }
     }
     
-    func fetchWeatherForAllCities() async {
+    func fetchWeatherForAllCities(forceRefresh: Bool = false) async {
+        generateForecastDays()
+        if !forceRefresh,
+           !cityWeatherData.isEmpty,
+           isWeatherDataFresh(for: activeListID) {
+            return
+        }
+
         let fetchToken = UUID()
         activeFetchToken = fetchToken
         let targetListID = activeListID
@@ -342,9 +346,6 @@ class WeatherService {
                 isLoading = false
             }
         }
-        
-        // Generate 10 days of forecast data
-        generateForecastDays()
         
         // Load the saved cities list, or use defaults for active list
         let citiesToFetch = loadSavedCities(for: targetListID) ?? targetListID.defaultCities
@@ -378,13 +379,13 @@ class WeatherService {
         }
         self.cityWeatherData = weatherData
         
-        // Cache the fetched data
-        cacheData(weatherData)
+        // Mark this list as freshly fetched.
+        cacheData(weatherData, updateFetchDate: true)
     }
     
     func refreshWeather() async {
         clearCache()
-        await fetchWeatherForAllCities()
+        await fetchWeatherForAllCities(forceRefresh: true)
     }
     
     func resetAllLists() async {
@@ -397,6 +398,8 @@ class WeatherService {
             UserDefaults.standard.removeObject(forKey: cacheKey)
             UserDefaults.standard.removeObject(forKey: timestampKey)
         }
+        listFetchDates.removeAll()
+        otherListData.removeAll()
         // Restore built-in lists and clear user-created lists
         CityListID.restoreBuiltInLists()
         CityListID.saveUserLists([])
@@ -410,10 +413,10 @@ class WeatherService {
     func switchList(to listID: CityListID) async {
         guard listID != activeListID else { return }
         activeFetchToken = UUID()
-        cityWeatherData = []
         activeListID = listID
         UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
-        lastFetchDate = nil
+        cityWeatherData = otherListData[listID.rawValue] ?? []
+        lastFetchDate = fetchDate(for: listID)
         await fetchWeatherForAllCities()
     }
     
@@ -449,6 +452,8 @@ class WeatherService {
         UserDefaults.standard.removeObject(forKey: "savedCitiesList_\(listToDelete.rawValue)")
         UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listToDelete.rawValue)")
         UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listToDelete.rawValue)")
+        otherListData[listToDelete.rawValue] = nil
+        listFetchDates[listToDelete.rawValue] = nil
         // Remove from user lists or mark built-in as deleted
         if CityListID.builtInLists.contains(where: { $0.rawValue == listToDelete.rawValue }) {
             CityListID.deleteBuiltInList(listToDelete)
@@ -468,10 +473,10 @@ class WeatherService {
             lastFetchDate = nil
         } else {
             let fallback = remaining.first ?? .europe
-            cityWeatherData = []
             activeListID = fallback
             UserDefaults.standard.set(fallback.rawValue, forKey: Self.activeListKey)
-            lastFetchDate = nil
+            cityWeatherData = otherListData[fallback.rawValue] ?? []
+            lastFetchDate = fetchDate(for: fallback)
             await fetchWeatherForAllCities()
         }
     }
@@ -508,6 +513,7 @@ class WeatherService {
         UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
         UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listID.rawValue)")
         otherListData[listID.rawValue] = nil
+        listFetchDates[listID.rawValue] = nil
 
         if CityListID.builtInLists.contains(where: { $0.rawValue == listID.rawValue }) {
             CityListID.deleteBuiltInList(listID)
@@ -542,28 +548,35 @@ class WeatherService {
     
     // MARK: - Caching Methods
     
-    private func cacheData(_ data: [CityWeather]) {
+    private func cacheData(_ data: [CityWeather], updateFetchDate: Bool = false) {
         UserDefaults.standard.removeObject(forKey: cacheKey)
-        UserDefaults.standard.set(Date(), forKey: cacheTimestampKey)
-        lastFetchDate = Date()
+        guard updateFetchDate else { return }
+
+        let fetchDate = Date()
+        listFetchDates[activeListID.rawValue] = fetchDate
+        UserDefaults.standard.set(fetchDate, forKey: cacheTimestampKey)
+        lastFetchDate = fetchDate
     }
 
-    private func cacheData(_ data: [CityWeather], for listID: CityListID) {
+    private func cacheData(_ data: [CityWeather], for listID: CityListID, updateFetchDate: Bool = false) {
         UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
-        UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listID.rawValue)")
+        guard updateFetchDate else { return }
+
+        let fetchDate = Date()
+        listFetchDates[listID.rawValue] = fetchDate
+        UserDefaults.standard.set(fetchDate, forKey: "weatherCacheTimestamp_\(listID.rawValue)")
+        if listID.rawValue == activeListID.rawValue {
+            lastFetchDate = fetchDate
+        }
     }
     
     private func clearCache() {
         UserDefaults.standard.removeObject(forKey: cacheKey)
         UserDefaults.standard.removeObject(forKey: cacheTimestampKey)
+        listFetchDates[activeListID.rawValue] = nil
         lastFetchDate = nil
     }
     
-    /// Weather is intentionally kept in memory; UserDefaults stores only city lists.
-    func loadCachedData(for listID: CityListID) -> [CityWeather]? {
-        nil
-    }
-
     func weatherData(for listID: CityListID) -> [CityWeather] {
         if listID.rawValue == activeListID.rawValue {
             return cityWeatherData
@@ -576,8 +589,27 @@ class WeatherService {
         UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp")
         for listID in CityListID.allLists {
             UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
-            UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listID.rawValue)")
         }
+    }
+
+    private func fetchDate(for listID: CityListID) -> Date? {
+        if let fetchDate = listFetchDates[listID.rawValue] {
+            return fetchDate
+        }
+
+        let key = "weatherCacheTimestamp_\(listID.rawValue)"
+        guard let fetchDate = UserDefaults.standard.object(forKey: key) as? Date else {
+            return nil
+        }
+        listFetchDates[listID.rawValue] = fetchDate
+        return fetchDate
+    }
+
+    private func isWeatherDataFresh(for listID: CityListID, now: Date = Date()) -> Bool {
+        guard let fetchDate = fetchDate(for: listID) else {
+            return false
+        }
+        return now.timeIntervalSince(fetchDate) < weatherCacheDuration
     }
 
     private func saveCities(_ cities: [City], for listID: CityListID) {
@@ -594,7 +626,8 @@ class WeatherService {
     
     /// Fetch weather for a specific list without switching active list, storing in otherListData
     func fetchWeatherForList(_ listID: CityListID) async {
-        if otherListData[listID.rawValue]?.isEmpty == false {
+        if otherListData[listID.rawValue]?.isEmpty == false,
+           isWeatherDataFresh(for: listID) {
             return
         }
         // Load cities for this list
@@ -634,6 +667,7 @@ class WeatherService {
             }
         }
         otherListData[listID.rawValue] = weatherData
+        cacheData(weatherData, for: listID, updateFetchDate: true)
     }
     
     // MARK: - Cities List Persistence
@@ -664,10 +698,6 @@ class WeatherService {
     }
     
     /// Load the saved cities list (returns nil if no list was saved)
-    private func loadSavedCities() -> [City]? {
-        loadSavedCities(for: activeListID)
-    }
-
     private func loadSavedCities(for listID: CityListID) -> [City]? {
         let key = "savedCitiesList_\(listID.rawValue)"
         guard let data = UserDefaults.standard.data(forKey: key) else {
@@ -870,7 +900,7 @@ class WeatherService {
             removeCity(cityWeather)
             return
         }
-        var listData = otherListData[listID.rawValue] ?? loadCachedData(for: listID) ?? []
+        var listData = otherListData[listID.rawValue] ?? []
         listData.removeAll { $0.id == cityWeather.id }
         otherListData[listID.rawValue] = listData
         saveCities(listData.map(\.city), for: listID)
@@ -889,7 +919,7 @@ class WeatherService {
             renameCity(cityWeather, to: newName)
             return
         }
-        var listData = otherListData[listID.rawValue] ?? loadCachedData(for: listID) ?? []
+        var listData = otherListData[listID.rawValue] ?? []
         guard let index = listData.firstIndex(where: { $0.id == cityWeather.id }) else { return }
         listData[index].city.name = newName
         otherListData[listID.rawValue] = listData
@@ -981,7 +1011,7 @@ class WeatherService {
             moveCity(from: source, to: destination)
             return
         }
-        var listData = otherListData[listID.rawValue] ?? loadCachedData(for: listID) ?? []
+        var listData = otherListData[listID.rawValue] ?? []
         listData.move(fromOffsets: source, toOffset: destination)
         otherListData[listID.rawValue] = listData
         saveCities(listData.map(\.city), for: listID)
@@ -1445,314 +1475,3 @@ struct CachedCity: Codable {
     }
 }
 
-struct CachedCityWeather: Codable {
-    let cityId: UUID
-    let cityName: String
-    let cityCountry: String
-    let cityLatitude: Double
-    let cityLongitude: Double
-    let condition: String
-    let temperature: Double
-    let symbolName: String
-    let dailyForecasts: [CachedDailyForecast]
-    let timeZoneIdentifier: String?
-    let currentFeelsLike: Double?
-    let currentCloudCover: Double?
-    let currentWindSpeed: Double?
-    let currentUVIndex: Int?
-    let currentHumidity: Double?
-    let currentVisibility: Double?
-    
-    init(from cityWeather: CityWeather) {
-        self.cityId = cityWeather.city.id
-        self.cityName = cityWeather.city.name
-        self.cityCountry = cityWeather.city.country
-        self.cityLatitude = cityWeather.city.latitude
-        self.cityLongitude = cityWeather.city.longitude
-        self.condition = cityWeather.condition.displayName
-        self.temperature = cityWeather.temperature
-        self.symbolName = cityWeather.symbolName
-        self.dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
-        self.timeZoneIdentifier = cityWeather.timeZone.identifier
-        self.currentFeelsLike = cityWeather.currentFeelsLike
-        self.currentCloudCover = cityWeather.currentCloudCover
-        self.currentWindSpeed = cityWeather.currentWindSpeed
-        self.currentUVIndex = cityWeather.currentUVIndex
-        self.currentHumidity = cityWeather.currentHumidity
-        self.currentVisibility = cityWeather.currentVisibility
-    }
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        cityId = try container.decode(UUID.self, forKey: .cityId)
-        cityName = try container.decode(String.self, forKey: .cityName)
-        cityCountry = try container.decodeIfPresent(String.self, forKey: .cityCountry) ?? ""
-        cityLatitude = try container.decode(Double.self, forKey: .cityLatitude)
-        cityLongitude = try container.decode(Double.self, forKey: .cityLongitude)
-        condition = try container.decode(String.self, forKey: .condition)
-        temperature = try container.decode(Double.self, forKey: .temperature)
-        symbolName = try container.decode(String.self, forKey: .symbolName)
-        dailyForecasts = try container.decode([CachedDailyForecast].self, forKey: .dailyForecasts)
-        timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
-        currentFeelsLike = try container.decodeIfPresent(Double.self, forKey: .currentFeelsLike)
-        currentCloudCover = try container.decodeIfPresent(Double.self, forKey: .currentCloudCover)
-        currentWindSpeed = try container.decodeIfPresent(Double.self, forKey: .currentWindSpeed)
-        currentUVIndex = try container.decodeIfPresent(Int.self, forKey: .currentUVIndex)
-        currentHumidity = try container.decodeIfPresent(Double.self, forKey: .currentHumidity)
-        currentVisibility = try container.decodeIfPresent(Double.self, forKey: .currentVisibility)
-    }
-    
-    func toCityWeather() -> CityWeather {
-        let city = City(id: cityId, name: cityName, country: cityCountry, latitude: cityLatitude, longitude: cityLongitude)
-        let appCondition = AppWeatherCondition.fromDisplayName(condition)
-        let forecasts = dailyForecasts.map { $0.toDailyForecast() }
-        let tz = timeZoneIdentifier.flatMap { TimeZone(identifier: $0) } ?? TimeZone.current
-        
-        return CityWeather(
-            city: city,
-            condition: appCondition,
-            temperature: temperature,
-            symbolName: symbolName,
-            dailyForecasts: forecasts,
-            timeZone: tz,
-            currentFeelsLike: currentFeelsLike,
-            currentCloudCover: currentCloudCover,
-            currentWindSpeed: currentWindSpeed,
-            currentUVIndex: currentUVIndex,
-            currentHumidity: currentHumidity,
-            currentVisibility: currentVisibility
-        )
-    }
-}
-struct CachedDailyForecast: Codable {
-    let dayOffset: Int
-    let dailyLow: Double
-    let dailyHigh: Double
-    let symbolName: String
-    let condition: String
-    let hourlyForecasts: [CachedHourlyForecast]
-    let cloudCover: Double?
-    let precipitationChance: Double?
-    let visibility: Double?
-    let feelsLikeLow: Double?
-    let feelsLikeHigh: Double?
-    let humidity: Double?
-    let windSpeed: Double?
-    let uvIndex: Int?
-    let maxHumidity: Double?
-    let maxVisibility: Double?
-    let sunrise: Date?
-    let sunset: Date?
-    
-    init(from forecast: DailyForecast) {
-        self.dayOffset = forecast.dayOffset
-        self.dailyLow = forecast.dailyLow
-        self.dailyHigh = forecast.dailyHigh
-        self.symbolName = forecast.symbolName
-        self.condition = forecast.condition.displayName
-        self.hourlyForecasts = forecast.hourlyForecasts.map { CachedHourlyForecast(from: $0) }
-        self.cloudCover = forecast.cloudCover
-        self.precipitationChance = forecast.precipitationChance
-        self.visibility = forecast.visibility
-        self.feelsLikeLow = forecast.feelsLikeLow
-        self.feelsLikeHigh = forecast.feelsLikeHigh
-        self.humidity = forecast.humidity
-        self.windSpeed = forecast.windSpeed
-        self.uvIndex = forecast.uvIndex
-        self.maxHumidity = forecast.maxHumidity
-        self.maxVisibility = forecast.maxVisibility
-        self.sunrise = forecast.sunrise
-        self.sunset = forecast.sunset
-    }
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        dayOffset = try container.decode(Int.self, forKey: .dayOffset)
-        // Migration: old cache used daytimeLow/daytimeHigh or single temperature
-        if let low = try container.decodeIfPresent(Double.self, forKey: .dailyLow),
-           let high = try container.decodeIfPresent(Double.self, forKey: .dailyHigh) {
-            dailyLow = low
-            dailyHigh = high
-        } else if let low = try container.decodeIfPresent(Double.self, forKey: .daytimeLow),
-                  let high = try container.decodeIfPresent(Double.self, forKey: .daytimeHigh) {
-            dailyLow = low
-            dailyHigh = high
-        } else {
-            print("⚠️ [WeatherCache] Daily temperature data missing for day \(try container.decode(Int.self, forKey: .dayOffset)). Cache entry may be corrupt — forcing refresh.")
-            // Decode from legacy single temperature if available, otherwise throw
-            if let temp = try container.decodeIfPresent(Double.self, forKey: .temperature) {
-                print("⚠️ [WeatherCache] Using legacy single temperature value \(temp) for low/high.")
-                dailyLow = temp
-                dailyHigh = temp
-            } else {
-                throw DecodingError.dataCorrupted(.init(codingPath: container.codingPath, debugDescription: "Missing daily temperature data — no dailyLow/dailyHigh, daytimeLow/daytimeHigh, or temperature found."))
-            }
-        }
-        symbolName = try container.decode(String.self, forKey: .symbolName)
-        condition = try container.decode(String.self, forKey: .condition)
-        hourlyForecasts = try container.decode([CachedHourlyForecast].self, forKey: .hourlyForecasts)
-        if let cc = try container.decodeIfPresent(Double.self, forKey: .cloudCover) {
-            cloudCover = cc
-        } else {
-            print("⚠️ [WeatherCache] Cloud cover data missing for day \(dayOffset). Setting to nil.")
-            cloudCover = nil
-        }
-        if let pc = try container.decodeIfPresent(Double.self, forKey: .precipitationChance) {
-            precipitationChance = pc
-        } else {
-            print("⚠️ [WeatherCache] Precipitation chance data missing for day \(dayOffset). Setting to nil.")
-            precipitationChance = nil
-        }
-        visibility = try container.decodeIfPresent(Double.self, forKey: .visibility)
-        feelsLikeLow = try container.decodeIfPresent(Double.self, forKey: .feelsLikeLow)
-        feelsLikeHigh = try container.decodeIfPresent(Double.self, forKey: .feelsLikeHigh)
-        humidity = try container.decodeIfPresent(Double.self, forKey: .humidity)
-        windSpeed = try container.decodeIfPresent(Double.self, forKey: .windSpeed)
-        uvIndex = try container.decodeIfPresent(Int.self, forKey: .uvIndex)
-        maxHumidity = try container.decodeIfPresent(Double.self, forKey: .maxHumidity)
-        maxVisibility = try container.decodeIfPresent(Double.self, forKey: .maxVisibility)
-        sunrise = try container.decodeIfPresent(Date.self, forKey: .sunrise)
-        sunset = try container.decodeIfPresent(Date.self, forKey: .sunset)
-    }
-    
-    // Keep the old keys for migration during decoding
-    private enum CodingKeys: String, CodingKey {
-        case dayOffset, dailyLow, dailyHigh, daytimeLow, daytimeHigh, symbolName, condition, hourlyForecasts, cloudCover, precipitationChance, temperature, visibility, feelsLikeLow, feelsLikeHigh, humidity, windSpeed, uvIndex, maxHumidity, maxVisibility, sunrise, sunset
-    }
-    
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(dayOffset, forKey: .dayOffset)
-        try container.encode(dailyLow, forKey: .dailyLow)
-        try container.encode(dailyHigh, forKey: .dailyHigh)
-        try container.encode(symbolName, forKey: .symbolName)
-        try container.encode(condition, forKey: .condition)
-        try container.encode(hourlyForecasts, forKey: .hourlyForecasts)
-        try container.encodeIfPresent(cloudCover, forKey: .cloudCover)
-        try container.encodeIfPresent(precipitationChance, forKey: .precipitationChance)
-        try container.encodeIfPresent(visibility, forKey: .visibility)
-        try container.encodeIfPresent(feelsLikeLow, forKey: .feelsLikeLow)
-        try container.encodeIfPresent(feelsLikeHigh, forKey: .feelsLikeHigh)
-        try container.encodeIfPresent(humidity, forKey: .humidity)
-        try container.encodeIfPresent(windSpeed, forKey: .windSpeed)
-        try container.encodeIfPresent(uvIndex, forKey: .uvIndex)
-        try container.encodeIfPresent(maxHumidity, forKey: .maxHumidity)
-        try container.encodeIfPresent(maxVisibility, forKey: .maxVisibility)
-        try container.encodeIfPresent(sunrise, forKey: .sunrise)
-        try container.encodeIfPresent(sunset, forKey: .sunset)
-    }
-    
-    func toDailyForecast() -> DailyForecast {
-        let appCondition = AppWeatherCondition.fromDisplayName(condition)
-        let forecasts = hourlyForecasts.map { $0.toHourlyForecast() }
-        
-        return DailyForecast(
-            dayOffset: dayOffset,
-            dailyLow: dailyLow,
-            dailyHigh: dailyHigh,
-            symbolName: symbolName,
-            condition: appCondition,
-            hourlyForecasts: forecasts,
-            cloudCover: cloudCover,
-            precipitationChance: precipitationChance,
-            visibility: visibility,
-            feelsLikeLow: feelsLikeLow,
-            feelsLikeHigh: feelsLikeHigh,
-            humidity: humidity,
-            windSpeed: windSpeed,
-            uvIndex: uvIndex,
-            maxHumidity: maxHumidity,
-            maxVisibility: maxVisibility,
-            sunrise: sunrise,
-            sunset: sunset
-        )
-    }
-}
-
-struct CachedHourlyForecast: Codable {
-    let hour: Int
-    let temperature: Double
-    let apparentTemperature: Double?
-    let symbolName: String
-    let condition: String
-    let precipitationChance: Double?
-    let cloudCover: Double?
-    let windSpeed: Double?
-    let uvIndex: Int?
-    let humidity: Double?
-    let visibility: Double?
-    
-    init(from forecast: HourlyForecast) {
-        self.hour = forecast.hour
-        self.temperature = forecast.temperature
-        self.apparentTemperature = forecast.apparentTemperature
-        self.symbolName = forecast.symbolName
-        self.condition = forecast.condition.displayName
-        self.precipitationChance = forecast.precipitationChance
-        self.cloudCover = forecast.cloudCover
-        self.windSpeed = forecast.windSpeed
-        self.uvIndex = forecast.uvIndex
-        self.humidity = forecast.humidity
-        self.visibility = forecast.visibility
-    }
-    
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        hour = try container.decode(Int.self, forKey: .hour)
-        temperature = try container.decode(Double.self, forKey: .temperature)
-        apparentTemperature = try container.decodeIfPresent(Double.self, forKey: .apparentTemperature)
-        symbolName = try container.decode(String.self, forKey: .symbolName)
-        condition = try container.decode(String.self, forKey: .condition)
-        precipitationChance = try container.decodeIfPresent(Double.self, forKey: .precipitationChance)
-        cloudCover = try container.decodeIfPresent(Double.self, forKey: .cloudCover)
-        windSpeed = try container.decodeIfPresent(Double.self, forKey: .windSpeed)
-        uvIndex = try container.decodeIfPresent(Int.self, forKey: .uvIndex)
-        humidity = try container.decodeIfPresent(Double.self, forKey: .humidity)
-        visibility = try container.decodeIfPresent(Double.self, forKey: .visibility)
-    }
-    
-    func toHourlyForecast() -> HourlyForecast {
-        let appCondition = AppWeatherCondition.fromDisplayName(condition)
-        
-        return HourlyForecast(
-            hour: hour,
-            temperature: temperature,
-            apparentTemperature: apparentTemperature,
-            symbolName: symbolName,
-            condition: appCondition,
-            precipitationChance: precipitationChance,
-            cloudCover: cloudCover,
-            windSpeed: windSpeed,
-            uvIndex: uvIndex,
-            humidity: humidity,
-            visibility: visibility
-        )
-    }
-}
-
-extension AppWeatherCondition {
-    static func fromDisplayName(_ name: String) -> AppWeatherCondition {
-        switch name {
-        case "Clear":
-            return .clear
-        case "Partly Sunny":
-            return .partlySunny
-        case "Partly Cloudy":
-            return .partlyCloudy
-        case "Cloudy":
-            return .cloudy
-        case "Rain":
-            return .rain
-        case "Drizzle":
-            return .drizzle
-        case "Snow":
-            return .snow
-        case "Fog":
-            return .fog
-        case "Windy":
-            return .wind
-        default:
-            return .partlyCloudy
-        }
-    }
-}

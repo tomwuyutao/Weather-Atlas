@@ -7,7 +7,6 @@
 
 import SwiftUI
 import CoreLocation
-import MapKit
 
 extension ContentView {
     @ViewBuilder

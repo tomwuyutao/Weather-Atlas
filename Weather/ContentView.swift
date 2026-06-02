@@ -6,13 +6,8 @@
 //
 
 import SwiftUI
-import CoreLocation
-import MapKit
 #if os(iOS)
 import UIKit
-#endif
-#if os(macOS)
-import AppKit
 #endif
 
 enum PlatformFeedback {
