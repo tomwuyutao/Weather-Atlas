@@ -28,9 +28,12 @@ extension View {
 
     func iPhoneFloatingToolbarCircle() -> some View {
         self
+            .fixedSize()
             .frame(width: 52, height: 52)
             .background(AppTheme.shared.colors.glassFill, in: Circle())
+            .clipShape(Circle())
             .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 0.6))
+            .contentShape(Circle())
             .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
     }
 }
@@ -271,6 +274,8 @@ extension ContentView {
                         .foregroundStyle(.primary)
                         .frame(width: frameSize, height: frameSize)
                 }
+                .buttonBorderShape(.circle)
+                .fixedSize()
                 .menuOrder(.fixed)
             } else {
                 Button {
@@ -284,6 +289,8 @@ extension ContentView {
                         .frame(width: frameSize, height: frameSize)
                 }
                 .buttonStyle(.plain)
+                .buttonBorderShape(.circle)
+                .fixedSize()
                 .tint(.primary)
             }
         } else {

@@ -36,13 +36,9 @@ extension ContentView {
             }
             .transition(.opacity)
             #else
-            Color.clear
-                .frame(width: 80, height: 500)
-                .contentShape(Rectangle())
-                .overlay(alignment: .trailing) {
-                    mapDateSlider(height: 420)
-                }
-                .padding(.bottom, 380)
+            mapDateSlider(height: 420)
+                .frame(width: 145, height: 420, alignment: .trailing)
+                .padding(.bottom, 420)
                 .padding(.trailing, 1)
                 .transition(.opacity)
             #endif

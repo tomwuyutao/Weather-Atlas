@@ -11,14 +11,14 @@ extension ContentView {
 
     var mapOverlayOptions: [(mode: String, icon: String, label: String)] {
         [
-            ("weather",       "cloud.sun.fill",     "Weather"),
-            ("temperature",   "thermometer.medium", "Temperature"),
-            ("cloudCover",    "cloud.fill",         "Cloud Cover"),
-            ("precipitation", "drop.fill",          "Precipitation"),
-            ("windSpeed",     "wind",               "Wind Speed"),
-            ("uvIndex",       "sun.max.fill",       "UV Index"),
-            ("humidity",      "humidity.fill",      "Humidity"),
-            ("visibility",    "eye.fill",           "Visibility")
+            ("weather",       "cloud.sun.fill",     localizedString("Weather", locale: locale)),
+            ("temperature",   "thermometer.medium", localizedString("Temperature", locale: locale)),
+            ("cloudCover",    "cloud.fill",         localizedString("Cloud Cover", locale: locale)),
+            ("precipitation", "drop.fill",          localizedString("Precipitation", locale: locale)),
+            ("windSpeed",     "wind",               localizedString("Wind Speed", locale: locale)),
+            ("uvIndex",       "sun.max.fill",       localizedString("UV Index", locale: locale)),
+            ("humidity",      "humidity.fill",      localizedString("Humidity", locale: locale)),
+            ("visibility",    "eye.fill",           localizedString("Visibility", locale: locale))
         ]
     }
 

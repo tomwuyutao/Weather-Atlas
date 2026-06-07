@@ -32,21 +32,12 @@ extension ContentView {
     private var iOSFloatingMapCardOverlay: some View {
         Group {
             if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard {
-                GeometryReader { geometry in
-                    HStack(spacing: 0) {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                dismissMapExpandedCard()
-                            }
-                            .frame(width: max(0, geometry.size.width - 92))
-
-                        Color.clear
-                            .frame(width: 92)
-                            .allowsHitTesting(false)
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        dismissMapExpandedCard()
                     }
-                }
-                .zIndex(10)
+                    .zIndex(10)
             }
 
             if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {

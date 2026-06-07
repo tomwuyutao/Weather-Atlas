@@ -384,24 +384,28 @@ extension ContentView {
             }
 
             if !usesIPhoneDetailSizing {
-                HStack {
-                    Spacer()
+                VStack(spacing: 6) {
+                    HStack {
+                        Spacer()
 
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            macExpandedCardShowsDetails.toggle()
+                        Button {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                macExpandedCardShowsDetails.toggle()
+                            }
+                        } label: {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 13, weight: .semibold))
+                                .rotationEffect(.degrees(macExpandedCardShowsDetails ? 180 : 0))
+                                .frame(width: 32, height: 24)
+                                .contentShape(Rectangle())
                         }
-                    } label: {
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 13, weight: .semibold))
-                            .rotationEffect(.degrees(macExpandedCardShowsDetails ? 180 : 0))
-                            .frame(width: 24, height: 18)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.secondary)
+                        .buttonStyle(.plain)
+                        .foregroundStyle(.secondary)
 
-                    Spacer()
+                        Spacer()
+                    }
+
+                    macExpandedCardDivider
                 }
             }
         }
@@ -617,7 +621,7 @@ extension ContentView {
                             .font(.system(size: usesIPhoneDetailSizing ? 16 : 12, weight: .medium))
                             .foregroundStyle(.secondary)
                             .frame(width: usesIPhoneDetailSizing ? 22 : 16)
-                        Text(localizedString("Sunrise", locale: locale))
+                        Text(localizedString("Sun", locale: locale))
                             .font((usesIPhoneDetailSizing ? Font.callout : Font.caption).weight(.medium))
                             .foregroundStyle(.secondary)
                         Spacer()
