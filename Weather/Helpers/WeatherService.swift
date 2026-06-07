@@ -135,7 +135,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         default: return displayName
         }
     }
-    
+
     static let builtInLists: [CityListID] = [.europe, .asia, .northAmerica, .southAmerica, .africa, .australia]
     
     private static let userListsKey = "userCreatedLists"
@@ -1214,34 +1214,78 @@ struct City: Identifiable, Hashable, Codable {
     }
     
     /// Returns the city name localized for the given locale.
-    /// For known default cities, returns a translated name; otherwise returns `name` as-is
-    /// (user-added cities already get localized names from MapKit search).
+    /// For known default cities, the string catalog can provide any language; Chinese has a code fallback.
     func localizedName(locale: Locale = .current) -> String {
+        let catalogValue = localizedString(String.LocalizationValue(name), locale: locale)
+        if catalogValue != name {
+            return catalogValue
+        }
         guard locale.language.languageCode?.identifier == "zh" else { return name }
         return Self.chineseNames[name] ?? name
     }
     
     private static let chineseNames: [String: String] = [
-        // China
-        "Beijing": "北京", "Shanghai": "上海", "Chongqing": "重庆",
-        "Tianjin": "天津", "Guangzhou": "广州", "Shenzhen": "深圳",
-        "Hangzhou": "杭州", "Nanjing": "南京", "Suzhou": "苏州",
-        "Xiamen": "厦门", "Wuhan": "武汉", "Changsha": "长沙",
-        "Zhengzhou": "郑州", "Xi'an": "西安", "Harbin": "哈尔滨",
-        "Dalian": "大连", "Qingdao": "青岛", "Chengdu": "成都",
-        "Kunming": "昆明", "Guiyang": "贵阳", "Sanya": "三亚",
-        "Fuzhou": "福州", "Lhasa": "拉萨", "Urumqi": "乌鲁木齐",
-        "Lanzhou": "兰州",
         // Europe
-        "London": "伦敦", "Paris": "巴黎", "Berlin": "柏林",
-        "Madrid": "马德里", "Rome": "罗马", "Amsterdam": "阿姆斯特丹",
-        "Vienna": "维也纳", "Prague": "布拉格", "Barcelona": "巴塞罗那",
-        "Munich": "慕尼黑", "Milan": "米兰", "Stockholm": "斯德哥尔摩",
-        "Copenhagen": "哥本哈根", "Oslo": "奥斯陆", "Helsinki": "赫尔辛基",
-        "Warsaw": "华沙", "Budapest": "布达佩斯", "Lisbon": "里斯本",
+        "Istanbul": "伊斯坦布尔", "Moscow": "莫斯科", "London": "伦敦",
+        "Saint Petersburg": "圣彼得堡", "Berlin": "柏林", "Madrid": "马德里",
+        "Rome": "罗马", "Kyiv": "基辅", "Paris": "巴黎",
+        "Bucharest": "布加勒斯特", "Minsk": "明斯克", "Vienna": "维也纳",
+        "Hamburg": "汉堡", "Warsaw": "华沙", "Budapest": "布达佩斯",
+        "Barcelona": "巴塞罗那", "Munich": "慕尼黑", "Milan": "米兰",
+        "Prague": "布拉格", "Sofia": "索非亚",
+
+        // Asia
+        "Tokyo": "东京", "Delhi": "德里", "Shanghai": "上海",
+        "Dhaka": "达卡", "Beijing": "北京", "Mumbai": "孟买",
+        "Osaka": "大阪", "Karachi": "卡拉奇", "Chongqing": "重庆",
+        "Guangzhou": "广州", "Lahore": "拉合尔", "Shenzhen": "深圳",
+        "Bangalore": "班加罗尔", "Chennai": "金奈", "Kolkata": "加尔各答",
+        "Bangkok": "曼谷", "Tehran": "德黑兰", "Hyderabad": "海得拉巴",
+        "Chengdu": "成都", "Ho Chi Minh City": "胡志明市",
+
+        // North America
+        "Mexico City": "墨西哥城", "New York": "纽约", "Los Angeles": "洛杉矶",
+        "Toronto": "多伦多", "Chicago": "芝加哥", "Dallas": "达拉斯",
+        "Houston": "休斯敦", "Miami": "迈阿密", "Philadelphia": "费城",
+        "Atlanta": "亚特兰大", "Washington": "华盛顿", "Boston": "波士顿",
+        "Phoenix": "凤凰城", "Monterrey": "蒙特雷", "Guadalajara": "瓜达拉哈拉",
+        "San Francisco": "旧金山", "Detroit": "底特律", "Montreal": "蒙特利尔",
+        "Seattle": "西雅图", "Minneapolis": "明尼阿波利斯",
+
+        // South America
+        "Sao Paulo": "圣保罗", "Buenos Aires": "布宜诺斯艾利斯", "Rio de Janeiro": "里约热内卢",
+        "Lima": "利马", "Bogota": "波哥大", "Santiago": "圣地亚哥",
+        "Belo Horizonte": "贝洛奥里藏特", "Caracas": "加拉加斯", "Porto Alegre": "阿雷格里港",
+        "Brasilia": "巴西利亚", "Recife": "累西腓", "Fortaleza": "福塔莱萨",
+        "Salvador": "萨尔瓦多", "Medellin": "麦德林", "Guayaquil": "瓜亚基尔",
+        "Curitiba": "库里蒂巴", "Quito": "基多", "Cali": "卡利",
+        "Montevideo": "蒙得维的亚", "Asuncion": "亚松森",
+
+        // Africa
+        "Lagos": "拉各斯", "Cairo": "开罗", "Kinshasa": "金沙萨",
+        "Johannesburg": "约翰内斯堡", "Luanda": "罗安达", "Dar es Salaam": "达累斯萨拉姆",
+        "Khartoum": "喀土穆", "Abidjan": "阿比让", "Alexandria": "亚历山大",
+        "Nairobi": "内罗毕", "Addis Ababa": "亚的斯亚贝巴", "Cape Town": "开普敦",
+        "Casablanca": "卡萨布兰卡", "Accra": "阿克拉", "Durban": "德班",
+        "Dakar": "达喀尔", "Kano": "卡诺", "Ibadan": "伊巴丹",
+        "Pretoria": "比勒陀利亚", "Kampala": "坎帕拉",
+
+        // Australia
+        "Sydney": "悉尼", "Melbourne": "墨尔本", "Brisbane": "布里斯班",
+        "Perth": "珀斯", "Adelaide": "阿德莱德", "Gold Coast": "黄金海岸",
+        "Canberra": "堪培拉", "Newcastle": "纽卡斯尔", "Central Coast": "中央海岸",
+        "Wollongong": "卧龙岗",
+
+        // Older defaults / user cache migration
+        "Tianjin": "天津", "Hangzhou": "杭州", "Nanjing": "南京", "Suzhou": "苏州",
+        "Xiamen": "厦门", "Wuhan": "武汉", "Changsha": "长沙", "Zhengzhou": "郑州",
+        "Xi'an": "西安", "Harbin": "哈尔滨", "Dalian": "大连", "Qingdao": "青岛",
+        "Kunming": "昆明", "Guiyang": "贵阳", "Sanya": "三亚", "Fuzhou": "福州",
+        "Lhasa": "拉萨", "Urumqi": "乌鲁木齐", "Lanzhou": "兰州",
+        "Amsterdam": "阿姆斯特丹", "Stockholm": "斯德哥尔摩", "Copenhagen": "哥本哈根",
+        "Oslo": "奥斯陆", "Helsinki": "赫尔辛基", "Lisbon": "里斯本",
         "Athens": "雅典", "Dublin": "都柏林", "Brussels": "布鲁塞尔",
-        "Zurich": "苏黎世", "Istanbul": "伊斯坦布尔", "Bucharest": "布加勒斯特",
-        "Edinburgh": "爱丁堡",
+        "Zurich": "苏黎世", "Edinburgh": "爱丁堡"
     ]
 }
 

@@ -72,12 +72,20 @@ extension ContentView {
             DisclosureGroup(isExpanded: macSidebarListExpansionBinding(for: listID)) {
                 let cities = sidebarCities(for: listID)
                 if cities.isEmpty {
-                    Text(localizedString("No cities", locale: locale))
-                        .font(.body)
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 10)
-                        .padding(.leading, 22)
-                        .listRowSeparator(.hidden)
+                    let defaultCities = weatherService.cityListCoordinates(for: listID)
+                    if defaultCities.isEmpty {
+                        Text(localizedString("No cities", locale: locale))
+                            .font(.body)
+                            .foregroundStyle(.secondary)
+                            .padding(.vertical, 10)
+                            .padding(.leading, 22)
+                            .listRowSeparator(.hidden)
+                    } else {
+                        ForEach(defaultCities) { city in
+                            iOSSidebarDefaultCityRow(city)
+                                .listRowSeparator(.hidden)
+                        }
+                    }
                 } else {
                     ForEach(cities) { city in
                         Button {
@@ -109,6 +117,12 @@ extension ContentView {
                 ? EdgeInsets(top: 5, leading: 14, bottom: 5, trailing: 14)
                 : EdgeInsets(top: 6, leading: 28, bottom: 6, trailing: 28)
             )
+            .task(id: listID.rawValue) {
+                await weatherService.fetchWeatherForList(listID)
+                await MainActor.run {
+                    refreshSidebarCityOrder()
+                }
+            }
         }
         .onMove(perform: moveMacSidebarLists)
         .onDelete(perform: deleteMacSidebarLists)
@@ -148,6 +162,25 @@ extension ContentView {
         .contentShape(Rectangle())
     }
 
+    private func iOSSidebarDefaultCityRow(_ city: City) -> some View {
+        HStack(spacing: 10) {
+            Circle()
+                .fill(theme.colors.secondaryText.opacity(0.45))
+                .frame(width: 10, height: 10)
+                .frame(width: 10, alignment: .center)
+
+            Text(city.localizedName(locale: locale))
+                .font(.body)
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            Spacer(minLength: 10)
+        }
+        .padding(.vertical, 9)
+        .padding(.leading, shouldUseIPadLayout ? -20 : -18)
+        .contentShape(Rectangle())
+    }
+
     private func iOSSidebarCityRow(_ city: CityWeather) -> some View {
         let dotColor = city.weatherIcon.contains("moon") ? theme.colors.moonIconColor : city.condition.dotColor(for: theme.colors)
 
@@ -180,9 +213,19 @@ extension ContentView {
             DisclosureGroup(isExpanded: macSidebarListExpansionBinding(for: listID)) {
                 let cities = sidebarCities(for: listID)
                 if cities.isEmpty {
-                    Text(localizedString("No cities", locale: locale))
-                        .foregroundStyle(.secondary)
-                        .tag("empty:\(listID.rawValue)")
+                    let defaultCities = weatherService.cityListCoordinates(for: listID)
+                    if defaultCities.isEmpty {
+                        Text(localizedString("No cities", locale: locale))
+                            .foregroundStyle(.secondary)
+                            .tag("empty:\(listID.rawValue)")
+                    } else {
+                        ForEach(defaultCities) { city in
+                            Text(city.localizedName(locale: locale))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .tag("loading:\(listID.rawValue):\(city.id.uuidString)")
+                        }
+                    }
                 } else {
                     ForEach(cities) { city in
                         Text(city.city.localizedName(locale: locale))

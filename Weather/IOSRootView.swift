@@ -672,14 +672,12 @@ extension ContentView {
     }
 
     func prepareFirstLaunchListPickerSelection() {
-        firstLaunchSelectedListIDs = Set(CityListID.builtInLists.map(\.rawValue))
+        firstLaunchSelectedListIDs = []
     }
 
     func toggleFirstLaunchListSelection(_ listID: CityListID) {
         if firstLaunchSelectedListIDs.contains(listID.rawValue) {
-            if firstLaunchSelectedListIDs.count > 1 {
-                firstLaunchSelectedListIDs.remove(listID.rawValue)
-            }
+            firstLaunchSelectedListIDs.remove(listID.rawValue)
         } else {
             firstLaunchSelectedListIDs.insert(listID.rawValue)
         }

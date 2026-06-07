@@ -27,7 +27,7 @@ struct MapFloatingLegend: View {
     }
 
     private var legendWidth: CGFloat {
-        overlayMode == "weather" ? (compact ? 184 : 178) : (compact ? 132 : 126)
+        overlayMode == "weather" ? (compact ? 198 : 194) : (compact ? 132 : 126)
     }
 
     private var weatherLegendItems: [(title: String, color: Color)] {
@@ -36,8 +36,22 @@ struct MapFloatingLegend: View {
             (localizedString("Partly Sunny", locale: locale), palette.dotPartlyCloudy),
             (localizedString("Rain", locale: locale), palette.dotRain),
             (localizedString("Drizzle", locale: locale), palette.dotDrizzle),
-            ("Cloudy / Snow /\nWind / Fog", palette.dotCloudy)
+            (localizedLegendLabel("Cloudy / Snow / Wind / Fog"), palette.dotCloudy),
+            (localizedLegendLabel("Night"), AppTheme.shared.colors.moonIconColor)
         ]
+    }
+
+    private func localizedLegendLabel(_ key: String) -> String {
+        switch locale.language.languageCode?.identifier {
+        case "zh":
+            switch key {
+            case "Cloudy / Snow / Wind / Fog": return "多云 / 雪 / 风 / 雾"
+            case "Night": return "夜间"
+            default: return key
+            }
+        default:
+            return localizedString(String.LocalizationValue(key), locale: locale)
+        }
     }
 
     // MARK: - Color functions (same as before)

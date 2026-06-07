@@ -5,6 +5,7 @@ struct WeatherIntroOverlay: View {
 
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.locale) private var locale
     @State private var stepIndex = 0
     @State private var pulse = false
 
@@ -65,7 +66,7 @@ struct WeatherIntroOverlay: View {
 
                 VStack(spacing: 10) {
                     Label {
-                        Text(currentStep.title)
+                        Text(localizedString(String.LocalizationValue(currentStep.title), locale: locale))
                             .font(.avenir(.title2, weight: .bold))
                             .multilineTextAlignment(.center)
                     } icon: {
@@ -74,7 +75,7 @@ struct WeatherIntroOverlay: View {
                     }
                     .foregroundStyle(theme.colors.primaryText)
 
-                    Text(currentStep.message)
+                    Text(localizedString(String.LocalizationValue(currentStep.message), locale: locale))
                         .font(.avenir(.body, weight: .medium))
                         .foregroundStyle(theme.colors.secondaryText)
                         .multilineTextAlignment(.center)
@@ -104,7 +105,7 @@ struct WeatherIntroOverlay: View {
 
             Spacer()
 
-            Button("Skip") {
+            Button(localizedString("Skip", locale: locale)) {
                 dismissIntro()
             }
             .font(.avenir(.callout, weight: .semibold))
@@ -151,7 +152,7 @@ struct WeatherIntroOverlay: View {
                         }
                     }
                 } label: {
-                    Text(stepIndex == steps.count - 1 ? "Start" : "Continue")
+                    Text(localizedString(String.LocalizationValue(stepIndex == steps.count - 1 ? "Start" : "Continue"), locale: locale))
                         .font(.avenir(.headline, weight: .bold))
                         .frame(maxWidth: 220)
                         .frame(height: 48)
@@ -216,12 +217,12 @@ struct WeatherIntroOverlay: View {
 
             HStack(alignment: .bottom, spacing: 12) {
                 VStack(alignment: .leading, spacing: 5) {
-                    Text("24 degrees")
+                    Text(localizedString("24 degrees", locale: locale))
                         .font(.system(size: 36, weight: .semibold))
-                    Text("Current Temperature")
+                    Text(localizedString("Current Temperature", locale: locale))
                         .font(.caption.weight(.medium))
                         .foregroundStyle(.secondary)
-                    Text("Barcelona")
+                    Text(localizedString("Barcelona", locale: locale))
                         .font(.headline.weight(.semibold))
                 }
 
@@ -319,7 +320,7 @@ struct WeatherIntroOverlay: View {
         HStack(spacing: 8) {
             Image(systemName: "list.bullet")
                 .foregroundStyle(theme.colors.secondaryText)
-            Text(title)
+            Text(localizedString(String.LocalizationValue(title), locale: locale))
                 .font(.headline.weight(.semibold))
             Spacer()
             Text("\(count)")
@@ -339,10 +340,10 @@ struct WeatherIntroOverlay: View {
                 .fill(color)
                 .frame(width: 10, height: 10)
                 .shadow(color: color.opacity(0.55), radius: 5)
-            Text(city)
+            Text(localizedString(String.LocalizationValue(city), locale: locale))
                 .lineLimit(1)
             Spacer()
-            Text(temp)
+            Text(localizedString(String.LocalizationValue(temp), locale: locale))
                 .foregroundStyle(theme.colors.secondaryText)
                 .lineLimit(1)
         }
@@ -351,7 +352,7 @@ struct WeatherIntroOverlay: View {
     }
 
     private func introOverlayPill(_ text: String, active: Bool) -> some View {
-        Text(text)
+        Text(localizedString(String.LocalizationValue(text), locale: locale))
             .font(.avenir(.caption, weight: .bold))
             .foregroundStyle(active ? Color.white : theme.colors.primaryText)
             .padding(.horizontal, 14)

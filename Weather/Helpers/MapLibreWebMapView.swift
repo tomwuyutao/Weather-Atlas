@@ -32,8 +32,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     var onMapClick: ((CLLocationCoordinate2D, CGPoint?) -> Void)? = nil
     var onMarkerCommandHover: ((CityWeather?, CGPoint?) -> Void)? = nil
     var onCameraMove: ((CLLocationCoordinate2D) -> Void)? = nil
+    var onMapGestureStart: (() -> Void)? = nil
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.locale) private var locale
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
 
@@ -211,6 +213,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 guard let lat = body["lat"] as? Double,
                       let lng = body["lng"] as? Double else { return }
                 parent.onCameraMove?(CLLocationCoordinate2D(latitude: lat, longitude: lng))
+            case "mapGestureStart":
+                parent.onMapGestureStart?()
             default:
                 break
             }
@@ -288,7 +292,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             let color = markerColor(for: cityWeather, forecast: forecast)
             return MapLibreWeatherFeature(
                 id: cityWeather.id.uuidString,
-                name: cityWeather.city.name,
+                name: cityWeather.city.localizedName(locale: locale),
                 country: cityWeather.city.country,
                 latitude: cityWeather.city.latitude,
                 longitude: cityWeather.city.longitude,
@@ -535,6 +539,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         function post(message) {
           window.webkit?.messageHandlers?.mapEvent?.postMessage(message);
+        }
+
+        function postMapGestureStart() {
+          post({ type: 'mapGestureStart' });
         }
 
         function activeCameraProfile() {
@@ -1121,6 +1129,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           map.touchZoomRotate.disableRotation();
           map.scrollZoom.disable();
           map.getCanvas().addEventListener('wheel', event => {
+            postMapGestureStart();
             event.preventDefault();
             event.stopImmediatePropagation();
             const point = new maplibregl.Point(event.offsetX, event.offsetY);
@@ -1139,6 +1148,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           }, { capture: true, passive: false });
           map.getCanvas().addEventListener('mousedown', event => {
             if (event.button !== 0) return;
+            postMapGestureStart();
             leftMouseDown = {
               x: event.offsetX,
               y: event.offsetY,
@@ -1146,6 +1156,9 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
               hoveredID: hoveredMarkerID || '',
               hoveredPoint: hoveredMarkerPoint ? { x: hoveredMarkerPoint.x, y: hoveredMarkerPoint.y } : null
             };
+          }, { capture: true, passive: true });
+          map.getCanvas().addEventListener('touchstart', () => {
+            postMapGestureStart();
           }, { capture: true, passive: true });
           map.getCanvas().addEventListener('mouseup', event => {
             if (event.button !== 0) return;

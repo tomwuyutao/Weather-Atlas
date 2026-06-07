@@ -333,6 +333,11 @@ extension ContentView {
                         handleMapMarkerCommandHover(city, anchor: point)
                     }
                     #endif
+                },
+                onMapGestureStart: {
+                    if showingMapExpandedCard {
+                        dismissMapExpandedCard()
+                    }
                 }
             )
             .ignoresSafeArea()

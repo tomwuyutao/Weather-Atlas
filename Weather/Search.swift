@@ -164,8 +164,10 @@ extension ContentView {
 
             if let existingListName {
                 HStack(spacing: 6) {
-                    Text("\(localizedString("In list", locale: locale)) \(existingListName)")
+                    (Text(localizedString("In list", locale: locale) + " ")
                         .font(.avenir(.caption2, weight: .medium))
+                    + Text(existingListName)
+                        .font(.avenir(.caption2, weight: .bold)))
                         .foregroundStyle(theme.colors.secondaryText)
                         .lineLimit(1)
 
