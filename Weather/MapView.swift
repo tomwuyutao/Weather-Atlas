@@ -72,8 +72,9 @@ extension ContentView {
         .presentationCompactAdaptation(.popover)
     }
 
-    func centerMapOnDots() {
+    func centerMapOnDots(useListCoordinates: Bool = false) {
         recenterOnAllCities = false
+        recenterUsesListCoordinates = useListCoordinates
         DispatchQueue.main.async {
             recenterOnAllCities = true
         }
@@ -81,6 +82,13 @@ extension ContentView {
 
     func forceReloadMapDots() {
         mapMarkerReloadID += 1
+    }
+
+    func refreshActiveWeather() {
+        centerMapOnDots(useListCoordinates: true)
+        Task {
+            await weatherService.refreshWeather()
+        }
     }
 
     var iOSMapControlsCapsule: some View {
@@ -279,6 +287,7 @@ extension ContentView {
         ZStack {
             MapLibreWebMapView(
                 cities: mapCities,
+                fitCities: weatherService.cityListCoordinates(),
                 selectedDayOffset: selectedDayOffset,
                 overlayMode: mapOverlayMode,
                 filterSunny: filterSunny,
@@ -287,6 +296,7 @@ extension ContentView {
                 showsMarkerHoverLabels: mapShowsMarkerHoverLabels,
                 tappedCity: $tappedCity,
                 recenterOnAllCities: $recenterOnAllCities,
+                recenterUsesListCoordinates: $recenterUsesListCoordinates,
                 centerOnCity: centerOnCityTrigger,
                 leadingFitPadding: macMapLeadingFitPadding,
                 focusSelectedMarker: mapFocusSelectedMarker,
@@ -308,53 +318,10 @@ extension ContentView {
             )
             .ignoresSafeArea()
 
-            if weatherService.isLoading {
-                LoadingWeatherOverlay(
-                    iconName: loadingWeatherIcon,
-                    progress: weatherService.loadingProgress,
-                    locale: locale
-                )
-                .allowsHitTesting(false)
-            }
-
         }
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .ignoresSafeArea()
-        .task(id: weatherService.isLoading) {
-            await animateLoadingWeatherIconIfNeeded()
-        }
-    }
 
-    func animateLoadingWeatherIconIfNeeded() async {
-        guard weatherService.isLoading else { return }
-
-        let loadingIcons = [
-            "cloud.sun.fill",
-            "cloud.fill",
-            "cloud.rain.fill",
-            "cloud.drizzle.fill",
-            "snowflake",
-            "cloud.fog.fill",
-            "wind"
-        ]
-
-        await MainActor.run {
-            withAnimation(.snappy(duration: 0.42)) {
-                loadingWeatherIcon = "sun.max.fill"
-            }
-        }
-
-        while !Task.isCancelled && weatherService.isLoading {
-            try? await Task.sleep(for: .milliseconds(2500))
-            guard !Task.isCancelled && weatherService.isLoading else { break }
-
-            let nextIcon = loadingIcons.filter { $0 != loadingWeatherIcon }.randomElement() ?? "cloud.sun.fill"
-            await MainActor.run {
-                withAnimation(.snappy(duration: 0.42)) {
-                    loadingWeatherIcon = nextIcon
-                }
-            }
-        }
     }
 
     var macMapLeadingFitPadding: Double {

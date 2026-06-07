@@ -111,6 +111,9 @@ extension ContentView {
                         .padding(.horizontal, isDraggingDateSlider ? dragHorizontalPadding : idleHorizontalPadding)
                         .padding(.vertical, isDraggingDateSlider ? dragVerticalPadding : idleVerticalPadding)
                         .themedGlass(in: .capsule)
+                        #if os(iOS)
+                        .weatherTutorialTarget(.dateSlider)
+                        #endif
 
                     Color.clear
                         .frame(

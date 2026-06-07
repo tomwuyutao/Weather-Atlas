@@ -81,6 +81,7 @@ struct AddCitySearchView: View {
     @State private var isSearchPresented = true
     @State private var isLoadingCity = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
 
     private func isExistingCity(_ result: CitySearchResult) -> Bool {
         let name = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
@@ -99,13 +100,13 @@ struct AddCitySearchView: View {
 
     var body: some View {
         searchContent
-            .navigationTitle("Add City")
+            .navigationTitle(localizedString("Add City", locale: locale))
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             #endif
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(localizedString("Cancel", locale: locale)) {
                         dismiss()
                     }
                 }
@@ -113,7 +114,7 @@ struct AddCitySearchView: View {
             .searchable(
                 text: $searchText,
                 isPresented: $isSearchPresented,
-                prompt: Text("Search for a city or place")
+                prompt: Text(localizedString("Search for a city or place", locale: locale))
             )
             .searchSuggestions {
                 nativeSearchSuggestions
@@ -135,10 +136,10 @@ struct AddCitySearchView: View {
                 .foregroundStyle(.tertiary)
 
             if !searchText.isEmpty {
-                Text("No results")
+                Text(localizedString("No results", locale: locale))
                     .font(.avenir(.title3, weight: .medium))
 
-                Text("Try a different search term")
+                Text(localizedString("Try a different search term", locale: locale))
                     .font(.avenir(.body))
                     .foregroundStyle(.secondary)
             }
@@ -189,7 +190,7 @@ struct AddCitySearchView: View {
             Spacer(minLength: 8)
 
             if existing {
-                Text("Added")
+                Text(localizedString("Added", locale: locale))
                     .font(.avenir(.caption2, weight: .medium))
                     .foregroundStyle(.secondary)
             } else if isLoadingCity {

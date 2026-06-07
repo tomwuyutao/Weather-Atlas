@@ -97,6 +97,7 @@ struct SettingsView: View {
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     let weatherService: WeatherService
     let onResetLists: () -> Void
+    var onPlayTutorial: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
@@ -191,46 +192,60 @@ struct SettingsView: View {
         Form {
             Section(localizedString("General", locale: locale)) {
                 Picker(selection: Binding(get: { temperatureUnit }, set: { temperatureUnit = $0 })) {
-                    Text("Celsius (°C)").tag(TemperatureUnit.celsius.rawValue)
-                    Text("Fahrenheit (°F)").tag(TemperatureUnit.fahrenheit.rawValue)
+                    Text(localizedString("Celsius (°C)", locale: locale)).tag(TemperatureUnit.celsius.rawValue)
+                    Text(localizedString("Fahrenheit (°F)", locale: locale)).tag(TemperatureUnit.fahrenheit.rawValue)
                 } label: {
                     settingsLabel(localizedString("Temperature", locale: locale), systemImage: "thermometer.medium")
                 }
                 .tint(.secondary)
 
                 Picker(selection: Binding(get: { distanceUnit }, set: { distanceUnit = $0 })) {
-                    Text("Kilometers (km)").tag(DistanceUnit.kilometers.rawValue)
-                    Text("Miles (mi)").tag(DistanceUnit.miles.rawValue)
+                    Text(localizedString("Kilometers (km)", locale: locale)).tag(DistanceUnit.kilometers.rawValue)
+                    Text(localizedString("Miles (mi)", locale: locale)).tag(DistanceUnit.miles.rawValue)
                 } label: {
                     settingsLabel(localizedString("Distance", locale: locale), systemImage: "ruler")
                 }
                 .tint(.secondary)
 
                 Picker(selection: Binding(get: { appLanguage }, set: { appLanguage = $0 })) {
-                    Text("English").tag("en")
-                    Text("Français").tag("fr")
-                    Text("Deutsch").tag("de")
-                    Text("Italiano").tag("it")
-                    Text("日本語").tag("ja")
-                    Text("한국어").tag("ko")
-                    Text("Português").tag("pt")
-                    Text("Русский").tag("ru")
-                    Text("简体中文").tag("zh-Hans")
-                    Text("Español").tag("es")
-                    Text("繁體中文").tag("zh-Hant")
+                    Text(verbatim: "English").tag("en")
+                    Text(verbatim: "Français").tag("fr")
+                    Text(verbatim: "Deutsch").tag("de")
+                    Text(verbatim: "Italiano").tag("it")
+                    Text(verbatim: "日本語").tag("ja")
+                    Text(verbatim: "한국어").tag("ko")
+                    Text(verbatim: "Português").tag("pt")
+                    Text(verbatim: "Русский").tag("ru")
+                    Text(verbatim: "简体中文").tag("zh-Hans")
+                    Text(verbatim: "Español").tag("es")
+                    Text(verbatim: "繁體中文").tag("zh-Hant")
                 } label: {
                     settingsLabel(localizedString("Language", locale: locale), systemImage: "globe")
                 }
                 .tint(.secondary)
 
                 Picker(selection: Binding(get: { theme.style }, set: { theme.style = $0 })) {
-                    Text("Light").tag(AppThemeStyle.light)
-                    Text("Dark").tag(AppThemeStyle.dark)
-                    Text("Auto").tag(AppThemeStyle.automatic)
+                    Text(localizedString("Light", locale: locale)).tag(AppThemeStyle.light)
+                    Text(localizedString("Dark", locale: locale)).tag(AppThemeStyle.dark)
+                    Text(localizedString("Auto", locale: locale)).tag(AppThemeStyle.automatic)
                 } label: {
                     settingsLabel(localizedString("Theme", locale: locale), systemImage: "circle.lefthalf.filled")
                 }
                 .tint(.secondary)
+
+                Button {
+                    onPlayTutorial()
+                } label: {
+                    Label {
+                        Text(localizedString("Replay Tutorial", locale: locale))
+                            .foregroundStyle(theme.colors.primaryText)
+                    } icon: {
+                        Image(systemName: "questionmark.circle")
+                            .foregroundStyle(theme.colors.primaryText)
+                    }
+                    .font(.body.weight(.medium))
+                }
+                .tint(theme.colors.primaryText)
             }
             .listRowBackground(theme.colors.mapLand)
 

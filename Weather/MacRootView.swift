@@ -36,11 +36,6 @@ import AppKit
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
         }
-        .onChange(of: weatherService.isLoading) { wasLoading, isLoading in
-            if wasLoading && !isLoading {
-                recenterOnAllCities = true
-            }
-        }
         .onChange(of: showingMapExpandedCard) { _, showing in
             if !showing {
                 if previewCity != nil {
@@ -139,18 +134,30 @@ import AppKit
                 AnyView(
                     iOSMapView
                         .overlay(alignment: .bottomLeading) {
-                            if showLegend {
-                                MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
-                                    withAnimation(.smooth(duration: 0.2)) {
-                                        showLegend = false
-                                    }
-                                }
-                                    .padding(.leading, 24)
-                                    .padding(.bottom, 24)
+                            VStack(alignment: .leading, spacing: 8) {
+                                if weatherService.isLoading {
+                                    LoadingWeatherOverlay(
+                                        progress: weatherService.loadingProgress,
+                                        locale: locale
+                                    )
+                                    .allowsHitTesting(false)
                                     .transition(.move(edge: .leading).combined(with: .opacity))
-                                    .animation(.smooth(duration: 0.22), value: showLegend)
+                                }
+
+                                if showLegend {
+                                    MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
+                                        withAnimation(.smooth(duration: 0.2)) {
+                                            showLegend = false
+                                        }
+                                    }
+                                    .transition(.move(edge: .leading).combined(with: .opacity))
+                                }
                             }
+                            .padding(.leading, 24)
+                            .padding(.bottom, 24)
                         }
+                        .animation(.smooth(duration: 0.22), value: showLegend)
+                        .animation(.smooth(duration: 0.22), value: weatherService.isLoading)
                         .overlay(alignment: .trailing) {
                             AnyView(iOSDateSliderOverlay)
                         }
@@ -279,7 +286,7 @@ import AppKit
 
     var macRefreshButton: some View {
         Button {
-            Task { await weatherService.refreshWeather() }
+            refreshActiveWeather()
         } label: {
             Image(systemName: "arrow.clockwise")
                 .symbolRenderingMode(.monochrome)
@@ -673,7 +680,7 @@ import AppKit
     }
 
     func handleWeatherRefreshCommand(_ notification: Notification) {
-        Task { await weatherService.refreshWeather() }
+        refreshActiveWeather()
     }
 
     func handleWeatherToggleSunnyFilterCommand(_ notification: Notification) {

@@ -160,7 +160,7 @@ extension ContentView {
         }
 
         Button {
-            Task { await weatherService.refreshWeather() }
+            refreshActiveWeather()
         } label: {
             Label {
                 Text(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"))
@@ -304,6 +304,7 @@ extension ContentView {
             }
             .buttonStyle(.plain)
             .tint(.primary)
+            .weatherTutorialTarget(.search)
         }
     }
 
@@ -323,7 +324,8 @@ extension ContentView {
                 }
                 .buttonStyle(.plain)
                 .tint(.primary)
-                .iPhoneFloatingToolbarCapsule()
+                .weatherTutorialTarget(.listManager)
+                .iPhoneFloatingToolbarCircle()
 
                 Spacer(minLength: 12)
 
@@ -355,12 +357,7 @@ extension ContentView {
                 Spacer(minLength: 12)
 
                 iPhoneSearchOrAddButton(iconSize: 25, frameSize: 46)
-                    .if(shouldShowIPhonePreviewAddButton) { view in
-                        view.iPhoneFloatingToolbarCircle()
-                    }
-                    .if(!shouldShowIPhonePreviewAddButton) { view in
-                        view.iPhoneFloatingToolbarCapsule()
-                    }
+                    .iPhoneFloatingToolbarCircle()
             }
             .frame(maxWidth: .infinity)
         }
@@ -377,6 +374,7 @@ extension ContentView {
                     .foregroundColor(.primary)
             }
             .tint(.primary)
+            .weatherTutorialTarget(.listManager)
 
             Spacer()
 

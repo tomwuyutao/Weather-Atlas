@@ -65,13 +65,15 @@ private struct IOSFloatingMapCardPreview: View {
             AppTheme.shared.colors.background.ignoresSafeArea()
 
             ContentView()
-                .mapExpandedCard(for: previewCity, hideCityName: false)
+                .mapExpandedCard(for: PreviewCityWeather.athens, hideCityName: false)
                 .padding(.horizontal, 26)
                 .padding(.bottom, 14)
         }
     }
+}
 
-    private var previewCity: CityWeather {
+private enum PreviewCityWeather {
+    static var athens: CityWeather {
         let hourly = [7, 9, 11, 13, 15, 17, 19].enumerated().map { index, hour in
             HourlyForecast(
                 hour: hour,
@@ -130,5 +132,9 @@ private struct IOSFloatingMapCardPreview: View {
 
 #Preview("iOS Floating Map Card") {
     IOSFloatingMapCardPreview()
+}
+
+#Preview("iOS Search Result Add City") {
+    ContentView(previewSearchResultCity: PreviewCityWeather.athens)
 }
 #endif

@@ -14,6 +14,9 @@ extension ContentView {
             NavigationStack {
                 iPadSidebarContent
             }
+            .overlay(alignment: .topTrailing) {
+                iPadSidebarToggleTutorialTarget
+            }
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
         } detail: {
             iOSNativeDetailNavigationStack
@@ -54,6 +57,9 @@ extension ContentView {
             NavigationStack {
                 iPadSidebarContent
             }
+            .overlay(alignment: .topTrailing) {
+                iPadSidebarToggleTutorialTarget
+            }
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
         } detail: {
             iPadMapNavigationStack
@@ -67,6 +73,15 @@ extension ContentView {
         }
     }
 
+    var iPadSidebarToggleTutorialTarget: some View {
+        Color.clear
+            .frame(width: 44, height: 44)
+            .padding(.top, 28)
+            .padding(.trailing, 8)
+            .weatherTutorialTarget(.listManager)
+            .allowsHitTesting(false)
+    }
+
     var iPadMapNavigationStack: some View {
         NavigationStack {
             iPadMapContent
@@ -75,12 +90,6 @@ extension ContentView {
                 .navigationDestination(isPresented: $showingAddCityDetail) {
                     AnyView(iOSAddCityDetailDestination)
                 }
-        }
-        .inspector(isPresented: $showingCityDetail) {
-            if let city = tappedCity {
-                iPadFixedDetailInspector(for: city)
-                    .inspectorColumnWidth(min: 360, ideal: 420, max: 520)
-            }
         }
         .onChange(of: inlineSearchText) { _, newValue in
             inlineSearchManager.search(query: newValue)
@@ -116,8 +125,8 @@ extension ContentView {
             mapTopListMenu
                 .foregroundStyle(theme.colors.primaryText)
                 .tint(theme.colors.primaryText)
+                .weatherTutorialTarget(.listSwitcher)
         }
-
 
         ToolbarItemGroup(placement: .topBarTrailing) {
             Button {
@@ -135,9 +144,12 @@ extension ContentView {
             iPadToolbarMoreMenu
         }
 
+        if #available(iOS 26.0, *) {
+            ToolbarSpacer(.fixed, placement: .topBarTrailing)
+        }
 
         if showingCityDetail {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
                     inlineSearchFieldPresented = true
                 } label: {
@@ -152,7 +164,7 @@ extension ContentView {
                 }
             }
         } else {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItemGroup(placement: .topBarTrailing) {
                 iPadToolbarSearchBar
             }
         }
@@ -184,7 +196,7 @@ extension ContentView {
             }
 
             Button {
-                Task { await weatherService.refreshWeather() }
+                refreshActiveWeather()
             } label: {
                 Label {
                     Text(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"))
@@ -220,6 +232,7 @@ extension ContentView {
             onSubmit: confirmInlineSearchSelection
         )
         .frame(width: 230, height: 36)
+        .weatherTutorialTarget(.search)
         .popover(isPresented: Binding(
             get: { !inlineSearchText.isEmpty && !inlineSortedSearchResults.isEmpty },
             set: { isPresented in
@@ -306,18 +319,32 @@ extension ContentView {
         ZStack {
             iOSMapView
                 .overlay(alignment: .topLeading) {
-                    if showLegend && !showingInlineSearch {
-                        MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
-                            withAnimation(.smooth(duration: 0.2)) {
-                                showLegend = false
+                    if !showingInlineSearch {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if weatherService.isLoading {
+                                LoadingWeatherOverlay(
+                                    progress: weatherService.loadingProgress,
+                                    locale: locale
+                                )
+                                .allowsHitTesting(false)
+                                .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+                            }
+
+                            if showLegend {
+                                MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        showLegend = false
+                                    }
+                                }
+                                .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                             }
                         }
-                        .padding(.leading, 24)
-                        .padding(.top, 68)
-                        .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+                        .padding(.leading, 12)
+                        .padding(.top, 92)
                     }
                 }
                 .animation(.smooth(duration: 0.22), value: showLegend)
+                .animation(.smooth(duration: 0.22), value: weatherService.isLoading)
                 .overlay(alignment: .trailing) {
                     if !showingCityDetail {
                         AnyView(iOSDateSliderOverlay)
@@ -362,6 +389,18 @@ extension ContentView {
                         .zIndex(12)
                 }
 
+                if showingCityDetail, let city = tappedCity {
+                    let maxAvailableWidth = max(320, geometry.size.width - 48)
+                    let panelWidth = min(max(380, geometry.size.width * 0.38), min(460, maxAvailableWidth))
+                    let panelHeight = min(max(500, geometry.size.height - 128), max(420, geometry.size.height - 96))
+
+                    iPadFloatingDetailWindow(for: city)
+                        .frame(width: panelWidth, height: panelHeight)
+                        .offset(x: geometry.size.width - panelWidth - 24, y: 76)
+                        .transition(.scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity))
+                        .zIndex(20)
+                }
+
             }
             .onAppear {
                 macMapViewportSize = geometry.size
@@ -377,8 +416,41 @@ extension ContentView {
         colorScheme == .dark ? Color(hex: 0x262052) : theme.colors.background
     }
 
-    func iPadFixedDetailInspector(for city: CityWeather) -> some View {
-        NavigationStack {
+    func iPadFloatingDetailWindow(for city: CityWeather) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 12) {
+                Text(city.city.localizedName(locale: locale))
+                    .font(.avenir(.headline, weight: .semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                Button {
+                    withAnimation(.spring(response: 0.36, dampingFraction: 0.9)) {
+                        showingCityDetail = false
+                        iPadInspectorPresentedCityID = nil
+                        selectedDayOffset = -1
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .foregroundColor(.primary)
+                        .frame(width: 34, height: 34)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .tint(.primary)
+                .help(localizedString("Close", locale: locale))
+            }
+            .padding(.leading, 18)
+            .padding(.trailing, 10)
+            .padding(.vertical, 10)
+
+            Divider()
+                .opacity(0.45)
+
             ScrollView(.vertical, showsIndicators: false) {
                 mapExpandedCard(
                     for: city,
@@ -391,35 +463,22 @@ extension ContentView {
                 .padding(.bottom, 16)
             }
             .scrollContentBackground(.hidden)
-            .background(iPadInspectorBackground.ignoresSafeArea())
-            .navigationTitle(city.city.localizedName(locale: locale))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        withAnimation(.spring(response: 0.36, dampingFraction: 0.9)) {
-                            showingCityDetail = false
-                            iPadInspectorPresentedCityID = nil
-                            selectedDayOffset = -1
-                        }
-                    } label: {
-                        Image(systemName: "xmark")
-                            .foregroundStyle(.primary)
-                            .foregroundColor(.primary)
-                    }
-                    .tint(.primary)
-                    .help(localizedString("Close", locale: locale))
-                }
+        }
+        .background(iPadInspectorBackground, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.42), lineWidth: 0.8)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.28 : 0.16), radius: 24, y: 10)
+        .onAppear {
+            if let overlayChartMetric {
+                macExpandedCardChartMetric = overlayChartMetric
             }
-            .onAppear {
-                if let overlayChartMetric {
-                    macExpandedCardChartMetric = overlayChartMetric
-                }
-                macExpandedCardShowsDetails = true
-            }
-            .onDisappear {
-                macExpandedCardShowsDetails = false
-            }
+            macExpandedCardShowsDetails = true
+        }
+        .onDisappear {
+            macExpandedCardShowsDetails = false
         }
     }
 

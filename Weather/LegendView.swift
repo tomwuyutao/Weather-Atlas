@@ -26,6 +26,10 @@ struct MapFloatingLegend: View {
         palette.dotPartlyCloudy.compatMix(with: palette.filterSunny, by: 0.18)
     }
 
+    private var legendWidth: CGFloat {
+        overlayMode == "weather" ? (compact ? 184 : 178) : (compact ? 132 : 126)
+    }
+
     private var weatherLegendItems: [(title: String, color: Color)] {
         [
             (localizedString("Clear", locale: locale), palette.dotSun),
@@ -106,7 +110,7 @@ struct MapFloatingLegend: View {
         .padding(.horizontal, compact ? 12 : 14)
         .padding(.vertical, compact ? 10 : 12)
         .padding(.trailing, onClose == nil ? 0 : 20)
-        .frame(width: compact ? 154 : 178, alignment: .leading)
+        .frame(width: legendWidth, alignment: .leading)
         .themedGlass(in: .rect(cornerRadius: 24))
         .overlay(alignment: .topTrailing) {
             if let onClose {

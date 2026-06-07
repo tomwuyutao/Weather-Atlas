@@ -13,6 +13,7 @@ typealias PlatformWebViewRepresentable = UIViewRepresentable
 
 struct MapLibreWebMapView: PlatformWebViewRepresentable {
     let cities: [CityWeather]
+    let fitCities: [City]
     let selectedDayOffset: Int
     var overlayMode: String = "weather"
     let filterSunny: Bool
@@ -21,6 +22,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     var showsMarkerHoverLabels: Bool = true
     @Binding var tappedCity: CityWeather?
     @Binding var recenterOnAllCities: Bool
+    @Binding var recenterUsesListCoordinates: Bool
     var centerOnCity: CityWeather?
     var leadingFitPadding: Double = 0
     var focusSelectedMarker: Bool = true
@@ -226,10 +228,13 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             evaluate("window.setWeatherMapCameraProfile?.(\(Self.jsString(parent.cameraProfile.rawValue)));")
 
             let features = parent.makeFeatures()
+            let fitCoordinates = parent.makeFitCoordinates()
             guard let data = try? JSONEncoder().encode(features),
-                  let json = String(data: data, encoding: .utf8) else { return }
+                  let json = String(data: data, encoding: .utf8),
+                  let fitData = try? JSONEncoder().encode(fitCoordinates),
+                  let fitJSON = String(data: fitData, encoding: .utf8) else { return }
             let selectedID = parent.focusSelectedMarker ? (parent.tappedCity?.id.uuidString ?? "") : ""
-            let payload = "{features:\(json),selectedID:\(Self.jsString(selectedID)),allowsMarkerHover:\(parent.allowsMarkerHover ? "true" : "false"),showsMarkerHoverLabels:\(parent.showsMarkerHoverLabels ? "true" : "false"),markerSizeScale:\(parent.markerSizeScale)}"
+            let payload = "{features:\(json),fitCoordinates:\(fitJSON),selectedID:\(Self.jsString(selectedID)),allowsMarkerHover:\(parent.allowsMarkerHover ? "true" : "false"),showsMarkerHoverLabels:\(parent.showsMarkerHoverLabels ? "true" : "false"),markerSizeScale:\(parent.markerSizeScale)}"
 
             let shouldReloadMarkers = parent.markerReloadID != lastMarkerReloadID
             if shouldReloadMarkers {
@@ -241,9 +246,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             }
 
             if parent.recenterOnAllCities {
-                evaluate("window.fitWeatherData(\(parent.leadingFitPadding));")
+                evaluate("window.fitWeatherData(\(parent.leadingFitPadding), \(parent.recenterUsesListCoordinates ? "true" : "false"));")
                 DispatchQueue.main.async {
                     self.parent.recenterOnAllCities = false
+                    self.parent.recenterUsesListCoordinates = false
                 }
             }
 
@@ -261,6 +267,12 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             guard let data = try? JSONEncoder().encode(value),
                   let string = String(data: data, encoding: .utf8) else { return "\"\"" }
             return string
+        }
+    }
+
+    private func makeFitCoordinates() -> [MapLibreFitCoordinate] {
+        fitCities.map { city in
+            MapLibreFitCoordinate(latitude: city.latitude, longitude: city.longitude)
         }
     }
 
@@ -869,10 +881,13 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           applyCameraProfileClass();
         };
 
-        window.fitWeatherData = function(leadingPadding = 0) {
-          if (!pendingPayload || !pendingPayload.features || pendingPayload.features.length === 0) return;
+        window.fitWeatherData = function(leadingPadding = 0, useFitCoordinates = false) {
+          if (!pendingPayload) return;
+          const savedListCoordinates = pendingPayload.fitCoordinates || [];
+          const fitItems = useFitCoordinates ? savedListCoordinates : (pendingPayload.features?.length ? pendingPayload.features : savedListCoordinates);
+          if (!fitItems.length) return;
           const bounds = new maplibregl.LngLatBounds();
-          pendingPayload.features.forEach(item => bounds.extend([item.longitude, item.latitude]));
+          fitItems.forEach(item => bounds.extend([item.longitude, item.latitude]));
           if (!bounds.isEmpty()) {
             const camera = activeCameraProfile();
             const padding = {
@@ -1306,4 +1321,9 @@ private struct MapLibreWeatherFeature: Codable {
     let label: String
     let color: String
     let hidden: Bool
+}
+
+private struct MapLibreFitCoordinate: Codable {
+    let latitude: Double
+    let longitude: Double
 }

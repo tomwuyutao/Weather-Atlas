@@ -85,7 +85,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 59C2E3512F4F06B000877DA8 /* Build configuration list for PBXProject "Tom's Weather" */;
+			buildConfigurationList = 59C2E3512F4F06B000877DA8 /* Build configuration list for PBXProject "Weather Atlas" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
@@ -376,7 +376,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		59C2E3512F4F06B000877DA8 /* Build configuration list for PBXProject "Tom's Weather" */ = {
+		59C2E3512F4F06B000877DA8 /* Build configuration list for PBXProject "Weather Atlas" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				59C2E3612F4F06B100877DA8 /* Debug */,

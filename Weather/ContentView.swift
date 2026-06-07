@@ -31,6 +31,20 @@ struct ContentView: View {
     @State var weatherService = WeatherService()
     @Environment(\.appTheme) var theme
     var previewLoading: Bool = false
+    var previewSkipsInitialWeatherFetch: Bool = false
+
+    init(previewLoading: Bool = false, previewSearchResultCity: CityWeather? = nil) {
+        self.previewLoading = previewLoading
+        self.previewSkipsInitialWeatherFetch = previewSearchResultCity != nil
+
+        if let previewSearchResultCity {
+            _selectedTab = State(initialValue: 1)
+            _previewCity = State(initialValue: previewSearchResultCity)
+            _previewSearchText = State(initialValue: previewSearchResultCity.city.name)
+            _tappedCity = State(initialValue: previewSearchResultCity)
+            _showingMapExpandedCard = State(initialValue: true)
+        }
+    }
 
     @State var centerOnCityTrigger: CityWeather?
 
@@ -69,12 +83,17 @@ struct ContentView: View {
     @State var inlineSearchSelectionIndex: Int = 0
     
     @State var recenterOnAllCities: Bool = false
+    @State var recenterUsesListCoordinates: Bool = false
     @State var mapMarkerReloadID: Int = 0
     @State var settingsOpenedThemeStyle: AppThemeStyle?
     @State var iPadInspectorPresentedCityID: UUID?
     @AppStorage("temperatureUnit") var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
     @State var showingSettings: Bool = false
+    #if os(iOS)
+    @State var tutorialStep: WeatherTutorialStep?
+    @State var tutorialTargetFrames: [WeatherTutorialTarget: CGRect] = [:]
+    #endif
     @AppStorage("showLegend") var showLegend: Bool = true
     @State var showingInfo: Bool = false
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
@@ -221,7 +240,6 @@ struct ContentView: View {
     }
 
     @State var isLoadingMapList: Bool = false
-    @State var loadingWeatherIcon: String = "sun.max.fill"
     @State var capsuleSwipeFromTrailing: Bool = true
 
     // Map overlay menu is in MapOverlayMenu.swift

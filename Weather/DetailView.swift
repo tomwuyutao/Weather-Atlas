@@ -36,10 +36,12 @@ extension ContentView {
                         .foregroundColor(.primary)
                 }
                 .tint(.primary)
+                .frame(width: 44, height: 44)
 
                 Spacer()
 
                 detailToolbarTrailingAction(for: city)
+                    .frame(width: 44, height: 44)
             }
         }
     }

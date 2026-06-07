@@ -31,12 +31,25 @@ struct WeatherApp: App {
         // Always reset overlay mode to weather on launch
         UserDefaults.standard.set("weather", forKey: "mapOverlayMode")
 
-        // One-time migration: clear old city data so new defaults take effect
-        let migrationKey = "defaultCitiesMigrationV2"
+        // One-time migration: clear old default-list data so new region defaults take effect.
+        let migrationKey = "defaultCitiesMigrationV3"
         if !UserDefaults.standard.bool(forKey: migrationKey) {
             UserDefaults.standard.removeObject(forKey: "savedCitiesList")
             UserDefaults.standard.removeObject(forKey: "cachedWeatherData")
             UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp")
+            UserDefaults.standard.removeObject(forKey: "deletedBuiltInLists")
+            UserDefaults.standard.removeObject(forKey: "listOrder")
+            UserDefaults.standard.removeObject(forKey: "customListNames")
+
+            for rawValue in ["china", "europe", "asia", "northAmerica", "southAmerica", "africa", "australia"] {
+                UserDefaults.standard.removeObject(forKey: "savedCitiesList_\(rawValue)")
+                UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(rawValue)")
+                UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(rawValue)")
+            }
+
+            if UserDefaults.standard.string(forKey: "activeListID") == "china" {
+                UserDefaults.standard.set(CityListID.europe.rawValue, forKey: "activeListID")
+            }
             UserDefaults.standard.set(true, forKey: migrationKey)
         }
         

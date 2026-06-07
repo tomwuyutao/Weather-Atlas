@@ -142,7 +142,8 @@ extension ContentView {
             Rectangle()
                 .fill(theme.colors.primaryText.opacity(0.18))
                 .frame(height: 1)
-                .padding(.horizontal, shouldUseIPadLayout ? -12 : 0)
+                .padding(.leading, shouldUseIPadLayout ? -10 : -10)
+                .padding(.trailing, shouldUseIPadLayout ? -25 : -26)
         }
         .contentShape(Rectangle())
     }
@@ -302,4 +303,3 @@ extension ContentView {
         .frame(width: 280, height: 520)
 }
 #endif
-

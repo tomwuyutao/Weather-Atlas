@@ -40,11 +40,6 @@ extension ContentView {
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
         }
-        .onChange(of: weatherService.isLoading) { wasLoading, isLoading in
-            if wasLoading && !isLoading && selectedTab == 1 {
-                recenterOnAllCities = true
-            }
-        }
         .onChange(of: showingMapExpandedCard) { _, showing in
             if !showing {
                 if previewCity != nil {
@@ -77,11 +72,23 @@ extension ContentView {
                     Task {
                         await weatherService.resetAllLists()
                     }
+                },
+                onPlayTutorial: {
+                    showingSettings = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                        startWeatherTutorial()
+                    }
                 }
             )
         }
+        .onPreferenceChange(WeatherTutorialTargetFramePreferenceKey.self) { frames in
+            tutorialTargetFrames = frames
+        }
         .overlay {
             iOSDeleteListConfirmationOverlay
+        }
+        .overlay {
+            weatherTutorialOverlay
         }
         .onChange(of: showingRenameAlert) { _, isShowing in
             if isShowing {
@@ -214,6 +221,9 @@ extension ContentView {
             #endif
         }
         .buttonStyle(.plain)
+        #if os(iOS)
+        .weatherTutorialTarget(.listSwitcher)
+        #endif
         #if os(macOS)
         .tint(.primary)
         .menuIndicator(.hidden)
@@ -230,18 +240,32 @@ extension ContentView {
             AnyView(
                 iOSMapView
                     .overlay(alignment: .topLeading) {
-                        if selectedTab == 1, showLegend, !showingInlineSearch {
-                            MapFloatingLegend(overlayMode: mapOverlayMode) {
-                                withAnimation(.smooth(duration: 0.2)) {
-                                    showLegend = false
+                        if selectedTab == 1, !showingInlineSearch {
+                            VStack(alignment: .leading, spacing: 8) {
+                                if weatherService.isLoading {
+                                    LoadingWeatherOverlay(
+                                        progress: weatherService.loadingProgress,
+                                        locale: locale
+                                    )
+                                    .allowsHitTesting(false)
+                                    .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+                                }
+
+                                if showLegend {
+                                    MapFloatingLegend(overlayMode: mapOverlayMode) {
+                                        withAnimation(.smooth(duration: 0.2)) {
+                                            showLegend = false
+                                        }
+                                    }
+                                    .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                                 }
                             }
-                                .padding(.leading, 16)
-                                .padding(.top, 72)
-                                .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+                            .padding(.leading, 16)
+                            .padding(.top, 72)
                         }
                     }
                     .animation(.smooth(duration: 0.22), value: showLegend)
+                    .animation(.smooth(duration: 0.22), value: weatherService.isLoading)
                     .overlay(alignment: .top) {
                         if !showingInlineSearch {
                             HStack {
@@ -446,6 +470,10 @@ extension ContentView {
             weatherService.loadingProgress = 0.6
             return
         }
+        if previewSkipsInitialWeatherFetch {
+            return
+        }
+        centerMapOnDots(useListCoordinates: true)
         await weatherService.fetchWeatherForAllCities()
     }
 
