@@ -58,7 +58,7 @@ enum WeatherTutorialStep: Int, CaseIterable {
     var actionTitle: String {
         switch self {
         case .intro: return "Let's Start"
-        case .search: return "Finish Tutorial"
+        case .search: return "OK"
         default: return "Okay"
         }
     }
@@ -302,8 +302,17 @@ extension ContentView {
                 tutorialStep = nextStep
             }
         } else {
+            let shouldShowListPicker = shouldShowFirstLaunchListPickerAfterTutorial
+            shouldShowFirstLaunchListPickerAfterTutorial = false
             withAnimation(.easeOut(duration: 0.2)) {
                 tutorialStep = nil
+            }
+            if shouldShowListPicker {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                        showingFirstLaunchListPicker = true
+                    }
+                }
             }
         }
     }

@@ -233,6 +233,15 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         UserDefaults.standard.removeObject(forKey: listOrderKey)
         UserDefaults.standard.removeObject(forKey: customListNamesKey)
     }
+
+    static func keepBuiltInLists(withRawValues selectedIDs: Set<String>) {
+        let deleted = builtInLists
+            .map(\.rawValue)
+            .filter { !selectedIDs.contains($0) }
+        UserDefaults.standard.set(deleted, forKey: deletedBuiltInListsKey)
+        UserDefaults.standard.removeObject(forKey: listOrderKey)
+        UserDefaults.standard.removeObject(forKey: customListNamesKey)
+    }
     
     static func createList(name: String) -> CityListID {
         let id = CityListID(rawValue: UUID().uuidString, displayName: name)

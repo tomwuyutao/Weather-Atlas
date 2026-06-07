@@ -9,8 +9,68 @@ import SwiftUI
 
 #if os(iOS)
 class AppDelegate: NSObject, UIApplicationDelegate {
+    private static let pendingListShortcutKey = "pendingListShortcutID"
+    private static let listShortcutTypePrefix = "openList."
+
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         .portrait
+    }
+
+    func application(
+        _ application: UIApplication,
+        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
+    ) -> Bool {
+        Self.updateHomeScreenListShortcuts()
+        if let shortcutItem = launchOptions?[.shortcutItem] as? UIApplicationShortcutItem {
+            return !Self.handleShortcutItem(shortcutItem)
+        }
+        return true
+    }
+
+    func application(
+        _ application: UIApplication,
+        performActionFor shortcutItem: UIApplicationShortcutItem,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        completionHandler(Self.handleShortcutItem(shortcutItem))
+    }
+
+    static func updateHomeScreenListShortcuts() {
+        UIApplication.shared.shortcutItems = CityListID.allLists.prefix(3).map { listID in
+            UIApplicationShortcutItem(
+                type: shortcutType(for: listID),
+                localizedTitle: listID.localizedDisplayName(),
+                localizedSubtitle: String(localized: "Open on Map"),
+                icon: UIApplicationShortcutIcon(systemImageName: "map"),
+                userInfo: ["listID": listID.rawValue as NSString]
+            )
+        }
+    }
+
+    static func takePendingListShortcutID() -> String? {
+        guard let rawValue = UserDefaults.standard.string(forKey: pendingListShortcutKey) else { return nil }
+        UserDefaults.standard.removeObject(forKey: pendingListShortcutKey)
+        return rawValue
+    }
+
+    private static func handleShortcutItem(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
+        guard let rawValue = listID(from: shortcutItem) else { return false }
+        UserDefaults.standard.set(rawValue, forKey: pendingListShortcutKey)
+        NotificationCenter.default.post(name: .weatherOpenListShortcutCommand, object: rawValue)
+        return true
+    }
+
+    private static func shortcutType(for listID: CityListID) -> String {
+        "\(Bundle.main.bundleIdentifier ?? "Weather").\(listShortcutTypePrefix)\(listID.rawValue)"
+    }
+
+    private static func listID(from shortcutItem: UIApplicationShortcutItem) -> String? {
+        if let rawValue = shortcutItem.userInfo?["listID"] as? String {
+            return rawValue
+        }
+        let marker = ".\(listShortcutTypePrefix)"
+        guard let range = shortcutItem.type.range(of: marker) else { return nil }
+        return String(shortcutItem.type[range.upperBound...])
     }
 }
 #endif
@@ -290,6 +350,7 @@ extension Notification.Name {
     static let weatherToggleSidebarCommand = Notification.Name("weatherToggleSidebarCommand")
     static let weatherPanCommand = Notification.Name("weatherPanCommand")
     static let weatherKeyboardZoomCommand = Notification.Name("weatherKeyboardZoomCommand")
+    static let weatherOpenListShortcutCommand = Notification.Name("weatherOpenListShortcutCommand")
 }
 
 /// Outer layer: sets the preferred color scheme so the inner layer reads the correct one.

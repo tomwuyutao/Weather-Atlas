@@ -57,7 +57,6 @@ struct ContentView: View {
     @AppStorage("hasLaunchedBefore") var hasLaunchedBefore: Bool = false
     @State var selectedTab: Int = 0
     @State var lastRefreshText: String = ""
-    @State var showingAddCityView: Bool = false
     @State var showingAddCityDetail: Bool = false
     @State var addCityDetailCity: CityWeather?
     @State var previewCity: CityWeather?
@@ -93,6 +92,9 @@ struct ContentView: View {
     #if os(iOS)
     @State var tutorialStep: WeatherTutorialStep?
     @State var tutorialTargetFrames: [WeatherTutorialTarget: CGRect] = [:]
+    @State var shouldShowFirstLaunchListPickerAfterTutorial = false
+    @State var showingFirstLaunchListPicker = false
+    @State var firstLaunchSelectedListIDs: Set<String> = []
     #endif
     @AppStorage("showLegend") var showLegend: Bool = true
     @State var showingInfo: Bool = false

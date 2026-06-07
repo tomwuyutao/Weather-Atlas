@@ -26,6 +26,9 @@ extension ContentView {
 
     func refreshSidebarListOrder() {
         listOrderRevision += 1
+        #if os(iOS)
+        AppDelegate.updateHomeScreenListShortcuts()
+        #endif
     }
 
     func refreshSidebarCityOrder() {

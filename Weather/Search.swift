@@ -2,7 +2,7 @@
 //  Search.swift
 //  Weather
 //
-//  Native city search, add-city search, and MapKit search plumbing.
+//  Native city search and MapKit search plumbing.
 //
 
 import SwiftUI
@@ -66,175 +66,6 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     }
 
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
-    }
-}
-
-// MARK: - Add City Search View
-
-struct AddCitySearchView: View {
-    let cities: [CityWeather]
-    @State var citySearchManager: CitySearchManager
-    let weatherService: WeatherService
-    let onCitySelected: (CityWeather) -> Void
-
-    @State private var searchText: String = ""
-    @State private var isSearchPresented = true
-    @State private var isLoadingCity = false
-    @Environment(\.dismiss) private var dismiss
-    @Environment(\.locale) private var locale
-
-    private func cityIdentity(for result: CitySearchResult) -> (name: String, country: String) {
-        let name = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
-        let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
-        return (name, country)
-    }
-
-    private func existingCityListName(for result: CitySearchResult) -> String? {
-        let identity = cityIdentity(for: result)
-        guard cities.contains(where: { $0.city.name == identity.name && $0.city.country == identity.country }) else {
-            return nil
-        }
-        return weatherService.activeListID.localizedDisplayName(locale: locale)
-    }
-
-    private func isExistingCity(_ result: CitySearchResult) -> Bool {
-        existingCityListName(for: result) != nil
-    }
-
-    private var sortedSearchResults: [CitySearchResult] {
-        citySearchManager.searchResults.sorted { a, b in
-            let aExists = isExistingCity(a)
-            let bExists = isExistingCity(b)
-            if aExists != bExists { return aExists }
-            return false
-        }
-    }
-
-    var body: some View {
-        searchContent
-            .navigationTitle(localizedString("Add City", locale: locale))
-            #if os(iOS)
-            .navigationBarTitleDisplayMode(.inline)
-            #endif
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(localizedString("Cancel", locale: locale)) {
-                        dismiss()
-                    }
-                }
-            }
-            .searchable(
-                text: $searchText,
-                isPresented: $isSearchPresented,
-                prompt: Text(localizedString("Search for a city or place", locale: locale))
-            )
-            .searchSuggestions {
-                nativeSearchSuggestions
-            }
-            .onChange(of: searchText) { _, newValue in
-                citySearchManager.search(query: newValue)
-            }
-            .onAppear {
-                isSearchPresented = true
-            }
-    }
-
-    private var searchContent: some View {
-        VStack(spacing: 14) {
-            Spacer()
-
-            Image(systemName: searchText.isEmpty ? "magnifyingglass" : "map")
-                .font(.system(size: 48))
-                .foregroundStyle(.tertiary)
-
-            if !searchText.isEmpty {
-                Text(localizedString("No results", locale: locale))
-                    .font(.avenir(.title3, weight: .medium))
-
-                Text(localizedString("Try a different search term", locale: locale))
-                    .font(.avenir(.body))
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(AppTheme.shared.colors.background.ignoresSafeArea())
-    }
-
-    @ViewBuilder
-    private var nativeSearchSuggestions: some View {
-        ForEach(sortedSearchResults) { result in
-            Button {
-                guard !isLoadingCity else { return }
-                Task {
-                    await selectSearchResult(result)
-                }
-            } label: {
-                nativeSearchSuggestionRow(for: result)
-            }
-            .disabled(isLoadingCity)
-        }
-    }
-
-    private func nativeSearchSuggestionRow(for result: CitySearchResult) -> some View {
-        let existingListName = existingCityListName(for: result)
-
-        return HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(result.title)
-                    .font(.avenir(.body, weight: .medium))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                Text(result.subtitle)
-                    .font(.avenir(.caption, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-
-            Spacer(minLength: 8)
-
-            if let existingListName {
-                HStack(spacing: 6) {
-                    Text("\(localizedString("In list", locale: locale)) \(existingListName)")
-                        .font(.avenir(.caption2, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(Color.secondary)
-                }
-            } else if isLoadingCity {
-                ProgressView()
-                    .controlSize(.small)
-            }
-        }
-        .padding(.vertical, 3)
-    }
-
-    private func selectSearchResult(_ result: CitySearchResult) async {
-        isLoadingCity = true
-        defer { isLoadingCity = false }
-
-        let cityName = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
-        let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
-
-        if let existingCity = cities.first(where: { $0.city.name == cityName && $0.city.country == country }) {
-            onCitySelected(existingCity)
-            return
-        }
-
-        guard let coordinate = await citySearchManager.resolveCoordinate(for: result) else {
-            return
-        }
-
-        let tempCity = City(name: cityName, country: country, latitude: coordinate.latitude, longitude: coordinate.longitude)
-        guard let tempCityWeather = await weatherService.fetchWeatherForCity(tempCity) else {
-            return
-        }
-
-        onCitySelected(tempCityWeather)
     }
 }
 
@@ -498,16 +329,5 @@ extension ContentView {
                 pushIPhoneRoute(.addCityDetail)
             }
         }
-    }
-}
-
-#Preview("Add City Search") {
-    NavigationStack {
-        AddCitySearchView(
-            cities: [],
-            citySearchManager: CitySearchManager(),
-            weatherService: WeatherService(),
-            onCitySelected: { _ in }
-        )
     }
 }

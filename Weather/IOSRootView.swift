@@ -9,95 +9,126 @@ import SwiftUI
 
 #if os(iOS)
 extension ContentView {
-    var iOSView: some View {
-        Group {
-            #if os(iOS)
-            if shouldUseIPadLayout {
-                iOSNavigationSplitRoot
-            } else {
-                iPhoneNavigationStack
-            }
-            #else
+    @ViewBuilder
+    private var iOSRootContent: some View {
+        if shouldUseIPadLayout {
+            iOSNavigationSplitRoot
+        } else {
             iPhoneNavigationStack
-            #endif
         }
-        .task { await iOSOnAppear() }
-        .onChange(of: weatherService.activeListID) { _, newListID in
-            visibleListIDs.insert(newListID.rawValue)
-        }
-        .onChange(of: inlineSearchText) { _, newValue in
-            inlineSearchSelectionIndex = 0
-            inlineSearchManager.search(query: newValue)
-        }
-        .onChange(of: selectedTab) { _, _ in
-            AppTheme.shared.isDetailedMapMode = false
-        }
-        .onChange(of: theme.style) { _, _ in
-            if selectedTab == 1 {
-                centerMapOnDots()
+    }
+
+    var iOSView: some View {
+        AnyView(iOSViewAlerts)
+    }
+
+    private var iOSViewLifecycle: some View {
+        AnyView(iOSRootContent)
+            .task { await iOSOnAppear() }
+            .background {
+                iOSShortcutCommandReceiver
             }
-        }
-        .onChange(of: selectedDayOffset) { oldValue, _ in
-            iOSPreviousDayOffset = oldValue
-        }
-        .onChange(of: showingMapExpandedCard) { _, showing in
-            if !showing {
-                if previewCity != nil {
-                    previewCity = nil
-                    recenterOnAllCities = true
-                }
+            .onChange(of: weatherService.activeListID) { _, newListID in
+                visibleListIDs.insert(newListID.rawValue)
+                AppDelegate.updateHomeScreenListShortcuts()
             }
-        }
-        .onChange(of: showingSettings) { wasShowing, isShowing in
-            if isShowing {
-                settingsOpenedThemeStyle = theme.style
-            } else if wasShowing {
-                if settingsOpenedThemeStyle != theme.style, selectedTab == 1 {
-                    forceReloadMapDots()
+            .onChange(of: inlineSearchText) { _, newValue in
+                inlineSearchSelectionIndex = 0
+                inlineSearchManager.search(query: newValue)
+            }
+            .onChange(of: selectedTab) { _, _ in
+                AppTheme.shared.isDetailedMapMode = false
+            }
+            .onChange(of: theme.style) { _, _ in
+                if selectedTab == 1 {
                     centerMapOnDots()
                 }
-                settingsOpenedThemeStyle = nil
             }
-        }
-        .onChange(of: showingCityDetail) { _, showing in
-            iOSHandleCityDetailDismiss(showing: showing)
-        }
-        .sheet(isPresented: $showingInfo) {
-            InfoView(source: selectedTab == 1 ? .map : .list)
-        }
-        .sheet(isPresented: $showingSettings) {
-            SettingsView(
-                weatherService: weatherService,
-                onResetLists: {
-                    Task {
-                        let expandedListIDs = sidebarExpandedListIDs
-                        await weatherService.resetAllLists(preloadListIDs: expandedListIDs)
-                        await MainActor.run {
-                            sidebarExpandedListIDs = Set(CityListID.builtInLists.map(\.rawValue)).intersection(expandedListIDs)
-                            sidebarExpandedListIDs.insert(weatherService.activeListID.rawValue)
-                            refreshSidebarListOrder()
-                            refreshSidebarCityOrder()
-                            recenterOnAllCities = true
-                        }
-                    }
-                },
-                onPlayTutorial: {
-                    showingSettings = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                        startWeatherTutorial()
+    }
+
+    private var iOSViewStateObservers: some View {
+        AnyView(iOSViewLifecycle)
+            .onChange(of: selectedDayOffset) { oldValue, _ in
+                iOSPreviousDayOffset = oldValue
+            }
+            .onChange(of: showingMapExpandedCard) { _, showing in
+                if !showing {
+                    if previewCity != nil {
+                        previewCity = nil
+                        recenterOnAllCities = true
                     }
                 }
-            )
-        }
-        .onPreferenceChange(WeatherTutorialTargetFramePreferenceKey.self) { frames in
-            tutorialTargetFrames = frames
-        }
-        .overlay {
-            iOSDeleteListConfirmationOverlay
-        }
-        .overlay {
-            weatherTutorialOverlay
-        }
+            }
+            .onChange(of: showingSettings) { wasShowing, isShowing in
+                if isShowing {
+                    settingsOpenedThemeStyle = theme.style
+                } else if wasShowing {
+                    if settingsOpenedThemeStyle != theme.style, selectedTab == 1 {
+                        forceReloadMapDots()
+                        centerMapOnDots()
+                    }
+                    settingsOpenedThemeStyle = nil
+                }
+            }
+            .onChange(of: showingCityDetail) { _, showing in
+                iOSHandleCityDetailDismiss(showing: showing)
+            }
+    }
+
+    private var iOSViewSheetsAndOverlays: some View {
+        AnyView(iOSViewStateObservers)
+            .sheet(isPresented: $showingInfo) {
+                InfoView(source: selectedTab == 1 ? .map : .list)
+            }
+            .sheet(isPresented: $showingSettings) {
+                SettingsView(
+                    weatherService: weatherService,
+                    onResetLists: {
+                        Task {
+                            let expandedListIDs = sidebarExpandedListIDs
+                            await weatherService.resetAllLists(preloadListIDs: expandedListIDs)
+                            await MainActor.run {
+                                sidebarExpandedListIDs = Set(CityListID.builtInLists.map(\.rawValue)).intersection(expandedListIDs)
+                                sidebarExpandedListIDs.insert(weatherService.activeListID.rawValue)
+                                refreshSidebarListOrder()
+                                refreshSidebarCityOrder()
+                                recenterOnAllCities = true
+                                showingSettings = false
+                                prepareFirstLaunchListPickerSelection()
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+                                    withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                                        showingFirstLaunchListPicker = true
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    onPlayTutorial: {
+                        showingSettings = false
+                        prepareFirstLaunchListPickerSelection()
+                        shouldShowFirstLaunchListPickerAfterTutorial = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                            startWeatherTutorial()
+                        }
+                    }
+                )
+            }
+            .onPreferenceChange(WeatherTutorialTargetFramePreferenceKey.self) { frames in
+                tutorialTargetFrames = frames
+            }
+            .overlay {
+                iOSDeleteListConfirmationOverlay
+            }
+            .overlay {
+                weatherTutorialOverlay
+            }
+            .overlay {
+                firstLaunchListPickerOverlay
+            }
+    }
+
+    private var iOSViewAlerts: some View {
+        AnyView(iOSViewSheetsAndOverlays)
         .onChange(of: showingRenameAlert) { _, isShowing in
             if isShowing {
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
@@ -149,6 +180,15 @@ extension ContentView {
             }
         }
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
+    }
+
+    var iOSShortcutCommandReceiver: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherOpenListShortcutCommand)) { notification in
+                guard let rawValue = notification.object as? String else { return }
+                handleOpenListShortcut(rawValue: rawValue)
+            }
     }
 
     var iPhoneNavigationStack: some View {
@@ -464,11 +504,16 @@ extension ContentView {
     }
 
     func iOSOnAppear() async {
+        AppDelegate.updateHomeScreenListShortcuts()
+        let isFirstLaunch = !hasLaunchedBefore
         if hasLaunchedBefore {
             selectedTab = 1
-        }
-        if !hasLaunchedBefore {
+        } else {
             hasLaunchedBefore = true
+            selectedTab = 1
+            showLegend = true
+            prepareFirstLaunchListPickerSelection()
+            shouldShowFirstLaunchListPickerAfterTutorial = true
         }
         if visibleListIDs.isEmpty {
             visibleListIDs = [weatherService.activeListID.rawValue]
@@ -482,7 +527,43 @@ extension ContentView {
             return
         }
         centerMapOnDots(useListCoordinates: true)
+        if isFirstLaunch {
+            startWeatherTutorial()
+        }
         await weatherService.fetchWeatherForAllCities()
+        if let pendingShortcutID = AppDelegate.takePendingListShortcutID() {
+            handleOpenListShortcut(rawValue: pendingShortcutID)
+        }
+    }
+
+    func handleOpenListShortcut(rawValue: String) {
+        guard let listID = CityListID.allLists.first(where: { $0.rawValue == rawValue }) else { return }
+        selectedTab = 1
+        selectedDayOffset = -1
+        showingSettings = false
+        showingInfo = false
+        showingInlineSearch = false
+        inlineSearchFieldPresented = false
+        showingMapSidebar = false
+        showingMapExpandedCard = false
+        showingCityDetail = false
+        tappedCity = nil
+        previewCity = nil
+        #if os(iOS)
+        iPhoneNavigationPath = []
+        iPadPreferredCompactColumn = .detail
+        #endif
+
+        Task {
+            await switchToList(listID)
+            await MainActor.run {
+                visibleListIDs.insert(listID.rawValue)
+                sidebarExpandedListIDs.insert(listID.rawValue)
+                recenterOnAllCities = true
+                centerMapOnDots(useListCoordinates: true)
+                AppDelegate.updateHomeScreenListShortcuts()
+            }
+        }
     }
 
     func iOSHandleCityDetailDismiss(showing: Bool) {
@@ -500,41 +581,6 @@ extension ContentView {
 #endif
 
 extension ContentView {
-    var iOSAddCitySheet: some View {
-        NavigationStack {
-            AddCitySearchView(
-                cities: weatherService.cityWeatherData,
-                citySearchManager: CitySearchManager(),
-                weatherService: weatherService,
-                onCitySelected: { cityWeather in
-                    if selectedTab == 1 {
-                        // On map: show as preview marker with expanded card
-                        previewCity = cityWeather
-                        previewSearchText = cityWeather.city.name
-                        tappedCity = cityWeather
-                        #if os(macOS)
-                        macMapExpandedCardFocusesMarker = false
-                        #endif
-                        showingAddCityView = false
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            centerOnCityTrigger = cityWeather
-                            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
-                                showingMapExpandedCard = true
-                            }
-                        }
-                    } else {
-                        addCityDetailCity = cityWeather
-                        showingAddCityDetail = true
-                        pushIPhoneRoute(.addCityDetail)
-                    }
-                }
-            )
-            .navigationDestination(isPresented: $showingAddCityDetail) {
-                iOSAddCityDetailDestination
-            }
-        }
-    }
-
     @ViewBuilder
     var iOSAddCityDetailDestination: some View {
         if let city = addCityDetailCity {
@@ -543,6 +589,129 @@ extension ContentView {
             })
         }
     }
+
+    #if os(iOS)
+    @ViewBuilder
+    var firstLaunchListPickerOverlay: some View {
+        if showingFirstLaunchListPicker {
+            theme.colors.modalOverlay
+                .ignoresSafeArea()
+
+            VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(localizedString("Choose Lists", locale: locale))
+                        .font(.avenir(.headline, weight: .bold))
+                        .foregroundStyle(theme.colors.primaryText)
+
+                    Text(localizedString("Pick one or more default continent lists to start with.", locale: locale))
+                        .font(.avenir(.subheadline, weight: .regular))
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(spacing: 0) {
+                    ForEach(CityListID.builtInLists) { listID in
+                        Button {
+                            toggleFirstLaunchListSelection(listID)
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: firstLaunchSelectedListIDs.contains(listID.rawValue) ? "checkmark.circle.fill" : "circle")
+                                    .font(.system(size: 20, weight: .semibold))
+                                    .foregroundStyle(firstLaunchSelectedListIDs.contains(listID.rawValue) ? theme.colors.accent : theme.colors.secondaryText)
+                                    .frame(width: 24)
+
+                                Text(listID.localizedDisplayName(locale: locale))
+                                    .font(.avenir(.body, weight: .medium))
+                                    .foregroundStyle(theme.colors.primaryText)
+
+                                Spacer(minLength: 8)
+                            }
+                            .padding(.vertical, 11)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+
+                        if listID.rawValue != CityListID.builtInLists.last?.rawValue {
+                            Divider()
+                                .opacity(0.45)
+                        }
+                    }
+                }
+
+                Button {
+                    applyFirstLaunchListSelection()
+                } label: {
+                    HStack {
+                        Spacer(minLength: 0)
+                        Text(localizedString("OK", locale: locale))
+                            .font(.avenir(.body, weight: .semibold))
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.vertical, 12)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.white)
+                .background(
+                    (firstLaunchSelectedListIDs.isEmpty ? theme.colors.secondaryText : theme.colors.accent),
+                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                )
+                .disabled(firstLaunchSelectedListIDs.isEmpty)
+            }
+            .padding(18)
+            .frame(width: min(340, UIScreen.main.bounds.width - 36))
+            .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(.white.opacity(0.16), lineWidth: 0.7)
+            )
+            .shadow(color: .black.opacity(0.24), radius: 22, y: 12)
+            .transition(.scale(scale: 0.92).combined(with: .opacity))
+            .zIndex(1001)
+        }
+    }
+
+    func prepareFirstLaunchListPickerSelection() {
+        firstLaunchSelectedListIDs = Set(CityListID.builtInLists.map(\.rawValue))
+    }
+
+    func toggleFirstLaunchListSelection(_ listID: CityListID) {
+        if firstLaunchSelectedListIDs.contains(listID.rawValue) {
+            if firstLaunchSelectedListIDs.count > 1 {
+                firstLaunchSelectedListIDs.remove(listID.rawValue)
+            }
+        } else {
+            firstLaunchSelectedListIDs.insert(listID.rawValue)
+        }
+        PlatformFeedback.lightImpact()
+    }
+
+    func applyFirstLaunchListSelection() {
+        guard !firstLaunchSelectedListIDs.isEmpty else { return }
+        let selectedIDs = firstLaunchSelectedListIDs
+        let selectedLists = CityListID.builtInLists.filter { selectedIDs.contains($0.rawValue) }
+        guard let firstList = selectedLists.first else { return }
+
+        CityListID.keepBuiltInLists(withRawValues: selectedIDs)
+        visibleListIDs = selectedIDs
+        sidebarExpandedListIDs = selectedIDs
+        refreshSidebarListOrder()
+        refreshSidebarCityOrder()
+        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+            showingFirstLaunchListPicker = false
+        }
+
+        Task {
+            await switchToList(firstList)
+            await MainActor.run {
+                recenterOnAllCities = true
+                centerMapOnDots(useListCoordinates: true)
+                AppDelegate.updateHomeScreenListShortcuts()
+            }
+        }
+    }
+
+    #endif
 
     @ViewBuilder
     var iOSDeleteListConfirmationOverlay: some View {
