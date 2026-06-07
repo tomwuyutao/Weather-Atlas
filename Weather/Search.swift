@@ -83,10 +83,22 @@ struct AddCitySearchView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
 
-    private func isExistingCity(_ result: CitySearchResult) -> Bool {
+    private func cityIdentity(for result: CitySearchResult) -> (name: String, country: String) {
         let name = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
         let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
-        return cities.contains(where: { $0.city.name == name && $0.city.country == country })
+        return (name, country)
+    }
+
+    private func existingCityListName(for result: CitySearchResult) -> String? {
+        let identity = cityIdentity(for: result)
+        guard cities.contains(where: { $0.city.name == identity.name && $0.city.country == identity.country }) else {
+            return nil
+        }
+        return weatherService.activeListID.localizedDisplayName(locale: locale)
+    }
+
+    private func isExistingCity(_ result: CitySearchResult) -> Bool {
+        existingCityListName(for: result) != nil
     }
 
     private var sortedSearchResults: [CitySearchResult] {
@@ -166,15 +178,9 @@ struct AddCitySearchView: View {
     }
 
     private func nativeSearchSuggestionRow(for result: CitySearchResult) -> some View {
-        let existing = isExistingCity(result)
+        let existingListName = existingCityListName(for: result)
 
         return HStack(spacing: 10) {
-            if existing {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(Color.secondary)
-                    .frame(width: 20)
-            }
-
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.title)
                     .font(.avenir(.body, weight: .medium))
@@ -189,10 +195,16 @@ struct AddCitySearchView: View {
 
             Spacer(minLength: 8)
 
-            if existing {
-                Text(localizedString("Added", locale: locale))
-                    .font(.avenir(.caption2, weight: .medium))
-                    .foregroundStyle(.secondary)
+            if let existingListName {
+                HStack(spacing: 6) {
+                    Text("\(localizedString("In list", locale: locale)) \(existingListName)")
+                        .font(.avenir(.caption2, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(Color.secondary)
+                }
             } else if isLoadingCity {
                 ProgressView()
                     .controlSize(.small)
@@ -302,15 +314,9 @@ extension ContentView {
     }
 
     private func nativeCitySearchSuggestionRow(for result: CitySearchResult) -> some View {
-        let existing = inlineIsExistingCity(result)
+        let existingListName = inlineExistingCityListName(for: result)
 
         return HStack(spacing: 10) {
-            if existing {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .frame(width: 20)
-            }
-
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.title)
                     .font(.avenir(.body, weight: .medium))
@@ -325,10 +331,16 @@ extension ContentView {
 
             Spacer(minLength: 8)
 
-            if existing {
-                Text(localizedString("Added", locale: locale))
-                    .font(.avenir(.caption2, weight: .medium))
-                    .foregroundStyle(theme.colors.secondaryText)
+            if let existingListName {
+                HStack(spacing: 6) {
+                    Text("\(localizedString("In list", locale: locale)) \(existingListName)")
+                        .font(.avenir(.caption2, weight: .medium))
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .lineLimit(1)
+
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(theme.colors.secondaryText)
+                }
             } else if inlineIsLoadingCity {
                 ProgressView()
                     .controlSize(.small)
@@ -337,11 +349,27 @@ extension ContentView {
         .padding(.vertical, 3)
     }
 
-    func inlineIsExistingCity(_ result: CitySearchResult) -> Bool {
+    private func inlineCityIdentity(for result: CitySearchResult) -> (name: String, country: String) {
         let name = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
         let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
-        let data = inlineAddTargetListID.map { weatherService.weatherData(for: $0) } ?? weatherService.cityWeatherData
-        return data.contains(where: { $0.city.name == name && $0.city.country == country })
+        return (name, country)
+    }
+
+    func inlineExistingCityListName(for result: CitySearchResult) -> String? {
+        let identity = inlineCityIdentity(for: result)
+        if let targetListID = inlineAddTargetListID {
+            let cities = weatherService.cityListCoordinates(for: targetListID)
+            if cities.contains(where: { $0.name == identity.name && $0.country == identity.country }) {
+                return targetListID.localizedDisplayName(locale: locale)
+            }
+            return nil
+        }
+
+        return weatherService.listContainingCity(named: identity.name, country: identity.country)?.localizedDisplayName(locale: locale)
+    }
+
+    func inlineIsExistingCity(_ result: CitySearchResult) -> Bool {
+        inlineExistingCityListName(for: result) != nil
     }
 
     var inlineSortedSearchResults: [CitySearchResult] {

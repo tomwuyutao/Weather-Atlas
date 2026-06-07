@@ -19,6 +19,11 @@ extension ContentView {
         return weatherService.weatherData(for: listID)
     }
 
+    func sidebarCityCount(for listID: CityListID) -> Int {
+        let cities = sidebarCities(for: listID)
+        return cities.isEmpty ? weatherService.cityListCoordinates(for: listID).count : cities.count
+    }
+
     func refreshSidebarListOrder() {
         listOrderRevision += 1
     }

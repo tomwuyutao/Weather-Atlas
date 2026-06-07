@@ -4,6 +4,17 @@ import Charts
 enum WeatherChartMetric: Hashable {
     case temperature, feelsLike, cloudCover, precipitation
     case windSpeed, uvIndex, humidity, visibility
+
+    var fixedDomain: ClosedRange<Double>? {
+        switch self {
+        case .cloudCover, .precipitation, .humidity:
+            return 0...100
+        case .uvIndex:
+            return 0...11
+        case .temperature, .feelsLike, .windSpeed, .visibility:
+            return nil
+        }
+    }
 }
 
 enum WeatherChartTimeRange: Hashable {
@@ -71,6 +82,10 @@ struct HourlyTimelineChart: View {
     }
 
     private var chartDomain: ClosedRange<Double> {
+        if let fixedDomain = chartMetric.fixedDomain {
+            return fixedDomain
+        }
+
         let values = chartPoints.map(\.value)
         let minValue = values.min() ?? 0
         let maxValue = values.max() ?? 1
@@ -178,6 +193,10 @@ struct DailyTimelineChart: View {
     }
 
     private var chartDomain: ClosedRange<Double> {
+        if let fixedDomain = chartMetric.fixedDomain {
+            return fixedDomain
+        }
+
         let values = chartPoints.map(\.value)
         let minValue = values.min() ?? 0
         let maxValue = values.max() ?? 1

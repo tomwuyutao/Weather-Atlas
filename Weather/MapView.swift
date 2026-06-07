@@ -85,9 +85,28 @@ extension ContentView {
     }
 
     func refreshActiveWeather() {
+        dismissMapSelectionForRefresh()
         centerMapOnDots(useListCoordinates: true)
         Task {
             await weatherService.refreshWeather()
+        }
+    }
+
+    private func dismissMapSelectionForRefresh() {
+        guard showingMapExpandedCard || tappedCity != nil else { return }
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showingMapExpandedCard = false
+            tappedCity = nil
+            previewCity = nil
+            #if os(macOS) || os(iOS)
+            macHoverPresentedCardCityID = nil
+            macMapExpandedCardFocusesMarker = false
+            macMapExpandedCardAnchor = nil
+            macMapExpandedCardBaseOffset = .zero
+            macExpandedCardShowsDetails = false
+            macMapLookupPreviewCityID = nil
+            #endif
         }
     }
 

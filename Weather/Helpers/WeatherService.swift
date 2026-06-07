@@ -480,7 +480,7 @@ class WeatherService {
         await fetchWeatherForAllCities(forceRefresh: true)
     }
     
-    func resetAllLists() async {
+    func resetAllLists(preloadListIDs: Set<String> = []) async {
         // Clear saved cities for all lists (including user-created)
         for listID in CityListID.allLists {
             let citiesKey = "savedCitiesList_\(listID.rawValue)"
@@ -500,6 +500,10 @@ class WeatherService {
         UserDefaults.standard.set(CityListID.europe.rawValue, forKey: Self.activeListKey)
         cityWeatherData = []
         await fetchWeatherForAllCities()
+
+        for listID in CityListID.builtInLists where preloadListIDs.contains(listID.rawValue) && listID != activeListID {
+            await fetchWeatherForList(listID)
+        }
     }
     
     func switchList(to listID: CityListID) async {
@@ -679,6 +683,14 @@ class WeatherService {
     func cityListCoordinates(for listID: CityListID? = nil) -> [City] {
         let targetListID = listID ?? activeListID
         return loadSavedCities(for: targetListID) ?? targetListID.defaultCities
+    }
+
+    func listContainingCity(named name: String, country: String) -> CityListID? {
+        CityListID.allLists.first { listID in
+            cityListCoordinates(for: listID).contains { city in
+                city.name == name && city.country == country
+            }
+        }
     }
 
     private func clearPersistedWeatherCaches() {

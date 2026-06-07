@@ -70,7 +70,15 @@ extension ContentView {
                 weatherService: weatherService,
                 onResetLists: {
                     Task {
-                        await weatherService.resetAllLists()
+                        let expandedListIDs = sidebarExpandedListIDs
+                        await weatherService.resetAllLists(preloadListIDs: expandedListIDs)
+                        await MainActor.run {
+                            sidebarExpandedListIDs = Set(CityListID.builtInLists.map(\.rawValue)).intersection(expandedListIDs)
+                            sidebarExpandedListIDs.insert(weatherService.activeListID.rawValue)
+                            refreshSidebarListOrder()
+                            refreshSidebarCityOrder()
+                            recenterOnAllCities = true
+                        }
                     }
                 },
                 onPlayTutorial: {

@@ -232,7 +232,10 @@ struct SettingsView: View {
                     settingsLabel(localizedString("Theme", locale: locale), systemImage: "circle.lefthalf.filled")
                 }
                 .tint(.secondary)
+            }
+            .listRowBackground(theme.colors.mapLand)
 
+            Section(localizedString("Tutorial", locale: locale)) {
                 Button {
                     onPlayTutorial()
                 } label: {
@@ -271,6 +274,18 @@ struct SettingsView: View {
                     value: "Apple Weather",
                     systemImage: "cloud.sun"
                 )
+                settingsLinkRow(
+                    localizedString("Website", locale: locale),
+                    value: "tomwuyutao.github.io",
+                    systemImage: "safari",
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/")
+                )
+                settingsLinkRow(
+                    localizedString("Privacy Policy", locale: locale),
+                    value: localizedString("View", locale: locale),
+                    systemImage: "hand.raised",
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/privacy/")
+                )
             }
             .listRowBackground(theme.colors.mapLand)
             #endif
@@ -291,6 +306,18 @@ struct SettingsView: View {
                     systemImage: "info.circle"
                 )
                 settingsInfoRow(localizedString("Powered by", locale: locale), value: "Apple Weather", systemImage: "cloud.sun")
+                settingsLinkRow(
+                    localizedString("Website", locale: locale),
+                    value: "tomwuyutao.github.io",
+                    systemImage: "safari",
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/")
+                )
+                settingsLinkRow(
+                    localizedString("Privacy Policy", locale: locale),
+                    value: localizedString("View", locale: locale),
+                    systemImage: "hand.raised",
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/privacy/")
+                )
             }
             .listRowBackground(theme.colors.mapLand)
         }
@@ -315,6 +342,24 @@ struct SettingsView: View {
             Text(value)
         } label: {
             settingsLabel(title, systemImage: systemImage)
+        }
+    }
+
+    @ViewBuilder
+    private func settingsLinkRow(_ title: String, value: String, systemImage: String, url: URL?) -> some View {
+        if let url {
+            Link(destination: url) {
+                LabeledContent {
+                    HStack(spacing: 6) {
+                        Text(value)
+                        Image(systemName: "arrow.up.forward")
+                            .font(.caption.weight(.semibold))
+                    }
+                } label: {
+                    settingsLabel(title, systemImage: systemImage)
+                }
+            }
+            .foregroundStyle(theme.colors.primaryText)
         }
     }
 }

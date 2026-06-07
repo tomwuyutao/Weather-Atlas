@@ -129,7 +129,7 @@ extension ContentView {
 
                 Spacer(minLength: 8)
 
-                Text("\(sidebarCities(for: listID).count)")
+                Text("\(sidebarCityCount(for: listID))")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 8)
@@ -203,7 +203,7 @@ extension ContentView {
                 Text(listID.localizedDisplayName(locale: locale))
                     .lineLimit(1)
             }
-            .badge(sidebarCities(for: listID).count)
+            .badge(sidebarCityCount(for: listID))
             .tag(macSidebarListContextID(listID))
             .contextMenu {
                 listActions(for: listID)
