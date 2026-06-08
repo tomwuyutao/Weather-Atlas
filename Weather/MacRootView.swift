@@ -112,10 +112,6 @@ extension ContentView {
         .background {
             macCommandReceivers
         }
-        .sheet(isPresented: $showingInfo) {
-            InfoView(source: .map)
-                .frame(minWidth: 420, minHeight: 520)
-        }
         .overlay {
             iOSDeleteListConfirmationOverlay
         }

@@ -97,7 +97,6 @@ struct ContentView: View {
     @State var firstLaunchSelectedListIDs: Set<String> = []
     #endif
     @AppStorage("showLegend") var showLegend: Bool = true
-    @State var showingInfo: Bool = false
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
     @AppStorage("showDateSlider") var showDateSlider: Bool = true
     @State var visibleListIDs: Set<String> = []

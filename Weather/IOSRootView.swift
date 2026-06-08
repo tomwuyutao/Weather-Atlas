@@ -477,9 +477,6 @@ extension ContentView {
 
     private var iOSViewSheetsAndOverlays: some View {
         AnyView(iOSViewStateObservers)
-            .sheet(isPresented: $showingInfo) {
-                InfoView(source: selectedTab == 1 ? .map : .list)
-            }
             .sheet(isPresented: $showingSettings) {
                 SettingsView(
                     weatherService: weatherService,
@@ -941,7 +938,6 @@ extension ContentView {
         selectedTab = 1
         selectedDayOffset = -1
         showingSettings = false
-        showingInfo = false
         showingInlineSearch = false
         inlineSearchFieldPresented = false
         showingMapSidebar = false
