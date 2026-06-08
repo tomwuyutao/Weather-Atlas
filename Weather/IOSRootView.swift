@@ -258,6 +258,26 @@ extension ContentView {
     }
 
     @ViewBuilder
+    var sunnyFilterToolbarIndicator: some View {
+        if filterSunny {
+            Button {
+                withAnimation {
+                    filterSunny = false
+                }
+            } label: {
+                Image(systemName: "sun.max.fill")
+                    .symbolRenderingMode(.monochrome)
+                    .foregroundStyle(theme.colors.dotSun)
+                    .foregroundColor(theme.colors.dotSun)
+            }
+            .buttonStyle(.plain)
+            .tint(theme.colors.dotSun)
+            .accessibilityLabel(localizedString("Disable Sunny Filter", locale: locale))
+            .transition(.scale.combined(with: .opacity))
+        }
+    }
+
+    @ViewBuilder
     private func iPhoneSearchOrAddButton(iconSize: CGFloat, frameSize: CGFloat) -> some View {
         if shouldShowIPhonePreviewAddButton {
             let lists = sidebarLists
@@ -348,6 +368,10 @@ extension ContentView {
                         .font(.system(size: 21, weight: .regular))
                         .frame(width: 46, height: 46)
 
+                    sunnyFilterToolbarIndicator
+                        .font(.system(size: 21, weight: .regular))
+                        .frame(width: 46, height: 46)
+
                     iOSNativeMenu
                         .font(.system(size: 21, weight: .regular))
                         .frame(width: 46, height: 46)
@@ -393,6 +417,9 @@ extension ContentView {
                 .tint(.primary)
 
                 mapOverlayMenu
+                    .frame(width: 44, height: 44)
+
+                sunnyFilterToolbarIndicator
                     .frame(width: 44, height: 44)
 
                 iOSNativeMenu
@@ -753,7 +780,7 @@ extension ContentView {
         ZStack(alignment: .bottom) {
             macListManagerSidebar
                 .scrollContentBackground(.hidden)
-                .background(theme.colors.mapOcean)
+                .background(theme.colors.mapLand)
                 .tint(.primary)
 
             iPhoneListManagerFloatingToolbarFallback
