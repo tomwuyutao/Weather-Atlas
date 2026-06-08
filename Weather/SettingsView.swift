@@ -102,6 +102,7 @@ struct SettingsView: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.openURL) private var openURL
 
     @State private var showingResetConfirmation = false
 
@@ -276,7 +277,7 @@ struct SettingsView: View {
                 )
                 settingsLinkRow(
                     localizedString("Website", locale: locale),
-                    value: "tomwuyutao.github.io",
+                    value: localizedString("View", locale: locale),
                     systemImage: "safari",
                     url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/")
                 )
@@ -308,7 +309,7 @@ struct SettingsView: View {
                 settingsInfoRow(localizedString("Powered by", locale: locale), value: "Apple Weather", systemImage: "cloud.sun")
                 settingsLinkRow(
                     localizedString("Website", locale: locale),
-                    value: "tomwuyutao.github.io",
+                    value: localizedString("View", locale: locale),
                     systemImage: "safari",
                     url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/")
                 )
@@ -331,6 +332,7 @@ struct SettingsView: View {
     private func settingsLabel(_ title: String, systemImage: String) -> some View {
         Label {
             Text(title)
+                .foregroundStyle(.primary)
         } icon: {
             Image(systemName: systemImage)
                 .foregroundStyle(.primary)
@@ -348,18 +350,21 @@ struct SettingsView: View {
     @ViewBuilder
     private func settingsLinkRow(_ title: String, value: String, systemImage: String, url: URL?) -> some View {
         if let url {
-            Link(destination: url) {
+            Button {
+                openURL(url)
+            } label: {
                 LabeledContent {
                     HStack(spacing: 6) {
                         Text(value)
                         Image(systemName: "arrow.up.forward")
                             .font(.caption.weight(.semibold))
                     }
+                    .foregroundStyle(.secondary)
                 } label: {
                     settingsLabel(title, systemImage: systemImage)
                 }
             }
-            .foregroundStyle(theme.colors.primaryText)
+            .buttonStyle(.plain)
         }
     }
 }
