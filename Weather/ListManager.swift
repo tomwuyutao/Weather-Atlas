@@ -268,6 +268,14 @@ extension ContentView {
         #endif
     }
 
+    private var sidebarRowsHideWeatherDecorations: Bool {
+        #if os(iOS)
+        sidebarEditMode.isEditing
+        #else
+        false
+        #endif
+    }
+
     @ViewBuilder
     private var iOSSidebarListRows: some View {
         ForEach(sidebarLists) { listID in
@@ -333,10 +341,12 @@ extension ContentView {
     private func iOSSidebarListHeader(_ listID: CityListID) -> some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: "list.bullet")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 10, height: 18)
+                if !sidebarRowsHideWeatherDecorations {
+                    Image(systemName: "list.bullet")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 10, height: 18)
+                }
 
                 Text(listID.localizedDisplayName(locale: locale))
                     .font(.title3.weight(.semibold))
@@ -345,12 +355,14 @@ extension ContentView {
 
                 Spacer(minLength: 8)
 
-                Text("\(sidebarCityCount(for: listID))")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 3)
-                    .background(theme.colors.mapLand, in: Capsule())
+                if !sidebarRowsHideWeatherDecorations {
+                    Text("\(sidebarCityCount(for: listID))")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(theme.colors.mapLand, in: Capsule())
+                }
             }
             .padding(.top, 10)
             .padding(.bottom, 8)
@@ -366,10 +378,12 @@ extension ContentView {
 
     private func iOSSidebarDefaultCityRow(_ city: City) -> some View {
         HStack(spacing: 10) {
-            Circle()
-                .fill(theme.colors.secondaryText.opacity(0.45))
-                .frame(width: 10, height: 10)
-                .frame(width: 10, alignment: .center)
+            if !sidebarRowsHideWeatherDecorations {
+                Circle()
+                    .fill(theme.colors.secondaryText.opacity(0.45))
+                    .frame(width: 10, height: 10)
+                    .frame(width: 10, alignment: .center)
+            }
 
             Text(city.localizedName(locale: locale))
                 .font(.body)
@@ -387,11 +401,13 @@ extension ContentView {
         let dotColor = city.weatherIcon.contains("moon") ? theme.colors.moonIconColor : city.condition.dotColor(for: theme.colors)
 
         return HStack(spacing: 10) {
-            Circle()
-                .fill(dotColor)
-                .frame(width: 10, height: 10)
-                .shadow(color: dotColor.opacity(0.35), radius: 3)
-                .frame(width: 10, alignment: .center)
+            if !sidebarRowsHideWeatherDecorations {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 10, height: 10)
+                    .shadow(color: dotColor.opacity(0.35), radius: 3)
+                    .frame(width: 10, alignment: .center)
+            }
 
             Text(city.city.localizedName(locale: locale))
                 .font(.body)
@@ -400,9 +416,11 @@ extension ContentView {
 
             Spacer(minLength: 10)
 
-            Text(tempUnit.display(city.temperature))
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.secondary)
+            if !sidebarRowsHideWeatherDecorations {
+                Text(tempUnit.display(city.temperature))
+                    .font(.callout.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
         }
         .padding(.vertical, 9)
         .padding(.leading, shouldUseIPadLayout ? -20 : -18)

@@ -290,7 +290,7 @@
 					"$(PROJECT_DIR)/Weather/node_modules/@img/sharp-libvips-darwin-arm64/lib",
 					"$(PROJECT_DIR)/Weather/node_modules/@next/swc-darwin-arm64",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "Yutao-Wu.Weather";
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -356,7 +356,7 @@
 					"$(PROJECT_DIR)/Weather/node_modules/@img/sharp-libvips-darwin-arm64/lib",
 					"$(PROJECT_DIR)/Weather/node_modules/@next/swc-darwin-arm64",
 				);
-				MACOSX_DEPLOYMENT_TARGET = 12.4;
+				MACOSX_DEPLOYMENT_TARGET = 14.6;
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = "Yutao-Wu.Weather";
 				PRODUCT_NAME = "$(TARGET_NAME)";

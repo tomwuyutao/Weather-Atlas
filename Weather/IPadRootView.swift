@@ -153,42 +153,13 @@ extension ContentView {
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
         }
 
-        if showingCityDetail {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    inlineSearchFieldPresented = true
-                } label: {
-                    Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.primary)
-                        .foregroundColor(.primary)
-                }
-                .tint(.primary)
-                .help(localizedString("Search", locale: locale))
-                .popover(isPresented: $inlineSearchFieldPresented) {
-                    iPadInspectorSearchPopover
-                }
-            }
-        } else {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                iPadToolbarSearchBar
-            }
+        ToolbarItemGroup(placement: .topBarTrailing) {
+            iPadToolbarSearchBar
         }
     }
 
     var iPadToolbarMoreMenu: some View {
         Menu {
-            Button {
-                showingSettings = true
-            } label: {
-                Label {
-                    Text(localizedString("Settings", locale: locale))
-                } icon: {
-                    Image(systemName: "gearshape")
-                }
-            }
-
-            Divider()
-
             Toggle(isOn: Binding(
                 get: { showLegend },
                 set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
@@ -221,6 +192,18 @@ extension ContentView {
                     Image(systemName: "sun.max")
                 }
             }
+
+            Divider()
+
+            Button {
+                showingSettings = true
+            } label: {
+                Label {
+                    Text(localizedString("Settings", locale: locale))
+                } icon: {
+                    Image(systemName: "gearshape")
+                }
+            }
         } label: {
             Image(systemName: "ellipsis")
                 .foregroundStyle(.primary)
@@ -238,16 +221,6 @@ extension ContentView {
         )
         .frame(width: 230, height: 36)
         .weatherTutorialTarget(.search)
-        .popover(isPresented: Binding(
-            get: { !inlineSearchText.isEmpty && !inlineSortedSearchResults.isEmpty },
-            set: { isPresented in
-                if !isPresented && !inlineSearchFieldPresented {
-                    resetNativeCitySearch()
-                }
-            }
-        )) {
-            iPadSearchSuggestionsList
-        }
     }
 
     var iPadInspectorSearchPopover: some View {
@@ -360,6 +333,22 @@ extension ContentView {
             if !showingInlineSearch {
                 iPadFloatingMapOverlays
             }
+
+            if !inlineSearchText.isEmpty && !inlineSortedSearchResults.isEmpty {
+                iPadSearchSuggestionsList
+                    .background(iPadInspectorBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.42), lineWidth: 0.8)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.26 : 0.14), radius: 20, y: 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.top, 92)
+                    .padding(.trailing, 12)
+                    .transition(.scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity))
+                    .zIndex(30)
+            }
         }
         .ignoresSafeArea(.container, edges: .top)
         .tint(.primary)
@@ -395,9 +384,8 @@ extension ContentView {
                 }
 
                 if showingCityDetail, let city = tappedCity {
-                    let maxAvailableWidth = max(320, geometry.size.width - 48)
-                    let panelWidth = min(max(380, geometry.size.width * 0.38), min(460, maxAvailableWidth))
-                    let panelHeight = min(max(500, geometry.size.height - 80), max(420, geometry.size.height - 48))
+                    let panelWidth: CGFloat = 380
+                    let panelHeight = min(max(500, geometry.size.height - 88), max(420, geometry.size.height - 56))
 
                     iPadFloatingDetailWindow(for: city)
                         .frame(width: panelWidth, height: panelHeight)
