@@ -233,6 +233,8 @@ struct ContentView: View {
     #if os(iOS)
     @State var iPadSidebarVisibility: NavigationSplitViewVisibility = .all
     @State var iPadPreferredCompactColumn: NavigationSplitViewColumn = .detail
+    @State var iPadDetailPinned: Bool = false
+    @State var iPadDetailHeaderShowsCityName: Bool = false
     @State var iPhoneNavigationPath: [IPhoneNavigationRoute] = []
     #endif
 

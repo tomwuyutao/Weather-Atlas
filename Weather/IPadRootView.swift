@@ -344,7 +344,7 @@ extension ContentView {
                                 .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                             }
                         }
-                        .padding(.leading, 12)
+                        .padding(.leading, 18)
                         .padding(.top, 92)
                     }
                 }
@@ -397,11 +397,11 @@ extension ContentView {
                 if showingCityDetail, let city = tappedCity {
                     let maxAvailableWidth = max(320, geometry.size.width - 48)
                     let panelWidth = min(max(380, geometry.size.width * 0.38), min(460, maxAvailableWidth))
-                    let panelHeight = min(max(500, geometry.size.height - 128), max(420, geometry.size.height - 96))
+                    let panelHeight = min(max(500, geometry.size.height - 80), max(420, geometry.size.height - 48))
 
                     iPadFloatingDetailWindow(for: city)
                         .frame(width: panelWidth, height: panelHeight)
-                        .offset(x: geometry.size.width - panelWidth - 24, y: 76)
+                        .offset(x: geometry.size.width - panelWidth - 24, y: geometry.size.height - panelHeight + 4)
                         .transition(.scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity))
                         .zIndex(20)
                 }
@@ -421,13 +421,53 @@ extension ContentView {
         colorScheme == .dark ? Color(hex: 0x262052) : theme.colors.background
     }
 
+    func iPadDetailScrollView(for city: CityWeather) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            Color.clear
+                .frame(height: 1)
+                .id("iPadDetailTop")
+
+            mapExpandedCard(
+                for: city,
+                forceMacStyle: true,
+                forceIPhoneDetailSizing: true,
+                plainBackground: true
+            )
+            .padding(.horizontal, 10)
+            .padding(.top, 12)
+            .padding(.bottom, 16)
+        }
+        .scrollContentBackground(.hidden)
+    }
+
     func iPadFloatingDetailWindow(for city: CityWeather) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
+                        iPadDetailPinned.toggle()
+                    }
+                } label: {
+                    Image(systemName: iPadDetailPinned ? "pin.fill" : "pin")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(iPadDetailPinned ? theme.colors.accent : theme.colors.primaryText)
+                        .foregroundColor(iPadDetailPinned ? theme.colors.accent : theme.colors.primaryText)
+                        .frame(width: 34, height: 34)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .tint(iPadDetailPinned ? theme.colors.accent : theme.colors.primaryText)
+                .help(localizedString(iPadDetailPinned ? "Unpin" : "Pin", locale: locale))
+
+                Spacer(minLength: 8)
+
                 Text(city.city.localizedName(locale: locale))
                     .font(.avenir(.headline, weight: .semibold))
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
+                    .opacity(iPadDetailHeaderShowsCityName ? 1 : 0)
+                    .animation(.smooth(duration: 0.18), value: iPadDetailHeaderShowsCityName)
+                    .allowsHitTesting(false)
 
                 Spacer(minLength: 8)
 
@@ -456,18 +496,28 @@ extension ContentView {
             Divider()
                 .opacity(0.45)
 
-            ScrollView(.vertical, showsIndicators: false) {
-                mapExpandedCard(
-                    for: city,
-                    forceMacStyle: true,
-                    forceIPhoneDetailSizing: true,
-                    plainBackground: true
-                )
-                .padding(.horizontal, 10)
-                .padding(.top, 12)
-                .padding(.bottom, 16)
+            ScrollViewReader { proxy in
+                if #available(iOS 18.0, *) {
+                    iPadDetailScrollView(for: city)
+                        .onScrollGeometryChange(for: Bool.self) { geometry in
+                            geometry.contentOffset.y > 12
+                        } action: { _, shouldShowTitle in
+                            if iPadDetailHeaderShowsCityName != shouldShowTitle {
+                                iPadDetailHeaderShowsCityName = shouldShowTitle
+                            }
+                        }
+                        .onChange(of: city.id) { _, _ in
+                            iPadDetailHeaderShowsCityName = false
+                            proxy.scrollTo("iPadDetailTop", anchor: .top)
+                        }
+                } else {
+                    iPadDetailScrollView(for: city)
+                        .onChange(of: city.id) { _, _ in
+                            iPadDetailHeaderShowsCityName = false
+                            proxy.scrollTo("iPadDetailTop", anchor: .top)
+                        }
+                }
             }
-            .scrollContentBackground(.hidden)
         }
         .background(iPadInspectorBackground, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
         .overlay {

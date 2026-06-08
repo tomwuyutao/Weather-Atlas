@@ -141,6 +141,31 @@ extension ContentView {
 
     func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
         #if os(iOS)
+        if shouldUseIPadLayout, showingCityDetail {
+            PlatformFeedback.lightImpact()
+            tappedCity = city
+            macHoverPresentedCardCityID = nil
+            macMapExpandedCardFocusesMarker = true
+            macMapExpandedCardAnchor = anchor ?? macCenteredMapMarkerAnchor()
+            macMapExpandedCardBaseOffset = .zero
+            macExpandedCardShowsDetails = iPadDetailPinned
+
+            if iPadDetailPinned {
+                iPadInspectorPresentedCityID = city.id
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
+                    showingMapExpandedCard = false
+                    showingCityDetail = true
+                }
+            } else {
+                iPadInspectorPresentedCityID = nil
+                withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
+                    showingCityDetail = false
+                    showingMapExpandedCard = true
+                }
+            }
+            return
+        }
+
         if !shouldUseIPadLayout, showingMapExpandedCard, tappedCity?.id == city.id {
             return
         }
