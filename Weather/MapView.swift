@@ -145,6 +145,7 @@ extension ContentView {
             return
         }
         #endif
+        PlatformFeedback.lightImpact()
         showMapMarkerCard(city, anchor: anchor, expanded: false, focusesMarker: true)
     }
 
@@ -249,8 +250,8 @@ extension ContentView {
             }
         }
 
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-            tappedCity = city
+        tappedCity = city
+        withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
             showingMapExpandedCard = true
         }
     }
@@ -937,6 +938,9 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         var pinchAnimationFrame = null;
         var baseStylePreferencesApplied = false;
         var leftMouseDown = null;
+        var touchDown = null;
+        var suppressNextClickUntil = 0;
+        const markerHitRadius = 16;
         var cameraProfile = (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) ? 'mobile' : 'desktop';
         const cameraProfiles = {
           desktop: {
@@ -1122,7 +1126,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.addLayer({
               id: 'weather-hit', type: 'circle', source: 'weather',
               paint: {
-                'circle-radius': ['*', ['number', ['get', 'markerSizeScale'], 1], ['*', ['number', ['get', 'visibleScale'], 1], 11]],
+                'circle-radius': ['*', ['number', ['get', 'markerSizeScale'], 1], ['*', ['number', ['get', 'visibleScale'], 1], markerHitRadius]],
                 'circle-color': 'rgba(0,0,0,0.01)',
                 'circle-opacity': 0.01
               }
@@ -1413,7 +1417,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           return best;
         }
 
-        function markerFeatureAtPoint(point, radius = 11) {
+        function markerFeatureAtPoint(point, radius = markerHitRadius) {
           const hitBox = [
             [point.x - radius, point.y - radius],
             [point.x + radius, point.y + radius]
@@ -1583,9 +1587,40 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
               hoveredPoint: hoveredMarkerPoint ? { x: hoveredMarkerPoint.x, y: hoveredMarkerPoint.y } : null
             };
           }, { capture: true, passive: true });
-          map.getCanvas().addEventListener('touchstart', () => {
+          map.getCanvas().addEventListener('touchstart', event => {
             postMapGestureStart();
+            if (event.touches.length !== 1) {
+              touchDown = null;
+              return;
+            }
+            const rect = map.getCanvas().getBoundingClientRect();
+            const touch = event.touches[0];
+            touchDown = {
+              x: touch.clientX - rect.left,
+              y: touch.clientY - rect.top,
+              time: Date.now()
+            };
           }, { capture: true, passive: true });
+          map.getCanvas().addEventListener('touchend', event => {
+            const down = touchDown;
+            touchDown = null;
+            if (!down || event.changedTouches.length !== 1) return;
+            const rect = map.getCanvas().getBoundingClientRect();
+            const touch = event.changedTouches[0];
+            const point = new maplibregl.Point(touch.clientX - rect.left, touch.clientY - rect.top);
+            const dx = point.x - down.x;
+            const dy = point.y - down.y;
+            const movement = Math.sqrt(dx * dx + dy * dy);
+            const elapsed = Date.now() - down.time;
+            if (movement > 16 || elapsed >= 800) return;
+            const feature = markerFeatureAtPoint(point, markerHitRadius);
+            if (!feature?.properties?.id) return;
+            const markerPoint = markerScreenPoint(feature, point);
+            suppressNextClickUntil = Date.now() + 350;
+            post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y, tapX: point.x, tapY: point.y });
+            event.preventDefault();
+            event.stopImmediatePropagation();
+          }, { capture: true, passive: false });
           map.getCanvas().addEventListener('mouseup', event => {
             if (event.button !== 0) return;
             const point = new maplibregl.Point(event.offsetX, event.offsetY);
@@ -1620,6 +1655,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             if (pendingPayload) updateSource(pendingPayload);
           });
           map.on('click', event => {
+            if (Date.now() < suppressNextClickUntil) return;
             if (hoveredMarkerID && hoveredMarkerPoint) {
               post({ type: 'markerTap', id: hoveredMarkerID, x: hoveredMarkerPoint.x, y: hoveredMarkerPoint.y });
               return;
@@ -1636,6 +1672,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             }
           });
           map.on('click', 'weather-hit', event => {
+            if (Date.now() < suppressNextClickUntil) return;
             const feature = nearestMarkerFeature(event.features, event.point);
             if (!feature?.properties?.id) return;
             event.originalEvent._weatherMarkerHandled = true;

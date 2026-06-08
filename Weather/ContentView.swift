@@ -431,90 +431,15 @@ struct ContentView: View {
     }
 }
 
-private enum WeatherPreviewData {
-    static var athens: CityWeather {
-        let now = Date()
-        let calendar = Calendar.current
-        let hourly = [7, 9, 11, 13, 15, 17, 19].enumerated().map { index, hour in
-            HourlyForecast(
-                hour: hour,
-                temperature: [16, 18, 21, 23, 24, 23, 21][index],
-                apparentTemperature: [15, 18, 21, 23, 24, 23, 20][index],
-                symbolName: index == 4 ? "cloud.sun.fill" : "sun.max.fill",
-                condition: index == 4 ? .partlySunny : .clear,
-                precipitationChance: 0.05,
-                cloudCover: index == 4 ? 0.35 : 0.12,
-                windSpeed: 12 + Double(index),
-                uvIndex: max(1, 7 - abs(index - 3)),
-                humidity: 0.45,
-                visibility: 22
-            )
-        }
-
-        let forecasts = (0..<10).map { offset in
-            let date = calendar.date(byAdding: .day, value: offset, to: now) ?? now
-            let symbol = ["sun.max.fill", "sun.max.fill", "cloud.sun.fill", "sun.max.fill", "cloud.fill"][offset % 5]
-            let condition: AppWeatherCondition = symbol == "cloud.fill" ? .cloudy : (symbol == "cloud.sun.fill" ? .partlySunny : .clear)
-            return DailyForecast(
-                dayOffset: offset,
-                dailyLow: [16, 17, 18, 19, 18, 17, 18, 19, 18, 17][offset],
-                dailyHigh: [21, 23, 24, 25, 23, 22, 23, 25, 25, 24][offset],
-                symbolName: symbol,
-                condition: condition,
-                hourlyForecasts: hourly,
-                cloudCover: condition == .cloudy ? 0.75 : 0.2,
-                precipitationChance: 0.08,
-                visibility: 22,
-                feelsLikeLow: [15, 16, 17, 18, 18, 17, 18, 18, 17, 16][offset],
-                feelsLikeHigh: [20, 22, 24, 25, 23, 22, 23, 24, 24, 23][offset],
-                humidity: 0.48,
-                windSpeed: 14,
-                uvIndex: 5,
-                maxHumidity: 0.58,
-                maxVisibility: 24,
-                sunrise: calendar.date(bySettingHour: 6, minute: 10, second: 0, of: date),
-                sunset: calendar.date(bySettingHour: 20, minute: 20, second: 0, of: date)
-            )
-        }
-
-        return CityWeather(
-            city: City(name: "Athens", country: "Greece", latitude: 37.9838, longitude: 23.7275),
-            condition: .clear,
-            temperature: 21,
-            symbolName: "sun.max.fill",
-            dailyForecasts: forecasts,
-            timeZone: TimeZone(identifier: "Europe/Athens") ?? .current,
-            currentFeelsLike: 20,
-            currentCloudCover: 0.15,
-            currentWindSpeed: 13,
-            currentUVIndex: 5,
-            currentHumidity: 0.48,
-            currentVisibility: 22
-        )
-    }
+#Preview("ContentView") {
+    let _ = UserDefaults.standard.set(false, forKey: "isGridView")
+    let _ = UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+    ContentView()
 }
 
-#if os(iOS)
-private extension ContentView {
-    static var iOSDetailPreview: some View {
-        NavigationStack {
-            ContentView().expandedCardDetailDestination(for: WeatherPreviewData.athens, dismissAction: {})
-        }
-    }
-}
-#endif
-
-#Preview {
+#Preview("Tutorial") {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
     let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
     ContentView()
 }
 
-#Preview("Loading") {
-    ContentView(previewLoading: true)
-}
-#if os(iOS)
-#Preview("iOS Detail") {
-    ContentView.iOSDetailPreview
-}
-#endif
