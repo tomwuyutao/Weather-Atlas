@@ -90,9 +90,11 @@ extension ContentView {
 
     func refreshActiveWeather() {
         dismissMapSelectionForRefresh()
-        centerMapOnDots(useListCoordinates: true)
         Task {
             await weatherService.refreshWeather()
+            if !mapCities.isEmpty {
+                centerMapOnDots(useListCoordinates: true)
+            }
         }
     }
 
@@ -143,7 +145,6 @@ extension ContentView {
         #if os(iOS)
         if shouldUseIPadLayout, showingCityDetail {
             PlatformFeedback.lightImpact()
-            tappedCity = city
             macHoverPresentedCardCityID = nil
             macMapExpandedCardFocusesMarker = true
             macMapExpandedCardAnchor = anchor ?? macCenteredMapMarkerAnchor()
@@ -151,16 +152,18 @@ extension ContentView {
             macExpandedCardShowsDetails = iPadDetailPinned
 
             if iPadDetailPinned {
+                tappedCity = city
                 iPadInspectorPresentedCityID = city.id
                 withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
                     showingMapExpandedCard = false
                     showingCityDetail = true
                 }
             } else {
-                iPadInspectorPresentedCityID = nil
                 withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
                     showingCityDetail = false
                     showingMapExpandedCard = true
+                    tappedCity = city
+                    iPadInspectorPresentedCityID = nil
                 }
             }
             return
@@ -375,12 +378,19 @@ extension ContentView {
         }
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .ignoresSafeArea()
+        .onChange(of: weatherService.isLoading) { wasLoading, isLoading in
+            if wasLoading, !isLoading, !mapCities.isEmpty {
+                centerMapOnDots(useListCoordinates: true)
+            }
+        }
 
     }
 
     var macMapLeadingFitPadding: Double {
         #if os(macOS)
         macSidebarVisibility == .detailOnly ? 0 : 220
+        #elseif os(iOS)
+        shouldUseIPadLayout && iPadSidebarVisibility != .detailOnly ? 280 : 0
         #else
         0
         #endif
@@ -435,6 +445,8 @@ extension ContentView {
     var mapCameraProfile: MapCameraProfile {
         #if os(macOS)
         .desktop
+        #elseif os(iOS)
+        shouldUseIPadLayout ? .tablet : .mobile
         #else
         .mobile
         #endif
@@ -961,6 +973,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         var selectedPulse = 0;
         var pinchVelocity = 0;
         var pinchAnimationFrame = null;
+        var mapResizeObserver = null;
         var baseStylePreferencesApplied = false;
         var leftMouseDown = null;
         var touchDown = null;
@@ -972,8 +985,16 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             initialCenter: [0, 20],
             initialZoom: 1.45,
             fitPadding: { top: 180, right: 180, bottom: 180, left: 180 },
-            fitMaxZoom: 2.65,
+            fitMaxZoom: 2.35,
             cityZoom: 5,
+            useLeadingOffset: true
+          },
+          tablet: {
+            initialCenter: [0, 12],
+            initialZoom: 1.15,
+            fitPadding: { top: 116, right: 70, bottom: 180, left: 70 },
+            fitMaxZoom: 3.65,
+            cityZoom: 4.35,
             useLeadingOffset: true
           },
           mobile: {
@@ -982,7 +1003,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             fitPadding: { top: 104, right: 52, bottom: 168, left: 52 },
             fitMaxZoom: 4.2,
             cityZoom: 4.35,
-            useLeadingOffset: false
+            useLeadingOffset: true
           }
         };
 
@@ -1549,6 +1570,14 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           pinchVelocity = 0;
         }
 
+        function resizeMapSoon() {
+          if (!map) return;
+          requestAnimationFrame(() => {
+            map.resize();
+            setTimeout(() => map.resize(), 120);
+          });
+        }
+
         function startPinchInertia(point) {
           if (pinchAnimationFrame) cancelAnimationFrame(pinchAnimationFrame);
           function step() {
@@ -1670,12 +1699,14 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           }, { capture: true, passive: false });
           map.on('load', () => {
             loaded = true;
+            resizeMapSoon();
             ensureLayers();
             if (pendingPayload) updateSource(pendingPayload);
             post({ type: 'ready' });
           });
           map.on('styledata', () => {
             if (!loaded) return;
+            resizeMapSoon();
             ensureLayers();
             if (pendingPayload) updateSource(pendingPayload);
           });
@@ -1721,6 +1752,12 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             map.getCanvas().style.cursor = 'default';
             clearHoveredMarker();
           });
+          window.addEventListener('resize', resizeMapSoon);
+          if (window.ResizeObserver) {
+            mapResizeObserver = new ResizeObserver(resizeMapSoon);
+            mapResizeObserver.observe(document.getElementById('map'));
+          }
+
           map.on('move', () => {
             updateHoveredMarkerPosition();
             const now = Date.now();
@@ -1810,6 +1847,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
 enum MapCameraProfile: String {
     case desktop
+    case tablet
     case mobile
 }
 

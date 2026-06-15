@@ -955,6 +955,9 @@ extension ContentView {
             startWeatherTutorial()
         }
         await weatherService.fetchWeatherForAllCities()
+        if !mapCities.isEmpty {
+            centerMapOnDots(useListCoordinates: true)
+        }
         if let pendingShortcutID = AppDelegate.takePendingListShortcutID() {
             handleOpenListShortcut(rawValue: pendingShortcutID)
         }

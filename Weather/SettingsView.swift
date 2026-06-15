@@ -275,6 +275,11 @@ struct SettingsView: View {
                     value: "Apple Weather",
                     systemImage: "cloud.sun"
                 )
+                settingsInfoRow(
+                    localizedString("Map Data", locale: locale),
+                    value: "© OpenStreetMap contributors",
+                    systemImage: "map"
+                )
                 settingsLinkRow(
                     localizedString("Website", locale: locale),
                     value: localizedString("View", locale: locale),
@@ -307,6 +312,7 @@ struct SettingsView: View {
                     systemImage: "info.circle"
                 )
                 settingsInfoRow(localizedString("Powered by", locale: locale), value: "Apple Weather", systemImage: "cloud.sun")
+                settingsInfoRow(localizedString("Map Data", locale: locale), value: "© OpenStreetMap contributors", systemImage: "map")
                 settingsLinkRow(
                     localizedString("Website", locale: locale),
                     value: localizedString("View", locale: locale),

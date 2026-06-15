@@ -371,26 +371,24 @@ extension ContentView {
 
                 if showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city, forceIPhoneStyle: true)
-                        .id(city.city.id)
                         .frame(width: iPadFloatingCardSize.width, height: iPadFloatingCardSize.height)
-                        .offset(iPadFloatingCardOffset(in: geometry.size))
-                        .transition(
-                            .asymmetric(
-                                insertion: .scale(scale: 0.92, anchor: iPadFloatingCardLocalRevealAnchor(in: geometry.size)).combined(with: .opacity),
-                                removal: .scale(scale: 0.92, anchor: iPadFloatingCardLocalRevealAnchor(in: geometry.size)).combined(with: .opacity)
-                            )
-                        )
+                        .matchedGeometryEffect(id: iPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, properties: .frame, anchor: .center)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        .padding(.trailing, iPadFloatingCardTrailingGap)
+                        .padding(.bottom, iPadFloatingCardBottomGap)
+                        .transition(.opacity)
                         .zIndex(12)
                 }
 
                 if showingCityDetail, let city = tappedCity {
-                    let panelWidth: CGFloat = 380
+                    let panelWidth = iPadInspectorWidth
                     let panelHeight = min(max(500, geometry.size.height - 88), max(420, geometry.size.height - 56))
 
                     iPadFloatingDetailWindow(for: city)
                         .frame(width: panelWidth, height: panelHeight)
-                        .offset(x: geometry.size.width - panelWidth - 24, y: geometry.size.height - panelHeight + 4)
-                        .transition(.scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity))
+                        .matchedGeometryEffect(id: iPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, properties: .frame, anchor: .center)
+                        .offset(x: geometry.size.width - panelWidth - iPadFloatingCardTrailingGap, y: geometry.size.height - panelHeight - iPadFloatingCardBottomGap)
+                        .transition(.opacity)
                         .zIndex(20)
                 }
 
@@ -525,33 +523,12 @@ extension ContentView {
         }
     }
 
+    var iPadInspectorWidth: CGFloat { 380 }
+    var iPadFloatingCardTrailingGap: CGFloat { 24 }
+    var iPadFloatingCardBottomGap: CGFloat { -4 }
+
     var iPadFloatingCardSize: CGSize {
         CGSize(width: 312, height: 144)
-    }
-
-    func iPadFloatingCardOffset(in size: CGSize) -> CGSize {
-        let cardSize = iPadFloatingCardSize
-        let margin: CGFloat = 16
-        let toolbarClearance: CGFloat = 58
-        let markerGap: CGFloat = 50
-        let anchor = macMapExpandedCardAnchor ?? CGPoint(
-            x: size.width / 2,
-            y: size.height / 2
-        )
-        let proposedRightX = anchor.x + markerGap
-        let proposedLeftX = anchor.x - markerGap - cardSize.width
-        let hasRoomRight = proposedRightX + cardSize.width <= size.width - margin
-        let proposedX = hasRoomRight ? proposedRightX : proposedLeftX
-        let proposedY = anchor.y + markerGap
-
-        return CGSize(
-            width: min(max(proposedX, margin), size.width - cardSize.width - margin),
-            height: min(max(proposedY, toolbarClearance), size.height - cardSize.height - margin)
-        )
-    }
-
-    func iPadFloatingCardLocalRevealAnchor(in size: CGSize) -> UnitPoint {
-        .topLeading
     }
 
     func iPadMapDetailMorphID(for city: CityWeather) -> String {
