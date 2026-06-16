@@ -529,8 +529,8 @@ extension ContentView {
                     },
                     onPlayTutorial: {
                         showingSettings = false
-                        prepareFirstLaunchListPickerSelection()
-                        shouldShowFirstLaunchListPickerAfterTutorial = true
+                        shouldShowFirstLaunchListPickerAfterTutorial = false
+                        showingFirstLaunchListPicker = false
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
                             startWeatherTutorial()
                         }

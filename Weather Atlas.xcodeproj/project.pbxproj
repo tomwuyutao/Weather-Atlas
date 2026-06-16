@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		59C2E3562F4F06B000877DA8 /* Tom's Weather.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Tom's Weather.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		59C2E3562F4F06B000877DA8 /* Weather Atlas.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Weather Atlas.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -40,7 +40,7 @@
 		59C2E3572F4F06B000877DA8 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				59C2E3562F4F06B000877DA8 /* Tom's Weather.app */,
+				59C2E3562F4F06B000877DA8 /* Weather Atlas.app */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,9 +48,9 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		59C2E3552F4F06B000877DA8 /* Tom's Weather */ = {
+		59C2E3552F4F06B000877DA8 /* Weather Atlas */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 59C2E3632F4F06B100877DA8 /* Build configuration list for PBXNativeTarget "Tom's Weather" */;
+			buildConfigurationList = 59C2E3632F4F06B100877DA8 /* Build configuration list for PBXNativeTarget "Weather Atlas" */;
 			buildPhases = (
 				59C2E3522F4F06B000877DA8 /* Sources */,
 				59C2E3532F4F06B000877DA8 /* Frameworks */,
@@ -63,11 +63,11 @@
 			fileSystemSynchronizedGroups = (
 				59C2E3582F4F06B000877DA8 /* Weather */,
 			);
-			name = "Tom's Weather";
+			name = "Weather Atlas";
 			packageProductDependencies = (
 			);
 			productName = Weather;
-			productReference = 59C2E3562F4F06B000877DA8 /* Tom's Weather.app */;
+			productReference = 59C2E3562F4F06B000877DA8 /* Weather Atlas.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -91,6 +91,7 @@
 			knownRegions = (
 				en,
 				Base,
+				"en 2",
 			);
 			mainGroup = 59C2E34D2F4F06B000877DA8;
 			minimizedProjectReferenceProxies = 1;
@@ -99,7 +100,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				59C2E3552F4F06B000877DA8 /* Tom's Weather */,
+				59C2E3552F4F06B000877DA8 /* Weather Atlas */,
 			);
 		};
 /* End PBXProject section */
@@ -389,7 +390,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		59C2E3632F4F06B100877DA8 /* Build configuration list for PBXNativeTarget "Tom's Weather" */ = {
+		59C2E3632F4F06B100877DA8 /* Build configuration list for PBXNativeTarget "Weather Atlas" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				59C2E3642F4F06B100877DA8 /* Debug */,

@@ -16,8 +16,8 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "59C2E3552F4F06B000877DA8"
-               BuildableName = "Tom&apos;s Weather.app"
-               BlueprintName = "Tom&apos;s Weather"
+               BuildableName = "Weather Atlas.app"
+               BlueprintName = "Weather Atlas"
                ReferencedContainer = "container:Weather Atlas.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
@@ -46,8 +46,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "59C2E3552F4F06B000877DA8"
-            BuildableName = "Tom&apos;s Weather.app"
-            BlueprintName = "Tom&apos;s Weather"
+            BuildableName = "Weather Atlas.app"
+            BlueprintName = "Weather Atlas"
             ReferencedContainer = "container:Weather Atlas.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
@@ -63,8 +63,8 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "59C2E3552F4F06B000877DA8"
-            BuildableName = "Tom&apos;s Weather.app"
-            BlueprintName = "Tom&apos;s Weather"
+            BuildableName = "Weather Atlas.app"
+            BlueprintName = "Weather Atlas"
             ReferencedContainer = "container:Weather Atlas.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>

@@ -395,6 +395,7 @@ class WeatherService {
     var loadingProgress: Double = 0
     var forecastDays: [ForecastDay] = []
     var lastFetchDate: Date?
+    var weatherAttribution: WeatherAttribution?
     var activeListID: CityListID = .europe
     private var activeFetchToken = UUID()
     private let weatherCacheDuration: TimeInterval = 2 * 60 * 60
@@ -414,6 +415,23 @@ class WeatherService {
         if let saved = UserDefaults.standard.string(forKey: Self.activeListKey),
            let listID = CityListID.allLists.first(where: { $0.rawValue == saved }) {
             activeListID = listID
+        }
+    }
+
+    var weatherAttributionMarkText: String {
+        " Weather"
+    }
+
+    var weatherLegalPageURL: URL? {
+        weatherAttribution?.legalPageURL
+    }
+
+    func loadWeatherAttributionIfNeeded() async {
+        guard weatherAttribution == nil else { return }
+        do {
+            weatherAttribution = try await weatherService.attribution
+        } catch {
+            print("Failed to load WeatherKit attribution: \(error)")
         }
     }
     

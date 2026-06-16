@@ -264,21 +264,13 @@ struct SettingsView: View {
             .listRowBackground(theme.colors.mapLand)
 
             #if os(iOS)
+            attributionSection
+
             Section(localizedString("About", locale: locale)) {
                 settingsInfoRow(
                     localizedString("Version", locale: locale),
                     value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
                     systemImage: "info.circle"
-                )
-                settingsInfoRow(
-                    localizedString("Weather Data", locale: locale),
-                    value: "Apple Weather",
-                    systemImage: "cloud.sun"
-                )
-                settingsInfoRow(
-                    localizedString("Map Data", locale: locale),
-                    value: "© OpenStreetMap contributors",
-                    systemImage: "map"
                 )
                 settingsLinkRow(
                     localizedString("Website", locale: locale),
@@ -298,6 +290,9 @@ struct SettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(theme.colors.mapOcean)
+        .task {
+            await weatherService.loadWeatherAttributionIfNeeded()
+        }
         #if os(macOS)
         .formStyle(.grouped)
         #endif
@@ -305,14 +300,14 @@ struct SettingsView: View {
 
     private var aboutForm: some View {
         Form {
+            attributionSection
+
             Section(localizedString("About", locale: locale)) {
                 settingsInfoRow(
                     localizedString("Version", locale: locale),
                     value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
                     systemImage: "info.circle"
                 )
-                settingsInfoRow(localizedString("Powered by", locale: locale), value: "Apple Weather", systemImage: "cloud.sun")
-                settingsInfoRow(localizedString("Map Data", locale: locale), value: "© OpenStreetMap contributors", systemImage: "map")
                 settingsLinkRow(
                     localizedString("Website", locale: locale),
                     value: localizedString("View", locale: locale),
@@ -330,9 +325,41 @@ struct SettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(theme.colors.mapOcean)
+        .task {
+            await weatherService.loadWeatherAttributionIfNeeded()
+        }
         #if os(macOS)
         .formStyle(.grouped)
         #endif
+    }
+
+    private var attributionSection: some View {
+        Section(localizedString("Attribution", locale: locale)) {
+            weatherAttributionRows
+            settingsInfoRow(localizedString("Map Data", locale: locale), value: "© OpenStreetMap contributors", systemImage: "map")
+        }
+        .listRowBackground(theme.colors.mapLand)
+    }
+
+    @ViewBuilder
+    private var weatherAttributionRows: some View {
+        settingsInfoRow(
+            localizedString("Weather Data", locale: locale),
+            value: weatherService.weatherAttributionMarkText,
+            systemImage: "cloud.sun"
+        )
+        settingsLinkRow(
+            localizedString("Weather Legal Sources", locale: locale),
+            value: localizedString("View", locale: locale),
+            systemImage: "doc.text",
+            url: weatherService.weatherLegalPageURL
+        )
+        settingsLinkRow(
+            localizedString("About WeatherKit", locale: locale),
+            value: localizedString("View", locale: locale),
+            systemImage: "doc.text",
+            url: URL(string: "https://developer.apple.com/weatherkit/")
+        )
     }
 
     private func settingsLabel(_ title: String, systemImage: String) -> some View {

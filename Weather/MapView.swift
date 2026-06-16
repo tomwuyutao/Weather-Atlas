@@ -617,6 +617,13 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 guard let key = notification.object as? String else { return }
                 self?.evaluate("window.weatherMapKeyboardZoom?.(\(Self.jsString(key)));")
             })
+            #if os(iOS)
+            observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                self.evaluate("window.weatherMapRefreshAfterActivation?.();")
+                self.pushStateIfReady(force: true)
+            })
+            #endif
         }
 
         deinit {
@@ -974,6 +981,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         var pinchVelocity = 0;
         var pinchAnimationFrame = null;
         var mapResizeObserver = null;
+        var pendingFitRequest = null;
+        var initStarted = false;
         var baseStylePreferencesApplied = false;
         var leftMouseDown = null;
         var touchDown = null;
@@ -1019,6 +1028,12 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         function postMapGestureStart() {
           post({ type: 'mapGestureStart' });
+        }
+
+        function mapElementHasUsableSize() {
+          const element = document.getElementById('map');
+          const rect = element?.getBoundingClientRect();
+          return !!rect && rect.width >= 64 && rect.height >= 64;
         }
 
         function activeCameraProfile() {
@@ -1353,6 +1368,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           updateMarkerScaleTargets();
           updateSelectedPulse();
           renderWeatherSource();
+          if (pendingFitRequest && mapElementHasUsableSize()) {
+            const request = pendingFitRequest;
+            window.fitWeatherData(request.leadingPadding, request.useFitCoordinates);
+          }
         }
 
         window.updateWeatherData = function(payload) {
@@ -1366,6 +1385,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         };
 
         window.fitWeatherData = function(leadingPadding = 0, useFitCoordinates = false) {
+          pendingFitRequest = { leadingPadding, useFitCoordinates };
+          if (!mapElementHasUsableSize()) return;
           if (!pendingPayload) return;
           const savedListCoordinates = pendingPayload.fitCoordinates || [];
           const fitItems = useFitCoordinates ? savedListCoordinates : (pendingPayload.features?.length ? pendingPayload.features : savedListCoordinates);
@@ -1385,6 +1406,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
               duration: 550,
               maxZoom: camera.fitMaxZoom
             });
+            pendingFitRequest = null;
           }
         };
 
@@ -1574,9 +1596,29 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           if (!map) return;
           requestAnimationFrame(() => {
             map.resize();
-            setTimeout(() => map.resize(), 120);
+            if (pendingFitRequest && mapElementHasUsableSize()) {
+              const request = pendingFitRequest;
+              window.fitWeatherData(request.leadingPadding, request.useFitCoordinates);
+            }
+            setTimeout(() => {
+              map.resize();
+              if (pendingFitRequest && mapElementHasUsableSize()) {
+                const request = pendingFitRequest;
+                window.fitWeatherData(request.leadingPadding, request.useFitCoordinates);
+              }
+            }, 120);
           });
         }
+
+        window.weatherMapRefreshAfterActivation = function() {
+          if (!map) {
+            startMapWhenReady();
+            return;
+          }
+          resizeMapSoon();
+          ensureLayers();
+          if (pendingPayload) updateSource(pendingPayload);
+        };
 
         function startPinchInertia(point) {
           if (pinchAnimationFrame) cancelAnimationFrame(pinchAnimationFrame);
@@ -1597,6 +1639,12 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
 
         async function init() {
+          if (initStarted || map) return;
+          if (!mapElementHasUsableSize()) {
+            setTimeout(startMapWhenReady, 80);
+            return;
+          }
+          initStarted = true;
           applyCameraProfileClass();
           const camera = activeCameraProfile();
           map = new maplibregl.Map({
@@ -1838,7 +1886,19 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           });
         }
 
-        if (window.maplibregl) init().catch(error => console.error('Map init failed', error));
+        function startMapWhenReady(attempt = 0) {
+          if (window.maplibregl) {
+            init().catch(error => {
+              initStarted = false;
+              console.error('Map init failed', error);
+              if (attempt < 12) setTimeout(() => startMapWhenReady(attempt + 1), 250);
+            });
+            return;
+          }
+          if (attempt < 24) setTimeout(() => startMapWhenReady(attempt + 1), 250);
+        }
+
+        startMapWhenReady();
       </script>
     </body>
     </html>
