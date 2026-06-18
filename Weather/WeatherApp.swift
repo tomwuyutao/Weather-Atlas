@@ -197,6 +197,18 @@ struct WeatherApp: App {
         WindowGroup {
             ThemeRoot(theme: theme, appLocale: appLocale)
         }
+        .commands {
+            CommandGroup(after: .newItem) {
+                Button("New List") {
+                    NotificationCenter.default.post(name: .weatherNewListCommand, object: nil)
+                }
+                .keyboardShortcut("n", modifiers: [.command, .shift])
+            }
+            WeatherMapCommands()
+            WeatherOverlayCommands()
+            WeatherListCommands()
+            WeatherNavigateCommands()
+        }
         #endif
     }
 }
@@ -225,7 +237,9 @@ private struct SettingsCommands: Commands {
         }
     }
 }
+#endif
 
+#if os(macOS) || os(iOS)
 private struct WeatherMapCommands: Commands {
     var body: some Commands {
         CommandMenu("Map") {

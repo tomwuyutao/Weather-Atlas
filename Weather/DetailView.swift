@@ -211,15 +211,26 @@ private struct TimeZoneDebugPreview: View {
         .task {
             var loadedRows: [DebugRow] = []
             for city in cities {
-                let timeZone = await service.debugResolvedTimeZone(for: city)
-                loadedRows.append(
-                    DebugRow(
-                        city: city.name,
-                        country: city.country,
-                        timeZone: timeZone.identifier,
-                        time: formattedTime(in: timeZone)
+                do {
+                    let timeZone = try await service.debugResolvedTimeZone(for: city)
+                    loadedRows.append(
+                        DebugRow(
+                            city: city.name,
+                            country: city.country,
+                            timeZone: timeZone.identifier,
+                            time: formattedTime(in: timeZone)
+                        )
                     )
-                )
+                } catch {
+                    loadedRows.append(
+                        DebugRow(
+                            city: city.name,
+                            country: city.country,
+                            timeZone: error.localizedDescription,
+                            time: "Timezone undefined"
+                        )
+                    )
+                }
             }
             rows = loadedRows
         }

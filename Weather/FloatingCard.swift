@@ -99,26 +99,40 @@ extension ContentView {
         }
 #endif
 
-        return AnyView(HStack(alignment: .bottom, spacing: 16) {
+        #if os(macOS)
+        let compactForcedMacFloatingCard = forceIPhoneStyle
+        #else
+        let compactForcedMacFloatingCard = false
+        #endif
+        let phoneCardSpacing: CGFloat = compactForcedMacFloatingCard ? 10 : 16
+        let phoneCardTemperatureSize: CGFloat = compactForcedMacFloatingCard ? 32 : 38
+        let phoneCardIconSize: CGFloat = compactForcedMacFloatingCard ? 32 : 40
+        let phoneCardIconFrame = CGSize(width: compactForcedMacFloatingCard ? 48 : 56, height: compactForcedMacFloatingCard ? 42 : 48)
+        let phoneCardMetricFont = compactForcedMacFloatingCard ? Font.caption2.weight(.medium) : Font.caption.weight(.medium)
+        let phoneCardTitleFont = compactForcedMacFloatingCard ? Font.subheadline.weight(.semibold) : Font.headline.weight(.semibold)
+        let phoneCardSelectedDotSize: CGFloat = compactForcedMacFloatingCard ? 6.5 : 8
+        let phoneCardDotSize: CGFloat = compactForcedMacFloatingCard ? 5 : 6
+
+        return AnyView(HStack(alignment: .bottom, spacing: phoneCardSpacing) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
-                        .font(.system(size: 38, weight: .semibold, design: .default))
+                        .font(.system(size: phoneCardTemperatureSize, weight: .semibold, design: .default))
                         .foregroundStyle(.primary)
                         .contentTransition(.numericText())
                         .lineLimit(1)
 
                     Text(isOverlayActive ? overlayLabel : localizedString(isNow ? "Current Temperature" : "Highest Temperature", locale: locale))
-                        .font(.caption.weight(.medium))
+                        .font(phoneCardMetricFont)
                         .foregroundStyle(.secondary)
                         .lineLimit(1)
-                        .padding(.top, 4)
+                        .padding(.top, compactForcedMacFloatingCard ? 2 : 4)
 
                     if !hideCityName {
                         Text(cityWeather.city.localizedName(locale: locale))
-                            .font(.headline.weight(.semibold))
+                            .font(phoneCardTitleFont)
                             .foregroundStyle(.primary)
                             .lineLimit(1)
-                            .padding(.top, 5)
+                            .padding(.top, compactForcedMacFloatingCard ? 3 : 5)
                     }
                 }
                 .frame(maxHeight: .infinity, alignment: .bottomLeading)
@@ -128,11 +142,11 @@ extension ContentView {
 
                 VStack(alignment: .trailing, spacing: 0) {
                     Image(systemName: icon)
-                        .font(.system(size: 40, weight: .medium))
+                        .font(.system(size: phoneCardIconSize, weight: .medium))
                         .weatherIconStyle(for: icon)
-                        .frame(width: 56, height: 48, alignment: .center)
+                        .frame(width: phoneCardIconFrame.width, height: phoneCardIconFrame.height, alignment: .center)
 
-                    Spacer(minLength: 8)
+                    Spacer(minLength: compactForcedMacFloatingCard ? 6 : 8)
 
                     VStack(spacing: 4) {
                         ForEach(0..<2, id: \.self) { row in
@@ -144,8 +158,8 @@ extension ContentView {
                                         let dayDotColor = dayForecast.weatherIcon.contains("moon") ? theme.colors.moonIconColor : dayForecast.condition.dotColor
                                         Circle()
                                             .fill(dayDotColor)
-                                            .frame(width: index == selectedDayOffset ? 8 : 6, height: index == selectedDayOffset ? 8 : 6)
-                                            .frame(width: 8, height: 8, alignment: .center)
+                                            .frame(width: index == selectedDayOffset ? phoneCardSelectedDotSize : phoneCardDotSize, height: index == selectedDayOffset ? phoneCardSelectedDotSize : phoneCardDotSize)
+                                            .frame(width: phoneCardSelectedDotSize, height: phoneCardSelectedDotSize, alignment: .center)
                                             .shadow(color: dayDotColor.opacity(0.55), radius: 3)
                                             .opacity(index == selectedDayOffset ? 1 : 0.58)
                                     }
@@ -153,13 +167,13 @@ extension ContentView {
                             }
                         }
                     }
-                    .frame(height: 30, alignment: .bottom)
+                    .frame(height: compactForcedMacFloatingCard ? 26 : 30, alignment: .bottom)
                     .offset(y: -1)
                 }
                 .frame(maxHeight: .infinity, alignment: .topTrailing)
         }
-        .padding(.horizontal, 22)
-        .padding(.vertical, 16)
+        .padding(.horizontal, compactForcedMacFloatingCard ? 20 : 22)
+        .padding(.vertical, compactForcedMacFloatingCard ? 14 : 16)
         .frame(maxWidth: .infinity)
         .frame(height: iOSFloatingMapCardHeight)
         .themedGlass(in: .rect(cornerRadius: 24))
@@ -201,7 +215,7 @@ extension ContentView {
             return 178
         }
         #else
-        return 128
+        return 108
         #endif
     }
 
@@ -220,16 +234,33 @@ extension ContentView {
         let selectedForecast = cityWeather.forecast(for: max(0, selectedDayOffset))
         let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
         let usesDetailCardLayout = usesIPhoneDetailSizing || plainBackground || macExpandedCardShowsDetails
+        let centersHeroContent = usesIPhoneDetailSizing || plainBackground
         let detailCardCornerRadius: CGFloat = usesIPhoneDetailSizing ? 28 : 20
+        #if os(macOS)
+        let compactMacFloatingCard = !usesIPhoneDetailSizing && !plainBackground && !macExpandedCardShowsDetails
+        #else
+        let compactMacFloatingCard = false
+        #endif
+        let floatingTitleFont = compactMacFloatingCard ? Font.headline : Font.title3
+        let floatingMetricFont = compactMacFloatingCard ? Font.caption2 : Font.caption
+        let floatingTemperatureSize: CGFloat = compactMacFloatingCard ? 34 : 42
+        let floatingIconSize: CGFloat = compactMacFloatingCard ? 24 : 30
+        let floatingIconFrame = CGSize(width: compactMacFloatingCard ? 30 : 36, height: compactMacFloatingCard ? 28 : 32)
+        let floatingForecastDotSize: CGFloat = compactMacFloatingCard ? 5.5 : 7
+        let floatingSelectedForecastDotSize: CGFloat = compactMacFloatingCard ? 6.5 : 8
+        let floatingHeaderBottomPadding: CGFloat = compactMacFloatingCard ? 8 : 14
+        let floatingTemperatureBottomPadding: CGFloat = compactMacFloatingCard ? 8 : 14
+        let floatingOuterHorizontalPadding: CGFloat = compactMacFloatingCard ? 20 : 14
+        let floatingOuterTopPadding: CGFloat = compactMacFloatingCard ? 16 : 18
 
         return ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .top, spacing: 12) {
-                if usesIPhoneDetailSizing {
+                if centersHeroContent {
                     Spacer(minLength: 0)
                 }
 
-                VStack(alignment: usesIPhoneDetailSizing ? .center : .leading, spacing: usesIPhoneDetailSizing ? 6 : 2) {
+                VStack(alignment: centersHeroContent ? .center : .leading, spacing: usesIPhoneDetailSizing ? 6 : 2) {
                     if usesIPhoneDetailSizing {
                         Text(iPadDebugLocalTimeText(for: cityWeather))
                             .font(.caption2.weight(.semibold))
@@ -239,19 +270,19 @@ extension ContentView {
 
                     if !hideCityName {
                         Text(cityWeather.city.localizedName(locale: locale))
-                            .font((usesIPhoneDetailSizing ? Font.title : Font.title3).weight(.semibold))
+                            .font((usesIPhoneDetailSizing ? Font.title : floatingTitleFont).weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
 
                     Text(metricLabel)
-                        .font((usesIPhoneDetailSizing ? Font.callout : Font.caption).weight(.medium))
+                        .font((usesIPhoneDetailSizing ? Font.callout : floatingMetricFont).weight(.medium))
                         .foregroundStyle(.secondary)
                 }
 
-                Spacer(minLength: usesIPhoneDetailSizing ? 0 : 8)
+                Spacer(minLength: centersHeroContent ? 0 : 8)
 
-                if !usesIPhoneDetailSizing {
+                if !centersHeroContent {
                     if cityIsInSidebar(cityWeather) {
                         Button {
                             dismissMapExpandedCard()
@@ -268,16 +299,16 @@ extension ContentView {
                     }
                 }
             }
-            .multilineTextAlignment(usesIPhoneDetailSizing ? .center : .leading)
-            .padding(.bottom, usesIPhoneDetailSizing ? 10 : 14)
+            .multilineTextAlignment(centersHeroContent ? .center : .leading)
+            .padding(.bottom, usesIPhoneDetailSizing ? 10 : floatingHeaderBottomPadding)
 
-            HStack(alignment: .center, spacing: usesIPhoneDetailSizing ? 2 : 12) {
-                if usesIPhoneDetailSizing {
+            HStack(alignment: .center, spacing: usesIPhoneDetailSizing ? 2 : (compactMacFloatingCard ? 8 : 12)) {
+                if centersHeroContent {
                     Spacer(minLength: 0)
                 }
 
                 Text(primaryText)
-                    .font(.system(size: usesIPhoneDetailSizing ? 62 : 42, weight: .regular, design: .default))
+                    .font(.system(size: usesIPhoneDetailSizing ? 62 : floatingTemperatureSize, weight: .regular, design: .default))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .id("primary-\(selectedDayOffset)-\(primaryText)")
@@ -287,7 +318,7 @@ extension ContentView {
                     ))
 
                 Image(systemName: icon)
-                    .font(.system(size: usesIPhoneDetailSizing ? 44 : 30, weight: .medium))
+                    .font(.system(size: usesIPhoneDetailSizing ? 44 : floatingIconSize, weight: .medium))
                     .weatherIconStyle(for: icon)
                     .compatSymbolReplaceTransition()
                     .id("icon-\(selectedDayOffset)-\(icon)")
@@ -295,11 +326,11 @@ extension ContentView {
                         insertion: .scale(scale: 0.82).combined(with: .opacity),
                         removal: .scale(scale: 0.82).combined(with: .opacity)
                     ))
-                    .frame(width: usesIPhoneDetailSizing ? 60 : 36, height: usesIPhoneDetailSizing ? 52 : 32)
+                    .frame(width: usesIPhoneDetailSizing ? 60 : floatingIconFrame.width, height: usesIPhoneDetailSizing ? 52 : floatingIconFrame.height)
 
-                Spacer(minLength: usesIPhoneDetailSizing ? 0 : 8)
+                Spacer(minLength: centersHeroContent ? 0 : 8)
             }
-            .padding(.bottom, usesIPhoneDetailSizing ? 18 : 14)
+            .padding(.bottom, usesIPhoneDetailSizing ? 18 : floatingTemperatureBottomPadding)
             .animation(.snappy(duration: 0.28), value: selectedDayOffset)
 
             if !usesIPhoneDetailSizing {
@@ -307,9 +338,9 @@ extension ContentView {
                     .padding(.bottom, 10)
             }
 
-            VStack(spacing: usesIPhoneDetailSizing ? 10 : (usesDetailCardLayout ? 12 : 8)) {
+            VStack(spacing: usesIPhoneDetailSizing ? 10 : (usesDetailCardLayout ? 12 : (compactMacFloatingCard ? 5 : 8))) {
                 ForEach(0..<2, id: \.self) { row in
-                    HStack(alignment: .top, spacing: usesIPhoneDetailSizing ? 12 : 6) {
+                    HStack(alignment: .top, spacing: usesIPhoneDetailSizing ? 12 : (compactMacFloatingCard ? 5 : 6)) {
                         ForEach(0..<5, id: \.self) { column in
                             let index = row * 5 + column
                             if index < forecasts.count {
@@ -335,7 +366,7 @@ extension ContentView {
 
                                         Circle()
                                             .fill(dayDotColor)
-                                            .frame(width: isSelectedDay ? (usesIPhoneDetailSizing ? 11 : 8) : (usesIPhoneDetailSizing ? 10 : 7), height: isSelectedDay ? (usesIPhoneDetailSizing ? 11 : 8) : (usesIPhoneDetailSizing ? 10 : 7))
+                                            .frame(width: isSelectedDay ? (usesIPhoneDetailSizing ? 11 : floatingSelectedForecastDotSize) : (usesIPhoneDetailSizing ? 10 : floatingForecastDotSize), height: isSelectedDay ? (usesIPhoneDetailSizing ? 11 : floatingSelectedForecastDotSize) : (usesIPhoneDetailSizing ? 10 : floatingForecastDotSize))
                                             .shadow(color: dayDotColor.opacity(0.45), radius: 2)
 
                                         Text(tempUnit.display(dayTemperature))
@@ -417,8 +448,8 @@ extension ContentView {
             }
         }
         }
-        .padding(.horizontal, usesIPhoneDetailSizing ? 16 : 14)
-        .padding(.top, usesIPhoneDetailSizing ? 24 : 18)
+        .padding(.horizontal, usesIPhoneDetailSizing ? 16 : floatingOuterHorizontalPadding)
+        .padding(.top, usesIPhoneDetailSizing ? 24 : floatingOuterTopPadding)
         .padding(.bottom, usesIPhoneDetailSizing ? 8 : 8)
         .modifier(MapExpandedCardContainer(plainBackground: plainBackground, colorScheme: colorScheme))
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -458,7 +489,7 @@ extension ContentView {
                     compactLayout: true,
                     transitionDirection: detailChartSwipeDirection
                 )
-                .frame(width: max(availableSize.width * 1.6, 390), height: availableSize.height)
+                .frame(width: entireDayChartWidth(for: forecast, availableWidth: availableSize.width), height: availableSize.height)
             }
             .task(id: refreshKey) {
                 await refreshHourlyDataIfNeeded(for: cityWeather, forecast: forecast)
@@ -482,6 +513,11 @@ extension ContentView {
                 await refreshHourlyDataIfNeeded(for: cityWeather, forecast: forecast)
             }
         }
+    }
+
+    private func entireDayChartWidth(for forecast: DailyForecast, availableWidth: CGFloat) -> CGFloat {
+        let hourCount = max(forecast.hourlyForecasts.count, 24)
+        return max(availableWidth * 2.4, CGFloat(hourCount) * 46)
     }
 
     private func iPadDebugLocalTimeText(for cityWeather: CityWeather) -> String {

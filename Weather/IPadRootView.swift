@@ -114,6 +114,83 @@ extension ContentView {
         .toolbar {
             iPadMapToolbarContent
         }
+        .background {
+            iPadCommandReceivers
+        }
+    }
+
+    var iPadCommandReceivers: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousDayCommand)) { _ in
+                guard shouldUseIPadLayout else { return }
+                iPadStepSelectedDay(-1)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherNextDayCommand)) { _ in
+                guard shouldUseIPadLayout else { return }
+                iPadStepSelectedDay(1)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousListCommand)) { _ in
+                guard shouldUseIPadLayout else { return }
+                iPadSwitchListByOffset(-1)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherNextListCommand)) { _ in
+                guard shouldUseIPadLayout else { return }
+                iPadSwitchListByOffset(1)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherCenterMapCommand)) { _ in
+                guard shouldUseIPadLayout else { return }
+                centerMapOnDots()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherRefreshCommand)) { _ in
+                guard shouldUseIPadLayout else { return }
+                refreshActiveWeather()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherSearchCommand)) { _ in
+                guard shouldUseIPadLayout else { return }
+                activateInlineSearch()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherToggleSunnyFilterCommand)) { _ in
+                guard shouldUseIPadLayout else { return }
+                withAnimation {
+                    filterSunny.toggle()
+                    UserDefaults.standard.set(filterSunny, forKey: "menuFilterSunnyState")
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherToggleLegendCommand)) { _ in
+                guard shouldUseIPadLayout else { return }
+                withAnimation(.smooth(duration: 0.2)) {
+                    showLegend.toggle()
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherOverlayCommand)) { notification in
+                guard shouldUseIPadLayout, let mode = notification.object as? String else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    mapOverlayMode = mode
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherSwitchListCommand)) { notification in
+                guard shouldUseIPadLayout,
+                      let rawValue = notification.object as? String,
+                      let listID = sidebarLists.first(where: { $0.rawValue == rawValue }) else { return }
+                Task { await switchToList(listID) }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherNewListCommand)) { _ in
+                guard shouldUseIPadLayout else { return }
+                beginCreatingListFromSwitcher()
+            }
+    }
+
+    func iPadStepSelectedDay(_ delta: Int) {
+        guard !showingInlineSearch else { return }
+        selectedDayOffset = max(-1, min(9, selectedDayOffset + delta))
+    }
+
+    func iPadSwitchListByOffset(_ delta: Int) {
+        let lists = sidebarLists
+        guard let currentIndex = lists.firstIndex(of: weatherService.activeListID), !lists.isEmpty else { return }
+        let nextIndex = (currentIndex + delta + lists.count) % lists.count
+        Task { await switchToList(lists[nextIndex]) }
     }
 
     @ToolbarContentBuilder

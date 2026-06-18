@@ -36,22 +36,9 @@ struct MapFloatingLegend: View {
             (localizedString("Partly Sunny", locale: locale), palette.dotPartlyCloudy),
             (localizedString("Rain", locale: locale), palette.dotRain),
             (localizedString("Drizzle", locale: locale), palette.dotDrizzle),
-            (localizedLegendLabel("Cloudy / Snow / Wind / Fog"), palette.dotCloudy),
-            (localizedLegendLabel("Night"), AppTheme.shared.colors.moonIconColor)
+            (localizedString("Cloudy / Snow / Wind / Fog", locale: locale), palette.dotCloudy),
+            (localizedString("Night", locale: locale), AppTheme.shared.colors.moonIconColor)
         ]
-    }
-
-    private func localizedLegendLabel(_ key: String) -> String {
-        switch locale.language.languageCode?.identifier {
-        case "zh":
-            switch key {
-            case "Cloudy / Snow / Wind / Fog": return "多云 / 雪 / 风 / 雾"
-            case "Night": return "夜间"
-            default: return key
-            }
-        default:
-            return localizedString(String.LocalizationValue(key), locale: locale)
-        }
     }
 
     // MARK: - Color functions (same as before)

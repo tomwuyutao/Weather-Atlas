@@ -417,15 +417,60 @@ extension ContentView {
             )
             .ignoresSafeArea()
 
+            if let errorMessage = weatherService.errorMessage {
+                weatherServiceErrorBanner(errorMessage)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                    .padding(.top, 72)
+                    .padding(.horizontal, 18)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(80)
+            }
+
         }
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .ignoresSafeArea()
+        .animation(.smooth(duration: 0.2), value: weatherService.errorMessage)
         .onChange(of: weatherService.isLoading) { wasLoading, isLoading in
             if wasLoading, !isLoading, !mapCities.isEmpty {
                 centerMapOnDots(useListCoordinates: true)
             }
         }
 
+    }
+
+    private func weatherServiceErrorBanner(_ message: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(theme.colors.destructive)
+
+            Text(message)
+                .font(.callout.weight(.medium))
+                .foregroundStyle(theme.colors.primaryText)
+                .lineLimit(2)
+
+            Spacer(minLength: 8)
+
+            Button {
+                weatherService.errorMessage = nil
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .frame(width: 26, height: 26)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.leading, 14)
+        .padding(.trailing, 8)
+        .padding(.vertical, 10)
+        .frame(maxWidth: 520)
+        .background(theme.colors.glassFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 16, y: 8)
     }
 
     var macMapLeadingFitPadding: Double {
@@ -450,7 +495,7 @@ extension ContentView {
 
     var mapAllowsMarkerHover: Bool {
         #if os(iOS)
-        false
+        shouldUseIPadLayout
         #else
         true
         #endif
@@ -466,7 +511,7 @@ extension ContentView {
 
     var mapShowsMarkerHoverLabels: Bool {
         #if os(iOS)
-        false
+        shouldUseIPadLayout
         #else
         true
         #endif
@@ -1540,8 +1585,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
 
         function openHoveredMarkerFromPoint(point) {
-          if (!hoveredMarkerID || !hoveredMarkerPoint) return false;
-          post({ type: 'markerTap', id: hoveredMarkerID, x: hoveredMarkerPoint.x, y: hoveredMarkerPoint.y });
+          const feature = markerFeatureAtPoint(point, markerHitRadius);
+          if (!feature?.properties?.id) return false;
+          const markerPoint = markerScreenPoint(feature, point);
+          post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y, tapX: point.x, tapY: point.y });
           return true;
         }
 
@@ -1812,13 +1859,11 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             const dy = event.offsetY - down.y;
             const movement = Math.sqrt(dx * dx + dy * dy);
             const elapsed = Date.now() - down.time;
-            if (movement <= 12 && elapsed < 1000 && (hoveredMarkerID || down.hoveredID)) {
-              const id = hoveredMarkerID || down.hoveredID;
-              const markerPoint = hoveredMarkerID && hoveredMarkerPoint
-                ? hoveredMarkerPoint
-                : down.hoveredPoint;
-              if (id && markerPoint) {
-                post({ type: 'markerTap', id, x: markerPoint.x, y: markerPoint.y });
+            if (movement <= 12 && elapsed < 1000) {
+              const feature = markerFeatureAtPoint(point, markerHitRadius);
+              if (feature?.properties?.id) {
+                const markerPoint = markerScreenPoint(feature, point);
+                post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y, tapX: point.x, tapY: point.y });
                 event.preventDefault();
                 event.stopImmediatePropagation();
               }
@@ -1839,10 +1884,6 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           });
           map.on('click', event => {
             if (Date.now() < suppressNextClickUntil) return;
-            if (hoveredMarkerID && hoveredMarkerPoint) {
-              post({ type: 'markerTap', id: hoveredMarkerID, x: hoveredMarkerPoint.x, y: hoveredMarkerPoint.y });
-              return;
-            }
             if (event.originalEvent?._weatherMarkerHandled) return;
             const feature = markerFeatureAtPoint(event.point);
             if (feature?.properties?.id) {

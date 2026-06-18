@@ -130,6 +130,30 @@ extension ContentView {
         showingRenameAlert = true
     }
 
+    func beginCreatingListFromSwitcher() {
+        sidebarNewListName = ""
+        #if os(iOS)
+        if shouldUseIPadLayout {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+                iPadSidebarVisibility = .all
+                iPadPreferredCompactColumn = .sidebar
+            }
+        } else {
+            withAnimation(.smooth(duration: 0.24)) {
+                showingMapSidebar = true
+            }
+        }
+        #else
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            macSidebarVisibility = .all
+        }
+        #endif
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            sidebarShowingAddListAlert = true
+        }
+    }
+
     func revealCityOnMap(_ city: CityWeather, in listID: CityListID) {
         Task {
             await switchToList(listID)
@@ -471,16 +495,13 @@ extension ContentView {
                             .tag("empty:\(listID.rawValue)")
                     } else {
                         ForEach(defaultCities) { city in
-                            Text(city.localizedName(locale: locale))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                            macSidebarDefaultCityRow(city)
                                 .tag("loading:\(listID.rawValue):\(city.id.uuidString)")
                         }
                     }
                 } else {
                     ForEach(cities) { city in
-                        Text(city.city.localizedName(locale: locale))
-                            .lineLimit(1)
+                        macSidebarWeatherCityRow(city)
                             .tag(macSidebarCityContextID(city, in: listID))
                             .contextMenu {
                                 cityActions(for: city, in: listID)
@@ -494,10 +515,8 @@ extension ContentView {
                     }
                 }
             } label: {
-                Text(listID.localizedDisplayName(locale: locale))
-                    .lineLimit(1)
+                macSidebarListHeader(listID)
             }
-            .badge(sidebarCityCount(for: listID))
             .tag(macSidebarListContextID(listID))
             .contextMenu {
                 listActions(for: listID)
@@ -505,6 +524,57 @@ extension ContentView {
         }
         .onMove(perform: moveMacSidebarLists)
         .onDelete(perform: deleteMacSidebarLists)
+    }
+
+    private func macSidebarListHeader(_ listID: CityListID) -> some View {
+        HStack(spacing: 8) {
+            Text(listID.localizedDisplayName(locale: locale))
+                .lineLimit(1)
+
+            Spacer(minLength: 6)
+
+            Text("\(sidebarCityCount(for: listID))")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.leading, 6)
+        .contentShape(Rectangle())
+    }
+
+    private func macSidebarDefaultCityRow(_ city: City) -> some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(.secondary.opacity(0.42))
+                .frame(width: 7, height: 7)
+            Text(city.localizedName(locale: locale))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            Spacer(minLength: 4)
+        }
+        .font(.caption)
+        .padding(.vertical, 1)
+    }
+
+    private func macSidebarWeatherCityRow(_ city: CityWeather) -> some View {
+        let dotColor = city.weatherIcon.contains("moon") ? theme.colors.moonIconColor : city.condition.dotColor(for: theme.colors)
+
+        return HStack(spacing: 7) {
+            Circle()
+                .fill(dotColor)
+                .frame(width: 7, height: 7)
+                .shadow(color: dotColor.opacity(0.3), radius: 2)
+
+            Text(city.city.localizedName(locale: locale))
+                .lineLimit(1)
+
+            Spacer(minLength: 6)
+
+            Text(tempUnit.display(city.temperature))
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+        }
+        .font(.caption)
+        .padding(.vertical, 1)
     }
 
     private func moveMacSidebarLists(from source: IndexSet, to destination: Int) {

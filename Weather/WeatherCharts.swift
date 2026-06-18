@@ -72,13 +72,14 @@ struct HourlyTimelineChart: View {
     }
 
     private var chartPoints: [ChartPoint] {
-        dataPoints.enumerated().map { index, forecast in
-            ChartPoint(
+        dataPoints.enumerated().compactMap { index, forecast in
+            guard let value = value(for: forecast) else { return nil }
+            return ChartPoint(
                 id: forecast.id.uuidString,
                 index: index,
                 label: forecast.shortFormattedHour(locale: locale),
                 icon: forecast.weatherIcon,
-                value: value(for: forecast),
+                value: value,
                 valueText: chartValueText(for: forecast),
                 isPast: isPastHour(forecast.hour)
             )
@@ -125,16 +126,33 @@ struct HourlyTimelineChart: View {
         }
     }
 
-    private func value(for forecast: HourlyForecast) -> Double {
+    private func value(for forecast: HourlyForecast) -> Double? {
         switch chartMetric {
         case .temperature: return forecast.temperature
-        case .feelsLike: return forecast.apparentTemperature ?? forecast.temperature
-        case .cloudCover: return Double(forecast.cloudCoverPercent ?? 0)
-        case .precipitation: return (forecast.precipitationChance ?? 0) * 100
-        case .windSpeed: return forecast.windSpeed ?? 0
-        case .uvIndex: return Double(forecast.uvIndex ?? 0)
-        case .humidity: return (forecast.humidity ?? 0) * 100
-        case .visibility: return forecast.visibility ?? 10
+        case .feelsLike: return forecast.apparentTemperature
+        case .cloudCover: return forecast.cloudCoverPercent.map(Double.init)
+        case .precipitation: return forecast.precipitationChance.map { $0 * 100 }
+        case .windSpeed: return forecast.windSpeed
+        case .uvIndex: return forecast.uvIndex.map(Double.init)
+        case .humidity: return forecast.humidity.map { $0 * 100 }
+        case .visibility: return forecast.visibility
+        }
+    }
+
+    private var missingDataTitle: String {
+        localizedString("Missing \(metricName) data", locale: locale)
+    }
+
+    private var metricName: String {
+        switch chartMetric {
+        case .temperature: return localizedString("temperature", locale: locale)
+        case .feelsLike: return localizedString("feels-like", locale: locale)
+        case .cloudCover: return localizedString("cloud cover", locale: locale)
+        case .precipitation: return localizedString("precipitation", locale: locale)
+        case .windSpeed: return localizedString("wind speed", locale: locale)
+        case .uvIndex: return localizedString("UV index", locale: locale)
+        case .humidity: return localizedString("humidity", locale: locale)
+        case .visibility: return localizedString("visibility", locale: locale)
         }
     }
 
@@ -149,7 +167,7 @@ struct HourlyTimelineChart: View {
             chartHeight: chartHeight,
             labelSpacing: labelSpacing,
             compactLayout: compactLayout,
-            emptyTitle: "No hourly data",
+            emptyTitle: missingDataTitle,
             transitionID: "hourly-\(dayOffset)-\(chartMetric)-\(showAllHours)",
             transitionDirection: transitionDirection,
             onHorizontalSwipe: onHorizontalSwipe
@@ -179,13 +197,14 @@ struct DailyTimelineChart: View {
     private var dataPoints: [DailyForecast] { dailyForecasts.sorted { $0.dayOffset < $1.dayOffset } }
 
     private var chartPoints: [ChartPoint] {
-        dataPoints.enumerated().map { index, forecast in
-            ChartPoint(
+        dataPoints.enumerated().compactMap { index, forecast in
+            guard let value = value(for: forecast) else { return nil }
+            return ChartPoint(
                 id: forecast.id.uuidString,
                 index: index,
                 label: dayLabel(for: forecast),
                 icon: forecast.weatherIcon,
-                value: value(for: forecast),
+                value: value,
                 valueText: chartValueText(for: forecast),
                 isPast: false
             )
@@ -221,16 +240,16 @@ struct DailyTimelineChart: View {
         return formatter.string(from: date)
     }
 
-    private func value(for forecast: DailyForecast) -> Double {
+    private func value(for forecast: DailyForecast) -> Double? {
         switch chartMetric {
         case .temperature: return forecast.dailyHigh
-        case .feelsLike: return forecast.feelsLikeHigh ?? forecast.dailyHigh
-        case .cloudCover: return (forecast.cloudCover ?? 0) * 100
-        case .precipitation: return (forecast.precipitationChance ?? 0) * 100
-        case .windSpeed: return forecast.windSpeed ?? 0
-        case .uvIndex: return Double(forecast.uvIndex ?? 0)
-        case .humidity: return (forecast.maxHumidity ?? 0) * 100
-        case .visibility: return forecast.maxVisibility ?? 10
+        case .feelsLike: return forecast.feelsLikeHigh
+        case .cloudCover: return forecast.cloudCover.map { $0 * 100 }
+        case .precipitation: return forecast.precipitationChance.map { $0 * 100 }
+        case .windSpeed: return forecast.windSpeed
+        case .uvIndex: return forecast.uvIndex.map(Double.init)
+        case .humidity: return forecast.maxHumidity.map { $0 * 100 }
+        case .visibility: return forecast.maxVisibility
         }
     }
 
@@ -258,11 +277,28 @@ struct DailyTimelineChart: View {
             chartHeight: chartHeight,
             labelSpacing: labelSpacing,
             compactLayout: compactLayout,
-            emptyTitle: "No daily data",
+            emptyTitle: missingDataTitle,
             transitionID: "daily-\(selectedDayOffset)-\(chartMetric)",
             transitionDirection: 1,
             onHorizontalSwipe: nil
         )
+    }
+
+    private var missingDataTitle: String {
+        localizedString("Missing \(metricName) data", locale: locale)
+    }
+
+    private var metricName: String {
+        switch chartMetric {
+        case .temperature: return localizedString("temperature", locale: locale)
+        case .feelsLike: return localizedString("feels-like", locale: locale)
+        case .cloudCover: return localizedString("cloud cover", locale: locale)
+        case .precipitation: return localizedString("precipitation", locale: locale)
+        case .windSpeed: return localizedString("wind speed", locale: locale)
+        case .uvIndex: return localizedString("UV index", locale: locale)
+        case .humidity: return localizedString("humidity", locale: locale)
+        case .visibility: return localizedString("visibility", locale: locale)
+        }
     }
 }
 

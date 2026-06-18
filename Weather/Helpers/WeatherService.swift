@@ -10,6 +10,17 @@ import SwiftUI
 import WeatherKit
 import CoreLocation
 
+enum WeatherServiceError: LocalizedError {
+    case undefinedTimeZone(city: String)
+
+    var errorDescription: String? {
+        switch self {
+        case .undefinedTimeZone(let city):
+            return "Timezone undefined for \(city)"
+        }
+    }
+}
+
 /// Look up a localized string for a specific locale (respects SwiftUI environment locale).
 func localizedString(_ key: String.LocalizationValue, locale: Locale) -> String {
     var resource = LocalizedStringResource(key)
@@ -393,6 +404,7 @@ class WeatherService {
     var cityWeatherData: [CityWeather] = []
     var isLoading = false
     var loadingProgress: Double = 0
+    var errorMessage: String?
     var forecastDays: [ForecastDay] = []
     var lastFetchDate: Date?
     var weatherAttribution: WeatherAttribution?
@@ -442,6 +454,7 @@ class WeatherService {
     
     func fetchWeatherForAllCities(forceRefresh: Bool = false) async {
         generateForecastDays()
+        errorMessage = nil
         if !forceRefresh,
            cityWeatherData.isEmpty,
            let cachedData = loadCachedWeatherData(for: activeListID),
@@ -488,7 +501,7 @@ class WeatherService {
             do {
                 let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
                 let weather = try await weatherService.weather(for: location)
-                let cityWeather = await convertWeatherKitData(weather: weather, for: city)
+                let cityWeather = try await convertWeatherKitData(weather: weather, for: city)
                 guard activeFetchToken == fetchToken else { return }
 
                 weatherData.append(cityWeather)
@@ -500,6 +513,7 @@ class WeatherService {
                     }
                 }
             } catch {
+                report(error)
                 if activeFetchToken == fetchToken {
                     withAnimation(.easeInOut(duration: 0.15)) {
                         loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
@@ -893,9 +907,7 @@ class WeatherService {
             guard let todayForecast = cityWeather.dailyForecasts.first(where: { $0.dayOffset == 0 }) else {
                 return false
             }
-            guard !todayForecast.hourlyForecasts.isEmpty else {
-                return true
-            }
+            guard !todayForecast.hourlyForecasts.isEmpty else { return false }
 
             var calendar = Calendar.current
             calendar.timeZone = cityWeather.timeZone
@@ -962,6 +974,7 @@ class WeatherService {
     
     /// Fetch weather for a specific list without switching active list, storing in otherListData
     func fetchWeatherForList(_ listID: CityListID) async {
+        errorMessage = nil
         if otherListData[listID.rawValue]?.isEmpty == false,
            isWeatherDataFresh(for: listID) {
             return
@@ -1000,10 +1013,10 @@ class WeatherService {
             do {
                 let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
                 let weather = try await weatherService.weather(for: location)
-                let cityWeather = await convertWeatherKitData(weather: weather, for: city)
+                let cityWeather = try await convertWeatherKitData(weather: weather, for: city)
                 weatherData.append(cityWeather)
             } catch {
-                // Skip failed cities
+                report(error)
             }
         }
         otherListData[listID.rawValue] = weatherData
@@ -1022,6 +1035,10 @@ class WeatherService {
             UserDefaults.standard.set(encoded, forKey: citiesListKey)
         } catch {
         }
+    }
+
+    private func report(_ error: Error) {
+        errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
     private func isValidPersistedCity(_ city: City) -> Bool {
@@ -1084,147 +1101,27 @@ class WeatherService {
                 resolvedTimeZones[key] = timeZone
                 return timeZone
             }
-            if let timeZone = singleZoneTimeZone(for: placemarks.first?.isoCountryCode) {
-                resolvedTimeZones[key] = timeZone
-                return timeZone
-            }
         } catch {
             print("⚠️ [WeatherService] Time zone lookup failed for \(city.name): \(error.localizedDescription)")
-        }
-
-        if let timeZone = singleZoneTimeZone(for: city.country) {
-            resolvedTimeZones[key] = timeZone
-            return timeZone
         }
 
         return nil
     }
 
-    private func resolvedTimeZoneOrFallback(for city: City) async -> TimeZone {
+    private func resolvedTimeZoneOrThrow(for city: City) async throws -> TimeZone {
         if let timeZone = await resolvedTimeZone(for: city) {
             return timeZone
         }
 
-        return TimeZone(identifier: "UTC") ?? .current
+        throw WeatherServiceError.undefinedTimeZone(city: city.name)
     }
 
-    private func singleZoneTimeZone(for isoCountryCode: String?) -> TimeZone? {
-        guard let country = isoCountryCode?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !country.isEmpty else {
-            return nil
-        }
-        let code = countryCode(for: country) ?? country.uppercased()
-        let identifierByCountryCode = [
-            "AL": "Europe/Tirane",
-            "AD": "Europe/Andorra",
-            "AT": "Europe/Vienna",
-            "BE": "Europe/Brussels",
-            "BA": "Europe/Sarajevo",
-            "BG": "Europe/Sofia",
-            "HR": "Europe/Zagreb",
-            "CY": "Asia/Nicosia",
-            "CZ": "Europe/Prague",
-            "DK": "Europe/Copenhagen",
-            "EE": "Europe/Tallinn",
-            "FI": "Europe/Helsinki",
-            "FR": "Europe/Paris",
-            "DE": "Europe/Berlin",
-            "GR": "Europe/Athens",
-            "HU": "Europe/Budapest",
-            "IS": "Atlantic/Reykjavik",
-            "IE": "Europe/Dublin",
-            "IT": "Europe/Rome",
-            "LV": "Europe/Riga",
-            "LT": "Europe/Vilnius",
-            "LU": "Europe/Luxembourg",
-            "MT": "Europe/Malta",
-            "MD": "Europe/Chisinau",
-            "MC": "Europe/Monaco",
-            "ME": "Europe/Podgorica",
-            "NL": "Europe/Amsterdam",
-            "MK": "Europe/Skopje",
-            "NO": "Europe/Oslo",
-            "PL": "Europe/Warsaw",
-            "PT": "Europe/Lisbon",
-            "RO": "Europe/Bucharest",
-            "RS": "Europe/Belgrade",
-            "SK": "Europe/Bratislava",
-            "SI": "Europe/Ljubljana",
-            "ES": "Europe/Madrid",
-            "SE": "Europe/Stockholm",
-            "CH": "Europe/Zurich",
-            "TR": "Europe/Istanbul",
-            "UA": "Europe/Kyiv",
-            "GB": "Europe/London",
-            "CN": "Asia/Shanghai",
-            "JP": "Asia/Tokyo",
-            "KR": "Asia/Seoul",
-            "TH": "Asia/Bangkok",
-            "VN": "Asia/Ho_Chi_Minh",
-            "IN": "Asia/Kolkata"
-        ]
-        return identifierByCountryCode[code].flatMap(TimeZone.init(identifier:))
-    }
-
-    private func countryCode(for country: String) -> String? {
-        switch country.lowercased() {
-        case "albania": return "AL"
-        case "andorra": return "AD"
-        case "austria": return "AT"
-        case "belgium": return "BE"
-        case "bosnia and herzegovina": return "BA"
-        case "bulgaria": return "BG"
-        case "croatia": return "HR"
-        case "cyprus": return "CY"
-        case "czechia", "czech republic": return "CZ"
-        case "denmark": return "DK"
-        case "estonia": return "EE"
-        case "finland": return "FI"
-        case "france": return "FR"
-        case "germany": return "DE"
-        case "greece": return "GR"
-        case "hungary": return "HU"
-        case "iceland": return "IS"
-        case "ireland": return "IE"
-        case "italy": return "IT"
-        case "latvia": return "LV"
-        case "lithuania": return "LT"
-        case "luxembourg": return "LU"
-        case "malta": return "MT"
-        case "moldova": return "MD"
-        case "monaco": return "MC"
-        case "montenegro": return "ME"
-        case "netherlands": return "NL"
-        case "north macedonia": return "MK"
-        case "norway": return "NO"
-        case "poland": return "PL"
-        case "portugal": return "PT"
-        case "romania": return "RO"
-        case "serbia": return "RS"
-        case "slovakia": return "SK"
-        case "slovenia": return "SI"
-        case "spain": return "ES"
-        case "sweden": return "SE"
-        case "switzerland": return "CH"
-        case "turkey": return "TR"
-        case "ukraine": return "UA"
-        case "united kingdom", "england", "scotland", "wales": return "GB"
-        case "china": return "CN"
-        case "japan": return "JP"
-        case "south korea": return "KR"
-        case "thailand": return "TH"
-        case "vietnam": return "VN"
-        case "india": return "IN"
-        default: return nil
-        }
-    }
-
-    func debugResolvedTimeZone(for city: City) async -> TimeZone {
-        await resolvedTimeZoneOrFallback(for: city)
+    func debugResolvedTimeZone(for city: City) async throws -> TimeZone {
+        try await resolvedTimeZoneOrThrow(for: city)
     }
     
-    private func convertWeatherKitData(weather: Weather, for city: City) async -> CityWeather {
-        let timeZone = await resolvedTimeZoneOrFallback(for: city)
+    private func convertWeatherKitData(weather: Weather, for city: City) async throws -> CityWeather {
+        let timeZone = try await resolvedTimeZoneOrThrow(for: city)
         return convertWeatherKitData(weather: weather, for: city, timeZone: timeZone)
     }
     
@@ -1414,11 +1311,12 @@ class WeatherService {
     func addCity(_ city: City) async {
         do {
             // Fetch weather for the new city
+            errorMessage = nil
             let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
             let weather = try await weatherService.weather(for: location)
             
             // Convert to our model
-            let cityWeather = await convertWeatherKitData(weather: weather, for: city)
+            let cityWeather = try await convertWeatherKitData(weather: weather, for: city)
             
             // Add to the beginning of the list
             cityWeatherData.insert(cityWeather, at: 0)
@@ -1430,6 +1328,7 @@ class WeatherService {
             saveCitiesList()
             
         } catch {
+            report(error)
         }
     }
     
@@ -1437,9 +1336,10 @@ class WeatherService {
         let listKey = "savedCitiesList_\(listID.rawValue)"
         
         do {
+            errorMessage = nil
             let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
             let weather = try await weatherService.weather(for: location)
-            let cityWeather = await convertWeatherKitData(weather: weather, for: city)
+            let cityWeather = try await convertWeatherKitData(weather: weather, for: city)
             
             // Load existing cities for the target list
             var existingCities: [City] = []
@@ -1462,20 +1362,23 @@ class WeatherService {
             }
             
         } catch {
+            report(error)
         }
     }
     
     func fetchWeatherForCity(_ city: City) async -> CityWeather? {
         do {
             // Fetch weather for the city
+            errorMessage = nil
             let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
             let weather = try await weatherService.weather(for: location)
             
             // Convert to our model
-            let cityWeather = await convertWeatherKitData(weather: weather, for: city)
+            let cityWeather = try await convertWeatherKitData(weather: weather, for: city)
             
             return cityWeather
         } catch {
+            report(error)
             return nil
         }
     }
@@ -1613,79 +1516,9 @@ struct City: Identifiable, Hashable, Codable {
     }
     
     /// Returns the city name localized for the given locale.
-    /// For known default cities, the string catalog can provide any language; Chinese has a code fallback.
     func localizedName(locale: Locale = .current) -> String {
-        let catalogValue = localizedString(String.LocalizationValue(name), locale: locale)
-        if catalogValue != name {
-            return catalogValue
-        }
-        guard locale.language.languageCode?.identifier == "zh" else { return name }
-        return Self.chineseNames[name] ?? name
+        localizedString(String.LocalizationValue(name), locale: locale)
     }
-    
-    private static let chineseNames: [String: String] = [
-        // Europe
-        "Istanbul": "伊斯坦布尔", "Moscow": "莫斯科", "London": "伦敦",
-        "Saint Petersburg": "圣彼得堡", "Berlin": "柏林", "Madrid": "马德里",
-        "Rome": "罗马", "Kyiv": "基辅", "Paris": "巴黎",
-        "Bucharest": "布加勒斯特", "Minsk": "明斯克", "Vienna": "维也纳",
-        "Hamburg": "汉堡", "Warsaw": "华沙", "Budapest": "布达佩斯",
-        "Barcelona": "巴塞罗那", "Munich": "慕尼黑", "Milan": "米兰",
-        "Prague": "布拉格", "Sofia": "索非亚",
-
-        // Asia
-        "Tokyo": "东京", "Delhi": "德里", "Shanghai": "上海",
-        "Dhaka": "达卡", "Beijing": "北京", "Mumbai": "孟买",
-        "Osaka": "大阪", "Karachi": "卡拉奇", "Chongqing": "重庆",
-        "Guangzhou": "广州", "Lahore": "拉合尔", "Shenzhen": "深圳",
-        "Bangalore": "班加罗尔", "Chennai": "金奈", "Kolkata": "加尔各答",
-        "Bangkok": "曼谷", "Tehran": "德黑兰", "Hyderabad": "海得拉巴",
-        "Chengdu": "成都", "Ho Chi Minh City": "胡志明市",
-
-        // North America
-        "Mexico City": "墨西哥城", "New York": "纽约", "Los Angeles": "洛杉矶",
-        "Toronto": "多伦多", "Chicago": "芝加哥", "Dallas": "达拉斯",
-        "Houston": "休斯敦", "Miami": "迈阿密", "Philadelphia": "费城",
-        "Atlanta": "亚特兰大", "Washington": "华盛顿", "Boston": "波士顿",
-        "Phoenix": "凤凰城", "Monterrey": "蒙特雷", "Guadalajara": "瓜达拉哈拉",
-        "San Francisco": "旧金山", "Detroit": "底特律", "Montreal": "蒙特利尔",
-        "Seattle": "西雅图", "Minneapolis": "明尼阿波利斯",
-
-        // South America
-        "Sao Paulo": "圣保罗", "Buenos Aires": "布宜诺斯艾利斯", "Rio de Janeiro": "里约热内卢",
-        "Lima": "利马", "Bogota": "波哥大", "Santiago": "圣地亚哥",
-        "Belo Horizonte": "贝洛奥里藏特", "Caracas": "加拉加斯", "Porto Alegre": "阿雷格里港",
-        "Brasilia": "巴西利亚", "Recife": "累西腓", "Fortaleza": "福塔莱萨",
-        "Salvador": "萨尔瓦多", "Medellin": "麦德林", "Guayaquil": "瓜亚基尔",
-        "Curitiba": "库里蒂巴", "Quito": "基多", "Cali": "卡利",
-        "Montevideo": "蒙得维的亚", "Asuncion": "亚松森",
-
-        // Africa
-        "Lagos": "拉各斯", "Cairo": "开罗", "Kinshasa": "金沙萨",
-        "Johannesburg": "约翰内斯堡", "Luanda": "罗安达", "Dar es Salaam": "达累斯萨拉姆",
-        "Khartoum": "喀土穆", "Abidjan": "阿比让", "Alexandria": "亚历山大",
-        "Nairobi": "内罗毕", "Addis Ababa": "亚的斯亚贝巴", "Cape Town": "开普敦",
-        "Casablanca": "卡萨布兰卡", "Accra": "阿克拉", "Durban": "德班",
-        "Dakar": "达喀尔", "Kano": "卡诺", "Ibadan": "伊巴丹",
-        "Pretoria": "比勒陀利亚", "Kampala": "坎帕拉",
-
-        // Australia
-        "Sydney": "悉尼", "Melbourne": "墨尔本", "Brisbane": "布里斯班",
-        "Perth": "珀斯", "Adelaide": "阿德莱德", "Gold Coast": "黄金海岸",
-        "Canberra": "堪培拉", "Newcastle": "纽卡斯尔", "Central Coast": "中央海岸",
-        "Wollongong": "卧龙岗",
-
-        // Older defaults / user cache migration
-        "Tianjin": "天津", "Hangzhou": "杭州", "Nanjing": "南京", "Suzhou": "苏州",
-        "Xiamen": "厦门", "Wuhan": "武汉", "Changsha": "长沙", "Zhengzhou": "郑州",
-        "Xi'an": "西安", "Harbin": "哈尔滨", "Dalian": "大连", "Qingdao": "青岛",
-        "Kunming": "昆明", "Guiyang": "贵阳", "Sanya": "三亚", "Fuzhou": "福州",
-        "Lhasa": "拉萨", "Urumqi": "乌鲁木齐", "Lanzhou": "兰州",
-        "Amsterdam": "阿姆斯特丹", "Stockholm": "斯德哥尔摩", "Copenhagen": "哥本哈根",
-        "Oslo": "奥斯陆", "Helsinki": "赫尔辛基", "Lisbon": "里斯本",
-        "Athens": "雅典", "Dublin": "都柏林", "Brussels": "布鲁塞尔",
-        "Zurich": "苏黎世", "Edinburgh": "爱丁堡"
-    ]
 }
 
 struct CityWeather: Identifiable, Hashable {
@@ -2119,6 +1952,7 @@ struct CachedCityWeather: Codable {
         let decodedCity = city.toCity()
         let forecasts = dailyForecasts.map { $0.toDailyForecast() }
         guard !forecasts.isEmpty else { return nil }
+        guard let timeZone = TimeZone(identifier: timeZoneIdentifier) else { return nil }
 
         return CityWeather(
             id: id,
@@ -2127,7 +1961,7 @@ struct CachedCityWeather: Codable {
             temperature: temperature,
             symbolName: symbolName,
             dailyForecasts: forecasts,
-            timeZone: TimeZone(identifier: timeZoneIdentifier) ?? TimeZone.current,
+            timeZone: timeZone,
             currentFeelsLike: currentFeelsLike,
             currentCloudCover: currentCloudCover,
             currentWindSpeed: currentWindSpeed,

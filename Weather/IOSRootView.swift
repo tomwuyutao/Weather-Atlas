@@ -666,6 +666,18 @@ extension ContentView {
                     }
                 }
             }
+
+            Divider()
+
+            Button {
+                beginCreatingListFromSwitcher()
+            } label: {
+                Label {
+                    Text(localizedString("New List", locale: locale))
+                } icon: {
+                    Image(systemName: "plus")
+                }
+            }
         } label: {
             #if os(macOS)
             HStack(spacing: 0) {

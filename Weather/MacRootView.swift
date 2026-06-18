@@ -128,6 +128,15 @@ extension ContentView {
         .overlay {
             iOSDeleteListConfirmationOverlay
         }
+        .alert(localizedString("New List", locale: locale), isPresented: $sidebarShowingAddListAlert) {
+            TextField(localizedString("Name", locale: locale), text: $sidebarNewListName)
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {
+                sidebarNewListName = ""
+            }
+            Button(localizedString("Add", locale: locale)) {
+                commitListManagerNewList()
+            }
+        }
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
     }
 
@@ -253,12 +262,6 @@ extension ContentView {
                 }
                 .allowsHitTesting(!showingInlineSearch)
 
-            macFloatingToolbar
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(.top, 12)
-                .padding(.leading, 16)
-                .zIndex(28)
-
             if !showingInlineSearch {
                 macIPadStyleFloatingMapOverlays
             }
@@ -303,6 +306,9 @@ extension ContentView {
                 resetNativeCitySearch()
             }
         }
+        .onChange(of: inlineSearchFieldPresented) { _, isPresented in
+            showingInlineSearch = isPresented
+        }
         .onMoveCommand { direction in
             guard showingInlineSearch, !inlineSearchText.isEmpty else { return }
             switch direction {
@@ -323,62 +329,33 @@ extension ContentView {
             macKeyboardShortcuts
             macTabSwitcherKeyMonitor
         }
-    }
-
-    var macFloatingToolbar: some View {
-        HStack(spacing: 10) {
-            macFloatingListMenu
-
-            HStack(spacing: 8) {
-                macCenterMapButton
-                    .frame(width: 36, height: 36)
-
-                mapOverlayMenu
-                    .frame(width: 36, height: 36)
-
-                macFilterSunnyButton
-                    .frame(width: 36, height: 36)
-
-                macToolbarMoreMenu
-                    .frame(width: 36, height: 36)
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                macToolbarListTitle
             }
-            .padding(.horizontal, 8)
-            .frame(height: 44)
-            .themedGlass(in: .capsule)
 
-            macToolbarSearchField
-        }
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    var macFloatingListMenu: some View {
-        Menu {
-            ForEach(sidebarLists) { listID in
-                Button(listID.localizedDisplayName(locale: locale)) {
-                    Task {
-                        await switchToList(listID)
-                    }
+            if #available(macOS 26.0, *) {
+                ToolbarSpacer(.flexible, placement: .primaryAction)
+            } else {
+                ToolbarItem(placement: .principal) {
+                    Spacer()
+                        .frame(minWidth: 120, maxWidth: .infinity)
                 }
             }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 12, weight: .semibold))
-                Text(toolbarTitle)
-                    .font(.headline)
-                    .lineLimit(1)
+
+            ToolbarItemGroup(placement: .primaryAction) {
+                macCenterMapButton
+                mapOverlayMenu
+                macFilterSunnyButton
+                macToolbarMoreMenu
             }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 16)
-            .frame(height: 44)
-            .fixedSize(horizontal: true, vertical: false)
-            .contentShape(Capsule())
         }
-        .menuIndicator(.hidden)
-        .menuOrder(.fixed)
-        .buttonStyle(.plain)
-        .tint(.primary)
-        .themedGlass(in: .capsule)
+        .searchable(
+            text: $inlineSearchText,
+            isPresented: $inlineSearchFieldPresented,
+            placement: .toolbar,
+            prompt: Text(localizedString("Search for a city", locale: locale))
+        )
     }
 
     var macWindowDragTopArea: some View {
@@ -386,7 +363,6 @@ extension ContentView {
             Color.clear
                 .frame(height: 54)
                 .contentShape(Rectangle())
-                .allowsHitTesting(false)
 
             Spacer(minLength: 0)
         }
@@ -490,42 +466,6 @@ extension ContentView {
         .tint(.primary)
     }
 
-    var macToolbarSearchField: some View {
-        HStack(spacing: 7) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(.secondary)
-
-            TextField(localizedString("Search for a city", locale: locale), text: $inlineSearchText)
-                .textFieldStyle(.plain)
-                .font(.system(size: 13))
-                .onSubmit {
-                    confirmInlineSearchSelection()
-                }
-
-            if !inlineSearchText.isEmpty {
-                Button {
-                    resetNativeCitySearch()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 10)
-        .frame(width: 230, height: 34)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 17, style: .continuous)
-                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-        }
-        .onTapGesture {
-            showingInlineSearch = true
-            inlineSearchFieldPresented = true
-        }
-    }
-
     var macSearchSuggestionsList: some View {
         VStack(alignment: .leading, spacing: 0) {
             nativeCitySearchSuggestions
@@ -580,24 +520,43 @@ extension ContentView {
                     }
                 }
             }
+
+            Divider()
+
+            Button {
+                beginCreatingListFromSwitcher()
+            } label: {
+                Label {
+                    Text(localizedString("New List", locale: locale))
+                } icon: {
+                    Image(systemName: "plus")
+                }
+            }
         } label: {
-            HStack(spacing: 12) {
+            HStack(spacing: 10) {
                 Image(systemName: "chevron.down")
                     .resizable()
                     .scaledToFit()
-                    .frame(width: 8, height: 8)
+                    .frame(width: 4.5, height: 4.5)
                     .fontWeight(.semibold)
                 Text(toolbarTitle)
                     .font(.headline)
                     .lineLimit(1)
             }
             .foregroundStyle(.primary)
-            .padding(.leading, 4)
-            .padding(.trailing, 18)
-            .fixedSize(horizontal: true, vertical: false)
+            .padding(.leading, 18)
+            .padding(.trailing, 42)
+            .frame(minWidth: 132, minHeight: 34, alignment: .leading)
+            .background(.regularMaterial, in: Capsule())
+            .overlay {
+                Capsule()
+                    .stroke(.white.opacity(colorScheme == .dark ? 0.18 : 0.34), lineWidth: 0.8)
+            }
+            .clipShape(Capsule())
         }
         .menuIndicator(.hidden)
         .menuOrder(.fixed)
+        .buttonStyle(.plain)
         .tint(.primary)
         .help(localizedString("Switch List", locale: locale))
     }
@@ -662,12 +621,12 @@ extension ContentView {
 
                 if showingCityDetail, let city = tappedCity {
                     let panelWidth = macIPadInspectorWidth
-                    let panelHeight = min(max(500, geometry.size.height - 88), max(420, geometry.size.height - 56))
+                    let panelHeight = min(max(420, geometry.size.height - 132), max(360, geometry.size.height - 108))
 
                     macIPadFloatingDetailWindow(for: city)
                         .frame(width: panelWidth, height: panelHeight)
                         .matchedGeometryEffect(id: macIPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, properties: .frame, anchor: .center)
-                        .offset(x: geometry.size.width - panelWidth - macIPadFloatingCardTrailingGap, y: geometry.size.height - panelHeight - macIPadFloatingCardBottomGap)
+                        .offset(x: geometry.size.width - panelWidth - macIPadFloatingCardTrailingGap, y: geometry.size.height - panelHeight - macIPadInspectorBottomGap)
                         .transition(.opacity)
                         .zIndex(20)
                 }
@@ -752,11 +711,11 @@ extension ContentView {
                     mapExpandedCard(
                         for: city,
                         forceMacStyle: true,
-                        forceIPhoneDetailSizing: true,
+                        forceIPhoneDetailSizing: false,
                         plainBackground: true
                     )
-                    .padding(.horizontal, 10)
-                    .padding(.top, 12)
+                    .padding(.horizontal, 8)
+                    .padding(.top, 8)
                     .padding(.bottom, 16)
                 }
                 .onChange(of: city.id) { _, _ in
@@ -783,12 +742,13 @@ extension ContentView {
         }
     }
 
-    var macIPadInspectorWidth: CGFloat { 380 }
+    var macIPadInspectorWidth: CGFloat { 340 }
     var macIPadFloatingCardTrailingGap: CGFloat { 24 }
-    var macIPadFloatingCardBottomGap: CGFloat { -4 }
+    var macIPadFloatingCardBottomGap: CGFloat { 28 }
+    var macIPadInspectorBottomGap: CGFloat { 34 }
 
     var macIPadFloatingCardSize: CGSize {
-        CGSize(width: 312, height: 144)
+        CGSize(width: 286, height: 118)
     }
 
     var iPadInspectorMorphAnimation: Animation {
@@ -1101,7 +1061,7 @@ extension ContentView {
     }
 
     func handleWeatherNewListCommand(_ notification: Notification) {
-        createListAtBottom()
+        beginCreatingListFromSwitcher()
     }
 
     func handleWeatherToggleSidebarCommand(_ notification: Notification) {

@@ -96,13 +96,6 @@ enum TemperatureUnit: String, CaseIterable {
     }
 }
 
-#if os(macOS)
-private enum MacSettingsTab: Hashable {
-    case general
-    case about
-}
-#endif
-
 struct SettingsView: View {
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.kilometers.rawValue
@@ -118,9 +111,6 @@ struct SettingsView: View {
 
     @State private var showingResetConfirmation = false
     @State private var showingEmailCopied = false
-    #if os(macOS)
-    @State private var selectedMacSettingsTab: MacSettingsTab = .general
-    #endif
 
     private var selectedUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnit) ?? .celsius
@@ -189,55 +179,37 @@ struct SettingsView: View {
 
     #if os(macOS)
     private var nativeMacSettingsBody: some View {
-        VStack(spacing: 14) {
-            HStack(spacing: 8) {
-                macSettingsTabButton(.general, title: localizedString("General", locale: locale), systemImage: "gear")
-                macSettingsTabButton(.about, title: localizedString("About", locale: locale), systemImage: "info.circle")
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, 18)
-            .padding(.top, 18)
-
-            Group {
-                switch selectedMacSettingsTab {
-                case .general:
-                    settingsForm
-                case .about:
-                    aboutForm
+        TabView {
+            settingsForm
+                .tabItem {
+                    Label(localizedString("General", locale: locale), systemImage: "slider.horizontal.3")
                 }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .padding(.horizontal, 12)
-            .padding(.bottom, 12)
+
+            aboutForm
+                .tabItem {
+                    Label(localizedString("About", locale: locale), systemImage: "info.circle")
+                }
         }
-        .frame(width: 440)
-        .frame(minHeight: 320)
-        .background(theme.colors.mapOcean)
+        .frame(width: 560, height: 460)
         .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
     }
-
-    private func macSettingsTabButton(_ tab: MacSettingsTab, title: String, systemImage: String) -> some View {
-        Button {
-            withAnimation(.snappy(duration: 0.18)) {
-                selectedMacSettingsTab = tab
-            }
-        } label: {
-            Label(title, systemImage: systemImage)
-                .font(.headline.weight(selectedMacSettingsTab == tab ? .semibold : .medium))
-                .foregroundStyle(selectedMacSettingsTab == tab ? theme.colors.primaryText : theme.colors.secondaryText)
-                .padding(.horizontal, 14)
-                .frame(height: 34)
-                .background {
-                    if selectedMacSettingsTab == tab {
-                        Capsule()
-                            .fill(theme.colors.mapLand)
-                    }
-                }
-                .contentShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
     #endif
+
+    private var settingsRowBackground: Color {
+        #if os(macOS)
+        Color.clear
+        #else
+        theme.colors.mapLand
+        #endif
+    }
+
+    private var settingsFormBackground: Color {
+        #if os(macOS)
+        Color.clear
+        #else
+        theme.colors.mapOcean
+        #endif
+    }
 
     private var settingsForm: some View {
         Form {
@@ -284,7 +256,7 @@ struct SettingsView: View {
                 }
                 .tint(.secondary)
             }
-            .listRowBackground(theme.colors.mapLand)
+            .listRowBackground(settingsRowBackground)
 
             Section(localizedString("Tutorial", locale: locale)) {
                 Button {
@@ -301,7 +273,7 @@ struct SettingsView: View {
                 }
                 .tint(theme.colors.primaryText)
             }
-            .listRowBackground(theme.colors.mapLand)
+            .listRowBackground(settingsRowBackground)
 
             Section {
                 Button(role: .destructive) {
@@ -311,7 +283,7 @@ struct SettingsView: View {
                         .foregroundStyle(.red)
                 }
             }
-            .listRowBackground(theme.colors.mapLand)
+            .listRowBackground(settingsRowBackground)
 
             #if os(iOS)
             attributionSection
@@ -340,7 +312,7 @@ struct SettingsView: View {
             #endif
         }
         .scrollContentBackground(.hidden)
-        .background(theme.colors.mapOcean)
+            .background(settingsFormBackground)
         .task {
             await weatherService.loadWeatherAttributionIfNeeded()
         }
@@ -373,10 +345,10 @@ struct SettingsView: View {
                 )
                 sayHelloRow
             }
-            .listRowBackground(theme.colors.mapLand)
+            .listRowBackground(settingsRowBackground)
         }
         .scrollContentBackground(.hidden)
-        .background(theme.colors.mapOcean)
+            .background(settingsFormBackground)
         .task {
             await weatherService.loadWeatherAttributionIfNeeded()
         }
@@ -390,7 +362,7 @@ struct SettingsView: View {
             weatherAttributionRows
             settingsInfoRow(localizedString("Map Data", locale: locale), value: "© OpenStreetMap contributors", systemImage: "map")
         }
-        .listRowBackground(theme.colors.mapLand)
+        .listRowBackground(settingsRowBackground)
     }
 
     @ViewBuilder
