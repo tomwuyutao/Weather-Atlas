@@ -99,11 +99,11 @@ extension ContentView {
         }
 #endif
 
-        #if os(macOS)
+#if os(macOS)
         let compactForcedMacFloatingCard = forceIPhoneStyle
-        #else
-        let compactForcedMacFloatingCard = false
-        #endif
+#else
+        let compactForcedMacFloatingCard = forceIPhoneStyle && ProcessInfo.processInfo.isiOSAppOnMac
+#endif
         let phoneCardSpacing: CGFloat = compactForcedMacFloatingCard ? 10 : 16
         let phoneCardTemperatureSize: CGFloat = compactForcedMacFloatingCard ? 32 : 38
         let phoneCardIconSize: CGFloat = compactForcedMacFloatingCard ? 32 : 40
@@ -236,11 +236,11 @@ extension ContentView {
         let usesDetailCardLayout = usesIPhoneDetailSizing || plainBackground || macExpandedCardShowsDetails
         let centersHeroContent = usesIPhoneDetailSizing || plainBackground
         let detailCardCornerRadius: CGFloat = usesIPhoneDetailSizing ? 28 : 20
-        #if os(macOS)
+#if os(macOS)
         let compactMacFloatingCard = !usesIPhoneDetailSizing && !plainBackground && !macExpandedCardShowsDetails
-        #else
-        let compactMacFloatingCard = false
-        #endif
+#else
+        let compactMacFloatingCard = ProcessInfo.processInfo.isiOSAppOnMac && !usesIPhoneDetailSizing && !plainBackground && !macExpandedCardShowsDetails
+#endif
         let floatingTitleFont = compactMacFloatingCard ? Font.headline : Font.title3
         let floatingMetricFont = compactMacFloatingCard ? Font.caption2 : Font.caption
         let floatingTemperatureSize: CGFloat = compactMacFloatingCard ? 34 : 42
@@ -993,14 +993,25 @@ extension ContentView {
         }
     }
 
+    private var iOSDateSliderDismissPassthroughWidth: CGFloat {
+        160
+    }
+
     private var iOSFloatingMapCardOverlay: some View {
         Group {
             if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        dismissMapExpandedCard()
-                    }
+                HStack(spacing: 0) {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            dismissMapExpandedCard()
+                        }
+
+                    Color.clear
+                        .frame(width: iOSDateSliderDismissPassthroughWidth)
+                        .allowsHitTesting(false)
+                }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .zIndex(10)
             }
 
