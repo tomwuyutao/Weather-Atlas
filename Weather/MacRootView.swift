@@ -542,11 +542,12 @@ extension ContentView {
                 Text(toolbarTitle)
                     .font(.headline)
                     .lineLimit(1)
+                Spacer(minLength: 28)
             }
             .foregroundStyle(.primary)
             .padding(.leading, 18)
-            .padding(.trailing, 42)
-            .frame(minWidth: 132, minHeight: 34, alignment: .leading)
+            .padding(.trailing, 22)
+            .frame(width: 244, height: 34, alignment: .leading)
             .background(.regularMaterial, in: Capsule())
             .overlay {
                 Capsule()
