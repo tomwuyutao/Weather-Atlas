@@ -21,8 +21,8 @@ extension ContentView {
     ) -> AnyView {
         let isNow = selectedDayOffset == -1
         let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
-        let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
-        let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+        let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
+        let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic
         let icon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
         let isOverlayActive = !["weather", "temperature"].contains(mapOverlayMode)
         let overlayLargeText: String = {
@@ -232,7 +232,7 @@ extension ContentView {
     ) -> some View {
         let forecasts = Array(cityWeather.dailyForecasts.prefix(10))
         let selectedForecast = cityWeather.forecast(for: max(0, selectedDayOffset))
-        let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+        let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic
         let usesDetailCardLayout = usesIPhoneDetailSizing || plainBackground || macExpandedCardShowsDetails
         let centersHeroContent = usesIPhoneDetailSizing || plainBackground
         let detailCardCornerRadius: CGFloat = usesIPhoneDetailSizing ? 28 : 20
@@ -252,6 +252,12 @@ extension ContentView {
         let floatingTemperatureBottomPadding: CGFloat = compactMacFloatingCard ? 8 : 14
         let floatingOuterHorizontalPadding: CGFloat = compactMacFloatingCard ? 20 : 14
         let floatingOuterTopPadding: CGFloat = compactMacFloatingCard ? 16 : 18
+        let titleFont = usesIPhoneDetailSizing ? Font.title : (plainBackground ? Font.title2 : floatingTitleFont)
+        #if os(macOS)
+        let hidesMacInspectorBottomChrome = plainBackground
+        #else
+        let hidesMacInspectorBottomChrome = false
+        #endif
 
         return ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
@@ -270,7 +276,7 @@ extension ContentView {
 
                     if !hideCityName {
                         Text(cityWeather.city.localizedName(locale: locale))
-                            .font((usesIPhoneDetailSizing ? Font.title : floatingTitleFont).weight(.semibold))
+                            .font(titleFont.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                     }
@@ -334,8 +340,15 @@ extension ContentView {
             .animation(.snappy(duration: 0.28), value: selectedDayOffset)
 
             if !usesIPhoneDetailSizing {
-                macExpandedCardDivider
-                    .padding(.bottom, 10)
+                Group {
+                    if plainBackground {
+                        Color.clear
+                            .frame(height: 1)
+                    } else {
+                        macExpandedCardDivider
+                    }
+                }
+                .padding(.bottom, 10)
             }
 
             VStack(spacing: usesIPhoneDetailSizing ? 10 : (usesDetailCardLayout ? 12 : (compactMacFloatingCard ? 5 : 8))) {
@@ -421,7 +434,7 @@ extension ContentView {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            if !usesIPhoneDetailSizing {
+            if !usesIPhoneDetailSizing && !hidesMacInspectorBottomChrome {
                 VStack(spacing: 6) {
                     HStack {
                         Spacer()
@@ -623,6 +636,11 @@ extension ContentView {
         ]
 
         let detailCardCornerRadius: CGFloat = usesIPhoneDetailSizing ? 28 : 20
+        #if os(macOS)
+        let chartControlBottomPadding: CGFloat = usesDetailCardLayout ? 14 : 6
+        #else
+        let chartControlBottomPadding: CGFloat = usesIPhoneDetailSizing ? 0 : 6
+        #endif
 
         return VStack(spacing: usesIPhoneDetailSizing ? 18 : (usesDetailCardLayout ? 12 : 8)) {
             VStack(alignment: .leading, spacing: 0) {
@@ -636,7 +654,7 @@ extension ContentView {
                     Spacer()
                     macExpandedCardChartRangeMenu(usesIPhoneDetailSizing: usesIPhoneDetailSizing)
                 }
-                .padding(.bottom, usesIPhoneDetailSizing ? 0 : 6)
+                .padding(.bottom, chartControlBottomPadding)
 
                 GeometryReader { geo in
                     chartContent(

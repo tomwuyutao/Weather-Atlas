@@ -346,8 +346,9 @@ extension ContentView {
             ToolbarItemGroup(placement: .primaryAction) {
                 macCenterMapButton
                 mapOverlayMenu
+                macLegendButton
                 macFilterSunnyButton
-                macToolbarMoreMenu
+                macRefreshButton
             }
         }
         .searchable(
@@ -521,8 +522,6 @@ extension ContentView {
                 }
             }
 
-            Divider()
-
             Button {
                 beginCreatingListFromSwitcher()
             } label: {
@@ -533,21 +532,18 @@ extension ContentView {
                 }
             }
         } label: {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: "chevron.down")
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 4.5, height: 4.5)
-                    .fontWeight(.semibold)
+                    .font(.system(size: 11, weight: .semibold))
+                    .symbolRenderingMode(.monochrome)
+
                 Text(toolbarTitle)
                     .font(.headline)
                     .lineLimit(1)
-                Spacer(minLength: 28)
             }
             .foregroundStyle(.primary)
-            .padding(.leading, 18)
-            .padding(.trailing, 22)
-            .frame(width: 244, height: 34, alignment: .leading)
+            .padding(.horizontal, 18)
+            .frame(height: 34)
             .background(.regularMaterial, in: Capsule())
             .overlay {
                 Capsule()
@@ -622,7 +618,7 @@ extension ContentView {
 
                 if showingCityDetail, let city = tappedCity {
                     let panelWidth = macIPadInspectorWidth
-                    let panelHeight = min(max(420, geometry.size.height - 132), max(360, geometry.size.height - 108))
+                    let panelHeight = min(max(440, geometry.size.height - 104), max(380, geometry.size.height - 84))
 
                     macIPadFloatingDetailWindow(for: city)
                         .frame(width: panelWidth, height: panelHeight)
@@ -700,8 +696,8 @@ extension ContentView {
             .padding(.trailing, 10)
             .padding(.vertical, 10)
 
-            Divider()
-                .opacity(0.45)
+            Color.clear
+                .frame(height: 1)
 
             ScrollViewReader { proxy in
                 ScrollView(.vertical, showsIndicators: false) {

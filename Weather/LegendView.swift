@@ -7,15 +7,15 @@ struct MapFloatingLegend: View {
 
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
-    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
 
     private var tempUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
     }
 
     private var distUnit: DistanceUnit {
-        DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+        DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic
     }
 
     private var palette: ThemeColors {
@@ -148,7 +148,7 @@ struct MapFloatingLegend: View {
                     temperatureColor(celsius: 0),
                     temperatureColor(celsius: -20)
                 ],
-                labels: tempUnit == .fahrenheit
+                labels: tempUnit.resolved == .fahrenheit
                     ? ["104°F", "68°F", "50°F", "32°F", "-4°F"]
                     : ["40°C", "20°C", "10°C", "0°C", "-20°C"]
             )
@@ -181,7 +181,7 @@ struct MapFloatingLegend: View {
                     windColor(fraction: 0.25),
                     windColor(fraction: 0)
                 ],
-                labels: distUnit == .miles ? ["60 mph", "45", "30", "15", "0"] : ["100 km/h", "75", "50", "25", "0"]
+                labels: distUnit.resolved == .miles ? ["60 mph", "45", "30", "15", "0"] : ["100 km/h", "75", "50", "25", "0"]
             )
         case "uvIndex":
             verticalGradientLegend(
@@ -214,7 +214,7 @@ struct MapFloatingLegend: View {
                     visibilityColor(fraction: 0.25),
                     visibilityColor(fraction: 0)
                 ],
-                labels: distUnit == .miles ? ["19 mi", "14", "9", "5", "0"] : ["30 km", "23", "15", "8", "0"]
+                labels: distUnit.resolved == .miles ? ["19 mi", "14", "9", "5", "0"] : ["30 km", "23", "15", "8", "0"]
             )
         default:
             EmptyView()

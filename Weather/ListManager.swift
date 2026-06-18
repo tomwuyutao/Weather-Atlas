@@ -80,12 +80,19 @@ extension ContentView {
         }
         .tint(.primary)
 
-        Button(localizedString("Delete", locale: locale), systemImage: "trash", role: .destructive) {
+        Button {
             Task {
                 await weatherService.deleteList(listID)
             }
+        } label: {
+            Label {
+                Text(localizedString("Delete", locale: locale))
+            } icon: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.primary)
+            }
         }
-        .tint(theme.colors.destructive)
+        .tint(.primary)
     }
 
     @ViewBuilder
@@ -114,11 +121,18 @@ extension ContentView {
         }
         .tint(.primary)
 
-        Button(localizedString("Delete", locale: locale), systemImage: "trash", role: .destructive) {
+        Button {
             weatherService.removeCity(city, from: listID)
             refreshSidebarCityOrder()
+        } label: {
+            Label {
+                Text(localizedString("Delete", locale: locale))
+            } icon: {
+                Image(systemName: "trash")
+                    .foregroundStyle(.primary)
+            }
         }
-        .tint(theme.colors.destructive)
+        .tint(.primary)
     }
 
     func createListAtBottom() {
@@ -278,11 +292,11 @@ extension ContentView {
                     Section {
                         iOSSidebarListRows
                     }
-                    .listRowBackground(theme.colors.mapLand)
+                    .listRowBackground(iPhoneListManagerBackground)
                 }
                 .listStyle(.plain)
                 .scrollContentBackground(.hidden)
-                .background(theme.colors.mapLand)
+                .background(iPhoneListManagerBackground)
                 .tint(theme.colors.accent)
             }
         }
@@ -303,13 +317,6 @@ extension ContentView {
         .onAppear {
             if sidebarExpandedListIDs.isEmpty {
                 sidebarExpandedListIDs.insert(weatherService.activeListID.rawValue)
-            }
-            macSidebarSelection = macSidebarListContextID(weatherService.activeListID)
-        }
-        .onChange(of: weatherService.activeListID) { _, newListID in
-            let selection = macSidebarListContextID(newListID)
-            if macSidebarSelection != selection {
-                macSidebarSelection = selection
             }
         }
         .onChange(of: macSidebarSelection) { _, newSelection in
@@ -529,6 +536,7 @@ extension ContentView {
     private func macSidebarListHeader(_ listID: CityListID) -> some View {
         HStack(spacing: 8) {
             Text(listID.localizedDisplayName(locale: locale))
+                .font(.headline)
                 .lineLimit(1)
 
             Spacer(minLength: 6)
@@ -536,6 +544,13 @@ extension ContentView {
             Text("\(sidebarCityCount(for: listID))")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+                .frame(width: 22, height: 22)
+                .background(.secondary.opacity(0.26), in: Circle())
+                .overlay {
+                    Circle()
+                        .stroke(.secondary.opacity(0.34), lineWidth: 0.8)
+                }
+                .offset(x: 1)
         }
         .padding(.leading, 6)
         .contentShape(Rectangle())
@@ -547,12 +562,12 @@ extension ContentView {
                 .fill(.secondary.opacity(0.42))
                 .frame(width: 7, height: 7)
             Text(city.localizedName(locale: locale))
+                .font(.headline)
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
             Spacer(minLength: 4)
         }
-        .font(.caption)
-        .padding(.vertical, 1)
+        .padding(.vertical, 2)
     }
 
     private func macSidebarWeatherCityRow(_ city: CityWeather) -> some View {
@@ -565,16 +580,16 @@ extension ContentView {
                 .shadow(color: dotColor.opacity(0.3), radius: 2)
 
             Text(city.city.localizedName(locale: locale))
+                .font(.headline)
                 .lineLimit(1)
 
             Spacer(minLength: 6)
 
             Text(tempUnit.display(city.temperature))
-                .font(.caption.monospacedDigit())
+                .font(.caption.weight(.semibold).monospacedDigit())
                 .foregroundStyle(.secondary)
         }
-        .font(.caption)
-        .padding(.vertical, 1)
+        .padding(.vertical, 2)
     }
 
     private func moveMacSidebarLists(from source: IndexSet, to destination: Int) {
@@ -628,6 +643,12 @@ extension ContentView {
 
     private func handleMacSidebarSelection(_ selection: String?) {
         guard let selection else { return }
+        defer {
+            DispatchQueue.main.async {
+                macSidebarSelection = nil
+            }
+        }
+
         let parts = selection.split(separator: ":").map(String.init)
         guard let kind = parts.first else { return }
 

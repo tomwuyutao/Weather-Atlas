@@ -45,11 +45,11 @@ struct HourlyTimelineChart: View {
 
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
-    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
 
-    private var tempUnit: TemperatureUnit { TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius }
-    private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers }
+    private var tempUnit: TemperatureUnit { TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic }
+    private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic }
     private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.compatMix(with: .black, by: 0.25) }
     private var totalHeight: CGFloat { compactLayout ? 230 : 250 }
     private var chartHeight: CGFloat { compactLayout ? 132 : 146 }
@@ -119,10 +119,10 @@ struct HourlyTimelineChart: View {
         case .feelsLike: return forecast.apparentTemperature.map { tempUnit.display($0) } ?? "-"
         case .cloudCover: return forecast.cloudCoverPercent.map { "\($0)%" } ?? "-"
         case .precipitation: return forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "-"
-        case .windSpeed: return forecast.windSpeed.map { distUnit == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "-"
+        case .windSpeed: return forecast.windSpeed.map { distUnit.resolved == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "-"
         case .uvIndex: return forecast.uvIndex.map { "\($0)" } ?? "-"
         case .humidity: return forecast.humidity.map { "\(Int($0 * 100))%" } ?? "-"
-        case .visibility: return forecast.visibility.map { distUnit == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "-"
+        case .visibility: return forecast.visibility.map { distUnit.resolved == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "-"
         }
     }
 
@@ -185,11 +185,11 @@ struct DailyTimelineChart: View {
 
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
-    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
-    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
 
-    private var tempUnit: TemperatureUnit { TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius }
-    private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers }
+    private var tempUnit: TemperatureUnit { TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic }
+    private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic }
     private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.compatMix(with: .black, by: 0.25) }
     private var totalHeight: CGFloat { compactLayout ? 230 : 250 }
     private var chartHeight: CGFloat { compactLayout ? 132 : 146 }
@@ -259,10 +259,10 @@ struct DailyTimelineChart: View {
         case .feelsLike: return forecast.feelsLikeHigh.map { tempUnit.display($0) } ?? "-"
         case .cloudCover: return forecast.cloudCover.map { "\(Int($0 * 100))%" } ?? "-"
         case .precipitation: return forecast.precipitationChance.map { "\(Int($0 * 100))%" } ?? "-"
-        case .windSpeed: return forecast.windSpeed.map { distUnit == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "-"
+        case .windSpeed: return forecast.windSpeed.map { distUnit.resolved == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "-"
         case .uvIndex: return forecast.uvIndex.map { "\($0)" } ?? "-"
         case .humidity: return forecast.maxHumidity.map { "\(Int($0 * 100))%" } ?? "-"
-        case .visibility: return forecast.maxVisibility.map { distUnit == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "-"
+        case .visibility: return forecast.maxVisibility.map { distUnit.resolved == .miles ? "\(Int($0 * 0.621371))" : "\(Int($0))" } ?? "-"
         }
     }
 

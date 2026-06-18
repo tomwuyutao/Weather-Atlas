@@ -28,10 +28,13 @@ extension View {
     }
 
     func iPhoneFloatingToolbarCircle() -> some View {
-        self
-            .fixedSize()
+        ZStack {
+            Circle()
+                .fill(AppTheme.shared.colors.glassFill)
+            self
+                .frame(width: 52, height: 52, alignment: .center)
+        }
             .frame(width: 52, height: 52)
-            .background(AppTheme.shared.colors.glassFill, in: Circle())
             .clipShape(Circle())
             .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 0.6))
             .contentShape(Circle())
@@ -45,6 +48,10 @@ extension ContentView {
     /// Whether the map is in a special full-screen mode.
     var isMapSpecialMode: Bool {
         false
+    }
+
+    var iPhoneListManagerBackground: Color {
+        theme.resolvedScheme(for: colorScheme) == .dark ? theme.colors.mapOcean : theme.colors.mapLand
     }
 
     // MARK: - Date Switcher Capsule
@@ -297,7 +304,7 @@ extension ContentView {
                         .frame(width: frameSize, height: frameSize)
                 }
                 .buttonBorderShape(.circle)
-                .fixedSize()
+                .frame(width: frameSize, height: frameSize)
                 .menuOrder(.fixed)
             } else {
                 Button {
@@ -312,7 +319,7 @@ extension ContentView {
                 }
                 .buttonStyle(.plain)
                 .buttonBorderShape(.circle)
-                .fixedSize()
+                .frame(width: frameSize, height: frameSize)
                 .tint(.primary)
             }
         } else {
@@ -398,8 +405,11 @@ extension ContentView {
                 Image(systemName: "list.bullet")
                     .foregroundStyle(.primary)
                     .foregroundColor(.primary)
+                    .frame(width: 44, height: 44)
             }
             .tint(.primary)
+            .buttonBorderShape(.circle)
+            .frame(width: 44, height: 44)
             .weatherTutorialTarget(.listManager)
 
             Spacer()
@@ -794,7 +804,7 @@ extension ContentView {
         ZStack(alignment: .bottom) {
             macListManagerSidebar
                 .scrollContentBackground(.hidden)
-                .background(theme.colors.mapLand)
+                .background(iPhoneListManagerBackground)
                 .tint(.primary)
 
             iPhoneListManagerFloatingToolbarFallback

@@ -13,18 +13,32 @@ import AppKit
 #endif
 
 enum DistanceUnit: String, CaseIterable {
+    case automatic = "automatic"
     case kilometers = "kilometers"
     case miles = "miles"
 
-    var symbol: String {
+    static let defaultRawValue = DistanceUnit.automatic.rawValue
+
+    var resolved: DistanceUnit {
         switch self {
+        case .automatic:
+            let measurementSystem = Locale.autoupdatingCurrent.measurementSystem
+            return (measurementSystem == .us || measurementSystem == .uk) ? .miles : .kilometers
+        case .kilometers, .miles:
+            return self
+        }
+    }
+
+    var symbol: String {
+        switch resolved {
         case .kilometers: return "km"
         case .miles: return "mi"
+        case .automatic: return resolved.symbol
         }
     }
 
     func display(_ km: Double) -> String {
-        switch self {
+        switch resolved {
         case .kilometers:
             let rounded = (km * 10).rounded() / 10
             return rounded >= 10 ? "\(Int(rounded))km" : String(format: "%.1fkm", rounded)
@@ -32,73 +46,99 @@ enum DistanceUnit: String, CaseIterable {
             let mi = km * 0.621371
             let rounded = (mi * 10).rounded() / 10
             return rounded >= 10 ? "\(Int(rounded))mi" : String(format: "%.1fmi", rounded)
+        case .automatic:
+            return resolved.display(km)
         }
     }
 
     func displayWindSpeed(_ kmh: Double) -> String {
-        switch self {
+        switch resolved {
         case .kilometers:
             return "\(Int(kmh)) km/h"
         case .miles:
             let mph = kmh * 0.621371
             return "\(Int(mph)) mph"
+        case .automatic:
+            return resolved.displayWindSpeed(kmh)
         }
     }
 
     var windSpeedUnit: String {
-        switch self {
+        switch resolved {
         case .kilometers: return "km/h"
         case .miles: return "mph"
+        case .automatic: return resolved.windSpeedUnit
         }
     }
 }
 
 enum TemperatureUnit: String, CaseIterable {
+    case automatic = "automatic"
     case celsius = "celsius"
     case fahrenheit = "fahrenheit"
 
-    var symbol: String {
+    static let defaultRawValue = TemperatureUnit.automatic.rawValue
+
+    var resolved: TemperatureUnit {
         switch self {
+        case .automatic:
+            let sample = Measurement(value: 0, unit: UnitTemperature.celsius)
+                .formatted(.measurement(width: .abbreviated, usage: .weather).locale(.autoupdatingCurrent))
+            return sample.localizedCaseInsensitiveContains("F") ? .fahrenheit : .celsius
+        case .celsius, .fahrenheit:
+            return self
+        }
+    }
+
+    var symbol: String {
+        switch resolved {
         case .celsius: return "°C"
         case .fahrenheit: return "°F"
+        case .automatic: return resolved.symbol
         }
     }
 
     func display(_ celsius: Double) -> String {
-        switch self {
+        switch resolved {
         case .celsius:
             return "\(Int(celsius))°"
         case .fahrenheit:
             return "\(Int(celsius * 9.0 / 5.0 + 32))°"
+        case .automatic:
+            return resolved.display(celsius)
         }
     }
 
     func displayRange(low: Double, high: Double) -> String {
-        switch self {
+        switch resolved {
         case .celsius:
             return "\(Int(low))-\(Int(high))°"
         case .fahrenheit:
             let fLow = Int(low * 9.0 / 5.0 + 32)
             let fHigh = Int(high * 9.0 / 5.0 + 32)
             return "\(fLow)-\(fHigh)°"
+        case .automatic:
+            return resolved.displayRange(low: low, high: high)
         }
     }
 
     func displaySlash(low: Double, high: Double) -> String {
-        switch self {
+        switch resolved {
         case .celsius:
             return "\(Int(low))°/\(Int(high))°"
         case .fahrenheit:
             let fLow = Int(low * 9.0 / 5.0 + 32)
             let fHigh = Int(high * 9.0 / 5.0 + 32)
             return "\(fLow)°/\(fHigh)°"
+        case .automatic:
+            return resolved.displaySlash(low: low, high: high)
         }
     }
 }
 
 struct SettingsView: View {
-    @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.celsius.rawValue
-    @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.kilometers.rawValue
+    @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.defaultRawValue
+    @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.defaultRawValue
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     let weatherService: WeatherService
     let onResetLists: () -> Void
@@ -113,11 +153,11 @@ struct SettingsView: View {
     @State private var showingEmailCopied = false
 
     private var selectedUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnit) ?? .celsius
+        TemperatureUnit(rawValue: temperatureUnit) ?? .automatic
     }
 
     private var selectedDistanceUnit: DistanceUnit {
-        DistanceUnit(rawValue: distanceUnit) ?? .kilometers
+        DistanceUnit(rawValue: distanceUnit) ?? .automatic
     }
 
     @ViewBuilder
@@ -215,6 +255,7 @@ struct SettingsView: View {
         Form {
             Section(localizedString("General", locale: locale)) {
                 Picker(selection: Binding(get: { temperatureUnit }, set: { temperatureUnit = $0 })) {
+                    Text(localizedString("Automatic", locale: locale)).tag(TemperatureUnit.automatic.rawValue)
                     Text(localizedString("Celsius (°C)", locale: locale)).tag(TemperatureUnit.celsius.rawValue)
                     Text(localizedString("Fahrenheit (°F)", locale: locale)).tag(TemperatureUnit.fahrenheit.rawValue)
                 } label: {
@@ -223,6 +264,7 @@ struct SettingsView: View {
                 .tint(.secondary)
 
                 Picker(selection: Binding(get: { distanceUnit }, set: { distanceUnit = $0 })) {
+                    Text(localizedString("Automatic", locale: locale)).tag(DistanceUnit.automatic.rawValue)
                     Text(localizedString("Kilometers (km)", locale: locale)).tag(DistanceUnit.kilometers.rawValue)
                     Text(localizedString("Miles (mi)", locale: locale)).tag(DistanceUnit.miles.rawValue)
                 } label: {

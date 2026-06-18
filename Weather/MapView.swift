@@ -587,8 +587,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
-    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
-    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
 
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
@@ -914,13 +914,13 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         switch condition {
         case .clear: return "#FF8A65"
         case .partlySunny: return "#EEB368"
-        case .partlyCloudy: return "#D3E3EC"
-        case .cloudy: return "#D3E3EC"
-        case .rain: return "#BCCFDC"
-        case .drizzle: return "#6EACE8"
-        case .snow: return "#D3E3EC"
+        case .partlyCloudy: return colorScheme == .dark ? "#D3E3EC" : "#B8C7D0"
+        case .cloudy: return colorScheme == .dark ? "#D3E3EC" : "#B8C7D0"
+        case .rain: return "#4D70D4"
+        case .drizzle: return "#65ABE3"
+        case .snow: return colorScheme == .dark ? "#D3E3EC" : "#B8C7D0"
         case .fog: return "#D3E3EC"
-        case .wind: return "#D3E3EC"
+        case .wind: return colorScheme == .dark ? "#D3E3EC" : "#B8C7D0"
         }
     }
 
@@ -938,15 +938,15 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     }
 
     private var dotCloudyHex: Int {
-        0xD3E3EC
+        colorScheme == .dark ? 0xD3E3EC : 0xB8C7D0
     }
 
     private var dotRainHex: Int {
-        colorScheme == .dark ? 0x4D70D4 : 0xBCCFDC
+        0x4D70D4
     }
 
     private var dotDrizzleHex: Int {
-        colorScheme == .dark ? 0x65ABE3 : 0x6EACE8
+        0x65ABE3
     }
 
     private var dotPartlyCloudyHex: Int {

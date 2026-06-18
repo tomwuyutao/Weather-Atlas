@@ -88,8 +88,8 @@ struct ContentView: View {
     @State var mapMarkerReloadID: Int = 0
     @State var settingsOpenedThemeStyle: AppThemeStyle?
     @State var iPadInspectorPresentedCityID: UUID?
-    @AppStorage("temperatureUnit") var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
-    @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
+    @AppStorage("temperatureUnit") var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
+    @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.defaultRawValue
     @State var showingSettings: Bool = false
     #if os(iOS)
     @State var tutorialStep: WeatherTutorialStep?
@@ -128,7 +128,7 @@ struct ContentView: View {
     }
 
     var tempUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
     }
 
     func timeSinceRefreshText() -> String {
@@ -476,11 +476,11 @@ struct ContentView: View {
 #Preview("ContentView") {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
     let _ = UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-    ContentView()
+    ContentView(previewLoading: true)
 }
 
 #Preview("Tutorial") {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
     let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
-    ContentView()
+    ContentView(previewLoading: true)
 }

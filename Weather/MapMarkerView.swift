@@ -51,15 +51,15 @@ struct WeatherMarker: View {
 
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
-    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.celsius.rawValue
-    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.kilometers.rawValue
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
     
     var tempUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .celsius
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
     }
 
     var distUnit: DistanceUnit {
-        DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+        DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic
     }
 
     var isNow: Bool { dayOffset == -1 }
