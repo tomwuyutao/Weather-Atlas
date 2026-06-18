@@ -85,7 +85,7 @@ extension ContentView {
                 macNavigationContent
             }
         )
-        .task { await iOSOnAppear() }
+        .task { await macOnAppear() }
         .onChange(of: weatherService.activeListID) { _, newListID in
             visibleListIDs.insert(newListID.rawValue)
         }
@@ -107,7 +107,20 @@ extension ContentView {
             }
         }
         .onChange(of: showingCityDetail) { _, showing in
-            iOSHandleCityDetailDismiss(showing: showing)
+            guard showing else {
+                iPadInspectorPinned = false
+                if !showingMapExpandedCard {
+                    macMapExpandedCardFocusesMarker = false
+                    macExpandedCardShowsDetails = false
+                }
+                return
+            }
+            withAnimation(iPadInspectorMorphAnimation) {
+                showingMapExpandedCard = false
+                previewCity = nil
+                macHoverPresentedCardCityID = nil
+                macExpandedCardShowsDetails = true
+            }
         }
         .background {
             macCommandReceivers
@@ -115,9 +128,6 @@ extension ContentView {
         .overlay {
             iOSDeleteListConfirmationOverlay
         }
-        .containerBackground(theme.colors.background, for: .window)
-        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .toolbar(removing: .title)
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
     }
 
@@ -151,6 +161,30 @@ extension ContentView {
             .onReceive(NotificationCenter.default.publisher(for: .weatherToggleSidebarCommand), perform: handleWeatherToggleSidebarCommand)
     }
 
+    func macOnAppear() async {
+        selectedTab = 1
+        hasLaunchedBefore = true
+        if visibleListIDs.isEmpty {
+            visibleListIDs = [weatherService.activeListID.rawValue]
+        }
+        if sidebarExpandedListIDs.isEmpty {
+            sidebarExpandedListIDs = Set(sidebarLists.map(\.rawValue))
+        }
+        if previewLoading {
+            weatherService.isLoading = true
+            weatherService.loadingProgress = 0.6
+            return
+        }
+        if previewSkipsInitialWeatherFetch {
+            return
+        }
+        centerMapOnDots(useListCoordinates: true)
+        await weatherService.fetchWeatherForAllCities()
+        if !mapCities.isEmpty {
+            centerMapOnDots(useListCoordinates: true)
+        }
+    }
+
     var macSidebarContent: some View {
         NavigationStack {
             macListManagerSidebar
@@ -161,8 +195,6 @@ extension ContentView {
                 Color.clear
                     .frame(height: 54)
                     .contentShape(Rectangle())
-                    .gesture(WindowDragGesture())
-                    .allowsWindowActivationEvents(true)
                     .zIndex(50)
 
                 Spacer(minLength: 0)
@@ -186,95 +218,85 @@ extension ContentView {
 
     var macMapContent: some View {
         ZStack {
-            if showingInlineSearch {
-                nativeCitySearchScreen
-            } else {
-                AnyView(
-                    iOSMapView
-                        .overlay(alignment: .bottomLeading) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                if weatherService.isLoading {
-                                    LoadingWeatherOverlay(
-                                        progress: weatherService.loadingProgress,
-                                        locale: locale
-                                    )
-                                    .allowsHitTesting(false)
-                                    .transition(.move(edge: .leading).combined(with: .opacity))
-                                }
-
-                                if showLegend {
-                                    MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
-                                        withAnimation(.smooth(duration: 0.2)) {
-                                            showLegend = false
-                                        }
-                                    }
-                                    .transition(.move(edge: .leading).combined(with: .opacity))
-                                }
+            iOSMapView
+                .overlay(alignment: .topLeading) {
+                    if !showingInlineSearch {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if weatherService.isLoading {
+                                LoadingWeatherOverlay(
+                                    progress: weatherService.loadingProgress,
+                                    locale: locale
+                                )
+                                .allowsHitTesting(false)
+                                .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                             }
-                            .padding(.leading, 24)
-                            .padding(.bottom, 24)
+
+                            if showLegend {
+                                MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        showLegend = false
+                                    }
+                                }
+                                .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+                            }
                         }
-                        .animation(.smooth(duration: 0.22), value: showLegend)
-                        .animation(.smooth(duration: 0.22), value: weatherService.isLoading)
-                        .overlay(alignment: .trailing) {
-                            AnyView(iOSDateSliderOverlay)
-                        }
-                )
-
-                macMainOverlays
-
-                if macQuickSwitcherVisible {
-                    macQuickSwitcherOverlay
-                        .transition(.scale(scale: 0.94).combined(with: .opacity))
-                        .zIndex(40)
+                        .padding(.leading, 18)
+                        .padding(.top, 92)
+                    }
                 }
-
-                if macOverlaySwitcherVisible {
-                    macOverlaySwitcherOverlay
-                        .transition(.scale(scale: 0.94).combined(with: .opacity))
-                        .zIndex(41)
+                .animation(.smooth(duration: 0.22), value: showLegend)
+                .animation(.smooth(duration: 0.22), value: weatherService.isLoading)
+                .overlay(alignment: .trailing) {
+                    if !showingCityDetail {
+                        AnyView(iOSDateSliderOverlay)
+                    }
                 }
+                .allowsHitTesting(!showingInlineSearch)
+
+            macFloatingToolbar
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                .padding(.top, 12)
+                .padding(.leading, 16)
+                .zIndex(28)
+
+            if !showingInlineSearch {
+                macIPadStyleFloatingMapOverlays
+            }
+
+            if !inlineSearchText.isEmpty && !inlineSortedSearchResults.isEmpty {
+                macSearchSuggestionsList
+                    .background(macInspectorBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 24, style: .continuous)
+                            .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.42), lineWidth: 0.8)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.26 : 0.14), radius: 20, y: 8)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    .padding(.top, 62)
+                    .padding(.trailing, 12)
+                    .transition(.scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity))
+                    .zIndex(30)
+            }
+
+            if macQuickSwitcherVisible {
+                macQuickSwitcherOverlay
+                    .transition(.scale(scale: 0.94).combined(with: .opacity))
+                    .zIndex(40)
+            }
+
+            if macOverlaySwitcherVisible {
+                macOverlaySwitcherOverlay
+                    .transition(.scale(scale: 0.94).combined(with: .opacity))
+                    .zIndex(41)
             }
 
             macWindowDragTopArea
         }
         .ignoresSafeArea(.container, edges: .top)
-        .toolbar {
-            ToolbarItem(placement: .navigation) {
-                macToolbarListTitle
-            }
-
-            ToolbarSpacer(.flexible)
-
-            ToolbarItemGroup {
-                macCenterMapButton
-
-                mapOverlayMenu
-            }
-
-            ToolbarItemGroup {
-                macLegendButton
-                macRefreshButton
-                macFilterSunnyButton
-            }
-
-        }
-        .if(showingInlineSearch) { view in
-            view
-                .searchable(text: $inlineSearchText, isPresented: $showingInlineSearch, placement: .toolbar, prompt: Text(localizedString("Search for a city", locale: locale)))
-                .searchSuggestions {
-                    nativeCitySearchSuggestions
-                }
-                .searchPresentationToolbarBehavior(.avoidHidingContent)
-                .onChange(of: inlineSearchText) { _, newValue in
-                    inlineSearchManager.search(query: newValue)
-                    inlineSearchSelectionIndex = 0
-                }
-                .onChange(of: showingInlineSearch) { _, isPresented in
-                    if !isPresented {
-                        resetNativeCitySearch()
-                    }
-                }
+        .onChange(of: inlineSearchText) { _, newValue in
+            inlineSearchManager.search(query: newValue)
+            inlineSearchSelectionIndex = 0
         }
         .onChange(of: showingInlineSearch) { _, isPresented in
             if !isPresented {
@@ -303,13 +325,68 @@ extension ContentView {
         }
     }
 
+    var macFloatingToolbar: some View {
+        HStack(spacing: 10) {
+            macFloatingListMenu
+
+            HStack(spacing: 8) {
+                macCenterMapButton
+                    .frame(width: 36, height: 36)
+
+                mapOverlayMenu
+                    .frame(width: 36, height: 36)
+
+                macFilterSunnyButton
+                    .frame(width: 36, height: 36)
+
+                macToolbarMoreMenu
+                    .frame(width: 36, height: 36)
+            }
+            .padding(.horizontal, 8)
+            .frame(height: 44)
+            .themedGlass(in: .capsule)
+
+            macToolbarSearchField
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+
+    var macFloatingListMenu: some View {
+        Menu {
+            ForEach(sidebarLists) { listID in
+                Button(listID.localizedDisplayName(locale: locale)) {
+                    Task {
+                        await switchToList(listID)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 12, weight: .semibold))
+                Text(toolbarTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 16)
+            .frame(height: 44)
+            .fixedSize(horizontal: true, vertical: false)
+            .contentShape(Capsule())
+        }
+        .menuIndicator(.hidden)
+        .menuOrder(.fixed)
+        .buttonStyle(.plain)
+        .tint(.primary)
+        .themedGlass(in: .capsule)
+    }
+
     var macWindowDragTopArea: some View {
         VStack(spacing: 0) {
             Color.clear
                 .frame(height: 54)
                 .contentShape(Rectangle())
-                .gesture(WindowDragGesture())
-                .allowsWindowActivationEvents(true)
+                .allowsHitTesting(false)
 
             Spacer(minLength: 0)
         }
@@ -367,6 +444,95 @@ extension ContentView {
         }
         .tint(.primary)
         .help(localizedString("Filter Sunny", locale: locale))
+    }
+
+    var macToolbarMoreMenu: some View {
+        Menu {
+            Toggle(isOn: Binding(
+                get: { showLegend },
+                set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
+            )) {
+                Label {
+                    Text(localizedString("Legend", locale: locale))
+                } icon: {
+                    Image(systemName: "eye")
+                }
+            }
+
+            Button {
+                refreshActiveWeather()
+            } label: {
+                Label {
+                    Text(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"))
+                } icon: {
+                    Image(systemName: "arrow.clockwise")
+                }
+            }
+            .disabled(weatherService.isLoading)
+
+            Toggle(isOn: Binding(
+                get: { filterSunny },
+                set: { newValue in withAnimation { filterSunny = newValue } }
+            )) {
+                Label {
+                    Text(localizedString("Filter Sunny", locale: locale))
+                } icon: {
+                    Image(systemName: "sun.max")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(.primary)
+        }
+        .menuIndicator(.hidden)
+        .menuOrder(.fixed)
+        .tint(.primary)
+    }
+
+    var macToolbarSearchField: some View {
+        HStack(spacing: 7) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            TextField(localizedString("Search for a city", locale: locale), text: $inlineSearchText)
+                .textFieldStyle(.plain)
+                .font(.system(size: 13))
+                .onSubmit {
+                    confirmInlineSearchSelection()
+                }
+
+            if !inlineSearchText.isEmpty {
+                Button {
+                    resetNativeCitySearch()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 10)
+        .frame(width: 230, height: 34)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+        }
+        .onTapGesture {
+            showingInlineSearch = true
+            inlineSearchFieldPresented = true
+        }
+    }
+
+    var macSearchSuggestionsList: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            nativeCitySearchSuggestions
+        }
+        .padding(.vertical, 14)
+        .padding(.horizontal, 18)
+        .frame(width: 348)
     }
 
     var macRightSidebarButton: some View {
@@ -471,6 +637,173 @@ extension ContentView {
                 macMapViewportSize = newSize
             }
         }
+    }
+
+    var macIPadStyleFloatingMapOverlays: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .topLeading) {
+                if showingMapExpandedCard {
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            dismissMapExpandedCard()
+                        }
+                        .zIndex(10)
+                }
+
+                if showingMapExpandedCard, let city = tappedCity {
+                    mapExpandedCard(for: city, forceIPhoneStyle: true)
+                        .frame(width: macIPadFloatingCardSize.width, height: macIPadFloatingCardSize.height)
+                        .matchedGeometryEffect(id: macIPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, properties: .frame, anchor: .center)
+                        .position(macIPadFloatingCardCenter(in: geometry.size))
+                        .transition(.opacity)
+                        .zIndex(12)
+                }
+
+                if showingCityDetail, let city = tappedCity {
+                    let panelWidth = macIPadInspectorWidth
+                    let panelHeight = min(max(500, geometry.size.height - 88), max(420, geometry.size.height - 56))
+
+                    macIPadFloatingDetailWindow(for: city)
+                        .frame(width: panelWidth, height: panelHeight)
+                        .matchedGeometryEffect(id: macIPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, properties: .frame, anchor: .center)
+                        .offset(x: geometry.size.width - panelWidth - macIPadFloatingCardTrailingGap, y: geometry.size.height - panelHeight - macIPadFloatingCardBottomGap)
+                        .transition(.opacity)
+                        .zIndex(20)
+                }
+            }
+            .onAppear {
+                macMapViewportSize = geometry.size
+            }
+            .onChange(of: geometry.size) { _, newSize in
+                macMapViewportSize = newSize
+            }
+        }
+        .animation(iPadInspectorMorphAnimation, value: showingMapExpandedCard)
+        .animation(iPadInspectorMorphAnimation, value: showingCityDetail)
+    }
+
+    var macInspectorBackground: Color {
+        colorScheme == .dark ? Color(hex: 0x262052) : theme.colors.background
+    }
+
+    func macIPadFloatingDetailWindow(for city: CityWeather) -> some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                Button {
+                    withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
+                        iPadInspectorPinned.toggle()
+                    }
+                } label: {
+                    Image(systemName: iPadInspectorPinned ? "pin.fill" : "pin")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(iPadInspectorPinned ? theme.colors.accent : theme.colors.primaryText)
+                        .frame(width: 34, height: 34)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .tint(iPadInspectorPinned ? theme.colors.accent : theme.colors.primaryText)
+                .help(localizedString(iPadInspectorPinned ? "Unpin" : "Pin", locale: locale))
+
+                Spacer(minLength: 8)
+
+                Text(city.city.localizedName(locale: locale))
+                    .font(.avenir(.headline, weight: .semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+                    .opacity(iPadDetailHeaderShowsCityName ? 1 : 0)
+                    .animation(.smooth(duration: 0.18), value: iPadDetailHeaderShowsCityName)
+                    .allowsHitTesting(false)
+
+                Spacer(minLength: 8)
+
+                Button {
+                    withAnimation(iPadInspectorMorphAnimation) {
+                        showingCityDetail = false
+                        iPadInspectorPinned = false
+                        macMapExpandedCardFocusesMarker = false
+                        macExpandedCardShowsDetails = false
+                        selectedDayOffset = -1
+                    }
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 34, height: 34)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .tint(.primary)
+                .help(localizedString("Close", locale: locale))
+            }
+            .padding(.leading, 18)
+            .padding(.trailing, 10)
+            .padding(.vertical, 10)
+
+            Divider()
+                .opacity(0.45)
+
+            ScrollViewReader { proxy in
+                ScrollView(.vertical, showsIndicators: false) {
+                    Color.clear
+                        .frame(height: 1)
+                        .id("MacIPadDetailTop")
+
+                    mapExpandedCard(
+                        for: city,
+                        forceMacStyle: true,
+                        forceIPhoneDetailSizing: true,
+                        plainBackground: true
+                    )
+                    .padding(.horizontal, 10)
+                    .padding(.top, 12)
+                    .padding(.bottom, 16)
+                }
+                .onChange(of: city.id) { _, _ in
+                    iPadDetailHeaderShowsCityName = false
+                    proxy.scrollTo("MacIPadDetailTop", anchor: .top)
+                }
+            }
+        }
+        .background(macInspectorBackground, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.42), lineWidth: 0.8)
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.28 : 0.16), radius: 24, y: 10)
+        .onAppear {
+            if let overlayChartMetric {
+                macExpandedCardChartMetric = overlayChartMetric
+            }
+            macExpandedCardShowsDetails = true
+        }
+        .onDisappear {
+            macExpandedCardShowsDetails = false
+        }
+    }
+
+    var macIPadInspectorWidth: CGFloat { 380 }
+    var macIPadFloatingCardTrailingGap: CGFloat { 24 }
+    var macIPadFloatingCardBottomGap: CGFloat { -4 }
+
+    var macIPadFloatingCardSize: CGSize {
+        CGSize(width: 312, height: 144)
+    }
+
+    var iPadInspectorMorphAnimation: Animation {
+        .spring(response: 0.5, dampingFraction: 0.92, blendDuration: 0.08)
+    }
+
+    func macIPadFloatingCardCenter(in mapSize: CGSize) -> CGPoint {
+        CGPoint(
+            x: mapSize.width / 2,
+            y: mapSize.height - macIPadFloatingCardBottomGap - macIPadFloatingCardSize.height / 2
+        )
+    }
+
+    func macIPadMapDetailMorphID(for city: CityWeather) -> String {
+        "mac-ipad-map-detail-\(city.id.uuidString)"
     }
 
     func macExpandedCardTopLeft(in size: CGSize) -> CGSize {

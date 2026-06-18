@@ -17,7 +17,7 @@ func localizedString(_ key: String.LocalizationValue, locale: Locale) -> String 
     return String(localized: resource)
 }
 
-enum AppWeatherCondition {
+enum AppWeatherCondition: String, Codable {
     case clear
     case partlySunny
     case partlyCloudy
@@ -400,6 +400,7 @@ class WeatherService {
     private var activeFetchToken = UUID()
     private let weatherCacheDuration: TimeInterval = 2 * 60 * 60
     private var listFetchDates: [String: Date] = [:]
+    private var resolvedTimeZones: [String: TimeZone] = [:]
     
     private let weatherService = WeatherKit.WeatherService.shared
     
@@ -411,10 +412,14 @@ class WeatherService {
     private var citiesListKey: String { "savedCitiesList_\(activeListID.rawValue)" }
     
     init() {
-        clearPersistedWeatherCaches()
         if let saved = UserDefaults.standard.string(forKey: Self.activeListKey),
            let listID = CityListID.allLists.first(where: { $0.rawValue == saved }) {
             activeListID = listID
+        }
+        if let cachedData = loadCachedWeatherData(for: activeListID), isWeatherDataFresh(for: activeListID) {
+            cityWeatherData = cachedData
+            otherListData[activeListID.rawValue] = cachedData
+            lastFetchDate = fetchDate(for: activeListID)
         }
     }
 
@@ -437,6 +442,16 @@ class WeatherService {
     
     func fetchWeatherForAllCities(forceRefresh: Bool = false) async {
         generateForecastDays()
+        if !forceRefresh,
+           cityWeatherData.isEmpty,
+           let cachedData = loadCachedWeatherData(for: activeListID),
+           isWeatherDataFresh(for: activeListID) {
+            cityWeatherData = cachedData
+            otherListData[activeListID.rawValue] = cachedData
+            lastFetchDate = fetchDate(for: activeListID)
+            return
+        }
+
         if !forceRefresh,
            !cityWeatherData.isEmpty,
            isWeatherDataFresh(for: activeListID) {
@@ -538,13 +553,17 @@ class WeatherService {
         activeFetchToken = UUID()
         activeListID = listID
         UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
-        cityWeatherData = otherListData[listID.rawValue] ?? []
+        cityWeatherData = otherListData[listID.rawValue] ?? loadCachedWeatherData(for: listID) ?? []
+        otherListData[listID.rawValue] = cityWeatherData
         lastFetchDate = fetchDate(for: listID)
         await fetchWeatherForAllCities()
     }
 
     func switchList(to listID: CityListID, prioritizing priorityCity: City) async -> CityWeather? {
-        let existingData = otherListData[listID.rawValue] ?? (listID == activeListID ? cityWeatherData : [])
+        let existingData = otherListData[listID.rawValue]
+            ?? (listID == activeListID ? cityWeatherData : nil)
+            ?? loadCachedWeatherData(for: listID)
+            ?? []
         if isWeatherDataFresh(for: listID),
            let existingCity = existingData.first(where: { citiesMatch($0.city, priorityCity) }) {
             activeFetchToken = UUID()
@@ -784,7 +803,7 @@ class WeatherService {
     // MARK: - Caching Methods
     
     private func cacheData(_ data: [CityWeather], updateFetchDate: Bool = false) {
-        UserDefaults.standard.removeObject(forKey: cacheKey)
+        saveCachedWeatherData(data, for: activeListID)
         guard updateFetchDate else { return }
 
         let fetchDate = Date()
@@ -794,7 +813,7 @@ class WeatherService {
     }
 
     private func cacheData(_ data: [CityWeather], for listID: CityListID, updateFetchDate: Bool = false) {
-        UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
+        saveCachedWeatherData(data, for: listID)
         guard updateFetchDate else { return }
 
         let fetchDate = Date()
@@ -830,6 +849,75 @@ class WeatherService {
                 city.name == name && city.country == country
             }
         }
+    }
+
+    private func saveCachedWeatherData(_ data: [CityWeather], for listID: CityListID) {
+        let key = "cachedWeatherData_\(listID.rawValue)"
+        do {
+            let cached = data.map { CachedCityWeather(from: $0) }
+            let encoded = try JSONEncoder().encode(cached)
+            UserDefaults.standard.set(encoded, forKey: key)
+        } catch {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
+    private func loadCachedWeatherData(for listID: CityListID) -> [CityWeather]? {
+        let key = "cachedWeatherData_\(listID.rawValue)"
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        do {
+            let cachedData = try JSONDecoder().decode([CachedCityWeather].self, from: data).compactMap { $0.toCityWeather() }
+            guard cachedWeatherDataLooksCurrent(cachedData, for: listID) else {
+                UserDefaults.standard.removeObject(forKey: key)
+                UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listID.rawValue)")
+                listFetchDates[listID.rawValue] = nil
+                if listID.rawValue == activeListID.rawValue {
+                    lastFetchDate = nil
+                }
+                return nil
+            }
+            return cachedData
+        } catch {
+            UserDefaults.standard.removeObject(forKey: key)
+            return nil
+        }
+    }
+
+    private func cachedWeatherDataLooksCurrent(_ data: [CityWeather], for listID: CityListID, now: Date = Date()) -> Bool {
+        guard fetchDate(for: listID) != nil else { return false }
+        return data.allSatisfy { cityWeather in
+            guard hasResolvedTimeZone(cityWeather) else {
+                return false
+            }
+
+            guard let todayForecast = cityWeather.dailyForecasts.first(where: { $0.dayOffset == 0 }) else {
+                return false
+            }
+            guard !todayForecast.hourlyForecasts.isEmpty else {
+                return true
+            }
+
+            var calendar = Calendar.current
+            calendar.timeZone = cityWeather.timeZone
+            let currentHour = calendar.component(.hour, from: now)
+            guard currentHour < 20,
+                  let firstHour = todayForecast.hourlyForecasts.map(\.hour).min() else {
+                return true
+            }
+
+            return firstHour <= currentHour + 2
+        }
+    }
+
+    func hasResolvedTimeZone(_ cityWeather: CityWeather) -> Bool {
+        let identifier = cityWeather.timeZone.identifier
+        guard identifier == "UTC" || identifier == "GMT" || identifier.hasPrefix("GMT+") || identifier.hasPrefix("GMT-") else {
+            return true
+        }
+
+        // A named city should use the civil timezone returned by Core Location.
+        // Raw GMT zones here mean an older cache entry or failed lookup would draw local-time charts incorrectly.
+        return cityWeather.city.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     private func clearPersistedWeatherCaches() {
@@ -876,6 +964,10 @@ class WeatherService {
     func fetchWeatherForList(_ listID: CityListID) async {
         if otherListData[listID.rawValue]?.isEmpty == false,
            isWeatherDataFresh(for: listID) {
+            return
+        }
+        if let cachedData = loadCachedWeatherData(for: listID), isWeatherDataFresh(for: listID) {
+            otherListData[listID.rawValue] = cachedData
             return
         }
         // Load cities for this list
@@ -975,22 +1067,164 @@ class WeatherService {
         }
     }
     
-    // Helper function to get timezone for a location
-    private func getTimeZone(for location: CLLocation) async -> TimeZone {
+    private func coordinateKey(for city: City) -> String {
+        String(format: "%.3f,%.3f", city.latitude, city.longitude)
+    }
+
+    private func resolvedTimeZone(for city: City) async -> TimeZone? {
+        let key = coordinateKey(for: city)
+        if let cachedTimeZone = resolvedTimeZones[key] {
+            return cachedTimeZone
+        }
+
+        let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
         do {
-            if let timeZone = try await CLGeocoder().reverseGeocodeLocation(location).first?.timeZone {
+            let placemarks = try await CLGeocoder().reverseGeocodeLocation(location, preferredLocale: Locale(identifier: "en_US_POSIX"))
+            if let timeZone = placemarks.first?.timeZone {
+                resolvedTimeZones[key] = timeZone
+                return timeZone
+            }
+            if let timeZone = singleZoneTimeZone(for: placemarks.first?.isoCountryCode) {
+                resolvedTimeZones[key] = timeZone
                 return timeZone
             }
         } catch {
-
+            print("⚠️ [WeatherService] Time zone lookup failed for \(city.name): \(error.localizedDescription)")
         }
-        // Fallback to UTC if we can't determine the timezone
-        return TimeZone(identifier: "UTC") ?? TimeZone.current
+
+        if let timeZone = singleZoneTimeZone(for: city.country) {
+            resolvedTimeZones[key] = timeZone
+            return timeZone
+        }
+
+        return nil
+    }
+
+    private func resolvedTimeZoneOrFallback(for city: City) async -> TimeZone {
+        if let timeZone = await resolvedTimeZone(for: city) {
+            return timeZone
+        }
+
+        return TimeZone(identifier: "UTC") ?? .current
+    }
+
+    private func singleZoneTimeZone(for isoCountryCode: String?) -> TimeZone? {
+        guard let country = isoCountryCode?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !country.isEmpty else {
+            return nil
+        }
+        let code = countryCode(for: country) ?? country.uppercased()
+        let identifierByCountryCode = [
+            "AL": "Europe/Tirane",
+            "AD": "Europe/Andorra",
+            "AT": "Europe/Vienna",
+            "BE": "Europe/Brussels",
+            "BA": "Europe/Sarajevo",
+            "BG": "Europe/Sofia",
+            "HR": "Europe/Zagreb",
+            "CY": "Asia/Nicosia",
+            "CZ": "Europe/Prague",
+            "DK": "Europe/Copenhagen",
+            "EE": "Europe/Tallinn",
+            "FI": "Europe/Helsinki",
+            "FR": "Europe/Paris",
+            "DE": "Europe/Berlin",
+            "GR": "Europe/Athens",
+            "HU": "Europe/Budapest",
+            "IS": "Atlantic/Reykjavik",
+            "IE": "Europe/Dublin",
+            "IT": "Europe/Rome",
+            "LV": "Europe/Riga",
+            "LT": "Europe/Vilnius",
+            "LU": "Europe/Luxembourg",
+            "MT": "Europe/Malta",
+            "MD": "Europe/Chisinau",
+            "MC": "Europe/Monaco",
+            "ME": "Europe/Podgorica",
+            "NL": "Europe/Amsterdam",
+            "MK": "Europe/Skopje",
+            "NO": "Europe/Oslo",
+            "PL": "Europe/Warsaw",
+            "PT": "Europe/Lisbon",
+            "RO": "Europe/Bucharest",
+            "RS": "Europe/Belgrade",
+            "SK": "Europe/Bratislava",
+            "SI": "Europe/Ljubljana",
+            "ES": "Europe/Madrid",
+            "SE": "Europe/Stockholm",
+            "CH": "Europe/Zurich",
+            "TR": "Europe/Istanbul",
+            "UA": "Europe/Kyiv",
+            "GB": "Europe/London",
+            "CN": "Asia/Shanghai",
+            "JP": "Asia/Tokyo",
+            "KR": "Asia/Seoul",
+            "TH": "Asia/Bangkok",
+            "VN": "Asia/Ho_Chi_Minh",
+            "IN": "Asia/Kolkata"
+        ]
+        return identifierByCountryCode[code].flatMap(TimeZone.init(identifier:))
+    }
+
+    private func countryCode(for country: String) -> String? {
+        switch country.lowercased() {
+        case "albania": return "AL"
+        case "andorra": return "AD"
+        case "austria": return "AT"
+        case "belgium": return "BE"
+        case "bosnia and herzegovina": return "BA"
+        case "bulgaria": return "BG"
+        case "croatia": return "HR"
+        case "cyprus": return "CY"
+        case "czechia", "czech republic": return "CZ"
+        case "denmark": return "DK"
+        case "estonia": return "EE"
+        case "finland": return "FI"
+        case "france": return "FR"
+        case "germany": return "DE"
+        case "greece": return "GR"
+        case "hungary": return "HU"
+        case "iceland": return "IS"
+        case "ireland": return "IE"
+        case "italy": return "IT"
+        case "latvia": return "LV"
+        case "lithuania": return "LT"
+        case "luxembourg": return "LU"
+        case "malta": return "MT"
+        case "moldova": return "MD"
+        case "monaco": return "MC"
+        case "montenegro": return "ME"
+        case "netherlands": return "NL"
+        case "north macedonia": return "MK"
+        case "norway": return "NO"
+        case "poland": return "PL"
+        case "portugal": return "PT"
+        case "romania": return "RO"
+        case "serbia": return "RS"
+        case "slovakia": return "SK"
+        case "slovenia": return "SI"
+        case "spain": return "ES"
+        case "sweden": return "SE"
+        case "switzerland": return "CH"
+        case "turkey": return "TR"
+        case "ukraine": return "UA"
+        case "united kingdom", "england", "scotland", "wales": return "GB"
+        case "china": return "CN"
+        case "japan": return "JP"
+        case "south korea": return "KR"
+        case "thailand": return "TH"
+        case "vietnam": return "VN"
+        case "india": return "IN"
+        default: return nil
+        }
+    }
+
+    func debugResolvedTimeZone(for city: City) async -> TimeZone {
+        await resolvedTimeZoneOrFallback(for: city)
     }
     
     private func convertWeatherKitData(weather: Weather, for city: City) async -> CityWeather {
-        let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
-        let timeZone = await getTimeZone(for: location)
+        let timeZone = await resolvedTimeZoneOrFallback(for: city)
         return convertWeatherKitData(weather: weather, for: city, timeZone: timeZone)
     }
     
@@ -1076,8 +1310,10 @@ class WeatherService {
         // Use the city's local calendar for the day calculation
         var calendar = Calendar.current
         calendar.timeZone = timeZone
-        
-        let dayStart = calendar.startOfDay(for: day.date)
+
+        let todayStart = calendar.startOfDay(for: Date())
+        let dayStart = calendar.date(byAdding: .day, value: dayOffset, to: todayStart)
+            ?? calendar.startOfDay(for: day.date)
         let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
         
         // Filter hourly forecasts for this specific day
@@ -1242,6 +1478,39 @@ class WeatherService {
         } catch {
             return nil
         }
+    }
+
+    func refreshWeatherForCity(_ cityWeather: CityWeather) async -> CityWeather? {
+        guard let fetchedWeather = await fetchWeatherForCity(cityWeather.city) else {
+            return nil
+        }
+
+        let refreshedWeather = fetchedWeather.replacingID(cityWeather.id)
+        replaceWeatherData(refreshedWeather, matching: cityWeather.id, in: activeListID)
+
+        for listID in CityListID.allLists where listID.rawValue != activeListID.rawValue {
+            replaceWeatherData(refreshedWeather, matching: cityWeather.id, in: listID)
+        }
+
+        return refreshedWeather
+    }
+
+    private func replaceWeatherData(_ refreshedWeather: CityWeather, matching cityID: UUID, in listID: CityListID) {
+        if listID.rawValue == activeListID.rawValue {
+            guard let index = cityWeatherData.firstIndex(where: { $0.id == cityID }) else { return }
+            cityWeatherData[index] = refreshedWeather
+            otherListData[listID.rawValue] = cityWeatherData
+            cacheData(cityWeatherData, for: listID)
+            return
+        }
+
+        guard var listData = otherListData[listID.rawValue],
+              let index = listData.firstIndex(where: { $0.id == cityID }) else {
+            return
+        }
+        listData[index] = refreshedWeather
+        otherListData[listID.rawValue] = listData
+        cacheData(listData, for: listID)
     }
     
     func moveCity(from source: IndexSet, to destination: Int) {
@@ -1420,7 +1689,7 @@ struct City: Identifiable, Hashable, Codable {
 }
 
 struct CityWeather: Identifiable, Hashable {
-    let id = UUID()
+    let id: UUID
     var city: City
     let condition: AppWeatherCondition
     let temperature: Double
@@ -1435,6 +1704,54 @@ struct CityWeather: Identifiable, Hashable {
     var currentUVIndex: Int?
     var currentHumidity: Double?        // 0-1
     var currentVisibility: Double?      // km
+
+    init(
+        id: UUID = UUID(),
+        city: City,
+        condition: AppWeatherCondition,
+        temperature: Double,
+        symbolName: String,
+        dailyForecasts: [DailyForecast],
+        timeZone: TimeZone,
+        currentFeelsLike: Double? = nil,
+        currentCloudCover: Double? = nil,
+        currentWindSpeed: Double? = nil,
+        currentUVIndex: Int? = nil,
+        currentHumidity: Double? = nil,
+        currentVisibility: Double? = nil
+    ) {
+        self.id = id
+        self.city = city
+        self.condition = condition
+        self.temperature = temperature
+        self.symbolName = symbolName
+        self.dailyForecasts = dailyForecasts
+        self.timeZone = timeZone
+        self.currentFeelsLike = currentFeelsLike
+        self.currentCloudCover = currentCloudCover
+        self.currentWindSpeed = currentWindSpeed
+        self.currentUVIndex = currentUVIndex
+        self.currentHumidity = currentHumidity
+        self.currentVisibility = currentVisibility
+    }
+
+    func replacingID(_ id: UUID) -> CityWeather {
+        CityWeather(
+            id: id,
+            city: city,
+            condition: condition,
+            temperature: temperature,
+            symbolName: symbolName,
+            dailyForecasts: dailyForecasts,
+            timeZone: timeZone,
+            currentFeelsLike: currentFeelsLike,
+            currentCloudCover: currentCloudCover,
+            currentWindSpeed: currentWindSpeed,
+            currentUVIndex: currentUVIndex,
+            currentHumidity: currentHumidity,
+            currentVisibility: currentVisibility
+        )
+    }
     
     // Hashable conformance
     static func == (lhs: CityWeather, rhs: CityWeather) -> Bool {
@@ -1767,3 +2084,165 @@ struct CachedCity: Codable {
     }
 }
 
+struct CachedCityWeather: Codable {
+    let id: UUID
+    let city: CachedCity
+    let condition: AppWeatherCondition
+    let temperature: Double
+    let symbolName: String
+    let dailyForecasts: [CachedDailyForecast]
+    let timeZoneIdentifier: String
+    let currentFeelsLike: Double?
+    let currentCloudCover: Double?
+    let currentWindSpeed: Double?
+    let currentUVIndex: Int?
+    let currentHumidity: Double?
+    let currentVisibility: Double?
+
+    init(from cityWeather: CityWeather) {
+        id = cityWeather.id
+        city = CachedCity(from: cityWeather.city)
+        condition = cityWeather.condition
+        temperature = cityWeather.temperature
+        symbolName = cityWeather.symbolName
+        dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
+        timeZoneIdentifier = cityWeather.timeZone.identifier
+        currentFeelsLike = cityWeather.currentFeelsLike
+        currentCloudCover = cityWeather.currentCloudCover
+        currentWindSpeed = cityWeather.currentWindSpeed
+        currentUVIndex = cityWeather.currentUVIndex
+        currentHumidity = cityWeather.currentHumidity
+        currentVisibility = cityWeather.currentVisibility
+    }
+
+    func toCityWeather() -> CityWeather? {
+        let decodedCity = city.toCity()
+        let forecasts = dailyForecasts.map { $0.toDailyForecast() }
+        guard !forecasts.isEmpty else { return nil }
+
+        return CityWeather(
+            id: id,
+            city: decodedCity,
+            condition: condition,
+            temperature: temperature,
+            symbolName: symbolName,
+            dailyForecasts: forecasts,
+            timeZone: TimeZone(identifier: timeZoneIdentifier) ?? TimeZone.current,
+            currentFeelsLike: currentFeelsLike,
+            currentCloudCover: currentCloudCover,
+            currentWindSpeed: currentWindSpeed,
+            currentUVIndex: currentUVIndex,
+            currentHumidity: currentHumidity,
+            currentVisibility: currentVisibility
+        )
+    }
+}
+
+struct CachedDailyForecast: Codable {
+    let dayOffset: Int
+    let dailyLow: Double
+    let dailyHigh: Double
+    let symbolName: String
+    let condition: AppWeatherCondition
+    let hourlyForecasts: [CachedHourlyForecast]
+    let cloudCover: Double?
+    let precipitationChance: Double?
+    let visibility: Double?
+    let feelsLikeLow: Double?
+    let feelsLikeHigh: Double?
+    let humidity: Double?
+    let windSpeed: Double?
+    let uvIndex: Int?
+    let maxHumidity: Double?
+    let maxVisibility: Double?
+    let sunrise: Date?
+    let sunset: Date?
+
+    init(from forecast: DailyForecast) {
+        dayOffset = forecast.dayOffset
+        dailyLow = forecast.dailyLow
+        dailyHigh = forecast.dailyHigh
+        symbolName = forecast.symbolName
+        condition = forecast.condition
+        hourlyForecasts = forecast.hourlyForecasts.map { CachedHourlyForecast(from: $0) }
+        cloudCover = forecast.cloudCover
+        precipitationChance = forecast.precipitationChance
+        visibility = forecast.visibility
+        feelsLikeLow = forecast.feelsLikeLow
+        feelsLikeHigh = forecast.feelsLikeHigh
+        humidity = forecast.humidity
+        windSpeed = forecast.windSpeed
+        uvIndex = forecast.uvIndex
+        maxHumidity = forecast.maxHumidity
+        maxVisibility = forecast.maxVisibility
+        sunrise = forecast.sunrise
+        sunset = forecast.sunset
+    }
+
+    func toDailyForecast() -> DailyForecast {
+        DailyForecast(
+            dayOffset: dayOffset,
+            dailyLow: dailyLow,
+            dailyHigh: dailyHigh,
+            symbolName: symbolName,
+            condition: condition,
+            hourlyForecasts: hourlyForecasts.map { $0.toHourlyForecast() },
+            cloudCover: cloudCover,
+            precipitationChance: precipitationChance,
+            visibility: visibility,
+            feelsLikeLow: feelsLikeLow,
+            feelsLikeHigh: feelsLikeHigh,
+            humidity: humidity,
+            windSpeed: windSpeed,
+            uvIndex: uvIndex,
+            maxHumidity: maxHumidity,
+            maxVisibility: maxVisibility,
+            sunrise: sunrise,
+            sunset: sunset
+        )
+    }
+}
+
+struct CachedHourlyForecast: Codable {
+    let hour: Int
+    let temperature: Double
+    let apparentTemperature: Double?
+    let symbolName: String
+    let condition: AppWeatherCondition
+    let precipitationChance: Double?
+    let cloudCover: Double?
+    let windSpeed: Double?
+    let uvIndex: Int?
+    let humidity: Double?
+    let visibility: Double?
+
+    init(from forecast: HourlyForecast) {
+        hour = forecast.hour
+        temperature = forecast.temperature
+        apparentTemperature = forecast.apparentTemperature
+        symbolName = forecast.symbolName
+        condition = forecast.condition
+        precipitationChance = forecast.precipitationChance
+        cloudCover = forecast.cloudCover
+        windSpeed = forecast.windSpeed
+        uvIndex = forecast.uvIndex
+        humidity = forecast.humidity
+        visibility = forecast.visibility
+    }
+
+    func toHourlyForecast() -> HourlyForecast {
+        HourlyForecast(
+            hour: hour,
+            temperature: temperature,
+            apparentTemperature: apparentTemperature,
+            symbolName: symbolName,
+            condition: condition,
+            precipitationChance: precipitationChance,
+            cloudCover: cloudCover,
+            windSpeed: windSpeed,
+            uvIndex: uvIndex,
+            humidity: humidity,
+            visibility: visibility
+        )
+    }
+}

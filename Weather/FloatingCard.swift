@@ -170,7 +170,7 @@ extension ContentView {
                 showingCityDetail = true
                 pushIPhoneRoute(.cityDetail)
             } else {
-                withAnimation(.spring(response: 0.42, dampingFraction: 0.86)) {
+                withAnimation(iPadInspectorMorphAnimation) {
                     showingMapExpandedCard = false
                     showingCityDetail = true
                     iPadInspectorPresentedCityID = cityWeather.id
@@ -230,6 +230,13 @@ extension ContentView {
                 }
 
                 VStack(alignment: usesIPhoneDetailSizing ? .center : .leading, spacing: usesIPhoneDetailSizing ? 6 : 2) {
+                    if usesIPhoneDetailSizing {
+                        Text(iPadDebugLocalTimeText(for: cityWeather))
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+
                     if !hideCityName {
                         Text(cityWeather.city.localizedName(locale: locale))
                             .font((usesIPhoneDetailSizing ? Font.title : Font.title3).weight(.semibold))
@@ -322,7 +329,7 @@ extension ContentView {
                                 } label: {
                                     VStack(spacing: usesIPhoneDetailSizing ? 6 : 7) {
                                         Text(macForecastDayLabel(for: daySelectionOffset))
-                                            .font((usesIPhoneDetailSizing ? Font.subheadline : Font.caption2).weight(.semibold))
+                                            .font((usesIPhoneDetailSizing ? Font.caption : Font.caption2).weight(.semibold))
                                             .foregroundStyle(.secondary)
                                             .lineLimit(1)
 
@@ -415,6 +422,74 @@ extension ContentView {
         .padding(.bottom, usesIPhoneDetailSizing ? 8 : 8)
         .modifier(MapExpandedCardContainer(plainBackground: plainBackground, colorScheme: colorScheme))
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+    }
+
+    @ViewBuilder
+    private func chartContent(for cityWeather: CityWeather, forecast: DailyForecast, availableSize: CGSize) -> some View {
+        let refreshKey = hourlyRefreshKey(for: cityWeather, dayOffset: forecast.dayOffset)
+        let isRefreshingHourlyData = hourlyRefreshKeys.contains(refreshKey)
+
+        if shouldRefreshHourlyData(for: cityWeather, forecast: forecast), isRefreshingHourlyData {
+            ProgressView()
+                .controlSize(.regular)
+                .frame(width: availableSize.width, height: availableSize.height)
+        } else if macExpandedCardChartRange == .tenDay {
+            ScrollView(.horizontal, showsIndicators: false) {
+                DailyTimelineChart(
+                    dailyForecasts: cityWeather.dailyForecasts,
+                    chartMetric: macExpandedCardChartMetric,
+                    selectedDayOffset: selectedDayOffset,
+                    cityTimeZone: cityWeather.timeZone,
+                    lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
+                    compactLayout: true
+                )
+                .frame(width: max(availableSize.width * 1.1, 270), height: availableSize.height)
+            }
+        } else if macExpandedCardChartRange == .entireDay {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HourlyTimelineChart(
+                    hourlyForecasts: forecast.hourlyForecasts,
+                    chartMetric: macExpandedCardChartMetric,
+                    dayOffset: max(0, selectedDayOffset),
+                    cityTimeZone: cityWeather.timeZone,
+                    previewCurrentHour: nil,
+                    lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
+                    showAllHours: true,
+                    compactLayout: true,
+                    transitionDirection: detailChartSwipeDirection
+                )
+                .frame(width: max(availableSize.width * 1.6, 390), height: availableSize.height)
+            }
+            .task(id: refreshKey) {
+                await refreshHourlyDataIfNeeded(for: cityWeather, forecast: forecast)
+            }
+        } else {
+            HourlyTimelineChart(
+                hourlyForecasts: forecast.hourlyForecasts,
+                chartMetric: macExpandedCardChartMetric,
+                dayOffset: max(0, selectedDayOffset),
+                cityTimeZone: cityWeather.timeZone,
+                previewCurrentHour: nil,
+                lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
+                compactLayout: true,
+                transitionDirection: detailChartSwipeDirection,
+                onHorizontalSwipe: { direction in
+                    shiftExpandedCardChartDate(by: direction)
+                }
+            )
+            .frame(width: availableSize.width, height: availableSize.height)
+            .task(id: refreshKey) {
+                await refreshHourlyDataIfNeeded(for: cityWeather, forecast: forecast)
+            }
+        }
+    }
+
+    private func iPadDebugLocalTimeText(for cityWeather: CityWeather) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = cityWeather.timeZone
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j:mm z", options: 0, locale: locale)
+        return "Local time: \(formatter.string(from: Date())) · \(cityWeather.timeZone.identifier)"
     }
 
     private func macExpandedCardAddMenu(for cityWeather: CityWeather) -> some View {
@@ -528,49 +603,11 @@ extension ContentView {
                 .padding(.bottom, usesIPhoneDetailSizing ? 0 : 6)
 
                 GeometryReader { geo in
-                    if macExpandedCardChartRange == .tenDay {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            DailyTimelineChart(
-                                dailyForecasts: cityWeather.dailyForecasts,
-                                chartMetric: macExpandedCardChartMetric,
-                                selectedDayOffset: selectedDayOffset,
-                                cityTimeZone: cityWeather.timeZone,
-                                lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
-                                compactLayout: true
-                            )
-                            .frame(width: max(geo.size.width * 1.1, 270), height: geo.size.height)
-                        }
-                    } else if macExpandedCardChartRange == .entireDay {
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HourlyTimelineChart(
-                                hourlyForecasts: forecast.hourlyForecasts,
-                                chartMetric: macExpandedCardChartMetric,
-                                dayOffset: max(0, selectedDayOffset),
-                                cityTimeZone: cityWeather.timeZone,
-                            previewCurrentHour: nil,
-                            lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
-                            showAllHours: true,
-                            compactLayout: true,
-                            transitionDirection: detailChartSwipeDirection
-                        )
-                        .frame(width: max(geo.size.width * 1.6, 390), height: geo.size.height)
-                    }
-                    } else {
-                        HourlyTimelineChart(
-                            hourlyForecasts: forecast.hourlyForecasts,
-                            chartMetric: macExpandedCardChartMetric,
-                            dayOffset: max(0, selectedDayOffset),
-                            cityTimeZone: cityWeather.timeZone,
-                            previewCurrentHour: nil,
-                            lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
-                            compactLayout: true,
-                            transitionDirection: detailChartSwipeDirection,
-                            onHorizontalSwipe: { direction in
-                                shiftExpandedCardChartDate(by: direction)
-                            }
-                        )
-                        .frame(width: geo.size.width, height: geo.size.height)
-                    }
+                    chartContent(
+                        for: cityWeather,
+                        forecast: forecast,
+                        availableSize: geo.size
+                    )
                 }
                 .frame(height: usesIPhoneDetailSizing ? 220 : 184)
                 .clipped()
@@ -932,82 +969,4 @@ extension ContentView {
     }
 }
 
-private struct IOSFloatingMapCardPreview: View {
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            AppTheme.shared.colors.background.ignoresSafeArea()
-
-            ContentView()
-                .mapExpandedCard(for: PreviewCityWeather.athens, hideCityName: false)
-                .padding(.horizontal, 26)
-                .padding(.bottom, 14)
-        }
-    }
-}
-
-private enum PreviewCityWeather {
-    static var athens: CityWeather {
-        let hourly = [7, 9, 11, 13, 15, 17, 19].enumerated().map { index, hour in
-            HourlyForecast(
-                hour: hour,
-                temperature: [17, 18, 20, 22, 23, 22, 20][index],
-                apparentTemperature: [16, 18, 20, 22, 23, 21, 19][index],
-                symbolName: "sun.max.fill",
-                condition: .clear,
-                precipitationChance: 0.02,
-                cloudCover: 0.12,
-                windSpeed: 12,
-                uvIndex: 5,
-                humidity: 0.46,
-                visibility: 24
-            )
-        }
-
-        let forecasts = (0..<10).map { offset in
-            DailyForecast(
-                dayOffset: offset,
-                dailyLow: 16 + Double(offset % 3),
-                dailyHigh: 22 + Double(offset % 5),
-                symbolName: offset == 2 ? "cloud.sun.fill" : "sun.max.fill",
-                condition: offset == 2 ? .partlySunny : .clear,
-                hourlyForecasts: hourly,
-                cloudCover: offset == 2 ? 0.4 : 0.14,
-                precipitationChance: 0.04,
-                visibility: 24,
-                feelsLikeLow: 16 + Double(offset % 3),
-                feelsLikeHigh: 22 + Double(offset % 5),
-                humidity: 0.46,
-                windSpeed: 12,
-                uvIndex: 5,
-                maxHumidity: 0.58,
-                maxVisibility: 24,
-                sunrise: nil,
-                sunset: nil
-            )
-        }
-
-        return CityWeather(
-            city: City(name: "Athens", country: "Greece", latitude: 37.9838, longitude: 23.7275),
-            condition: .clear,
-            temperature: 22,
-            symbolName: "sun.max.fill",
-            dailyForecasts: forecasts,
-            timeZone: TimeZone(identifier: "Europe/Athens") ?? .current,
-            currentFeelsLike: 21,
-            currentCloudCover: 0.14,
-            currentWindSpeed: 12,
-            currentUVIndex: 5,
-            currentHumidity: 0.46,
-            currentVisibility: 24
-        )
-    }
-}
-
-#Preview("iOS Floating Map Card") {
-    IOSFloatingMapCardPreview()
-}
-
-#Preview("iOS Search Result Add City") {
-    ContentView(previewSearchResultCity: PreviewCityWeather.athens)
-}
 #endif

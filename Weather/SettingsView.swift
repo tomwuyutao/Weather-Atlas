@@ -6,6 +6,11 @@
 //
 
 import SwiftUI
+#if os(iOS)
+import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 
 enum DistanceUnit: String, CaseIterable {
     case kilometers = "kilometers"
@@ -91,6 +96,13 @@ enum TemperatureUnit: String, CaseIterable {
     }
 }
 
+#if os(macOS)
+private enum MacSettingsTab: Hashable {
+    case general
+    case about
+}
+#endif
+
 struct SettingsView: View {
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.celsius.rawValue
     @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.kilometers.rawValue
@@ -105,6 +117,10 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
 
     @State private var showingResetConfirmation = false
+    @State private var showingEmailCopied = false
+    #if os(macOS)
+    @State private var selectedMacSettingsTab: MacSettingsTab = .general
+    #endif
 
     private var selectedUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnit) ?? .celsius
@@ -173,19 +189,53 @@ struct SettingsView: View {
 
     #if os(macOS)
     private var nativeMacSettingsBody: some View {
-        TabView {
-            Tab(localizedString("General", locale: locale), systemImage: "gear") {
-                settingsForm
+        VStack(spacing: 14) {
+            HStack(spacing: 8) {
+                macSettingsTabButton(.general, title: localizedString("General", locale: locale), systemImage: "gear")
+                macSettingsTabButton(.about, title: localizedString("About", locale: locale), systemImage: "info.circle")
+                Spacer(minLength: 0)
             }
+            .padding(.horizontal, 18)
+            .padding(.top, 18)
 
-            Tab(localizedString("About", locale: locale), systemImage: "info.circle") {
-                aboutForm
+            Group {
+                switch selectedMacSettingsTab {
+                case .general:
+                    settingsForm
+                case .about:
+                    aboutForm
+                }
             }
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
         }
-        .scenePadding()
-        .frame(width: 420)
-        .frame(minHeight: 260)
+        .frame(width: 440)
+        .frame(minHeight: 320)
+        .background(theme.colors.mapOcean)
         .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
+    }
+
+    private func macSettingsTabButton(_ tab: MacSettingsTab, title: String, systemImage: String) -> some View {
+        Button {
+            withAnimation(.snappy(duration: 0.18)) {
+                selectedMacSettingsTab = tab
+            }
+        } label: {
+            Label(title, systemImage: systemImage)
+                .font(.headline.weight(selectedMacSettingsTab == tab ? .semibold : .medium))
+                .foregroundStyle(selectedMacSettingsTab == tab ? theme.colors.primaryText : theme.colors.secondaryText)
+                .padding(.horizontal, 14)
+                .frame(height: 34)
+                .background {
+                    if selectedMacSettingsTab == tab {
+                        Capsule()
+                            .fill(theme.colors.mapLand)
+                    }
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
     #endif
 
@@ -284,6 +334,7 @@ struct SettingsView: View {
                     systemImage: "hand.raised",
                     url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/privacy/")
                 )
+                sayHelloRow
             }
             .listRowBackground(theme.colors.mapLand)
             #endif
@@ -320,6 +371,7 @@ struct SettingsView: View {
                     systemImage: "hand.raised",
                     url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/privacy/")
                 )
+                sayHelloRow
             }
             .listRowBackground(theme.colors.mapLand)
         }
@@ -378,6 +430,34 @@ struct SettingsView: View {
         } label: {
             settingsLabel(title, systemImage: systemImage)
         }
+    }
+
+    private var sayHelloRow: some View {
+        Button {
+            copySupportEmail()
+            showingEmailCopied = true
+        } label: {
+            LabeledContent {
+                Text(verbatim: "yutao5726@gmail.com")
+                    .foregroundStyle(.secondary)
+            } label: {
+                settingsLabel(localizedString("Say Hello", locale: locale), systemImage: "envelope")
+            }
+        }
+        .buttonStyle(.plain)
+        .alert(localizedString("Email Copied", locale: locale), isPresented: $showingEmailCopied) {
+            Button(localizedString("OK", locale: locale), role: .cancel) {}
+        }
+    }
+
+    private func copySupportEmail() {
+        let email = "yutao5726@gmail.com"
+        #if os(iOS)
+        UIPasteboard.general.string = email
+        #elseif os(macOS)
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(email, forType: .string)
+        #endif
     }
 
     @ViewBuilder

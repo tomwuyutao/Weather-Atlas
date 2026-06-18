@@ -55,16 +55,20 @@ struct HourlyTimelineChart: View {
     private var chartHeight: CGFloat { compactLayout ? 132 : 146 }
     private var labelSpacing: CGFloat { compactLayout ? 6 : 10 }
 
-    private var currentCityHour: Int? {
+    private var currentCityHour: Double? {
         guard dayOffset == 0 || dayOffset == -1 else { return nil }
-        if let previewCurrentHour { return previewCurrentHour }
+        if let previewCurrentHour { return Double(previewCurrentHour) }
         var calendar = Calendar.current
         calendar.timeZone = cityTimeZone
-        return calendar.component(.hour, from: Date())
+        let components = calendar.dateComponents([.hour, .minute], from: Date())
+        return Double(components.hour ?? 0) + (Double(components.minute ?? 0) / 60)
     }
 
     private var dataPoints: [HourlyForecast] {
-        showAllHours ? hourlyForecasts.sorted { $0.hour < $1.hour } : hourlyForecasts.filter { [7, 9, 11, 13, 15, 17, 19].contains($0.hour) }
+        let sortedForecasts = hourlyForecasts.sorted { $0.hour < $1.hour }
+        guard !showAllHours else { return sortedForecasts }
+        let daytimeForecasts = sortedForecasts.filter { [7, 9, 11, 13, 15, 17, 19].contains($0.hour) }
+        return daytimeForecasts
     }
 
     private var chartPoints: [ChartPoint] {
@@ -96,16 +100,16 @@ struct HourlyTimelineChart: View {
     private var currentHourIndex: Double? {
         guard let currentCityHour else { return nil }
         let hours = dataPoints.map(\.hour)
-        guard let lastIndex = hours.lastIndex(where: { $0 <= currentCityHour }), lastIndex < hours.count - 1 else { return nil }
+        guard let lastIndex = hours.lastIndex(where: { Double($0) <= currentCityHour }), lastIndex < hours.count - 1 else { return nil }
         let h0 = Double(hours[lastIndex])
         let h1 = Double(hours[lastIndex + 1])
-        let fraction = h1 > h0 ? Double(currentCityHour - hours[lastIndex]) / (h1 - h0) : 0
+        let fraction = h1 > h0 ? (currentCityHour - h0) / (h1 - h0) : 0
         return Double(lastIndex) + fraction
     }
 
     private func isPastHour(_ hour: Int) -> Bool {
         guard let currentCityHour else { return false }
-        return hour < currentCityHour
+        return Double(hour) < currentCityHour
     }
 
     private func chartValueText(for forecast: HourlyForecast) -> String {

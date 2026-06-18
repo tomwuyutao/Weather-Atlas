@@ -7,6 +7,7 @@
 
 import SwiftUI
 
+#if os(iOS)
 extension View {
     @ViewBuilder
     func iPhoneNativeBottomToolbarBackground() -> some View {
@@ -37,6 +38,7 @@ extension View {
             .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
     }
 }
+#endif
 
 extension ContentView {
 
@@ -1011,7 +1013,11 @@ extension ContentView {
     var iOSAddCityDetailDestination: some View {
         if let city = addCityDetailCity {
             expandedCardDetailDestination(for: city, dismissAction: {
+                #if os(iOS)
                 dismissIPhoneRoute(.addCityDetail)
+                #else
+                showingAddCityDetail = false
+                #endif
             })
         }
     }

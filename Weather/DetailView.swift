@@ -77,12 +77,14 @@ extension ContentView {
     }
     #endif
 
+    #if os(iOS)
     private func iPhoneMapExpandedCardDetailDestination(for city: CityWeather) -> some View {
         expandedCardDetailDestination(for: city, dismissAction: {
             dismissIPhoneRoute(.cityDetail)
             selectedDayOffset = -1
         })
     }
+    #endif
 
     private func fullWeatherDetailDestination(for city: CityWeather) -> some View {
         expandedCardDetailDestination(for: city, dismissAction: {
@@ -180,4 +182,65 @@ extension ContentView {
         460
         #endif
     }
+}
+
+private struct TimeZoneDebugPreview: View {
+    @State private var rows: [DebugRow] = []
+    private let service = WeatherService()
+    private let cities = CityListID.builtInLists.flatMap(\.defaultCities)
+
+    var body: some View {
+        List(rows) { row in
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(row.city)
+                        .font(.headline)
+                    Spacer()
+                    Text(row.country)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Text(row.timeZone)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                Text(row.time)
+                    .font(.body.monospacedDigit())
+            }
+            .padding(.vertical, 4)
+        }
+        .task {
+            var loadedRows: [DebugRow] = []
+            for city in cities {
+                let timeZone = await service.debugResolvedTimeZone(for: city)
+                loadedRows.append(
+                    DebugRow(
+                        city: city.name,
+                        country: city.country,
+                        timeZone: timeZone.identifier,
+                        time: formattedTime(in: timeZone)
+                    )
+                )
+            }
+            rows = loadedRows
+        }
+    }
+
+    private func formattedTime(in timeZone: TimeZone) -> String {
+        let formatter = DateFormatter()
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd HH:mm z"
+        return formatter.string(from: Date())
+    }
+
+    private struct DebugRow: Identifiable {
+        let id = UUID()
+        let city: String
+        let country: String
+        let timeZone: String
+        let time: String
+    }
+}
+
+#Preview("Debug City Time Zones") {
+    TimeZoneDebugPreview()
 }

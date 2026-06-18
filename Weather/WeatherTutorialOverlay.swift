@@ -88,6 +88,7 @@ extension View {
 struct WeatherTutorialOverlay: View {
     let step: WeatherTutorialStep
     let targetFrame: CGRect?
+    let messageOverride: String.LocalizationValue?
     let onAdvance: () -> Void
 
     @Environment(\.appTheme) private var theme
@@ -106,7 +107,7 @@ struct WeatherTutorialOverlay: View {
                 frame.offsetBy(dx: -overlayOrigin.x, dy: -overlayOrigin.y)
             }
             let rawFocusFrame = clippedFocusFrame(normalizedTargetFrame ?? fallbackFrame, in: geometry.size)
-            let usesCircularFocus = step == .listManager || step == .search
+            let usesCircularFocus = prefersCircularFocus(for: rawFocusFrame)
             let focusFrame = usesCircularFocus
                 ? circularFocusFrame(centeredOn: rawFocusFrame, in: geometry.size)
                 : rawFocusFrame
@@ -161,7 +162,7 @@ struct WeatherTutorialOverlay: View {
                 .font(.avenir(.headline, weight: .bold))
                 .foregroundStyle(theme.colors.primaryText)
 
-            Text(localizedString(step.message, locale: locale))
+            Text(localizedString(messageOverride ?? step.message, locale: locale))
                     .font(.avenir(.subheadline, weight: .regular))
                     .foregroundStyle(theme.colors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
@@ -201,6 +202,11 @@ struct WeatherTutorialOverlay: View {
         return safeFrame.intersection(CGRect(origin: .zero, size: size)).isNull
             ? CGRect(x: size.width / 2 - 36, y: size.height / 2 - 36, width: 72, height: 72)
             : safeFrame.intersection(CGRect(origin: .zero, size: size))
+    }
+
+    private func prefersCircularFocus(for frame: CGRect) -> Bool {
+        guard step == .listManager || step == .search else { return false }
+        return max(frame.width, frame.height) <= 80
     }
 
     private func circularFocusFrame(centeredOn frame: CGRect, in size: CGSize) -> CGRect {
@@ -296,8 +302,9 @@ extension ContentView {
         let nextIndex = WeatherTutorialStep.allCases.index(after: currentIndex)
         if nextIndex < WeatherTutorialStep.allCases.endIndex {
             let nextStep = WeatherTutorialStep.allCases[nextIndex]
-            if shouldUseIPadLayout, nextStep == .listManager {
+            if shouldUseIPadLayout {
                 iPadSidebarVisibility = .all
+                iPadPreferredCompactColumn = .detail
             }
             withAnimation(.easeOut(duration: 0.2)) {
                 tutorialStep = nextStep
@@ -324,9 +331,15 @@ extension ContentView {
             WeatherTutorialOverlay(
                 step: tutorialStep,
                 targetFrame: tutorialStep.target.flatMap { tutorialTargetFrames[$0] },
+                messageOverride: tutorialMessageOverride(for: tutorialStep),
                 onAdvance: advanceWeatherTutorial
             )
         }
+    }
+
+    private func tutorialMessageOverride(for step: WeatherTutorialStep) -> String.LocalizationValue? {
+        guard shouldUseIPadLayout, step == .listManager else { return nil }
+        return "Use the sidebar to manage cities within lists and create new lists."
     }
 }
 #endif

@@ -328,7 +328,9 @@ extension ContentView {
             }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 showingAddCityDetail = true
+                #if os(iOS)
                 pushIPhoneRoute(.addCityDetail)
+                #endif
             }
         }
     }

@@ -80,6 +80,8 @@ struct ContentView: View {
     @State var inlineSearchManager = CitySearchManager()
     @State var inlineIsLoadingCity = false
     @State var inlineSearchSelectionIndex: Int = 0
+    @State var hourlyRefreshKeys: Set<String> = []
+    @State var attemptedHourlyRefreshKeys: Set<String> = []
     
     @State var recenterOnAllCities: Bool = false
     @State var recenterUsesListCoordinates: Bool = false
@@ -157,6 +159,10 @@ struct ContentView: View {
     var shouldUseIPadLayout: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
     }
+    #elseif os(macOS)
+    var shouldUseIPadLayout: Bool {
+        true
+    }
     #endif
 
     var usesFloatingMapCardLayout: Bool {
@@ -229,12 +235,12 @@ struct ContentView: View {
     @State var macMapLookupTaskID: Int = 0
     @State var macMapLookupPreviewCityID: UUID?
     @State var macMapViewportSize: CGSize = .zero
+    @State var iPadInspectorPinned: Bool = false
+    @State var iPadDetailHeaderShowsCityName: Bool = false
     #endif
     #if os(iOS)
     @State var iPadSidebarVisibility: NavigationSplitViewVisibility = .all
     @State var iPadPreferredCompactColumn: NavigationSplitViewColumn = .detail
-    @State var iPadDetailPinned: Bool = false
-    @State var iPadDetailHeaderShowsCityName: Bool = false
     @State var iPhoneNavigationPath: [IPhoneNavigationRoute] = []
     #endif
 
@@ -267,6 +273,40 @@ struct ContentView: View {
     private func renamedCityMatching(_ city: CityWeather) -> CityWeather? {
         weatherService.cityWeatherData.first { candidate in
             candidate.city.latitude == city.city.latitude && candidate.city.longitude == city.city.longitude
+        }
+    }
+
+    func hourlyRefreshKey(for cityWeather: CityWeather, dayOffset: Int? = nil) -> String {
+        "\(cityWeather.id.uuidString)-\(dayOffset ?? max(0, selectedDayOffset))"
+    }
+
+    func shouldRefreshHourlyData(for cityWeather: CityWeather, forecast: DailyForecast) -> Bool {
+        guard weatherService.hasResolvedTimeZone(cityWeather) else { return true }
+        guard macExpandedCardChartRange != .tenDay else { return false }
+        if macExpandedCardChartRange == .entireDay {
+            return forecast.hourlyForecasts.isEmpty
+        }
+        return forecast.hourlyForecasts.filter { [7, 9, 11, 13, 15, 17, 19].contains($0.hour) }.isEmpty
+    }
+
+    func refreshHourlyDataIfNeeded(for cityWeather: CityWeather, forecast: DailyForecast) async {
+        guard shouldRefreshHourlyData(for: cityWeather, forecast: forecast) else { return }
+        let refreshKey = hourlyRefreshKey(for: cityWeather, dayOffset: forecast.dayOffset)
+        guard !attemptedHourlyRefreshKeys.contains(refreshKey),
+              !hourlyRefreshKeys.contains(refreshKey) else {
+            return
+        }
+
+        hourlyRefreshKeys.insert(refreshKey)
+        attemptedHourlyRefreshKeys.insert(refreshKey)
+        defer { hourlyRefreshKeys.remove(refreshKey) }
+
+        guard let refreshedWeather = await weatherService.refreshWeatherForCity(cityWeather) else {
+            return
+        }
+
+        if tappedCity?.id == cityWeather.id {
+            tappedCity = refreshedWeather
         }
     }
 
@@ -444,4 +484,3 @@ struct ContentView: View {
     let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
     ContentView()
 }
-

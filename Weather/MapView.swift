@@ -142,29 +142,36 @@ extension ContentView {
     }
 
     func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
-        #if os(iOS)
-        if shouldUseIPadLayout, showingCityDetail {
+        #if os(macOS)
+        if showingCityDetail || iPadInspectorPinned {
             PlatformFeedback.lightImpact()
             macHoverPresentedCardCityID = nil
             macMapExpandedCardFocusesMarker = true
             macMapExpandedCardAnchor = anchor ?? macCenteredMapMarkerAnchor()
             macMapExpandedCardBaseOffset = .zero
-            macExpandedCardShowsDetails = iPadDetailPinned
+            macExpandedCardShowsDetails = true
+            withAnimation(iPadInspectorMorphAnimation) {
+                tappedCity = city
+                showingMapExpandedCard = false
+                showingCityDetail = true
+            }
+            return
+        }
+        #endif
 
-            if iPadDetailPinned {
+        #if os(iOS)
+        if shouldUseIPadLayout, showingCityDetail || iPadInspectorPinned {
+            PlatformFeedback.lightImpact()
+            macHoverPresentedCardCityID = nil
+            macMapExpandedCardFocusesMarker = true
+            macMapExpandedCardAnchor = anchor ?? macCenteredMapMarkerAnchor()
+            macMapExpandedCardBaseOffset = .zero
+            macExpandedCardShowsDetails = true
+            withAnimation(iPadInspectorMorphAnimation) {
                 tappedCity = city
                 iPadInspectorPresentedCityID = city.id
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
-                    showingMapExpandedCard = false
-                    showingCityDetail = true
-                }
-            } else {
-                withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
-                    showingCityDetail = false
-                    showingMapExpandedCard = true
-                    tappedCity = city
-                    iPadInspectorPresentedCityID = nil
-                }
+                showingMapExpandedCard = false
+                showingCityDetail = true
             }
             return
         }
@@ -179,6 +186,40 @@ extension ContentView {
 
     func handleMapBackgroundClick(_ coordinate: CLLocationCoordinate2D, anchor: CGPoint? = nil) {
         #if os(macOS) || os(iOS)
+        #if os(macOS)
+        withAnimation(iPadInspectorMorphAnimation) {
+            if showingCityDetail {
+                showingCityDetail = false
+                iPadInspectorPinned = false
+                macMapExpandedCardFocusesMarker = false
+                macExpandedCardShowsDetails = false
+                selectedDayOffset = -1
+            } else if showingMapExpandedCard {
+                dismissMapExpandedCard()
+            }
+        }
+        return
+        #endif
+
+        #if os(iOS)
+        if shouldUseIPadLayout {
+            withAnimation(iPadInspectorMorphAnimation) {
+                if showingCityDetail {
+                    showingCityDetail = false
+                    iPadInspectorPresentedCityID = nil
+                    iPadInspectorPinned = false
+                    macMapExpandedCardFocusesMarker = false
+                    macExpandedCardShowsDetails = false
+                    selectedDayOffset = -1
+                } else if showingMapExpandedCard {
+                    dismissMapExpandedCard()
+                }
+            }
+            return
+        }
+        #endif
+
+        #if os(iOS)
         guard usesFloatingMapCardLayout else {
             dismissMapExpandedCard()
             return
@@ -222,6 +263,7 @@ extension ContentView {
                 }
             }
         }
+        #endif
         #else
         dismissMapExpandedCard()
         #endif

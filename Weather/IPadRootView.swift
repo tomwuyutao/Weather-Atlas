@@ -17,9 +17,7 @@ extension ContentView {
             NavigationStack {
                 iPadSidebarContent
             }
-            .overlay(alignment: .topTrailing) {
-                iPadSidebarToggleTutorialTarget
-            }
+            .weatherTutorialTarget(.listManager)
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
         } detail: {
             iOSNativeDetailNavigationStack
@@ -60,9 +58,7 @@ extension ContentView {
             NavigationStack {
                 iPadSidebarContent
             }
-            .overlay(alignment: .topTrailing) {
-                iPadSidebarToggleTutorialTarget
-            }
+            .weatherTutorialTarget(.listManager)
             .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
         } detail: {
             iPadMapNavigationStack
@@ -74,15 +70,6 @@ extension ContentView {
                 sidebarExpandedListIDs = Set(sidebarLists.map(\.rawValue))
             }
         }
-    }
-
-    var iPadSidebarToggleTutorialTarget: some View {
-        Color.clear
-            .frame(width: 44, height: 44)
-            .padding(.top, 28)
-            .padding(.trailing, 8)
-            .weatherTutorialTarget(.listManager)
-            .allowsHitTesting(false)
     }
 
     var iPadMapNavigationStack: some View {
@@ -105,12 +92,19 @@ extension ContentView {
             }
         }
         .onChange(of: showingCityDetail) { _, isShowing in
-            guard isShowing else { return }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            guard isShowing else {
+                iPadInspectorPresentedCityID = nil
+                iPadInspectorPinned = false
+                if !showingMapExpandedCard {
+                    macMapExpandedCardFocusesMarker = false
+                    macExpandedCardShowsDetails = false
+                }
+                return
+            }
+            withAnimation(iPadInspectorMorphAnimation) {
                 showingMapExpandedCard = false
                 previewCity = nil
                 macHoverPresentedCardCityID = nil
-                macMapExpandedCardFocusesMarker = false
                 macExpandedCardShowsDetails = true
             }
         }
@@ -246,8 +240,9 @@ extension ContentView {
         VStack(alignment: .leading, spacing: 0) {
             nativeCitySearchSuggestions
         }
-        .padding(10)
-        .frame(width: 320)
+        .padding(.vertical, 14)
+        .padding(.horizontal, 18)
+        .frame(width: 348)
         .presentationCompactAdaptation(.popover)
     }
 
@@ -373,9 +368,7 @@ extension ContentView {
                     mapExpandedCard(for: city, forceIPhoneStyle: true)
                         .frame(width: iPadFloatingCardSize.width, height: iPadFloatingCardSize.height)
                         .matchedGeometryEffect(id: iPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, properties: .frame, anchor: .center)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                        .padding(.trailing, iPadFloatingCardTrailingGap)
-                        .padding(.bottom, iPadFloatingCardBottomGap)
+                        .position(iPadFloatingCardCenter(in: geometry.size))
                         .transition(.opacity)
                         .zIndex(12)
                 }
@@ -400,7 +393,8 @@ extension ContentView {
                 macMapViewportSize = newSize
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showingMapExpandedCard)
+        .animation(iPadInspectorMorphAnimation, value: showingMapExpandedCard)
+        .animation(iPadInspectorMorphAnimation, value: showingCityDetail)
     }
 
     var iPadInspectorBackground: Color {
@@ -431,19 +425,19 @@ extension ContentView {
             HStack(spacing: 8) {
                 Button {
                     withAnimation(.spring(response: 0.24, dampingFraction: 0.9)) {
-                        iPadDetailPinned.toggle()
+                        iPadInspectorPinned.toggle()
                     }
                 } label: {
-                    Image(systemName: iPadDetailPinned ? "pin.fill" : "pin")
+                    Image(systemName: iPadInspectorPinned ? "pin.fill" : "pin")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(iPadDetailPinned ? theme.colors.accent : theme.colors.primaryText)
-                        .foregroundColor(iPadDetailPinned ? theme.colors.accent : theme.colors.primaryText)
+                        .foregroundStyle(iPadInspectorPinned ? theme.colors.accent : theme.colors.primaryText)
+                        .foregroundColor(iPadInspectorPinned ? theme.colors.accent : theme.colors.primaryText)
                         .frame(width: 34, height: 34)
                         .contentShape(Circle())
                 }
                 .buttonStyle(.plain)
-                .tint(iPadDetailPinned ? theme.colors.accent : theme.colors.primaryText)
-                .help(localizedString(iPadDetailPinned ? "Unpin" : "Pin", locale: locale))
+                .tint(iPadInspectorPinned ? theme.colors.accent : theme.colors.primaryText)
+                .help(localizedString(iPadInspectorPinned ? "Unpin" : "Pin", locale: locale))
 
                 Spacer(minLength: 8)
 
@@ -458,9 +452,12 @@ extension ContentView {
                 Spacer(minLength: 8)
 
                 Button {
-                    withAnimation(.spring(response: 0.36, dampingFraction: 0.9)) {
+                    withAnimation(iPadInspectorMorphAnimation) {
                         showingCityDetail = false
                         iPadInspectorPresentedCityID = nil
+                        iPadInspectorPinned = false
+                        macMapExpandedCardFocusesMarker = false
+                        macExpandedCardShowsDetails = false
                         selectedDayOffset = -1
                     }
                 } label: {
@@ -529,6 +526,17 @@ extension ContentView {
 
     var iPadFloatingCardSize: CGSize {
         CGSize(width: 312, height: 144)
+    }
+
+    var iPadInspectorMorphAnimation: Animation {
+        .spring(response: 0.5, dampingFraction: 0.92, blendDuration: 0.08)
+    }
+
+    func iPadFloatingCardCenter(in mapSize: CGSize) -> CGPoint {
+        CGPoint(
+            x: mapSize.width / 2,
+            y: mapSize.height - iPadFloatingCardBottomGap - iPadFloatingCardSize.height / 2
+        )
     }
 
     func iPadMapDetailMorphID(for city: CityWeather) -> String {
