@@ -153,6 +153,32 @@ extension ContentView {
         }
     }
 
+    func revealDefaultCityOnMap(_ city: City, in listID: CityListID) {
+        Task {
+            #if os(iOS)
+            pushIPhoneRoute(.map)
+            #else
+            showingMapSidebar = false
+            #endif
+
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                showingMapExpandedCard = false
+                tappedCity = nil
+            }
+
+            let revealedCity = await weatherService.switchList(to: listID, prioritizing: city)
+            recenterOnAllCities = true
+            refreshSidebarCityOrder()
+
+            guard let revealedCity else { return }
+            centerOnCityTrigger = revealedCity
+            try? await Task.sleep(for: .milliseconds(350))
+            await MainActor.run {
+                showMapMarkerCard(revealedCity, expanded: false, focusesMarker: true)
+            }
+        }
+    }
+
     func commitListManagerNewList() {
         let trimmed = sidebarNewListName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -292,7 +318,12 @@ extension ContentView {
                             .listRowSeparator(.hidden)
                     } else {
                         ForEach(defaultCities) { city in
-                            iOSSidebarDefaultCityRow(city)
+                            Button {
+                                revealDefaultCityOnMap(city, in: listID)
+                            } label: {
+                                iOSSidebarDefaultCityRow(city)
+                            }
+                            .buttonStyle(.plain)
                                 .listRowSeparator(.hidden)
                         }
                     }
@@ -541,6 +572,13 @@ extension ContentView {
            let listID = CityListID.allLists.first(where: { $0.rawValue == parts[1] }),
            let city = weatherService.weatherData(for: listID).first(where: { $0.id.uuidString == parts[2] }) {
             revealCityOnMap(city, in: listID)
+            return
+        }
+
+        if kind == "loading", parts.count == 3,
+           let listID = CityListID.allLists.first(where: { $0.rawValue == parts[1] }),
+           let city = weatherService.cityListCoordinates(for: listID).first(where: { $0.id.uuidString == parts[2] }) {
+            revealDefaultCityOnMap(city, in: listID)
         }
     }
 

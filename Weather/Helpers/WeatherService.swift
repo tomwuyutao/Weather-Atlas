@@ -542,6 +542,118 @@ class WeatherService {
         lastFetchDate = fetchDate(for: listID)
         await fetchWeatherForAllCities()
     }
+
+    func switchList(to listID: CityListID, prioritizing priorityCity: City) async -> CityWeather? {
+        let existingData = otherListData[listID.rawValue] ?? (listID == activeListID ? cityWeatherData : [])
+        if isWeatherDataFresh(for: listID),
+           let existingCity = existingData.first(where: { citiesMatch($0.city, priorityCity) }) {
+            activeFetchToken = UUID()
+            activeListID = listID
+            UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
+            cityWeatherData = existingData
+            lastFetchDate = fetchDate(for: listID)
+            return existingCity
+        }
+
+        let fetchToken = UUID()
+        activeFetchToken = fetchToken
+        activeListID = listID
+        UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
+        lastFetchDate = nil
+        loadingProgress = 0
+        isLoading = true
+
+        let citiesToFetch = orderedCitiesForFetch(listID: listID, prioritizing: priorityCity)
+        guard !citiesToFetch.isEmpty else {
+            cityWeatherData = []
+            otherListData[listID.rawValue] = []
+            isLoading = false
+            loadingProgress = 1
+            return nil
+        }
+
+        cityWeatherData = []
+        otherListData[listID.rawValue] = []
+
+        guard let priorityWeather = await fetchWeatherForCity(citiesToFetch[0]),
+              activeFetchToken == fetchToken,
+              activeListID == listID else {
+            Task {
+                await finishPrioritizedListFetch(
+                    listID: listID,
+                    citiesToFetch: citiesToFetch,
+                    initialWeatherData: [],
+                    fetchToken: fetchToken
+                )
+            }
+            return nil
+        }
+
+        cityWeatherData = [priorityWeather]
+        otherListData[listID.rawValue] = [priorityWeather]
+        loadingProgress = 1 / Double(citiesToFetch.count)
+
+        Task {
+            await finishPrioritizedListFetch(
+                listID: listID,
+                citiesToFetch: Array(citiesToFetch.dropFirst()),
+                initialWeatherData: [priorityWeather],
+                fetchToken: fetchToken
+            )
+        }
+
+        return priorityWeather
+    }
+
+    private func orderedCitiesForFetch(listID: CityListID, prioritizing priorityCity: City) -> [City] {
+        let cities = loadSavedCities(for: listID) ?? listID.defaultCities
+        guard let priorityIndex = cities.firstIndex(where: { citiesMatch($0, priorityCity) }) else {
+            return [priorityCity] + cities.filter { !citiesMatch($0, priorityCity) }
+        }
+
+        var orderedCities = cities
+        let city = orderedCities.remove(at: priorityIndex)
+        orderedCities.insert(city, at: 0)
+        return orderedCities
+    }
+
+    private func citiesMatch(_ lhs: City, _ rhs: City) -> Bool {
+        lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
+    }
+
+    private func finishPrioritizedListFetch(
+        listID: CityListID,
+        citiesToFetch: [City],
+        initialWeatherData: [CityWeather],
+        fetchToken: UUID
+    ) async {
+        var weatherData = initialWeatherData
+        let totalCount = weatherData.count + citiesToFetch.count
+
+        for city in citiesToFetch {
+            guard activeFetchToken == fetchToken else { return }
+            if let cityWeather = await fetchWeatherForCity(city) {
+                guard activeFetchToken == fetchToken else { return }
+                weatherData.append(cityWeather)
+                otherListData[listID.rawValue] = weatherData
+                if activeListID == listID {
+                    withAnimation(.easeInOut(duration: 0.18)) {
+                        cityWeatherData = weatherData
+                        loadingProgress = Double(weatherData.count) / Double(max(totalCount, 1))
+                    }
+                }
+            }
+        }
+
+        guard activeFetchToken == fetchToken else { return }
+        if activeListID == listID {
+            isLoading = false
+            loadingProgress = 1
+            lastFetchDate = Date()
+        }
+        otherListData[listID.rawValue] = weatherData
+        cacheData(weatherData, for: listID, updateFetchDate: true)
+    }
     
     func addNewList(name: String) async {
         let newList = CityListID.createList(name: name)

@@ -620,8 +620,9 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             #if os(iOS)
             observers.append(center.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
                 guard let self else { return }
-                self.evaluate("window.weatherMapRefreshAfterActivation?.();")
-                self.pushStateIfReady(force: true)
+                let styleKey = self.parent.colorScheme == .dark ? "dark" : "bright"
+                self.evaluate("window.weatherMapReloadBaseMapAfterActivation?.(\(Self.jsString(styleKey)));")
+                self.pushStateIfReady()
             })
             #endif
         }
@@ -1146,7 +1147,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
 
         async function cleanedStyle(mode) {
-          const response = await fetch(styleURL(mode));
+          const response = await fetch(styleURL(mode), { cache: 'reload' });
           const style = await response.json();
           const palette = themePalette(mode);
           style.layers = (style.layers || [])
@@ -1618,6 +1619,42 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           resizeMapSoon();
           ensureLayers();
           if (pendingPayload) updateSource(pendingPayload);
+        };
+
+        window.weatherMapReloadBaseMapAfterActivation = async function(mode = currentStyleMode) {
+          if (!map) {
+            startMapWhenReady();
+            return;
+          }
+
+          currentStyleMode = mode;
+          document.body.classList.toggle('dark-map', mode === 'dark');
+          const cameraState = {
+            center: map.getCenter(),
+            zoom: map.getZoom(),
+            bearing: map.getBearing(),
+            pitch: map.getPitch()
+          };
+
+          resizeMapSoon();
+          baseStylePreferencesApplied = false;
+          try {
+            map.once('style.load', () => {
+              loaded = true;
+              resizeMapSoon();
+              ensureLayers();
+              if (pendingPayload) updateSource(pendingPayload);
+              try {
+                map.jumpTo(cameraState);
+              } catch (_) {}
+            });
+            map.setStyle(await cleanedStyle(mode));
+          } catch (error) {
+            console.error('Base map reload failed', error);
+            resizeMapSoon();
+            ensureLayers();
+            if (pendingPayload) updateSource(pendingPayload);
+          }
         };
 
         function startPinchInertia(point) {

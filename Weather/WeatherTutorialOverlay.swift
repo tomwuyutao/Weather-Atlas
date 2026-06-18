@@ -30,7 +30,7 @@ enum WeatherTutorialStep: Int, CaseIterable {
         }
     }
 
-    var title: String {
+    var title: String.LocalizationValue {
         switch self {
         case .intro: return "Welcome to Weather Atlas"
         case .listSwitcher: return "Switch lists"
@@ -40,7 +40,7 @@ enum WeatherTutorialStep: Int, CaseIterable {
         }
     }
 
-    var message: String {
+    var message: String.LocalizationValue {
         switch self {
         case .intro:
             return "Here is a quick tour of the main controls."
@@ -55,7 +55,7 @@ enum WeatherTutorialStep: Int, CaseIterable {
         }
     }
 
-    var actionTitle: String {
+    var actionTitle: String.LocalizationValue {
         switch self {
         case .intro: return "Let's Start"
         case .search: return "OK"
@@ -157,23 +157,21 @@ struct WeatherTutorialOverlay: View {
 
     private var tutorialCard: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text(localizedString(String.LocalizationValue(step.title), locale: locale))
+            Text(localizedString(step.title, locale: locale))
                 .font(.avenir(.headline, weight: .bold))
                 .foregroundStyle(theme.colors.primaryText)
 
-            if !step.message.isEmpty {
-                Text(localizedString(String.LocalizationValue(step.message), locale: locale))
+            Text(localizedString(step.message, locale: locale))
                     .font(.avenir(.subheadline, weight: .regular))
                     .foregroundStyle(theme.colors.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
-            }
 
             Button {
                 onAdvance()
             } label: {
                 HStack {
                     Spacer(minLength: 0)
-                    Text(localizedString(String.LocalizationValue(step.actionTitle), locale: locale))
+                    Text(localizedString(step.actionTitle, locale: locale))
                         .font(.avenir(.body, weight: .semibold))
                     Spacer(minLength: 0)
                 }
