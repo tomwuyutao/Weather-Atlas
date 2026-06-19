@@ -144,9 +144,17 @@ extension ContentView {
         Color.clear
             .frame(width: 0, height: 0)
             .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousDayCommand)) { _ in
+                if showingInlineSearch, !inlineSearchText.isEmpty {
+                    moveInlineSearchSelection(-1)
+                    return
+                }
                 stepSelectedDay(-1)
             }
             .onReceive(NotificationCenter.default.publisher(for: .weatherNextDayCommand)) { _ in
+                if showingInlineSearch, !inlineSearchText.isEmpty {
+                    moveInlineSearchSelection(1)
+                    return
+                }
                 stepSelectedDay(1)
             }
             .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousListCommand)) { _ in
@@ -542,14 +550,9 @@ extension ContentView {
                     .lineLimit(1)
             }
             .foregroundStyle(.primary)
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 6)
             .frame(height: 34)
-            .background(.regularMaterial, in: Capsule())
-            .overlay {
-                Capsule()
-                    .stroke(.white.opacity(colorScheme == .dark ? 0.18 : 0.34), lineWidth: 0.8)
-            }
-            .clipShape(Capsule())
+            .contentShape(Rectangle())
         }
         .menuIndicator(.hidden)
         .menuOrder(.fixed)

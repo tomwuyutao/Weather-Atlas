@@ -111,6 +111,17 @@ extension ContentView {
         .onSubmit(of: .search) {
             confirmInlineSearchSelection()
         }
+        .onMoveCommand { direction in
+            guard showingInlineSearch, !inlineSearchText.isEmpty else { return }
+            switch direction {
+            case .up:
+                moveInlineSearchSelection(-1)
+            case .down:
+                moveInlineSearchSelection(1)
+            default:
+                break
+            }
+        }
         .toolbar {
             iPadMapToolbarContent
         }
@@ -124,10 +135,18 @@ extension ContentView {
             .frame(width: 0, height: 0)
             .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousDayCommand)) { _ in
                 guard shouldUseIPadLayout else { return }
+                if showingInlineSearch, !inlineSearchText.isEmpty {
+                    moveInlineSearchSelection(-1)
+                    return
+                }
                 iPadStepSelectedDay(-1)
             }
             .onReceive(NotificationCenter.default.publisher(for: .weatherNextDayCommand)) { _ in
                 guard shouldUseIPadLayout else { return }
+                if showingInlineSearch, !inlineSearchText.isEmpty {
+                    moveInlineSearchSelection(1)
+                    return
+                }
                 iPadStepSelectedDay(1)
             }
             .onReceive(NotificationCenter.default.publisher(for: .weatherPreviousListCommand)) { _ in

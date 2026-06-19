@@ -131,31 +131,52 @@ extension ContentView {
 
     @ViewBuilder
     var nativeCitySearchSuggestions: some View {
-        ForEach(Array(inlineSortedSearchResults.prefix(8))) { result in
+        ForEach(Array(inlineSortedSearchResults.prefix(inlineSearchResultLimit).enumerated()), id: \.element.id) { index, result in
             Button {
                 guard !inlineIsLoadingCity else { return }
                 Task {
                     await inlineSelectSearchResult(result)
                 }
             } label: {
-                nativeCitySearchSuggestionRow(for: result)
+                nativeCitySearchSuggestionRow(for: result, isSelected: index == inlineSearchSelectionIndex)
             }
             .disabled(inlineIsLoadingCity)
         }
     }
 
-    private func nativeCitySearchSuggestionRow(for result: CitySearchResult) -> some View {
-        let existingListName = inlineExistingCityListName(for: result)
+    private var inlineSearchResultLimit: Int { 8 }
 
-        return HStack(spacing: 10) {
+    private func nativeCitySearchSuggestionRow(for result: CitySearchResult, isSelected: Bool) -> some View {
+        let existingListName = inlineExistingCityListName(for: result)
+        #if os(macOS)
+        let rowSpacing: CGFloat = 8
+        let titleFont: Font = .system(size: 13, weight: .medium)
+        let subtitleFont: Font = .system(size: 11, weight: .regular)
+        let statusFont: Font = .system(size: 10, weight: .medium)
+        let statusBoldFont: Font = .system(size: 10, weight: .semibold)
+        let rowVerticalPadding: CGFloat = 3
+        let rowHorizontalPadding: CGFloat = 6
+        let rowCornerRadius: CGFloat = 7
+        #else
+        let rowSpacing: CGFloat = 10
+        let titleFont: Font = .avenir(.body, weight: .medium)
+        let subtitleFont: Font = .avenir(.caption, weight: .regular)
+        let statusFont: Font = .avenir(.caption2, weight: .medium)
+        let statusBoldFont: Font = .avenir(.caption2, weight: .bold)
+        let rowVerticalPadding: CGFloat = 3
+        let rowHorizontalPadding: CGFloat = 8
+        let rowCornerRadius: CGFloat = 10
+        #endif
+
+        return HStack(spacing: rowSpacing) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.title)
-                    .font(.avenir(.body, weight: .medium))
+                    .font(titleFont)
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
 
                 Text(result.subtitle)
-                    .font(.avenir(.caption, weight: .regular))
+                    .font(subtitleFont)
                     .foregroundStyle(theme.colors.secondaryText)
                     .lineLimit(1)
             }
@@ -165,9 +186,9 @@ extension ContentView {
             if let existingListName {
                 HStack(spacing: 6) {
                     (Text(localizedString("In list", locale: locale) + " ")
-                        .font(.avenir(.caption2, weight: .medium))
+                        .font(statusFont)
                     + Text(existingListName)
-                        .font(.avenir(.caption2, weight: .bold)))
+                        .font(statusBoldFont))
                         .foregroundStyle(theme.colors.secondaryText)
                         .lineLimit(1)
 
@@ -179,7 +200,14 @@ extension ContentView {
                     .controlSize(.small)
             }
         }
-        .padding(.vertical, 3)
+        .padding(.vertical, rowVerticalPadding)
+        .padding(.horizontal, rowHorizontalPadding)
+        .background {
+            if isSelected {
+                RoundedRectangle(cornerRadius: rowCornerRadius, style: .continuous)
+                    .fill(theme.colors.accent.opacity(colorScheme == .dark ? 0.18 : 0.12))
+            }
+        }
     }
 
     private func inlineCityIdentity(for result: CitySearchResult) -> (name: String, country: String) {
@@ -241,13 +269,13 @@ extension ContentView {
     }
 
     func moveInlineSearchSelection(_ delta: Int) {
-        let count = min(6, inlineSortedSearchResults.count)
+        let count = min(inlineSearchResultLimit, inlineSortedSearchResults.count)
         guard count > 0 else { return }
         inlineSearchSelectionIndex = (inlineSearchSelectionIndex + delta + count) % count
     }
 
     func confirmInlineSearchSelection() {
-        let results = Array(inlineSortedSearchResults.prefix(6))
+        let results = Array(inlineSortedSearchResults.prefix(inlineSearchResultLimit))
         guard results.indices.contains(inlineSearchSelectionIndex), !inlineIsLoadingCity else { return }
         let result = results[inlineSearchSelectionIndex]
         Task {

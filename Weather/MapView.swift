@@ -623,13 +623,17 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     private func makeWebView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(context.coordinator, name: "mapEvent")
+        configuration.preferences.javaScriptCanOpenWindowsAutomatically = false
+        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
         #if os(iOS)
         configuration.allowsInlineMediaPlayback = true
+        configuration.dataDetectorTypes = []
         #endif
 
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.navigationDelegate = context.coordinator
         #if os(iOS)
+        webView.allowsLinkPreview = false
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.scrollView.backgroundColor = platformMapBackgroundColor
@@ -989,7 +993,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
       <script src="https://unpkg.com/maplibre-gl/dist/maplibre-gl.js"></script>
       <style>
         html, body { margin: 0; padding: 0; width: 100%; height: 100%; min-height: 100%; overflow: hidden; background: #FFFFFF; }
-        body { -webkit-user-select: none; user-select: none; position: fixed; inset: 0; }
+        body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; position: fixed; inset: 0; }
         #map { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; background: #FFFFFF; }
         @media (prefers-color-scheme: dark) {
           html, body, #map { background: #2E2961; }
@@ -1113,6 +1117,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         function post(message) {
           window.webkit?.messageHandlers?.mapEvent?.postMessage(message);
         }
+
+        ['contextmenu', 'selectstart', 'copy', 'cut', 'paste', 'dragstart'].forEach(eventName => {
+          document.addEventListener(eventName, event => event.preventDefault(), { passive: false });
+        });
 
         function postMapGestureStart() {
           post({ type: 'mapGestureStart' });
