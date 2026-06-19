@@ -6,6 +6,48 @@
 //
 
 import SwiftUI
+#if canImport(Translation)
+import Translation
+#endif
+
+struct CountryCityTranslationCache {
+    static let shared = CountryCityTranslationCache()
+
+    private let storageKey = "countryCityNameTranslations"
+
+    func key(for city: City, targetLanguageIdentifier: String) -> String {
+        [
+            targetLanguageIdentifier,
+            city.country,
+            city.name,
+            String(format: "%.4f", city.latitude),
+            String(format: "%.4f", city.longitude)
+        ].joined(separator: "|")
+    }
+
+    func name(forKey key: String) -> String? {
+        load()[key]
+    }
+
+    func setName(_ name: String, forKey key: String) {
+        var values = load()
+        values[key] = name
+        save(values)
+    }
+
+    private func load() -> [String: String] {
+        guard let data = UserDefaults.standard.data(forKey: storageKey),
+              let values = try? JSONDecoder().decode([String: String].self, from: data) else {
+            return [:]
+        }
+        return values
+    }
+
+    private func save(_ values: [String: String]) {
+        guard let data = try? JSONEncoder().encode(values) else { return }
+        UserDefaults.standard.set(data, forKey: storageKey)
+    }
+}
 
 extension ContentView {
 
@@ -81,9 +123,8 @@ extension ContentView {
         .tint(.primary)
 
         Button {
-            Task {
-                await weatherService.deleteList(listID)
-            }
+            weatherService.deleteList(listID)
+            refreshSidebarListOrder()
         } label: {
             Label {
                 Text(localizedString("Delete", locale: locale))
@@ -145,6 +186,10 @@ extension ContentView {
     }
 
     func beginCreatingListFromSwitcher() {
+        beginCreatingCustomList()
+    }
+
+    func beginCreatingListFromSwitcherWithMenu() {
         sidebarNewListName = ""
         countryListInitialCountry = nil
         #if os(iOS)
@@ -210,7 +255,8 @@ extension ContentView {
         let cities = Array(country.cities.prefix(cityCount))
         guard !cities.isEmpty else { return }
         Task {
-            let newList = await weatherService.createCustomList(name: country.name, cities: cities)
+            let displayCities = await translatedCountryListCitiesIfNeeded(cities)
+            let newList = await weatherService.createCustomList(name: country.name, cities: displayCities)
             await MainActor.run {
                 refreshSidebarListOrder()
                 refreshSidebarCityOrder()
@@ -225,6 +271,68 @@ extension ContentView {
             }
         }
     }
+
+    func translatedCountryListCitiesIfNeeded(_ cities: [City]) async -> [City] {
+        let languageCode = (UserDefaults.standard.string(forKey: "appLanguage") ?? "en")
+            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
+        guard !languageCode.isEmpty, languageCode != "en" else { return cities }
+
+        #if canImport(Translation)
+        if #available(iOS 26.0, macOS 26.0, *) {
+            return await translateCountryListCities(cities, targetLanguageIdentifier: languageCode)
+        }
+        #endif
+
+        return cities
+    }
+
+    #if canImport(Translation)
+    @available(iOS 26.0, macOS 26.0, *)
+    private func translateCountryListCities(_ cities: [City], targetLanguageIdentifier: String) async -> [City] {
+        let cache = CountryCityTranslationCache.shared
+        let cacheKeys = cities.map { cache.key(for: $0, targetLanguageIdentifier: targetLanguageIdentifier) }
+        var translatedNames = cities.enumerated().map { index, city in
+            cache.name(forKey: cacheKeys[index]) ?? city.name
+        }
+
+        let missingRequests = cities.enumerated().compactMap { index, city -> (index: Int, request: TranslationSession.Request)? in
+            guard cache.name(forKey: cacheKeys[index]) == nil else { return nil }
+            return (
+                index,
+                TranslationSession.Request(
+                    sourceText: city.name,
+                    clientIdentifier: String(index)
+                )
+            )
+        }
+
+        guard !missingRequests.isEmpty else {
+            return cities.enumerated().map { index, city in
+                City(id: city.id, name: translatedNames[index], country: city.country, latitude: city.latitude, longitude: city.longitude)
+            }
+        }
+
+        do {
+            let session = try TranslationSession(
+                installedSource: Locale.Language(identifier: "en"),
+                target: Locale.Language(identifier: targetLanguageIdentifier)
+            )
+            let responses = try await session.translations(from: missingRequests.map(\.request))
+            for (responseIndex, response) in responses.enumerated() {
+                guard missingRequests.indices.contains(responseIndex) else { continue }
+                let cityIndex = missingRequests[responseIndex].index
+                translatedNames[cityIndex] = response.targetText
+                cache.setName(response.targetText, forKey: cacheKeys[cityIndex])
+            }
+        } catch {
+            return cities
+        }
+
+        return cities.enumerated().map { index, city in
+            City(id: city.id, name: translatedNames[index], country: city.country, latitude: city.latitude, longitude: city.longitude)
+        }
+    }
+    #endif
 
     func revealCityOnMap(_ city: CityWeather, in listID: CityListID) {
         Task {
@@ -602,12 +710,6 @@ extension ContentView {
             Text("\(sidebarCityCount(for: listID))")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 22, height: 22)
-                .background(.secondary.opacity(0.26), in: Circle())
-                .overlay {
-                    Circle()
-                        .stroke(.secondary.opacity(0.34), lineWidth: 0.8)
-                }
                 .offset(x: 1)
         }
         .padding(.leading, 6)
@@ -638,14 +740,10 @@ extension ContentView {
                 .shadow(color: dotColor.opacity(0.3), radius: 2)
 
             Text(city.city.localizedName(locale: locale))
-                .font(.headline)
+                .font(.system(size: 13, weight: .regular))
                 .lineLimit(1)
 
-            Spacer(minLength: 6)
-
-            Text(tempUnit.display(city.temperature))
-                .font(.caption.weight(.semibold).monospacedDigit())
-                .foregroundStyle(.secondary)
+            Spacer(minLength: 4)
         }
         .padding(.vertical, 2)
     }
@@ -660,13 +758,9 @@ extension ContentView {
         let lists = sidebarLists
         for index in offsets {
             guard lists.indices.contains(index) else { continue }
-            Task {
-                await weatherService.deleteList(lists[index])
-                await MainActor.run {
-                    refreshSidebarListOrder()
-                }
-            }
+            weatherService.deleteList(lists[index])
         }
+        refreshSidebarListOrder()
         PlatformFeedback.lightImpact()
     }
 

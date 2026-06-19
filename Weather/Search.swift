@@ -128,7 +128,7 @@ extension ContentView {
                     text: $inlineSearchText,
                     isPresented: $inlineSearchFieldPresented,
                     placement: placement,
-                    prompt: Text(localizedString("Search for a city", locale: locale))
+                    prompt: Text(localizedString("Search for a city or country", locale: locale))
                 )
                 .searchSuggestions {
                     if showingInlineSearch || inlineSearchFieldPresented {
@@ -206,6 +206,18 @@ extension ContentView {
     private func nativeCitySearchSuggestionRow(for result: CitySearchResult, isSelected: Bool) -> some View {
         let existingListName = inlineExistingCityListName(for: result)
         let isCountryList = result.countryList != nil
+        let rowFill = colorScheme == .dark
+            ? theme.colors.mapLand.opacity(isSelected ? 0.70 : 0.26)
+            : theme.colors.mapLand.opacity(isSelected ? 0.78 : 0.34)
+        let titleColor = colorScheme == .dark
+            ? theme.colors.primaryText.opacity(0.92)
+            : Color.primary.opacity(0.86)
+        let subtitleColor = colorScheme == .dark
+            ? theme.colors.secondaryText.opacity(0.82)
+            : Color.secondary.opacity(0.78)
+        let chipFill = colorScheme == .dark
+            ? theme.colors.accent.opacity(0.18)
+            : theme.colors.accent.opacity(0.12)
         #if os(macOS)
         let rowSpacing: CGFloat = 8
         let titleFont: Font = .system(size: 13, weight: .medium)
@@ -230,12 +242,12 @@ extension ContentView {
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.title)
                     .font(titleFont)
-                    .foregroundStyle(theme.colors.primaryText)
+                    .foregroundStyle(titleColor)
                     .lineLimit(1)
 
                 Text(result.subtitle)
                     .font(subtitleFont)
-                    .foregroundStyle(theme.colors.secondaryText)
+                    .foregroundStyle(subtitleColor)
                     .lineLimit(1)
             }
 
@@ -247,18 +259,18 @@ extension ContentView {
                     .foregroundStyle(theme.colors.accent)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 3)
-                    .background(theme.colors.accent.opacity(colorScheme == .dark ? 0.16 : 0.10), in: Capsule())
+                    .background(chipFill, in: Capsule())
             } else if let existingListName {
                 HStack(spacing: 6) {
                     (Text(localizedString("In list", locale: locale) + " ")
                         .font(statusFont)
                     + Text(existingListName)
                         .font(statusBoldFont))
-                        .foregroundStyle(theme.colors.secondaryText)
+                        .foregroundStyle(subtitleColor)
                         .lineLimit(1)
 
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(theme.colors.secondaryText)
+                        .foregroundStyle(subtitleColor)
                 }
             } else if inlineIsLoadingCity {
                 ProgressView()
@@ -267,12 +279,7 @@ extension ContentView {
         }
         .padding(.vertical, rowVerticalPadding)
         .padding(.horizontal, rowHorizontalPadding)
-        .background {
-            if isSelected {
-                RoundedRectangle(cornerRadius: rowCornerRadius, style: .continuous)
-                    .fill(theme.colors.accent.opacity(colorScheme == .dark ? 0.18 : 0.12))
-            }
-        }
+        .background(rowFill, in: RoundedRectangle(cornerRadius: rowCornerRadius, style: .continuous))
     }
 
     private func inlineCityIdentity(for result: CitySearchResult) -> (name: String, country: String) {

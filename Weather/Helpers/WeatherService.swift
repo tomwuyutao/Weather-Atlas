@@ -714,7 +714,7 @@ class WeatherService {
         activeListID = renamed
     }
     
-    func deleteCurrentList() async {
+    func deleteCurrentList() {
         let listToDelete = activeListID
         // Remove stored data for this list
         UserDefaults.standard.removeObject(forKey: "savedCitiesList_\(listToDelete.rawValue)")
@@ -745,7 +745,9 @@ class WeatherService {
             UserDefaults.standard.set(fallback.rawValue, forKey: Self.activeListKey)
             cityWeatherData = otherListData[fallback.rawValue] ?? []
             lastFetchDate = fetchDate(for: fallback)
-            await fetchWeatherForAllCities()
+            Task {
+                await fetchWeatherForAllCities()
+            }
         }
     }
 
@@ -771,9 +773,9 @@ class WeatherService {
         }
     }
 
-    func deleteList(_ listID: CityListID) async {
+    func deleteList(_ listID: CityListID) {
         if listID.rawValue == activeListID.rawValue {
-            await deleteCurrentList()
+            deleteCurrentList()
             return
         }
 
@@ -1807,6 +1809,29 @@ extension DailyForecast {
             dailyHigh: 24,
             symbolName: "sun.max.fill",
             condition: .clear,
+            hourlyForecasts: [],
+            cloudCover: nil,
+            precipitationChance: nil,
+            visibility: nil,
+            feelsLikeLow: nil,
+            feelsLikeHigh: nil,
+            humidity: nil,
+            windSpeed: nil,
+            uvIndex: nil,
+            maxHumidity: nil,
+            maxVisibility: nil,
+            sunrise: nil,
+            sunset: nil
+        )
+    }
+
+    static func previewCloudy(dayOffset: Int) -> DailyForecast {
+        DailyForecast(
+            dayOffset: dayOffset,
+            dailyLow: 18,
+            dailyHigh: 24,
+            symbolName: "cloud.fill",
+            condition: .cloudy,
             hourlyForecasts: [],
             cloudCover: nil,
             precipitationChance: nil,

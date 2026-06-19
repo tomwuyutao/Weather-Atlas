@@ -163,10 +163,10 @@ struct ContentView: View {
             CityWeather(
                 id: city.id,
                 city: city,
-                condition: .clear,
+                condition: .cloudy,
                 temperature: 24,
-                symbolName: "sun.max.fill",
-                dailyForecasts: [.previewSunny(dayOffset: 0)],
+                symbolName: "cloud.fill",
+                dailyForecasts: [.previewCloudy(dayOffset: 0)],
                 timeZone: .current
             )
         }

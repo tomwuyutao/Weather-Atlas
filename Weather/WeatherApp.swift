@@ -178,16 +178,7 @@ struct WeatherApp: App {
         .commands {
             WeatherSidebarCommands()
             SettingsCommands()
-            CommandGroup(after: .newItem) {
-                Button("New List") {
-                    NotificationCenter.default.post(name: .weatherNewListCommand, object: nil)
-                }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-
-                Button("Add Country List") {
-                    NotificationCenter.default.post(name: .weatherNewCountryListCommand, object: nil)
-                }
-            }
+            WeatherNewListCommands()
             WeatherMapCommands()
             WeatherOverlayCommands()
             WeatherListCommands()
@@ -202,12 +193,8 @@ struct WeatherApp: App {
             ThemeRoot(theme: theme, appLocale: appLocale)
         }
         .commands {
-            CommandGroup(after: .newItem) {
-                Button("New List") {
-                    NotificationCenter.default.post(name: .weatherNewListCommand, object: nil)
-                }
-                .keyboardShortcut("n", modifiers: [.command, .shift])
-            }
+            WeatherSidebarCommands()
+            WeatherNewListCommands()
             WeatherMapCommands()
             WeatherOverlayCommands()
             WeatherListCommands()
@@ -217,18 +204,20 @@ struct WeatherApp: App {
     }
 }
 
-#if os(macOS)
+#if os(macOS) || os(iOS)
 private struct WeatherSidebarCommands: Commands {
     var body: some Commands {
         CommandGroup(replacing: .sidebar) {
-            Button("Hide Sidebar") {
+            Button("Show/Hide Sidebar") {
                 NotificationCenter.default.post(name: .weatherToggleSidebarCommand, object: nil)
             }
             .keyboardShortcut("s", modifiers: [.command, .control])
         }
     }
 }
+#endif
 
+#if os(macOS)
 private struct SettingsCommands: Commands {
     @Environment(\.openSettings) private var openSettings
 
@@ -244,7 +233,23 @@ private struct SettingsCommands: Commands {
 #endif
 
 #if os(macOS) || os(iOS)
+private struct WeatherNewListCommands: Commands {
+    var body: some Commands {
+        CommandGroup(after: .newItem) {
+            Button("New List") {
+                NotificationCenter.default.post(name: .weatherNewListCommand, object: nil)
+            }
+            .keyboardShortcut("n", modifiers: [.command, .shift])
+        }
+    }
+}
+
 private struct WeatherMapCommands: Commands {
+    @AppStorage("mapProvider") private var mapProviderRaw: String = WeatherMapProvider.openStreetMap.rawValue
+    @AppStorage("showDateSlider") private var showDateSlider: Bool = true
+    @AppStorage("showLegend") private var showLegend: Bool = true
+    @AppStorage("menuFilterSunnyState") private var filterSunny: Bool = false
+
     var body: some Commands {
         CommandMenu("Map") {
             Button("Search") {
@@ -257,15 +262,33 @@ private struct WeatherMapCommands: Commands {
             }
             .keyboardShortcut("r", modifiers: .command)
 
+            Divider()
+
+            Picker("Map Source", selection: Binding(
+                get: { mapProviderRaw },
+                set: { provider in
+                    mapProviderRaw = provider
+                    NotificationCenter.default.post(name: .weatherMapProviderCommand, object: provider)
+                }
+            )) {
+                Text("OpenStreetMap").tag(WeatherMapProvider.openStreetMap.rawValue)
+                Text("Apple Maps").tag(WeatherMapProvider.appleMaps.rawValue)
+            }
+            .pickerStyle(.inline)
+
+            Divider()
+
             Toggle("Filter Sunny", isOn: Binding(
-                get: { UserDefaults.standard.bool(forKey: "menuFilterSunnyState") },
+                get: { filterSunny },
                 set: { _ in NotificationCenter.default.post(name: .weatherToggleSunnyFilterCommand, object: nil) }
             ))
 
             Toggle("Show Legend", isOn: Binding(
-                get: { UserDefaults.standard.bool(forKey: "showLegend") },
+                get: { showLegend },
                 set: { _ in NotificationCenter.default.post(name: .weatherToggleLegendCommand, object: nil) }
             ))
+
+            Toggle("Date Slider", isOn: $showDateSlider)
         }
     }
 }
@@ -401,6 +424,7 @@ extension Notification.Name {
     static let weatherSwitchListCommand = Notification.Name("weatherSwitchListCommand")
     static let weatherNewListCommand = Notification.Name("weatherNewListCommand")
     static let weatherNewCountryListCommand = Notification.Name("weatherNewCountryListCommand")
+    static let weatherMapProviderCommand = Notification.Name("weatherMapProviderCommand")
     static let weatherToggleSidebarCommand = Notification.Name("weatherToggleSidebarCommand")
     static let weatherPanCommand = Notification.Name("weatherPanCommand")
     static let weatherKeyboardZoomCommand = Notification.Name("weatherKeyboardZoomCommand")

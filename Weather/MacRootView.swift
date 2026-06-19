@@ -137,15 +137,6 @@ extension ContentView {
                 commitListManagerNewList()
             }
         }
-        .confirmationDialog(localizedString("New List", locale: locale), isPresented: $showingAddListTypeMenu) {
-            Button("Add Custom List") {
-                beginCreatingCustomList()
-            }
-            Button("Add Country List") {
-                beginCreatingCountryList()
-            }
-            Button(localizedString("Cancel", locale: locale), role: .cancel) {}
-        }
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
     }
 
@@ -179,12 +170,10 @@ extension ContentView {
             .onReceive(NotificationCenter.default.publisher(for: .weatherSearchCommand)) { _ in
                 activateInlineSearch()
             }
-            .onReceive(NotificationCenter.default.publisher(for: .weatherNewCountryListCommand)) { _ in
-                beginCreatingCountryList()
-            }
             .onReceive(NotificationCenter.default.publisher(for: .weatherToggleSunnyFilterCommand), perform: handleWeatherToggleSunnyFilterCommand)
             .onReceive(NotificationCenter.default.publisher(for: .weatherToggleLegendCommand), perform: handleWeatherToggleLegendCommand)
             .onReceive(NotificationCenter.default.publisher(for: .weatherOverlayCommand), perform: handleWeatherOverlayCommand)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherMapProviderCommand), perform: handleWeatherMapProviderCommand)
             .onReceive(NotificationCenter.default.publisher(for: .weatherSwitchListCommand), perform: handleWeatherSwitchListCommand)
             .onReceive(NotificationCenter.default.publisher(for: .weatherNewListCommand), perform: handleWeatherNewListCommand)
             .onReceive(NotificationCenter.default.publisher(for: .weatherToggleSidebarCommand), perform: handleWeatherToggleSidebarCommand)
@@ -280,7 +269,6 @@ extension ContentView {
                         AnyView(iOSDateSliderOverlay)
                     }
                 }
-                .allowsHitTesting(!showingInlineSearch)
 
             if !showingInlineSearch {
                 macIPadStyleFloatingMapOverlays
@@ -294,22 +282,6 @@ extension ContentView {
                         .transition(.opacity)
                         .zIndex(12)
                 }
-            }
-
-            if !inlineSearchText.isEmpty && !inlineSortedSearchResults.isEmpty {
-                macSearchSuggestionsList
-                    .background(macInspectorBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.42), lineWidth: 0.8)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.26 : 0.14), radius: 20, y: 8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(.top, 62)
-                    .padding(.trailing, 12)
-                    .transition(.scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity))
-                    .zIndex(30)
             }
 
             if macQuickSwitcherVisible {
@@ -385,8 +357,11 @@ extension ContentView {
             text: $inlineSearchText,
             isPresented: $inlineSearchFieldPresented,
             placement: .toolbar,
-            prompt: Text(localizedString("Search for a city", locale: locale))
+            prompt: Text(localizedString("Search for a city or country", locale: locale))
         )
+        .searchSuggestions {
+            nativeCitySearchSuggestions
+        }
     }
 
     var macWindowDragTopArea: some View {
@@ -497,15 +472,6 @@ extension ContentView {
         .tint(.primary)
     }
 
-    var macSearchSuggestionsList: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            nativeCitySearchSuggestions
-        }
-        .padding(.vertical, 14)
-        .padding(.horizontal, 18)
-        .frame(width: 348)
-    }
-
     var macRightSidebarButton: some View {
         Button {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -589,7 +555,7 @@ extension ContentView {
                 if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city)
                         .id(city.city.id)
-                        .frame(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
+                        .frame(width: 262, height: macExpandedCardShowsDetails ? 700 : 340)
                         .offset(macExpandedCardOffset(in: geometry.size))
                         .gesture(
                             DragGesture()
@@ -789,7 +755,7 @@ extension ContentView {
     }
 
     func macExpandedCardTopLeft(in size: CGSize) -> CGSize {
-        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
+        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 700 : 340)
         let margin: CGFloat = 16
         let toolbarClearance: CGFloat = 58
         let markerGap: CGFloat = 210
@@ -809,7 +775,7 @@ extension ContentView {
     }
 
     func macExpandedCardOffset(in size: CGSize) -> CGSize {
-        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
+        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 700 : 340)
         let margin: CGFloat = 16
         let toolbarClearance: CGFloat = 58
         let base = macExpandedCardTopLeft(in: size)
@@ -828,7 +794,7 @@ extension ContentView {
             return .trailing
         }
 
-        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 620 : 306)
+        let cardSize = CGSize(width: 262, height: macExpandedCardShowsDetails ? 700 : 340)
         let cardOrigin = macExpandedCardOffset(in: size)
         return UnitPoint(
             x: (markerAnchor.x - cardOrigin.width) / cardSize.width,
@@ -1074,6 +1040,12 @@ extension ContentView {
         withAnimation(.easeInOut(duration: 0.2)) {
             mapOverlayMode = mode
         }
+    }
+
+    func handleWeatherMapProviderCommand(_ notification: Notification) {
+        guard let provider = notification.object as? String else { return }
+        mapProviderRaw = provider
+        centerMapOnVisibleCities()
     }
 
     func handleWeatherSwitchListCommand(_ notification: Notification) {

@@ -74,7 +74,7 @@ extension ContentView {
 
     var iPadMapNavigationStack: some View {
         NavigationStack {
-            iPadMapContent
+            nativeCitySearch(iPadMapContent, placement: .toolbar)
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationDestination(isPresented: $showingAddCityDetail) {
@@ -125,15 +125,6 @@ extension ContentView {
             Button(localizedString("Add", locale: locale)) {
                 commitListManagerNewList()
             }
-        }
-        .confirmationDialog(localizedString("New List", locale: locale), isPresented: $showingAddListTypeMenu) {
-            Button("Add Custom List") {
-                beginCreatingCustomList()
-            }
-            Button("Add Country List") {
-                beginCreatingCountryList()
-            }
-            Button(localizedString("Cancel", locale: locale), role: .cancel) {}
         }
         .fullScreenCover(isPresented: $showingCountryListBuilder) {
             CountryListBuilderView(initialCountry: countryListInitialCountry) { country, cityCount in
@@ -210,6 +201,17 @@ extension ContentView {
                 guard shouldUseIPadLayout else { return }
                 beginCreatingListFromSwitcher()
             }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherMapProviderCommand)) { notification in
+                guard shouldUseIPadLayout, let provider = notification.object as? String else { return }
+                mapProviderRaw = provider
+                centerMapOnDots(useListCoordinates: true)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherToggleSidebarCommand)) { _ in
+                guard shouldUseIPadLayout else { return }
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    iPadSidebarVisibility = iPadSidebarVisibility == .all ? .detailOnly : .all
+                }
+            }
     }
 
     func iPadStepSelectedDay(_ delta: Int) {
@@ -253,10 +255,6 @@ extension ContentView {
 
         if #available(iOS 26.0, *) {
             ToolbarSpacer(.fixed, placement: .topBarTrailing)
-        }
-
-        ToolbarItemGroup(placement: .topBarTrailing) {
-            iPadToolbarSearchBar
         }
     }
 
@@ -318,7 +316,7 @@ extension ContentView {
         IPadNativeSearchBar(
             text: $inlineSearchText,
             isPresented: $inlineSearchFieldPresented,
-            placeholder: localizedString("Search for a city", locale: locale),
+            placeholder: localizedString("Search for a city or country", locale: locale),
             onSubmit: confirmInlineSearchSelection
         )
         .frame(width: 230, height: 36)
@@ -330,7 +328,7 @@ extension ContentView {
             IPadNativeSearchBar(
                 text: $inlineSearchText,
                 isPresented: $inlineSearchFieldPresented,
-                placeholder: localizedString("Search for a city", locale: locale),
+                placeholder: localizedString("Search for a city or country", locale: locale),
                 onSubmit: confirmInlineSearchSelection
             )
             .frame(width: 300, height: 36)
@@ -360,14 +358,13 @@ extension ContentView {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Menu {
-                        iOSAddListMenuItems
+                    Button {
+                        beginCreatingCustomList()
                     } label: {
                         Image(systemName: "plus")
                             .foregroundStyle(.primary)
                             .foregroundColor(.primary)
                     }
-                    .menuOrder(.fixed)
                     .tint(.primary)
                 }
 
@@ -439,21 +436,6 @@ extension ContentView {
                 }
             }
 
-            if !inlineSearchText.isEmpty && !inlineSortedSearchResults.isEmpty {
-                iPadSearchSuggestionsList
-                    .background(iPadInspectorBackground, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 24, style: .continuous)
-                            .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.42), lineWidth: 0.8)
-                    }
-                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.26 : 0.14), radius: 20, y: 8)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                    .padding(.top, 92)
-                    .padding(.trailing, 12)
-                    .transition(.scale(scale: 0.96, anchor: .topTrailing).combined(with: .opacity))
-                    .zIndex(30)
-            }
         }
         .ignoresSafeArea(.container, edges: .top)
         .tint(.primary)

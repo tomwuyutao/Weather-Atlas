@@ -652,15 +652,6 @@ extension ContentView {
                 commitListManagerNewList()
             }
         }
-        .confirmationDialog(localizedString("New List", locale: locale), isPresented: $showingAddListTypeMenu) {
-            Button("Add Custom List") {
-                beginCreatingCustomList()
-            }
-            Button("Add Country List") {
-                beginCreatingCountryList()
-            }
-            Button(localizedString("Cancel", locale: locale), role: .cancel) {}
-        }
         .fullScreenCover(isPresented: $showingCountryListBuilder) {
             CountryListBuilderView(initialCountry: countryListInitialCountry) { country, cityCount in
                 commitCountryList(country, cityCount: cityCount)
@@ -682,10 +673,6 @@ extension ContentView {
     var iOSAddListMenuItems: some View {
         Button("Add Custom List") {
             beginCreatingCustomList()
-        }
-
-        Button("Add Country List") {
-            beginCreatingCountryList()
         }
     }
 

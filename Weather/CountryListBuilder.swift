@@ -344,7 +344,7 @@ struct CountryListBuilderView: View {
                 .padding(24)
                 .frame(minWidth: 340, maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .navigationTitle("Add Country List")
+            .navigationTitle("Add Country")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }

@@ -233,7 +233,7 @@ struct SettingsView: View {
                 Label(localizedString("About", locale: locale), systemImage: "info.circle")
             }
         }
-        .frame(width: 560, height: 460)
+        .frame(width: 480, height: 440)
         .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
     }
     #endif

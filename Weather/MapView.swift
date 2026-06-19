@@ -22,7 +22,7 @@ extension ContentView {
     @ViewBuilder
     var iOSDateSliderOverlay: some View {
         // Date slider only on map tab — list tab uses the date switcher capsule
-        if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode, !countryListSearchMode {
+        if selectedTab == 1, showDateSlider, !showingInlineSearch, !isMapSpecialMode, !countryListSearchMode {
             #if os(macOS)
             GeometryReader { geometry in
                 let topClearance: CGFloat = 34
@@ -148,6 +148,12 @@ extension ContentView {
     }
 
     func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
+        if showingInlineSearch || inlineSearchFieldPresented {
+            showingInlineSearch = false
+            inlineSearchFieldPresented = false
+            resetNativeCitySearch()
+        }
+
         #if os(macOS)
         if showingCityDetail || iPadInspectorPinned {
             PlatformFeedback.lightImpact()
@@ -393,7 +399,8 @@ extension ContentView {
                     overlayMode: mapOverlayMode,
                     filterSunny: filterSunny,
                     markerReloadID: mapMarkerReloadID,
-                    focusedCountryBoundary: CountryBoundaryCatalog.shared.feature(for: countryListPreviewCountry),
+                    focusedCountryBoundary: nil,
+                    selectedCityID: mapFocusSelectedMarker ? tappedCity?.id : nil,
                     recenterOnAllCities: $recenterOnAllCities,
                     recenterUsesListCoordinates: $recenterUsesListCoordinates,
                     centerOnCity: centerOnCityTrigger,
@@ -606,7 +613,7 @@ extension ContentView {
 
     var macMapLeadingFitPadding: Double {
         #if os(macOS)
-        macSidebarVisibility == .detailOnly ? 0 : 220
+        0
         #elseif os(iOS)
         shouldUseIPadLayout && iPadSidebarVisibility != .detailOnly ? 280 : 0
         #else
@@ -691,6 +698,7 @@ private struct AppleWeatherMapView: View {
     let filterSunny: Bool
     let markerReloadID: Int
     let focusedCountryBoundary: CountryBoundaryFeature?
+    let selectedCityID: UUID?
     @Binding var recenterOnAllCities: Bool
     @Binding var recenterUsesListCoordinates: Bool
     let centerOnCity: CityWeather?
@@ -711,6 +719,7 @@ private struct AppleWeatherMapView: View {
                 }
 
                 ForEach(visibleCities) { cityWeather in
+                    let isSelected = selectedCityID == cityWeather.id
                     Annotation(
                         "",
                         coordinate: CLLocationCoordinate2D(
@@ -725,7 +734,14 @@ private struct AppleWeatherMapView: View {
                             Circle()
                                 .fill(markerColor(for: cityWeather))
                                 .frame(width: 9, height: 9)
-                                .shadow(color: markerColor(for: cityWeather).opacity(0.65), radius: 7)
+                                .scaleEffect(isSelected ? 1.5 : 1)
+                                .shadow(color: markerColor(for: cityWeather).opacity(isSelected ? 0.85 : 0.65), radius: isSelected ? 12 : 7)
+                                .overlay {
+                                    if isSelected {
+                                        SelectedPulseRing(shape: .circle, color: markerColor(for: cityWeather))
+                                            .frame(width: 10, height: 10)
+                                    }
+                                }
                                 .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
@@ -1448,7 +1464,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             initialCenter: [0, 20],
             initialZoom: 1.45,
             fitPadding: { top: 180, right: 180, bottom: 180, left: 180 },
-            fitMaxZoom: 2.35,
+            fitMaxZoom: 4.2,
             cityZoom: 5,
             useLeadingOffset: true
           },
@@ -1537,6 +1553,13 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             || combined.includes('rail');
         }
 
+        function isBoundaryLikeLayer(combined) {
+          return combined.includes('boundary')
+            || combined.includes('admin')
+            || combined.includes('border')
+            || combined.includes('disputed');
+        }
+
         function applyWarmMapPaint(layer, palette) {
           const combined = layerSignature(layer);
           layer.paint = layer.paint || {};
@@ -1558,13 +1581,30 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             return;
           }
 
+          if (layer.type === 'line' && isBoundaryLikeLayer(combined)) {
+            layer.layout = layer.layout || {};
+            layer.layout.visibility = 'none';
+            layer.paint['line-color'] = currentStyleMode === 'dark' ? '#171322' : '#5C526E';
+            layer.paint['line-opacity'] = currentStyleMode === 'dark' ? 0.48 : 0.28;
+            layer.paint['line-width'] = [
+              'interpolate',
+              ['linear'],
+              ['zoom'],
+              0, 0.35,
+              3, 0.65,
+              6, 1.05
+            ];
+            return;
+          }
+
           if (layer.type === 'line' && isRoadLikeLayer(combined)) {
             layer.layout = layer.layout || {};
             layer.layout.visibility = 'none';
           }
 
-          if (layer.type === 'symbol' && (combined.includes('place') || combined.includes('label') || combined.includes('name'))) {
-            layer.minzoom = Math.max(layer.minzoom || 0, 6.2);
+          if (layer.type === 'symbol') {
+            layer.layout = layer.layout || {};
+            layer.layout.visibility = 'none';
           }
         }
 
@@ -1572,11 +1612,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           const combined = layerSignature(layer);
 
           if (layer.type === 'line') {
-            return combined.includes('boundary')
-              || combined.includes('admin')
-              || combined.includes('border')
-              || combined.includes('disputed')
-              || isRoadLikeLayer(combined)
+            return isRoadLikeLayer(combined)
               || combined.includes('ferry')
               || combined.includes('marine')
               || combined.includes('navigation')
@@ -1584,20 +1620,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           }
 
           if (layer.type === 'symbol') {
-            return combined.includes('country')
-              || combined.includes('ocean')
-              || combined.includes('sea')
-              || combined.includes('marine label')
-              || combined.includes('water label')
-              || combined.includes('water_name')
-              || combined.includes('water-name')
-              || isRoadLikeLayer(combined)
-              || combined.includes('ferry')
-              || combined.includes('marine')
-              || combined.includes('navigation')
-              || combined.includes('shipping')
-              || combined.includes('state')
-              || combined.includes('province');
+            return true;
           }
 
           return false;
@@ -1633,6 +1656,18 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             }
           });
           baseStylePreferencesApplied = true;
+        }
+
+        function updateBoundaryLayerVisibility(showBoundaries) {
+          if (!map || !map.isStyleLoaded()) return;
+          const style = map.getStyle();
+          if (!style || !style.layers) return;
+          style.layers.forEach(layer => {
+            if (layer.type !== 'line' || !isBoundaryLikeLayer(layerSignature(layer))) return;
+            try {
+              map.setLayoutProperty(layer.id, 'visibility', showBoundaries ? 'visible' : 'none');
+            } catch (_) {}
+          });
         }
 
         function ensureLayers() {
@@ -1753,8 +1788,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         function updateCountryMask(boundaryFeature) {
           const source = map.getSource('country-mask');
           if (!source) return;
-          const mask = countryMaskFeature(boundaryFeature);
-          source.setData(mask ? { type: 'FeatureCollection', features: [mask] } : emptyCollection());
+          source.setData(emptyCollection());
         }
 
         function extendBoundsWithCoordinates(bounds, coordinates) {
@@ -1875,6 +1909,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           selectedMarkerID = payload?.selectedID || '';
           document.body.classList.toggle('focus-selected', !!selectedMarkerID);
           ensureLayers();
+          updateBoundaryLayerVisibility(!!payload?.focusedCountryBoundary);
           updateCountryMask(payload?.focusedCountryBoundary || null);
           updateMarkerScaleTargets();
           updateSelectedPulse();

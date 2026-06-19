@@ -51,9 +51,27 @@ struct HourlyTimelineChart: View {
     private var tempUnit: TemperatureUnit { TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic }
     private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic }
     private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.compatMix(with: .black, by: 0.25) }
-    private var totalHeight: CGFloat { compactLayout ? 230 : 250 }
-    private var chartHeight: CGFloat { compactLayout ? 132 : 146 }
-    private var labelSpacing: CGFloat { compactLayout ? 6 : 10 }
+    private var totalHeight: CGFloat {
+        #if os(macOS)
+        compactLayout ? 202 : 250
+        #else
+        compactLayout ? 230 : 250
+        #endif
+    }
+    private var chartHeight: CGFloat {
+        #if os(macOS)
+        compactLayout ? 128 : 146
+        #else
+        compactLayout ? 132 : 146
+        #endif
+    }
+    private var labelSpacing: CGFloat {
+        #if os(macOS)
+        compactLayout ? 4 : 10
+        #else
+        compactLayout ? 6 : 10
+        #endif
+    }
 
     private var currentCityHour: Double? {
         guard dayOffset == 0 || dayOffset == -1 else { return nil }
@@ -191,9 +209,27 @@ struct DailyTimelineChart: View {
     private var tempUnit: TemperatureUnit { TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic }
     private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic }
     private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.compatMix(with: .black, by: 0.25) }
-    private var totalHeight: CGFloat { compactLayout ? 230 : 250 }
-    private var chartHeight: CGFloat { compactLayout ? 132 : 146 }
-    private var labelSpacing: CGFloat { compactLayout ? 6 : 10 }
+    private var totalHeight: CGFloat {
+        #if os(macOS)
+        compactLayout ? 202 : 250
+        #else
+        compactLayout ? 230 : 250
+        #endif
+    }
+    private var chartHeight: CGFloat {
+        #if os(macOS)
+        compactLayout ? 128 : 146
+        #else
+        compactLayout ? 132 : 146
+        #endif
+    }
+    private var labelSpacing: CGFloat {
+        #if os(macOS)
+        compactLayout ? 4 : 10
+        #else
+        compactLayout ? 6 : 10
+        #endif
+    }
     private var dataPoints: [DailyForecast] { dailyForecasts.sorted { $0.dayOffset < $1.dayOffset } }
 
     private var chartPoints: [ChartPoint] {
@@ -317,6 +353,38 @@ private struct TimelineChartBody: View {
     let transitionDirection: Int
     let onHorizontalSwipe: ((Int) -> Void)?
 
+    private var labelFont: Font {
+        #if os(macOS)
+        compactLayout ? .system(size: 9, weight: .medium) : .avenir(.subheadline)
+        #else
+        compactLayout ? .caption.weight(.medium) : .avenir(.subheadline)
+        #endif
+    }
+
+    private var valueFont: Font {
+        #if os(macOS)
+        compactLayout ? .system(size: 9, weight: .semibold) : .avenir(.footnote, weight: .semibold)
+        #else
+        compactLayout ? .caption.weight(.semibold) : .avenir(.footnote, weight: .semibold)
+        #endif
+    }
+
+    private var iconSize: CGFloat {
+        #if os(macOS)
+        compactLayout ? 11 : 17
+        #else
+        compactLayout ? 14 : 17
+        #endif
+    }
+
+    private var pointSize: CGFloat {
+        #if os(macOS)
+        compactLayout ? 42 : 110
+        #else
+        compactLayout ? 72 : 110
+        #endif
+    }
+
     var body: some View {
         if points.isEmpty {
             VStack(spacing: 8) {
@@ -357,12 +425,12 @@ private struct TimelineChartBody: View {
     private var labelRow: some View {
         HStack(spacing: 0) {
             ForEach(points) { point in
-                VStack(spacing: compactLayout ? 4 : 7) {
+                VStack(spacing: compactLayout ? 2 : 7) {
                     Text(point.label)
-                        .font(compactLayout ? .caption.weight(.medium) : .avenir(.subheadline))
+                        .font(labelFont)
                         .foregroundStyle(AppTheme.shared.colors.primaryText)
                     Image(systemName: point.icon)
-                        .font(.system(size: compactLayout ? 14 : 17))
+                        .font(.system(size: iconSize))
                         .weatherIconStyle(for: point.icon)
                         .compatSymbolReplaceTransition()
                 }
@@ -406,7 +474,7 @@ private struct TimelineChartBody: View {
                     y: .value("Value", point.value)
                 )
                 .foregroundStyle(lineColor)
-                .symbolSize(compactLayout ? 72 : 110)
+                .symbolSize(pointSize)
             }
         }
         .chartXScale(domain: -0.5...(Double(points.count) - 0.5))
@@ -434,7 +502,7 @@ private struct TimelineChartBody: View {
         HStack(spacing: 0) {
             ForEach(points) { point in
                 Text(point.valueText)
-                    .font(compactLayout ? .caption.weight(.semibold) : .avenir(.footnote, weight: .semibold))
+                    .font(valueFont)
                     .foregroundStyle(AppTheme.shared.colors.primaryText)
                     .contentTransition(.numericText())
                     .opacity(point.isPast ? 0.3 : 1.0)
