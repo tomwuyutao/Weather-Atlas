@@ -225,10 +225,13 @@ struct SettingsView: View {
                     Label(localizedString("General", locale: locale), systemImage: "slider.horizontal.3")
                 }
 
-            aboutForm
-                .tabItem {
-                    Label(localizedString("About", locale: locale), systemImage: "info.circle")
-                }
+            NavigationStack {
+                aboutForm
+                    .navigationTitle(localizedString("About", locale: locale))
+            }
+            .tabItem {
+                Label(localizedString("About", locale: locale), systemImage: "info.circle")
+            }
         }
         .frame(width: 560, height: 460)
         .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
@@ -328,8 +331,6 @@ struct SettingsView: View {
             .listRowBackground(settingsRowBackground)
 
             #if os(iOS)
-            attributionSection
-
             Section(localizedString("About", locale: locale)) {
                 settingsInfoRow(
                     localizedString("Version", locale: locale),
@@ -348,6 +349,7 @@ struct SettingsView: View {
                     systemImage: "hand.raised",
                     url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/privacy/")
                 )
+                attributionsNavigationRow
                 sayHelloRow
             }
             .listRowBackground(theme.colors.mapLand)
@@ -365,8 +367,6 @@ struct SettingsView: View {
 
     private var aboutForm: some View {
         Form {
-            attributionSection
-
             Section(localizedString("About", locale: locale)) {
                 settingsInfoRow(
                     localizedString("Version", locale: locale),
@@ -385,6 +385,7 @@ struct SettingsView: View {
                     systemImage: "hand.raised",
                     url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/privacy/")
                 )
+                attributionsNavigationRow
                 sayHelloRow
             }
             .listRowBackground(settingsRowBackground)
@@ -399,12 +400,42 @@ struct SettingsView: View {
         #endif
     }
 
-    private var attributionSection: some View {
-        Section(localizedString("Attribution", locale: locale)) {
-            weatherAttributionRows
-            settingsInfoRow(localizedString("Map Data", locale: locale), value: "© OpenStreetMap contributors", systemImage: "map")
+    private var attributionsNavigationRow: some View {
+        NavigationLink {
+            attributionsForm
+                .navigationTitle(localizedString("Attributions", locale: locale))
+        } label: {
+            settingsLabel(localizedString("Attributions", locale: locale), systemImage: "text.badge.checkmark")
         }
-        .listRowBackground(settingsRowBackground)
+    }
+
+    private var attributionsForm: some View {
+        Form {
+            Section(localizedString("Weather", locale: locale)) {
+                weatherAttributionRows
+            }
+            .listRowBackground(settingsRowBackground)
+
+            Section(localizedString("Maps", locale: locale)) {
+                settingsLinkRow(
+                    localizedString("Apple Maps", locale: locale),
+                    value: localizedString("Legal", locale: locale),
+                    systemImage: "apple.logo",
+                    url: URL(string: "https://www.apple.com/legal/internet-services/maps/legal-en.html")
+                )
+                settingsInfoRow(
+                    localizedString("OpenStreetMap", locale: locale),
+                    value: "© OpenStreetMap contributors",
+                    systemImage: "map"
+                )
+            }
+            .listRowBackground(settingsRowBackground)
+        }
+        .scrollContentBackground(.hidden)
+        .background(settingsFormBackground)
+        #if os(macOS)
+        .formStyle(.grouped)
+        #endif
     }
 
     @ViewBuilder

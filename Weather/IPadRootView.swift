@@ -111,22 +111,34 @@ extension ContentView {
         .onSubmit(of: .search) {
             confirmInlineSearchSelection()
         }
-        .onMoveCommand { direction in
-            guard showingInlineSearch, !inlineSearchText.isEmpty else { return }
-            switch direction {
-            case .up:
-                moveInlineSearchSelection(-1)
-            case .down:
-                moveInlineSearchSelection(1)
-            default:
-                break
-            }
-        }
         .toolbar {
             iPadMapToolbarContent
         }
         .background {
             iPadCommandReceivers
+        }
+        .alert(localizedString("New List", locale: locale), isPresented: $sidebarShowingAddListAlert) {
+            TextField(localizedString("Name", locale: locale), text: $sidebarNewListName)
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {
+                sidebarNewListName = ""
+            }
+            Button(localizedString("Add", locale: locale)) {
+                commitListManagerNewList()
+            }
+        }
+        .confirmationDialog(localizedString("New List", locale: locale), isPresented: $showingAddListTypeMenu) {
+            Button("Add Custom List") {
+                beginCreatingCustomList()
+            }
+            Button("Add Country List") {
+                beginCreatingCountryList()
+            }
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {}
+        }
+        .fullScreenCover(isPresented: $showingCountryListBuilder) {
+            CountryListBuilderView(initialCountry: countryListInitialCountry) { country, cityCount in
+                commitCountryList(country, cityCount: cityCount)
+            }
         }
     }
 
@@ -348,13 +360,14 @@ extension ContentView {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        sidebarShowingAddListAlert = true
+                    Menu {
+                        iOSAddListMenuItems
                     } label: {
                         Image(systemName: "plus")
                             .foregroundStyle(.primary)
                             .foregroundColor(.primary)
                     }
+                    .menuOrder(.fixed)
                     .tint(.primary)
                 }
 
@@ -373,15 +386,6 @@ extension ContentView {
             }
             .toolbarBackground(.automatic, for: .navigationBar)
             .tint(.primary)
-            .alert(localizedString("New List", locale: locale), isPresented: $sidebarShowingAddListAlert) {
-                TextField(localizedString("Name", locale: locale), text: $sidebarNewListName)
-                Button(localizedString("Cancel", locale: locale), role: .cancel) {
-                    sidebarNewListName = ""
-                }
-                Button(localizedString("Add", locale: locale)) {
-                    commitListManagerNewList()
-                }
-            }
     }
 
     var iPadMapContent: some View {
@@ -399,7 +403,7 @@ extension ContentView {
                                 .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                             }
 
-                            if showLegend {
+                            if showLegend && !countryListSearchMode {
                                 MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
                                     withAnimation(.smooth(duration: 0.2)) {
                                         showLegend = false
@@ -423,6 +427,16 @@ extension ContentView {
 
             if !showingInlineSearch {
                 iPadFloatingMapOverlays
+            }
+
+            if countryListSearchMode {
+                GeometryReader { geometry in
+                    countryListPreviewControls()
+                        .frame(width: iPadFloatingCardSize.width)
+                        .position(iPadFloatingCardCenter(in: geometry.size))
+                        .transition(.opacity)
+                        .zIndex(12)
+                }
             }
 
             if !inlineSearchText.isEmpty && !inlineSortedSearchResults.isEmpty {

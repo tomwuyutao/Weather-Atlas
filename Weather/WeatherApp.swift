@@ -183,6 +183,10 @@ struct WeatherApp: App {
                     NotificationCenter.default.post(name: .weatherNewListCommand, object: nil)
                 }
                 .keyboardShortcut("n", modifiers: [.command, .shift])
+
+                Button("Add Country List") {
+                    NotificationCenter.default.post(name: .weatherNewCountryListCommand, object: nil)
+                }
             }
             WeatherMapCommands()
             WeatherOverlayCommands()
@@ -396,6 +400,7 @@ extension Notification.Name {
     static let weatherOverlayCommand = Notification.Name("weatherOverlayCommand")
     static let weatherSwitchListCommand = Notification.Name("weatherSwitchListCommand")
     static let weatherNewListCommand = Notification.Name("weatherNewListCommand")
+    static let weatherNewCountryListCommand = Notification.Name("weatherNewCountryListCommand")
     static let weatherToggleSidebarCommand = Notification.Name("weatherToggleSidebarCommand")
     static let weatherPanCommand = Notification.Name("weatherPanCommand")
     static let weatherKeyboardZoomCommand = Notification.Name("weatherKeyboardZoomCommand")

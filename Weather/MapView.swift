@@ -8,15 +8,21 @@
 import SwiftUI
 import WebKit
 import CoreLocation
+import MapKit
 #if os(iOS)
 import UIKit
 #endif
+
+enum WeatherMapProvider: String {
+    case openStreetMap
+    case appleMaps
+}
 
 extension ContentView {
     @ViewBuilder
     var iOSDateSliderOverlay: some View {
         // Date slider only on map tab — list tab uses the date switcher capsule
-        if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode {
+        if selectedTab == 1, !showingInlineSearch, !isMapSpecialMode, !countryListSearchMode {
             #if os(macOS)
             GeometryReader { geometry in
                 let topClearance: CGFloat = 34
@@ -379,43 +385,73 @@ extension ContentView {
 
     var mapView: some View {
         ZStack {
-            MapLibreWebMapView(
-                cities: mapCities,
-                fitCities: weatherService.cityListCoordinates(),
-                selectedDayOffset: selectedDayOffset,
-                overlayMode: mapOverlayMode,
-                filterSunny: filterSunny,
-                markerReloadID: mapMarkerReloadID,
-                markerSizeScale: mapMarkerSizeScale,
-                showsMarkerHoverLabels: mapShowsMarkerHoverLabels,
-                tappedCity: $tappedCity,
-                recenterOnAllCities: $recenterOnAllCities,
-                recenterUsesListCoordinates: $recenterUsesListCoordinates,
-                centerOnCity: centerOnCityTrigger,
-                leadingFitPadding: macMapLeadingFitPadding,
-                focusSelectedMarker: mapFocusSelectedMarker,
-                allowsMarkerHover: mapAllowsMarkerHover,
-                cameraProfile: mapCameraProfile,
-                onMarkerTap: { city, point in
-                    handleMapMarkerTap(city, anchor: point)
-                },
-                onMapClick: { coordinate, point in
-                    handleMapBackgroundClick(coordinate, anchor: point)
-                },
-                onMarkerCommandHover: { city, point in
-                    #if os(macOS) || os(iOS)
-                    if usesFloatingMapCardLayout {
-                        handleMapMarkerCommandHover(city, anchor: point)
+            if WeatherMapProvider(rawValue: mapProviderRaw) == .appleMaps {
+                AppleWeatherMapView(
+                    cities: mapCities,
+                    fitCities: mapFitCities,
+                    selectedDayOffset: selectedDayOffset,
+                    overlayMode: mapOverlayMode,
+                    filterSunny: filterSunny,
+                    markerReloadID: mapMarkerReloadID,
+                    focusedCountryBoundary: CountryBoundaryCatalog.shared.feature(for: countryListPreviewCountry),
+                    recenterOnAllCities: $recenterOnAllCities,
+                    recenterUsesListCoordinates: $recenterUsesListCoordinates,
+                    centerOnCity: centerOnCityTrigger,
+                    onMarkerTap: { city, point in
+                        guard !countryListSearchMode else { return }
+                        handleMapMarkerTap(city, anchor: point)
+                    },
+                    onMapClick: { coordinate, point in
+                        handleMapBackgroundClick(coordinate, anchor: point)
+                    },
+                    onMapGestureStart: {
+                        if showingMapExpandedCard {
+                            dismissMapExpandedCard()
+                        }
                     }
-                    #endif
-                },
-                onMapGestureStart: {
-                    if showingMapExpandedCard {
-                        dismissMapExpandedCard()
+                )
+                .ignoresSafeArea()
+            } else {
+                MapLibreWebMapView(
+                    cities: mapCities,
+                    fitCities: mapFitCities,
+                    selectedDayOffset: selectedDayOffset,
+                    overlayMode: mapOverlayMode,
+                    filterSunny: filterSunny,
+                    markerReloadID: mapMarkerReloadID,
+                    markerSizeScale: mapMarkerSizeScale,
+                    showsMarkerHoverLabels: mapShowsMarkerHoverLabels,
+                    focusedCountryBoundary: CountryBoundaryCatalog.shared.feature(for: countryListPreviewCountry),
+                    tappedCity: $tappedCity,
+                    recenterOnAllCities: $recenterOnAllCities,
+                    recenterUsesListCoordinates: $recenterUsesListCoordinates,
+                    centerOnCity: centerOnCityTrigger,
+                    leadingFitPadding: macMapLeadingFitPadding,
+                    focusSelectedMarker: mapFocusSelectedMarker,
+                    allowsMarkerHover: mapAllowsMarkerHover,
+                    cameraProfile: mapCameraProfile,
+                    onMarkerTap: { city, point in
+                        guard !countryListSearchMode else { return }
+                        handleMapMarkerTap(city, anchor: point)
+                    },
+                    onMapClick: { coordinate, point in
+                        handleMapBackgroundClick(coordinate, anchor: point)
+                    },
+                    onMarkerCommandHover: { city, point in
+                        #if os(macOS) || os(iOS)
+                        if usesFloatingMapCardLayout {
+                            handleMapMarkerCommandHover(city, anchor: point)
+                        }
+                        #endif
+                    },
+                    onMapGestureStart: {
+                        if showingMapExpandedCard {
+                            dismissMapExpandedCard()
+                        }
                     }
-                }
-            )
-            .ignoresSafeArea()
+                )
+                .ignoresSafeArea()
+            }
 
             if let errorMessage = weatherService.errorMessage {
                 weatherServiceErrorBanner(errorMessage)
@@ -434,6 +470,14 @@ extension ContentView {
             if wasLoading, !isLoading, !mapCities.isEmpty {
                 centerMapOnDots(useListCoordinates: true)
             }
+        }
+        .onChange(of: countryListPreviewCountry?.id) { _, newValue in
+            guard countryListSearchMode, newValue != nil else { return }
+            centerMapOnDots(useListCoordinates: true)
+        }
+        .onChange(of: countryListPreviewCityCount) { _, _ in
+            guard countryListSearchMode, countryListPreviewCountry != nil else { return }
+            centerMapOnDots(useListCoordinates: true)
         }
 
     }
@@ -471,6 +515,93 @@ extension ContentView {
                 .strokeBorder(Color.primary.opacity(0.12), lineWidth: 1)
         }
         .shadow(color: .black.opacity(0.16), radius: 16, y: 8)
+    }
+
+    @ViewBuilder
+    func countryListPreviewControls(showsInlineActions: Bool = true, usesIPhoneCardFrame: Bool = false) -> some View {
+        if countryListSearchMode, let country = countryListPreviewCountry {
+            let cityCountRange = countryListCityCountRange(for: country)
+            VStack(spacing: 12) {
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(country.name)
+                            .font(.headline)
+                            .foregroundStyle(theme.colors.primaryText)
+                            .lineLimit(1)
+                        Text("Country list")
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(theme.colors.secondaryText)
+                    }
+
+                    Spacer(minLength: 12)
+
+                    Text("\(countryListPreviewCityCount)")
+                        .font(.title3.weight(.bold).monospacedDigit())
+                        .foregroundStyle(theme.colors.primaryText)
+                }
+
+                Slider(
+                    value: Binding(
+                        get: { Double(countryListPreviewCityCount) },
+                        set: { newValue in
+                            countryListPreviewCityCount = countryListClampedCityCount(Int(newValue.rounded()), for: country)
+                            forceReloadMapDots()
+                        }
+                    ),
+                    in: cityCountRange,
+                    step: 1
+                )
+                .tint(theme.colors.accent)
+
+                if showsInlineActions {
+                    HStack(spacing: 10) {
+                        Button("Cancel") {
+                            cancelCountryListPreview()
+                        }
+                        .buttonStyle(.borderless)
+
+                        Spacer(minLength: 8)
+
+                        Button("Create") {
+                            commitCountryList(country, cityCount: countryListPreviewCityCount)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(theme.colors.accent)
+                    }
+                }
+            }
+            .padding(.horizontal, usesIPhoneCardFrame ? 22 : 16)
+            .padding(.vertical, usesIPhoneCardFrame ? 16 : 16)
+            .frame(maxWidth: .infinity)
+            .frame(height: usesIPhoneCardFrame ? iOSFloatingMapCardHeight : nil)
+            .themedGlass(in: .rect(cornerRadius: 24))
+            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .gesture(DragGesture(minimumDistance: 0))
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
+    func countryListCityCountRange(for country: CountryCityGroup) -> ClosedRange<Double> {
+        let upper = max(1, min(30, country.cities.count))
+        let lower = min(5, upper)
+        return Double(lower)...Double(upper)
+    }
+
+    func countryListClampedCityCount(_ count: Int, for country: CountryCityGroup) -> Int {
+        let range = countryListCityCountRange(for: country)
+        return max(Int(range.lowerBound), min(Int(range.upperBound), count))
+    }
+
+    func cancelCountryListPreview() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
+            countryListSearchMode = false
+            countryListPreviewCountry = nil
+            countryListInitialCountry = nil
+            showingInlineSearch = false
+            inlineSearchFieldPresented = false
+            inlineSearchText = ""
+        }
+        centerMapOnDots(useListCoordinates: true)
     }
 
     var macMapLeadingFitPadding: Double {
@@ -552,6 +683,234 @@ extension ContentView {
     }
 }
 
+private struct AppleWeatherMapView: View {
+    let cities: [CityWeather]
+    let fitCities: [City]
+    let selectedDayOffset: Int
+    let overlayMode: String
+    let filterSunny: Bool
+    let markerReloadID: Int
+    let focusedCountryBoundary: CountryBoundaryFeature?
+    @Binding var recenterOnAllCities: Bool
+    @Binding var recenterUsesListCoordinates: Bool
+    let centerOnCity: CityWeather?
+    let onMarkerTap: (CityWeather, CGPoint?) -> Void
+    let onMapClick: ((CLLocationCoordinate2D, CGPoint?) -> Void)?
+    let onMapGestureStart: (() -> Void)?
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var cameraPosition: MapCameraPosition = .region(Self.defaultRegion)
+    @State private var lastCenteredCityID: UUID?
+
+    var body: some View {
+        MapReader { proxy in
+            Map(position: $cameraPosition, interactionModes: .all) {
+                if let mask = countryMaskPolygon {
+                    MapPolygon(mask)
+                        .foregroundStyle(Color.black.opacity(colorScheme == .dark ? 0.34 : 0.22))
+                }
+
+                ForEach(visibleCities) { cityWeather in
+                    Annotation(
+                        "",
+                        coordinate: CLLocationCoordinate2D(
+                            latitude: cityWeather.city.latitude,
+                            longitude: cityWeather.city.longitude
+                        ),
+                        anchor: .center
+                    ) {
+                        Button {
+                            onMarkerTap(cityWeather, nil)
+                        } label: {
+                            Circle()
+                                .fill(markerColor(for: cityWeather))
+                                .frame(width: 9, height: 9)
+                                .shadow(color: markerColor(for: cityWeather).opacity(0.65), radius: 7)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+            .safeAreaPadding(.leading, 16)
+            .safeAreaPadding(.bottom, 10)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { _ in onMapGestureStart?() }
+            )
+            .simultaneousGesture(
+                SpatialTapGesture()
+                    .onEnded { value in
+                        guard let coordinate = proxy.convert(value.location, from: .local) else { return }
+                        onMapClick?(coordinate, value.location)
+                    }
+            )
+        }
+        .onAppear {
+            fitVisibleContent()
+        }
+        .onChange(of: markerReloadID) { _, _ in
+            fitVisibleContent()
+        }
+        .onChange(of: focusedCountryBoundary) { _, _ in
+            fitVisibleContent()
+        }
+        .onChange(of: recenterOnAllCities) { _, shouldRecenter in
+            guard shouldRecenter else { return }
+            fitVisibleContent()
+            recenterOnAllCities = false
+            recenterUsesListCoordinates = false
+        }
+        .onChange(of: centerOnCity?.id) { _, _ in
+            guard let centerOnCity, centerOnCity.id != lastCenteredCityID else { return }
+            lastCenteredCityID = centerOnCity.id
+            withAnimation(.smooth(duration: 0.35)) {
+                cameraPosition = .region(Self.region(centeredOn: centerOnCity.city, span: 0.35))
+            }
+        }
+    }
+
+    private var visibleCities: [CityWeather] {
+        cities.filter { cityWeather in
+            guard !filterSunny else {
+                if selectedDayOffset == -1 {
+                    return cityWeather.condition == .clear && !cityWeather.weatherIcon.contains("moon")
+                }
+                let forecast = cityWeather.forecast(for: selectedDayOffset)
+                return forecast.condition == .clear && !forecast.weatherIcon.contains("moon")
+            }
+            return true
+        }
+    }
+
+    private var countryMaskPolygon: MKPolygon? {
+        guard let focusedCountryBoundary else { return nil }
+        let exterior = [
+            CLLocationCoordinate2D(latitude: -85, longitude: -180),
+            CLLocationCoordinate2D(latitude: -85, longitude: 180),
+            CLLocationCoordinate2D(latitude: 85, longitude: 180),
+            CLLocationCoordinate2D(latitude: 85, longitude: -180)
+        ]
+        let holes = Self.outerRings(from: focusedCountryBoundary).compactMap(Self.polygon(from:))
+        return MKPolygon(coordinates: exterior, count: exterior.count, interiorPolygons: holes)
+    }
+
+    private func fitVisibleContent() {
+        let region: MKCoordinateRegion
+        if let focusedCountryBoundary, let boundaryRegion = Self.region(for: focusedCountryBoundary) {
+            region = boundaryRegion
+        } else {
+            let citiesToFit = recenterUsesListCoordinates ? fitCities : visibleCities.map(\.city)
+            region = Self.region(for: citiesToFit)
+        }
+        withAnimation(.smooth(duration: 0.35)) {
+            cameraPosition = .region(region)
+        }
+    }
+
+    private func markerColor(for cityWeather: CityWeather) -> Color {
+        if overlayMode == "temperature" {
+            return .orange
+        }
+        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
+        let isNow = selectedDayOffset == -1
+        let condition = isNow ? cityWeather.condition : forecast.condition
+        let icon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
+        if icon.contains("moon") { return Color(red: 0.64, green: 0.52, blue: 0.72) }
+        switch condition {
+        case .clear: return Color(red: 1.0, green: 0.54, blue: 0.40)
+        case .partlySunny, .partlyCloudy: return Color(red: 0.93, green: 0.70, blue: 0.41)
+        case .rain: return Color(red: 0.30, green: 0.44, blue: 0.83)
+        case .drizzle: return Color(red: 0.40, green: 0.67, blue: 0.89)
+        case .cloudy, .snow, .fog, .wind: return colorScheme == .dark
+            ? Color(red: 0.83, green: 0.89, blue: 0.93)
+            : Color(red: 0.72, green: 0.78, blue: 0.82)
+        }
+    }
+
+    private static let defaultRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 20, longitude: 0),
+        span: MKCoordinateSpan(latitudeDelta: 120, longitudeDelta: 180)
+    )
+
+    private static func region(centeredOn city: City, span: CLLocationDegrees) -> MKCoordinateRegion {
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: city.latitude, longitude: city.longitude),
+            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+        )
+    }
+
+    private static func region(for cities: [City]) -> MKCoordinateRegion {
+        guard !cities.isEmpty else { return defaultRegion }
+        var minLat = cities[0].latitude
+        var maxLat = cities[0].latitude
+        var minLon = cities[0].longitude
+        var maxLon = cities[0].longitude
+        for city in cities.dropFirst() {
+            minLat = min(minLat, city.latitude)
+            maxLat = max(maxLat, city.latitude)
+            minLon = min(minLon, city.longitude)
+            maxLon = max(maxLon, city.longitude)
+        }
+        return paddedRegion(minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon)
+    }
+
+    private static func region(for feature: CountryBoundaryFeature) -> MKCoordinateRegion? {
+        let rings = outerRings(from: feature)
+        let coordinates = rings.flatMap { $0 }
+        guard let first = coordinates.first else { return nil }
+        var minLat = first.latitude
+        var maxLat = first.latitude
+        var minLon = first.longitude
+        var maxLon = first.longitude
+        for coordinate in coordinates.dropFirst() {
+            minLat = min(minLat, coordinate.latitude)
+            maxLat = max(maxLat, coordinate.latitude)
+            minLon = min(minLon, coordinate.longitude)
+            maxLon = max(maxLon, coordinate.longitude)
+        }
+        return paddedRegion(minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon)
+    }
+
+    private static func paddedRegion(
+        minLat: CLLocationDegrees,
+        maxLat: CLLocationDegrees,
+        minLon: CLLocationDegrees,
+        maxLon: CLLocationDegrees
+    ) -> MKCoordinateRegion {
+        let latDelta = max(1.2, (maxLat - minLat) * 1.25)
+        let lonDelta = max(1.2, (maxLon - minLon) * 1.25)
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
+            span: MKCoordinateSpan(latitudeDelta: min(160, latDelta), longitudeDelta: min(340, lonDelta))
+        )
+    }
+
+    private static func outerRings(from feature: CountryBoundaryFeature) -> [[CLLocationCoordinate2D]] {
+        switch feature.geometry.coordinates {
+        case .polygon(let polygon):
+            return polygon.first.map { [coordinates(from: $0)] } ?? []
+        case .multiPolygon(let multiPolygon):
+            return multiPolygon.compactMap { polygon in
+                polygon.first.map(coordinates(from:))
+            }
+        }
+    }
+
+    private static func coordinates(from ring: [[Double]]) -> [CLLocationCoordinate2D] {
+        ring.compactMap { pair in
+            guard pair.count >= 2 else { return nil }
+            return CLLocationCoordinate2D(latitude: pair[1], longitude: pair[0])
+        }
+    }
+
+    private static func polygon(from coordinates: [CLLocationCoordinate2D]) -> MKPolygon? {
+        guard coordinates.count >= 3 else { return nil }
+        return MKPolygon(coordinates: coordinates, count: coordinates.count)
+    }
+}
+
 #if os(iOS)
 import UIKit
 #endif
@@ -571,6 +930,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     var markerReloadID: Int = 0
     var markerSizeScale: Double = 1
     var showsMarkerHoverLabels: Bool = true
+    var focusedCountryBoundary: CountryBoundaryFeature?
     @Binding var tappedCity: CityWeather?
     @Binding var recenterOnAllCities: Bool
     @Binding var recenterUsesListCoordinates: Bool
@@ -799,9 +1159,11 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             guard let data = try? JSONEncoder().encode(features),
                   let json = String(data: data, encoding: .utf8),
                   let fitData = try? JSONEncoder().encode(fitCoordinates),
-                  let fitJSON = String(data: fitData, encoding: .utf8) else { return }
+                  let fitJSON = String(data: fitData, encoding: .utf8),
+                  let boundaryData = try? JSONEncoder().encode(parent.focusedCountryBoundary),
+                  let boundaryJSON = String(data: boundaryData, encoding: .utf8) else { return }
             let selectedID = parent.focusSelectedMarker ? (parent.tappedCity?.id.uuidString ?? "") : ""
-            let payload = "{features:\(json),fitCoordinates:\(fitJSON),selectedID:\(Self.jsString(selectedID)),allowsMarkerHover:\(parent.allowsMarkerHover ? "true" : "false"),showsMarkerHoverLabels:\(parent.showsMarkerHoverLabels ? "true" : "false"),markerSizeScale:\(parent.markerSizeScale)}"
+            let payload = "{features:\(json),fitCoordinates:\(fitJSON),focusedCountryBoundary:\(boundaryJSON),selectedID:\(Self.jsString(selectedID)),allowsMarkerHover:\(parent.allowsMarkerHover ? "true" : "false"),showsMarkerHoverLabels:\(parent.showsMarkerHoverLabels ? "true" : "false"),markerSizeScale:\(parent.markerSizeScale)}"
 
             let shouldReloadMarkers = parent.markerReloadID != lastMarkerReloadID
             if shouldReloadMarkers {
@@ -1279,6 +1641,18 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           if (!map.getSource('weather')) {
             map.addSource('weather', { type: 'geojson', data: emptyCollection() });
           }
+          if (!map.getSource('country-mask')) {
+            map.addSource('country-mask', { type: 'geojson', data: emptyCollection() });
+          }
+          if (!map.getLayer('country-mask-fill')) {
+            map.addLayer({
+              id: 'country-mask-fill', type: 'fill', source: 'country-mask',
+              paint: {
+                'fill-color': currentStyleMode === 'dark' ? '#070612' : '#FFFFFF',
+                'fill-opacity': currentStyleMode === 'dark' ? 0.34 : 0.42
+              }
+            });
+          }
           if (!map.getLayer('weather-hit')) {
             map.addLayer({
               id: 'weather-hit', type: 'circle', source: 'weather',
@@ -1357,6 +1731,46 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
 
         function emptyCollection() {
           return { type: 'FeatureCollection', features: [] };
+        }
+
+        function countryMaskFeature(boundaryFeature) {
+          if (!boundaryFeature?.geometry) return null;
+          const worldRing = [[-180, -90], [180, -90], [180, 90], [-180, 90], [-180, -90]];
+          let holes = [];
+          if (boundaryFeature.geometry.type === 'Polygon') {
+            holes = boundaryFeature.geometry.coordinates.map(ring => ring.slice().reverse());
+          } else if (boundaryFeature.geometry.type === 'MultiPolygon') {
+            holes = boundaryFeature.geometry.coordinates.flatMap(polygon => polygon.map(ring => ring.slice().reverse()));
+          }
+          if (!holes.length) return null;
+          return {
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: [worldRing, ...holes] },
+            properties: {}
+          };
+        }
+
+        function updateCountryMask(boundaryFeature) {
+          const source = map.getSource('country-mask');
+          if (!source) return;
+          const mask = countryMaskFeature(boundaryFeature);
+          source.setData(mask ? { type: 'FeatureCollection', features: [mask] } : emptyCollection());
+        }
+
+        function extendBoundsWithCoordinates(bounds, coordinates) {
+          if (!Array.isArray(coordinates)) return;
+          if (typeof coordinates[0] === 'number' && typeof coordinates[1] === 'number') {
+            bounds.extend(coordinates);
+            return;
+          }
+          coordinates.forEach(item => extendBoundsWithCoordinates(bounds, item));
+        }
+
+        function boundaryBounds(boundaryFeature) {
+          if (!boundaryFeature?.geometry?.coordinates) return null;
+          const bounds = new maplibregl.LngLatBounds();
+          extendBoundsWithCoordinates(bounds, boundaryFeature.geometry.coordinates);
+          return bounds.isEmpty() ? null : bounds;
         }
 
         function collectionFromPayload(payload) {
@@ -1461,6 +1875,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           selectedMarkerID = payload?.selectedID || '';
           document.body.classList.toggle('focus-selected', !!selectedMarkerID);
           ensureLayers();
+          updateCountryMask(payload?.focusedCountryBoundary || null);
           updateMarkerScaleTargets();
           updateSelectedPulse();
           renderWeatherSource();
@@ -1484,11 +1899,14 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           pendingFitRequest = { leadingPadding, useFitCoordinates };
           if (!mapElementHasUsableSize()) return;
           if (!pendingPayload) return;
+          const countryBounds = boundaryBounds(pendingPayload.focusedCountryBoundary);
           const savedListCoordinates = pendingPayload.fitCoordinates || [];
           const fitItems = useFitCoordinates ? savedListCoordinates : (pendingPayload.features?.length ? pendingPayload.features : savedListCoordinates);
-          if (!fitItems.length) return;
-          const bounds = new maplibregl.LngLatBounds();
-          fitItems.forEach(item => bounds.extend([item.longitude, item.latitude]));
+          if (!countryBounds && !fitItems.length) return;
+          const bounds = countryBounds || new maplibregl.LngLatBounds();
+          if (!countryBounds) {
+            fitItems.forEach(item => bounds.extend([item.longitude, item.latitude]));
+          }
           if (!bounds.isEmpty()) {
             const camera = activeCameraProfile();
             const padding = {

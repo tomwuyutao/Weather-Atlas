@@ -146,6 +146,7 @@ extension ContentView {
 
     func beginCreatingListFromSwitcher() {
         sidebarNewListName = ""
+        countryListInitialCountry = nil
         #if os(iOS)
         if shouldUseIPadLayout {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
@@ -164,7 +165,64 @@ extension ContentView {
         #endif
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            sidebarShowingAddListAlert = true
+            showingAddListTypeMenu = true
+        }
+    }
+
+    func beginCreatingCustomList() {
+        sidebarNewListName = ""
+        sidebarShowingAddListAlert = true
+    }
+
+    func beginCreatingCountryList(initialCountry: CountryCityGroup? = nil) {
+        countryListInitialCountry = initialCountry
+        countryListSearchMode = true
+        countryListPreviewCountry = initialCountry
+        if let initialCountry {
+            countryListPreviewCityCount = countryListClampedCityCount(15, for: initialCountry)
+        } else {
+            countryListPreviewCityCount = 15
+        }
+        showingCountryListBuilder = false
+        showingMapSidebar = false
+        showingMapExpandedCard = false
+        showingCityDetail = false
+        tappedCity = nil
+        inlineSearchText = initialCountry?.name ?? ""
+
+        #if os(iOS)
+        pushIPhoneRoute(.map)
+        #endif
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showingInlineSearch = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            inlineSearchFieldPresented = true
+        }
+
+        if initialCountry != nil {
+            centerMapOnDots(useListCoordinates: true)
+        }
+    }
+
+    func commitCountryList(_ country: CountryCityGroup, cityCount: Int) {
+        let cities = Array(country.cities.prefix(cityCount))
+        guard !cities.isEmpty else { return }
+        Task {
+            let newList = await weatherService.createCustomList(name: country.name, cities: cities)
+            await MainActor.run {
+                refreshSidebarListOrder()
+                refreshSidebarCityOrder()
+                sidebarExpandedListIDs.insert(newList.rawValue)
+                countryListSearchMode = false
+                countryListPreviewCountry = nil
+                inlineSearchText = ""
+                showingInlineSearch = false
+                inlineSearchFieldPresented = false
+                recenterOnAllCities = true
+                PlatformFeedback.lightImpact()
+            }
         }
     }
 

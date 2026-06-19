@@ -155,6 +155,34 @@ extension ContentView {
         Divider()
 
         if selectedTab == 1 {
+            Button {
+                mapProviderRaw = WeatherMapProvider.appleMaps.rawValue
+                centerMapOnDots(useListCoordinates: true)
+            } label: {
+                Label {
+                    Text("Switch to Apple Maps")
+                } icon: {
+                    Image(systemName: "map")
+                        .foregroundStyle(.primary)
+                }
+            }
+            .disabled(mapProviderRaw == WeatherMapProvider.appleMaps.rawValue)
+
+            Button {
+                mapProviderRaw = WeatherMapProvider.openStreetMap.rawValue
+                centerMapOnDots(useListCoordinates: true)
+            } label: {
+                Label {
+                    Text("Switch to OpenStreetMap")
+                } icon: {
+                    Image(systemName: "globe")
+                        .foregroundStyle(.primary)
+                }
+            }
+            .disabled(mapProviderRaw == WeatherMapProvider.openStreetMap.rawValue)
+
+            Divider()
+
             Toggle(isOn: Binding(
                 get: { showLegend },
                 set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
@@ -615,6 +643,29 @@ extension ContentView {
                 cityToRenameListID = nil
             }
         }
+        .alert(localizedString("New List", locale: locale), isPresented: $sidebarShowingAddListAlert) {
+            TextField(localizedString("Name", locale: locale), text: $sidebarNewListName)
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {
+                sidebarNewListName = ""
+            }
+            Button(localizedString("Add", locale: locale)) {
+                commitListManagerNewList()
+            }
+        }
+        .confirmationDialog(localizedString("New List", locale: locale), isPresented: $showingAddListTypeMenu) {
+            Button("Add Custom List") {
+                beginCreatingCustomList()
+            }
+            Button("Add Country List") {
+                beginCreatingCountryList()
+            }
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {}
+        }
+        .fullScreenCover(isPresented: $showingCountryListBuilder) {
+            CountryListBuilderView(initialCountry: countryListInitialCountry) { country, cityCount in
+                commitCountryList(country, cityCount: cityCount)
+            }
+        }
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
     }
 
@@ -625,6 +676,17 @@ extension ContentView {
                 guard let rawValue = notification.object as? String else { return }
                 handleOpenListShortcut(rawValue: rawValue)
             }
+    }
+
+    @ViewBuilder
+    var iOSAddListMenuItems: some View {
+        Button("Add Custom List") {
+            beginCreatingCustomList()
+        }
+
+        Button("Add Country List") {
+            beginCreatingCountryList()
+        }
     }
 
     var iPhoneNavigationStack: some View {
@@ -682,9 +744,9 @@ extension ContentView {
             Button {
                 beginCreatingListFromSwitcher()
             } label: {
-                Label {
+                HStack {
                     Text(localizedString("New List", locale: locale))
-                } icon: {
+                    Spacer()
                     Image(systemName: "plus")
                 }
             }
@@ -747,7 +809,7 @@ extension ContentView {
                                     .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                                 }
 
-                                if showLegend {
+                                if showLegend && !countryListSearchMode {
                                     MapFloatingLegend(overlayMode: mapOverlayMode) {
                                         withAnimation(.smooth(duration: 0.2)) {
                                             showLegend = false
@@ -779,24 +841,87 @@ extension ContentView {
             )
             .allowsHitTesting(!showingInlineSearch)
 
-            if !showingInlineSearch {
+            if !showingInlineSearch && !countryListSearchMode {
                 iOSMainOverlays
             }
 
-            if !showingInlineSearch && !showingMapSidebar {
+            if !showingInlineSearch && !showingMapSidebar && !countryListSearchMode {
                 iPhoneFloatingBottomToolbarFallback
                     .padding(.horizontal, 16)
                     .padding(.bottom, -2)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
+            if showingInlineSearch && countryListSearchMode {
+                VStack {
+                    Spacer()
+                    countryListSearchSuggestionPanel
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 92)
+                }
+                .zIndex(35)
+            }
+
+            if countryListSearchMode, countryListPreviewCountry != nil {
+                iPhoneCountryListPreviewOverlay
+            }
+
         }
         .toolbar {
             if #available(iOS 26.0, *), !showingInlineSearch && !showingMapSidebar {
-                iPhoneNativeBottomToolbar
+                if countryListSearchMode, countryListPreviewCountry != nil {
+                    iPhoneCountryListPreviewNativeToolbar
+                } else if !countryListSearchMode {
+                    iPhoneNativeBottomToolbar
+                }
             }
         }
         .tint(.primary)
+    }
+
+    var iPhoneCountryListPreviewOverlay: some View {
+        GeometryReader { geometry in
+            let cardWidth = max(0, geometry.size.width - iOSFloatingMapCardHorizontalPadding * 2)
+            countryListPreviewControls(showsInlineActions: false, usesIPhoneCardFrame: true)
+                .frame(width: cardWidth)
+                .padding(.horizontal, iOSFloatingMapCardHorizontalPadding)
+                .padding(.bottom, iOSFloatingMapCardBottomPadding)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        }
+        .transition(.move(edge: .bottom).combined(with: .opacity))
+    }
+
+    @ToolbarContentBuilder
+    var iPhoneCountryListPreviewNativeToolbar: some ToolbarContent {
+        ToolbarItemGroup(placement: .bottomBar) {
+            Button {
+                cancelCountryListPreview()
+            } label: {
+                Image(systemName: "xmark")
+                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
+                    .frame(width: 44, height: 44)
+            }
+            .tint(.primary)
+            .buttonBorderShape(.circle)
+            .frame(width: 44, height: 44)
+
+            Spacer()
+
+            Button {
+                if let country = countryListPreviewCountry {
+                    commitCountryList(country, cityCount: countryListPreviewCityCount)
+                }
+            } label: {
+                Image(systemName: "checkmark")
+                    .foregroundStyle(.primary)
+                    .foregroundColor(.primary)
+                    .frame(width: 44, height: 44)
+            }
+            .tint(.primary)
+            .buttonBorderShape(.circle)
+            .frame(width: 44, height: 44)
+        }
     }
 
     #if os(iOS)
@@ -832,14 +957,15 @@ extension ContentView {
                         Spacer()
 
                         HStack(spacing: 0) {
-                            Button {
-                                sidebarShowingAddListAlert = true
+                            Menu {
+                                iOSAddListMenuItems
                             } label: {
                                 Image(systemName: "plus")
                                     .foregroundStyle(.primary)
                                     .foregroundColor(.primary)
                                     .frame(width: 44, height: 44)
                             }
+                            .menuOrder(.fixed)
                             .tint(.primary)
 
                             Button {
@@ -858,15 +984,6 @@ extension ContentView {
                 }
             }
             .iPhoneNativeBottomToolbarBackground()
-            .alert(localizedString("New List", locale: locale), isPresented: $sidebarShowingAddListAlert) {
-                TextField(localizedString("Name", locale: locale), text: $sidebarNewListName)
-                Button(localizedString("Cancel", locale: locale), role: .cancel) {
-                    sidebarNewListName = ""
-                }
-                Button(localizedString("Add", locale: locale)) {
-                    commitListManagerNewList()
-                }
-            }
     }
     @ViewBuilder
     var iPhoneListManagerFloatingToolbarFallback: some View {
@@ -891,14 +1008,15 @@ extension ContentView {
                 Spacer(minLength: 12)
 
                 HStack(spacing: 0) {
-                    Button {
-                        sidebarShowingAddListAlert = true
+                    Menu {
+                        iOSAddListMenuItems
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 21, weight: .regular))
                             .foregroundStyle(.primary)
                             .frame(width: 46, height: 46)
                     }
+                    .menuOrder(.fixed)
                     .buttonStyle(.plain)
                     .tint(.primary)
 

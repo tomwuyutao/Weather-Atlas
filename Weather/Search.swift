@@ -12,10 +12,27 @@ import MapKit
 // MARK: - Search Result
 
 struct CitySearchResult: Identifiable {
-    let id = UUID()
+    let id: String
     let title: String
     let subtitle: String
-    fileprivate let completion: MKLocalSearchCompletion
+    fileprivate let completion: MKLocalSearchCompletion?
+    let countryList: CountryCityGroup?
+
+    init(title: String, subtitle: String, completion: MKLocalSearchCompletion) {
+        self.id = "city-\(completion.title)-\(completion.subtitle)"
+        self.title = title
+        self.subtitle = subtitle
+        self.completion = completion
+        self.countryList = nil
+    }
+
+    init(countryList: CountryCityGroup) {
+        self.id = "country-\(countryList.id)"
+        self.title = countryList.name
+        self.subtitle = countryList.cities.isEmpty ? "Country list" : "\(countryList.cities.count) cities available"
+        self.completion = nil
+        self.countryList = countryList
+    }
 }
 
 // MARK: - City Search Manager
@@ -45,7 +62,8 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     }
 
     func resolveCoordinate(for result: CitySearchResult) async -> CLLocationCoordinate2D? {
-        let request = MKLocalSearch.Request(completion: result.completion)
+        guard let completion = result.completion else { return nil }
+        let request = MKLocalSearch.Request(completion: completion)
         let search = MKLocalSearch(request: request)
         do {
             let response = try await search.start()
@@ -102,31 +120,39 @@ extension ContentView {
         _ content: Content,
         placement: SearchFieldPlacement = .automatic
     ) -> some View {
-        content
-            .searchable(
-                text: $inlineSearchText,
-                isPresented: $inlineSearchFieldPresented,
-                placement: placement,
-                prompt: Text(localizedString("Search for a city", locale: locale))
-            )
-            .searchSuggestions {
-                if showingInlineSearch || inlineSearchFieldPresented {
-                    nativeCitySearchSuggestions
+        if countryListSearchMode, countryListPreviewCountry != nil {
+            content
+        } else {
+            content
+                .searchable(
+                    text: $inlineSearchText,
+                    isPresented: $inlineSearchFieldPresented,
+                    placement: placement,
+                    prompt: Text(localizedString("Search for a city", locale: locale))
+                )
+                .searchSuggestions {
+                    if showingInlineSearch || inlineSearchFieldPresented {
+                        nativeCitySearchSuggestions
+                    }
                 }
-            }
-            .onChange(of: inlineSearchText) { _, newValue in
-                inlineSearchManager.search(query: newValue)
-                inlineSearchSelectionIndex = 0
-            }
-            .onChange(of: inlineSearchFieldPresented) { _, isPresented in
-                if !isPresented {
-                    showingInlineSearch = false
-                    resetNativeCitySearch()
+                .onChange(of: inlineSearchText) { _, newValue in
+                    inlineSearchManager.search(query: newValue)
+                    inlineSearchSelectionIndex = 0
                 }
-            }
-            .onSubmit(of: .search) {
-                confirmInlineSearchSelection()
-            }
+                .onChange(of: inlineSearchFieldPresented) { _, isPresented in
+                    if !isPresented {
+                        if countryListSearchMode, countryListPreviewCountry == nil {
+                            cancelCountryListPreview()
+                            return
+                        }
+                        showingInlineSearch = false
+                        resetNativeCitySearch()
+                    }
+                }
+                .onSubmit(of: .search) {
+                    confirmInlineSearchSelection()
+                }
+        }
     }
 
     @ViewBuilder
@@ -144,10 +170,42 @@ extension ContentView {
         }
     }
 
+    @ViewBuilder
+    var countryListSearchSuggestionPanel: some View {
+        if countryListSearchMode,
+           countryListPreviewCountry == nil,
+           !inlineSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !inlineSortedSearchResults.isEmpty {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(inlineSortedSearchResults.prefix(inlineSearchResultLimit).enumerated()), id: \.element.id) { index, result in
+                    Button {
+                        Task {
+                            await inlineSelectSearchResult(result)
+                        }
+                    } label: {
+                        nativeCitySearchSuggestionRow(for: result, isSelected: index == inlineSearchSelectionIndex)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: 430)
+            .background(theme.colors.glassFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.38), lineWidth: 0.8)
+            }
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.14), radius: 20, y: 8)
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+        }
+    }
+
     private var inlineSearchResultLimit: Int { 8 }
 
     private func nativeCitySearchSuggestionRow(for result: CitySearchResult, isSelected: Bool) -> some View {
         let existingListName = inlineExistingCityListName(for: result)
+        let isCountryList = result.countryList != nil
         #if os(macOS)
         let rowSpacing: CGFloat = 8
         let titleFont: Font = .system(size: 13, weight: .medium)
@@ -183,7 +241,14 @@ extension ContentView {
 
             Spacer(minLength: 8)
 
-            if let existingListName {
+            if isCountryList {
+                Text("Country list")
+                    .font(statusBoldFont)
+                    .foregroundStyle(theme.colors.accent)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(theme.colors.accent.opacity(colorScheme == .dark ? 0.16 : 0.10), in: Capsule())
+            } else if let existingListName {
                 HStack(spacing: 6) {
                     (Text(localizedString("In list", locale: locale) + " ")
                         .font(statusFont)
@@ -211,12 +276,16 @@ extension ContentView {
     }
 
     private func inlineCityIdentity(for result: CitySearchResult) -> (name: String, country: String) {
+        if let countryList = result.countryList {
+            return (countryList.name, countryList.name)
+        }
         let name = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
         let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
         return (name, country)
     }
 
     func inlineExistingCityListName(for result: CitySearchResult) -> String? {
+        guard result.countryList == nil else { return nil }
         let identity = inlineCityIdentity(for: result)
         if let targetListID = inlineAddTargetListID {
             let cities = weatherService.cityListCoordinates(for: targetListID)
@@ -233,13 +302,34 @@ extension ContentView {
         inlineExistingCityListName(for: result) != nil
     }
 
+    private func inlineCountryMatch(for result: CitySearchResult) -> CountryCityGroup? {
+        if let countryList = result.countryList {
+            return countryList
+        }
+
+        let titleName = result.title
+            .components(separatedBy: ",")
+            .first?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? result.title
+        return CountryCityCatalog.shared.country(matching: titleName)
+    }
+
     var inlineSortedSearchResults: [CitySearchResult] {
-        inlineSearchManager.searchResults.sorted { a, b in
+        let countryResults = CountryCityCatalog.shared.searchCountries(matching: inlineSearchText).map {
+            CitySearchResult(countryList: $0)
+        }
+        if countryListSearchMode {
+            return countryResults
+        }
+        let cityResults = inlineSearchManager.searchResults
+            .filter { inlineCountryMatch(for: $0) == nil }
+            .sorted { a, b in
             let aExists = inlineIsExistingCity(a)
             let bExists = inlineIsExistingCity(b)
             if aExists != bExists { return aExists }
             return false
         }
+        return countryResults + cityResults
     }
 
     func activateInlineSearch() {
@@ -284,6 +374,22 @@ extension ContentView {
     }
 
     func inlineSelectSearchResult(_ result: CitySearchResult) async {
+        if let countryList = inlineCountryMatch(for: result) {
+            let selectedCountry = CountryCityCatalog.shared.countryWithCities(for: countryList) ?? countryList
+            await MainActor.run {
+                countryListSearchMode = true
+                countryListPreviewCountry = selectedCountry
+                countryListPreviewCityCount = countryListClampedCityCount(countryListPreviewCityCount, for: selectedCountry)
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                    showingInlineSearch = false
+                    inlineSearchFieldPresented = false
+                    inlineSearchText = ""
+                }
+                centerMapOnDots(useListCoordinates: true)
+            }
+            return
+        }
+
         inlineIsLoadingCity = true
         defer { inlineIsLoadingCity = false }
 

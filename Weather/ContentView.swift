@@ -33,9 +33,13 @@ struct ContentView: View {
     var previewLoading: Bool = false
     var previewSkipsInitialWeatherFetch: Bool = false
 
-    init(previewLoading: Bool = false, previewSearchResultCity: CityWeather? = nil) {
+    init(
+        previewLoading: Bool = false,
+        previewSearchResultCity: CityWeather? = nil,
+        previewCountryListCountryName: String? = nil
+    ) {
         self.previewLoading = previewLoading
-        self.previewSkipsInitialWeatherFetch = previewSearchResultCity != nil
+        self.previewSkipsInitialWeatherFetch = previewSearchResultCity != nil || previewCountryListCountryName != nil
 
         if let previewSearchResultCity {
             _selectedTab = State(initialValue: 1)
@@ -43,6 +47,21 @@ struct ContentView: View {
             _previewSearchText = State(initialValue: previewSearchResultCity.city.name)
             _tappedCity = State(initialValue: previewSearchResultCity)
             _showingMapExpandedCard = State(initialValue: true)
+        }
+
+        if let previewCountryListCountryName,
+           let countryIndex = CountryCityCatalog.shared.country(matching: previewCountryListCountryName),
+           let country = CountryCityCatalog.shared.countryWithCities(for: countryIndex) {
+            _selectedTab = State(initialValue: 1)
+            _countryListSearchMode = State(initialValue: true)
+            _countryListPreviewCountry = State(initialValue: country)
+            _countryListInitialCountry = State(initialValue: country)
+            _countryListPreviewCityCount = State(initialValue: 15)
+            _showingInlineSearch = State(initialValue: false)
+            _inlineSearchFieldPresented = State(initialValue: false)
+            _showingMapExpandedCard = State(initialValue: false)
+            _recenterOnAllCities = State(initialValue: true)
+            _recenterUsesListCoordinates = State(initialValue: true)
         }
     }
 
@@ -100,6 +119,7 @@ struct ContentView: View {
     #endif
     @AppStorage("showLegend") var showLegend: Bool = true
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
+    @AppStorage("mapProvider") var mapProviderRaw: String = WeatherMapProvider.openStreetMap.rawValue
     @AppStorage("showDateSlider") var showDateSlider: Bool = true
     @State var visibleListIDs: Set<String> = []
     @Environment(\.locale) var locale
@@ -114,12 +134,42 @@ struct ContentView: View {
     
     /// Cities to display on the map — from the active list + preview city
     var mapCities: [CityWeather] {
+        if countryListSearchMode {
+            guard let countryListPreviewCountry else { return [] }
+            return countryListPreviewWeatherCities(for: countryListPreviewCountry)
+        }
+
         var result = weatherService.cityWeatherData
         // Include temporary preview city from search
         if let preview = previewCity, !result.contains(where: { $0.city.name == preview.city.name }) {
             result.append(preview)
         }
         return result
+    }
+
+    var mapFitCities: [City] {
+        if countryListSearchMode, let countryListPreviewCountry {
+            return countryListPreviewCities(for: countryListPreviewCountry)
+        }
+        return weatherService.cityListCoordinates()
+    }
+
+    func countryListPreviewCities(for country: CountryCityGroup) -> [City] {
+        Array(country.cities.prefix(countryListPreviewCityCount))
+    }
+
+    func countryListPreviewWeatherCities(for country: CountryCityGroup) -> [CityWeather] {
+        countryListPreviewCities(for: country).map { city in
+            CityWeather(
+                id: city.id,
+                city: city,
+                condition: .clear,
+                temperature: 24,
+                symbolName: "sun.max.fill",
+                dailyForecasts: [.previewSunny(dayOffset: 0)],
+                timeZone: .current
+            )
+        }
     }
     
     /// Cities to display in the list view — from the active list
@@ -208,6 +258,12 @@ struct ContentView: View {
     @State var cityOrderRevision: Int = 0
     @State var sidebarNewListName: String = ""
     @State var sidebarShowingAddListAlert: Bool = false
+    @State var showingAddListTypeMenu: Bool = false
+    @State var showingCountryListBuilder: Bool = false
+    @State var countryListInitialCountry: CountryCityGroup?
+    @State var countryListSearchMode: Bool = false
+    @State var countryListPreviewCountry: CountryCityGroup?
+    @State var countryListPreviewCityCount: Int = 15
     @State var inlineAddTargetListID: CityListID?
     #if os(iOS)
     @State var sidebarEditMode: EditMode = .inactive
@@ -483,4 +539,11 @@ struct ContentView: View {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
     let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
     ContentView(previewLoading: true)
+}
+
+#Preview("Country List Map") {
+    let _ = UserDefaults.standard.set(false, forKey: "isGridView")
+    let _ = UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+    let _ = UserDefaults.standard.set(WeatherMapProvider.openStreetMap.rawValue, forKey: "mapProvider")
+    ContentView(previewCountryListCountryName: "Switzerland")
 }

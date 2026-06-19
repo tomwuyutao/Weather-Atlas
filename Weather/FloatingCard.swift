@@ -196,7 +196,7 @@ extension ContentView {
         })
     }
 
-    private var iOSFloatingMapCardHeight: CGFloat {
+    var iOSFloatingMapCardHeight: CGFloat {
         #if os(iOS)
         if dynamicTypeSize.isAccessibilitySize {
             return 178
@@ -977,7 +977,7 @@ extension ContentView {
         AnyView(iOSFloatingMapCardOverlay)
     }
 
-    private var iOSFloatingMapCardHorizontalPadding: CGFloat {
+    var iOSFloatingMapCardHorizontalPadding: CGFloat {
         if #available(iOS 26.0, *) {
             return 26
         } else {
@@ -985,7 +985,7 @@ extension ContentView {
         }
     }
 
-    private var iOSFloatingMapCardBottomPadding: CGFloat {
+    var iOSFloatingMapCardBottomPadding: CGFloat {
         if #available(iOS 26.0, *) {
             return 14
         } else {

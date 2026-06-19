@@ -137,6 +137,15 @@ extension ContentView {
                 commitListManagerNewList()
             }
         }
+        .confirmationDialog(localizedString("New List", locale: locale), isPresented: $showingAddListTypeMenu) {
+            Button("Add Custom List") {
+                beginCreatingCustomList()
+            }
+            Button("Add Country List") {
+                beginCreatingCountryList()
+            }
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {}
+        }
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
     }
 
@@ -169,6 +178,9 @@ extension ContentView {
             .onReceive(NotificationCenter.default.publisher(for: .weatherRefreshCommand), perform: handleWeatherRefreshCommand)
             .onReceive(NotificationCenter.default.publisher(for: .weatherSearchCommand)) { _ in
                 activateInlineSearch()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .weatherNewCountryListCommand)) { _ in
+                beginCreatingCountryList()
             }
             .onReceive(NotificationCenter.default.publisher(for: .weatherToggleSunnyFilterCommand), perform: handleWeatherToggleSunnyFilterCommand)
             .onReceive(NotificationCenter.default.publisher(for: .weatherToggleLegendCommand), perform: handleWeatherToggleLegendCommand)
@@ -248,7 +260,7 @@ extension ContentView {
                                 .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                             }
 
-                            if showLegend {
+                            if showLegend && !countryListSearchMode {
                                 MapFloatingLegend(overlayMode: mapOverlayMode, compact: true) {
                                     withAnimation(.smooth(duration: 0.2)) {
                                         showLegend = false
@@ -272,6 +284,16 @@ extension ContentView {
 
             if !showingInlineSearch {
                 macIPadStyleFloatingMapOverlays
+            }
+
+            if countryListSearchMode {
+                GeometryReader { geometry in
+                    countryListPreviewControls()
+                        .frame(width: macIPadFloatingCardSize.width)
+                        .position(macIPadFloatingCardCenter(in: geometry.size))
+                        .transition(.opacity)
+                        .zIndex(12)
+                }
             }
 
             if !inlineSearchText.isEmpty && !inlineSortedSearchResults.isEmpty {
@@ -533,9 +555,9 @@ extension ContentView {
             Button {
                 beginCreatingListFromSwitcher()
             } label: {
-                Label {
+                HStack {
                     Text(localizedString("New List", locale: locale))
-                } icon: {
+                    Spacer()
                     Image(systemName: "plus")
                 }
             }

@@ -1365,6 +1365,14 @@ class WeatherService {
             report(error)
         }
     }
+
+    func createCustomList(name: String, cities: [City]) async -> CityListID {
+        let listID = CityListID.createList(name: name)
+        saveCities(cities, for: listID)
+        otherListData[listID.rawValue] = []
+        await switchList(to: listID)
+        return listID
+    }
     
     func fetchWeatherForCity(_ city: City) async -> CityWeather? {
         do {
@@ -1788,6 +1796,31 @@ struct DailyForecast: Identifiable {
         case "visibility":    return maxVisibility != nil
         default:              return true
         }
+    }
+}
+
+extension DailyForecast {
+    static func previewSunny(dayOffset: Int) -> DailyForecast {
+        DailyForecast(
+            dayOffset: dayOffset,
+            dailyLow: 18,
+            dailyHigh: 24,
+            symbolName: "sun.max.fill",
+            condition: .clear,
+            hourlyForecasts: [],
+            cloudCover: nil,
+            precipitationChance: nil,
+            visibility: nil,
+            feelsLikeLow: nil,
+            feelsLikeHigh: nil,
+            humidity: nil,
+            windSpeed: nil,
+            uvIndex: nil,
+            maxHumidity: nil,
+            maxVisibility: nil,
+            sunrise: nil,
+            sunset: nil
+        )
     }
 }
 
