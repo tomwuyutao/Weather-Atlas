@@ -613,7 +613,7 @@ extension ContentView {
 
     var macMapLeadingFitPadding: Double {
         #if os(macOS)
-        0
+        macSidebarVisibility == .detailOnly ? 0 : Double(macMeasuredSidebarWidth)
         #elseif os(iOS)
         shouldUseIPadLayout && iPadSidebarVisibility != .detailOnly ? 280 : 0
         #else
@@ -1089,7 +1089,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
                 guard let self else { return }
                 let styleKey = self.parent.colorScheme == .dark ? "dark" : "bright"
                 self.evaluate("window.weatherMapReloadBaseMapAfterActivation?.(\(Self.jsString(styleKey)));")
-                self.pushStateIfReady()
+                self.pushStateIfReady(force: true)
             })
             #endif
         }
@@ -1381,7 +1381,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           top: 0;
           left: 0;
           right: 0;
-          height: 54px;
+          height: 42px;
           z-index: 4;
           pointer-events: none;
           background: rgba(237, 231, 222, 0.10);

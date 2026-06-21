@@ -511,6 +511,11 @@ extension ContentView {
                     centerMapOnDots()
                 }
             }
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active, selectedTab == 1 else { return }
+                forceReloadMapDots()
+                centerMapOnDots(useListCoordinates: true)
+            }
     }
 
     private var iOSViewStateObservers: some View {
@@ -747,7 +752,7 @@ extension ContentView {
             }
             .padding(.horizontal, 24)
             .padding(.vertical, 4)
-            .frame(minWidth: 88)
+            .frame(minWidth: 112)
             .fixedSize(horizontal: true, vertical: false)
             .contentShape(Rectangle())
             #else

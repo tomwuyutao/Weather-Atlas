@@ -125,6 +125,7 @@ struct ContentView: View {
     @Environment(\.locale) var locale
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
+    @Environment(\.scenePhase) var scenePhase
     #if os(iOS)
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
     #endif
@@ -270,6 +271,7 @@ struct ContentView: View {
     #endif
     #if os(macOS) || os(iOS)
     @State var macSidebarVisibility: NavigationSplitViewVisibility = .all
+    @State var macMeasuredSidebarWidth: CGFloat = 0
     @State var macMapExpandedCardAnchor: CGPoint?
     @State var macMapExpandedCardBaseOffset: CGSize = .zero
     @GestureState var macMapExpandedCardGestureOffset: CGSize = .zero

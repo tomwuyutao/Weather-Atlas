@@ -30,6 +30,11 @@ extension ContentView {
                 sidebarExpandedListIDs = Set(sidebarLists.map(\.rawValue))
             }
         }
+        .onChange(of: iPadSidebarVisibility) { _, _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+                centerMapOnDots(useListCoordinates: true)
+            }
+        }
     }
 
     @ViewBuilder
@@ -68,6 +73,11 @@ extension ContentView {
             selectedTab = 1
             if sidebarExpandedListIDs.isEmpty {
                 sidebarExpandedListIDs = Set(sidebarLists.map(\.rawValue))
+            }
+        }
+        .onChange(of: iPadSidebarVisibility) { _, _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+                centerMapOnDots(useListCoordinates: true)
             }
         }
     }
@@ -210,6 +220,9 @@ extension ContentView {
                 guard shouldUseIPadLayout else { return }
                 withAnimation(.easeInOut(duration: 0.2)) {
                     iPadSidebarVisibility = iPadSidebarVisibility == .all ? .detailOnly : .all
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.24) {
+                    centerMapOnDots(useListCoordinates: true)
                 }
             }
     }
@@ -447,15 +460,6 @@ extension ContentView {
     var iPadFloatingMapOverlays: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
-                if showingMapExpandedCard {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            dismissMapExpandedCard()
-                        }
-                        .zIndex(10)
-                }
-
                 if showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city, forceIPhoneStyle: true)
                         .frame(width: iPadFloatingCardSize.width, height: iPadFloatingCardSize.height)

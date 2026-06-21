@@ -95,6 +95,11 @@ extension ContentView {
         .onChange(of: theme.style) { _, _ in
             centerMapOnDots()
         }
+        .onChange(of: macSidebarVisibility) { _, _ in
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.28) {
+                centerMapOnVisibleCities()
+            }
+        }
         .onChange(of: selectedDayOffset) { oldValue, _ in
             iOSPreviousDayOffset = oldValue
         }
@@ -208,6 +213,18 @@ extension ContentView {
             macListManagerSidebar
         }
         .frame(minWidth: 180, idealWidth: 220, maxWidth: 300)
+        .navigationSplitViewColumnWidth(min: 180, ideal: 220, max: 300)
+        .background {
+            GeometryReader { proxy in
+                Color.clear
+                    .onAppear {
+                        macMeasuredSidebarWidth = proxy.size.width
+                    }
+                    .onChange(of: proxy.size.width) { _, width in
+                        macMeasuredSidebarWidth = width
+                    }
+            }
+        }
         .overlay(alignment: .top) {
             VStack(spacing: 0) {
                 Color.clear
@@ -258,8 +275,8 @@ extension ContentView {
                                 .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                             }
                         }
-                        .padding(.leading, 18)
-                        .padding(.top, 92)
+                        .padding(.leading, 10)
+                        .padding(.top, 72)
                     }
                 }
                 .animation(.smooth(duration: 0.22), value: showLegend)
@@ -332,7 +349,7 @@ extension ContentView {
             macTabSwitcherKeyMonitor
         }
         .toolbar {
-            ToolbarItem(placement: .navigation) {
+            ToolbarItem {
                 macToolbarListTitle
             }
 
@@ -367,7 +384,7 @@ extension ContentView {
     var macWindowDragTopArea: some View {
         VStack(spacing: 0) {
             Color.clear
-                .frame(height: 54)
+                .frame(height: 42)
                 .contentShape(Rectangle())
 
             Spacer(minLength: 0)
@@ -528,23 +545,23 @@ extension ContentView {
                 }
             }
         } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 11, weight: .semibold))
-                    .symbolRenderingMode(.monochrome)
-
+            HStack(spacing: 6) {
                 Text(toolbarTitle)
                     .font(.headline)
                     .lineLimit(1)
+
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .symbolRenderingMode(.monochrome)
             }
             .foregroundStyle(.primary)
-            .padding(.horizontal, 6)
-            .frame(height: 34)
+            .padding(.horizontal, 10)
+            .frame(minWidth: 164, maxWidth: 300, minHeight: 28)
             .contentShape(Rectangle())
         }
         .menuIndicator(.hidden)
         .menuOrder(.fixed)
-        .buttonStyle(.plain)
+        .controlSize(.small)
         .tint(.primary)
         .help(localizedString("Switch List", locale: locale))
     }
@@ -589,15 +606,6 @@ extension ContentView {
     var macIPadStyleFloatingMapOverlays: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
-                if showingMapExpandedCard {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            dismissMapExpandedCard()
-                        }
-                        .zIndex(10)
-                }
-
                 if showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city, forceIPhoneStyle: true)
                         .frame(width: macIPadFloatingCardSize.width, height: macIPadFloatingCardSize.height)
@@ -609,7 +617,7 @@ extension ContentView {
 
                 if showingCityDetail, let city = tappedCity {
                     let panelWidth = macIPadInspectorWidth
-                    let panelHeight = min(max(440, geometry.size.height - 104), max(380, geometry.size.height - 84))
+                    let panelHeight = min(max(440, geometry.size.height - 74), max(380, geometry.size.height - 54))
 
                     macIPadFloatingDetailWindow(for: city)
                         .frame(width: panelWidth, height: panelHeight)
@@ -733,7 +741,7 @@ extension ContentView {
     var macIPadInspectorWidth: CGFloat { 340 }
     var macIPadFloatingCardTrailingGap: CGFloat { 24 }
     var macIPadFloatingCardBottomGap: CGFloat { 28 }
-    var macIPadInspectorBottomGap: CGFloat { 34 }
+    var macIPadInspectorBottomGap: CGFloat { 8 }
 
     var macIPadFloatingCardSize: CGSize {
         CGSize(width: 286, height: 118)
@@ -870,6 +878,7 @@ extension ContentView {
 
     func centerMapOnVisibleCities() {
         recenterOnAllCities = false
+        recenterUsesListCoordinates = true
         DispatchQueue.main.async {
             recenterOnAllCities = true
         }
@@ -1061,6 +1070,9 @@ extension ContentView {
     func handleWeatherToggleSidebarCommand(_ notification: Notification) {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             macSidebarVisibility = macSidebarVisibility == .detailOnly ? .all : .detailOnly
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+            centerMapOnVisibleCities()
         }
     }
 

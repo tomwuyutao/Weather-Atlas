@@ -80,25 +80,6 @@ extension ContentView {
     @ViewBuilder
     func listActions(for listID: CityListID) -> some View {
         Button {
-            Task {
-                await switchToList(listID)
-                #if os(iOS)
-                pushIPhoneRoute(.map)
-                #else
-                showingMapSidebar = false
-                #endif
-            }
-        } label: {
-            Label {
-                Text(localizedString("Reveal on Map", locale: locale))
-            } icon: {
-                Image(systemName: "map")
-                    .foregroundStyle(.primary)
-            }
-        }
-        .tint(.primary)
-
-        Button {
             beginRenamingList(listID)
         } label: {
             Label {
@@ -138,18 +119,6 @@ extension ContentView {
 
     @ViewBuilder
     func cityActions(for city: CityWeather, in listID: CityListID) -> some View {
-        Button {
-            revealCityOnMap(city, in: listID)
-        } label: {
-            Label {
-                Text(localizedString("Reveal on Map", locale: locale))
-            } icon: {
-                Image(systemName: "map")
-                    .foregroundStyle(.primary)
-            }
-        }
-        .tint(.primary)
-
         Button {
             beginRenamingCity(city, in: listID)
         } label: {

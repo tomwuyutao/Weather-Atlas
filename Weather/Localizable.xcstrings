@@ -6015,6 +6015,9 @@
         }
       }
     },
+    "Enter Full Screen" : {
+
+    },
     "Entire Day" : {
       "localizations" : {
         "de" : {
@@ -14100,6 +14103,7 @@
       }
     },
     "Reveal on Map" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

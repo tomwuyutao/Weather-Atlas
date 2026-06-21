@@ -27,7 +27,27 @@ struct MapFloatingLegend: View {
     }
 
     private var legendWidth: CGFloat {
-        overlayMode == "weather" ? (compact ? 198 : 194) : (compact ? 132 : 126)
+        #if os(macOS)
+        overlayMode == "weather" ? (compact ? 170 : 174) : (compact ? 112 : 116)
+        #else
+        overlayMode == "weather" ? (compact ? 188 : 186) : (compact ? 124 : 120)
+        #endif
+    }
+
+    private var legendLabelFont: Font {
+        #if os(macOS)
+        compact ? .system(size: 10, weight: .medium) : .avenir(.caption, weight: .medium)
+        #else
+        .avenir(.caption, weight: .medium)
+        #endif
+    }
+
+    private var legendValueFont: Font {
+        #if os(macOS)
+        compact ? .system(size: 10, weight: .medium) : .avenir(.caption2, weight: .medium)
+        #else
+        .avenir(.caption2, weight: .medium)
+        #endif
     }
 
     private var weatherLegendItems: [(title: String, color: Color)] {
@@ -90,7 +110,7 @@ struct MapFloatingLegend: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
                     Text(label)
-                        .font(.avenir(.caption2, weight: .medium))
+                        .font(legendValueFont)
                         .foregroundStyle(.secondary)
                     if index < labels.count - 1 {
                         Spacer(minLength: 0)
@@ -235,7 +255,7 @@ struct MapFloatingLegend: View {
                 .padding(.top, isWrappedCondition ? (compact ? 4 : 5) : 0)
 
             Text(title)
-                .font(.avenir(.caption, weight: .medium))
+                .font(legendLabelFont)
                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
 

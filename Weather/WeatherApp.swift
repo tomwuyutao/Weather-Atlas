@@ -6,6 +6,9 @@
 //
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 enum AppLanguageDefaults {
     static let storageKey = "appLanguage"
@@ -353,6 +356,15 @@ private struct WeatherListCommands: Commands {
 private struct WeatherNavigateCommands: Commands {
     var body: some Commands {
         CommandMenu("Navigate") {
+            #if os(macOS)
+            Button("Enter Full Screen") {
+                NSApp.keyWindow?.toggleFullScreen(nil)
+            }
+            .keyboardShortcut("f", modifiers: [.command, .option])
+
+            Divider()
+            #endif
+
             Button("Center on Map") {
                 NotificationCenter.default.post(name: .weatherCenterMapCommand, object: nil)
             }

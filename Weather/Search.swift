@@ -167,6 +167,7 @@ extension ContentView {
                 nativeCitySearchSuggestionRow(for: result, isSelected: index == inlineSearchSelectionIndex)
             }
             .disabled(inlineIsLoadingCity)
+            .listRowBackground(searchSuggestionBackground)
         }
     }
 
@@ -191,7 +192,7 @@ extension ContentView {
             .padding(.vertical, 12)
             .padding(.horizontal, 12)
             .frame(maxWidth: 430)
-            .background(theme.colors.glassFill, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .background(searchSuggestionBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 22, style: .continuous)
                     .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.38), lineWidth: 0.8)
@@ -203,21 +204,19 @@ extension ContentView {
 
     private var inlineSearchResultLimit: Int { 8 }
 
+    private var searchSuggestionBackground: Color {
+        Color(hex: 0x262052)
+    }
+
     private func nativeCitySearchSuggestionRow(for result: CitySearchResult, isSelected: Bool) -> some View {
         let existingListName = inlineExistingCityListName(for: result)
         let isCountryList = result.countryList != nil
-        let rowFill = colorScheme == .dark
-            ? theme.colors.mapLand.opacity(isSelected ? 0.70 : 0.26)
-            : theme.colors.mapLand.opacity(isSelected ? 0.78 : 0.34)
-        let titleColor = colorScheme == .dark
-            ? theme.colors.primaryText.opacity(0.92)
-            : Color.primary.opacity(0.86)
-        let subtitleColor = colorScheme == .dark
-            ? theme.colors.secondaryText.opacity(0.82)
-            : Color.secondary.opacity(0.78)
-        let chipFill = colorScheme == .dark
-            ? theme.colors.accent.opacity(0.18)
-            : theme.colors.accent.opacity(0.12)
+        let rowFill = isSelected
+            ? Color(hex: 0x4A4480).opacity(0.92)
+            : searchSuggestionBackground.opacity(0.88)
+        let titleColor = Color.white.opacity(0.92)
+        let subtitleColor = Color.white.opacity(0.68)
+        let chipFill = theme.colors.accent.opacity(0.18)
         #if os(macOS)
         let rowSpacing: CGFloat = 8
         let titleFont: Font = .system(size: 13, weight: .medium)
@@ -279,6 +278,7 @@ extension ContentView {
         }
         .padding(.vertical, rowVerticalPadding)
         .padding(.horizontal, rowHorizontalPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(rowFill, in: RoundedRectangle(cornerRadius: rowCornerRadius, style: .continuous))
     }
 
