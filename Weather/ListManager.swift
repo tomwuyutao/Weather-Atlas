@@ -221,20 +221,33 @@ extension ContentView {
     }
 
     func commitCountryList(_ country: CountryCityGroup, cityCount: Int) {
-        let cities = Array(country.cities.prefix(cityCount))
+        addCountry(country, cityCount: cityCount, to: nil)
+    }
+
+    func addCountry(_ country: CountryCityGroup, cityCount: Int, to listID: CityListID?) {
+        let resolvedCountry = CountryCityCatalog.shared.countryWithCities(for: country) ?? country
+        let cities = Array(resolvedCountry.cities.prefix(cityCount))
         guard !cities.isEmpty else { return }
         Task {
             let displayCities = await translatedCountryListCitiesIfNeeded(cities)
-            let newList = await weatherService.createCustomList(name: country.name, cities: displayCities)
+            let targetList: CityListID
+            if let listID {
+                await weatherService.addCities(displayCities, to: listID)
+                targetList = listID
+            } else {
+                targetList = await weatherService.createCustomList(name: resolvedCountry.name, cities: displayCities)
+            }
+
             await MainActor.run {
                 refreshSidebarListOrder()
                 refreshSidebarCityOrder()
-                sidebarExpandedListIDs.insert(newList.rawValue)
+                sidebarExpandedListIDs.insert(targetList.rawValue)
                 countryListSearchMode = false
                 countryListPreviewCountry = nil
                 inlineSearchText = ""
                 showingInlineSearch = false
                 inlineSearchFieldPresented = false
+                inlineAddTargetListID = nil
                 recenterOnAllCities = true
                 PlatformFeedback.lightImpact()
             }

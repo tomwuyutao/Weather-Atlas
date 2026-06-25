@@ -33,21 +33,51 @@ struct CountryCityCatalog {
 
         return countries
             .filter { country in
-                let tokens = [country.name, country.iso2, country.iso3] + country.aliases
-                return tokens.contains { Self.normalized($0).contains(normalizedQuery) || normalizedQuery.contains(Self.normalized($0)) }
+                Self.countrySearchScore(country, normalizedQuery: normalizedQuery) != nil
             }
             .sorted { lhs, rhs in
-                let lhsName = Self.normalized(lhs.name)
-                let rhsName = Self.normalized(rhs.name)
-                if lhsName == normalizedQuery { return true }
-                if rhsName == normalizedQuery { return false }
-                if lhsName.hasPrefix(normalizedQuery) != rhsName.hasPrefix(normalizedQuery) {
-                    return lhsName.hasPrefix(normalizedQuery)
+                let lhsScore = Self.countrySearchScore(lhs, normalizedQuery: normalizedQuery) ?? Int.max
+                let rhsScore = Self.countrySearchScore(rhs, normalizedQuery: normalizedQuery) ?? Int.max
+                if lhsScore != rhsScore {
+                    return lhsScore < rhsScore
                 }
                 return lhs.name < rhs.name
             }
             .prefix(limit)
             .map { $0 }
+    }
+
+    nonisolated static func isExactCountryMatch(_ country: CountryCityGroup, query: String) -> Bool {
+        let normalizedQuery = normalized(query)
+        guard !normalizedQuery.isEmpty else { return false }
+        let exactTokens = [country.name, country.iso2, country.iso3] + country.aliases
+        return exactTokens.contains { normalized($0) == normalizedQuery }
+    }
+
+    nonisolated static func isPreferredCountryMatch(_ country: CountryCityGroup, query: String) -> Bool {
+        let normalizedQuery = normalized(query)
+        guard !normalizedQuery.isEmpty else { return false }
+        guard let score = countrySearchScore(country, normalizedQuery: normalizedQuery) else { return false }
+        return score <= 3
+    }
+
+    private nonisolated static func countrySearchScore(_ country: CountryCityGroup, normalizedQuery: String) -> Int? {
+        let name = normalized(country.name)
+        if name == normalizedQuery { return 0 }
+        if [country.iso2, country.iso3].contains(where: { normalized($0) == normalizedQuery }) { return 1 }
+
+        let aliases = country.aliases.map(normalized)
+        if aliases.contains(normalizedQuery) { return 2 }
+        if name.hasPrefix(normalizedQuery) { return 3 }
+        if aliases.contains(where: { $0.count > 3 && $0.hasPrefix(normalizedQuery) }) { return 4 }
+
+        let words = name.split(separator: " ").map(String.init)
+        if words.contains(where: { $0.hasPrefix(normalizedQuery) }) { return 5 }
+
+        guard normalizedQuery.count >= 4 else { return nil }
+        if name.contains(normalizedQuery) { return 6 }
+        if aliases.contains(where: { $0.count > 3 && $0.contains(normalizedQuery) }) { return 7 }
+        return nil
     }
 
     func country(matching text: String) -> CountryCityGroup? {
@@ -202,7 +232,7 @@ struct CountryCityCatalog {
         }
     }
 
-    static func normalized(_ value: String) -> String {
+    nonisolated static func normalized(_ value: String) -> String {
         value
             .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: .current)
             .replacingOccurrences(of: ".", with: "")
@@ -308,7 +338,7 @@ struct CountryListBuilderView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(country.name)
                                 .font(.largeTitle.bold())
-                            Text("Country list")
+                            Text("Add Country")
                                 .font(.subheadline.weight(.semibold))
                                 .foregroundStyle(theme.colors.accent)
                         }
@@ -350,7 +380,7 @@ struct CountryListBuilderView: View {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
+                    Button("Create List") {
                         guard let country = selectedCountry ?? countries.first else { return }
                         onCreate(country, cityCount)
                         dismiss()

@@ -97,8 +97,7 @@ extension ContentView {
         }
         .onChange(of: inlineSearchFieldPresented) { _, isPresented in
             if !isPresented {
-                showingInlineSearch = false
-                resetNativeCitySearch()
+                dismissNativeCitySearchAndRecenter()
             }
         }
         .onChange(of: showingCityDetail) { _, isShowing in
@@ -126,6 +125,7 @@ extension ContentView {
         }
         .background {
             iPadCommandReceivers
+            iPadSearchReturnKeyReceiver
         }
         .alert(localizedString("New List", locale: locale), isPresented: $sidebarShowingAddListAlert) {
             TextField(localizedString("Name", locale: locale), text: $sidebarNewListName)
@@ -225,6 +225,17 @@ extension ContentView {
                     centerMapOnDots(useListCoordinates: true)
                 }
             }
+    }
+
+    var iPadSearchReturnKeyReceiver: some View {
+        Button("") {
+            guard showingInlineSearch || inlineSearchFieldPresented else { return }
+            confirmInlineSearchSelection()
+        }
+        .keyboardShortcut(.return, modifiers: [])
+        .disabled(!(showingInlineSearch || inlineSearchFieldPresented))
+        .frame(width: 0, height: 0)
+        .opacity(0)
     }
 
     func iPadStepSelectedDay(_ delta: Int) {
@@ -461,12 +472,19 @@ extension ContentView {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
                 if showingMapExpandedCard, let city = tappedCity {
-                    mapExpandedCard(for: city, forceIPhoneStyle: true)
-                        .frame(width: iPadFloatingCardSize.width, height: iPadFloatingCardSize.height)
-                        .matchedGeometryEffect(id: iPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, properties: .frame, anchor: .center)
-                        .position(iPadFloatingCardCenter(in: geometry.size))
-                        .transition(.opacity)
-                        .zIndex(12)
+                    ZStack(alignment: .topTrailing) {
+                        mapExpandedCard(for: city, forceIPhoneStyle: true)
+                            .frame(width: iPadFloatingCardSize.width, height: iPadFloatingCardSize.height)
+
+                        if !cityIsInSidebar(city) {
+                            macExpandedCardAddMenu(for: city)
+                                .offset(x: 12, y: -12)
+                        }
+                    }
+                    .matchedGeometryEffect(id: iPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, properties: .frame, anchor: .center)
+                    .position(iPadFloatingCardCenter(in: geometry.size))
+                    .transition(.opacity)
+                    .zIndex(12)
                 }
 
                 if showingCityDetail, let city = tappedCity {

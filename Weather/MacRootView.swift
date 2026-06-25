@@ -607,12 +607,19 @@ extension ContentView {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
                 if showingMapExpandedCard, let city = tappedCity {
-                    mapExpandedCard(for: city, forceIPhoneStyle: true)
-                        .frame(width: macIPadFloatingCardSize.width, height: macIPadFloatingCardSize.height)
-                        .matchedGeometryEffect(id: macIPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, properties: .frame, anchor: .center)
-                        .position(macIPadFloatingCardCenter(in: geometry.size))
-                        .transition(.opacity)
-                        .zIndex(12)
+                    ZStack(alignment: .topTrailing) {
+                        mapExpandedCard(for: city, forceIPhoneStyle: true)
+                            .frame(width: macIPadFloatingCardSize.width, height: macIPadFloatingCardSize.height)
+
+                        if !cityIsInSidebar(city) {
+                            macExpandedCardAddMenu(for: city)
+                                .offset(x: 12, y: -12)
+                        }
+                    }
+                    .matchedGeometryEffect(id: macIPadMapDetailMorphID(for: city), in: iPadMapDetailNamespace, properties: .frame, anchor: .center)
+                    .position(macIPadFloatingCardCenter(in: geometry.size))
+                    .transition(.opacity)
+                    .zIndex(12)
                 }
 
                 if showingCityDetail, let city = tappedCity {
@@ -820,6 +827,9 @@ extension ContentView {
                 .disabled(showingInlineSearch)
             Button("") { activateInlineSearch() }
                 .keyboardShortcut("f", modifiers: .command)
+            Button("") { confirmInlineSearchSelection() }
+                .keyboardShortcut(.return, modifiers: [])
+                .disabled(!(showingInlineSearch || inlineSearchFieldPresented))
             Button("") { switchListByOffset(-1) }
                 .keyboardShortcut(.upArrow, modifiers: [.command, .shift])
             Button("") { switchListByOffset(1) }

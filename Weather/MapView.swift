@@ -83,6 +83,7 @@ extension ContentView {
     }
 
     func centerMapOnDots(useListCoordinates: Bool = false) {
+        mapMarkerReloadID += 1
         recenterOnAllCities = false
         recenterUsesListCoordinates = useListCoordinates
         DispatchQueue.main.async {
@@ -193,6 +194,21 @@ extension ContentView {
         }
         #endif
         PlatformFeedback.lightImpact()
+        #if os(macOS) || os(iOS)
+        macMapLookupTaskID += 1
+        macHoverPresentedCardCityID = nil
+        if usesFloatingMapCardLayout, showingMapExpandedCard, tappedCity?.id != city.id {
+            macMapExpandedCardFocusesMarker = true
+            macMapExpandedCardAnchor = anchor ?? macCenteredMapMarkerAnchor()
+            macMapExpandedCardBaseOffset = .zero
+            macExpandedCardShowsDetails = false
+            withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
+                tappedCity = city
+                showingMapExpandedCard = true
+            }
+            return
+        }
+        #endif
         showMapMarkerCard(city, anchor: anchor, expanded: false, focusesMarker: true)
     }
 
@@ -486,6 +502,12 @@ extension ContentView {
             guard countryListSearchMode, countryListPreviewCountry != nil else { return }
             centerMapOnDots(useListCoordinates: true)
         }
+        .onChange(of: countryListSearchMode) { oldValue, newValue in
+            guard oldValue, !newValue else { return }
+            DispatchQueue.main.async {
+                centerMapOnDots(useListCoordinates: true)
+            }
+        }
 
     }
 
@@ -535,7 +557,7 @@ extension ContentView {
                             .font(.headline)
                             .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
-                        Text("Country list")
+                        Text("Country")
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(theme.colors.secondaryText)
                     }
@@ -569,11 +591,7 @@ extension ContentView {
 
                         Spacer(minLength: 8)
 
-                        Button("Create") {
-                            commitCountryList(country, cityCount: countryListPreviewCityCount)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(theme.colors.accent)
+                        countryAddMenu(for: country, cityCount: countryListPreviewCityCount)
                     }
                 }
             }
@@ -608,7 +626,9 @@ extension ContentView {
             inlineSearchFieldPresented = false
             inlineSearchText = ""
         }
-        centerMapOnDots(useListCoordinates: true)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            centerMapOnDots(useListCoordinates: true)
+        }
     }
 
     var macMapLeadingFitPadding: Double {
@@ -1471,7 +1491,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           tablet: {
             initialCenter: [0, 12],
             initialZoom: 1.15,
-            fitPadding: { top: 116, right: 70, bottom: 180, left: 70 },
+            fitPadding: { top: 116, right: 70, bottom: 238, left: 70 },
             fitMaxZoom: 3.65,
             cityZoom: 4.35,
             useLeadingOffset: true
@@ -1479,7 +1499,7 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           mobile: {
             initialCenter: [0, 12],
             initialZoom: 1.15,
-            fitPadding: { top: 104, right: 52, bottom: 168, left: 52 },
+            fitPadding: { top: 104, right: 52, bottom: 228, left: 52 },
             fitMaxZoom: 4.2,
             cityZoom: 4.35,
             useLeadingOffset: true
@@ -1937,9 +1957,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           const countryBounds = boundaryBounds(pendingPayload.focusedCountryBoundary);
           const savedListCoordinates = pendingPayload.fitCoordinates || [];
           const fitItems = useFitCoordinates ? savedListCoordinates : (pendingPayload.features?.length ? pendingPayload.features : savedListCoordinates);
+          const shouldFitItems = useFitCoordinates || !countryBounds;
           if (!countryBounds && !fitItems.length) return;
-          const bounds = countryBounds || new maplibregl.LngLatBounds();
-          if (!countryBounds) {
+          const bounds = shouldFitItems ? new maplibregl.LngLatBounds() : countryBounds;
+          if (shouldFitItems) {
             fitItems.forEach(item => bounds.extend([item.longitude, item.latitude]));
           }
           if (!bounds.isEmpty()) {
@@ -2267,7 +2288,6 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
           }, { capture: true, passive: false });
           map.getCanvas().addEventListener('mousedown', event => {
             if (event.button !== 0) return;
-            postMapGestureStart();
             leftMouseDown = {
               x: event.offsetX,
               y: event.offsetY,
@@ -2277,7 +2297,6 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             };
           }, { capture: true, passive: true });
           map.getCanvas().addEventListener('touchstart', event => {
-            postMapGestureStart();
             if (event.touches.length !== 1) {
               touchDown = null;
               return;
@@ -2301,7 +2320,10 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             const dy = point.y - down.y;
             const movement = Math.sqrt(dx * dx + dy * dy);
             const elapsed = Date.now() - down.time;
-            if (movement > 16 || elapsed >= 800) return;
+            if (movement > 16 || elapsed >= 800) {
+              postMapGestureStart();
+              return;
+            }
             const feature = markerFeatureAtPoint(point, markerHitRadius);
             if (!feature?.properties?.id) return;
             const markerPoint = markerScreenPoint(feature, point);
@@ -2324,10 +2346,13 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
               const feature = markerFeatureAtPoint(point, markerHitRadius);
               if (feature?.properties?.id) {
                 const markerPoint = markerScreenPoint(feature, point);
+                suppressNextClickUntil = Date.now() + 350;
                 post({ type: 'markerTap', id: feature.properties.id, x: markerPoint.x, y: markerPoint.y, tapX: point.x, tapY: point.y });
                 event.preventDefault();
                 event.stopImmediatePropagation();
               }
+            } else {
+              postMapGestureStart();
             }
           }, { capture: true, passive: false });
           map.on('load', () => {

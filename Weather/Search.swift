@@ -29,7 +29,7 @@ struct CitySearchResult: Identifiable {
     init(countryList: CountryCityGroup) {
         self.id = "country-\(countryList.id)"
         self.title = countryList.name
-        self.subtitle = countryList.cities.isEmpty ? "Country list" : "\(countryList.cities.count) cities available"
+        self.subtitle = "Country"
         self.completion = nil
         self.countryList = countryList
     }
@@ -145,8 +145,7 @@ extension ContentView {
                             cancelCountryListPreview()
                             return
                         }
-                        showingInlineSearch = false
-                        resetNativeCitySearch()
+                        dismissNativeCitySearchAndRecenter()
                     }
                 }
                 .onSubmit(of: .search) {
@@ -158,16 +157,29 @@ extension ContentView {
     @ViewBuilder
     var nativeCitySearchSuggestions: some View {
         ForEach(Array(inlineSortedSearchResults.prefix(inlineSearchResultLimit).enumerated()), id: \.element.id) { index, result in
-            Button {
-                guard !inlineIsLoadingCity else { return }
-                Task {
-                    await inlineSelectSearchResult(result)
+            if result.countryList != nil {
+                Button {
+                    guard !inlineIsLoadingCity else { return }
+                    Task {
+                        await inlineSelectSearchResult(result)
+                    }
+                } label: {
+                    nativeCitySearchSuggestionRow(for: result, isSelected: index == inlineSearchSelectionIndex)
                 }
-            } label: {
-                nativeCitySearchSuggestionRow(for: result, isSelected: index == inlineSearchSelectionIndex)
+                .disabled(inlineIsLoadingCity)
+                    .listRowBackground(searchSuggestionBackground)
+            } else {
+                Button {
+                    guard !inlineIsLoadingCity else { return }
+                    Task {
+                        await inlineSelectSearchResult(result)
+                    }
+                } label: {
+                    nativeCitySearchSuggestionRow(for: result, isSelected: index == inlineSearchSelectionIndex)
+                }
+                .disabled(inlineIsLoadingCity)
+                .listRowBackground(searchSuggestionBackground)
             }
-            .disabled(inlineIsLoadingCity)
-            .listRowBackground(searchSuggestionBackground)
         }
     }
 
@@ -179,14 +191,25 @@ extension ContentView {
            !inlineSortedSearchResults.isEmpty {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(inlineSortedSearchResults.prefix(inlineSearchResultLimit).enumerated()), id: \.element.id) { index, result in
-                    Button {
-                        Task {
-                            await inlineSelectSearchResult(result)
+                    if result.countryList != nil {
+                        Button {
+                            Task {
+                                await inlineSelectSearchResult(result)
+                            }
+                        } label: {
+                            nativeCitySearchSuggestionRow(for: result, isSelected: index == inlineSearchSelectionIndex)
                         }
-                    } label: {
-                        nativeCitySearchSuggestionRow(for: result, isSelected: index == inlineSearchSelectionIndex)
+                        .buttonStyle(.plain)
+                    } else {
+                        Button {
+                            Task {
+                                await inlineSelectSearchResult(result)
+                            }
+                        } label: {
+                            nativeCitySearchSuggestionRow(for: result, isSelected: index == inlineSearchSelectionIndex)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.vertical, 12)
@@ -205,17 +228,39 @@ extension ContentView {
     private var inlineSearchResultLimit: Int { 8 }
 
     private var searchSuggestionBackground: Color {
-        Color(hex: 0x262052)
+        colorScheme == .dark ? Color(hex: 0x262052) : theme.colors.background
+    }
+
+    private var searchSuggestionSelectedBackground: Color {
+        colorScheme == .dark ? Color(hex: 0x4A4480).opacity(0.92) : theme.colors.listCardFill.opacity(0.92)
+    }
+
+    private var searchSuggestionTitleColor: Color {
+        colorScheme == .dark ? .white.opacity(0.92) : theme.colors.primaryText
+    }
+
+    private var searchSuggestionSubtitleColor: Color {
+        colorScheme == .dark ? .white.opacity(0.68) : theme.colors.secondaryText
+    }
+
+    private var shouldShowInlineSearchSelectionHighlight: Bool {
+        #if os(macOS)
+        true
+        #elseif os(iOS)
+        shouldUseIPadLayout
+        #else
+        false
+        #endif
     }
 
     private func nativeCitySearchSuggestionRow(for result: CitySearchResult, isSelected: Bool) -> some View {
         let existingListName = inlineExistingCityListName(for: result)
         let isCountryList = result.countryList != nil
-        let rowFill = isSelected
-            ? Color(hex: 0x4A4480).opacity(0.92)
+        let rowFill = isSelected && shouldShowInlineSearchSelectionHighlight
+            ? searchSuggestionSelectedBackground
             : searchSuggestionBackground.opacity(0.88)
-        let titleColor = Color.white.opacity(0.92)
-        let subtitleColor = Color.white.opacity(0.68)
+        let titleColor = searchSuggestionTitleColor
+        let subtitleColor = searchSuggestionSubtitleColor
         let chipFill = theme.colors.accent.opacity(0.18)
         #if os(macOS)
         let rowSpacing: CGFloat = 8
@@ -253,7 +298,7 @@ extension ContentView {
             Spacer(minLength: 8)
 
             if isCountryList {
-                Text("Country list")
+                Text("Country")
                     .font(statusBoldFont)
                     .foregroundStyle(theme.colors.accent)
                     .padding(.horizontal, 7)
@@ -280,6 +325,37 @@ extension ContentView {
         .padding(.horizontal, rowHorizontalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(rowFill, in: RoundedRectangle(cornerRadius: rowCornerRadius, style: .continuous))
+    }
+
+    func countryAddMenu(for country: CountryCityGroup, cityCount: Int? = nil) -> some View {
+        Menu {
+            ForEach(sidebarLists) { listID in
+                Button(listID.localizedDisplayName(locale: locale)) {
+                    addCountry(country, cityCount: cityCount ?? defaultCountrySearchCityCount(for: country), to: listID)
+                }
+            }
+
+            Divider()
+
+            Button("Create New List \"\(country.name)\"") {
+                addCountry(country, cityCount: cityCount ?? defaultCountrySearchCityCount(for: country), to: nil)
+            }
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 28, height: 28)
+                .background(theme.colors.accent, in: Circle())
+                .contentShape(Circle())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .disabled(inlineIsLoadingCity)
+    }
+
+    func defaultCountrySearchCityCount(for country: CountryCityGroup) -> Int {
+        let resolvedCountry = CountryCityCatalog.shared.countryWithCities(for: country) ?? country
+        return countryListClampedCityCount(15, for: resolvedCountry)
     }
 
     private func inlineCityIdentity(for result: CitySearchResult) -> (name: String, country: String) {
@@ -328,6 +404,14 @@ extension ContentView {
         if countryListSearchMode {
             return countryResults
         }
+        let preferredCountryResults = countryResults.filter { result in
+            guard let country = result.countryList else { return false }
+            return CountryCityCatalog.isPreferredCountryMatch(country, query: inlineSearchText)
+        }
+        let secondaryCountryResults = countryResults.filter { result in
+            guard let country = result.countryList else { return false }
+            return !CountryCityCatalog.isPreferredCountryMatch(country, query: inlineSearchText)
+        }
         let cityResults = inlineSearchManager.searchResults
             .filter { inlineCountryMatch(for: $0) == nil }
             .sorted { a, b in
@@ -336,7 +420,7 @@ extension ContentView {
             if aExists != bExists { return aExists }
             return false
         }
-        return countryResults + cityResults
+        return preferredCountryResults + cityResults + secondaryCountryResults
     }
 
     func activateInlineSearch() {
@@ -351,11 +435,7 @@ extension ContentView {
     }
 
     func dismissInlineSearch() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            showingInlineSearch = false
-            inlineSearchFieldPresented = false
-        }
-        resetNativeCitySearch()
+        dismissNativeCitySearchAndRecenter()
     }
 
     func resetNativeCitySearch() {
@@ -363,6 +443,22 @@ extension ContentView {
         inlineSearchManager.search(query: "")
         inlineAddTargetListID = nil
         inlineSearchSelectionIndex = 0
+    }
+
+    func dismissNativeCitySearchAndRecenter() {
+        let shouldRecenter = showingInlineSearch
+            || inlineSearchFieldPresented
+            || !inlineSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            || !inlineSearchManager.searchResults.isEmpty
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            showingInlineSearch = false
+            inlineSearchFieldPresented = false
+        }
+        resetNativeCitySearch()
+        guard shouldRecenter else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            centerMapOnDots(useListCoordinates: true)
+        }
     }
 
     func moveInlineSearchSelection(_ delta: Int) {
@@ -392,7 +488,9 @@ extension ContentView {
                     inlineSearchFieldPresented = false
                     inlineSearchText = ""
                 }
-                centerMapOnDots(useListCoordinates: true)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                    centerMapOnDots(useListCoordinates: true)
+                }
             }
             return
         }

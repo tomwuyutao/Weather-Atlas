@@ -267,13 +267,6 @@ extension ContentView {
                 }
 
                 VStack(alignment: centersHeroContent ? .center : .leading, spacing: usesIPhoneDetailSizing ? 6 : 2) {
-                    if usesIPhoneDetailSizing {
-                        Text(iPadDebugLocalTimeText(for: cityWeather))
-                            .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
                     if !hideCityName {
                         Text(cityWeather.city.localizedName(locale: locale))
                             .font(titleFont.weight(.semibold))
@@ -490,22 +483,47 @@ extension ContentView {
                 .frame(width: max(availableSize.width * 1.1, 270), height: availableSize.height)
             }
         } else if macExpandedCardChartRange == .entireDay {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HourlyTimelineChart(
-                    hourlyForecasts: forecast.hourlyForecasts,
-                    chartMetric: macExpandedCardChartMetric,
-                    dayOffset: max(0, selectedDayOffset),
-                    cityTimeZone: cityWeather.timeZone,
-                    previewCurrentHour: nil,
-                    lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
-                    showAllHours: true,
-                    compactLayout: true,
-                    transitionDirection: detailChartSwipeDirection
-                )
-                .frame(width: entireDayChartWidth(for: forecast, availableWidth: availableSize.width), height: availableSize.height)
-            }
-            .task(id: refreshKey) {
-                await refreshHourlyDataIfNeeded(for: cityWeather, forecast: forecast)
+            let chartWidth = entireDayChartWidth(for: forecast, availableWidth: availableSize.width)
+            let scrollTargetID = "entire-day-current-\(cityWeather.id.uuidString)-\(forecast.dayOffset)"
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    ZStack(alignment: .leading) {
+                        HourlyTimelineChart(
+                            hourlyForecasts: forecast.hourlyForecasts,
+                            chartMetric: macExpandedCardChartMetric,
+                            dayOffset: max(0, selectedDayOffset),
+                            cityTimeZone: cityWeather.timeZone,
+                            previewCurrentHour: nil,
+                            lineColor: macExpandedCardChartLineColor(macExpandedCardChartMetric),
+                            showAllHours: true,
+                            compactLayout: true,
+                            transitionDirection: detailChartSwipeDirection
+                        )
+                        .frame(width: chartWidth, height: availableSize.height)
+
+                        if let targetX = entireDayCurrentTimeScrollTargetX(for: cityWeather, chartWidth: chartWidth) {
+                            Color.clear
+                                .frame(width: 1, height: 1)
+                                .padding(.leading, targetX)
+                                .id(scrollTargetID)
+                        }
+                    }
+                }
+                .task(id: "\(refreshKey)-\(chartWidth)-\(macExpandedCardChartRange)") {
+                    await refreshHourlyDataIfNeeded(for: cityWeather, forecast: forecast)
+                    guard entireDayCurrentTimeScrollTargetX(for: cityWeather, chartWidth: chartWidth) != nil else { return }
+                    try? await Task.sleep(for: .milliseconds(80))
+                    scrollEntireDayChart(proxy, targetID: scrollTargetID)
+                    try? await Task.sleep(for: .milliseconds(220))
+                    scrollEntireDayChart(proxy, targetID: scrollTargetID)
+                }
+                .onChange(of: macExpandedCardChartRange) { _, range in
+                    guard range == .entireDay else { return }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(120))
+                        scrollEntireDayChart(proxy, targetID: scrollTargetID)
+                    }
+                }
             }
         } else {
             HourlyTimelineChart(
@@ -533,15 +551,23 @@ extension ContentView {
         return max(availableWidth * 2.4, CGFloat(hourCount) * 46)
     }
 
-    private func iPadDebugLocalTimeText(for cityWeather: CityWeather) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.timeZone = cityWeather.timeZone
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j:mm z", options: 0, locale: locale)
-        return "Local time: \(formatter.string(from: Date())) · \(cityWeather.timeZone.identifier)"
+    private func entireDayCurrentTimeScrollTargetX(for cityWeather: CityWeather, chartWidth: CGFloat) -> CGFloat? {
+        guard selectedDayOffset == -1 || selectedDayOffset == 0 else { return nil }
+        var calendar = Calendar.current
+        calendar.timeZone = cityWeather.timeZone
+        let components = calendar.dateComponents([.hour, .minute], from: Date())
+        let hour = Double(components.hour ?? 0) + Double(components.minute ?? 0) / 60
+        return max(0, min(chartWidth, chartWidth * CGFloat(hour / 23)))
     }
 
-    private func macExpandedCardAddMenu(for cityWeather: CityWeather) -> some View {
+    @MainActor
+    private func scrollEntireDayChart(_ proxy: ScrollViewProxy, targetID: String) {
+        withAnimation(.smooth(duration: 0.28)) {
+            proxy.scrollTo(targetID, anchor: .center)
+        }
+    }
+
+    func macExpandedCardAddMenu(for cityWeather: CityWeather) -> some View {
         Menu {
             ForEach(sidebarLists) { listID in
                 Button(listID.localizedDisplayName(locale: locale)) {

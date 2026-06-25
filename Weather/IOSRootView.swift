@@ -900,12 +900,22 @@ extension ContentView {
 
             Spacer()
 
-            Button {
+            Menu {
                 if let country = countryListPreviewCountry {
-                    commitCountryList(country, cityCount: countryListPreviewCityCount)
+                    ForEach(sidebarLists) { listID in
+                        Button(listID.localizedDisplayName(locale: locale)) {
+                            addCountry(country, cityCount: countryListPreviewCityCount, to: listID)
+                        }
+                    }
+
+                    Divider()
+
+                    Button("Create New List \"\(country.name)\"") {
+                        addCountry(country, cityCount: countryListPreviewCityCount, to: nil)
+                    }
                 }
             } label: {
-                Image(systemName: "checkmark")
+                Image(systemName: "plus")
                     .foregroundStyle(.primary)
                     .foregroundColor(.primary)
                     .frame(width: 44, height: 44)
@@ -949,15 +959,14 @@ extension ContentView {
                         Spacer()
 
                         HStack(spacing: 0) {
-                            Menu {
-                                iOSAddListMenuItems
+                            Button {
+                                beginCreatingCustomList()
                             } label: {
                                 Image(systemName: "plus")
                                     .foregroundStyle(.primary)
                                     .foregroundColor(.primary)
                                     .frame(width: 44, height: 44)
                             }
-                            .menuOrder(.fixed)
                             .tint(.primary)
 
                             Button {
@@ -1000,15 +1009,14 @@ extension ContentView {
                 Spacer(minLength: 12)
 
                 HStack(spacing: 0) {
-                    Menu {
-                        iOSAddListMenuItems
+                    Button {
+                        beginCreatingCustomList()
                     } label: {
                         Image(systemName: "plus")
                             .font(.system(size: 21, weight: .regular))
                             .foregroundStyle(.primary)
                             .frame(width: 46, height: 46)
                     }
-                    .menuOrder(.fixed)
                     .buttonStyle(.plain)
                     .tint(.primary)
 

@@ -180,7 +180,6 @@ struct WeatherApp: App {
         .windowStyle(.hiddenTitleBar)
         .commands {
             WeatherSidebarCommands()
-            SettingsCommands()
             WeatherNewListCommands()
             WeatherMapCommands()
             WeatherOverlayCommands()
@@ -215,21 +214,6 @@ private struct WeatherSidebarCommands: Commands {
                 NotificationCenter.default.post(name: .weatherToggleSidebarCommand, object: nil)
             }
             .keyboardShortcut("s", modifiers: [.command, .control])
-        }
-    }
-}
-#endif
-
-#if os(macOS)
-private struct SettingsCommands: Commands {
-    @Environment(\.openSettings) private var openSettings
-
-    var body: some Commands {
-        CommandGroup(replacing: .appSettings) {
-            Button("Settings") {
-                openSettings()
-            }
-            .keyboardShortcut(",", modifiers: .command)
         }
     }
 }

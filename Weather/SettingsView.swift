@@ -483,7 +483,7 @@ struct SettingsView: View {
             showingEmailCopied = true
         } label: {
             LabeledContent {
-                Text(verbatim: "yutao5726@gmail.com")
+                Image(systemName: "doc.on.doc")
                     .foregroundStyle(.secondary)
             } label: {
                 settingsLabel(localizedString("Say Hello", locale: locale), systemImage: "envelope")

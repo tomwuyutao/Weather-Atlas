@@ -1498,6 +1498,27 @@ class WeatherService {
         await switchList(to: listID)
         return listID
     }
+
+    func addCities(_ cities: [City], to listID: CityListID) async {
+        guard !cities.isEmpty else { return }
+        let existingCities = cityListCoordinates(for: listID)
+        var mergedCities = existingCities
+        for city in cities where !mergedCities.contains(where: { citiesMatch($0, city) }) {
+            mergedCities.append(city)
+        }
+
+        saveCities(mergedCities, for: listID)
+        UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
+        UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listID.rawValue)")
+        otherListData[listID.rawValue] = nil
+        listFetchDates[listID.rawValue] = nil
+
+        if listID.rawValue == activeListID.rawValue {
+            cityWeatherData = []
+            lastFetchDate = nil
+            await fetchWeatherForAllCities(forceRefresh: true)
+        }
+    }
     
     func fetchWeatherForCity(_ city: City) async -> CityWeather? {
         do {
