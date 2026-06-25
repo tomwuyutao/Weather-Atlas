@@ -73,6 +73,8 @@ struct ContentView: View {
     @State var showingCityDetail: Bool = false
     @State var tappedCity: CityWeather?
     @State var showingMapExpandedCard: Bool = false
+    @AppStorage("weatherAtlasMode") var weatherAtlasModeRaw: String = WeatherAtlasMode.map.rawValue
+    @AppStorage("weatherListSortMode") var weatherListSortModeRaw: String = WeatherListSortMode.sunny.rawValue
     @AppStorage("hasLaunchedBefore") var hasLaunchedBefore: Bool = false
     @State var selectedTab: Int = 0
     @State var lastRefreshText: String = ""

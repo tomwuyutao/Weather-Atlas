@@ -247,8 +247,16 @@ extension ContentView {
         }
     }
 
+    @ViewBuilder
     var macMapAndDetailContent: some View {
-        macMapContent
+        switch atlasMode {
+        case .discover:
+            discoveryContent
+        case .map:
+            macMapContent
+        case .list:
+            weatherComparisonListView
+        }
     }
 
     var macMapContent: some View {
@@ -351,6 +359,20 @@ extension ContentView {
         .toolbar {
             ToolbarItem {
                 macToolbarListTitle
+            }
+
+            ToolbarItem(placement: .principal) {
+                Picker("", selection: Binding(
+                    get: { atlasMode },
+                    set: { setAtlasMode($0) }
+                )) {
+                    ForEach(WeatherAtlasMode.allCases) { mode in
+                        Label(mode.title(locale: locale), systemImage: mode.icon)
+                            .tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(width: 300)
             }
 
             if #available(macOS 26.0, *) {

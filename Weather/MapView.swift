@@ -557,7 +557,7 @@ extension ContentView {
                             .font(.headline)
                             .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
-                        Text("Country")
+                        Text(localizedString("Preview Largest Cities", locale: locale))
                             .font(.caption.weight(.semibold))
                             .foregroundStyle(theme.colors.secondaryText)
                     }
@@ -568,6 +568,11 @@ extension ContentView {
                         .font(.title3.weight(.bold).monospacedDigit())
                         .foregroundStyle(theme.colors.primaryText)
                 }
+
+                Text(String(format: localizedString("Choose how many major cities to include.", locale: locale)))
+                    .font(.caption)
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 Slider(
                     value: Binding(

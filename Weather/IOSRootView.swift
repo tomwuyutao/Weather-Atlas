@@ -371,18 +371,12 @@ extension ContentView {
             EmptyView()
         } else {
             HStack(spacing: 0) {
-                Button {
-                    dismissIPhoneRoute(.map)
-                } label: {
-                    Image(systemName: "list.bullet")
-                        .font(.system(size: 21, weight: .regular))
-                        .foregroundStyle(.primary)
-                        .frame(width: 46, height: 46)
+                HStack(spacing: 0) {
+                    atlasModeButton(.discover, size: 48)
+                    atlasModeButton(.map, size: 48)
+                    atlasModeButton(.list, size: 48)
                 }
-                .buttonStyle(.plain)
-                .tint(.primary)
-                .weatherTutorialTarget(.listManager)
-                .iPhoneFloatingToolbarCircle()
+                .iPhoneFloatingToolbarCapsule()
 
                 Spacer(minLength: 12)
 
@@ -427,18 +421,9 @@ extension ContentView {
     @ToolbarContentBuilder
     var iPhoneNativeBottomToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .bottomBar) {
-            Button {
-                dismissIPhoneRoute(.map)
-            } label: {
-                Image(systemName: "list.bullet")
-                    .foregroundStyle(.primary)
-                    .foregroundColor(.primary)
-                    .frame(width: 44, height: 44)
-            }
-            .tint(.primary)
-            .buttonBorderShape(.circle)
-            .frame(width: 44, height: 44)
-            .weatherTutorialTarget(.listManager)
+            atlasModeButton(.discover, size: 44)
+            atlasModeButton(.map, size: 44)
+            atlasModeButton(.list, size: 44)
 
             Spacer()
 
@@ -713,12 +698,48 @@ extension ContentView {
     }
 
     var iPhoneMapDestination: some View {
-        iPhoneMapTabContent
+        iPhoneCurrentModeContent
             .navigationTitle("")
             #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
             #endif
+    }
+
+    @ViewBuilder
+    var iPhoneCurrentModeContent: some View {
+        switch atlasMode {
+        case .discover:
+            discoveryContent
+                .toolbar {
+                    if #available(iOS 26.0, *), !showingInlineSearch {
+                        iPhoneNativeBottomToolbar
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if !showingInlineSearch {
+                        iPhoneFloatingBottomToolbarFallback
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, -2)
+                    }
+                }
+        case .map:
+            iPhoneMapTabContent
+        case .list:
+            weatherComparisonListView
+                .toolbar {
+                    if #available(iOS 26.0, *), !showingInlineSearch {
+                        iPhoneNativeBottomToolbar
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    if !showingInlineSearch {
+                        iPhoneFloatingBottomToolbarFallback
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, -2)
+                    }
+                }
+        }
     }
 
     var mapTopListMenu: some View {

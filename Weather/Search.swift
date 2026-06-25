@@ -341,12 +341,13 @@ extension ContentView {
                 addCountry(country, cityCount: cityCount ?? defaultCountrySearchCityCount(for: country), to: nil)
             }
         } label: {
-            Image(systemName: "plus")
-                .font(.system(size: 13, weight: .bold))
+            Label(localizedString("Add Cities", locale: locale), systemImage: "plus")
+                .font(.caption.weight(.semibold))
                 .foregroundStyle(.white)
-                .frame(width: 28, height: 28)
-                .background(theme.colors.accent, in: Circle())
-                .contentShape(Circle())
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(theme.colors.accent, in: Capsule())
+                .contentShape(Capsule())
         }
         .menuStyle(.button)
         .buttonStyle(.plain)

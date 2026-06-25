@@ -84,7 +84,7 @@ extension ContentView {
 
     var iPadMapNavigationStack: some View {
         NavigationStack {
-            nativeCitySearch(iPadMapContent, placement: .toolbar)
+            nativeCitySearch(iPadCurrentModeContent, placement: .toolbar)
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .navigationDestination(isPresented: $showingAddCityDetail) {
@@ -140,6 +140,18 @@ extension ContentView {
             CountryListBuilderView(initialCountry: countryListInitialCountry) { country, cityCount in
                 commitCountryList(country, cityCount: cityCount)
             }
+        }
+    }
+
+    @ViewBuilder
+    var iPadCurrentModeContent: some View {
+        switch atlasMode {
+        case .discover:
+            discoveryContent
+        case .map:
+            iPadMapContent
+        case .list:
+            weatherComparisonListView
         }
     }
 
@@ -257,6 +269,20 @@ extension ContentView {
                 .foregroundStyle(theme.colors.primaryText)
                 .tint(theme.colors.primaryText)
                 .weatherTutorialTarget(.listSwitcher)
+        }
+
+        ToolbarItem(placement: .principal) {
+            Picker("", selection: Binding(
+                get: { atlasMode },
+                set: { setAtlasMode($0) }
+            )) {
+                ForEach(WeatherAtlasMode.allCases) { mode in
+                    Label(mode.title(locale: locale), systemImage: mode.icon)
+                        .tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+            .frame(width: 300)
         }
 
         ToolbarItemGroup(placement: .topBarTrailing) {
