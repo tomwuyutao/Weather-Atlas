@@ -7,10 +7,10 @@
 
 import SwiftUI
 
-enum WeatherAtlasMode: String, CaseIterable, Identifiable {
+enum WeatherAtlasMode: String, CaseIterable, Hashable, Identifiable {
     case discover
-    case map
     case list
+    case map
 
     var id: String { rawValue }
 
@@ -85,6 +85,9 @@ extension ContentView {
             weatherAtlasModeRaw = mode.rawValue
             selectedTab = mode == .list ? 2 : 1
             showingMapSidebar = false
+            if mode != .list {
+                comparisonListEditMode = false
+            }
             if mode != .map && showingMapExpandedCard {
                 showingMapExpandedCard = false
             }
@@ -215,10 +218,8 @@ extension ContentView {
     var discoveryContent: some View {
         ZStack {
             iOSMapView
-                .overlay(alignment: .trailing) {
-                    AnyView(iOSDateSliderOverlay)
-                }
-                .allowsHitTesting(!showingInlineSearch)
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
 
             if !showingInlineSearch {
                 discoveryCandidateOverlay
@@ -231,6 +232,13 @@ extension ContentView {
         .ignoresSafeArea()
         .onAppear {
             filterSunny = false
+            centerMapOnDots(useListCoordinates: true)
+        }
+        .onChange(of: weatherService.activeListID) { _, _ in
+            centerMapOnDots(useListCoordinates: true)
+        }
+        .onChange(of: mapCities.count) { _, _ in
+            centerMapOnDots(useListCoordinates: true)
         }
     }
 
@@ -249,11 +257,11 @@ extension ContentView {
             let isCompact = geometry.size.width < 620
             VStack(alignment: .leading, spacing: 10) {
                 discoveryHeader
-                discoveryCandidateList(limit: isCompact ? 5 : 8)
+                discoveryCandidateList(limit: isCompact ? 4 : 6)
             }
-            .padding(14)
+            .padding(12)
             .frame(width: isCompact ? min(geometry.size.width - 28, 390) : 390)
-            .themedGlass(in: .rect(cornerRadius: 24))
+            .themedGlass(in: .rect(cornerRadius: 22))
             .padding(.horizontal, isCompact ? 14 : 18)
             .padding(.bottom, isCompact ? 104 : 22)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: isCompact ? .bottom : .bottomLeading)
@@ -263,17 +271,14 @@ extension ContentView {
 
     private var discoveryHeader: some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 Image(systemName: "sun.max.fill")
                     .foregroundStyle(theme.colors.dotSun)
                 Text(localizedString("Best Sunny Places", locale: locale))
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                 Spacer(minLength: 8)
-                Text(iOSDateText)
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .lineLimit(1)
+                iOSDateSwitcherCapsule
             }
 
             HStack(spacing: 8) {
@@ -297,8 +302,6 @@ extension ContentView {
     }
 
     func sunnyCandidateRow(_ candidate: SunnyCandidate, rank: Int? = nil, compact: Bool = false) -> some View {
-        let cloudText = candidate.cloudCover.map { "\(Int($0 * 100))%" } ?? "-"
-        let rainText = candidate.precipitationChance.map { "\(Int($0 * 100))%" } ?? "-"
         return HStack(spacing: 10) {
             if let rank {
                 Text("\(rank)")
@@ -312,13 +315,22 @@ extension ContentView {
                     .font(compact ? .callout.weight(.semibold) : .headline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
-                Text("\(tempUnit.display(candidate.temperature))  \(cloudText) cloud  \(rainText) rain")
-                    .font(.caption)
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .lineLimit(1)
+                if !compact {
+                    let cloudText = candidate.cloudCover.map { "\(Int($0 * 100))%" } ?? "-"
+                    let rainText = candidate.precipitationChance.map { "\(Int($0 * 100))%" } ?? "-"
+                    Text("\(tempUnit.display(candidate.temperature))  \(cloudText) cloud  \(rainText) rain")
+                        .font(.caption)
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .lineLimit(1)
+                }
             }
 
             Spacer(minLength: 8)
+
+            Text(tempUnit.display(candidate.temperature))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.colors.secondaryText)
+                .lineLimit(1)
 
             Text("\(Int(candidate.score.rounded()))")
                 .font(.callout.weight(.bold).monospacedDigit())
@@ -326,7 +338,7 @@ extension ContentView {
                 .frame(minWidth: 34, alignment: .trailing)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, compact ? 8 : 10)
+        .padding(.vertical, compact ? 7 : 10)
         .background(theme.colors.glassFill.opacity(0.58), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
@@ -344,14 +356,18 @@ extension ContentView {
             ScrollView {
                 LazyVStack(spacing: 8) {
                     ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { index, candidate in
-                        Button {
-                            selectCandidate(candidate)
-                        } label: {
-                            sunnyCandidateRow(candidate, rank: index + 1, compact: false)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            cityActions(for: candidate.cityWeather, in: weatherService.activeListID)
+                        if comparisonListEditMode {
+                            comparisonCandidateRow(candidate, rank: index + 1)
+                        } else {
+                            Button {
+                                selectCandidate(candidate)
+                            } label: {
+                                comparisonCandidateRow(candidate, rank: index + 1)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                cityActions(for: candidate.cityWeather, in: weatherService.activeListID)
+                            }
                         }
                     }
                 }
@@ -369,16 +385,17 @@ extension ContentView {
                 discoveryListMenu
                 Spacer(minLength: 8)
                 Button {
-                    withAnimation(.smooth(duration: 0.24)) {
-                        showingMapSidebar = true
+                    withAnimation(.smooth(duration: 0.2)) {
+                        comparisonListEditMode.toggle()
                     }
                 } label: {
-                    Image(systemName: "slider.horizontal.3")
+                    Image(systemName: comparisonListEditMode ? "checkmark" : "pencil")
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(.primary)
                         .frame(width: 38, height: 38)
                 }
                 .buttonStyle(.plain)
+                .themedGlass(in: .capsule)
             }
 
             HStack(spacing: 10) {
@@ -407,10 +424,58 @@ extension ContentView {
         .padding(.bottom, 10)
     }
 
+    func comparisonCandidateRow(_ candidate: SunnyCandidate, rank: Int) -> some View {
+        HStack(spacing: 8) {
+            if comparisonListEditMode {
+                Button {
+                    removeComparisonCity(candidate.cityWeather)
+                } label: {
+                    Image(systemName: "minus.circle.fill")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(theme.colors.destructive)
+                        .frame(width: 34, height: 44)
+                }
+                .buttonStyle(.plain)
+            }
+
+            sunnyCandidateRow(candidate, rank: rank, compact: false)
+
+            if comparisonListEditMode {
+                Button {
+                    beginEditingComparisonCity(candidate.cityWeather)
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 38, height: 44)
+                        .themedGlass(in: .capsule)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .animation(.smooth(duration: 0.2), value: comparisonListEditMode)
+    }
+
+    func beginEditingComparisonCity(_ city: CityWeather) {
+        listToRenameID = nil
+        showingRenameAlert = false
+        cityToRename = city
+        cityToRenameListID = weatherService.activeListID
+        cityRenameText = city.city.localizedName(locale: locale)
+        showingCityRenameAlert = true
+    }
+
+    func removeComparisonCity(_ city: CityWeather) {
+        weatherService.removeCity(city, from: weatherService.activeListID)
+        refreshSidebarCityOrder()
+        PlatformFeedback.lightImpact()
+    }
+
     var discoveryListMenu: some View {
         Menu {
             ForEach(sidebarLists) { listID in
                 Button(listID.localizedDisplayName(locale: locale)) {
+                    comparisonListEditMode = false
                     Task {
                         await switchToList(listID)
                     }

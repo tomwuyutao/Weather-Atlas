@@ -372,15 +372,6 @@ extension ContentView {
         } else {
             HStack(spacing: 0) {
                 HStack(spacing: 0) {
-                    atlasModeButton(.discover, size: 48)
-                    atlasModeButton(.map, size: 48)
-                    atlasModeButton(.list, size: 48)
-                }
-                .iPhoneFloatingToolbarCapsule()
-
-                Spacer(minLength: 12)
-
-                HStack(spacing: 0) {
                     Button {
                         recenterOnAllCities = false
                         DispatchQueue.main.async {
@@ -399,20 +390,11 @@ extension ContentView {
                         .font(.system(size: 21, weight: .regular))
                         .frame(width: 46, height: 46)
 
-                    sunnyFilterToolbarIndicator
-                        .font(.system(size: 21, weight: .regular))
-                        .frame(width: 46, height: 46)
-
                     iOSNativeMenu
                         .font(.system(size: 21, weight: .regular))
                         .frame(width: 46, height: 46)
                 }
                 .iPhoneFloatingToolbarCapsule()
-
-                Spacer(minLength: 12)
-
-                iPhoneSearchOrAddButton(iconSize: 25, frameSize: 46)
-                    .iPhoneFloatingToolbarCircle()
             }
             .frame(maxWidth: .infinity)
         }
@@ -421,12 +403,6 @@ extension ContentView {
     @ToolbarContentBuilder
     var iPhoneNativeBottomToolbar: some ToolbarContent {
         ToolbarItemGroup(placement: .bottomBar) {
-            atlasModeButton(.discover, size: 44)
-            atlasModeButton(.map, size: 44)
-            atlasModeButton(.list, size: 44)
-
-            Spacer()
-
             HStack(spacing: 0) {
                 Button {
                     recenterOnAllCities = false
@@ -444,16 +420,9 @@ extension ContentView {
                 mapOverlayMenu
                     .frame(width: 44, height: 44)
 
-                sunnyFilterToolbarIndicator
-                    .frame(width: 44, height: 44)
-
                 iOSNativeMenu
                     .frame(width: 44, height: 44)
             }
-
-            Spacer()
-
-            iPhoneSearchOrAddButton(iconSize: 22, frameSize: 44)
         }
     }
     #endif
@@ -669,7 +638,7 @@ extension ContentView {
     var iPhoneNavigationStack: some View {
         NavigationStack(path: $iPhoneNavigationPath) {
             ZStack {
-                nativeCitySearch(iPhoneMapDestination)
+                nativeCitySearch(iPhoneModeTabView)
                     .allowsHitTesting(!showingMapSidebar)
 
                 if showingMapSidebar {
@@ -695,6 +664,35 @@ extension ContentView {
         .onAppear {
             selectedTab = 1
         }
+    }
+
+    var iPhoneModeTabView: some View {
+        TabView(selection: Binding(
+            get: { atlasMode },
+            set: { setAtlasMode($0) }
+        )) {
+            discoveryContent
+                .tabItem {
+                    Label(WeatherAtlasMode.discover.title(locale: locale), systemImage: WeatherAtlasMode.discover.icon)
+                }
+                .tag(WeatherAtlasMode.discover)
+
+            weatherComparisonListView
+                .tabItem {
+                    Label(WeatherAtlasMode.list.title(locale: locale), systemImage: WeatherAtlasMode.list.icon)
+                }
+                .tag(WeatherAtlasMode.list)
+
+            iPhoneMapTabContent
+                .tabItem {
+                    Label(WeatherAtlasMode.map.title(locale: locale), systemImage: WeatherAtlasMode.map.icon)
+                }
+                .tag(WeatherAtlasMode.map)
+        }
+        .tint(theme.colors.accent)
+        .navigationTitle("")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
     }
 
     var iPhoneMapDestination: some View {
@@ -840,11 +838,11 @@ extension ContentView {
                     .overlay(alignment: .top) {
                         if !showingInlineSearch {
                             HStack {
-                                Spacer()
                                 mapTopListMenu
                                 Spacer()
                             }
                             .frame(maxWidth: .infinity)
+                            .padding(.leading, 16)
                             .safeAreaPadding(.top, 8)
                         }
                     }
@@ -856,13 +854,6 @@ extension ContentView {
 
             if !showingInlineSearch && !countryListSearchMode {
                 iOSMainOverlays
-            }
-
-            if !showingInlineSearch && !showingMapSidebar && !countryListSearchMode {
-                iPhoneFloatingBottomToolbarFallback
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, -2)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
             if showingInlineSearch && countryListSearchMode {

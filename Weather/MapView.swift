@@ -693,12 +693,15 @@ extension ContentView {
     }
 
     var mapCameraProfile: MapCameraProfile {
+        if atlasMode == .discover {
+            return MapCameraProfile.discovery
+        }
         #if os(macOS)
-        .desktop
+        return MapCameraProfile.desktop
         #elseif os(iOS)
-        shouldUseIPadLayout ? .tablet : .mobile
+        return shouldUseIPadLayout ? MapCameraProfile.tablet : MapCameraProfile.mobile
         #else
-        .mobile
+        return MapCameraProfile.mobile
         #endif
     }
 
@@ -1508,6 +1511,14 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             fitMaxZoom: 4.2,
             cityZoom: 4.35,
             useLeadingOffset: true
+          },
+          discovery: {
+            initialCenter: [0, 16],
+            initialZoom: 0.95,
+            fitPadding: { top: 104, right: 48, bottom: 430, left: 48 },
+            fitMaxZoom: 3.45,
+            cityZoom: 4.0,
+            useLeadingOffset: false
           }
         };
 
@@ -2520,6 +2531,7 @@ enum MapCameraProfile: String {
     case desktop
     case tablet
     case mobile
+    case discovery
 }
 
 private struct MapLibreWeatherFeature: Codable {

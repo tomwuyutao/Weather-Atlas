@@ -254,6 +254,7 @@ struct ContentView: View {
     @State var cityToRename: CityWeather?
     @State var cityToRenameListID: CityListID?
     @State var listToRenameID: CityListID?
+    @State var comparisonListEditMode: Bool = false
     @State var showingListSwitcher: Bool = false
     @State var showingMapSidebar: Bool = false
     @State var sidebarExpandedListIDs: Set<String> = []
