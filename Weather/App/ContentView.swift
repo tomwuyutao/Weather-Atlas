@@ -34,6 +34,7 @@ enum IPhoneNavigationRoute: Hashable {
     case listManager
 }
 #endif
+//?idk why there is a dedicated iphonenavigationroute here. why only for iphone?
 
 // MARK: - Root Shared State
 
@@ -233,7 +234,7 @@ struct ContentView: View {
         iOSView
         #endif
     }
-
+//? i think we no longer need the shoulduseipadlayout thing? each platform should just use their own layout, no need for a dedicated shouldUseIPadLayout
     #if os(iOS)
     var shouldUseIPadLayout: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
@@ -338,7 +339,6 @@ struct ContentView: View {
     @State var capsuleSwipeFromTrailing: Bool = true
 
     // Map overlay menu is in MapOverlayMenu.swift
-
     // Map expanded card is in MapExpandedCard.swift
     // Map date slider is in MapDateSlider.swift
 

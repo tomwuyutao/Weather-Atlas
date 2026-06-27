@@ -25,7 +25,7 @@ enum WeatherMapProvider: String {
 
 extension ContentView {
     @ViewBuilder
-    var iOSDateSliderOverlay: some View {
+    var iOSDateSliderOverlay: some View { //? also here, date slider is not limited to ios, ipados also has this, make this clearer
         // Date slider only on map tab — list tab uses the date switcher capsule
         if selectedTab == 1, showDateSlider, !showingInlineSearch, !countryListSearchMode {
             #if os(macOS)
@@ -132,14 +132,14 @@ extension ContentView {
         #if os(iOS)
         if shouldUseIPadLayout, showingCityDetail || iPadInspectorPinned {
             PlatformFeedback.lightImpact()
-            macHoverPresentedCardCityID = nil
+            macHoverPresentedCardCityID = nil //?the code here is really inefficeint. is os is iOS, why would the mac... varibales be assigned true? this should be fixed, ideally remove those variabels containing the name mac, make it very confusing
             macMapExpandedCardFocusesMarker = true
             macMapExpandedCardAnchor = anchor ?? macCenteredMapMarkerAnchor()
             macMapExpandedCardBaseOffset = .zero
             macExpandedCardShowsDetails = true
             withAnimation(iPadInspectorMorphAnimation) {
                 tappedCity = city
-                iPadInspectorPresentedCityID = city.id
+                iPadInspectorPresentedCityID = city.id //? the inspector is used by both mac and ipad, should not name this ipadinspector.....
                 showingMapExpandedCard = false
                 showingCityDetail = true
             }
@@ -152,7 +152,7 @@ extension ContentView {
         #endif
         PlatformFeedback.lightImpact()
         #if os(macOS) || os(iOS)
-        macMapLookupTaskID += 1
+        macMapLookupTaskID += 1 //?what is macMapLookupTaskID
         macHoverPresentedCardCityID = nil
         if usesFloatingMapCardLayout, showingMapExpandedCard, tappedCity?.id != city.id {
             macMapExpandedCardFocusesMarker = true
@@ -172,7 +172,7 @@ extension ContentView {
     func handleMapBackgroundClick(_ coordinate: CLLocationCoordinate2D, anchor: CGPoint? = nil) {
         #if os(macOS) || os(iOS)
         #if os(macOS)
-        withAnimation(iPadInspectorMorphAnimation) {
+        withAnimation(iPadInspectorMorphAnimation) { //? again, why iPadInspectorMorphAnimation? mac also has an inspector
             if showingCityDetail {
                 showingCityDetail = false
                 iPadInspectorPinned = false
@@ -2539,3 +2539,6 @@ private struct MapLibreFitCoordinate: Codable {
     let latitude: Double
     let longitude: Double
 }
+
+//?just to confirm, this code is for the actual map view, including the toolbars, controls, not just the supporting map rendering stuff
+//? if true, then this code is too long and doing too much stuff. you should move the apple maps and OSM suprting /map rendering stuff into their dedicated swift files, and this is just the mapview (adding controls, dots, etc)

@@ -76,6 +76,8 @@ struct DiscoveryStaticMapPreview: View {
                     tappedCity: $previewTappedCity,
                     recenterOnAllCities: $recenterOnAllCities,
                     recenterUsesListCoordinates: $recenterUsesListCoordinates,
+                    //?whats the diffrence between recenterOnAllCities and recenterUsesListCoordinates?
+                    //?i think one recenter declaration is enough
                     centerOnCity: nil,
                     leadingFitPadding: 0,
                     focusSelectedMarker: false,
@@ -318,7 +320,8 @@ extension ContentView {
         if icon.contains("moon") {
             return 0
         }
-
+        //? I want to simplify the sunniness scoring system. i only care about the weather condition (the icons), as well as the cloud cover. a day's sunniness score should depend on the above two variables across the entire dya. say london is cloudy condition, with high cloud condotion in part of the day, then the sunniness score is lowered. i want four tiers of scoring by weather condotion: sunny/clear gets highest score, partly sunny 2nd highest, partly cloudy 3rd highest, every remaining stuff gets lowest score
+        //? idk why the sunniness scoring code is within the discovery view file. it is actually used across teh app, in detailview as well ( i plan to display it in detailview). so its better moved to another place
         let conditionScore: Double
         switch condition {
         case .clear: conditionScore = 34
@@ -449,7 +452,7 @@ extension ContentView {
             if !shouldUseIPadLayout {
                 pushIPhoneRoute(.map)
             } else {
-                setAtlasMode(.map)
+                setAtlasMode(.map) //?what is setatlasmode? explain to me
             }
             #else
             setAtlasMode(.map)
@@ -503,7 +506,7 @@ extension ContentView {
         let rankedCandidates = limit.map { Array(recommendedSunnyCandidates.prefix($0)) } ?? recommendedSunnyCandidates
         return VStack(spacing: 6) {
             if rankedCandidates.isEmpty {
-                Text(localizedString("No strong sunny places for this date.", locale: locale))
+                Text(localizedString("No strong sunny places for this date.", locale: locale))//?remove the "strong" from that sentence
                     .font(.callout)
                     .foregroundStyle(theme.colors.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -612,7 +615,7 @@ extension ContentView {
         }
         .background(theme.colors.background.ignoresSafeArea())
     }
-
+    //? what is a "comparison list"?
     private var comparisonListHeader: some View {
         VStack(spacing: 12) {
             atlasTopHeader {
@@ -708,7 +711,7 @@ extension ContentView {
     var discoveryListMenu: some View {
         atlasListMenu(titleOverride: nil)
     }
-
+    //?what is an "atlastopheader"
     func atlasTopHeader<Accessory: View>(
         titleOverride: String? = nil,
         @ViewBuilder accessory: () -> Accessory
@@ -720,7 +723,7 @@ extension ContentView {
         }
         .frame(maxWidth: .infinity)
     }
-
+    //?whats that?
     func atlasListMenu(titleOverride: String?) -> some View {
         Menu {
             ForEach(sidebarLists) { listID in
@@ -754,3 +757,5 @@ extension ContentView {
         .tint(.primary)
     }
 }
+
+//?my app has 3 main views: discover, list, map. is there a dedicated file for the list view, or is that embedded into discoveryview

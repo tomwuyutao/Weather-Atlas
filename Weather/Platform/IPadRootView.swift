@@ -663,7 +663,7 @@ extension ContentView {
         }
     }
 
-    var iPadInspectorWidth: CGFloat { 380 }
+    var iPadInspectorWidth: CGFloat { 380 } //such simple vars should be removed, no need to call this var
     var iPadFloatingCardTrailingGap: CGFloat { 24 }
     var iPadFloatingCardBottomGap: CGFloat { -4 }
 
@@ -671,7 +671,7 @@ extension ContentView {
         CGSize(width: 340, height: 144)
     }
 
-    var iPadInspectorMorphAnimation: Animation {
+    var iPadInspectorMorphAnimation: Animation { //?this var is so simple, don't really need to call this variable
         .spring(response: 0.5, dampingFraction: 0.92, blendDuration: 0.08)
     }
 
@@ -682,14 +682,14 @@ extension ContentView {
         )
     }
 
-    func iPadMapDetailMorphID(for city: CityWeather) -> String {
+    func iPadMapDetailMorphID(for city: CityWeather) -> String { //?whats this
         "ipad-map-detail-\(city.id.uuidString)"
     }
 }
 #endif
 
 #if os(iOS)
-struct IPadNativeSearchBar: UIViewRepresentable {
+struct IPadNativeSearchBar: UIViewRepresentable { //?why ipadsearchbar is in iOS? why we need a dedicated ipadnativesearchbar struct? i dont see such struct for iphone and mac
     @Binding var text: String
     @Binding var isPresented: Bool
     let placeholder: String

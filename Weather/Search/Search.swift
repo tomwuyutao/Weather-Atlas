@@ -11,7 +11,7 @@ import CoreLocation
 import MapKit
 
 // MARK: - Search Result
-
+//? i think the current location search is apple's own search. lets say the user's phone is in chinese, he sets the app's language to english. say if he inputs Shanghai, what will be shown in the results? What if he inputs 上海？
 struct CitySearchResult: Identifiable {
     let id: String
     let title: String

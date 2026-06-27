@@ -9,7 +9,7 @@
 import SwiftUI
 
 // MARK: - Overlay Menu
-
+//? this menu does not deserve a dedicated file, merge it into somewhere else
 extension ContentView {
 
     var mapOverlayOptions: [(mode: String, icon: String, label: String)] {

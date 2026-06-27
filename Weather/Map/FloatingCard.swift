@@ -567,7 +567,7 @@ extension ContentView {
             proxy.scrollTo(targetID, anchor: .center)
         }
     }
-
+    //?why is ther a macexpandedcard thign? the macos expanded card is same as ios/ipados just wiht some tiny styling changes. no need for a dedicated func for mac
     func macExpandedCardAddMenu(for cityWeather: CityWeather) -> some View {
         Menu {
             ForEach(sidebarLists) { listID in
@@ -668,7 +668,7 @@ extension ContentView {
         #else
         let chartControlBottomPadding: CGFloat = usesIPhoneDetailSizing ? 0 : 6
         #endif
-
+        //? what is usesIPhoneDetailSizing and usesDetailCardLayout? whyneed those
         return VStack(spacing: usesIPhoneDetailSizing ? 18 : (usesDetailCardLayout ? 12 : 8)) {
             VStack(alignment: .leading, spacing: 0) {
                 if !usesDetailCardLayout {
@@ -854,7 +854,7 @@ extension ContentView {
             (.tenDay, localizedString("10 Days", locale: locale))
         ]
     }
-
+    //? why so many mac-specific var? also is this part of the actually about the detailview? i already have a dedicated detailview code file, why put it in floatingcard? the floating card should only have code related to the floating card that appears when clicking on a point on the ma
     private var macExpandedCardChartMetrics: [(WeatherChartMetric, String, String)] {
         [
             (.temperature, "thermometer.medium", localizedString("Temperature", locale: locale)),
@@ -1003,7 +1003,7 @@ extension ContentView {
     var iOSMainOverlays: some View {
         AnyView(iOSFloatingMapCardOverlay)
     }
-
+    //? again, why so many ios specifc vars? the UI and code should be unfied across platforms
     var iOSFloatingMapCardHorizontalPadding: CGFloat {
         if #available(iOS 26.0, *) {
             return 18
