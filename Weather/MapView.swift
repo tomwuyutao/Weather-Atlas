@@ -718,7 +718,7 @@ extension ContentView {
     }
 }
 
-private struct AppleWeatherMapView: View {
+struct AppleWeatherMapView: View {
     let cities: [CityWeather]
     let fitCities: [City]
     let selectedDayOffset: Int
@@ -1518,6 +1518,14 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
             fitPadding: { top: 104, right: 48, bottom: 430, left: 48 },
             fitMaxZoom: 3.45,
             cityZoom: 4.0,
+            useLeadingOffset: false
+          },
+          preview: {
+            initialCenter: [10, 46],
+            initialZoom: 2.4,
+            fitPadding: { top: 34, right: 34, bottom: 34, left: 34 },
+            fitMaxZoom: 4.8,
+            cityZoom: 4.4,
             useLeadingOffset: false
           }
         };
@@ -2532,6 +2540,7 @@ enum MapCameraProfile: String {
     case tablet
     case mobile
     case discovery
+    case preview
 }
 
 private struct MapLibreWeatherFeature: Codable {

@@ -1005,9 +1005,9 @@ extension ContentView {
 
     var iOSFloatingMapCardHorizontalPadding: CGFloat {
         if #available(iOS 26.0, *) {
-            return 26
-        } else {
             return 18
+        } else {
+            return 14
         }
     }
 

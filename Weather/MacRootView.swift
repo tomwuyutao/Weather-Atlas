@@ -773,7 +773,7 @@ extension ContentView {
     var macIPadInspectorBottomGap: CGFloat { 8 }
 
     var macIPadFloatingCardSize: CGSize {
-        CGSize(width: 286, height: 118)
+        CGSize(width: 316, height: 118)
     }
 
     var iPadInspectorMorphAnimation: Animation {

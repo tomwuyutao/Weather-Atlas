@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import MapKit
 #if os(iOS)
 import UIKit
 #elseif os(macOS)
@@ -140,6 +141,7 @@ struct SettingsView: View {
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.defaultRawValue
     @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.defaultRawValue
     @AppStorage("appLanguage") private var appLanguage: String = "en"
+    @AppStorage("mapProvider") private var mapProviderRaw: String = WeatherMapProvider.openStreetMap.rawValue
     let weatherService: WeatherService
     let onResetLists: () -> Void
     var onPlayTutorial: () -> Void = {}
@@ -303,6 +305,11 @@ struct SettingsView: View {
             }
             .listRowBackground(settingsRowBackground)
 
+            Section(localizedString("Maps", locale: locale)) {
+                mapProviderNavigationRow
+            }
+            .listRowBackground(settingsRowBackground)
+
             Section(localizedString("Tutorial", locale: locale)) {
                 Button {
                     onPlayTutorial()
@@ -363,6 +370,94 @@ struct SettingsView: View {
         #if os(macOS)
         .formStyle(.grouped)
         #endif
+    }
+
+    private var mapProviderNavigationRow: some View {
+        NavigationLink {
+            mapProviderSelectionView
+        } label: {
+            LabeledContent {
+                Text(currentMapProvider.localizedTitle(locale: locale))
+                    .foregroundStyle(theme.colors.secondaryText)
+            } label: {
+                settingsLabel(localizedString("Map Source", locale: locale), systemImage: "map")
+            }
+        }
+    }
+
+    private var currentMapProvider: WeatherMapProvider {
+        WeatherMapProvider(rawValue: mapProviderRaw) ?? .openStreetMap
+    }
+
+    private var mapProviderSelectionView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 18) {
+                Text(localizedString("Choose a map style for comparing weather dots. OpenStreetMap is more minimal, with fewer labels and distractions. Apple Maps shows more place names and context, but the map can feel busier.", locale: locale))
+                    .font(.subheadline)
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .padding(.horizontal, 20)
+                    .padding(.top, 8)
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 14) {
+                        mapProviderOption(.openStreetMap)
+                        mapProviderOption(.appleMaps)
+                    }
+                    VStack(spacing: 14) {
+                        mapProviderOption(.openStreetMap)
+                        mapProviderOption(.appleMaps)
+                    }
+                }
+                .padding(.horizontal, 20)
+            }
+            .padding(.bottom, 28)
+        }
+        .scrollContentBackground(.hidden)
+        .background(settingsFormBackground.ignoresSafeArea())
+        .navigationTitle(localizedString("Map Source", locale: locale))
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+
+    private func mapProviderOption(_ provider: WeatherMapProvider) -> some View {
+        let isSelected = currentMapProvider == provider
+        return Button {
+            withAnimation(.smooth(duration: 0.2)) {
+                mapProviderRaw = provider.rawValue
+            }
+        } label: {
+            VStack(alignment: .leading, spacing: 8) {
+                MapProviderPreview(provider: provider, accent: theme.colors.accent, isSelected: isSelected)
+                    .frame(height: 210)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
+                HStack(spacing: 6) {
+                    Text(provider.localizedTitle(locale: locale))
+                        .font(.headline.weight(.semibold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.78)
+                    Spacer(minLength: 0)
+                    if isSelected {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(theme.colors.accent)
+                    }
+                }
+            }
+            .padding(10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .fill(isSelected ? theme.colors.accent.opacity(0.12) : Color.primary.opacity(0.045))
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .strokeBorder(isSelected ? theme.colors.accent.opacity(0.78) : Color.primary.opacity(0.08), lineWidth: isSelected ? 1.5 : 1)
+            }
+            .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 
     private var aboutForm: some View {
@@ -539,6 +634,92 @@ private extension View {
         }
     }
 }
+
+private extension WeatherMapProvider {
+    func localizedTitle(locale: Locale) -> String {
+        switch self {
+        case .openStreetMap: return localizedString("OpenStreetMap", locale: locale)
+        case .appleMaps: return localizedString("Apple Maps", locale: locale)
+        }
+    }
+
+    var settingsIcon: String {
+        switch self {
+        case .openStreetMap: return "globe"
+        case .appleMaps: return "map"
+        }
+    }
+}
+
+private struct MapProviderPreview: View {
+    let provider: WeatherMapProvider
+    let accent: Color
+    let isSelected: Bool
+    @State private var tappedCity: CityWeather?
+    @State private var recenterOnAllCities = true
+    @State private var recenterUsesListCoordinates = true
+    @State private var appleCameraPosition: MapCameraPosition = .region(Self.ukPreviewRegion)
+
+    var body: some View {
+        ZStack {
+            switch provider {
+            case .openStreetMap:
+                MapLibreWebMapView(
+                    cities: [],
+                    fitCities: Self.ukPreviewCities,
+                    selectedDayOffset: -1,
+                    overlayMode: "weather",
+                    filterSunny: false,
+                    markerReloadID: 0,
+                    markerSizeScale: 1.15,
+                    showsMarkerHoverLabels: false,
+                    focusedCountryBoundary: nil,
+                    tappedCity: $tappedCity,
+                    recenterOnAllCities: $recenterOnAllCities,
+                    recenterUsesListCoordinates: $recenterUsesListCoordinates,
+                    centerOnCity: nil,
+                    leadingFitPadding: 0,
+                    focusSelectedMarker: false,
+                    allowsMarkerHover: false,
+                    cameraProfile: .preview,
+                    onMarkerTap: { _, _ in },
+                    onMapClick: nil,
+                    onMarkerCommandHover: nil,
+                    onCameraMove: nil,
+                    onMapGestureStart: nil
+                )
+            case .appleMaps:
+                Map(position: $appleCameraPosition, interactionModes: []) {}
+                    .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+            }
+        }
+        .allowsHitTesting(false)
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(isSelected ? accent.opacity(0.78) : Color.primary.opacity(0.08), lineWidth: isSelected ? 2 : 1)
+        }
+        .onAppear {
+            appleCameraPosition = .region(Self.ukPreviewRegion)
+            recenterOnAllCities = true
+            recenterUsesListCoordinates = true
+        }
+    }
+
+    private static var ukPreviewCities: [City] {
+        [
+            City(name: "London", country: "United Kingdom", latitude: 51.5072, longitude: -0.1276),
+            City(name: "Edinburgh", country: "United Kingdom", latitude: 55.9533, longitude: -3.1883),
+            City(name: "Cardiff", country: "United Kingdom", latitude: 51.4816, longitude: -3.1791),
+            City(name: "Belfast", country: "United Kingdom", latitude: 54.5973, longitude: -5.9301)
+        ]
+    }
+
+    private static let ukPreviewRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 54.35, longitude: -3.15),
+        span: MKCoordinateSpan(latitudeDelta: 8.2, longitudeDelta: 8.4)
+    )
+}
+
 #Preview("Settings") {
     SettingsView(weatherService: WeatherService(), onResetLists: {})
 }

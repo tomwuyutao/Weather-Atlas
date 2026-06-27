@@ -21,6 +21,7 @@ enum PlatformFeedback {
 #if os(iOS)
 enum IPhoneNavigationRoute: Hashable {
     case map
+    case list
     case cityDetail
     case addCityDetail
     case listManager
@@ -73,7 +74,7 @@ struct ContentView: View {
     @State var showingCityDetail: Bool = false
     @State var tappedCity: CityWeather?
     @State var showingMapExpandedCard: Bool = false
-    @AppStorage("weatherAtlasMode") var weatherAtlasModeRaw: String = WeatherAtlasMode.map.rawValue
+    @AppStorage("weatherAtlasMode") var weatherAtlasModeRaw: String = WeatherAtlasMode.discover.rawValue
     @AppStorage("weatherListSortMode") var weatherListSortModeRaw: String = WeatherListSortMode.sunny.rawValue
     @AppStorage("hasLaunchedBefore") var hasLaunchedBefore: Bool = false
     @State var selectedTab: Int = 0
@@ -434,48 +435,6 @@ struct ContentView: View {
         .menuIndicator(.hidden)
         #endif
         .menuOrder(.fixed)
-    }
-
-    @ViewBuilder
-    func detailToolbarTrailingAction(for city: CityWeather) -> some View {
-        if shouldShowPreviewCityAddButton(for: city) {
-            Button {
-                Task {
-                    await addCityToSidebar(city)
-                    showingCityDetail = false
-                    if selectedTab == 1 {
-                        recenterOnAllCities = true
-                    }
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        previewCity = nil
-                    }
-                }
-            } label: {
-                Image(systemName: "plus")
-                    .foregroundStyle(.primary)
-                    .foregroundColor(.primary)
-                    .frame(width: 32, height: 32)
-                    .contentShape(Circle())
-            }
-            .tint(.primary)
-        } else {
-            detailActionsMenu(for: city)
-        }
-    }
-
-    func shouldShowPreviewCityAddButton(for city: CityWeather) -> Bool {
-        guard let previewCity else { return false }
-        return !cityIsInSidebar(city) && citiesMatch(previewCity, city)
-    }
-
-    func citiesMatch(_ lhs: CityWeather, _ rhs: CityWeather) -> Bool {
-        lhs.id == rhs.id ||
-        (
-            lhs.city.name == rhs.city.name &&
-            lhs.city.country == rhs.city.country &&
-            lhs.city.latitude == rhs.city.latitude &&
-            lhs.city.longitude == rhs.city.longitude
-        )
     }
 
     @ViewBuilder

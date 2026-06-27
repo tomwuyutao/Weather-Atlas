@@ -122,7 +122,7 @@ extension ContentView {
     ) -> some View {
         if countryListSearchMode, countryListPreviewCountry != nil {
             content
-        } else {
+        } else if showingInlineSearch || inlineSearchFieldPresented {
             content
                 .searchable(
                     text: $inlineSearchText,
@@ -151,6 +151,8 @@ extension ContentView {
                 .onSubmit(of: .search) {
                     confirmInlineSearchSelection()
                 }
+        } else {
+            content
         }
     }
 
@@ -430,9 +432,15 @@ extension ContentView {
             tappedCity = nil
             showingInlineSearch = true
         }
+        #if os(iOS)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
             inlineSearchFieldPresented = true
         }
+        #else
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+            inlineSearchFieldPresented = true
+        }
+        #endif
     }
 
     func dismissInlineSearch() {

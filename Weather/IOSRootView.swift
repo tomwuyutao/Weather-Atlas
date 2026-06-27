@@ -17,29 +17,6 @@ extension View {
             self
         }
     }
-
-    func iPhoneFloatingToolbarCapsule() -> some View {
-        self
-            .padding(.vertical, 3)
-            .padding(.horizontal, 4)
-            .background(AppTheme.shared.colors.glassFill, in: Capsule())
-            .overlay(Capsule().stroke(.white.opacity(0.14), lineWidth: 0.6))
-            .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
-    }
-
-    func iPhoneFloatingToolbarCircle() -> some View {
-        ZStack {
-            Circle()
-                .fill(AppTheme.shared.colors.glassFill)
-            self
-                .frame(width: 52, height: 52, alignment: .center)
-        }
-            .frame(width: 52, height: 52)
-            .clipShape(Circle())
-            .overlay(Circle().stroke(.white.opacity(0.14), lineWidth: 0.6))
-            .contentShape(Circle())
-            .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
-    }
 }
 #endif
 
@@ -128,9 +105,90 @@ extension ContentView {
                     }
                 }
         }
-        .padding(6)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
         .themedGlass(in: .capsule)
         .transition(.scale.combined(with: .opacity))
+    }
+
+    var iOSDateCalendarButton: some View {
+        Button {
+            showingDatePopover = true
+        } label: {
+            Image(systemName: "calendar")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 38, height: 38)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .themedGlass(in: .capsule)
+        .popover(isPresented: $showingDatePopover) {
+            VStack(spacing: 12) {
+                HStack(spacing: 10) {
+                    Button {
+                        guard selectedDayOffset > -1 else { return }
+                        PlatformFeedback.lightImpact()
+                        dateSwitcherForward = false
+                        withAnimation(.smooth(duration: 0.2)) {
+                            selectedDayOffset -= 1
+                        }
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 38, height: 38)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(selectedDayOffset <= -1)
+
+                    Text(iOSDateText)
+                        .font(.headline.weight(.semibold))
+                        .frame(minWidth: 110)
+                        .contentTransition(.numericText())
+
+                    Button {
+                        guard selectedDayOffset < 9 else { return }
+                        PlatformFeedback.lightImpact()
+                        dateSwitcherForward = true
+                        withAnimation(.smooth(duration: 0.2)) {
+                            selectedDayOffset += 1
+                        }
+                    } label: {
+                        Image(systemName: "chevron.right")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 38, height: 38)
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(selectedDayOffset >= 9)
+                }
+
+                DatePicker(
+                    "",
+                    selection: Binding(
+                        get: {
+                            Calendar.current.date(byAdding: .day, value: max(0, selectedDayOffset), to: Date()) ?? Date()
+                        },
+                        set: { newDate in
+                            let calendar = Calendar.current
+                            let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
+                            if let days = components.day {
+                                withAnimation(.smooth(duration: 0.2)) {
+                                    selectedDayOffset = max(0, min(9, days))
+                                }
+                            }
+                        }
+                    ),
+                    in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+            }
+            .frame(width: 300)
+            .padding(12)
+            .presentationCompactAdaptation(.popover)
+            .themedPopoverBackground()
+        }
     }
 
     // MARK: - Native Menu
@@ -152,37 +210,7 @@ extension ContentView {
             }
         }
 
-        Divider()
-
         if selectedTab == 1 {
-            Button {
-                mapProviderRaw = WeatherMapProvider.appleMaps.rawValue
-                centerMapOnDots(useListCoordinates: true)
-            } label: {
-                Label {
-                    Text("Switch to Apple Maps")
-                } icon: {
-                    Image(systemName: "map")
-                        .foregroundStyle(.primary)
-                }
-            }
-            .disabled(mapProviderRaw == WeatherMapProvider.appleMaps.rawValue)
-
-            Button {
-                mapProviderRaw = WeatherMapProvider.openStreetMap.rawValue
-                centerMapOnDots(useListCoordinates: true)
-            } label: {
-                Label {
-                    Text("Switch to OpenStreetMap")
-                } icon: {
-                    Image(systemName: "globe")
-                        .foregroundStyle(.primary)
-                }
-            }
-            .disabled(mapProviderRaw == WeatherMapProvider.openStreetMap.rawValue)
-
-            Divider()
-
             Toggle(isOn: Binding(
                 get: { showLegend },
                 set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
@@ -365,65 +393,33 @@ extension ContentView {
         }
     }
 
-    @ViewBuilder
-    var iPhoneFloatingBottomToolbarFallback: some View {
-        if #available(iOS 26.0, *) {
-            EmptyView()
-        } else {
-            HStack(spacing: 0) {
-                HStack(spacing: 0) {
-                    Button {
-                        recenterOnAllCities = false
-                        DispatchQueue.main.async {
-                            recenterOnAllCities = true
-                        }
-                    } label: {
-                        Image(systemName: "dot.squareshape.split.2x2")
-                            .font(.system(size: 21, weight: .regular))
-                            .foregroundStyle(.primary)
-                            .frame(width: 46, height: 46)
-                    }
-                    .buttonStyle(.plain)
-                    .tint(.primary)
-
-                    mapOverlayMenu
-                        .font(.system(size: 21, weight: .regular))
-                        .frame(width: 46, height: 46)
-
-                    iOSNativeMenu
-                        .font(.system(size: 21, weight: .regular))
-                        .frame(width: 46, height: 46)
+    var iPhoneMapControlCluster: some View {
+        HStack(spacing: 8) {
+            Button {
+                recenterOnAllCities = false
+                DispatchQueue.main.async {
+                    recenterOnAllCities = true
                 }
-                .iPhoneFloatingToolbarCapsule()
+            } label: {
+                Image(systemName: "dot.squareshape.split.2x2")
+                    .font(.system(size: 21, weight: .regular))
+                    .foregroundStyle(.primary)
+                    .frame(width: 46, height: 46)
             }
-            .frame(maxWidth: .infinity)
+            .buttonStyle(.plain)
+            .tint(.primary)
+
+            mapOverlayMenu
+                .font(.system(size: 21, weight: .regular))
+                .frame(width: 46, height: 46)
+                .buttonStyle(.plain)
+
+            iOSNativeMenu
+                .font(.system(size: 21, weight: .regular))
+                .frame(width: 46, height: 46)
+                .buttonStyle(.plain)
         }
-    }
-
-    @ToolbarContentBuilder
-    var iPhoneNativeBottomToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .bottomBar) {
-            HStack(spacing: 0) {
-                Button {
-                    recenterOnAllCities = false
-                    DispatchQueue.main.async {
-                        recenterOnAllCities = true
-                    }
-                } label: {
-                    Image(systemName: "dot.squareshape.split.2x2")
-                        .foregroundStyle(.primary)
-                        .foregroundColor(.primary)
-                        .frame(width: 44, height: 44)
-                }
-                .tint(.primary)
-
-                mapOverlayMenu
-                    .frame(width: 44, height: 44)
-
-                iOSNativeMenu
-                    .frame(width: 44, height: 44)
-            }
-        }
+        .controlSize(.regular)
     }
     #endif
 }
@@ -638,7 +634,7 @@ extension ContentView {
     var iPhoneNavigationStack: some View {
         NavigationStack(path: $iPhoneNavigationPath) {
             ZStack {
-                nativeCitySearch(iPhoneModeTabView)
+                nativeCitySearch(iPhoneDiscoverHome)
                     .allowsHitTesting(!showingMapSidebar)
 
                 if showingMapSidebar {
@@ -646,12 +642,16 @@ extension ContentView {
                         .transition(.move(edge: .leading).combined(with: .opacity))
                         .zIndex(1)
                 }
+
             }
             .animation(.smooth(duration: 0.24), value: showingMapSidebar)
+            .animation(.spring(response: 0.32, dampingFraction: 0.88), value: showingInlineSearch)
             .navigationDestination(for: IPhoneNavigationRoute.self) { route in
                 switch route {
                 case .map:
-                    EmptyView()
+                    AnyView(iPhoneFullMapDestination)
+                case .list:
+                    AnyView(iPhoneFullListDestination)
                 case .cityDetail:
                     AnyView(self.selectedCityDetailDestination)
                 case .addCityDetail:
@@ -663,133 +663,177 @@ extension ContentView {
         }
         .onAppear {
             selectedTab = 1
+            weatherAtlasModeRaw = WeatherAtlasMode.discover.rawValue
         }
     }
 
-    var iPhoneModeTabView: some View {
-        TabView(selection: Binding(
-            get: { atlasMode },
-            set: { setAtlasMode($0) }
-        )) {
-            discoveryContent
-                .tabItem {
-                    Label(WeatherAtlasMode.discover.title(locale: locale), systemImage: WeatherAtlasMode.discover.icon)
-                }
-                .tag(WeatherAtlasMode.discover)
-
-            weatherComparisonListView
-                .tabItem {
-                    Label(WeatherAtlasMode.list.title(locale: locale), systemImage: WeatherAtlasMode.list.icon)
-                }
-                .tag(WeatherAtlasMode.list)
-
-            iPhoneMapTabContent
-                .tabItem {
-                    Label(WeatherAtlasMode.map.title(locale: locale), systemImage: WeatherAtlasMode.map.icon)
-                }
-                .tag(WeatherAtlasMode.map)
-        }
-        .tint(theme.colors.accent)
-        .navigationTitle("")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
-    }
-
-    var iPhoneMapDestination: some View {
-        iPhoneCurrentModeContent
+    var iPhoneDiscoverHome: some View {
+        discoveryContent
             .navigationTitle("")
-            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
-            #endif
+            .overlay(alignment: .bottom) {
+                if !showingInlineSearch {
+                    iPhoneDiscoverBottomToolbar
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, -2)
+                }
+            }
+            .onAppear {
+                selectedTab = 1
+                weatherAtlasModeRaw = WeatherAtlasMode.discover.rawValue
+                showingMapExpandedCard = false
+            }
     }
 
-    @ViewBuilder
-    var iPhoneCurrentModeContent: some View {
-        switch atlasMode {
-        case .discover:
-            discoveryContent
-                .toolbar {
-                    if #available(iOS 26.0, *), !showingInlineSearch {
-                        iPhoneNativeBottomToolbar
-                    }
+    var iPhoneFullMapDestination: some View {
+        iPhoneMapTabContent
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(false)
+            .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
+            .overlay(alignment: .bottom) {
+                if !showingInlineSearch && !countryListSearchMode {
+                    iPhoneMapBottomToolbar
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, -2)
                 }
-                .overlay(alignment: .bottom) {
-                    if !showingInlineSearch {
-                        iPhoneFloatingBottomToolbarFallback
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, -2)
-                    }
+            }
+            .onAppear {
+                selectedTab = 1
+                weatherAtlasModeRaw = WeatherAtlasMode.map.rawValue
+                centerMapOnDots(useListCoordinates: true)
+            }
+    }
+
+    var iPhoneFullListDestination: some View {
+        weatherComparisonListView
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
+            .overlay(alignment: .bottom) {
+                if !showingInlineSearch {
+                    iPhoneBackDateBottomToolbar(.list)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, -2)
                 }
-        case .map:
-            iPhoneMapTabContent
-        case .list:
-            weatherComparisonListView
-                .toolbar {
-                    if #available(iOS 26.0, *), !showingInlineSearch {
-                        iPhoneNativeBottomToolbar
-                    }
-                }
-                .overlay(alignment: .bottom) {
-                    if !showingInlineSearch {
-                        iPhoneFloatingBottomToolbarFallback
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, -2)
-                    }
-                }
+            }
+            .onAppear {
+                selectedTab = 2
+                weatherAtlasModeRaw = WeatherAtlasMode.list.rawValue
+                showingMapExpandedCard = false
+                comparisonListEditMode = false
+            }
+    }
+
+    func iPhoneFloatingBottomToolbar<Left: View, Center: View>(
+        @ViewBuilder left: () -> Left,
+        @ViewBuilder center: () -> Center
+    ) -> some View {
+        ZStack {
+            center()
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
+
+            HStack {
+                left()
+                Spacer(minLength: 10)
+                iPhoneBottomSearchButton
+            }
         }
+    }
+
+    var iPhoneDiscoverBottomToolbar: some View {
+        iPhoneFloatingBottomToolbar {
+            iPhoneBottomSettingsButton
+        } center: {
+            iOSDateSwitcherCapsule
+        }
+    }
+
+    func iPhoneBackDateBottomToolbar(_ route: IPhoneNavigationRoute) -> some View {
+        iPhoneFloatingBottomToolbar {
+            iPhoneBottomBackButton(route)
+        } center: {
+            iOSDateSwitcherCapsule
+        }
+    }
+
+    var iPhoneMapBottomToolbar: some View {
+        iPhoneFloatingBottomToolbar {
+            iPhoneBottomBackButton(.map)
+        } center: {
+            iPhoneMapControlCluster
+                .padding(.horizontal, 8)
+                .themedGlass(in: .capsule)
+        }
+    }
+
+    var iPhoneBottomSearchButton: some View {
+        Button {
+            activateInlineSearch()
+        } label: {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 22, weight: .regular))
+                .foregroundStyle(.primary)
+                .frame(width: 46, height: 46)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .themedGlass(in: Circle())
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
+        .accessibilityLabel(localizedString("Search", locale: locale))
+    }
+
+    var iPhoneBottomSettingsButton: some View {
+        Button {
+            showingSettings = true
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.system(size: 21, weight: .regular))
+                .foregroundStyle(.primary)
+                .frame(width: 46, height: 46)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .themedGlass(in: Circle())
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
+        .accessibilityLabel(localizedString("Settings", locale: locale))
+    }
+
+    func iPhoneBottomBackButton(_ route: IPhoneNavigationRoute) -> some View {
+        Button {
+            dismissIPhoneRoute(route)
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 46, height: 46)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .themedGlass(in: Circle())
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
+        .accessibilityLabel(localizedString("Back", locale: locale))
+    }
+
+    func iPhoneDiscoverBackButton(_ route: IPhoneNavigationRoute) -> some View {
+        Button {
+            dismissIPhoneRoute(route)
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 42, height: 42)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .themedGlass(in: Circle())
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 14, y: 6)
+        .accessibilityLabel(localizedString("Back", locale: locale))
     }
 
     var mapTopListMenu: some View {
-        Menu {
-            ForEach(sidebarLists) { listID in
-                Button(listID.localizedDisplayName(locale: locale)) {
-                    Task {
-                        await switchToList(listID)
-                    }
-                }
-            }
-
-            Divider()
-
-            Button {
-                beginCreatingListFromSwitcher()
-            } label: {
-                HStack {
-                    Text(localizedString("New List", locale: locale))
-                    Spacer()
-                    Image(systemName: "plus")
-                }
-            }
-        } label: {
-            #if os(macOS)
-            HStack(spacing: 0) {
-                Text(toolbarTitle)
-                    .font(.headline)
-                    .lineLimit(1)
-                    .foregroundStyle(.primary)
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 4)
-            .frame(minWidth: 112)
-            .fixedSize(horizontal: true, vertical: false)
-            .contentShape(Rectangle())
-            #else
-            HStack(spacing: 8) {
-                Text(toolbarTitle)
-                    .font(.headline)
-                    .lineLimit(1)
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 12, weight: .semibold))
-            }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 16)
-            .frame(height: 44)
-            .fixedSize(horizontal: true, vertical: false)
-            .contentShape(Capsule())
-            #endif
-        }
-        .buttonStyle(.plain)
+        atlasListMenu(titleOverride: nil)
         #if os(iOS)
         .weatherTutorialTarget(.listSwitcher)
         #endif
@@ -802,6 +846,10 @@ extension ContentView {
 
     var iPhoneShowsNativeToolbar: Bool {
         selectedTab != 2 && !isMapSpecialMode && !showingInlineSearch && previewCity == nil
+    }
+
+    var iPhoneShowsBottomSearchButton: Bool {
+        !showingInlineSearch && !showingMapSidebar && countryListPreviewCountry == nil
     }
 
     var iPhoneMapTabContent: some View {
@@ -835,15 +883,16 @@ extension ContentView {
                     }
                     .animation(.smooth(duration: 0.22), value: showLegend)
                     .animation(.smooth(duration: 0.22), value: weatherService.isLoading)
-                    .overlay(alignment: .top) {
+                    .overlay(alignment: .topLeading) {
                         if !showingInlineSearch {
-                            HStack {
+                            HStack(spacing: 8) {
                                 mapTopListMenu
-                                Spacer()
+                                Spacer(minLength: 8)
                             }
-                            .frame(maxWidth: .infinity)
                             .padding(.leading, 16)
-                            .safeAreaPadding(.top, 8)
+                            .padding(.trailing, 16)
+                            .safeAreaPadding(.top, 20)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                         }
                     }
                     .overlay(alignment: .trailing) {
@@ -875,8 +924,6 @@ extension ContentView {
             if #available(iOS 26.0, *), !showingInlineSearch && !showingMapSidebar {
                 if countryListSearchMode, countryListPreviewCountry != nil {
                     iPhoneCountryListPreviewNativeToolbar
-                } else if !countryListSearchMode {
-                    iPhoneNativeBottomToolbar
                 }
             }
         }
@@ -1014,13 +1061,12 @@ extension ContentView {
                         .foregroundStyle(.primary)
                         .frame(width: 46, height: 46)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.bordered)
                 .tint(.primary)
-                .iPhoneFloatingToolbarCapsule()
 
                 Spacer(minLength: 12)
 
-                HStack(spacing: 0) {
+                HStack(spacing: 8) {
                     Button {
                         beginCreatingCustomList()
                     } label: {
@@ -1029,7 +1075,7 @@ extension ContentView {
                             .foregroundStyle(.primary)
                             .frame(width: 46, height: 46)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.bordered)
                     .tint(.primary)
 
                     Button {
@@ -1042,20 +1088,27 @@ extension ContentView {
                             .foregroundStyle(.primary)
                             .frame(width: 46, height: 46)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(.bordered)
                     .tint(.primary)
                 }
-                .iPhoneFloatingToolbarCapsule()
             }
+            .controlSize(.regular)
         }
     }
     #endif
 
     func pushIPhoneRoute(_ route: IPhoneNavigationRoute) {
         if route == .map {
-            iPhoneNavigationPath = []
             showingMapSidebar = false
-            return
+            selectedTab = 1
+            weatherAtlasModeRaw = WeatherAtlasMode.map.rawValue
+        } else if route == .list {
+            selectedTab = 2
+            weatherAtlasModeRaw = WeatherAtlasMode.list.rawValue
+            showingMapSidebar = false
+            showingMapExpandedCard = false
+        } else if route == .cityDetail {
+            showingCityDetail = true
         }
         guard !iPhoneNavigationPath.contains(route) else { return }
         iPhoneNavigationPath.append(route)
@@ -1064,14 +1117,18 @@ extension ContentView {
     func dismissIPhoneRoute(_ route: IPhoneNavigationRoute) {
         switch route {
         case .map:
-            withAnimation(.smooth(duration: 0.24)) {
-                showingMapSidebar = true
-                showingMapExpandedCard = false
-                tappedCity = nil
-            }
+            iPhoneNavigationPath.removeAll { $0 == route }
+            weatherAtlasModeRaw = WeatherAtlasMode.discover.rawValue
+            showingMapExpandedCard = false
+            tappedCity = nil
+        case .list:
+            iPhoneNavigationPath.removeAll { $0 == route }
+            weatherAtlasModeRaw = WeatherAtlasMode.discover.rawValue
+            comparisonListEditMode = false
         case .cityDetail:
             iPhoneNavigationPath.removeAll { $0 == route }
             showingCityDetail = false
+            selectedDayOffset = -1
         case .addCityDetail:
             iPhoneNavigationPath.removeAll { $0 == route }
             showingAddCityDetail = false
