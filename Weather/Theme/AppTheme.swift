@@ -2,7 +2,8 @@
 //  AppTheme.swift
 //  Weather
 //
-//  Created by Tom on 10/03/2026.
+//  Purpose: Centralizes theme colors, glass styling, appearance resolution,
+//  and small color/view helpers used across the app.
 //
 
 import SwiftUI

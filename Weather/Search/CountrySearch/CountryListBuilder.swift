@@ -2,11 +2,14 @@
 //  CountryListBuilder.swift
 //  Weather
 //
-//  Country-list creation flow backed by the bundled worldcities.csv file.
+//  Purpose: Builds country-based city lists from the bundled worldcities.csv
+//  catalogue and powers the country search/create-list flow.
 //
 
 import SwiftUI
 import Foundation
+
+// MARK: - Country City Models
 
 struct CountryCityGroup: Identifiable, Equatable {
     let name: String
@@ -17,6 +20,8 @@ struct CountryCityGroup: Identifiable, Equatable {
 
     var id: String { iso3.isEmpty ? name : iso3 }
 }
+
+// MARK: - Country Catalogue
 
 struct CountryCityCatalog {
     static let shared = CountryCityCatalog()
@@ -287,6 +292,8 @@ struct CountryCityCatalog {
         return rows
     }
 }
+
+// MARK: - Country List Builder UI
 
 struct CountryListBuilderView: View {
     let initialCountry: CountryCityGroup?

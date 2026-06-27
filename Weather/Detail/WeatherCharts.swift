@@ -1,5 +1,15 @@
+//
+//  WeatherCharts.swift
+//  Weather
+//
+//  Purpose: Draws reusable hourly and daily weather charts for detail cards,
+//  including metric switching, time ranges, and swipe navigation.
+//
+
 import SwiftUI
 import Charts
+
+// MARK: - Chart Configuration
 
 enum WeatherChartMetric: Hashable {
     case temperature, feelsLike, cloudCover, precipitation
@@ -21,6 +31,8 @@ enum WeatherChartTimeRange: Hashable {
     case daytime, entireDay, tenDay
 }
 
+// MARK: - Internal Chart Point
+
 private struct ChartPoint: Identifiable {
     let id: String
     let index: Int
@@ -30,6 +42,8 @@ private struct ChartPoint: Identifiable {
     let valueText: String
     let isPast: Bool
 }
+
+// MARK: - Hourly Chart
 
 struct HourlyTimelineChart: View {
     let hourlyForecasts: [HourlyForecast]
@@ -192,6 +206,8 @@ struct HourlyTimelineChart: View {
         )
     }
 }
+
+// MARK: - Daily Chart
 
 struct DailyTimelineChart: View {
     let dailyForecasts: [DailyForecast]

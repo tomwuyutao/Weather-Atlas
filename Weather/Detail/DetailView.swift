@@ -2,11 +2,14 @@
 //  DetailView.swift
 //  Weather
 //
-//  Shared city detail destination for iOS and macOS.
+//  Purpose: Builds the city detail screen around sunniness: verdict, factors,
+//  sunny windows, nearby comparisons, and the expanded weather card.
 //
 
 import SwiftUI
 import MapKit
+
+// MARK: - City Detail Routing
 
 extension ContentView {
     @ViewBuilder
@@ -96,6 +99,8 @@ extension ContentView {
             macExpandedCardShowsDetails = false
         }
     }
+
+    // MARK: Sunniness Report
 
     private func detailSunninessReport(for city: CityWeather) -> some View {
         let candidate = sunnyCandidate(for: city)
@@ -237,6 +242,8 @@ extension ContentView {
         .themedGlass(in: .rect(cornerRadius: 18))
     }
 
+    // MARK: Sunny Windows
+
     private func detailSunnyWindow(city: CityWeather) -> some View {
         let periods = detailSunnyPeriods(for: city)
         let selectedDay = max(0, selectedDayOffset)
@@ -375,6 +382,8 @@ extension ContentView {
         .background((level >= 2 ? theme.colors.dotSun : theme.colors.secondaryText).opacity(level >= 2 ? 0.14 : 0.06), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
+    // MARK: Nearby Cities
+
     private func detailNearbyCities(city: CityWeather) -> some View {
         let nearbyCities = detailNearbyCityContexts(for: city)
 
@@ -492,6 +501,8 @@ extension ContentView {
         #endif
     }
 
+    // MARK: Verdict Text Helpers
+
     private func detailSunninessLabel(for candidate: SunnyCandidate, icon: String) -> String {
         if icon.contains("moon") { return localizedString("Sun is down", locale: locale) }
         switch candidate.score {
@@ -553,6 +564,8 @@ extension ContentView {
             }
             .sorted { $0.hour < $1.hour }
     }
+
+    // MARK: Sunny Window Computation
 
     private struct DetailSunnyPeriod: Identifiable {
         let id: Int
@@ -676,6 +689,8 @@ extension ContentView {
         return formatter.string(from: date)
     }
 
+    // MARK: Detail Layout Metrics
+
     private var detailViewUsesIPhoneSizing: Bool {
         #if os(iOS)
         true
@@ -717,6 +732,8 @@ extension ContentView {
     }
 
 }
+
+// MARK: - Nearby Map Context Models
 
 private struct DetailNearbyCityContext: Identifiable {
     let cityWeather: CityWeather
@@ -840,76 +857,4 @@ private struct DetailMapContextView: View {
             : unionRect.insetBy(dx: -max(unionRect.width * 0.10, 36_000), dy: -max(unionRect.height * 0.10, 36_000))
         cameraPosition = .rect(fittedRect)
     }
-}
-
-private struct TimeZoneDebugPreview: View {
-    @State private var rows: [DebugRow] = []
-    private let service = WeatherService()
-    private let cities = CityListID.builtInLists.flatMap(\.defaultCities)
-
-    var body: some View {
-        List(rows) { row in
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text(row.city)
-                        .font(.headline)
-                    Spacer()
-                    Text(row.country)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-                Text(row.timeZone)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text(row.time)
-                    .font(.body.monospacedDigit())
-            }
-            .padding(.vertical, 4)
-        }
-        .task {
-            var loadedRows: [DebugRow] = []
-            for city in cities {
-                do {
-                    let timeZone = try await service.debugResolvedTimeZone(for: city)
-                    loadedRows.append(
-                        DebugRow(
-                            city: city.name,
-                            country: city.country,
-                            timeZone: timeZone.identifier,
-                            time: formattedTime(in: timeZone)
-                        )
-                    )
-                } catch {
-                    loadedRows.append(
-                        DebugRow(
-                            city: city.name,
-                            country: city.country,
-                            timeZone: error.localizedDescription,
-                            time: "Timezone undefined"
-                        )
-                    )
-                }
-            }
-            rows = loadedRows
-        }
-    }
-
-    private func formattedTime(in timeZone: TimeZone) -> String {
-        let formatter = DateFormatter()
-        formatter.timeZone = timeZone
-        formatter.dateFormat = "yyyy-MM-dd HH:mm z"
-        return formatter.string(from: Date())
-    }
-
-    private struct DebugRow: Identifiable {
-        let id = UUID()
-        let city: String
-        let country: String
-        let timeZone: String
-        let time: String
-    }
-}
-
-#Preview("Debug City Time Zones") {
-    TimeZoneDebugPreview()
 }

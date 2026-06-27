@@ -2,14 +2,15 @@
 //  FloatingCard.swift
 //  Weather
 //
-//  Floating map card placement and rendering.
+//  Purpose: Renders the floating weather card shown from map markers, including
+//  compact card content, expanded charts, and card placement helpers.
 //
 
 import SwiftUI
 
 extension ContentView {
 
-    // MARK: - Map Expanded Card
+    // MARK: - Expanded Card Content
 
     func mapExpandedCard(
         for cityWeather: CityWeather,
@@ -1025,7 +1026,7 @@ extension ContentView {
 
     private var iOSFloatingMapCardOverlay: some View {
         Group {
-            if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard {
+            if selectedTab == 1, showingMapExpandedCard {
                 HStack(spacing: 0) {
                     Color.clear
                         .contentShape(Rectangle())
@@ -1041,7 +1042,7 @@ extension ContentView {
                     .zIndex(10)
             }
 
-            if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
+            if selectedTab == 1, showingMapExpandedCard, let city = tappedCity {
                 mapExpandedCard(for: city, hideCityName: shouldHideInlineMapCardCityName)
                     .id(city.city.id)
                     .padding(.horizontal, iOSFloatingMapCardHorizontalPadding)

@@ -2,11 +2,14 @@
 //  DiscoveryView.swift
 //  Weather
 //
-//  Discovery, mode switching, sunny ranking, and comparison-list surfaces.
+//  Purpose: Defines the Discover-first experience, including the static map
+//  preview, sunniness ranking, list switching, and comparison list surface.
 //
 
 import SwiftUI
 import MapKit
+
+// MARK: - App Modes
 
 enum WeatherAtlasMode: String, CaseIterable, Hashable, Identifiable {
     case discover
@@ -31,6 +34,8 @@ enum WeatherAtlasMode: String, CaseIterable, Hashable, Identifiable {
         }
     }
 }
+
+// MARK: - Static Discover Map
 
 struct DiscoveryStaticMapPreview: View {
     let cities: [CityWeather]
@@ -191,6 +196,8 @@ struct DiscoveryStaticMapPreview: View {
     }
 }
 
+// MARK: - List Sorting
+
 enum WeatherListSortMode: String, CaseIterable, Identifiable {
     case sunny
     case temperature
@@ -221,6 +228,8 @@ enum WeatherListSortMode: String, CaseIterable, Identifiable {
     }
 }
 
+// MARK: - Sunniness Ranking Model
+
 struct SunnyCandidate: Identifiable {
     let cityWeather: CityWeather
     let score: Double
@@ -230,6 +239,8 @@ struct SunnyCandidate: Identifiable {
 
     var id: UUID { cityWeather.id }
 }
+
+// MARK: - Discover and List Logic
 
 extension ContentView {
     var atlasMode: WeatherAtlasMode {
@@ -257,24 +268,6 @@ extension ContentView {
                 centerMapOnDots(useListCoordinates: true)
             }
         }
-    }
-
-    func atlasModeButton(_ mode: WeatherAtlasMode, size: CGFloat = 44) -> some View {
-        Button {
-            setAtlasMode(mode)
-        } label: {
-            VStack(spacing: 2) {
-                Image(systemName: mode.icon)
-                    .font(.system(size: 17, weight: atlasMode == mode ? .semibold : .regular))
-                Text(mode.title(locale: locale))
-                    .font(.caption2.weight(atlasMode == mode ? .semibold : .regular))
-            }
-            .foregroundStyle(atlasMode == mode ? theme.colors.accent : theme.colors.primaryText)
-            .frame(width: size + 12, height: size)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .tint(atlasMode == mode ? theme.colors.accent : theme.colors.primaryText)
     }
 
     func sunnyCandidate(for cityWeather: CityWeather) -> SunnyCandidate {
@@ -309,6 +302,8 @@ extension ContentView {
             ? candidate.cityWeather.weatherIcon
             : candidate.cityWeather.forecast(for: max(0, selectedDayOffset)).weatherIcon
     }
+
+    // MARK: Sunniness Scoring
 
     private func sunnyScore(
         condition: AppWeatherCondition,
@@ -378,6 +373,8 @@ extension ContentView {
         }
     }
 
+    // MARK: Candidate Selection
+
     func selectCandidate(_ candidate: SunnyCandidate, focusMap: Bool = true) {
         let city = candidate.cityWeather
         if focusMap {
@@ -400,6 +397,8 @@ extension ContentView {
         }
     }
 
+    // MARK: Discover Page
+
     var discoveryContent: some View {
         GeometryReader { geometry in
             let snapshotHeight = min(max(geometry.size.height * 0.32, 190), 310)
@@ -419,33 +418,6 @@ extension ContentView {
         .onAppear {
             filterSunny = false
         }
-    }
-
-    private func iOSFloatingMapCardOverlay(for city: CityWeather) -> some View {
-        VStack {
-            Spacer()
-            mapExpandedCard(for: city, forceIPhoneStyle: !usesFloatingMapCardLayout)
-                .padding(.horizontal, 16)
-                .padding(.bottom, 92)
-        }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
-    var discoveryCandidateOverlay: some View {
-        GeometryReader { geometry in
-            let isCompact = geometry.size.width < 620
-            VStack(alignment: .leading, spacing: 10) {
-                discoveryHeader
-                discoveryCandidateList(limit: isCompact ? 4 : 6)
-            }
-            .padding(12)
-            .frame(width: isCompact ? min(geometry.size.width - 28, 390) : 390)
-            .themedGlass(in: .rect(cornerRadius: 22))
-            .padding(.horizontal, isCompact ? 14 : 18)
-            .padding(.bottom, isCompact ? 104 : 22)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: isCompact ? .bottom : .bottomLeading)
-        }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
     private var discoveryPageHeader: some View {
@@ -524,23 +496,6 @@ extension ContentView {
                 .padding(.vertical, 12)
             }
             .buttonStyle(.plain)
-        }
-    }
-
-    private var discoveryHeader: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "sun.max.fill")
-                    .foregroundStyle(theme.colors.dotSun)
-                Text(localizedString("Best Sunny Places", locale: locale))
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-            }
-
-            HStack(spacing: 8) {
-                discoveryListMenu
-                Spacer(minLength: 8)
-            }
         }
     }
 

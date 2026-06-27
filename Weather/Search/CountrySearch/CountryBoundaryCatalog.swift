@@ -2,10 +2,13 @@
 //  CountryBoundaryCatalog.swift
 //  Weather
 //
-//  Loads lightweight Natural Earth country polygons for map preview masks.
+//  Purpose: Loads lightweight Natural Earth country polygons used to mask or
+//  focus map previews around country search results.
 //
 
 import Foundation
+
+// MARK: - Boundary Models
 
 struct CountryBoundaryFeature: Encodable, Equatable {
     let type: String
@@ -41,6 +44,8 @@ enum BoundaryCoordinates: Encodable, Equatable {
         }
     }
 }
+
+// MARK: - Boundary Catalogue
 
 struct CountryBoundaryCatalog {
     static let shared = CountryBoundaryCatalog()

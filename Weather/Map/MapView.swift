@@ -2,7 +2,8 @@
 //  MapView.swift
 //  Weather
 //
-//  Shared map composition and map interaction handling.
+//  Purpose: Contains shared map rendering, map camera control, marker
+//  interaction handling, and the MapKit/MapLibre implementations.
 //
 
 import SwiftUI
@@ -13,16 +14,20 @@ import MapKit
 import UIKit
 #endif
 
+// MARK: - Map Provider
+
 enum WeatherMapProvider: String {
     case openStreetMap
     case appleMaps
 }
 
+// MARK: - Map Controls and Interactions
+
 extension ContentView {
     @ViewBuilder
     var iOSDateSliderOverlay: some View {
         // Date slider only on map tab — list tab uses the date switcher capsule
-        if selectedTab == 1, showDateSlider, !showingInlineSearch, !isMapSpecialMode, !countryListSearchMode {
+        if selectedTab == 1, showDateSlider, !showingInlineSearch, !countryListSearchMode {
             #if os(macOS)
             GeometryReader { geometry in
                 let topClearance: CGFloat = 34
@@ -55,32 +60,7 @@ extension ContentView {
         }
     }
 
-    var iOSDatePickerPopover: some View {
-        DatePicker(
-            "",
-            selection: Binding(
-                get: {
-                    Calendar.current.date(byAdding: .day, value: max(0, selectedDayOffset), to: Date()) ?? Date()
-                },
-                set: { newDate in
-                    let calendar = Calendar.current
-                    let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
-                    if let days = components.day {
-                        withAnimation(.smooth(duration: 0.2)) {
-                            selectedDayOffset = max(0, min(9, days))
-                        }
-                    }
-                }
-            ),
-            in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
-            displayedComponents: .date
-        )
-        .datePickerStyle(.graphical)
-        .labelsHidden()
-        .frame(width: 280, height: 300)
-        .padding(8)
-        .presentationCompactAdaptation(.popover)
-    }
+    // MARK: Camera Commands
 
     func centerMapOnDots(useListCoordinates: Bool = false) {
         mapMarkerReloadID += 1
@@ -123,30 +103,7 @@ extension ContentView {
         }
     }
 
-    var iOSMapControlsCapsule: some View {
-        HStack(spacing: 8) {
-            Button {
-                PlatformFeedback.lightImpact()
-                centerMapOnDots()
-            } label: {
-                Image(systemName: "dot.squareshape.split.2x2")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 36, height: 36)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            mapOverlayMenu
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 36, height: 36)
-                .contentShape(Rectangle())
-        }
-        .padding(6)
-        .themedGlass(in: .capsule)
-        .transition(.scale.combined(with: .opacity))
-    }
+    // MARK: Marker Selection
 
     func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
         if showingInlineSearch || inlineSearchFieldPresented {
@@ -401,6 +358,8 @@ extension ContentView {
     }
     #endif
 
+    // MARK: Map Composition
+
     var iOSMapView: some View {
         mapView
     }
@@ -546,6 +505,8 @@ extension ContentView {
         .shadow(color: .black.opacity(0.16), radius: 16, y: 8)
     }
 
+    // MARK: Country Search Preview
+
     @ViewBuilder
     func countryListPreviewControls(showsInlineActions: Bool = true, usesIPhoneCardFrame: Bool = false) -> some View {
         if countryListSearchMode, let country = countryListPreviewCountry {
@@ -646,6 +607,8 @@ extension ContentView {
         #endif
     }
 
+    // MARK: Map Presentation Flags
+
     var mapFocusSelectedMarker: Bool {
         #if os(iOS)
         shouldUseIPadLayout ? macMapExpandedCardFocusesMarker : showingMapExpandedCard
@@ -718,6 +681,8 @@ extension ContentView {
     }
 }
 
+// MARK: - Apple Maps Implementation
+
 struct AppleWeatherMapView: View {
     let cities: [CityWeather]
     let fitCities: [City]
@@ -737,6 +702,8 @@ struct AppleWeatherMapView: View {
     @Environment(\.colorScheme) private var colorScheme
     @State private var cameraPosition: MapCameraPosition = .region(Self.defaultRegion)
     @State private var lastCenteredCityID: UUID?
+
+    // MARK: Body and Camera
 
     var body: some View {
         MapReader { proxy in
@@ -853,6 +820,8 @@ struct AppleWeatherMapView: View {
         }
     }
 
+    // MARK: Marker Coloring
+
     private func markerColor(for cityWeather: CityWeather) -> Color {
         if overlayMode == "temperature" {
             return .orange
@@ -955,6 +924,8 @@ struct AppleWeatherMapView: View {
     }
 }
 
+// MARK: - MapLibre Web Implementation
+
 #if os(iOS)
 import UIKit
 #endif
@@ -994,6 +965,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
     @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
 
+    // MARK: Platform Web View Lifecycle
+
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
     }
@@ -1023,6 +996,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         dismantleWebView(uiView, coordinator: coordinator)
     }
     #endif
+
+    // MARK: Web View Setup and Updates
 
     private func makeWebView(context: Context) -> WKWebView {
         let configuration = WKWebViewConfiguration()
@@ -1243,6 +1218,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         }
     }
 
+    // MARK: Marker Payload
+
     private func makeFitCoordinates() -> [MapLibreFitCoordinate] {
         fitCities.map { city in
             MapLibreFitCoordinate(latitude: city.latitude, longitude: city.longitude)
@@ -1280,6 +1257,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
         let forecast = cityWeather.forecast(for: selectedDayOffset)
         return forecast.condition == .clear && !forecast.weatherIcon.contains("moon")
     }
+
+    // MARK: Marker Colors
 
     private func markerColor(for cityWeather: CityWeather, forecast: DailyForecast) -> String {
         let isNow = selectedDayOffset == -1
@@ -2534,6 +2513,8 @@ struct MapLibreWebMapView: PlatformWebViewRepresentable {
     </html>
     """
 }
+
+// MARK: - Camera Profiles
 
 enum MapCameraProfile: String {
     case desktop

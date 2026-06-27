@@ -2,7 +2,8 @@
 //  SettingsView.swift
 //  Weather
 //
-//  Created by Tom on 02/03/2026.
+//  Purpose: Provides preferences for units, language, appearance, map source,
+//  and related settings screens.
 //
 
 import SwiftUI
@@ -12,6 +13,8 @@ import UIKit
 #elseif os(macOS)
 import AppKit
 #endif
+
+// MARK: - Unit Preferences
 
 enum DistanceUnit: String, CaseIterable {
     case automatic = "automatic"
@@ -136,6 +139,8 @@ enum TemperatureUnit: String, CaseIterable {
         }
     }
 }
+
+// MARK: - Settings Screen
 
 struct SettingsView: View {
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.defaultRawValue

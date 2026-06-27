@@ -2,10 +2,13 @@
 //  MapOverlayMenu.swift
 //  Weather
 //
-//  Map overlay selector for the MapLibre map.
+//  Purpose: Hosts the map overlay picker for switching between weather,
+//  temperature, cloud, rain, wind, UV, humidity, and visibility layers.
 //
 
 import SwiftUI
+
+// MARK: - Overlay Menu
 
 extension ContentView {
 

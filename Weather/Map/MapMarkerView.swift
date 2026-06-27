@@ -2,15 +2,20 @@
 //  MapMarkerView.swift
 //  Weather
 //
-//  Weather marker and selected pulse rendering.
+//  Purpose: Renders weather dots and selected-marker effects used by both
+//  Apple Maps and MapLibre map surfaces.
 //
 
 import SwiftUI
+
+// MARK: - Marker Display Mode
 
 enum MarkerDisplayMode {
     case card
     case dot
 }
+
+// MARK: - Selected Marker Effects
 
 struct SelectedPulseRing: View {
     enum Shape { case circle, roundedRect }
@@ -35,6 +40,8 @@ struct SelectedPulseRing: View {
         .onAppear { isPulsing = true }
     }
 }
+
+// MARK: - Weather Marker
 
 struct WeatherMarker: View {
     let cityWeather: CityWeather

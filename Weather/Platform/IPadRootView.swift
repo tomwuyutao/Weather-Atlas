@@ -2,7 +2,8 @@
 //  IPadRootView.swift
 //  Weather
 //
-//  iPad split -view shell.
+//  Purpose: Defines the iPad split-view shell, sidebar, inspector-style
+//  detail panel, and native search behavior.
 //
 
 import SwiftUI
@@ -11,6 +12,8 @@ import UIKit
 #endif
 
 #if os(iOS)
+// MARK: - iPad Root Shell
+
 extension ContentView {
     var iOSNavigationSplitRoot: some View {
         NavigationSplitView(columnVisibility: $iPadSidebarVisibility, preferredCompactColumn: $iPadPreferredCompactColumn) {

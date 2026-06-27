@@ -2,7 +2,7 @@
 //  MapDateSlider.swift
 //  Weather
 //
-//  Extracted from ContentView.swift
+//  Purpose: Implements the custom vertical date slider used only in map mode.
 //
 
 import SwiftUI

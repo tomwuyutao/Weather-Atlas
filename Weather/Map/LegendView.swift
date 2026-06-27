@@ -1,4 +1,14 @@
+//
+//  LegendView.swift
+//  Weather
+//
+//  Purpose: Draws the floating map legend for weather dots and metric
+//  gradients across the supported overlay modes.
+//
+
 import SwiftUI
+
+// MARK: - Floating Map Legend
 
 struct MapFloatingLegend: View {
     let overlayMode: String

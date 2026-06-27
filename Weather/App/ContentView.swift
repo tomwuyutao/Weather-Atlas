@@ -4,11 +4,16 @@
 //
 //  Created by Tom on 25/02/2026.
 //
+//  Purpose: Owns the shared app state and routes it into the iPhone, iPad,
+//  and macOS shells. Feature-specific UI is split into extension files.
+//
 
 import SwiftUI
 #if os(iOS)
 import UIKit
 #endif
+
+// MARK: - Shared Platform Helpers
 
 enum PlatformFeedback {
     static func lightImpact() {
@@ -19,6 +24,8 @@ enum PlatformFeedback {
 }
 
 #if os(iOS)
+// MARK: - iPhone Navigation Routes
+
 enum IPhoneNavigationRoute: Hashable {
     case map
     case list
@@ -28,11 +35,15 @@ enum IPhoneNavigationRoute: Hashable {
 }
 #endif
 
+// MARK: - Root Shared State
+
 struct ContentView: View {
     @State var weatherService = WeatherService()
     @Environment(\.appTheme) var theme
     var previewLoading: Bool = false
     var previewSkipsInitialWeatherFetch: Bool = false
+
+    // MARK: Preview Setup
 
     init(
         previewLoading: Bool = false,
@@ -68,6 +79,8 @@ struct ContentView: View {
 
     @State var centerOnCityTrigger: CityWeather?
 
+    // MARK: Selection and Navigation State
+
     @State var selectedDayOffset: Int = -1
     @Namespace var detailDaySelectionNamespace
     @Namespace var iPadMapDetailNamespace
@@ -83,6 +96,9 @@ struct ContentView: View {
     @State var addCityDetailCity: CityWeather?
     @State var previewCity: CityWeather?
     @State var previewSearchText: String = ""
+
+    // MARK: Map Overlay State
+
     var showCloudCover: Bool { mapOverlayMode == "cloudCover" }
     var overlayChartMetric: WeatherChartMetric? {
         switch mapOverlayMode {
@@ -104,7 +120,9 @@ struct ContentView: View {
     @State var inlineSearchSelectionIndex: Int = 0
     @State var hourlyRefreshKeys: Set<String> = []
     @State var attemptedHourlyRefreshKeys: Set<String> = []
-    
+
+    // MARK: Map Camera and Settings State
+
     @State var recenterOnAllCities: Bool = false
     @State var recenterUsesListCoordinates: Bool = false
     @State var mapMarkerReloadID: Int = 0
@@ -125,6 +143,9 @@ struct ContentView: View {
     @AppStorage("mapProvider") var mapProviderRaw: String = WeatherMapProvider.openStreetMap.rawValue
     @AppStorage("showDateSlider") var showDateSlider: Bool = true
     @State var visibleListIDs: Set<String> = []
+
+    // MARK: Environment
+
     @Environment(\.locale) var locale
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
@@ -135,8 +156,10 @@ struct ContentView: View {
     #if os(macOS)
     @Environment(\.openSettings) var openSettings
     #endif
-    
-    /// Cities to display on the map — from the active list + preview city
+
+    // MARK: Active City Collections
+
+    /// Cities to display on the map: the active list plus any temporary preview city.
     var mapCities: [CityWeather] {
         if countryListSearchMode {
             guard let countryListPreviewCountry else { return [] }
@@ -176,7 +199,7 @@ struct ContentView: View {
         }
     }
     
-    /// Cities to display in the list view — from the active list
+    /// Cities to display in the list view: the saved active list only.
     var listViewCities: [CityWeather] {
         weatherService.cityWeatherData
     }
@@ -184,6 +207,8 @@ struct ContentView: View {
     var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
     }
+
+    // MARK: Refresh Timing
 
     func timeSinceRefreshText() -> String {
         guard let lastFetch = weatherService.lastFetchDate else {
@@ -230,7 +255,6 @@ struct ContentView: View {
     }
 
     // MARK: - iOS View
-    @Namespace private var tabBarNamespace
     @State var iOSPreviousDayOffset: Int = 0
     @State var dateSwitcherForward: Bool = true
     @State var showingDatePopover: Bool = false

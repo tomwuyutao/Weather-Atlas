@@ -2,13 +2,16 @@
 //  WeatherApp.swift
 //  Weather
 //
-//  Created by Tom on 25/02/2026.
+//  Purpose: App entry point, language bootstrapping, app delegate hooks,
+//  shortcuts, and shared view/font helpers.
 //
 
 import SwiftUI
 #if os(macOS)
 import AppKit
 #endif
+
+// MARK: - Language Defaults
 
 enum AppLanguageDefaults {
     static let storageKey = "appLanguage"
@@ -44,6 +47,8 @@ enum AppLanguageDefaults {
 }
 
 #if os(iOS)
+// MARK: - iOS App Delegate
+
 class AppDelegate: NSObject, UIApplicationDelegate {
     private static let pendingListShortcutKey = "pendingListShortcutID"
     private static let listShortcutTypePrefix = "openList."
@@ -110,6 +115,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 }
 #endif
+
+// MARK: - App Entry Point
 
 @main
 struct WeatherApp: App {
@@ -404,6 +411,8 @@ private struct WeatherNavigateCommands: Commands {
 }
 #endif
 
+// MARK: - App Notifications
+
 extension Notification.Name {
     static let weatherCenterMapCommand = Notification.Name("weatherCenterMapCommand")
     static let weatherZoomInCommand = Notification.Name("weatherZoomInCommand")
@@ -426,6 +435,8 @@ extension Notification.Name {
     static let weatherKeyboardZoomCommand = Notification.Name("weatherKeyboardZoomCommand")
     static let weatherOpenListShortcutCommand = Notification.Name("weatherOpenListShortcutCommand")
 }
+
+// MARK: - Theme Root Views
 
 /// Outer layer: sets the preferred color scheme so the inner layer reads the correct one.
 private struct ThemeRoot: View {
@@ -490,6 +501,8 @@ private struct SettingsRoot: View {
     }
 }
 #endif
+
+// MARK: - Shared View and Font Helpers
 
 extension View {
     func defaultFont() -> some View {

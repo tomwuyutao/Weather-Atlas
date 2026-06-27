@@ -2,7 +2,8 @@
 //  Search.swift
 //  Weather
 //
-//  Native city search and MapKit search plumbing.
+//  Purpose: Wraps MapKit search, country-list search, and the native in-app
+//  search flow used by the floating bottom search control.
 //
 
 import SwiftUI
@@ -122,7 +123,7 @@ extension ContentView {
     ) -> some View {
         if countryListSearchMode, countryListPreviewCountry != nil {
             content
-        } else if showingInlineSearch || inlineSearchFieldPresented {
+        } else {
             content
                 .searchable(
                     text: $inlineSearchText,
@@ -151,8 +152,6 @@ extension ContentView {
                 .onSubmit(of: .search) {
                     confirmInlineSearchSelection()
                 }
-        } else {
-            content
         }
     }
 

@@ -2,13 +2,16 @@
 //  ListManager.swift
 //  Weather
 //
-//  Native list/sidebar management and shared list actions.
+//  Purpose: Lets users edit saved city lists, rename lists, reorder cities,
+//  and manage translated country/list names.
 //
 
 import SwiftUI
 #if canImport(Translation)
 import Translation
 #endif
+
+// MARK: - Translation Cache
 
 struct CountryCityTranslationCache {
     static let shared = CountryCityTranslationCache()
@@ -48,6 +51,8 @@ struct CountryCityTranslationCache {
         UserDefaults.standard.set(data, forKey: storageKey)
     }
 }
+
+// MARK: - List Manager
 
 extension ContentView {
 

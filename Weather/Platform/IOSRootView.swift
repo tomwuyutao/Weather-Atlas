@@ -2,12 +2,15 @@
 //  IOSRootView.swift
 //  Weather
 //
-//  iPhone root shell and iOS presentation flow.
+//  Purpose: Defines the iPhone shell: navigation stack, bottom toolbar,
+//  native search presentation, settings/list sheets, and onboarding flow.
 //
 
 import SwiftUI
 
 #if os(iOS)
+// MARK: - iOS Toolbar Compatibility
+
 extension View {
     @ViewBuilder
     func iPhoneNativeBottomToolbarBackground() -> some View {
@@ -20,18 +23,15 @@ extension View {
 }
 #endif
 
-extension ContentView {
+// MARK: - iPhone Root Shell
 
-    /// Whether the map is in a special full-screen mode.
-    var isMapSpecialMode: Bool {
-        false
-    }
+extension ContentView {
 
     var iPhoneListManagerBackground: Color {
         theme.resolvedScheme(for: colorScheme) == .dark ? theme.colors.mapOcean : theme.colors.mapLand
     }
 
-    // MARK: - Date Switcher Capsule
+    // MARK: - Shared Bottom Toolbar Controls
 
     var iOSDateSwitcherCapsule: some View {
         HStack(spacing: 8) {
@@ -109,86 +109,6 @@ extension ContentView {
         .padding(.vertical, 5)
         .themedGlass(in: .capsule)
         .transition(.scale.combined(with: .opacity))
-    }
-
-    var iOSDateCalendarButton: some View {
-        Button {
-            showingDatePopover = true
-        } label: {
-            Image(systemName: "calendar")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 38, height: 38)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .themedGlass(in: .capsule)
-        .popover(isPresented: $showingDatePopover) {
-            VStack(spacing: 12) {
-                HStack(spacing: 10) {
-                    Button {
-                        guard selectedDayOffset > -1 else { return }
-                        PlatformFeedback.lightImpact()
-                        dateSwitcherForward = false
-                        withAnimation(.smooth(duration: 0.2)) {
-                            selectedDayOffset -= 1
-                        }
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(width: 38, height: 38)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(selectedDayOffset <= -1)
-
-                    Text(iOSDateText)
-                        .font(.headline.weight(.semibold))
-                        .frame(minWidth: 110)
-                        .contentTransition(.numericText())
-
-                    Button {
-                        guard selectedDayOffset < 9 else { return }
-                        PlatformFeedback.lightImpact()
-                        dateSwitcherForward = true
-                        withAnimation(.smooth(duration: 0.2)) {
-                            selectedDayOffset += 1
-                        }
-                    } label: {
-                        Image(systemName: "chevron.right")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(width: 38, height: 38)
-                    }
-                    .buttonStyle(.borderless)
-                    .disabled(selectedDayOffset >= 9)
-                }
-
-                DatePicker(
-                    "",
-                    selection: Binding(
-                        get: {
-                            Calendar.current.date(byAdding: .day, value: max(0, selectedDayOffset), to: Date()) ?? Date()
-                        },
-                        set: { newDate in
-                            let calendar = Calendar.current
-                            let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
-                            if let days = components.day {
-                                withAnimation(.smooth(duration: 0.2)) {
-                                    selectedDayOffset = max(0, min(9, days))
-                                }
-                            }
-                        }
-                    ),
-                    in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.graphical)
-                .labelsHidden()
-            }
-            .frame(width: 300)
-            .padding(12)
-            .presentationCompactAdaptation(.popover)
-            .themedPopoverBackground()
-        }
     }
 
     // MARK: - Native Menu
@@ -816,22 +736,6 @@ extension ContentView {
         .accessibilityLabel(localizedString("Back", locale: locale))
     }
 
-    func iPhoneDiscoverBackButton(_ route: IPhoneNavigationRoute) -> some View {
-        Button {
-            dismissIPhoneRoute(route)
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.primary)
-                .frame(width: 42, height: 42)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .themedGlass(in: Circle())
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.20 : 0.08), radius: 14, y: 6)
-        .accessibilityLabel(localizedString("Back", locale: locale))
-    }
-
     var mapTopListMenu: some View {
         atlasListMenu(titleOverride: nil)
         #if os(iOS)
@@ -842,14 +746,6 @@ extension ContentView {
         .menuIndicator(.hidden)
         #endif
         .menuOrder(.fixed)
-    }
-
-    var iPhoneShowsNativeToolbar: Bool {
-        selectedTab != 2 && !isMapSpecialMode && !showingInlineSearch && previewCity == nil
-    }
-
-    var iPhoneShowsBottomSearchButton: Bool {
-        !showingInlineSearch && !showingMapSidebar && countryListPreviewCountry == nil
     }
 
     var iPhoneMapTabContent: some View {

@@ -2,13 +2,16 @@
 //  WeatherService.swift
 //  Weather
 //
-//  Created by Tom on 25/02/2026.
+//  Purpose: Owns weather fetching, caching, list persistence, weather models,
+//  forecast models, and cache serialization.
 //
 
 import Foundation
 import SwiftUI
 import WeatherKit
 import CoreLocation
+
+// MARK: - Shared Errors and Localization
 
 enum WeatherServiceError: LocalizedError {
     case undefinedTimeZone(city: String)
@@ -27,6 +30,8 @@ func localizedString(_ key: String.LocalizationValue, locale: Locale) -> String 
     resource.locale = locale
     return String(localized: resource)
 }
+
+// MARK: - Weather Condition Model
 
 enum AppWeatherCondition: String, Codable {
     case clear
@@ -118,6 +123,8 @@ enum AppWeatherCondition: String, Codable {
         }
     }
 }
+
+// MARK: - List Identity
 
 struct CityListID: Identifiable, Equatable, Hashable, Codable {
     let rawValue: String
@@ -397,6 +404,8 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         }
     }
 }
+
+// MARK: - Weather Service
 
 @Observable
 @MainActor
@@ -1241,10 +1250,6 @@ class WeatherService {
         throw WeatherServiceError.undefinedTimeZone(city: city.name)
     }
 
-    func debugResolvedTimeZone(for city: City) async throws -> TimeZone {
-        try await resolvedTimeZoneOrThrow(for: city)
-    }
-    
     private func convertWeatherKitData(weather: Weather, for city: City) async throws -> CityWeather {
         let timeZone = try await resolvedTimeZoneOrThrow(for: city)
         return convertWeatherKitData(weather: weather, for: city, timeZone: timeZone)
@@ -1644,6 +1649,8 @@ enum ListMoveDirection {
     case up
     case down
 }
+
+// MARK: - City Models
 
 struct City: Identifiable, Hashable, Codable {
     var id = UUID()

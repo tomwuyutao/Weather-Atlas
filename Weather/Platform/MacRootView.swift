@@ -2,13 +2,16 @@
 //  MacRootView.swift
 //  Weather
 //
-//  macOS root shell, toolbar, and keyboard handling.
+//  Purpose: Defines the macOS shell, desktop map/list layout, hover cards,
+//  keyboard shortcuts, and Mac-specific presentation behavior.
 //
 
 import SwiftUI
 #if os(macOS)
 import AppKit
 #endif
+
+// MARK: - Loading Overlay
 
 struct LoadingWeatherOverlay: View {
     let progress: Double
@@ -70,6 +73,8 @@ private struct LoadingWeatherAnimationPreview: View {
 #Preview("Loading Icon Animation") {
     LoadingWeatherAnimationPreview()
 }
+
+// MARK: - macOS Root Shell
 
 extension ContentView {
     #if os(macOS)
@@ -591,7 +596,7 @@ extension ContentView {
     var macMainOverlays: some View {
         GeometryReader { geometry in
             ZStack(alignment: .topLeading) {
-                if selectedTab == 1, !isMapSpecialMode, showingMapExpandedCard, let city = tappedCity {
+                if selectedTab == 1, showingMapExpandedCard, let city = tappedCity {
                     mapExpandedCard(for: city)
                         .id(city.city.id)
                         .frame(width: 262, height: macExpandedCardShowsDetails ? 700 : 340)
