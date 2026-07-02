@@ -108,7 +108,6 @@ struct ContentView: View {
     @State var firstLaunchSelectedListIDs: Set<String> = []
     @AppStorage("showLegend") var showLegend: Bool = true
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
-    @AppStorage("mapProvider") var mapProviderRaw: String = WeatherMapProvider.openStreetMap.rawValue
     @AppStorage("showDateSlider") var showDateSlider: Bool = true
     @State var visibleListIDs: Set<String> = []
 
@@ -292,6 +291,5 @@ struct ContentView: View {
 #Preview("Country List Map") {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
     let _ = UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-    let _ = UserDefaults.standard.set(WeatherMapProvider.openStreetMap.rawValue, forKey: "mapProvider")
     ContentView(previewCountryListCountryName: "Switzerland")
 }

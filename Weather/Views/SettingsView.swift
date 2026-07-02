@@ -2,8 +2,8 @@
 //  SettingsView.swift
 //  Weather
 //
-//  Purpose: Provides preferences for units, language, appearance, map source,
-//  and related settings screens.
+//  Purpose: Provides preferences for units, language, appearance, and related
+//  settings screens.
 //
 
 import SwiftUI
@@ -141,7 +141,6 @@ struct SettingsView: View {
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.defaultRawValue
     @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.defaultRawValue
     @AppStorage("appLanguage") private var appLanguage: String = "en"
-    @AppStorage("mapProvider") private var mapProviderRaw: String = WeatherMapProvider.openStreetMap.rawValue
     let weatherService: WeatherService
     let onResetLists: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -267,11 +266,6 @@ struct SettingsView: View {
             }
             .listRowBackground(settingsRowBackground)
 
-            Section(localizedString("Maps", locale: locale)) {
-                mapProviderMenuRow
-            }
-            .listRowBackground(settingsRowBackground)
-
             Section {
                 Button(role: .destructive) {
                     showingResetConfirmation = true
@@ -309,46 +303,6 @@ struct SettingsView: View {
             .background(settingsFormBackground)
         .task {
             await weatherService.loadWeatherAttributionIfNeeded()
-        }
-    }
-
-    private var currentMapProvider: WeatherMapProvider {
-        WeatherMapProvider(rawValue: mapProviderRaw) ?? .openStreetMap
-    }
-
-    private var mapProviderMenuRow: some View {
-        Menu {
-            mapProviderMenuButton(.openStreetMap)
-            mapProviderMenuButton(.appleMaps)
-        } label: {
-            LabeledContent {
-                HStack(spacing: 6) {
-                    Text(currentMapProvider.settingsTitle(locale: locale))
-                        .foregroundStyle(.secondary)
-                    Image(systemName: "chevron.up.chevron.down")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                }
-            } label: {
-                settingsLabel(localizedString("Map Source", locale: locale), systemImage: "map")
-            }
-            .foregroundStyle(.primary)
-        }
-        .menuOrder(.fixed)
-        .buttonStyle(.plain)
-        .tint(.primary)
-    }
-
-    private func mapProviderMenuButton(_ provider: WeatherMapProvider) -> some View {
-        Button {
-            mapProviderRaw = provider.rawValue
-        } label: {
-            HStack {
-                Text(provider.settingsTitle(locale: locale))
-                if currentMapProvider == provider {
-                    Image(systemName: "checkmark")
-                }
-            }
         }
     }
 
@@ -407,8 +361,6 @@ struct SettingsView: View {
                     systemImage: "apple.logo",
                     url: URL(string: "https://www.apple.com/legal/internet-services/maps/legal-en.html")
                 )
-                Text("Copyright OpenStreetMap contributors")
-                    .foregroundStyle(.primary)
             }
             .listRowBackground(settingsRowBackground)
         }
@@ -509,15 +461,6 @@ private extension View {
             }
         } message: {
             Text(localizedString("This will reset all city lists back to their defaults. Any cities you added or removed will be lost.", locale: locale))
-        }
-    }
-}
-
-private extension WeatherMapProvider {
-    func settingsTitle(locale: Locale) -> String {
-        switch self {
-        case .openStreetMap: return localizedString("Minimal", locale: locale)
-        case .appleMaps: return localizedString("Detailed", locale: locale)
         }
     }
 }

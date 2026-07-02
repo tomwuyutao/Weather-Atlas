@@ -210,9 +210,6 @@ class AppTheme {
     /// Allows non-view code (e.g. view modifiers) to reactively read the correct colors.
     var systemScheme: ColorScheme = .light
 
-    /// True when the detailed MapKit map is active — toolbar buttons use material glass.
-    var isDetailedMapMode: Bool = false
-
     /// Resolved colors using the stored system scheme — reactive, used everywhere.
     var colors: ThemeColors {
         switch style {
@@ -334,14 +331,9 @@ extension View {
     }
 
     /// Themed popover/presentation background.
-    /// Uses full-opacity glassFill in detailed/colorful map modes to match expanded cards.
     @ViewBuilder
     func themedPopoverBackground() -> some View {
-        if AppTheme.shared.isDetailedMapMode {
-            self.presentationBackground(AppTheme.shared.colors.glassFill)
-        } else {
-            self.presentationBackground(AppTheme.shared.colors.popoverBackground)
-        }
+        self.presentationBackground(AppTheme.shared.colors.popoverBackground)
     }
 
     @ViewBuilder

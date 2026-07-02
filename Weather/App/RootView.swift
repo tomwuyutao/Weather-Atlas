@@ -42,9 +42,6 @@ extension ContentView {
                 inlineSearchSelectionIndex = 0
                 inlineSearchManager.search(query: newValue)
             }
-            .onChange(of: currentRoute) { _, _ in
-                AppTheme.shared.isDetailedMapMode = false
-            }
             .onChange(of: theme.style) { _, _ in
                 if isMapRoute {
                     centerMapOnDots()

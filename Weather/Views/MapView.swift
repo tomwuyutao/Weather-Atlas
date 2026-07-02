@@ -9,24 +9,9 @@
 import SwiftUI
 import CoreLocation
 
-// MARK: - Map Provider
-
-enum WeatherMapProvider: String {
-    case openStreetMap
-    case appleMaps
-}
-
 enum MapRecenterRequest: Equatable {
     case weatherCities
     case listCoordinates
-}
-
-enum MapCameraProfile: String {
-    case desktop
-    case tablet
-    case mobile
-    case discovery
-    case preview
 }
 
 // MARK: - Map Controls and Interactions
@@ -141,63 +126,30 @@ extension ContentView {
 
     var mapView: some View {
         ZStack {
-            if WeatherMapProvider(rawValue: mapProviderRaw) == .appleMaps {
-                AppleWeatherMapView(
-                    cities: mapCities,
-                    fitCities: mapFitCities,
-                    selectedDayOffset: selectedDayOffset,
-                    overlayMode: mapOverlayMode,
-                    filterSunny: filterSunny,
-                    markerReloadID: mapMarkerReloadID,
-                    selectedCityID: mapFocusSelectedMarker ? tappedCity?.id : nil,
-                    recenterRequest: $mapRecenterRequest,
-                    centerOnCity: centerOnCityTrigger,
-                    onMarkerTap: { city, point in
-                        guard !countryListSearchMode else { return }
-                        handleMapMarkerTap(city, anchor: point)
-                    },
-                    onMapClick: { coordinate, point in
-                        handleMapBackgroundClick(coordinate, anchor: point)
-                    },
-                    onMapGestureStart: {
-                        if showingMapExpandedCard {
-                            dismissMapExpandedCard()
-                        }
+            AppleWeatherMapView(
+                cities: mapCities,
+                fitCities: mapFitCities,
+                selectedDayOffset: selectedDayOffset,
+                overlayMode: mapOverlayMode,
+                filterSunny: filterSunny,
+                markerReloadID: mapMarkerReloadID,
+                selectedCityID: mapFocusSelectedMarker ? tappedCity?.id : nil,
+                recenterRequest: $mapRecenterRequest,
+                centerOnCity: centerOnCityTrigger,
+                onMarkerTap: { city, point in
+                    guard !countryListSearchMode else { return }
+                    handleMapMarkerTap(city, anchor: point)
+                },
+                onMapClick: { coordinate, point in
+                    handleMapBackgroundClick(coordinate, anchor: point)
+                },
+                onMapGestureStart: {
+                    if showingMapExpandedCard {
+                        dismissMapExpandedCard()
                     }
-                )
-                .ignoresSafeArea()
-            } else {
-                MapLibreWebMapView(
-                    cities: mapCities,
-                    fitCities: mapFitCities,
-                    selectedDayOffset: selectedDayOffset,
-                    overlayMode: mapOverlayMode,
-                    filterSunny: filterSunny,
-                    markerReloadID: mapMarkerReloadID,
-                    markerSizeScale: mapMarkerSizeScale,
-                    showsMarkerHoverLabels: mapShowsMarkerHoverLabels,
-                    tappedCity: $tappedCity,
-                    recenterRequest: $mapRecenterRequest,
-                    centerOnCity: centerOnCityTrigger,
-                    leadingFitPadding: 0,
-                    focusSelectedMarker: mapFocusSelectedMarker,
-                    allowsMarkerHover: mapAllowsMarkerHover,
-                    cameraProfile: mapCameraProfile,
-                    onMarkerTap: { city, point in
-                        guard !countryListSearchMode else { return }
-                        handleMapMarkerTap(city, anchor: point)
-                    },
-                    onMapClick: { coordinate, point in
-                        handleMapBackgroundClick(coordinate, anchor: point)
-                    },
-                    onMapGestureStart: {
-                        if showingMapExpandedCard {
-                            dismissMapExpandedCard()
-                        }
-                    }
-                )
-                .ignoresSafeArea()
-            }
+                }
+            )
+            .ignoresSafeArea()
 
             if let errorMessage = weatherService.errorMessage {
                 weatherServiceErrorBanner(errorMessage)
@@ -368,28 +320,12 @@ extension ContentView {
         showingMapExpandedCard
     }
 
-    var mapAllowsMarkerHover: Bool {
-        false
-    }
-
-    var mapMarkerSizeScale: Double {
-        1.0
-    }
-
-    var mapShowsMarkerHoverLabels: Bool {
-        false
-    }
-
     var shouldHideInlineMapCardCityName: Bool {
         false
     }
 
     var shouldAddInlineMapCardVerticalPadding: Bool {
         true
-    }
-
-    var mapCameraProfile: MapCameraProfile {
-        return MapCameraProfile.mobile
     }
 
     func cityIsInActiveList(_ cityWeather: CityWeather) -> Bool {

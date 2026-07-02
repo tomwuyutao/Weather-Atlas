@@ -19,10 +19,6 @@ struct DiscoveryStaticMapPreview: View {
     let contextDot: Color
     let land: Color
     let water: Color
-    let line: Color
-    @AppStorage("mapProvider") private var mapProviderRaw: String = WeatherMapProvider.openStreetMap.rawValue
-    @State private var previewTappedCity: CityWeather?
-    @State private var mapRecenterRequest: MapRecenterRequest?
     @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 48, longitude: 12),
         span: MKCoordinateSpan(latitudeDelta: 28, longitudeDelta: 38)
@@ -33,56 +29,8 @@ struct DiscoveryStaticMapPreview: View {
     }
 
     var body: some View {
-        Group {
-            if WeatherMapProvider(rawValue: mapProviderRaw) == .appleMaps {
-                appleMapPreview
-            } else {
-                MapLibreWebMapView(
-                    cities: cities,
-                    fitCities: cities.map(\.city),
-                    selectedDayOffset: selectedDayOffset,
-                    overlayMode: "weather",
-                    filterSunny: false,
-                    markerReloadID: markerReloadID,
-                    markerSizeScale: 0.88,
-                    showsMarkerHoverLabels: false,
-                    tappedCity: $previewTappedCity,
-                    recenterRequest: $mapRecenterRequest,
-                    centerOnCity: nil,
-                    leadingFitPadding: 0,
-                    focusSelectedMarker: false,
-                    allowsMarkerHover: false,
-                    cameraProfile: .preview,
-                    onMarkerTap: { _, _ in },
-                    onMapClick: nil,
-                    onCameraMove: nil,
-                    onMapGestureStart: nil
-                )
-                .allowsHitTesting(false)
-                .onAppear {
-                    refitMapLibrePreview()
-                }
-                .onChange(of: cities.map(\.id)) { _, _ in
-                    refitMapLibrePreview()
-                }
-                .onChange(of: selectedDayOffset) { _, _ in
-                    refitMapLibrePreview()
-                }
-            }
-        }
-        .background(water)
-    }
-
-    private var markerReloadID: Int {
-        selectedDayOffset * 10_000 + Int(rankedCandidates.map(\.score).reduce(0, +).rounded())
-    }
-
-    private func refitMapLibrePreview() {
-        mapRecenterRequest = .listCoordinates
-        mapRecenterRequest = nil
-        DispatchQueue.main.async {
-            mapRecenterRequest = .listCoordinates
-        }
+        appleMapPreview
+            .background(water)
     }
 
     private var appleMapPreview: some View {
@@ -114,6 +62,9 @@ struct DiscoveryStaticMapPreview: View {
             refitApplePreview()
         }
         .onChange(of: cities.map(\.id)) { _, _ in
+            refitApplePreview()
+        }
+        .onChange(of: selectedDayOffset) { _, _ in
             refitApplePreview()
         }
     }
@@ -322,8 +273,7 @@ extension ContentView {
             accent: theme.colors.dotSun,
             contextDot: theme.colors.secondaryText,
             land: theme.colors.mapLand,
-            water: theme.colors.mapOcean,
-            line: theme.colors.accent.opacity(0.28)
+            water: theme.colors.mapOcean
         )
         .accessibilityHidden(true)
         .frame(height: height)
