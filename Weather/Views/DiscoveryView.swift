@@ -3,43 +3,18 @@
 //  Weather
 //
 //  Purpose: Defines the Discover-first experience, including the static map
-//  preview, sunniness ranking, list switching, and comparison list surface.
+//  preview, sunniness ranking, list switching, and ranked city list surface.
 //
 
 import SwiftUI
 import MapKit
-
-// MARK: - App Modes
-
-enum WeatherAtlasMode: String, CaseIterable, Hashable, Identifiable {
-    case discover
-    case list
-    case map
-
-    var id: String { rawValue }
-
-    var icon: String {
-        switch self {
-        case .discover: return "sun.max.fill"
-        case .map: return "map"
-        case .list: return "list.bullet"
-        }
-    }
-
-    func title(locale: Locale) -> String {
-        switch self {
-        case .discover: return localizedString("Discover", locale: locale)
-        case .map: return localizedString("Map", locale: locale)
-        case .list: return localizedString("List", locale: locale)
-        }
-    }
-}
 
 // MARK: - Static Discover Map
 
 struct DiscoveryStaticMapPreview: View {
     let cities: [CityWeather]
     let rankedCandidates: [SunnyCandidate]
+    let selectedDayOffset: Int
     let accent: Color
     let contextDot: Color
     let land: Color
@@ -47,8 +22,7 @@ struct DiscoveryStaticMapPreview: View {
     let line: Color
     @AppStorage("mapProvider") private var mapProviderRaw: String = WeatherMapProvider.openStreetMap.rawValue
     @State private var previewTappedCity: CityWeather?
-    @State private var recenterOnAllCities = false
-    @State private var recenterUsesListCoordinates = false
+    @State private var mapRecenterRequest: MapRecenterRequest?
     @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 48, longitude: 12),
         span: MKCoordinateSpan(latitudeDelta: 28, longitudeDelta: 38)
@@ -66,18 +40,14 @@ struct DiscoveryStaticMapPreview: View {
                 MapLibreWebMapView(
                     cities: cities,
                     fitCities: cities.map(\.city),
-                    selectedDayOffset: -1,
+                    selectedDayOffset: selectedDayOffset,
                     overlayMode: "weather",
                     filterSunny: false,
-                    markerReloadID: rankedCandidates.count,
+                    markerReloadID: markerReloadID,
                     markerSizeScale: 0.88,
                     showsMarkerHoverLabels: false,
-                    focusedCountryBoundary: nil,
                     tappedCity: $previewTappedCity,
-                    recenterOnAllCities: $recenterOnAllCities,
-                    recenterUsesListCoordinates: $recenterUsesListCoordinates,
-                    //?whats the diffrence between recenterOnAllCities and recenterUsesListCoordinates?
-                    //?i think one recenter declaration is enough
+                    recenterRequest: $mapRecenterRequest,
                     centerOnCity: nil,
                     leadingFitPadding: 0,
                     focusSelectedMarker: false,
@@ -85,7 +55,6 @@ struct DiscoveryStaticMapPreview: View {
                     cameraProfile: .preview,
                     onMarkerTap: { _, _ in },
                     onMapClick: nil,
-                    onMarkerCommandHover: nil,
                     onCameraMove: nil,
                     onMapGestureStart: nil
                 )
@@ -96,25 +65,23 @@ struct DiscoveryStaticMapPreview: View {
                 .onChange(of: cities.map(\.id)) { _, _ in
                     refitMapLibrePreview()
                 }
+                .onChange(of: selectedDayOffset) { _, _ in
+                    refitMapLibrePreview()
+                }
             }
         }
         .background(water)
     }
 
+    private var markerReloadID: Int {
+        selectedDayOffset * 10_000 + Int(rankedCandidates.map(\.score).reduce(0, +).rounded())
+    }
+
     private func refitMapLibrePreview() {
-        recenterUsesListCoordinates = true
-        recenterOnAllCities = false
+        mapRecenterRequest = .listCoordinates
+        mapRecenterRequest = nil
         DispatchQueue.main.async {
-            recenterOnAllCities = true
-        }
-        for delay in [0.18, 0.45, 0.9] {
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                recenterUsesListCoordinates = true
-                recenterOnAllCities = false
-                DispatchQueue.main.async {
-                    recenterOnAllCities = true
-                }
-            }
+            mapRecenterRequest = .listCoordinates
         }
     }
 
@@ -201,31 +168,25 @@ struct DiscoveryStaticMapPreview: View {
 // MARK: - List Sorting
 
 enum WeatherListSortMode: String, CaseIterable, Identifiable {
-    case sunny
     case temperature
-    case rain
     case cloud
-    case city
+    case sunny
 
     var id: String { rawValue }
 
     var icon: String {
         switch self {
-        case .sunny: return "sun.max.fill"
         case .temperature: return "thermometer.medium"
-        case .rain: return "drop.fill"
-        case .cloud: return "cloud.fill"
-        case .city: return "textformat"
+        case .cloud: return "cloud"
+        case .sunny: return "sun.max.fill"
         }
     }
 
     func title(locale: Locale) -> String {
         switch self {
-        case .sunny: return localizedString("Sunny", locale: locale)
         case .temperature: return localizedString("Temperature", locale: locale)
-        case .rain: return localizedString("Rain", locale: locale)
         case .cloud: return localizedString("Cloud", locale: locale)
-        case .city: return localizedString("City", locale: locale)
+        case .sunny: return localizedString("Sunny", locale: locale)
         }
     }
 }
@@ -245,31 +206,8 @@ struct SunnyCandidate: Identifiable {
 // MARK: - Discover and List Logic
 
 extension ContentView {
-    var atlasMode: WeatherAtlasMode {
-        WeatherAtlasMode(rawValue: weatherAtlasModeRaw) ?? .map
-    }
-
     var listSortMode: WeatherListSortMode {
         WeatherListSortMode(rawValue: weatherListSortModeRaw) ?? .sunny
-    }
-
-    func setAtlasMode(_ mode: WeatherAtlasMode) {
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.9)) {
-            weatherAtlasModeRaw = mode.rawValue
-            selectedTab = mode == .list ? 2 : 1
-            showingMapSidebar = false
-            if mode != .list {
-                comparisonListEditMode = false
-            }
-            if mode != .map && showingMapExpandedCard {
-                showingMapExpandedCard = false
-            }
-        }
-        if mode != .list {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-                centerMapOnDots(useListCoordinates: true)
-            }
-        }
     }
 
     func sunnyCandidate(for cityWeather: CityWeather) -> SunnyCandidate {
@@ -283,15 +221,10 @@ extension ContentView {
 
         return SunnyCandidate(
             cityWeather: cityWeather,
-            score: sunnyScore(
+            score: SunninessScoring.score(
                 condition: isNow ? cityWeather.condition : forecast.condition,
                 icon: isNow ? cityWeather.weatherIcon : forecast.weatherIcon,
-                cloudCover: cloudCover,
-                precipitationChance: precipitationChance,
-                temperature: temperature,
-                windSpeed: isNow ? cityWeather.currentWindSpeed : forecast.windSpeed,
-                uvIndex: isNow ? cityWeather.currentUVIndex : forecast.uvIndex,
-                visibility: isNow ? cityWeather.currentVisibility : forecast.maxVisibility
+                cloudCover: cloudCover
             ),
             cloudCover: cloudCover,
             precipitationChance: precipitationChance,
@@ -303,42 +236,6 @@ extension ContentView {
         selectedDayOffset == -1
             ? candidate.cityWeather.weatherIcon
             : candidate.cityWeather.forecast(for: max(0, selectedDayOffset)).weatherIcon
-    }
-
-    // MARK: Sunniness Scoring
-
-    private func sunnyScore(
-        condition: AppWeatherCondition,
-        icon: String,
-        cloudCover: Double?,
-        precipitationChance: Double?,
-        temperature: Double,
-        windSpeed: Double?,
-        uvIndex: Int?,
-        visibility: Double?
-    ) -> Double {
-        if icon.contains("moon") {
-            return 0
-        }
-        //? I want to simplify the sunniness scoring system. i only care about the weather condition (the icons), as well as the cloud cover. a day's sunniness score should depend on the above two variables across the entire dya. say london is cloudy condition, with high cloud condotion in part of the day, then the sunniness score is lowered. i want four tiers of scoring by weather condotion: sunny/clear gets highest score, partly sunny 2nd highest, partly cloudy 3rd highest, every remaining stuff gets lowest score
-        //? idk why the sunniness scoring code is within the discovery view file. it is actually used across teh app, in detailview as well ( i plan to display it in detailview). so its better moved to another place
-        let conditionScore: Double
-        switch condition {
-        case .clear: conditionScore = 34
-        case .partlySunny: conditionScore = 25
-        case .partlyCloudy: conditionScore = 14
-        case .cloudy, .fog, .wind: conditionScore = 6
-        case .rain, .drizzle, .snow: conditionScore = 0
-        }
-
-        let cloudScore = (1 - min(max(cloudCover ?? 0.5, 0), 1)) * 24
-        let rainScore = (1 - min(max(precipitationChance ?? 0.5, 0), 1)) * 20
-        let tempComfort = max(0, 1 - abs(temperature - 25) / 18) * 12
-        let windScore = (1 - min(max((windSpeed ?? 18) / 70, 0), 1)) * 5
-        let uvScore = min(max(Double(uvIndex ?? 0) / 8, 0), 1) * 3
-        let visibilityScore = min(max((visibility ?? 15) / 30, 0), 1) * 2
-
-        return max(0, min(100, conditionScore + cloudScore + rainScore + tempComfort + windScore + uvScore + visibilityScore))
     }
 
     var sunnyCandidates: [SunnyCandidate] {
@@ -361,18 +258,12 @@ extension ContentView {
     var sortedListCandidates: [SunnyCandidate] {
         let candidates = mapCities.map(sunnyCandidate(for:))
         switch listSortMode {
-        case .sunny:
-            return candidates.sorted { $0.score > $1.score }
         case .temperature:
             return candidates.sorted { $0.temperature > $1.temperature }
-        case .rain:
-            return candidates.sorted { ($0.precipitationChance ?? 1) < ($1.precipitationChance ?? 1) }
         case .cloud:
             return candidates.sorted { ($0.cloudCover ?? 1) < ($1.cloudCover ?? 1) }
-        case .city:
-            return candidates.sorted {
-                $0.cityWeather.city.localizedName(locale: locale) < $1.cityWeather.city.localizedName(locale: locale)
-            }
+        case .sunny:
+            return candidates.sorted { $0.score > $1.score }
         }
     }
 
@@ -381,22 +272,16 @@ extension ContentView {
     func selectCandidate(_ candidate: SunnyCandidate, focusMap: Bool = true) {
         let city = candidate.cityWeather
         if focusMap {
-            setAtlasMode(.map)
+            pushRoute(.map)
             centerOnCityTrigger = city
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            Task { @MainActor in
+                await Task.yield()
                 showMapMarkerCard(city, expanded: false, focusesMarker: true)
             }
         } else {
             tappedCity = city
             showingMapExpandedCard = false
-            showingCityDetail = true
-            #if os(iOS)
-            if !shouldUseIPadLayout {
-                pushIPhoneRoute(.cityDetail)
-            } else {
-                iPadInspectorPresentedCityID = city.id
-            }
-            #endif
+            presentDetail(for: city)
         }
     }
 
@@ -424,7 +309,7 @@ extension ContentView {
     }
 
     private var discoveryPageHeader: some View {
-        atlasTopHeader {
+        topToolbar {
             EmptyView()
         }
     }
@@ -433,6 +318,7 @@ extension ContentView {
         DiscoveryStaticMapPreview(
             cities: mapCities,
             rankedCandidates: Array(recommendedSunnyCandidates.prefix(5)),
+            selectedDayOffset: selectedDayOffset,
             accent: theme.colors.dotSun,
             contextDot: theme.colors.secondaryText,
             land: theme.colors.mapLand,
@@ -448,15 +334,7 @@ extension ContentView {
         }
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onTapGesture {
-            #if os(iOS)
-            if !shouldUseIPadLayout {
-                pushIPhoneRoute(.map)
-            } else {
-                setAtlasMode(.map) //?what is setatlasmode? explain to me
-            }
-            #else
-            setAtlasMode(.map)
-            #endif
+            pushRoute(.map)
         }
     }
 
@@ -469,23 +347,12 @@ extension ContentView {
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                 Spacer(minLength: 8)
-                Text(localizedString("Score", locale: locale))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.colors.secondaryText)
             }
 
             discoveryCandidateList()
 
             Button {
-                #if os(iOS)
-                if !shouldUseIPadLayout {
-                    pushIPhoneRoute(.list)
-                } else {
-                    setAtlasMode(.list)
-                }
-                #else
-                setAtlasMode(.list)
-                #endif
+                pushRoute(.list)
             } label: {
                 HStack(spacing: 8) {
                     Text(localizedString("Show All Cities", locale: locale))
@@ -506,7 +373,7 @@ extension ContentView {
         let rankedCandidates = limit.map { Array(recommendedSunnyCandidates.prefix($0)) } ?? recommendedSunnyCandidates
         return VStack(spacing: 6) {
             if rankedCandidates.isEmpty {
-                Text(localizedString("No strong sunny places for this date.", locale: locale))//?remove the "strong" from that sentence
+                Text(localizedString("No sunny places for this date.", locale: locale))
                     .font(.callout)
                     .foregroundStyle(theme.colors.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -539,180 +406,56 @@ extension ContentView {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(candidate.cityWeather.city.localizedName(locale: locale))
-                    .font(compact ? .callout.weight(.semibold) : .headline.weight(.semibold))
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
-                if compact {
-                    HStack(spacing: 5) {
-                        Image(systemName: icon)
-                            .font(.caption.weight(.semibold))
-                            .weatherIconStyle(for: icon)
-                        Text(String(format: localizedString("%@ cloud", locale: locale), cloudText))
-                            .font(.caption)
-                            .foregroundStyle(theme.colors.secondaryText)
-                    }
-                } else {
-                    let rainText = candidate.precipitationChance.map { "\(Int($0 * 100))%" } ?? "-"
-                    Text("\(tempUnit.display(candidate.temperature))  \(cloudText) cloud  \(rainText) rain")
-                        .font(.caption)
-                        .foregroundStyle(theme.colors.secondaryText)
-                        .lineLimit(1)
-                }
             }
 
             Spacer(minLength: 8)
 
-            if !compact {
-                Text(tempUnit.display(candidate.temperature))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .lineLimit(1)
-            }
+            HStack(spacing: 9) {
+                HStack(spacing: 3) {
+                    Image(systemName: "thermometer.medium")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.colors.secondaryText.opacity(0.72))
+                        .frame(width: 13, alignment: .center)
+                    Text(tempUnit.display(candidate.temperature))
+                        .font(.caption.weight(.semibold))
+                        .monospacedDigit()
+                        .frame(width: 34, alignment: .leading)
+                }
+                .frame(width: 50, alignment: .leading)
 
-            Text("\(Int(candidate.score.rounded()))")
-                .font(.callout.weight(.bold).monospacedDigit())
-                .foregroundStyle(scoreColor(candidate.score))
-                .frame(minWidth: 34, alignment: .trailing)
+                HStack(spacing: 3) {
+                    Image(systemName: "cloud")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.colors.secondaryText.opacity(0.50))
+                        .frame(width: 13, alignment: .center)
+                    Text(cloudText)
+                        .font(.caption.weight(.semibold))
+                        .monospacedDigit()
+                        .frame(width: 30, alignment: .leading)
+                }
+                .frame(width: 48, alignment: .leading)
+
+                Image(systemName: icon)
+                    .font(.caption.weight(.semibold))
+                    .weatherIconStyle(for: icon)
+                    .frame(width: 20, alignment: .center)
+            }
+            .foregroundStyle(theme.colors.secondaryText)
+            .lineLimit(1)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, compact ? 7 : 10)
+        .padding(.vertical, 10)
         .background(theme.colors.glassFill.opacity(0.58), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private func scoreColor(_ score: Double) -> Color {
-        if score >= 75 { return theme.colors.dotSun }
-        if score >= 55 { return theme.colors.dotPartlyCloudy }
-        return theme.colors.secondaryText
-    }
-
-    var weatherComparisonListView: some View {
-        VStack(spacing: 0) {
-            comparisonListHeader
-
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { index, candidate in
-                        if comparisonListEditMode {
-                            comparisonCandidateRow(candidate, rank: index + 1)
-                        } else {
-                            Button {
-                                selectCandidate(candidate)
-                            } label: {
-                                comparisonCandidateRow(candidate, rank: index + 1)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                cityActions(for: candidate.cityWeather, in: weatherService.activeListID)
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 96)
-            }
-            .scrollContentBackground(.hidden)
-        }
-        .background(theme.colors.background.ignoresSafeArea())
-    }
-    //? what is a "comparison list"?
-    private var comparisonListHeader: some View {
-        VStack(spacing: 12) {
-            atlasTopHeader {
-                EmptyView()
-            }
-
-            HStack(spacing: 10) {
-                Menu {
-                    ForEach(WeatherListSortMode.allCases) { mode in
-                        Button {
-                            weatherListSortModeRaw = mode.rawValue
-                        } label: {
-                            Label(mode.title(locale: locale), systemImage: listSortMode == mode ? "checkmark" : mode.icon)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "arrow.up.arrow.down")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 38, height: 38)
-                        .themedGlass(in: .capsule)
-                }
-                .buttonStyle(.plain)
-
-                Spacer(minLength: 8)
-
-                Button {
-                    withAnimation(.smooth(duration: 0.2)) {
-                        comparisonListEditMode.toggle()
-                    }
-                } label: {
-                    Image(systemName: comparisonListEditMode ? "checkmark" : "pencil")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 38, height: 38)
-                        .themedGlass(in: .capsule)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .padding(.bottom, 10)
-    }
-
-    func comparisonCandidateRow(_ candidate: SunnyCandidate, rank: Int) -> some View {
-        HStack(spacing: 8) {
-            if comparisonListEditMode {
-                Button {
-                    removeComparisonCity(candidate.cityWeather)
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(theme.colors.destructive)
-                        .frame(width: 34, height: 44)
-                }
-                .buttonStyle(.plain)
-            }
-
-            sunnyCandidateRow(candidate, rank: rank, compact: false)
-
-            if comparisonListEditMode {
-                Button {
-                    beginEditingComparisonCity(candidate.cityWeather)
-                } label: {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 38, height: 44)
-                        .themedGlass(in: .capsule)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .animation(.smooth(duration: 0.2), value: comparisonListEditMode)
-    }
-
-    func beginEditingComparisonCity(_ city: CityWeather) {
-        listToRenameID = nil
-        showingRenameAlert = false
-        cityToRename = city
-        cityToRenameListID = weatherService.activeListID
-        cityRenameText = city.city.localizedName(locale: locale)
-        showingCityRenameAlert = true
-    }
-
-    func removeComparisonCity(_ city: CityWeather) {
-        weatherService.removeCity(city, from: weatherService.activeListID)
-        refreshSidebarCityOrder()
-        PlatformFeedback.lightImpact()
     }
 
     var discoveryListMenu: some View {
         atlasListMenu(titleOverride: nil)
     }
-    //?what is an "atlastopheader"
-    func atlasTopHeader<Accessory: View>(
+    func topToolbar<Accessory: View>(
         titleOverride: String? = nil,
         @ViewBuilder accessory: () -> Accessory
     ) -> some View {
@@ -723,39 +466,55 @@ extension ContentView {
         }
         .frame(maxWidth: .infinity)
     }
-    //?whats that?
     func atlasListMenu(titleOverride: String?) -> some View {
-        Menu {
-            ForEach(sidebarLists) { listID in
-                Button(listID.localizedDisplayName(locale: locale)) {
-                    comparisonListEditMode = false
-                    Task {
-                        await switchToList(listID)
+        Group {
+            if listEditMode && titleOverride == nil {
+                Button {
+                    listToRenameID = weatherService.activeListID
+                    renameAlertText = weatherService.activeListID.localizedDisplayName(locale: locale)
+                    showingRenameAlert = true
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(toolbarTitle)
+                            .font(.title2.weight(.semibold))
+                            .lineLimit(1)
+                        Image(systemName: "pencil")
+                            .font(.system(size: 12, weight: .semibold))
                     }
                 }
-            }
+                .buttonStyle(.plain)
+            } else {
+                Menu {
+                    ForEach(managedLists) { listID in
+                        Button(listID.localizedDisplayName(locale: locale)) {
+                            listEditMode = false
+                            Task {
+                                await switchToList(listID)
+                            }
+                        }
+                    }
 
-            Divider()
+                    Divider()
 
-            Button {
-                beginCreatingListFromSwitcher()
-            } label: {
-                Label(localizedString("New List", locale: locale), systemImage: "plus")
-            }
-        } label: {
-            HStack(spacing: 6) {
-                Text(titleOverride ?? toolbarTitle)
-                    .font(.title2.weight(.semibold))
-                    .lineLimit(1)
-                if titleOverride == nil {
-                    Image(systemName: "chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
+                    Button {
+                        beginCreatingListFromSwitcher()
+                    } label: {
+                        Label(localizedString("New List", locale: locale), systemImage: "plus")
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(titleOverride ?? toolbarTitle)
+                            .font(.title2.weight(.semibold))
+                            .lineLimit(1)
+                        if titleOverride == nil {
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 12, weight: .semibold))
+                        }
+                    }
                 }
+                .menuOrder(.fixed)
+                .tint(.primary)
             }
         }
-        .menuOrder(.fixed)
-        .tint(.primary)
     }
 }
-
-//?my app has 3 main views: discover, list, map. is there a dedicated file for the list view, or is that embedded into discoveryview

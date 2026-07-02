@@ -14,19 +14,6 @@ extension ContentView {
     func mapDateSlider(height: CGFloat, transparent: Bool = false, showsSelectedLabelWhenIdle: Bool = true) -> some View {
         let totalPositions = 11 // -1 (Now) through 9
         let stepHeight = height / CGFloat(totalPositions - 1)
-        #if os(macOS)
-        let touchWidth: CGFloat = 112
-        let touchHeight: CGFloat = 68
-        let labelFont: Font = .callout.weight(.semibold)
-        let idleMinWidth: CGFloat = 48
-        let dragMinWidth: CGFloat = 58
-        let idleHorizontalPadding: CGFloat = 10
-        let dragHorizontalPadding: CGFloat = 12
-        let idleVerticalPadding: CGFloat = 6
-        let dragVerticalPadding: CGFloat = 8
-        let idleTailSize = CGSize(width: 22, height: 14)
-        let dragTailSize = CGSize(width: 26, height: 18)
-        #else
         let touchWidth: CGFloat = selectedDayOffset > 0 ? 145 : 120
         let touchHeight: CGFloat = 80
         let labelFont: Font = .avenir(.subheadline, weight: .semibold)
@@ -38,7 +25,6 @@ extension ContentView {
         let dragVerticalPadding: CGFloat = 9
         let idleTailSize = CGSize(width: 24, height: 16)
         let dragTailSize = CGSize(width: 30, height: 20)
-        #endif
 
         // Convert between slider position (0...10) and dayOffset (-1...9)
         func positionToOffset(_ pos: Int) -> Int { pos - 1 }
@@ -111,9 +97,6 @@ extension ContentView {
                         .padding(.horizontal, isDraggingDateSlider ? dragHorizontalPadding : idleHorizontalPadding)
                         .padding(.vertical, isDraggingDateSlider ? dragVerticalPadding : idleVerticalPadding)
                         .themedGlass(in: .capsule)
-                        #if os(iOS)
-                        .weatherTutorialTarget(.dateSlider)
-                        #endif
 
                     Color.clear
                         .frame(

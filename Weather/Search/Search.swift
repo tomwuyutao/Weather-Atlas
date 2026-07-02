@@ -11,7 +11,6 @@ import CoreLocation
 import MapKit
 
 // MARK: - Search Result
-//? i think the current location search is apple's own search. lets say the user's phone is in chinese, he sets the app's language to english. say if he inputs Shanghai, what will be shown in the results? What if he inputs 上海？
 struct CitySearchResult: Identifiable {
     let id: String
     let title: String
@@ -92,67 +91,97 @@ extension ContentView {
 
     // MARK: - Native City Search
 
-    var nativeCitySearchScreen: some View {
-        VStack(spacing: 14) {
-            Spacer()
-
-            Image(systemName: inlineSearchText.isEmpty ? "magnifyingglass" : "map")
-                .font(.system(size: 44, weight: .regular))
-                .foregroundStyle(theme.colors.secondaryText.opacity(0.7))
-
-            if !inlineSearchText.isEmpty {
-                Text(localizedString("No results", locale: locale))
-                    .font(.avenir(.title3, weight: .medium))
-                    .foregroundStyle(theme.colors.primaryText)
-
-                Text(localizedString("Try a different search term", locale: locale))
-                    .font(.avenir(.body, weight: .regular))
-                    .foregroundStyle(theme.colors.secondaryText)
-            }
-
-            Spacer()
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(theme.colors.background.ignoresSafeArea())
-    }
-
     @ViewBuilder
     func nativeCitySearch<Content: View>(
         _ content: Content,
         placement: SearchFieldPlacement = .automatic
     ) -> some View {
-        if countryListSearchMode, countryListPreviewCountry != nil {
-            content
-        } else {
-            content
-                .searchable(
-                    text: $inlineSearchText,
-                    isPresented: $inlineSearchFieldPresented,
-                    placement: placement,
-                    prompt: Text(localizedString("Search for a city or country", locale: locale))
-                )
-                .searchSuggestions {
-                    if showingInlineSearch || inlineSearchFieldPresented {
-                        nativeCitySearchSuggestions
-                    }
+        content
+    }
+
+    @ViewBuilder
+    var inlineSearchOverlay: some View {
+        if showingInlineSearch || inlineSearchFieldPresented {
+            VStack(spacing: 10) {
+                Spacer(minLength: 0)
+
+                if !inlineSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                   !inlineSortedSearchResults.isEmpty {
+                    inlineSearchSuggestionPanel
+                        .padding(.horizontal, 18)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .onChange(of: inlineSearchText) { _, newValue in
-                    inlineSearchManager.search(query: newValue)
-                    inlineSearchSelectionIndex = 0
-                }
-                .onChange(of: inlineSearchFieldPresented) { _, isPresented in
-                    if !isPresented {
-                        if countryListSearchMode, countryListPreviewCountry == nil {
-                            cancelCountryListPreview()
-                            return
-                        }
-                        dismissNativeCitySearchAndRecenter()
-                    }
-                }
-                .onSubmit(of: .search) {
+
+                inlineSearchBar
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 8)
+            }
+            .zIndex(60)
+        }
+    }
+
+    private var inlineSearchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(theme.colors.secondaryText)
+
+            TextField(localizedString("Search for a city or country", locale: locale), text: $inlineSearchText)
+                .textInputAutocapitalization(.words)
+                .disableAutocorrection(true)
+                .focused($inlineSearchFocused)
+                .submitLabel(.search)
+                .onSubmit {
                     confirmInlineSearchSelection()
                 }
+
+            Button {
+                dismissNativeCitySearchAndRecenter()
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(theme.colors.secondaryText)
+            }
+            .buttonStyle(.plain)
         }
+        .padding(.horizontal, 14)
+        .frame(height: 50)
+        .background(searchSuggestionBackground, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.38), lineWidth: 0.8)
+        }
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 18, y: 8)
+        .onAppear {
+            inlineSearchFieldPresented = true
+            inlineSearchFocused = true
+        }
+    }
+
+    private var inlineSearchSuggestionPanel: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(inlineSortedSearchResults.prefix(inlineSearchResultLimit).enumerated()), id: \.element.id) { index, result in
+                Button {
+                    guard !inlineIsLoadingCity else { return }
+                    Task {
+                        await inlineSelectSearchResult(result)
+                    }
+                } label: {
+                    nativeCitySearchSuggestionRow(for: result, isSelected: index == inlineSearchSelectionIndex)
+                }
+                .disabled(inlineIsLoadingCity)
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .frame(maxWidth: 430)
+        .background(searchSuggestionBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.38), lineWidth: 0.8)
+        }
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.14), radius: 20, y: 8)
     }
 
     @ViewBuilder
@@ -245,13 +274,7 @@ extension ContentView {
     }
 
     private var shouldShowInlineSearchSelectionHighlight: Bool {
-        #if os(macOS)
-        true
-        #elseif os(iOS)
-        shouldUseIPadLayout
-        #else
         false
-        #endif
     }
 
     private func nativeCitySearchSuggestionRow(for result: CitySearchResult, isSelected: Bool) -> some View {
@@ -263,16 +286,6 @@ extension ContentView {
         let titleColor = searchSuggestionTitleColor
         let subtitleColor = searchSuggestionSubtitleColor
         let chipFill = theme.colors.accent.opacity(0.18)
-        #if os(macOS)
-        let rowSpacing: CGFloat = 8
-        let titleFont: Font = .system(size: 13, weight: .medium)
-        let subtitleFont: Font = .system(size: 11, weight: .regular)
-        let statusFont: Font = .system(size: 10, weight: .medium)
-        let statusBoldFont: Font = .system(size: 10, weight: .semibold)
-        let rowVerticalPadding: CGFloat = 3
-        let rowHorizontalPadding: CGFloat = 6
-        let rowCornerRadius: CGFloat = 7
-        #else
         let rowSpacing: CGFloat = 10
         let titleFont: Font = .avenir(.body, weight: .medium)
         let subtitleFont: Font = .avenir(.caption, weight: .regular)
@@ -281,7 +294,6 @@ extension ContentView {
         let rowVerticalPadding: CGFloat = 3
         let rowHorizontalPadding: CGFloat = 8
         let rowCornerRadius: CGFloat = 10
-        #endif
 
         return HStack(spacing: rowSpacing) {
             VStack(alignment: .leading, spacing: 2) {
@@ -330,7 +342,7 @@ extension ContentView {
 
     func countryAddMenu(for country: CountryCityGroup, cityCount: Int? = nil) -> some View {
         Menu {
-            ForEach(sidebarLists) { listID in
+            ForEach(managedLists) { listID in
                 Button(listID.localizedDisplayName(locale: locale)) {
                     addCountry(country, cityCount: cityCount ?? defaultCountrySearchCityCount(for: country), to: listID)
                 }
@@ -431,19 +443,11 @@ extension ContentView {
             tappedCity = nil
             showingInlineSearch = true
         }
-        #if os(iOS)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
+        Task { @MainActor in
+            await Task.yield()
             inlineSearchFieldPresented = true
+            inlineSearchFocused = true
         }
-        #else
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
-            inlineSearchFieldPresented = true
-        }
-        #endif
-    }
-
-    func dismissInlineSearch() {
-        dismissNativeCitySearchAndRecenter()
     }
 
     func resetNativeCitySearch() {
@@ -461,18 +465,14 @@ extension ContentView {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showingInlineSearch = false
             inlineSearchFieldPresented = false
+            inlineSearchFocused = false
         }
         resetNativeCitySearch()
         guard shouldRecenter else { return }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+        Task { @MainActor in
+            await Task.yield()
             centerMapOnDots(useListCoordinates: true)
         }
-    }
-
-    func moveInlineSearchSelection(_ delta: Int) {
-        let count = min(inlineSearchResultLimit, inlineSortedSearchResults.count)
-        guard count > 0 else { return }
-        inlineSearchSelectionIndex = (inlineSearchSelectionIndex + delta + count) % count
     }
 
     func confirmInlineSearchSelection() {
@@ -496,7 +496,8 @@ extension ContentView {
                     inlineSearchFieldPresented = false
                     inlineSearchText = ""
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+                Task { @MainActor in
+                    await Task.yield()
                     centerMapOnDots(useListCoordinates: true)
                 }
             }
@@ -551,16 +552,16 @@ extension ContentView {
     }
 
     private func handleInlineSearchCitySelected(_ cityWeather: CityWeather) {
-        if selectedTab == 1 {
+        if isMapRoute {
             previewCity = cityWeather
-            previewSearchText = cityWeather.city.name
             tappedCity = cityWeather
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 showingInlineSearch = false
                 inlineSearchFieldPresented = false
                 inlineSearchText = ""
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            Task { @MainActor in
+                await Task.yield()
                 centerOnCityTrigger = cityWeather
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                     showingMapExpandedCard = true
@@ -573,11 +574,9 @@ extension ContentView {
                 inlineSearchFieldPresented = false
                 inlineSearchText = ""
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                showingAddCityDetail = true
-                #if os(iOS)
-                pushIPhoneRoute(.addCityDetail)
-                #endif
+            Task { @MainActor in
+                await Task.yield()
+                pushRoute(.addCityDetail)
             }
         }
     }

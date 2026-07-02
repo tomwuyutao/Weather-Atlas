@@ -7,9 +7,7 @@
 //
 
 import SwiftUI
-#if os(macOS)
-import AppKit
-#endif
+import UIKit
 
 // MARK: - Language Defaults
 
@@ -46,8 +44,7 @@ enum AppLanguageDefaults {
     }
 }
 
-#if os(iOS)
-// MARK: - iOS App Delegate
+// MARK: - App Delegate
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     private static let pendingListShortcutKey = "pendingListShortcutID"
@@ -97,7 +94,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     private static func handleShortcutItem(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
         guard let rawValue = listID(from: shortcutItem) else { return false }
         UserDefaults.standard.set(rawValue, forKey: pendingListShortcutKey)
-        NotificationCenter.default.post(name: .weatherOpenListShortcutCommand, object: rawValue)
+        NotificationCenter.default.post(name: .weatherOpenListShortcut, object: rawValue)
         return true
     }
 
@@ -114,15 +111,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return String(shortcutItem.type[range.upperBound...])
     }
 }
-#endif
 
 // MARK: - App Entry Point
 
 @main
 struct WeatherApp: App {
-    #if os(iOS)
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-    #endif
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     @State private var theme = AppTheme.shared
 
@@ -158,7 +152,6 @@ struct WeatherApp: App {
             UserDefaults.standard.set(true, forKey: migrationKey)
         }
         
-        #if os(iOS)
         // Keep native bars transparent so Liquid Glass floats over app content.
         let navBarAppearance = UINavigationBarAppearance()
         navBarAppearance.configureWithTransparentBackground()
@@ -175,265 +168,19 @@ struct WeatherApp: App {
         tabBarAppearance.shadowColor = .clear
         UITabBar.appearance().standardAppearance = tabBarAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
-        #endif
     }
 
     var body: some Scene {
-        #if os(macOS)
         WindowGroup {
             ThemeRoot(theme: theme, appLocale: appLocale)
         }
-        .defaultSize(width: 1120, height: 760)
-        .windowStyle(.hiddenTitleBar)
-        .commands {
-            WeatherSidebarCommands()
-            WeatherNewListCommands()
-            WeatherMapCommands()
-            WeatherOverlayCommands()
-            WeatherListCommands()
-            WeatherNavigateCommands()
-        }
-
-        Settings {
-            SettingsRoot(theme: theme, appLocale: appLocale)
-        }
-        #else
-        WindowGroup {
-            ThemeRoot(theme: theme, appLocale: appLocale)
-        }
-        .commands {
-            WeatherSidebarCommands()
-            WeatherNewListCommands()
-            WeatherMapCommands()
-            WeatherOverlayCommands()
-            WeatherListCommands()
-            WeatherNavigateCommands()
-        }
-        #endif
     }
 }
-
-#if os(macOS) || os(iOS)
-private struct WeatherSidebarCommands: Commands {
-    var body: some Commands {
-        CommandGroup(replacing: .sidebar) {
-            Button("Show/Hide Sidebar") {
-                NotificationCenter.default.post(name: .weatherToggleSidebarCommand, object: nil)
-            }
-            .keyboardShortcut("s", modifiers: [.command, .control])
-        }
-    }
-}
-#endif
-
-#if os(macOS) || os(iOS)
-private struct WeatherNewListCommands: Commands {
-    var body: some Commands {
-        CommandGroup(after: .newItem) {
-            Button("New List") {
-                NotificationCenter.default.post(name: .weatherNewListCommand, object: nil)
-            }
-            .keyboardShortcut("n", modifiers: [.command, .shift])
-        }
-    }
-}
-
-private struct WeatherMapCommands: Commands {
-    @AppStorage("mapProvider") private var mapProviderRaw: String = WeatherMapProvider.openStreetMap.rawValue
-    @AppStorage("showDateSlider") private var showDateSlider: Bool = true
-    @AppStorage("showLegend") private var showLegend: Bool = true
-    @AppStorage("menuFilterSunnyState") private var filterSunny: Bool = false
-
-    var body: some Commands {
-        CommandMenu("Map") {
-            Button("Search") {
-                NotificationCenter.default.post(name: .weatherSearchCommand, object: nil)
-            }
-            .keyboardShortcut("f", modifiers: .command)
-
-            Button("Refresh Weather") {
-                NotificationCenter.default.post(name: .weatherRefreshCommand, object: nil)
-            }
-            .keyboardShortcut("r", modifiers: .command)
-
-            Divider()
-
-            Picker("Map Source", selection: Binding(
-                get: { mapProviderRaw },
-                set: { provider in
-                    mapProviderRaw = provider
-                    NotificationCenter.default.post(name: .weatherMapProviderCommand, object: provider)
-                }
-            )) {
-                Text("OpenStreetMap").tag(WeatherMapProvider.openStreetMap.rawValue)
-                Text("Apple Maps").tag(WeatherMapProvider.appleMaps.rawValue)
-            }
-            .pickerStyle(.inline)
-
-            Divider()
-
-            Toggle("Filter Sunny", isOn: Binding(
-                get: { filterSunny },
-                set: { _ in NotificationCenter.default.post(name: .weatherToggleSunnyFilterCommand, object: nil) }
-            ))
-
-            Toggle("Show Legend", isOn: Binding(
-                get: { showLegend },
-                set: { _ in NotificationCenter.default.post(name: .weatherToggleLegendCommand, object: nil) }
-            ))
-
-            Toggle("Date Slider", isOn: $showDateSlider)
-        }
-    }
-}
-
-private struct WeatherOverlayCommands: Commands {
-    @AppStorage("mapOverlayMode") private var selectedOverlay: String = "weather"
-
-    private let overlays: [(String, String)] = [
-        ("weather", "Weather"),
-        ("temperature", "Temperature"),
-        ("cloudCover", "Cloud Cover"),
-        ("precipitation", "Precipitation"),
-        ("windSpeed", "Wind Speed"),
-        ("uvIndex", "UV Index"),
-        ("humidity", "Humidity"),
-        ("visibility", "Visibility")
-    ]
-
-    var body: some Commands {
-        CommandMenu("Overlay") {
-            Picker(selection: Binding(
-                get: { selectedOverlay },
-                set: { mode in
-                    selectedOverlay = mode
-                    NotificationCenter.default.post(name: .weatherOverlayCommand, object: mode)
-                }
-            )) {
-                ForEach(overlays, id: \.0) { mode, label in
-                    Text(label).tag(mode)
-                }
-            } label: {
-                EmptyView()
-            }
-            .pickerStyle(.inline)
-        }
-    }
-}
-
-private struct WeatherListCommands: Commands {
-    @AppStorage("activeListID") private var activeListID: String = CityListID.europe.rawValue
-
-    var body: some Commands {
-        CommandMenu("List") {
-            Picker(selection: Binding(
-                get: { activeListID },
-                set: { rawValue in
-                    activeListID = rawValue
-                    NotificationCenter.default.post(name: .weatherSwitchListCommand, object: rawValue)
-                }
-            )) {
-                ForEach(CityListID.allLists) { listID in
-                    Text(listID.localizedDisplayName()).tag(listID.rawValue)
-                }
-            } label: {
-                EmptyView()
-            }
-            .pickerStyle(.inline)
-        }
-    }
-}
-
-private struct WeatherNavigateCommands: Commands {
-    var body: some Commands {
-        CommandMenu("Navigate") {
-            #if os(macOS)
-            Button("Enter Full Screen") {
-                NSApp.keyWindow?.toggleFullScreen(nil)
-            }
-            .keyboardShortcut("f", modifiers: [.command, .option])
-
-            Divider()
-            #endif
-
-            Button("Center on Map") {
-                NotificationCenter.default.post(name: .weatherCenterMapCommand, object: nil)
-            }
-            .keyboardShortcut("0", modifiers: .command)
-
-            Divider()
-
-            Button("Previous Date") {
-                NotificationCenter.default.post(name: .weatherPreviousDayCommand, object: nil)
-            }
-            .keyboardShortcut(.upArrow, modifiers: [])
-            Button("Next Date") {
-                NotificationCenter.default.post(name: .weatherNextDayCommand, object: nil)
-            }
-            .keyboardShortcut(.downArrow, modifiers: [])
-
-            Divider()
-
-            Button("Previous List") {
-                NotificationCenter.default.post(name: .weatherPreviousListCommand, object: nil)
-            }
-            .keyboardShortcut(.upArrow, modifiers: [.command, .shift])
-            Button("Next List") {
-                NotificationCenter.default.post(name: .weatherNextListCommand, object: nil)
-            }
-            .keyboardShortcut(.downArrow, modifiers: [.command, .shift])
-
-            Button("Zoom In") {
-                NotificationCenter.default.post(name: .weatherZoomInCommand, object: nil)
-            }
-            .keyboardShortcut("+", modifiers: .command)
-            Button("Zoom Out") {
-                NotificationCenter.default.post(name: .weatherZoomOutCommand, object: nil)
-            }
-            .keyboardShortcut("-", modifiers: .command)
-
-            Divider()
-
-            Button("Pan Up") { NotificationCenter.default.post(name: .weatherPanCommand, object: "w") }
-                .keyboardShortcut("w", modifiers: [])
-            Button("Pan Left") { NotificationCenter.default.post(name: .weatherPanCommand, object: "a") }
-                .keyboardShortcut("a", modifiers: [])
-            Button("Pan Down") { NotificationCenter.default.post(name: .weatherPanCommand, object: "s") }
-                .keyboardShortcut("s", modifiers: [])
-            Button("Pan Right") { NotificationCenter.default.post(name: .weatherPanCommand, object: "d") }
-                .keyboardShortcut("d", modifiers: [])
-            Button("Zoom In Continuously") { NotificationCenter.default.post(name: .weatherKeyboardZoomCommand, object: "c") }
-                .keyboardShortcut("c", modifiers: [])
-            Button("Zoom Out Continuously") { NotificationCenter.default.post(name: .weatherKeyboardZoomCommand, object: "v") }
-                .keyboardShortcut("v", modifiers: [])
-        }
-    }
-}
-#endif
 
 // MARK: - App Notifications
 
 extension Notification.Name {
-    static let weatherCenterMapCommand = Notification.Name("weatherCenterMapCommand")
-    static let weatherZoomInCommand = Notification.Name("weatherZoomInCommand")
-    static let weatherZoomOutCommand = Notification.Name("weatherZoomOutCommand")
-    static let weatherPreviousDayCommand = Notification.Name("weatherPreviousDayCommand")
-    static let weatherNextDayCommand = Notification.Name("weatherNextDayCommand")
-    static let weatherPreviousListCommand = Notification.Name("weatherPreviousListCommand")
-    static let weatherNextListCommand = Notification.Name("weatherNextListCommand")
-    static let weatherRefreshCommand = Notification.Name("weatherRefreshCommand")
-    static let weatherSearchCommand = Notification.Name("weatherSearchCommand")
-    static let weatherToggleSunnyFilterCommand = Notification.Name("weatherToggleSunnyFilterCommand")
-    static let weatherToggleLegendCommand = Notification.Name("weatherToggleLegendCommand")
-    static let weatherOverlayCommand = Notification.Name("weatherOverlayCommand")
-    static let weatherSwitchListCommand = Notification.Name("weatherSwitchListCommand")
-    static let weatherNewListCommand = Notification.Name("weatherNewListCommand")
-    static let weatherNewCountryListCommand = Notification.Name("weatherNewCountryListCommand")
-    static let weatherMapProviderCommand = Notification.Name("weatherMapProviderCommand")
-    static let weatherToggleSidebarCommand = Notification.Name("weatherToggleSidebarCommand")
-    static let weatherPanCommand = Notification.Name("weatherPanCommand")
-    static let weatherKeyboardZoomCommand = Notification.Name("weatherKeyboardZoomCommand")
-    static let weatherOpenListShortcutCommand = Notification.Name("weatherOpenListShortcutCommand")
+    static let weatherOpenListShortcut = Notification.Name("weatherOpenListShortcut")
 }
 
 // MARK: - Theme Root Views
@@ -471,36 +218,6 @@ private struct ThemeContent: View {
             }
     }
 }
-
-#if os(macOS)
-private struct SettingsRoot: View {
-    let theme: AppTheme
-    let appLocale: Locale
-    @State private var weatherService = WeatherService()
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        let resolvedColors = theme.colors(for: colorScheme)
-        SettingsView(
-            weatherService: weatherService,
-            onResetLists: {
-                Task {
-                    await weatherService.resetAllLists()
-                }
-            }
-        )
-        .environment(\.locale, appLocale)
-        .defaultFont()
-        .environment(\.appTheme, theme)
-        .environment(\.themeColors, resolvedColors)
-        .tint(resolvedColors.accent)
-        .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
-        .onChange(of: colorScheme, initial: true) { _, newScheme in
-            theme.systemScheme = newScheme
-        }
-    }
-}
-#endif
 
 // MARK: - Shared View and Font Helpers
 

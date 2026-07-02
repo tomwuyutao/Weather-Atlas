@@ -7,11 +7,7 @@
 //
 
 import SwiftUI
-#if canImport(UIKit)
 import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 // MARK: - Theme Style
 
@@ -302,7 +298,6 @@ extension Color {
     func compatMix(with other: Color, by amount: Double) -> Color {
         let t = max(0, min(1, amount))
 
-#if canImport(UIKit)
         let first = UIColor(self)
         let second = UIColor(other)
         var r1: CGFloat = 0
@@ -318,22 +313,6 @@ extension Color {
               second.getRed(&r2, green: &g2, blue: &b2, alpha: &a2) else {
             return t < 0.5 ? self : other
         }
-#elseif canImport(AppKit)
-        guard let first = NSColor(self).usingColorSpace(.deviceRGB),
-              let second = NSColor(other).usingColorSpace(.deviceRGB) else {
-            return t < 0.5 ? self : other
-        }
-        let r1 = first.redComponent
-        let g1 = first.greenComponent
-        let b1 = first.blueComponent
-        let a1 = first.alphaComponent
-        let r2 = second.redComponent
-        let g2 = second.greenComponent
-        let b2 = second.blueComponent
-        let a2 = second.alphaComponent
-#else
-        return t < 0.5 ? self : other
-#endif
 
         return Color(
             red: Double(r1 + (r2 - r1) * t),
@@ -367,7 +346,7 @@ extension View {
 
     @ViewBuilder
     func compatSymbolReplaceTransition() -> some View {
-        if #available(iOS 18.0, macOS 15.0, *) {
+        if #available(iOS 18.0, *) {
             self.contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
         } else {
             self.contentTransition(.opacity)
@@ -377,7 +356,7 @@ extension View {
     /// Themed Liquid Glass background.
     @ViewBuilder
     func themedGlass(in shape: some InsettableShape) -> some View {
-        if #available(iOS 26.0, macOS 26.0, *) {
+        if #available(iOS 26.0, *) {
             self.glassEffect(.regular.interactive(), in: shape)
         } else {
             self.background(AppTheme.shared.colors.glassFill, in: shape)

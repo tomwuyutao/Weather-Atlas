@@ -4,37 +4,20 @@
 //
 //  Created by Tom on 25/02/2026.
 //
-//  Purpose: Owns the shared app state and routes it into the iPhone, iPad,
-//  and macOS shells. Feature-specific UI is split into extension files.
+//  Purpose: Owns the app state and routes it into the single iOS shell.
+//  Feature-specific UI is split into extension files.
 //
 
 import SwiftUI
-#if os(iOS)
 import UIKit
-#endif
 
 // MARK: - Shared Platform Helpers
 
 enum PlatformFeedback {
     static func lightImpact() {
-        #if os(iOS)
         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        #endif
     }
 }
-
-#if os(iOS)
-// MARK: - iPhone Navigation Routes
-
-enum IPhoneNavigationRoute: Hashable {
-    case map
-    case list
-    case cityDetail
-    case addCityDetail
-    case listManager
-}
-#endif
-//?idk why there is a dedicated iphonenavigationroute here. why only for iphone?
 
 // MARK: - Root Shared State
 
@@ -55,9 +38,8 @@ struct ContentView: View {
         self.previewSkipsInitialWeatherFetch = previewSearchResultCity != nil || previewCountryListCountryName != nil
 
         if let previewSearchResultCity {
-            _selectedTab = State(initialValue: 1)
+            _navigationPath = State(initialValue: [.map])
             _previewCity = State(initialValue: previewSearchResultCity)
-            _previewSearchText = State(initialValue: previewSearchResultCity.city.name)
             _tappedCity = State(initialValue: previewSearchResultCity)
             _showingMapExpandedCard = State(initialValue: true)
         }
@@ -65,7 +47,7 @@ struct ContentView: View {
         if let previewCountryListCountryName,
            let countryIndex = CountryCityCatalog.shared.country(matching: previewCountryListCountryName),
            let country = CountryCityCatalog.shared.countryWithCities(for: countryIndex) {
-            _selectedTab = State(initialValue: 1)
+            _navigationPath = State(initialValue: [.map])
             _countryListSearchMode = State(initialValue: true)
             _countryListPreviewCountry = State(initialValue: country)
             _countryListInitialCountry = State(initialValue: country)
@@ -73,8 +55,7 @@ struct ContentView: View {
             _showingInlineSearch = State(initialValue: false)
             _inlineSearchFieldPresented = State(initialValue: false)
             _showingMapExpandedCard = State(initialValue: false)
-            _recenterOnAllCities = State(initialValue: true)
-            _recenterUsesListCoordinates = State(initialValue: true)
+            _mapRecenterRequest = State(initialValue: .listCoordinates)
         }
     }
 
@@ -82,25 +63,18 @@ struct ContentView: View {
 
     // MARK: Selection and Navigation State
 
-    @State var selectedDayOffset: Int = -1
+    @State var selectedDayOffset: Int = 0
     @Namespace var detailDaySelectionNamespace
-    @Namespace var iPadMapDetailNamespace
-    @State var showingCityDetail: Bool = false
     @State var tappedCity: CityWeather?
     @State var showingMapExpandedCard: Bool = false
-    @AppStorage("weatherAtlasMode") var weatherAtlasModeRaw: String = WeatherAtlasMode.discover.rawValue
     @AppStorage("weatherListSortMode") var weatherListSortModeRaw: String = WeatherListSortMode.sunny.rawValue
     @AppStorage("hasLaunchedBefore") var hasLaunchedBefore: Bool = false
-    @State var selectedTab: Int = 0
-    @State var lastRefreshText: String = ""
-    @State var showingAddCityDetail: Bool = false
     @State var addCityDetailCity: CityWeather?
     @State var previewCity: CityWeather?
-    @State var previewSearchText: String = ""
+    @State var presentedDetailCityID: UUID?
 
     // MARK: Map Overlay State
 
-    var showCloudCover: Bool { mapOverlayMode == "cloudCover" }
     var overlayChartMetric: WeatherChartMetric? {
         switch mapOverlayMode {
         case "cloudCover":     return .cloudCover
@@ -124,21 +98,14 @@ struct ContentView: View {
 
     // MARK: Map Camera and Settings State
 
-    @State var recenterOnAllCities: Bool = false
-    @State var recenterUsesListCoordinates: Bool = false
+    @State var mapRecenterRequest: MapRecenterRequest?
     @State var mapMarkerReloadID: Int = 0
     @State var settingsOpenedThemeStyle: AppThemeStyle?
-    @State var iPadInspectorPresentedCityID: UUID?
     @AppStorage("temperatureUnit") var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
     @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.defaultRawValue
     @State var showingSettings: Bool = false
-    #if os(iOS)
-    @State var tutorialStep: WeatherTutorialStep?
-    @State var tutorialTargetFrames: [WeatherTutorialTarget: CGRect] = [:]
-    @State var shouldShowFirstLaunchListPickerAfterTutorial = false
     @State var showingFirstLaunchListPicker = false
     @State var firstLaunchSelectedListIDs: Set<String> = []
-    #endif
     @AppStorage("showLegend") var showLegend: Bool = true
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
     @AppStorage("mapProvider") var mapProviderRaw: String = WeatherMapProvider.openStreetMap.rawValue
@@ -151,12 +118,6 @@ struct ContentView: View {
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(\.scenePhase) var scenePhase
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) var horizontalSizeClass
-    #endif
-    #if os(macOS)
-    @Environment(\.openSettings) var openSettings
-    #endif
 
     // MARK: Active City Collections
 
@@ -228,121 +189,56 @@ struct ContentView: View {
     }
 
     var body: some View {
-        #if os(macOS)
-        macOSView
-        #else
-        iOSView
-        #endif
-    }
-//? i think we no longer need the shoulduseipadlayout thing? each platform should just use their own layout, no need for a dedicated shouldUseIPadLayout
-    #if os(iOS)
-    var shouldUseIPadLayout: Bool {
-        UIDevice.current.userInterfaceIdiom == .pad
-    }
-    #elseif os(macOS)
-    var shouldUseIPadLayout: Bool {
-        true
-    }
-    #endif
-
-    var usesFloatingMapCardLayout: Bool {
-        #if os(macOS)
-        true
-        #elseif os(iOS)
-        shouldUseIPadLayout
-        #else
-        false
-        #endif
+        rootView
     }
 
-    // MARK: - iOS View
-    @State var iOSPreviousDayOffset: Int = 0
+    // MARK: - Root View State
     @State var dateSwitcherForward: Bool = true
     @State var showingDatePopover: Bool = false
     @State var isDraggingDateSlider: Bool = false
     @State var sliderDragStartDay: Int = 0
     @State var sliderDragFraction: CGFloat = 0
 
-    @AppStorage("isGridView") var isGridView: Bool = false
-    @State var gridDragItem: CityWeather?
-    @State var listContentOpacity: Double = 1.0
-    @State var longPressedCity: CityWeather?
-    @State var isEditingListName: Bool = false
-    @State var editingListName: String = ""
-    @FocusState var listNameFieldFocused: Bool
     @State var showingDeleteListConfirmation: Bool = false
     @State var showingRenameAlert: Bool = false
     @State var renameAlertText: String = ""
     @FocusState var renameAlertFocused: Bool
+    @FocusState var inlineSearchFocused: Bool
     @State var showingCityRenameAlert: Bool = false
     @State var cityRenameText: String = ""
     @FocusState var cityRenameFocused: Bool
     @State var cityToRename: CityWeather?
     @State var cityToRenameListID: CityListID?
     @State var listToRenameID: CityListID?
-    @State var comparisonListEditMode: Bool = false
-    @State var showingListSwitcher: Bool = false
-    @State var showingMapSidebar: Bool = false
-    @State var sidebarExpandedListIDs: Set<String> = []
+    @State var listEditMode: Bool = false
+    @State var showingListManager: Bool = false
+    @State var expandedListIDs: Set<String> = []
     @State var listOrderRevision: Int = 0
     @State var cityOrderRevision: Int = 0
-    @State var sidebarNewListName: String = ""
-    @State var sidebarShowingAddListAlert: Bool = false
-    @State var showingAddListTypeMenu: Bool = false
+    @State var newListName: String = ""
+    @State var showingAddListAlert: Bool = false
     @State var showingCountryListBuilder: Bool = false
     @State var countryListInitialCountry: CountryCityGroup?
     @State var countryListSearchMode: Bool = false
     @State var countryListPreviewCountry: CountryCityGroup?
     @State var countryListPreviewCityCount: Int = 15
     @State var inlineAddTargetListID: CityListID?
-    #if os(iOS)
-    @State var sidebarEditMode: EditMode = .inactive
-    #endif
-    #if os(macOS) || os(iOS)
-    @State var macSidebarVisibility: NavigationSplitViewVisibility = .all
-    @State var macMeasuredSidebarWidth: CGFloat = 0
-    @State var macMapExpandedCardAnchor: CGPoint?
-    @State var macMapExpandedCardBaseOffset: CGSize = .zero
-    @GestureState var macMapExpandedCardGestureOffset: CGSize = .zero
-    @State var macHoverPresentedCardCityID: UUID?
-    @State var macMapExpandedCardFocusesMarker: Bool = false
-    @State var macExpandedCardShowsDetails: Bool = false
-    @State var macExpandedCardChartMetric: WeatherChartMetric = .temperature
-    @State var macExpandedCardChartRange: WeatherChartTimeRange = .daytime
+    @State var listManagerEditMode: EditMode = .inactive
+    @State var expandedWeatherCardShowsDetails: Bool = false
+    @State var expandedWeatherCardChartMetric: WeatherChartMetric = .temperature
+    @State var expandedWeatherCardChartRange: WeatherChartTimeRange = .daytime
     @State var detailChartSwipeDirection: Int = 1
-    @State var macSidebarSelection: String?
-    @State var macExpandedCardHoveredDay: Int?
-    @State var macQuickSwitcherVisible: Bool = false
-    @State var macQuickSwitcherIndex: Int = 0
-    @State var macQuickSwitcherDismissToken: Int = 0
-    @State var macQuickSwitcherPendingListID: CityListID?
-    @State var macOverlaySwitcherVisible: Bool = false
-    @State var macOverlaySwitcherIndex: Int = 0
-    @State var macOverlaySwitcherDismissToken: Int = 0
-    @State var macMapLookupTaskID: Int = 0
-    @State var macMapLookupPreviewCityID: UUID?
-    @State var macMapViewportSize: CGSize = .zero
-    @State var iPadInspectorPinned: Bool = false
-    @State var iPadDetailHeaderShowsCityName: Bool = false
-    #endif
-    #if os(iOS)
-    @State var iPadSidebarVisibility: NavigationSplitViewVisibility = .all
-    @State var iPadPreferredCompactColumn: NavigationSplitViewColumn = .detail
-    @State var iPhoneNavigationPath: [IPhoneNavigationRoute] = []
-    #endif
+    @State var navigationPath: [AppNavigationRoute] = []
 
     var toolbarTitle: String {
         weatherService.activeListID.localizedDisplayName(locale: locale)
     }
 
-    @State var isLoadingMapList: Bool = false
-    @State var capsuleSwipeFromTrailing: Bool = true
-
-    // Map overlay menu is in MapOverlayMenu.swift
-    // Map expanded card is in MapExpandedCard.swift
+    // Map controls are in MapView.swift.
+    // Floating and expanded card content is in FloatingCard.swift.
     // Map date slider is in MapDateSlider.swift
 
-    var iOSDateText: String {
+    var dateSwitcherText: String {
         if selectedDayOffset == -1 { return localizedString("Now", locale: locale) }
         if selectedDayOffset == 0 { return localizedString("Today", locale: locale) }
         let formatter = DateFormatter()
@@ -351,25 +247,14 @@ struct ContentView: View {
         return formatter.string(from: Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date())
     }
 
-
-
-
-
-
-    private func renamedCityMatching(_ city: CityWeather) -> CityWeather? {
-        weatherService.cityWeatherData.first { candidate in
-            candidate.city.latitude == city.city.latitude && candidate.city.longitude == city.city.longitude
-        }
-    }
-
     func hourlyRefreshKey(for cityWeather: CityWeather, dayOffset: Int? = nil) -> String {
         "\(cityWeather.id.uuidString)-\(dayOffset ?? max(0, selectedDayOffset))"
     }
 
     func shouldRefreshHourlyData(for cityWeather: CityWeather, forecast: DailyForecast) -> Bool {
         guard weatherService.hasResolvedTimeZone(cityWeather) else { return true }
-        guard macExpandedCardChartRange != .tenDay else { return false }
-        if macExpandedCardChartRange == .entireDay {
+        guard expandedWeatherCardChartRange != .tenDay else { return false }
+        if expandedWeatherCardChartRange == .entireDay {
             return forecast.hourlyForecasts.isEmpty
         }
         return forecast.hourlyForecasts.filter { [7, 9, 11, 13, 15, 17, 19].contains($0.hour) }.isEmpty
@@ -396,136 +281,11 @@ struct ContentView: View {
         }
     }
 
-    func detailActionsMenu(for city: CityWeather) -> some View {
-        Menu {
-            if cityIsInSidebar(city) {
-                Button {
-                    cityToRename = city
-                    cityRenameText = city.city.localizedName(locale: locale)
-                    showingCityRenameAlert = true
-                } label: {
-                    Label {
-                        Text(localizedString("Rename", locale: locale))
-                    } icon: {
-                        Image(systemName: "pencil")
-                            .foregroundStyle(.primary)
-                    }
-                }
-                .tint(.primary)
-
-                Button(localizedString("Delete City", locale: locale), systemImage: "trash", role: .destructive) {
-                    weatherService.removeCity(city)
-                    #if os(iOS)
-                    if !shouldUseIPadLayout {
-                        dismissIPhoneRoute(.cityDetail)
-                    } else {
-                        showingCityDetail = false
-                    }
-                    #else
-                    showingCityDetail = false
-                    #endif
-                    showingMapExpandedCard = false
-                    tappedCity = nil
-                    selectedDayOffset = -1
-                    if selectedTab == 1 {
-                        recenterOnAllCities = true
-                    }
-                }
-                .tint(theme.colors.destructive)
-            } else {
-                Button {
-                    Task {
-                        await addCityToSidebar(city)
-                        showingCityDetail = false
-                        if selectedTab == 1 {
-                            recenterOnAllCities = true
-                        }
-                    }
-                } label: {
-                    Label {
-                        Text(localizedString("Add City", locale: locale))
-                    } icon: {
-                        Image(systemName: "plus")
-                            .foregroundStyle(.primary)
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .foregroundStyle(.primary)
-                .foregroundColor(.primary)
-        }
-        #if os(macOS)
-        .menuIndicator(.hidden)
-        #endif
-        .menuOrder(.fixed)
-    }
-
-    @ViewBuilder
-    func addCityButton(dismissExpanded: Bool) -> some View {
-        let allLists = sidebarLists
-        if allLists.count > 1 {
-            Menu {
-                ForEach(allLists) { listID in
-                    Button(listID.localizedDisplayName(locale: locale)) {
-                        if let city = previewCity {
-                            Task {
-                                if listID == weatherService.activeListID {
-                                    await addCityToSidebar(city)
-                                } else {
-                                    await weatherService.addCityToList(city.city, listID: listID)
-                                    PlatformFeedback.lightImpact()
-                                }
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                    if dismissExpanded { showingMapExpandedCard = false }
-                                    previewCity = nil
-                                }
-                            }
-                        }
-                    }
-                }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(AppTheme.shared.colors.accent.opacity(0.85), in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.24), lineWidth: 0.5))
-            }
-            .buttonStyle(.plain)
-        } else {
-            Button {
-                if let city = previewCity {
-                    Task {
-                        await addCityToSidebar(city)
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            if dismissExpanded { showingMapExpandedCard = false }
-                            previewCity = nil
-                        }
-                    }
-                }
-            } label: {
-                Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .background(AppTheme.shared.colors.accent.opacity(0.85), in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.24), lineWidth: 0.5))
-            }
-            .buttonStyle(.plain)
-        }
-    }
 }
 
 #Preview("ContentView") {
     let _ = UserDefaults.standard.set(false, forKey: "isGridView")
     let _ = UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-    ContentView(previewLoading: true)
-}
-
-#Preview("Tutorial") {
-    let _ = UserDefaults.standard.set(false, forKey: "isGridView")
-    let _ = UserDefaults.standard.set(false, forKey: "hasLaunchedBefore")
     ContentView(previewLoading: true)
 }
 

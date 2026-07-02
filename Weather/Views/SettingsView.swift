@@ -7,12 +7,7 @@
 //
 
 import SwiftUI
-import MapKit
-#if os(iOS)
 import UIKit
-#elseif os(macOS)
-import AppKit
-#endif
 
 // MARK: - Unit Preferences
 
@@ -149,7 +144,6 @@ struct SettingsView: View {
     @AppStorage("mapProvider") private var mapProviderRaw: String = WeatherMapProvider.openStreetMap.rawValue
     let weatherService: WeatherService
     let onResetLists: () -> Void
-    var onPlayTutorial: () -> Void = {}
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
@@ -169,29 +163,22 @@ struct SettingsView: View {
 
     @ViewBuilder
     var body: some View {
-        #if os(macOS)
-        nativeMacSettingsBody
-        #else
         NavigationStack {
             settingsForm
             .navigationTitle(localizedString("Settings", locale: locale))
-            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     settingsDoneButton
                 }
             }
-            #endif
         }
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
         .presentationBackground(theme.colors.mapOcean)
         .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
-        #endif
     }
 
-    #if os(iOS)
     @ViewBuilder
     private var settingsDoneButton: some View {
         Button {
@@ -199,7 +186,7 @@ struct SettingsView: View {
         } label: {
             Image(systemName: "checkmark")
                 .font(.system(size: 18, weight: .semibold))
-                .if(!isIOS26OrLater) { view in
+                .if(!usesLiquidGlassForm) { view in
                     view
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
@@ -207,7 +194,7 @@ struct SettingsView: View {
                         .contentShape(Circle())
                 }
         }
-        .if(isIOS26OrLater) { view in
+        .if(usesLiquidGlassForm) { view in
             view
                 .buttonStyle(.borderedProminent)
                 .tint(theme.colors.accent)
@@ -215,50 +202,20 @@ struct SettingsView: View {
         .buttonStyle(.plain)
     }
 
-    private var isIOS26OrLater: Bool {
+    private var usesLiquidGlassForm: Bool {
         if #available(iOS 26.0, *) {
             true
         } else {
             false
         }
     }
-    #endif
-
-    #if os(macOS)
-    private var nativeMacSettingsBody: some View {
-        TabView {
-            settingsForm
-                .tabItem {
-                    Label(localizedString("General", locale: locale), systemImage: "slider.horizontal.3")
-                }
-
-            NavigationStack {
-                aboutForm
-                    .navigationTitle(localizedString("About", locale: locale))
-            }
-            .tabItem {
-                Label(localizedString("About", locale: locale), systemImage: "info.circle")
-            }
-        }
-        .frame(width: 480, height: 440)
-        .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
-    }
-    #endif
 
     private var settingsRowBackground: Color {
-        #if os(macOS)
-        Color.clear
-        #else
         theme.colors.mapLand
-        #endif
     }
 
     private var settingsFormBackground: Color {
-        #if os(macOS)
-        Color.clear
-        #else
         theme.colors.mapOcean
-        #endif
     }
 
     private var settingsForm: some View {
@@ -311,24 +268,7 @@ struct SettingsView: View {
             .listRowBackground(settingsRowBackground)
 
             Section(localizedString("Maps", locale: locale)) {
-                mapProviderNavigationRow
-            }
-            .listRowBackground(settingsRowBackground)
-
-            Section(localizedString("Tutorial", locale: locale)) {
-                Button {
-                    onPlayTutorial()
-                } label: {
-                    Label {
-                        Text(localizedString("Replay Tutorial", locale: locale))
-                            .foregroundStyle(theme.colors.primaryText)
-                    } icon: {
-                        Image(systemName: "questionmark.circle")
-                            .foregroundStyle(theme.colors.primaryText)
-                    }
-                    .font(.body.weight(.medium))
-                }
-                .tint(theme.colors.primaryText)
+                mapProviderMenuRow
             }
             .listRowBackground(settingsRowBackground)
 
@@ -342,7 +282,6 @@ struct SettingsView: View {
             }
             .listRowBackground(settingsRowBackground)
 
-            #if os(iOS)
             Section(localizedString("About", locale: locale)) {
                 settingsInfoRow(
                     localizedString("Version", locale: locale),
@@ -365,28 +304,11 @@ struct SettingsView: View {
                 sayHelloRow
             }
             .listRowBackground(theme.colors.mapLand)
-            #endif
         }
         .scrollContentBackground(.hidden)
             .background(settingsFormBackground)
         .task {
             await weatherService.loadWeatherAttributionIfNeeded()
-        }
-        #if os(macOS)
-        .formStyle(.grouped)
-        #endif
-    }
-
-    private var mapProviderNavigationRow: some View {
-        NavigationLink {
-            mapProviderSelectionView
-        } label: {
-            LabeledContent {
-                Text(currentMapProvider.localizedTitle(locale: locale))
-                    .foregroundStyle(theme.colors.secondaryText)
-            } label: {
-                settingsLabel(localizedString("Map Source", locale: locale), systemImage: "map")
-            }
         }
     }
 
@@ -394,75 +316,40 @@ struct SettingsView: View {
         WeatherMapProvider(rawValue: mapProviderRaw) ?? .openStreetMap
     }
 
-    private var mapProviderSelectionView: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                Text(localizedString("Choose a map style for comparing weather dots. OpenStreetMap is more minimal, with fewer labels and distractions. Apple Maps shows more place names and context, but the map can feel busier.", locale: locale))
-                    .font(.subheadline)
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .padding(.horizontal, 20)
-                    .padding(.top, 8)
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 14) {
-                        mapProviderOption(.openStreetMap)
-                        mapProviderOption(.appleMaps)
-                    }
-                    VStack(spacing: 14) {
-                        mapProviderOption(.openStreetMap)
-                        mapProviderOption(.appleMaps)
-                    }
+    private var mapProviderMenuRow: some View {
+        Menu {
+            mapProviderMenuButton(.openStreetMap)
+            mapProviderMenuButton(.appleMaps)
+        } label: {
+            LabeledContent {
+                HStack(spacing: 6) {
+                    Text(currentMapProvider.settingsTitle(locale: locale))
+                        .foregroundStyle(.secondary)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 20)
+            } label: {
+                settingsLabel(localizedString("Map Source", locale: locale), systemImage: "map")
             }
-            .padding(.bottom, 28)
+            .foregroundStyle(.primary)
         }
-        .scrollContentBackground(.hidden)
-        .background(settingsFormBackground.ignoresSafeArea())
-        .navigationTitle(localizedString("Map Source", locale: locale))
-        #if os(iOS)
-        .navigationBarTitleDisplayMode(.inline)
-        #endif
+        .menuOrder(.fixed)
+        .buttonStyle(.plain)
+        .tint(.primary)
     }
 
-    private func mapProviderOption(_ provider: WeatherMapProvider) -> some View {
-        let isSelected = currentMapProvider == provider
-        return Button {
-            withAnimation(.smooth(duration: 0.2)) {
-                mapProviderRaw = provider.rawValue
-            }
+    private func mapProviderMenuButton(_ provider: WeatherMapProvider) -> some View {
+        Button {
+            mapProviderRaw = provider.rawValue
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                MapProviderPreview(provider: provider, accent: theme.colors.accent, isSelected: isSelected)
-                    .frame(height: 210)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-
-                HStack(spacing: 6) {
-                    Text(provider.localizedTitle(locale: locale))
-                        .font(.headline.weight(.semibold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.78)
-                    Spacer(minLength: 0)
-                    if isSelected {
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.title3.weight(.semibold))
-                            .foregroundStyle(theme.colors.accent)
-                    }
+            HStack {
+                Text(provider.settingsTitle(locale: locale))
+                if currentMapProvider == provider {
+                    Image(systemName: "checkmark")
                 }
             }
-            .padding(10)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .fill(isSelected ? theme.colors.accent.opacity(0.12) : Color.primary.opacity(0.045))
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .strokeBorder(isSelected ? theme.colors.accent.opacity(0.78) : Color.primary.opacity(0.08), lineWidth: isSelected ? 1.5 : 1)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
-        .buttonStyle(.plain)
     }
 
     private var aboutForm: some View {
@@ -495,9 +382,6 @@ struct SettingsView: View {
         .task {
             await weatherService.loadWeatherAttributionIfNeeded()
         }
-        #if os(macOS)
-        .formStyle(.grouped)
-        #endif
     }
 
     private var attributionsNavigationRow: some View {
@@ -523,19 +407,13 @@ struct SettingsView: View {
                     systemImage: "apple.logo",
                     url: URL(string: "https://www.apple.com/legal/internet-services/maps/legal-en.html")
                 )
-                settingsInfoRow(
-                    localizedString("OpenStreetMap", locale: locale),
-                    value: "© OpenStreetMap contributors",
-                    systemImage: "map"
-                )
+                Text("Copyright OpenStreetMap contributors")
+                    .foregroundStyle(.primary)
             }
             .listRowBackground(settingsRowBackground)
         }
         .scrollContentBackground(.hidden)
         .background(settingsFormBackground)
-        #if os(macOS)
-        .formStyle(.grouped)
-        #endif
     }
 
     @ViewBuilder
@@ -597,12 +475,7 @@ struct SettingsView: View {
 
     private func copySupportEmail() {
         let email = "yutao5726@gmail.com"
-        #if os(iOS)
         UIPasteboard.general.string = email
-        #elseif os(macOS)
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(email, forType: .string)
-        #endif
     }
 
     @ViewBuilder
@@ -641,88 +514,12 @@ private extension View {
 }
 
 private extension WeatherMapProvider {
-    func localizedTitle(locale: Locale) -> String {
+    func settingsTitle(locale: Locale) -> String {
         switch self {
-        case .openStreetMap: return localizedString("OpenStreetMap", locale: locale)
-        case .appleMaps: return localizedString("Apple Maps", locale: locale)
+        case .openStreetMap: return localizedString("Minimal", locale: locale)
+        case .appleMaps: return localizedString("Detailed", locale: locale)
         }
     }
-
-    var settingsIcon: String {
-        switch self {
-        case .openStreetMap: return "globe"
-        case .appleMaps: return "map"
-        }
-    }
-}
-
-private struct MapProviderPreview: View {
-    let provider: WeatherMapProvider
-    let accent: Color
-    let isSelected: Bool
-    @State private var tappedCity: CityWeather?
-    @State private var recenterOnAllCities = true
-    @State private var recenterUsesListCoordinates = true
-    @State private var appleCameraPosition: MapCameraPosition = .region(Self.ukPreviewRegion)
-
-    var body: some View {
-        ZStack {
-            switch provider {
-            case .openStreetMap:
-                MapLibreWebMapView(
-                    cities: [],
-                    fitCities: Self.ukPreviewCities,
-                    selectedDayOffset: -1,
-                    overlayMode: "weather",
-                    filterSunny: false,
-                    markerReloadID: 0,
-                    markerSizeScale: 1.15,
-                    showsMarkerHoverLabels: false,
-                    focusedCountryBoundary: nil,
-                    tappedCity: $tappedCity,
-                    recenterOnAllCities: $recenterOnAllCities,
-                    recenterUsesListCoordinates: $recenterUsesListCoordinates,
-                    centerOnCity: nil,
-                    leadingFitPadding: 0,
-                    focusSelectedMarker: false,
-                    allowsMarkerHover: false,
-                    cameraProfile: .preview,
-                    onMarkerTap: { _, _ in },
-                    onMapClick: nil,
-                    onMarkerCommandHover: nil,
-                    onCameraMove: nil,
-                    onMapGestureStart: nil
-                )
-            case .appleMaps:
-                Map(position: $appleCameraPosition, interactionModes: []) {}
-                    .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
-            }
-        }
-        .allowsHitTesting(false)
-        .overlay {
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .strokeBorder(isSelected ? accent.opacity(0.78) : Color.primary.opacity(0.08), lineWidth: isSelected ? 2 : 1)
-        }
-        .onAppear {
-            appleCameraPosition = .region(Self.ukPreviewRegion)
-            recenterOnAllCities = true
-            recenterUsesListCoordinates = true
-        }
-    }
-
-    private static var ukPreviewCities: [City] {
-        [
-            City(name: "London", country: "United Kingdom", latitude: 51.5072, longitude: -0.1276),
-            City(name: "Edinburgh", country: "United Kingdom", latitude: 55.9533, longitude: -3.1883),
-            City(name: "Cardiff", country: "United Kingdom", latitude: 51.4816, longitude: -3.1791),
-            City(name: "Belfast", country: "United Kingdom", latitude: 54.5973, longitude: -5.9301)
-        ]
-    }
-
-    private static let ukPreviewRegion = MKCoordinateRegion(
-        center: CLLocationCoordinate2D(latitude: 54.35, longitude: -3.15),
-        span: MKCoordinateSpan(latitudeDelta: 8.2, longitudeDelta: 8.4)
-    )
 }
 
 #Preview("Settings") {

@@ -54,6 +54,12 @@ struct HourlyTimelineChart: View {
     var lineColor: Color = AppTheme.shared.colors.accent
     var showAllHours: Bool = false
     var compactLayout: Bool = false
+    var placesLabelsBelowChart: Bool = false
+    var showsPointValueLabels: Bool = false
+    var showsValueRow: Bool = true
+    var labelStride: Int = 1
+    var showsYAxis: Bool = false
+    var chartBottomSpacing: CGFloat? = nil
     var transitionDirection: Int = 1
     var onHorizontalSwipe: ((Int) -> Void)? = nil
 
@@ -66,25 +72,13 @@ struct HourlyTimelineChart: View {
     private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic }
     private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.compatMix(with: .black, by: 0.25) }
     private var totalHeight: CGFloat {
-        #if os(macOS)
-        compactLayout ? 202 : 250
-        #else
         compactLayout ? 230 : 250
-        #endif
     }
     private var chartHeight: CGFloat {
-        #if os(macOS)
-        compactLayout ? 128 : 146
-        #else
         compactLayout ? 132 : 146
-        #endif
     }
     private var labelSpacing: CGFloat {
-        #if os(macOS)
-        compactLayout ? 4 : 10
-        #else
         compactLayout ? 6 : 10
-        #endif
     }
 
     private var currentCityHour: Double? {
@@ -199,6 +193,12 @@ struct HourlyTimelineChart: View {
             chartHeight: chartHeight,
             labelSpacing: labelSpacing,
             compactLayout: compactLayout,
+            placesLabelsBelowChart: placesLabelsBelowChart,
+            showsPointValueLabels: showsPointValueLabels,
+            showsValueRow: showsValueRow,
+            labelStride: labelStride,
+            showsYAxis: showsYAxis,
+            chartBottomSpacing: chartBottomSpacing,
             emptyTitle: missingDataTitle,
             transitionID: "hourly-\(dayOffset)-\(chartMetric)-\(showAllHours)",
             transitionDirection: transitionDirection,
@@ -216,6 +216,12 @@ struct DailyTimelineChart: View {
     var cityTimeZone: TimeZone = .current
     var lineColor: Color = AppTheme.shared.colors.accent
     var compactLayout: Bool = false
+    var placesLabelsBelowChart: Bool = false
+    var showsPointValueLabels: Bool = false
+    var showsValueRow: Bool = true
+    var labelStride: Int = 1
+    var showsYAxis: Bool = false
+    var chartBottomSpacing: CGFloat? = nil
 
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
@@ -226,25 +232,13 @@ struct DailyTimelineChart: View {
     private var distUnit: DistanceUnit { DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic }
     private var indicatorLineColor: Color { colorScheme == .dark ? .white : AppTheme.shared.colors.listCardFill.compatMix(with: .black, by: 0.25) }
     private var totalHeight: CGFloat {
-        #if os(macOS)
-        compactLayout ? 202 : 250
-        #else
         compactLayout ? 230 : 250
-        #endif
     }
     private var chartHeight: CGFloat {
-        #if os(macOS)
-        compactLayout ? 128 : 146
-        #else
         compactLayout ? 132 : 146
-        #endif
     }
     private var labelSpacing: CGFloat {
-        #if os(macOS)
-        compactLayout ? 4 : 10
-        #else
         compactLayout ? 6 : 10
-        #endif
     }
     private var dataPoints: [DailyForecast] { dailyForecasts.sorted { $0.dayOffset < $1.dayOffset } }
 
@@ -329,6 +323,12 @@ struct DailyTimelineChart: View {
             chartHeight: chartHeight,
             labelSpacing: labelSpacing,
             compactLayout: compactLayout,
+            placesLabelsBelowChart: placesLabelsBelowChart,
+            showsPointValueLabels: showsPointValueLabels,
+            showsValueRow: showsValueRow,
+            labelStride: labelStride,
+            showsYAxis: showsYAxis,
+            chartBottomSpacing: chartBottomSpacing,
             emptyTitle: missingDataTitle,
             transitionID: "daily-\(selectedDayOffset)-\(chartMetric)",
             transitionDirection: 1,
@@ -364,41 +364,35 @@ private struct TimelineChartBody: View {
     let chartHeight: CGFloat
     let labelSpacing: CGFloat
     let compactLayout: Bool
+    let placesLabelsBelowChart: Bool
+    let showsPointValueLabels: Bool
+    let showsValueRow: Bool
+    let labelStride: Int
+    let showsYAxis: Bool
+    let chartBottomSpacing: CGFloat?
     let emptyTitle: String
     let transitionID: String
     let transitionDirection: Int
     let onHorizontalSwipe: ((Int) -> Void)?
 
     private var labelFont: Font {
-        #if os(macOS)
-        compactLayout ? .system(size: 9, weight: .medium) : .avenir(.subheadline)
-        #else
         compactLayout ? .caption.weight(.medium) : .avenir(.subheadline)
-        #endif
     }
 
     private var valueFont: Font {
-        #if os(macOS)
-        compactLayout ? .system(size: 9, weight: .semibold) : .avenir(.footnote, weight: .semibold)
-        #else
         compactLayout ? .caption.weight(.semibold) : .avenir(.footnote, weight: .semibold)
-        #endif
     }
 
     private var iconSize: CGFloat {
-        #if os(macOS)
-        compactLayout ? 11 : 17
-        #else
         compactLayout ? 14 : 17
-        #endif
     }
 
     private var pointSize: CGFloat {
-        #if os(macOS)
-        compactLayout ? 42 : 110
-        #else
         compactLayout ? 72 : 110
-        #endif
+    }
+
+    private var yAxisLabelWidth: CGFloat {
+        showsYAxis ? 34 : 0
     }
 
     var body: some View {
@@ -416,9 +410,20 @@ private struct TimelineChartBody: View {
         } else {
             ZStack {
                 VStack(spacing: labelSpacing) {
-                    labelRow
-                    chart
-                    valueRow
+                    if placesLabelsBelowChart {
+                        chart
+                        if let chartBottomSpacing {
+                            Color.clear.frame(height: chartBottomSpacing)
+                        }
+                        labelRow
+                    } else {
+                        labelRow
+                        chart
+                    }
+
+                    if showsValueRow {
+                        valueRow
+                    }
                 }
                 .id(transitionID)
                 .transition(chartSwipeTransition)
@@ -440,15 +445,33 @@ private struct TimelineChartBody: View {
 
     private var labelRow: some View {
         HStack(spacing: 0) {
+            if yAxisLabelWidth > 0 {
+                Color.clear
+                    .frame(width: yAxisLabelWidth)
+            }
+
             ForEach(points) { point in
                 VStack(spacing: compactLayout ? 2 : 7) {
-                    Text(point.label)
-                        .font(labelFont)
-                        .foregroundStyle(AppTheme.shared.colors.primaryText)
-                    Image(systemName: point.icon)
-                        .font(.system(size: iconSize))
-                        .weatherIconStyle(for: point.icon)
-                        .compatSymbolReplaceTransition()
+                    if point.index % max(labelStride, 1) != 0 {
+                        Color.clear
+                            .frame(height: compactLayout ? 34 : 44)
+                    } else if placesLabelsBelowChart {
+                        Image(systemName: point.icon)
+                            .font(.system(size: iconSize))
+                            .weatherIconStyle(for: point.icon)
+                            .compatSymbolReplaceTransition()
+                        Text(point.label)
+                            .font(labelFont)
+                            .foregroundStyle(AppTheme.shared.colors.primaryText)
+                    } else {
+                        Text(point.label)
+                            .font(labelFont)
+                            .foregroundStyle(AppTheme.shared.colors.primaryText)
+                        Image(systemName: point.icon)
+                            .font(.system(size: iconSize))
+                            .weatherIconStyle(for: point.icon)
+                            .compatSymbolReplaceTransition()
+                    }
                 }
                 .opacity(point.isPast ? 0.3 : 1.0)
                 .frame(maxWidth: .infinity)
@@ -478,6 +501,20 @@ private struct TimelineChartBody: View {
             }
 
             ForEach(points) { point in
+                if showsPointValueLabels {
+                    PointMark(
+                        x: .value("Index", Double(point.index)),
+                        y: .value("Value Label", point.value)
+                    )
+                    .annotation(position: .top, spacing: 4) {
+                        Text(point.valueText)
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                    .foregroundStyle(.clear)
+                    .symbolSize(1)
+                }
+
                 LineMark(
                     x: .value("Index", Double(point.index)),
                     y: .value("Value", point.value)
@@ -496,7 +533,21 @@ private struct TimelineChartBody: View {
         .chartXScale(domain: -0.5...(Double(points.count) - 0.5))
         .chartYScale(domain: domain)
         .chartXAxis(.hidden)
-        .chartYAxis(.hidden)
+        .chartYAxis {
+            if showsYAxis {
+                AxisMarks(position: .leading, values: [0, 50, 100]) { value in
+                    AxisGridLine()
+                        .foregroundStyle(.secondary.opacity(0.16))
+                    AxisValueLabel {
+                        if let intValue = value.as(Int.self) {
+                            Text("\(intValue)%")
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+        }
         .chartLegend(.hidden)
         .chartPlotStyle { plotArea in
             plotArea
@@ -524,6 +575,236 @@ private struct TimelineChartBody: View {
                     .opacity(point.isPast ? 0.3 : 1.0)
                     .frame(maxWidth: .infinity)
             }
+        }
+    }
+}
+
+// MARK: - Expanded Detail Card Chart Controls
+
+extension ContentView {
+
+    @ViewBuilder
+    func chartContent(for cityWeather: CityWeather, forecast: DailyForecast, availableSize: CGSize) -> some View {
+        let refreshKey = hourlyRefreshKey(for: cityWeather, dayOffset: forecast.dayOffset)
+        let isRefreshingHourlyData = hourlyRefreshKeys.contains(refreshKey)
+
+        if shouldRefreshHourlyData(for: cityWeather, forecast: forecast), isRefreshingHourlyData {
+            ProgressView()
+                .controlSize(.regular)
+                .frame(width: availableSize.width, height: availableSize.height)
+        } else if expandedWeatherCardChartRange == .tenDay {
+            ScrollView(.horizontal, showsIndicators: false) {
+                DailyTimelineChart(
+                    dailyForecasts: cityWeather.dailyForecasts,
+                    chartMetric: expandedWeatherCardChartMetric,
+                    selectedDayOffset: selectedDayOffset,
+                    cityTimeZone: cityWeather.timeZone,
+                    lineColor: expandedWeatherCardChartLineColor(expandedWeatherCardChartMetric),
+                    compactLayout: true
+                )
+                .frame(width: max(availableSize.width * 1.1, 270), height: availableSize.height)
+            }
+        } else if expandedWeatherCardChartRange == .entireDay {
+            let chartWidth = entireDayChartWidth(for: forecast, availableWidth: availableSize.width)
+            let scrollTargetID = "entire-day-current-\(cityWeather.id.uuidString)-\(forecast.dayOffset)"
+            ScrollViewReader { proxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    ZStack(alignment: .leading) {
+                        HourlyTimelineChart(
+                            hourlyForecasts: forecast.hourlyForecasts,
+                            chartMetric: expandedWeatherCardChartMetric,
+                            dayOffset: max(0, selectedDayOffset),
+                            cityTimeZone: cityWeather.timeZone,
+                            previewCurrentHour: nil,
+                            lineColor: expandedWeatherCardChartLineColor(expandedWeatherCardChartMetric),
+                            showAllHours: true,
+                            compactLayout: true,
+                            transitionDirection: detailChartSwipeDirection
+                        )
+                        .frame(width: chartWidth, height: availableSize.height)
+
+                        if let targetX = entireDayCurrentTimeScrollTargetX(for: cityWeather, chartWidth: chartWidth) {
+                            Color.clear
+                                .frame(width: 1, height: 1)
+                                .padding(.leading, targetX)
+                                .id(scrollTargetID)
+                        }
+                    }
+                }
+                .task(id: "\(refreshKey)-\(chartWidth)-\(expandedWeatherCardChartRange)") {
+                    await refreshHourlyDataIfNeeded(for: cityWeather, forecast: forecast)
+                    guard entireDayCurrentTimeScrollTargetX(for: cityWeather, chartWidth: chartWidth) != nil else { return }
+                    try? await Task.sleep(for: .milliseconds(80))
+                    scrollEntireDayChart(proxy, targetID: scrollTargetID)
+                    try? await Task.sleep(for: .milliseconds(220))
+                    scrollEntireDayChart(proxy, targetID: scrollTargetID)
+                }
+                .onChange(of: expandedWeatherCardChartRange) { _, range in
+                    guard range == .entireDay else { return }
+                    Task {
+                        try? await Task.sleep(for: .milliseconds(120))
+                        scrollEntireDayChart(proxy, targetID: scrollTargetID)
+                    }
+                }
+            }
+        } else {
+            HourlyTimelineChart(
+                hourlyForecasts: forecast.hourlyForecasts,
+                chartMetric: expandedWeatherCardChartMetric,
+                dayOffset: max(0, selectedDayOffset),
+                cityTimeZone: cityWeather.timeZone,
+                previewCurrentHour: nil,
+                lineColor: expandedWeatherCardChartLineColor(expandedWeatherCardChartMetric),
+                compactLayout: true,
+                transitionDirection: detailChartSwipeDirection,
+                onHorizontalSwipe: { direction in
+                    shiftExpandedCardChartDate(by: direction)
+                }
+            )
+            .frame(width: availableSize.width, height: availableSize.height)
+            .task(id: refreshKey) {
+                await refreshHourlyDataIfNeeded(for: cityWeather, forecast: forecast)
+            }
+        }
+    }
+
+    private func entireDayChartWidth(for forecast: DailyForecast, availableWidth: CGFloat) -> CGFloat {
+        let hourCount = max(forecast.hourlyForecasts.count, 24)
+        return max(availableWidth * 2.4, CGFloat(hourCount) * 46)
+    }
+
+    private func entireDayCurrentTimeScrollTargetX(for cityWeather: CityWeather, chartWidth: CGFloat) -> CGFloat? {
+        guard selectedDayOffset == -1 || selectedDayOffset == 0 else { return nil }
+        var calendar = Calendar.current
+        calendar.timeZone = cityWeather.timeZone
+        let components = calendar.dateComponents([.hour, .minute], from: Date())
+        let hour = Double(components.hour ?? 0) + Double(components.minute ?? 0) / 60
+        return max(0, min(chartWidth, chartWidth * CGFloat(hour / 23)))
+    }
+
+    @MainActor
+    private func scrollEntireDayChart(_ proxy: ScrollViewProxy, targetID: String) {
+        withAnimation(.smooth(duration: 0.28)) {
+            proxy.scrollTo(targetID, anchor: .center)
+        }
+    }
+    func expandedWeatherCardChartMetricMenu() -> some View {
+        Menu {
+            ForEach(expandedWeatherCardChartMetrics, id: \.0) { metric, icon, label in
+                Button {
+                    expandedWeatherCardChartMetric = metric
+                } label: {
+                    HStack {
+                        if expandedWeatherCardChartMetric == metric {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.primary)
+                                .frame(width: 14)
+                        } else {
+                            Color.clear.frame(width: 14)
+                        }
+                        Text(label)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: expandedWeatherCardChartMetricIcon(expandedWeatherCardChartMetric))
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(expandedWeatherCardChartMetricLabel(expandedWeatherCardChartMetric))
+                    .font(Font.callout.weight(.medium))
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .frame(height: 30)
+            .padding(.horizontal, 11)
+            .background(Color.primary.opacity(0.07), in: Capsule())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+    }
+
+    func expandedWeatherCardChartRangeMenu() -> some View {
+        Menu {
+            ForEach(expandedWeatherCardChartRanges, id: \.0) { range, label in
+                Button {
+                    expandedWeatherCardChartRange = range
+                } label: {
+                    HStack {
+                        if expandedWeatherCardChartRange == range {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(.primary)
+                                .frame(width: 14)
+                        } else {
+                            Color.clear.frame(width: 14)
+                        }
+                        Text(label)
+                    }
+                }
+            }
+        } label: {
+            Text(expandedWeatherCardChartRangeLabel(expandedWeatherCardChartRange))
+                .font(.system(size: 15, weight: .medium))
+                .lineLimit(1)
+                .frame(height: 30)
+                .padding(.horizontal, 11)
+                .background(Color.primary.opacity(0.07), in: Capsule())
+        }
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+    }
+
+    private var expandedWeatherCardChartRanges: [(WeatherChartTimeRange, String)] {
+        [
+            (.daytime, localizedString("Daytime", locale: locale)),
+            (.entireDay, localizedString("Entire Day", locale: locale)),
+            (.tenDay, localizedString("10 Days", locale: locale))
+        ]
+    }
+    private var expandedWeatherCardChartMetrics: [(WeatherChartMetric, String, String)] {
+        [
+            (.temperature, "thermometer.medium", localizedString("Temperature", locale: locale)),
+            (.feelsLike, "thermometer.variable.and.figure", localizedString("Feels Like", locale: locale)),
+            (.cloudCover, "cloud", localizedString("Cloud Cover", locale: locale)),
+            (.precipitation, "drop.fill", localizedString("Precipitation", locale: locale)),
+            (.windSpeed, "wind", localizedString("Wind Speed", locale: locale)),
+            (.uvIndex, "sun.max.fill", localizedString("UV Index", locale: locale)),
+            (.humidity, "humidity.fill", localizedString("Humidity", locale: locale)),
+            (.visibility, "eye", localizedString("Visibility", locale: locale))
+        ]
+    }
+
+    private func expandedWeatherCardChartMetricIcon(_ metric: WeatherChartMetric) -> String {
+        expandedWeatherCardChartMetrics.first(where: { $0.0 == metric })?.1 ?? "chart.xyaxis.line"
+    }
+
+    private func expandedWeatherCardChartMetricLabel(_ metric: WeatherChartMetric) -> String {
+        expandedWeatherCardChartMetrics.first(where: { $0.0 == metric })?.2 ?? localizedString("Forecast", locale: locale)
+    }
+
+    private func expandedWeatherCardChartRangeLabel(_ range: WeatherChartTimeRange) -> String {
+        switch range {
+        case .daytime: return localizedString("Daytime", locale: locale)
+        case .entireDay: return localizedString("Entire Day", locale: locale)
+        case .tenDay: return localizedString("10 Days", locale: locale)
+        }
+    }
+
+    private func expandedWeatherCardChartLineColor(_ metric: WeatherChartMetric) -> Color {
+        theme.colors.dotRain
+    }
+
+    private func shiftExpandedCardChartDate(by direction: Int) {
+        let currentDay = max(0, selectedDayOffset)
+        let nextDay = min(9, max(0, currentDay + direction))
+        guard nextDay != selectedDayOffset else { return }
+        detailChartSwipeDirection = direction
+        dateSwitcherForward = direction > 0
+        PlatformFeedback.lightImpact()
+        withAnimation(.snappy(duration: 0.28)) {
+            selectedDayOffset = nextDay
         }
     }
 }

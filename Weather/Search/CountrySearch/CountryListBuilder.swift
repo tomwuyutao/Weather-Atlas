@@ -96,10 +96,6 @@ struct CountryCityCatalog {
     }
 
     private static func loadCountries() -> [CountryCityGroup] {
-        if let countries = loadCountryIndex(), !countries.isEmpty {
-            return countries
-        }
-
         guard let url = Bundle.main.url(forResource: "worldcities", withExtension: "csv")
             ?? Bundle.main.url(forResource: "worldcities", withExtension: "csv", subdirectory: "Assets"),
               let text = try? String(contentsOf: url, encoding: .utf8) else {
@@ -159,71 +155,7 @@ struct CountryCityCatalog {
     }
 
     func countryWithCities(for country: CountryCityGroup) -> CountryCityGroup? {
-        if !country.cities.isEmpty {
-            return country
-        }
-
-        return Self.loadCountriesFromJSON()?.first { $0.id == country.id }
-    }
-
-    private struct CatalogCountryIndex: Decodable {
-        let name: String
-        let iso2: String
-        let iso3: String
-    }
-
-    private struct CatalogCountry: Decodable {
-        let name: String
-        let iso2: String
-        let iso3: String
-        let cities: [CatalogCity]
-    }
-
-    private struct CatalogCity: Decodable {
-        let name: String
-        let country: String
-        let latitude: Double
-        let longitude: Double
-    }
-
-    private static func loadCountryIndex() -> [CountryCityGroup]? {
-        guard let url = Bundle.main.url(forResource: "country_index", withExtension: "json")
-            ?? Bundle.main.url(forResource: "country_index", withExtension: "json", subdirectory: "Assets"),
-              let data = try? Data(contentsOf: url),
-              let catalog = try? JSONDecoder().decode([CatalogCountryIndex].self, from: data) else {
-            return nil
-        }
-
-        return catalog.map { country in
-            CountryCityGroup(
-                name: country.name,
-                iso2: country.iso2,
-                iso3: country.iso3,
-                aliases: aliases(for: country.name, iso2: country.iso2, iso3: country.iso3),
-                cities: []
-            )
-        }
-    }
-
-    private static func loadCountriesFromJSON() -> [CountryCityGroup]? {
-        guard let url = Bundle.main.url(forResource: "country_city_catalog", withExtension: "json")
-            ?? Bundle.main.url(forResource: "country_city_catalog", withExtension: "json", subdirectory: "Assets"),
-              let data = try? Data(contentsOf: url),
-              let catalog = try? JSONDecoder().decode([CatalogCountry].self, from: data) else {
-            return nil
-        }
-
-        return catalog.map { country in
-            CountryCityGroup(
-                name: country.name,
-                iso2: country.iso2,
-                iso3: country.iso3,
-                aliases: aliases(for: country.name, iso2: country.iso2, iso3: country.iso3),
-                cities: country.cities.map {
-                    City(name: $0.name, country: $0.country, latitude: $0.latitude, longitude: $0.longitude)
-                }
-            )
-        }
+        country.cities.isEmpty ? nil : country
     }
 
     private static func aliases(for name: String, iso2: String, iso3: String) -> [String] {
