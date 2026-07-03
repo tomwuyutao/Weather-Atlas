@@ -38,6 +38,11 @@ extension ContentView {
                 visibleListIDs.insert(newListID.rawValue)
                 AppDelegate.updateHomeScreenListShortcuts()
             }
+            .onChange(of: navigationPath) { _, newPath in
+                if newPath.isEmpty {
+                    routeShowsBackButton = false
+                }
+            }
             .onChange(of: inlineSearchText) { _, newValue in
                 inlineSearchSelectionIndex = 0
                 inlineSearchManager.search(query: newValue)
@@ -105,19 +110,17 @@ extension ContentView {
                 )
             }
             .sheet(isPresented: Binding(
-                get: { presentedDetailCityID != nil },
+                get: { showingInlineSearch },
                 set: { isPresented in
                     if !isPresented {
-                        presentedDetailCityID = nil
+                        dismissNativeCitySearchAndRecenter()
                     }
                 }
             )) {
-                if let presentedDetailCityID {
-                    selectedCityDetailDestination(cityID: presentedDetailCityID)
-                        .presentationDetents([.medium, .large])
-                        .presentationDragIndicator(.visible)
-                        .presentationBackgroundInteraction(.enabled(upThrough: .medium))
-                }
+                searchSheet
+                    .presentationDetents([.fraction(0.82), .large])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(theme.colors.background)
             }
             .overlay {
                 deleteListConfirmationOverlay
@@ -210,7 +213,7 @@ extension ContentView {
     var appNavigationStack: some View {
         NavigationStack(path: $navigationPath) {
             ZStack {
-                nativeCitySearch(discoverHome)
+                nativeCitySearch(homeView)
                     .allowsHitTesting(!showingListManager)
 
                 if showingListManager {
@@ -218,8 +221,6 @@ extension ContentView {
                         .transition(.move(edge: .leading).combined(with: .opacity))
                         .zIndex(1)
                 }
-
-                inlineSearchOverlay
 
             }
             .animation(.smooth(duration: 0.24), value: showingListManager)
@@ -241,14 +242,14 @@ extension ContentView {
         }
     }
 
-    var discoverHome: some View {
-        discoveryContent
+    var homeView: some View {
+        homeContent
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .bottom) {
                 if !showingInlineSearch {
-                    discoverBottomToolbar
+                    homeBottomToolbar
                         .padding(.horizontal, 16)
                         .padding(.bottom, -2)
                 }
@@ -263,7 +264,7 @@ extension ContentView {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(false)
-            .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .bottom) {
                 if !showingInlineSearch && !countryListSearchMode {
                     mapBottomToolbar
@@ -280,7 +281,7 @@ extension ContentView {
         listView
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar(showingInlineSearch ? .visible : .hidden, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .bottom) {
                 if !showingInlineSearch {
                     backDateBottomToolbar(.list)
@@ -342,7 +343,7 @@ extension ContentView {
                     }
                 }
                 .overlay(alignment: .trailing) {
-                    EmptyView()
+                    mapDateSliderOverlay
                 }
                 .allowsHitTesting(!showingInlineSearch)
 

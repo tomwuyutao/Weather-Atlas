@@ -1,17 +1,17 @@
 //
-//  DiscoveryView.swift
+//  HomeView.swift
 //  Weather
 //
-//  Purpose: Defines the Discover-first experience, including the static map
+//  Purpose: Defines the Home-first experience, including the static map
 //  preview, sunniness ranking, list switching, and ranked city list surface.
 //
 
 import SwiftUI
 import MapKit
 
-// MARK: - Static Discover Map
+// MARK: - Static Home Map
 
-struct DiscoveryStaticMapPreview: View {
+struct HomeStaticMapPreview: View {
     let cities: [CityWeather]
     let rankedCandidates: [SunnyCandidate]
     let selectedDayOffset: Int
@@ -19,13 +19,14 @@ struct DiscoveryStaticMapPreview: View {
     let contextDot: Color
     let land: Color
     let water: Color
+    @Environment(\.colorScheme) private var colorScheme
     @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 48, longitude: 12),
         span: MKCoordinateSpan(latitudeDelta: 28, longitudeDelta: 38)
     ))
 
     private var rankByCityID: [UUID: Int] {
-        Dictionary(uniqueKeysWithValues: rankedCandidates.prefix(5).enumerated().map { ($0.element.cityWeather.id, $0.offset + 1) })
+        Dictionary(uniqueKeysWithValues: rankedCandidates.prefix(3).enumerated().map { ($0.element.cityWeather.id, $0.offset + 1) })
     }
 
     var body: some View {
@@ -48,9 +49,9 @@ struct DiscoveryStaticMapPreview: View {
                         numberedDot(rank: rank, candidate: rankedCandidates.first { $0.id == cityWeather.id })
                     } else {
                         Circle()
-                            .fill(contextDot.opacity(0.45))
+                            .fill(markerColor(for: cityWeather))
                             .frame(width: 8, height: 8)
-                            .shadow(color: contextDot.opacity(0.20), radius: 4, y: 1)
+                            .shadow(color: markerColor(for: cityWeather).opacity(0.42), radius: 5, y: 1)
                     }
                 }
             }
@@ -73,19 +74,36 @@ struct DiscoveryStaticMapPreview: View {
         ZStack {
             Circle()
                 .fill(accent.opacity(0.20))
-                .frame(width: 34, height: 34)
-                .blur(radius: 7)
+                .frame(width: 28, height: 28)
+                .blur(radius: 6)
 
             Circle()
                 .fill((candidate?.score ?? 0) >= 55 ? accent : contextDot.opacity(0.75))
-                .frame(width: 23, height: 23)
-                .shadow(color: accent.opacity(0.28), radius: 7, y: 2)
+                .frame(width: 20, height: 20)
+                .shadow(color: accent.opacity(0.24), radius: 6, y: 2)
 
             Text("\(rank)")
                 .font(.caption2.weight(.bold).monospacedDigit())
                 .foregroundStyle(.white)
         }
-        .frame(width: 36, height: 36)
+        .frame(width: 30, height: 30)
+    }
+
+    private func markerColor(for cityWeather: CityWeather) -> Color {
+        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
+        let isNow = selectedDayOffset == -1
+        let condition = isNow ? cityWeather.condition : forecast.condition
+        let icon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
+        if icon.contains("moon") { return Color(red: 0.64, green: 0.52, blue: 0.72) }
+        switch condition {
+        case .clear: return Color(red: 1.0, green: 0.54, blue: 0.40)
+        case .partlySunny, .partlyCloudy: return Color(red: 0.93, green: 0.70, blue: 0.41)
+        case .rain: return Color(red: 0.30, green: 0.44, blue: 0.83)
+        case .drizzle: return Color(red: 0.40, green: 0.67, blue: 0.89)
+        case .cloudy, .snow, .fog, .wind: return colorScheme == .dark
+            ? Color(red: 0.83, green: 0.89, blue: 0.93)
+            : Color(red: 0.72, green: 0.78, blue: 0.82)
+        }
     }
 
     private func fitAllCities() {
@@ -154,7 +172,7 @@ struct SunnyCandidate: Identifiable {
     var id: UUID { cityWeather.id }
 }
 
-// MARK: - Discover and List Logic
+// MARK: - Home and List Logic
 
 extension ContentView {
     var listSortMode: WeatherListSortMode {
@@ -198,12 +216,12 @@ extension ContentView {
             }
     }
 
-    private var discoverySunnyScoreThreshold: Double {
+    private var homeSunnyScoreThreshold: Double {
         70
     }
 
     var recommendedSunnyCandidates: [SunnyCandidate] {
-        sunnyCandidates.filter { $0.score >= discoverySunnyScoreThreshold }
+        sunnyCandidates.filter { $0.score >= homeSunnyScoreThreshold }
     }
 
     var sortedListCandidates: [SunnyCandidate] {
@@ -223,7 +241,7 @@ extension ContentView {
     func selectCandidate(_ candidate: SunnyCandidate, focusMap: Bool = true) {
         let city = candidate.cityWeather
         if focusMap {
-            pushRoute(.map)
+            pushRoute(.map, showsBackButton: true)
             centerOnCityTrigger = city
             Task { @MainActor in
                 await Task.yield()
@@ -236,16 +254,16 @@ extension ContentView {
         }
     }
 
-    // MARK: Discover Page
+    // MARK: Home Page
 
-    var discoveryContent: some View {
+    var homeContent: some View {
         GeometryReader { geometry in
             let snapshotHeight = min(max(geometry.size.height * 0.32, 190), 310)
             ScrollView {
                 VStack(spacing: 16) {
-                    discoveryPageHeader
-                    discoveryMapSnapshot(height: snapshotHeight)
-                    discoverySunnySection
+                    homePageHeader
+                    homeMapSnapshot(height: snapshotHeight)
+                    homeSunnySection
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -259,16 +277,16 @@ extension ContentView {
         }
     }
 
-    private var discoveryPageHeader: some View {
+    private var homePageHeader: some View {
         topToolbar {
             EmptyView()
         }
     }
 
-    private func discoveryMapSnapshot(height: CGFloat) -> some View {
-        DiscoveryStaticMapPreview(
+    private func homeMapSnapshot(height: CGFloat) -> some View {
+        HomeStaticMapPreview(
             cities: mapCities,
-            rankedCandidates: Array(recommendedSunnyCandidates.prefix(5)),
+            rankedCandidates: Array(recommendedSunnyCandidates.prefix(3)),
             selectedDayOffset: selectedDayOffset,
             accent: theme.colors.dotSun,
             contextDot: theme.colors.secondaryText,
@@ -284,11 +302,11 @@ extension ContentView {
         }
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onTapGesture {
-            pushRoute(.map)
+            pushRoute(.map, showsBackButton: true)
         }
     }
 
-    private var discoverySunnySection: some View {
+    private var homeSunnySection: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "sun.max.fill")
@@ -299,10 +317,10 @@ extension ContentView {
                 Spacer(minLength: 8)
             }
 
-            discoveryCandidateList()
+            homeCandidateList()
 
             Button {
-                pushRoute(.list)
+                pushRoute(.list, showsBackButton: true)
             } label: {
                 HStack(spacing: 8) {
                     Text(localizedString("Show All Cities", locale: locale))
@@ -319,7 +337,7 @@ extension ContentView {
         }
     }
 
-    private func discoveryCandidateList(limit: Int? = nil) -> some View {
+    private func homeCandidateList(limit: Int? = nil) -> some View {
         let rankedCandidates = limit.map { Array(recommendedSunnyCandidates.prefix($0)) } ?? recommendedSunnyCandidates
         return VStack(spacing: 6) {
             if rankedCandidates.isEmpty {
@@ -384,9 +402,9 @@ extension ContentView {
                     Text(cloudText)
                         .font(.caption.weight(.semibold))
                         .monospacedDigit()
-                        .frame(width: 30, alignment: .leading)
+                        .frame(width: 42, alignment: .leading)
                 }
-                .frame(width: 48, alignment: .leading)
+                .frame(width: 60, alignment: .leading)
 
                 Image(systemName: icon)
                     .font(.caption.weight(.semibold))
@@ -402,7 +420,7 @@ extension ContentView {
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 
-    var discoveryListMenu: some View {
+    var homeListMenu: some View {
         atlasListMenu(titleOverride: nil)
     }
     func topToolbar<Accessory: View>(
@@ -449,7 +467,7 @@ extension ContentView {
                     Button {
                         beginCreatingListFromSwitcher()
                     } label: {
-                        Label(localizedString("New List", locale: locale), systemImage: "plus")
+                        primaryMenuLabel(localizedString("New List", locale: locale), systemImage: "plus")
                     }
                 } label: {
                     HStack(spacing: 6) {

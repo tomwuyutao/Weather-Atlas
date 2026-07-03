@@ -3,7 +3,7 @@
 //  Weather
 //
 //  Purpose: Defines app navigation routes and the floating bottom toolbar
-//  used by Discover, List, Detail, and Map.
+//  used by Home, List, Detail, and Map.
 //
 
 import SwiftUI
@@ -137,16 +137,26 @@ extension ContentView {
 
     var floatingBottomToolbar: some View {
         HStack(alignment: .center) {
-            generalSwitcherButton
+            if currentRoute == .addCityDetail {
+                bottomAddSearchedCityButton
+            } else if let route = currentRoute {
+                bottomBackButton(route)
+            } else {
+                bottomMoreButton
+            }
 
             Spacer(minLength: 12)
 
             dateSwitcherCapsule
                 .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
+
+            Spacer(minLength: 12)
+
+            bottomSearchButton
         }
     }
 
-    var discoverBottomToolbar: some View {
+    var homeBottomToolbar: some View {
         floatingBottomToolbar
     }
 
@@ -155,16 +165,7 @@ extension ContentView {
     }
 
     var mapBottomToolbar: some View {
-        HStack(alignment: .center) {
-            generalSwitcherButton
-
-            Spacer(minLength: 12)
-
-            mapControlCluster
-                .padding(.horizontal, 8)
-                .themedGlass(in: .capsule)
-                .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
-        }
+        floatingBottomToolbar
     }
 
     var bottomSearchButton: some View {
@@ -199,98 +200,20 @@ extension ContentView {
         .accessibilityLabel(localizedString("Settings", locale: locale))
     }
 
-    var discoverMoreButton: some View {
-        generalSwitcherButton
-    }
-
-    var generalSwitcherButton: some View {
+    var bottomMoreButton: some View {
         Menu {
-            ControlGroup {
-                Button {
-                    showingSettings = true
-                } label: {
-                    Image(systemName: "gearshape")
-                }
-
-                Button {
-                    refreshActiveWeather()
-                } label: {
-                    Image(systemName: "arrow.clockwise")
-                }
-                .disabled(weatherService.isLoading)
+            Button {
+                showingSettings = true
+            } label: {
+                primaryMenuLabel(localizedString("Settings", locale: locale), systemImage: "gearshape")
             }
 
-            Section {
-                Button {
-                    activateInlineSearch()
-                } label: {
-                    Label(localizedString("Search", locale: locale), systemImage: "magnifyingglass")
-                }
+            Button {
+                refreshActiveWeather()
+            } label: {
+                primaryMenuLabel(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"), systemImage: "arrow.clockwise")
             }
-
-            Section {
-                Button {
-                    navigationPath.removeAll()
-                    showingMapExpandedCard = false
-                    presentedDetailCityID = nil
-                } label: {
-                    Label(localizedString("Discover", locale: locale), systemImage: currentRoute == nil ? "sun.max.fill" : "sun.max")
-                }
-
-                Button {
-                    pushRoute(.map)
-                    presentedDetailCityID = nil
-                } label: {
-                    Label(localizedString("Map", locale: locale), systemImage: isMapRoute ? "map.fill" : "map")
-                }
-
-                Button {
-                    pushRoute(.list)
-                    presentedDetailCityID = nil
-                } label: {
-                    Label(localizedString("List", locale: locale), systemImage: isListRoute ? "list.bullet.rectangle.fill" : "list.bullet")
-                }
-            }
-
-            if isMapRoute {
-                Section {
-                    Button {
-                        mapRecenterRequest = nil
-                        DispatchQueue.main.async {
-                            mapRecenterRequest = .listCoordinates
-                        }
-                    } label: {
-                        Label(localizedString("Zoom to Fit", locale: locale), systemImage: "dot.squareshape.split.2x2")
-                    }
-
-                    mapOverlayMenu
-
-                    Toggle(isOn: Binding(
-                        get: { showLegend },
-                        set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
-                    )) {
-                        Label(localizedString("Legend", locale: locale), systemImage: "eye")
-                    }
-                }
-            }
-
-            Section {
-                ForEach(managedLists) { listID in
-                    Button {
-                        Task {
-                            await switchToList(listID)
-                            showingMapExpandedCard = false
-                            presentedDetailCityID = nil
-                            mapRecenterRequest = .listCoordinates
-                        }
-                    } label: {
-                        Label(
-                            listID.localizedDisplayName(locale: locale),
-                            systemImage: listID.rawValue == weatherService.activeListID.rawValue ? "checkmark" : "list.bullet"
-                        )
-                    }
-                }
-            }
+            .disabled(weatherService.isLoading)
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 21, weight: .regular))
@@ -300,9 +223,19 @@ extension ContentView {
         }
         .buttonStyle(.plain)
         .menuOrder(.fixed)
+        .tint(.primary)
         .themedGlass(in: Circle())
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
         .accessibilityLabel(localizedString("Menu", locale: locale))
+    }
+
+    func primaryMenuLabel(_ title: String, systemImage: String) -> some View {
+        Label {
+            Text(title)
+        } icon: {
+            Image(systemName: systemImage)
+                .foregroundStyle(.primary)
+        }
     }
 
     func bottomBackButton(_ route: AppNavigationRoute) -> some View {
@@ -319,6 +252,24 @@ extension ContentView {
         .themedGlass(in: Circle())
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
         .accessibilityLabel(localizedString("Back", locale: locale))
+    }
+
+    var bottomAddSearchedCityButton: some View {
+        Button {
+            addSearchedDetailCityToActiveList()
+        } label: {
+            Label(localizedString("Add", locale: locale), systemImage: "plus")
+                .font(.system(size: 17, weight: .semibold))
+                .labelStyle(.titleAndIcon)
+                .padding(.horizontal, 14)
+                .frame(height: 46)
+        }
+        .buttonStyle(.borderedProminent)
+        .buttonBorderShape(.capsule)
+        .controlSize(.large)
+        .tint(theme.colors.accent)
+        .disabled(addCityDetailCity == nil)
+        .accessibilityLabel(localizedString("Add", locale: locale))
     }
 }
 
@@ -526,7 +477,7 @@ extension ContentView {
 // MARK: - Navigation Helpers
 
 extension ContentView {
-    func pushRoute(_ route: AppNavigationRoute) {
+    func pushRoute(_ route: AppNavigationRoute, showsBackButton: Bool = false) {
         if route == .map {
             showingListManager = false
         } else if route == .list {
@@ -537,6 +488,9 @@ extension ContentView {
             navigationPath.append(route)
             return
         }
+        if route == .map || route == .list {
+            routeShowsBackButton = showsBackButton
+        }
         guard !navigationPath.contains(route) else { return }
         navigationPath.append(route)
     }
@@ -544,17 +498,38 @@ extension ContentView {
     func presentDetail(for city: CityWeather) {
         tappedCity = city
         showingMapExpandedCard = false
-        presentedDetailCityID = city.id
+        pushRoute(.cityDetail(city.id))
+    }
+
+    func addSearchedDetailCityToActiveList() {
+        guard let city = addCityDetailCity else { return }
+
+        Task {
+            await addCityToActiveList(city)
+            await MainActor.run {
+                let savedCity = weatherService.cityWeatherData.first {
+                    $0.city.name == city.city.name && $0.city.country == city.city.country
+                } ?? city
+
+                addCityDetailCity = nil
+                tappedCity = savedCity
+                previewCity = nil
+                navigationPath.removeAll { $0 == .addCityDetail }
+                pushRoute(.cityDetail(savedCity.id))
+            }
+        }
     }
 
     func dismissRoute(_ route: AppNavigationRoute) {
         switch route {
         case .map:
             navigationPath.removeAll { $0 == route }
+            routeShowsBackButton = false
             showingMapExpandedCard = false
             tappedCity = nil
         case .list:
             navigationPath.removeAll { $0 == route }
+            routeShowsBackButton = false
             listEditMode = false
         case .cityDetail:
             navigationPath.removeAll { $0 == route }

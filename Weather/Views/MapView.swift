@@ -19,8 +19,8 @@ enum MapRecenterRequest: Equatable {
 extension ContentView {
     @ViewBuilder
     var mapDateSliderOverlay: some View {
-        // Date slider only on map view. Discover/list use the bottom date switcher.
-        if isMapRoute, showDateSlider, !showingInlineSearch, !countryListSearchMode {
+        // Date slider only on map view. Home/list use the bottom date switcher.
+        if isMapRoute, !showingInlineSearch, !countryListSearchMode {
             mapDateSlider(height: 420)
                 .frame(width: 145, height: 420, alignment: .trailing)
                 .padding(.bottom, 420)

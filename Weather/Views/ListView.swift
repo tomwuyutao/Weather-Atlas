@@ -44,36 +44,55 @@ extension ContentView {
     private var listHeader: some View {
         VStack(spacing: 0) {
             topToolbar {
-                HStack(spacing: 10) {
-                    Menu {
-                        ForEach(WeatherListSortMode.allCases) { mode in
-                            Button {
-                                weatherListSortModeRaw = mode.rawValue
-                            } label: {
-                                Label(mode.title(locale: locale), systemImage: listSortMode == mode ? "checkmark" : mode.icon)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up.arrow.down")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 38, height: 38)
-                            .themedGlass(in: .capsule)
-                    }
-                    .buttonStyle(.plain)
-
+                if listEditMode {
                     Button {
                         withAnimation(.smooth(duration: 0.2)) {
-                            listEditMode.toggle()
+                            listEditMode = false
                         }
                     } label: {
-                        Image(systemName: listEditMode ? "checkmark" : "pencil")
-                            .font(.system(size: 15, weight: .semibold))
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 18, weight: .semibold))
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .buttonBorderShape(.circle)
+                    .tint(theme.colors.accent)
+                } else {
+                    Menu {
+                        Menu {
+                            ForEach(WeatherListSortMode.allCases) { mode in
+                                Button {
+                                    weatherListSortModeRaw = mode.rawValue
+                                } label: {
+                                    primaryMenuLabel(mode.title(locale: locale), systemImage: listSortMode == mode ? "checkmark" : mode.icon)
+                                }
+                            }
+                        } label: {
+                            primaryMenuLabel(localizedString("Sort", locale: locale), systemImage: "arrow.up.arrow.down")
+                        }
+
+                        Button {
+                            withAnimation(.smooth(duration: 0.2)) {
+                                listEditMode = true
+                            }
+                        } label: {
+                            primaryMenuLabel(localizedString("Edit", locale: locale), systemImage: "pencil")
+                        }
+
+                        Button {
+                            activateInlineSearch()
+                        } label: {
+                            primaryMenuLabel(localizedString("Add City", locale: locale), systemImage: "plus")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(.primary)
                             .frame(width: 38, height: 38)
                             .themedGlass(in: .capsule)
                     }
                     .buttonStyle(.plain)
+                    .tint(.primary)
                 }
             }
         }

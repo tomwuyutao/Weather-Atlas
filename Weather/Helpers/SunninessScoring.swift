@@ -2,7 +2,7 @@
 //  SunninessScoring.swift
 //  Weather
 //
-//  Purpose: Provides the shared, minimal sunniness score used by discover,
+//  Purpose: Provides the shared, minimal sunniness score used by home,
 //  list ranking, and city detail.
 //
 

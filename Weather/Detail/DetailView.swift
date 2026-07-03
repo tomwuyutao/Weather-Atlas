@@ -39,7 +39,13 @@ extension ContentView {
                 .frame(maxWidth: .infinity)
             }
             .id(city.id)
+            .transition(.asymmetric(
+                insertion: .move(edge: detailSwipeDirection >= 0 ? .trailing : .leading).combined(with: .opacity),
+                removal: .move(edge: detailSwipeDirection >= 0 ? .leading : .trailing).combined(with: .opacity)
+            ))
+            .animation(.smooth(duration: 0.24), value: city.id)
             .scrollContentBackground(.hidden)
+            .simultaneousGesture(detailCitySwipeGesture(currentCity: city))
 
             if !showingInlineSearch {
                 floatingBottomToolbar
@@ -54,7 +60,7 @@ extension ContentView {
         .tint(.primary)
     }
 
-    private func detailCity(for cityID: UUID) -> CityWeather? {
+    func detailCity(for cityID: UUID) -> CityWeather? {
         if let city = mapCities.first(where: { $0.id == cityID }) {
             return city
         }
@@ -68,6 +74,34 @@ extension ContentView {
             return addCityDetailCity
         }
         return nil
+    }
+
+    private func detailCitySwipeGesture(currentCity: CityWeather) -> some Gesture {
+        DragGesture(minimumDistance: 28)
+            .onEnded { value in
+                let horizontal = value.translation.width
+                let vertical = value.translation.height
+                guard abs(horizontal) > 58, abs(horizontal) > abs(vertical) * 1.35 else { return }
+                shiftPresentedDetailCity(from: currentCity, by: horizontal < 0 ? 1 : -1)
+            }
+    }
+
+    private func shiftPresentedDetailCity(from currentCity: CityWeather, by direction: Int) {
+        let cities = sortedListCandidates.map(\.cityWeather)
+        guard cities.count > 1,
+              let currentIndex = cities.firstIndex(where: { $0.id == currentCity.id }) else { return }
+
+        let nextIndex = min(max(currentIndex + direction, 0), cities.count - 1)
+        guard nextIndex != currentIndex else { return }
+
+        PlatformFeedback.lightImpact()
+        let nextCity = cities[nextIndex]
+        tappedCity = nextCity
+        detailSwipeDirection = direction
+        withAnimation(.smooth(duration: 0.22)) {
+            dismissRoute(.cityDetail(currentCity.id))
+            pushRoute(.cityDetail(nextCity.id))
+        }
     }
 
     // MARK: Sunniness Report
@@ -292,32 +326,34 @@ extension ContentView {
 
     private func detailSunnyDayDotColor(for period: DetailSunnyPeriod) -> Color {
         let normalizedScore = min(max(period.score / 100, 0), 1)
-        return theme.colors.dotSun.opacity(0.22 + normalizedScore * 0.78)
+        return theme.colors.dotCloudy.compatMix(with: theme.colors.dotSun, by: normalizedScore)
     }
 
     private func detailSunnyTimeline(hours: [HourlyForecast], timeZone: TimeZone) -> some View {
         VStack(alignment: .center, spacing: 12) {
-            Text(localizedString("Cloud Cover", locale: locale))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.colors.secondaryText)
-                .frame(maxWidth: .infinity, alignment: .center)
-
             HourlyTimelineChart(
                 hourlyForecasts: hours.filter { $0.hour.isMultiple(of: 2) },
                 chartMetric: .cloudCover,
                 dayOffset: max(0, selectedDayOffset),
                 cityTimeZone: timeZone,
-                lineColor: theme.colors.dotSun,
+                lineColor: theme.colors.dotRain,
                 showAllHours: true,
                 compactLayout: true,
                 placesLabelsBelowChart: true,
                 showsPointValueLabels: true,
+                showsSelectedIndicator: false,
                 showsValueRow: false,
                 labelStride: 1,
                 showsYAxis: false,
-                chartBottomSpacing: 10
+                showsChartBackground: true,
+                chartBottomSpacing: 22
             )
-            .frame(height: 176)
+            .frame(height: 224)
+
+            Text(localizedString("Cloud Cover", locale: locale))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.colors.secondaryText)
+                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -818,12 +854,6 @@ private struct DetailMapContextView: View {
 private extension View {
     @ViewBuilder
     func nearbyCityIconStyle(for iconName: String) -> some View {
-        if iconName.contains("cloud") {
-            self
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(.white)
-        } else {
-            self.weatherIconStyle(for: iconName)
-        }
+        self.weatherIconStyle(for: iconName)
     }
 }

@@ -43,6 +43,15 @@ private struct ChartPoint: Identifiable {
     let isPast: Bool
 }
 
+private struct ChartLineSegment: Identifiable {
+    let id: String
+    let start: ChartPoint
+    let end: ChartPoint
+
+    var points: [ChartPoint] { [start, end] }
+    var isFutureSegment: Bool { !start.isPast && !end.isPast }
+}
+
 // MARK: - Hourly Chart
 
 struct HourlyTimelineChart: View {
@@ -56,9 +65,11 @@ struct HourlyTimelineChart: View {
     var compactLayout: Bool = false
     var placesLabelsBelowChart: Bool = false
     var showsPointValueLabels: Bool = false
+    var showsSelectedIndicator: Bool = true
     var showsValueRow: Bool = true
     var labelStride: Int = 1
     var showsYAxis: Bool = false
+    var showsChartBackground: Bool = false
     var chartBottomSpacing: CGFloat? = nil
     var transitionDirection: Int = 1
     var onHorizontalSwipe: ((Int) -> Void)? = nil
@@ -195,9 +206,11 @@ struct HourlyTimelineChart: View {
             compactLayout: compactLayout,
             placesLabelsBelowChart: placesLabelsBelowChart,
             showsPointValueLabels: showsPointValueLabels,
+            showsSelectedIndicator: showsSelectedIndicator,
             showsValueRow: showsValueRow,
             labelStride: labelStride,
             showsYAxis: showsYAxis,
+            showsChartBackground: showsChartBackground,
             chartBottomSpacing: chartBottomSpacing,
             emptyTitle: missingDataTitle,
             transitionID: "hourly-\(dayOffset)-\(chartMetric)-\(showAllHours)",
@@ -218,9 +231,11 @@ struct DailyTimelineChart: View {
     var compactLayout: Bool = false
     var placesLabelsBelowChart: Bool = false
     var showsPointValueLabels: Bool = false
+    var showsSelectedIndicator: Bool = true
     var showsValueRow: Bool = true
     var labelStride: Int = 1
     var showsYAxis: Bool = false
+    var showsChartBackground: Bool = false
     var chartBottomSpacing: CGFloat? = nil
 
     @Environment(\.locale) private var locale
@@ -325,9 +340,11 @@ struct DailyTimelineChart: View {
             compactLayout: compactLayout,
             placesLabelsBelowChart: placesLabelsBelowChart,
             showsPointValueLabels: showsPointValueLabels,
+            showsSelectedIndicator: showsSelectedIndicator,
             showsValueRow: showsValueRow,
             labelStride: labelStride,
             showsYAxis: showsYAxis,
+            showsChartBackground: showsChartBackground,
             chartBottomSpacing: chartBottomSpacing,
             emptyTitle: missingDataTitle,
             transitionID: "daily-\(selectedDayOffset)-\(chartMetric)",
@@ -366,9 +383,11 @@ private struct TimelineChartBody: View {
     let compactLayout: Bool
     let placesLabelsBelowChart: Bool
     let showsPointValueLabels: Bool
+    let showsSelectedIndicator: Bool
     let showsValueRow: Bool
     let labelStride: Int
     let showsYAxis: Bool
+    let showsChartBackground: Bool
     let chartBottomSpacing: CGFloat?
     let emptyTitle: String
     let transitionID: String
@@ -395,6 +414,17 @@ private struct TimelineChartBody: View {
         showsYAxis ? 34 : 0
     }
 
+    private var lineSegments: [ChartLineSegment] {
+        guard points.count > 1 else { return [] }
+        return points.indices.dropLast().map { index in
+            ChartLineSegment(
+                id: "\(points[index].id)-\(points[index + 1].id)",
+                start: points[index],
+                end: points[index + 1]
+            )
+        }
+    }
+
     var body: some View {
         if points.isEmpty {
             VStack(spacing: 8) {
@@ -411,11 +441,7 @@ private struct TimelineChartBody: View {
             ZStack {
                 VStack(spacing: labelSpacing) {
                     if placesLabelsBelowChart {
-                        chart
-                        if let chartBottomSpacing {
-                            Color.clear.frame(height: chartBottomSpacing)
-                        }
-                        labelRow
+                        chartWithBelowLabels
                     } else {
                         labelRow
                         chart
@@ -492,12 +518,35 @@ private struct TimelineChartBody: View {
         }
     }
 
+    private var chartWithBelowLabels: some View {
+        VStack(spacing: 0) {
+            chart
+            if let chartBottomSpacing {
+                Color.clear.frame(height: chartBottomSpacing)
+            }
+            labelRow
+        }
+        .chartBackgroundIfNeeded(showsChartBackground)
+    }
+
     private var chartContent: some View {
         Chart {
-            if let selectedIndex {
+            if showsSelectedIndicator, let selectedIndex {
                 RuleMark(x: .value("Selected", selectedIndex))
                     .foregroundStyle(indicatorColor.opacity(0.5))
                     .lineStyle(StrokeStyle(lineWidth: compactLayout ? 1.5 : 2))
+            }
+
+            ForEach(lineSegments) { segment in
+                ForEach(segment.points) { point in
+                    LineMark(
+                        x: .value("Index", Double(point.index)),
+                        y: .value("Value", point.value),
+                        series: .value("Segment", segment.id)
+                    )
+                    .foregroundStyle(lineSegmentColor(for: segment))
+                    .lineStyle(StrokeStyle(lineWidth: compactLayout ? 3 : 4, lineCap: .round, lineJoin: .round))
+                }
             }
 
             ForEach(points) { point in
@@ -506,27 +555,20 @@ private struct TimelineChartBody: View {
                         x: .value("Index", Double(point.index)),
                         y: .value("Value Label", point.value)
                     )
-                    .annotation(position: .top, spacing: 4) {
+                    .annotation(position: .top, spacing: 9) {
                         Text(point.valueText)
                             .font(.caption2.weight(.semibold))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(pointValueLabelColor(for: point))
                     }
                     .foregroundStyle(.clear)
                     .symbolSize(1)
                 }
 
-                LineMark(
-                    x: .value("Index", Double(point.index)),
-                    y: .value("Value", point.value)
-                )
-                .foregroundStyle(lineColor)
-                .lineStyle(StrokeStyle(lineWidth: compactLayout ? 3 : 4, lineCap: .round, lineJoin: .round))
-
                 PointMark(
                     x: .value("Index", Double(point.index)),
                     y: .value("Value", point.value)
                 )
-                .foregroundStyle(lineColor)
+                .foregroundStyle(pointMarkerColor(for: point))
                 .symbolSize(pointSize)
             }
         }
@@ -555,6 +597,18 @@ private struct TimelineChartBody: View {
         }
     }
 
+    private func pointValueLabelColor(for point: ChartPoint) -> Color {
+        point.isPast ? .secondary.opacity(0.38) : .secondary
+    }
+
+    private func pointMarkerColor(for point: ChartPoint) -> Color {
+        point.isPast ? .secondary.opacity(0.36) : lineColor
+    }
+
+    private func lineSegmentColor(for segment: ChartLineSegment) -> Color {
+        segment.isFutureSegment ? lineColor : .secondary.opacity(0.28)
+    }
+
     private func horizontalSwipeGesture(action: @escaping (Int) -> Void) -> some Gesture {
         DragGesture(minimumDistance: 24)
             .onEnded { value in
@@ -575,6 +629,24 @@ private struct TimelineChartBody: View {
                     .opacity(point.isPast ? 0.3 : 1.0)
                     .frame(maxWidth: .infinity)
             }
+        }
+    }
+}
+
+private extension View {
+    @ViewBuilder
+    func chartBackgroundIfNeeded(_ enabled: Bool) -> some View {
+        if enabled {
+            self
+                .padding(.top, 34)
+                .padding(.bottom, 12)
+                .padding(.horizontal, 10)
+                .background(
+                    AppTheme.shared.colors.secondaryText.opacity(0.055),
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
+                )
+        } else {
+            self
         }
     }
 }

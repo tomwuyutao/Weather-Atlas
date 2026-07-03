@@ -101,22 +101,32 @@ extension ContentView {
 
     @ViewBuilder
     var inlineSearchOverlay: some View {
-        if showingInlineSearch || inlineSearchFieldPresented {
-            VStack(spacing: 10) {
+        EmptyView()
+    }
+
+    var searchSheet: some View {
+        VStack(spacing: 16) {
+            inlineSearchBar
+
+            if !inlineSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               !inlineSortedSearchResults.isEmpty {
+                inlineSearchSuggestionPanel
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else {
                 Spacer(minLength: 0)
-
-                if !inlineSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                   !inlineSortedSearchResults.isEmpty {
-                    inlineSearchSuggestionPanel
-                        .padding(.horizontal, 18)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
-
-                inlineSearchBar
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 8)
             }
-            .zIndex(60)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 22)
+        .padding(.bottom, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(theme.colors.background.ignoresSafeArea())
+        .onAppear {
+            inlineSearchFieldPresented = true
+            Task { @MainActor in
+                await Task.yield()
+                inlineSearchFocused = true
+            }
         }
     }
 
@@ -171,10 +181,15 @@ extension ContentView {
                 }
                 .disabled(inlineIsLoadingCity)
                 .buttonStyle(.plain)
+
+                if index < min(inlineSortedSearchResults.count, inlineSearchResultLimit) - 1 {
+                    Divider()
+                        .padding(.leading, 2)
+                }
             }
         }
-        .padding(.vertical, 12)
-        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .padding(.horizontal, 14)
         .frame(maxWidth: 430)
         .background(searchSuggestionBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
@@ -240,10 +255,15 @@ extension ContentView {
                         }
                         .buttonStyle(.plain)
                     }
+
+                    if index < min(inlineSortedSearchResults.count, inlineSearchResultLimit) - 1 {
+                        Divider()
+                            .padding(.leading, 2)
+                    }
                 }
             }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .padding(.horizontal, 14)
             .frame(maxWidth: 430)
             .background(searchSuggestionBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay {
@@ -280,9 +300,6 @@ extension ContentView {
     private func nativeCitySearchSuggestionRow(for result: CitySearchResult, isSelected: Bool) -> some View {
         let existingListName = inlineExistingCityListName(for: result)
         let isCountryList = result.countryList != nil
-        let rowFill = isSelected && shouldShowInlineSearchSelectionHighlight
-            ? searchSuggestionSelectedBackground
-            : searchSuggestionBackground.opacity(0.88)
         let titleColor = searchSuggestionTitleColor
         let subtitleColor = searchSuggestionSubtitleColor
         let chipFill = theme.colors.accent.opacity(0.18)
@@ -291,9 +308,8 @@ extension ContentView {
         let subtitleFont: Font = .avenir(.caption, weight: .regular)
         let statusFont: Font = .avenir(.caption2, weight: .medium)
         let statusBoldFont: Font = .avenir(.caption2, weight: .bold)
-        let rowVerticalPadding: CGFloat = 3
-        let rowHorizontalPadding: CGFloat = 8
-        let rowCornerRadius: CGFloat = 10
+        let rowVerticalPadding: CGFloat = 8
+        let rowHorizontalPadding: CGFloat = 2
 
         return HStack(spacing: rowSpacing) {
             VStack(alignment: .leading, spacing: 2) {
@@ -337,7 +353,6 @@ extension ContentView {
         .padding(.vertical, rowVerticalPadding)
         .padding(.horizontal, rowHorizontalPadding)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(rowFill, in: RoundedRectangle(cornerRadius: rowCornerRadius, style: .continuous))
     }
 
     func countryAddMenu(for country: CountryCityGroup, cityCount: Int? = nil) -> some View {

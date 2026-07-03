@@ -71,7 +71,8 @@ struct ContentView: View {
     @AppStorage("hasLaunchedBefore") var hasLaunchedBefore: Bool = false
     @State var addCityDetailCity: CityWeather?
     @State var previewCity: CityWeather?
-    @State var presentedDetailCityID: UUID?
+    @State var detailSwipeDirection: Int = 1
+    @State var routeShowsBackButton: Bool = false
 
     // MARK: Map Overlay State
 
