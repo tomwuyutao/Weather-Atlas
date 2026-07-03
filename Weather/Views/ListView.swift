@@ -52,11 +52,14 @@ extension ContentView {
                     } label: {
                         Image(systemName: "checkmark")
                             .font(.system(size: 18, weight: .semibold))
-                            .frame(width: 44, height: 44)
+                            .foregroundStyle(.white)
+                            .frame(width: 46, height: 46)
+                            .background(theme.colors.accent, in: Circle())
+                            .contentShape(Circle())
                     }
-                    .buttonStyle(.borderedProminent)
-                    .buttonBorderShape(.circle)
-                    .tint(theme.colors.accent)
+                    .buttonStyle(.plain)
+                    .themedGlass(in: Circle())
+                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
                 } else {
                     Menu {
                         Menu {
@@ -147,4 +150,9 @@ extension ContentView {
         refreshCityOrder()
         PlatformFeedback.lightImpact()
     }
+}
+
+#Preview("List View Editing") {
+    let _ = UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+    ContentView(previewListEditing: true)
 }

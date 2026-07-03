@@ -45,18 +45,10 @@ struct AppleWeatherMapView: View {
                         Button {
                             onMarkerTap(cityWeather, nil)
                         } label: {
-                            Circle()
-                                .fill(markerColor(for: cityWeather))
-                                .frame(width: 9, height: 9)
-                                .scaleEffect(isSelected ? 1.5 : 1)
-                                .shadow(color: markerColor(for: cityWeather).opacity(isSelected ? 0.85 : 0.65), radius: isSelected ? 12 : 7)
-                                .overlay {
-                                    if isSelected {
-                                        SelectedPulseRing(shape: .circle, color: markerColor(for: cityWeather))
-                                            .frame(width: 10, height: 10)
-                                    }
-                                }
-                                .contentShape(Circle())
+                            WeatherMapMarker(
+                                color: markerColor(for: cityWeather),
+                                isSelected: isSelected
+                            )
                         }
                         .buttonStyle(.plain)
                     }
@@ -181,4 +173,43 @@ struct AppleWeatherMapView: View {
         )
     }
 
+}
+
+// MARK: - Weather Marker
+
+private struct WeatherMapMarker: View {
+    let color: Color
+    let isSelected: Bool
+    @State private var glowPulse = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(color.opacity(isSelected ? 0.34 : 0.22))
+                .frame(width: isSelected ? 28 : 18, height: isSelected ? 28 : 18)
+                .blur(radius: isSelected ? 8 : 5)
+                .scaleEffect(isSelected && glowPulse ? 1.18 : 1)
+                .animation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true), value: glowPulse)
+
+            if isSelected {
+                SelectedPulseRing(shape: .circle, color: color)
+                    .frame(width: 10, height: 10)
+                    .transition(.scale.combined(with: .opacity))
+            }
+
+            Circle()
+                .fill(color)
+                .frame(width: 9, height: 9)
+                .shadow(color: color.opacity(0.42), radius: 3)
+        }
+        .frame(width: 36, height: 36)
+        .contentShape(Circle())
+        .animation(.smooth(duration: 0.22), value: isSelected)
+        .onAppear {
+            glowPulse = isSelected
+        }
+        .onChange(of: isSelected) { _, selected in
+            glowPulse = selected
+        }
+    }
 }

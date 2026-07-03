@@ -137,9 +137,7 @@ extension ContentView {
 
     var floatingBottomToolbar: some View {
         HStack(alignment: .center) {
-            if currentRoute == .addCityDetail {
-                bottomAddSearchedCityButton
-            } else if let route = currentRoute {
+            if let route = currentRoute {
                 bottomBackButton(route)
             } else {
                 bottomMoreButton
@@ -152,7 +150,11 @@ extension ContentView {
 
             Spacer(minLength: 12)
 
-            bottomSearchButton
+            if currentRoute == .addCityDetail {
+                bottomAddSearchedCityButton
+            } else {
+                bottomSearchButton
+            }
         }
     }
 
@@ -255,21 +257,39 @@ extension ContentView {
     }
 
     var bottomAddSearchedCityButton: some View {
-        Button {
-            addSearchedDetailCityToActiveList()
+        let lists = managedLists
+        return Button {
+            if lists.count > 1 {
+                showingAddSearchedCityListDialog = true
+            } else {
+                if let listID = lists.first {
+                    addSearchedDetailCity(to: listID)
+                }
+            }
         } label: {
-            Label(localizedString("Add", locale: locale), systemImage: "plus")
-                .font(.system(size: 17, weight: .semibold))
-                .labelStyle(.titleAndIcon)
-                .padding(.horizontal, 14)
-                .frame(height: 46)
+            Image(systemName: "plus")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 46, height: 46)
+                .contentShape(Circle())
         }
-        .buttonStyle(.borderedProminent)
-        .buttonBorderShape(.capsule)
-        .controlSize(.large)
-        .tint(theme.colors.accent)
-        .disabled(addCityDetailCity == nil)
+        .buttonStyle(.plain)
+        .themedGlass(in: Circle())
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
+        .disabled(addCityDetailCity == nil || lists.isEmpty)
         .accessibilityLabel(localizedString("Add", locale: locale))
+        .confirmationDialog(
+            localizedString("Add City", locale: locale),
+            isPresented: $showingAddSearchedCityListDialog,
+            titleVisibility: .visible
+        ) {
+            ForEach(lists) { listID in
+                Button(listID.localizedDisplayName(locale: locale)) {
+                    addSearchedDetailCity(to: listID)
+                }
+            }
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {}
+        }
     }
 }
 
@@ -501,11 +521,18 @@ extension ContentView {
         pushRoute(.cityDetail(city.id))
     }
 
-    func addSearchedDetailCityToActiveList() {
+    func addSearchedDetailCity(to listID: CityListID) {
         guard let city = addCityDetailCity else { return }
 
         Task {
-            await addCityToActiveList(city)
+            if listID == weatherService.activeListID {
+                await addCityToActiveList(city)
+            } else {
+                await weatherService.addCityToList(city.city, listID: listID)
+                PlatformFeedback.lightImpact()
+                await switchToList(listID)
+            }
+
             await MainActor.run {
                 let savedCity = weatherService.cityWeatherData.first {
                     $0.city.name == city.city.name && $0.city.country == city.city.country

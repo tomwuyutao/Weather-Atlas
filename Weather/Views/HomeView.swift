@@ -381,7 +381,7 @@ extension ContentView {
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 9) {
+            HStack(spacing: 7) {
                 HStack(spacing: 3) {
                     Image(systemName: "thermometer.medium")
                         .font(.caption.weight(.semibold))
@@ -402,14 +402,14 @@ extension ContentView {
                     Text(cloudText)
                         .font(.caption.weight(.semibold))
                         .monospacedDigit()
-                        .frame(width: 42, alignment: .leading)
+                        .frame(width: 38, alignment: .leading)
                 }
-                .frame(width: 60, alignment: .leading)
+                .frame(width: 54, alignment: .leading)
 
                 Image(systemName: icon)
                     .font(.caption.weight(.semibold))
                     .weatherIconStyle(for: icon)
-                    .frame(width: 20, alignment: .center)
+                    .frame(width: 18, alignment: .leading)
             }
             .foregroundStyle(theme.colors.secondaryText)
             .lineLimit(1)

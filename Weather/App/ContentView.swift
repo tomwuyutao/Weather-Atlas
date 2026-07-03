@@ -32,7 +32,8 @@ struct ContentView: View {
     init(
         previewLoading: Bool = false,
         previewSearchResultCity: CityWeather? = nil,
-        previewCountryListCountryName: String? = nil
+        previewCountryListCountryName: String? = nil,
+        previewListEditing: Bool = false
     ) {
         self.previewLoading = previewLoading
         self.previewSkipsInitialWeatherFetch = previewSearchResultCity != nil || previewCountryListCountryName != nil
@@ -57,6 +58,11 @@ struct ContentView: View {
             _showingMapExpandedCard = State(initialValue: false)
             _mapRecenterRequest = State(initialValue: .listCoordinates)
         }
+
+        if previewListEditing {
+            _navigationPath = State(initialValue: [.list])
+            _listEditMode = State(initialValue: true)
+        }
     }
 
     @State var centerOnCityTrigger: CityWeather?
@@ -70,8 +76,8 @@ struct ContentView: View {
     @AppStorage("weatherListSortMode") var weatherListSortModeRaw: String = WeatherListSortMode.sunny.rawValue
     @AppStorage("hasLaunchedBefore") var hasLaunchedBefore: Bool = false
     @State var addCityDetailCity: CityWeather?
+    @State var showingAddSearchedCityListDialog: Bool = false
     @State var previewCity: CityWeather?
-    @State var detailSwipeDirection: Int = 1
     @State var routeShowsBackButton: Bool = false
 
     // MARK: Map Overlay State

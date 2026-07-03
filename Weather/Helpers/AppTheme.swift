@@ -356,6 +356,28 @@ extension View {
         }
     }
 
+    /// Softer translucent card treatment for detail screens with tinted backgrounds.
+    @ViewBuilder
+    func detailTranslucentCard(colorScheme: ColorScheme, in shape: some InsettableShape) -> some View {
+        if #available(iOS 26.0, *) {
+            self
+                .background(
+                    AppTheme.shared.colors.glassFill.opacity(colorScheme == .dark ? 0.18 : 0.22),
+                    in: shape
+                )
+                .glassEffect(.regular.interactive(), in: shape)
+                .overlay(shape.stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.36), lineWidth: 0.6))
+        } else {
+            self
+                .background(.ultraThinMaterial, in: shape)
+                .background(
+                    AppTheme.shared.colors.glassFill.opacity(colorScheme == .dark ? 0.30 : 0.38),
+                    in: shape
+                )
+                .overlay(shape.stroke(.white.opacity(colorScheme == .dark ? 0.14 : 0.32), lineWidth: 0.6))
+        }
+    }
+
 }
 
 extension View {

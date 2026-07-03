@@ -97,14 +97,7 @@ extension ContentView {
             .padding(.horizontal, 18)
             .padding(.vertical, 16)
             .animation(.snappy(duration: 0.24), value: selectedDayOffset)
-            .background {
-                RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
-                    .fill(theme.colors.mapLand)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-            }
+            .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: detailCardCornerRadius))
             .padding(.bottom, 18)
 
             if expandedWeatherCardShowsDetails {
@@ -286,14 +279,7 @@ extension ContentView {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 16)
-            .background {
-                RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
-                    .fill(theme.colors.mapLand)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-            }
+            .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: detailCardCornerRadius))
 
             VStack(spacing: 0) {
                 ForEach(rows, id: \.1) { icon, label, value in
@@ -339,14 +325,7 @@ extension ContentView {
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 10)
-            .background {
-                RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
-                    .fill(theme.colors.mapLand)
-            }
-            .overlay {
-                RoundedRectangle(cornerRadius: detailCardCornerRadius, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
-            }
+            .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: detailCardCornerRadius))
         }
     }
 

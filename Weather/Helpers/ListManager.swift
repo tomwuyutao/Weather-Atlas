@@ -313,6 +313,15 @@ extension WeatherService {
         }
     }
 
+    func listContainingCity(_ city: City) -> CityListID? {
+        CityListID.allLists.first { listID in
+            cityListCoordinates(for: listID).contains { savedCity in
+                abs(savedCity.latitude - city.latitude) < 0.001
+                    && abs(savedCity.longitude - city.longitude) < 0.001
+            }
+        } ?? listContainingCity(named: city.name, country: city.country)
+    }
+
     // MARK: - Cities List Persistence
     
     /// Save the current list of cities (just the City objects, not the weather data)

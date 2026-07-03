@@ -39,13 +39,9 @@ extension ContentView {
                 .frame(maxWidth: .infinity)
             }
             .id(city.id)
-            .transition(.asymmetric(
-                insertion: .move(edge: detailSwipeDirection >= 0 ? .trailing : .leading).combined(with: .opacity),
-                removal: .move(edge: detailSwipeDirection >= 0 ? .leading : .trailing).combined(with: .opacity)
-            ))
+            .transition(.opacity)
             .animation(.smooth(duration: 0.24), value: city.id)
             .scrollContentBackground(.hidden)
-            .simultaneousGesture(detailCitySwipeGesture(currentCity: city))
 
             if !showingInlineSearch {
                 floatingBottomToolbar
@@ -53,7 +49,10 @@ extension ContentView {
                     .padding(.bottom, -2)
             }
         }
-        .background(theme.colors.background.ignoresSafeArea())
+        .background {
+            detailConditionGradient(for: city)
+                .ignoresSafeArea()
+        }
         .navigationTitle("")
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
@@ -74,34 +73,6 @@ extension ContentView {
             return addCityDetailCity
         }
         return nil
-    }
-
-    private func detailCitySwipeGesture(currentCity: CityWeather) -> some Gesture {
-        DragGesture(minimumDistance: 28)
-            .onEnded { value in
-                let horizontal = value.translation.width
-                let vertical = value.translation.height
-                guard abs(horizontal) > 58, abs(horizontal) > abs(vertical) * 1.35 else { return }
-                shiftPresentedDetailCity(from: currentCity, by: horizontal < 0 ? 1 : -1)
-            }
-    }
-
-    private func shiftPresentedDetailCity(from currentCity: CityWeather, by direction: Int) {
-        let cities = sortedListCandidates.map(\.cityWeather)
-        guard cities.count > 1,
-              let currentIndex = cities.firstIndex(where: { $0.id == currentCity.id }) else { return }
-
-        let nextIndex = min(max(currentIndex + direction, 0), cities.count - 1)
-        guard nextIndex != currentIndex else { return }
-
-        PlatformFeedback.lightImpact()
-        let nextCity = cities[nextIndex]
-        tappedCity = nextCity
-        detailSwipeDirection = direction
-        withAnimation(.smooth(duration: 0.22)) {
-            dismissRoute(.cityDetail(currentCity.id))
-            pushRoute(.cityDetail(nextCity.id))
-        }
     }
 
     // MARK: Sunniness Report
@@ -125,6 +96,67 @@ extension ContentView {
             detailSunnyWindow(city: city)
 
             detailNearbyCities(city: city)
+        }
+    }
+
+    private func detailConditionGradient(for city: CityWeather) -> some View {
+        let tint = detailConditionTint(for: city)
+        let strongOpacity = colorScheme == .dark ? 0.36 : 0.22
+        let softOpacity = colorScheme == .dark ? 0.18 : 0.12
+        let sideOpacity = colorScheme == .dark ? 0.20 : 0.10
+        return ZStack {
+            theme.colors.background
+            LinearGradient(
+                colors: [
+                    tint.opacity(strongOpacity),
+                    tint.opacity(softOpacity),
+                    theme.colors.background.opacity(0.18),
+                    tint.opacity(sideOpacity)
+                ],
+                startPoint: .topTrailing,
+                endPoint: .bottomLeading
+            )
+            LinearGradient(
+                colors: [
+                    .clear,
+                    tint.opacity(colorScheme == .dark ? 0.10 : 0.06),
+                    .clear
+                ],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+        }
+    }
+
+    private func detailConditionTint(for city: CityWeather) -> Color {
+        let isNow = selectedDayOffset == -1
+        let forecast = city.forecast(for: max(0, selectedDayOffset))
+        let condition = isNow ? city.condition : forecast.condition
+        let icon = isNow ? city.weatherIcon : forecast.weatherIcon
+
+        if icon.contains("moon") {
+            return theme.colors.moonIconColor
+        }
+
+        switch condition {
+        case .clear:
+            return theme.colors.dotSun
+        case .partlySunny:
+            return theme.colors.dotPartlyCloudy
+        case .partlyCloudy:
+            return theme.colors.dotSun.compatMix(with: theme.colors.dotCloudy, by: 0.45)
+        case .rain:
+            return theme.colors.dotRain
+        case .drizzle:
+            return theme.colors.dotDrizzle
+        case .cloudy:
+            return theme.colors.dotCloudy
+        case .snow:
+            return theme.colors.dotSnow
+        case .fog:
+            return theme.colors.dotFog
+        case .wind:
+            return theme.colors.dotWind
         }
     }
 
@@ -168,13 +200,14 @@ extension ContentView {
         let windSpeed = isNow ? city.currentWindSpeed : forecast.windSpeed
         let uvIndex = isNow ? city.currentUVIndex : forecast.uvIndex
         let distanceUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic
+        let selectedHours = detailDisplayHours(for: city, forecast: forecast, filtersPastToday: false)
 
         return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
             detailSunnyFactorTile(
-                title: localizedString("Cloud Cover", locale: locale),
-                value: candidate.cloudCover.map { "\(Int($0 * 100))%" } ?? "-",
-                systemImage: "cloud.fill",
-                tint: theme.colors.cloudIconColor
+                title: localizedString("Sunny Window", locale: locale),
+                value: detailSunnyWindowSummary(for: city, hours: selectedHours),
+                systemImage: "sun.max.fill",
+                tint: theme.colors.dotSun
             )
 
             detailSunnyFactorTile(
@@ -195,13 +228,13 @@ extension ContentView {
                 title: localizedString("Max Temp", locale: locale),
                 value: tempUnit.display(forecast.dailyHigh),
                 systemImage: "thermometer.high",
-                tint: theme.colors.accent
+                tint: theme.colors.dotPartlyCloudy
             )
 
             detailSunnyFactorTile(
                 title: localizedString("UV Index", locale: locale),
                 value: uvIndex.map(String.init) ?? "-",
-                systemImage: "sun.max.fill",
+                systemImage: "sun.max.trianglebadge.exclamationmark",
                 tint: theme.colors.dotSun
             )
 
@@ -235,15 +268,14 @@ extension ContentView {
             Spacer(minLength: 0)
         }
         .padding(12)
-        .themedGlass(in: .rect(cornerRadius: 18))
+        .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 18))
     }
 
-    // MARK: Sunny Windows
+    // MARK: Cloud Cover
 
     private func detailSunnyWindow(city: CityWeather) -> some View {
         let periods = detailSunnyPeriods(for: city)
         let selectedDay = max(0, selectedDayOffset)
-        let selectedPeriod = periods.first { $0.id == selectedDay }
         let selectedForecast = city.forecast(for: selectedDay)
         let selectedHours = detailDisplayHours(
             for: city,
@@ -253,15 +285,11 @@ extension ContentView {
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label(localizedString("Sunny Window", locale: locale), systemImage: "sun.max.fill")
+                Label(localizedString("Cloud Cover", locale: locale), systemImage: "cloud.fill")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
 
                 Spacer(minLength: 0)
-
-                Text(selectedPeriod?.summary ?? localizedString("No strong window", locale: locale))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.colors.secondaryText)
             }
 
             detailSunnyDayStrip(periods: periods, selectedDay: selectedDay, city: city)
@@ -277,7 +305,7 @@ extension ContentView {
             }
         }
         .padding(14)
-        .themedGlass(in: .rect(cornerRadius: 20))
+        .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
     }
 
     private func detailSunnyDayStrip(periods: [DetailSunnyPeriod], selectedDay: Int, city: CityWeather) -> some View {
@@ -314,10 +342,7 @@ extension ContentView {
                 .frame(width: 6, height: 6)
         }
             .frame(width: 54, height: 54)
-            .background(
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .fill(isSelected ? theme.colors.glassFill.opacity(0.72) : theme.colors.secondaryText.opacity(0.04))
-            )
+            .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 14))
             .overlay {
                 RoundedRectangle(cornerRadius: 14, style: .continuous)
                     .stroke(isSelected ? theme.colors.accent.opacity(0.82) : .clear, lineWidth: 2.2)
@@ -349,11 +374,6 @@ extension ContentView {
                 chartBottomSpacing: 22
             )
             .frame(height: 224)
-
-            Text(localizedString("Cloud Cover", locale: locale))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.colors.secondaryText)
-                .frame(maxWidth: .infinity, alignment: .center)
         }
     }
 
@@ -401,7 +421,7 @@ extension ContentView {
             }
         }
         .padding(14)
-        .themedGlass(in: .rect(cornerRadius: 20))
+        .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
     }
 
     private func detailNearbyCityRow(_ nearbyCity: DetailNearbyCityContext) -> some View {
@@ -436,7 +456,7 @@ extension ContentView {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 9)
-        .background(theme.colors.secondaryText.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 14))
     }
 
     private func nearbyCityWeatherIcon(for city: CityWeather) -> String {
@@ -473,13 +493,24 @@ extension ContentView {
     }
 
     private func openDetailCityOnMap(_ city: CityWeather) {
-        tappedCity = city
-        showingMapExpandedCard = false
-        pushRoute(.map)
         Task { @MainActor in
+            if let listID = weatherService.listContainingCity(city.city) {
+                await switchToList(listID)
+            }
+
+            let revealedCity = weatherService.cityWeatherData.first {
+                abs($0.city.latitude - city.city.latitude) < 0.001
+                    && abs($0.city.longitude - city.city.longitude) < 0.001
+            } ?? city
+
+            centerOnCityTrigger = nil
+            tappedCity = revealedCity
+            showingMapExpandedCard = false
+            pushRoute(.map)
+
             await Task.yield()
-            centerOnCityTrigger = city
-            showMapMarkerCard(city, expanded: false, focusesMarker: true)
+            mapRecenterRequest = .listCoordinates
+            showMapMarkerCard(revealedCity, expanded: false, focusesMarker: true)
         }
     }
 
@@ -704,7 +735,7 @@ extension ContentView {
     }
 
     private var detailViewTopPadding: CGFloat {
-        12
+        20
     }
 
     private var detailViewBottomPadding: CGFloat {
@@ -775,6 +806,9 @@ private struct DetailMapContextView: View {
         }
         .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
         .background(water)
+        .onTapGesture {
+            onSelectMapCity(selectedCity)
+        }
         .onAppear {
             fitCities()
         }

@@ -21,8 +21,8 @@ struct SelectedPulseRing: View {
             case .circle:
                 Circle()
                     .stroke(color.opacity(isPulsing ? 0.3 : 0.8), lineWidth: isPulsing ? 1.5 : 2.5)
-                    .frame(width: 30, height: 30)
-                    .scaleEffect(isPulsing ? 1.3 : 1.0)
+                    .frame(width: 22, height: 22)
+                    .scaleEffect(isPulsing ? 1.22 : 1.0)
             case .roundedRect:
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(color.opacity(isPulsing ? 0.4 : 0.9), lineWidth: isPulsing ? 2.5 : 3)
