@@ -16,6 +16,8 @@ enum AppThemeStyle: String, CaseIterable {
     case dark = "dark"
     case automatic = "automatic"
 
+    static let defaultRawValue = AppThemeStyle.automatic.rawValue
+
     var displayName: String {
         switch self {
         case .light: return "Light"
@@ -79,6 +81,8 @@ struct ThemeColors {
 
     // List cards
     let listCardFill: Color
+    let chartPanelFill: Color
+    let settingsRowFill: Color
 
     // Glass fill for capsule/circle backgrounds
     let glassFill: Color
@@ -92,7 +96,9 @@ struct ThemeColors {
             return (cloudIconColor, dotPartlyCloudy)
         } else if iconName.contains("moon") && iconName.contains("cloud") {
             return (cloudIconColor, moonIconColor)
-        } else if iconName.contains("rain") || iconName.contains("drizzle") {
+        } else if iconName.contains("drizzle") {
+            return (cloudIconColor, dotDrizzle)
+        } else if iconName.contains("rain") {
             return (cloudIconColor, rainIconColor)
         } else if iconName.contains("snow") {
             return (cloudIconColor, snowIconColor)
@@ -112,42 +118,44 @@ struct ThemeColors {
 
 extension ThemeColors {
     static let light = ThemeColors(
-        primaryText: Color(hex: 0x444444),
-        secondaryText: Color(hex: 0x656565),
-        background: Color(hex: 0xFFFFFF),
-        searchOverlayBackground: Color(hex: 0xFFFFFF).opacity(0.97),
+        primaryText: Color(hex: 0x0F4A9C),
+        secondaryText: Color(hex: 0x4D70D4),
+        background: Color(hex: 0xFDF9F3),
+        searchOverlayBackground: Color(hex: 0xFDF9F3).opacity(0.97),
         modalOverlay: Color.black.opacity(0.24),
-        glassTint: Color(hex: 0xF8F4F1).opacity(0.45),
-        popoverBackground: Color(hex: 0xF8F4F1).opacity(0.86),
-        mapOcean: Color(hex: 0xFFFFFF),
-        mapLand: Color(hex: 0xF8F4F1),
-        mapBorder: Color(hex: 0xE6DDD7),
-        colorfulOcean: Color(hex: 0xFFFFFF),
-        colorfulLand: Color(hex: 0xF8F4F1),
-        colorfulLandActive: Color(hex: 0xF8F4F1),
-        colorfulBorder: Color(hex: 0xE6DDD7),
+        glassTint: Color(hex: 0xFDF9F3).opacity(0.45),
+        popoverBackground: Color(hex: 0xFDF9F3).opacity(0.86),
+        mapOcean: Color(hex: 0xFDF9F3),
+        mapLand: Color(hex: 0xFDF9F3),
+        mapBorder: Color(hex: 0xC9C4B8),
+        colorfulOcean: Color(hex: 0xFDF9F3),
+        colorfulLand: Color(hex: 0xFDF9F3),
+        colorfulLandActive: Color(hex: 0xFDF9F3),
+        colorfulBorder: Color(hex: 0xC9C4B8),
         accent: Color(hex: 0x4D70D4),
-        destructive: Color(hex: 0xC94949),
-        dotSun: Color(hex: 0xFF8A65),
-        dotPartlyCloudy: Color(hex: 0xEEB368),
-        dotCloudy: Color(hex: 0xB8C7D0),
+        destructive: Color(hex: 0xD03D3B),
+        dotSun: Color(hex: 0xF7AB3E),
+        dotPartlyCloudy: Color(hex: 0xF8D152),
+        dotCloudy: Color(hex: 0xC8C2B5),
         dotRain: Color(hex: 0x4D70D4),
-        dotDrizzle: Color(hex: 0x65ABE3),
-        dotSnow: Color(hex: 0xB8C7D0),
-        dotFog: Color(hex: 0xD3E3EC),
-        dotWind: Color(hex: 0xB8C7D0),
-        rainEffect: Color(hex: 0xBCCFDC).opacity(0.62),
-        snowEffect: Color(hex: 0xD3E3EC).opacity(0.52),
-        cloudEffect: Color(hex: 0xD3E3EC),
-        windEffect: Color(hex: 0xD3E3EC).opacity(0.28),
-        sunIconColor: Color(hex: 0xFF8A65),
-        cloudIconColor: .white,
-        rainIconColor: Color(hex: 0x6EACE8),
-        snowIconColor: Color(hex: 0xD3E3EC),
-        moonIconColor: Color(hex: 0xA285B7),
-        listCardFill: Color(hex: 0xF8F4F1),
-        glassFill: Color(hex: 0xF8F4F1),
-        filterSunny: Color(hex: 0xFF8A65)
+        dotDrizzle: Color(hex: 0x62B9D2),
+        dotSnow: Color(hex: 0xC8C2B5),
+        dotFog: Color(hex: 0xC8C2B5),
+        dotWind: Color(hex: 0xC8C2B5),
+        rainEffect: Color(hex: 0x4D70D4).opacity(0.32),
+        snowEffect: Color(hex: 0xE3E0D6).opacity(0.62),
+        cloudEffect: Color(hex: 0xE3E0D6),
+        windEffect: Color(hex: 0xE3E0D6).opacity(0.34),
+        sunIconColor: Color(hex: 0xF7AB3E),
+        cloudIconColor: Color(hex: 0x0F4A9C),
+        rainIconColor: Color(hex: 0x8790C4),
+        snowIconColor: Color(hex: 0x0F4A9C),
+        moonIconColor: Color(hex: 0x5A389F),
+        listCardFill: Color(hex: 0xFDF9F3),
+        chartPanelFill: Color(hex: 0xFCF6F0),
+        settingsRowFill: Color(hex: 0xF6EDE4),
+        glassFill: Color(hex: 0xFDF9F3),
+        filterSunny: Color(hex: 0xF7AB3E)
     )
 }
 
@@ -155,42 +163,44 @@ extension ThemeColors {
 
 extension ThemeColors {
     static let dark = ThemeColors(
-        primaryText: Color(hex: 0xE7E7E8),
-        secondaryText: Color(hex: 0xD2D2D2),
-        background: Color(hex: 0x2E2961),
-        searchOverlayBackground: Color(hex: 0x2E2961).opacity(0.97),
+        primaryText: Color(hex: 0xF7F3EA),
+        secondaryText: Color(hex: 0x6F86FF),
+        background: Color(hex: 0x040C1A),
+        searchOverlayBackground: Color(hex: 0x040C1A).opacity(0.97),
         modalOverlay: Color.black.opacity(0.5),
-        glassTint: Color(hex: 0x423D74).opacity(0.6),
-        popoverBackground: Color(hex: 0x423D74).opacity(0.95),
-        mapOcean: Color(hex: 0x2E2961),
-        mapLand: Color(hex: 0x423D74),
-        mapBorder: Color(hex: 0x56508B),
-        colorfulOcean: Color(hex: 0x2E2961),
-        colorfulLand: Color(hex: 0x423D74),
-        colorfulLandActive: Color(hex: 0x423D74),
-        colorfulBorder: Color(hex: 0x56508B),
-        accent: Color(hex: 0x4D70D4),
-        destructive: Color(hex: 0xC94949),
-        dotSun: Color(hex: 0xFF8A65),
-        dotPartlyCloudy: Color(hex: 0xF4DC85),
-        dotCloudy: Color(hex: 0xD3E3EC),
-        dotRain: Color(hex: 0x4D70D4),
-        dotDrizzle: Color(hex: 0x65ABE3),
-        dotSnow: Color(hex: 0xD3E3EC),
-        dotFog: Color(hex: 0xD3E3EC),
-        dotWind: Color(hex: 0xD3E3EC),
-        rainEffect: Color(hex: 0x4D70D4).opacity(0.55),
-        snowEffect: Color(hex: 0xD3E3EC).opacity(0.6),
-        cloudEffect: Color(hex: 0xD3E3EC),
-        windEffect: Color(hex: 0xD3E3EC).opacity(0.18),
-        sunIconColor: Color(hex: 0xFF8A65),
-        cloudIconColor: .white,
-        rainIconColor: Color(hex: 0x65ABE3),
-        snowIconColor: Color(hex: 0xD3E3EC),
-        moonIconColor: Color(hex: 0xA285B7),
-        listCardFill: Color(hex: 0x423D74),
-        glassFill: Color(hex: 0x423D74),
-        filterSunny: Color(hex: 0xFF8A65)
+        glassTint: Color(hex: 0x0C1828).opacity(0.72),
+        popoverBackground: Color(hex: 0x0C1828).opacity(0.96),
+        mapOcean: Color(hex: 0x040C1A),
+        mapLand: Color(hex: 0x0B1628),
+        mapBorder: Color(hex: 0x223A5C),
+        colorfulOcean: Color(hex: 0x040C1A),
+        colorfulLand: Color(hex: 0x0B1628),
+        colorfulLandActive: Color(hex: 0x10213A),
+        colorfulBorder: Color(hex: 0x223A5C),
+        accent: Color(hex: 0x6F86FF),
+        destructive: Color(hex: 0xFF4940),
+        dotSun: Color(hex: 0xDD8019),
+        dotPartlyCloudy: Color(hex: 0xDD9128),
+        dotCloudy: Color(hex: 0x8792A8),
+        dotRain: Color(hex: 0x6F86FF),
+        dotDrizzle: Color(hex: 0x5EC4DA),
+        dotSnow: Color(hex: 0xA9B1C4),
+        dotFog: Color(hex: 0x78849A),
+        dotWind: Color(hex: 0x78849A),
+        rainEffect: Color(hex: 0x6F86FF).opacity(0.55),
+        snowEffect: Color(hex: 0xA9B1C4).opacity(0.48),
+        cloudEffect: Color(hex: 0x8792A8),
+        windEffect: Color(hex: 0x78849A).opacity(0.28),
+        sunIconColor: Color(hex: 0xDD8019),
+        cloudIconColor: Color(hex: 0x6F86FF),
+        rainIconColor: Color(hex: 0x8EA0F8),
+        snowIconColor: Color(hex: 0xAEBBFF),
+        moonIconColor: Color(hex: 0x957DF6),
+        listCardFill: Color(hex: 0x0C1828),
+        chartPanelFill: Color(hex: 0x101C2D),
+        settingsRowFill: Color(hex: 0x0B1628),
+        glassFill: Color(hex: 0x0C1828),
+        filterSunny: Color(hex: 0xDD8019)
     )
 }
 
@@ -247,8 +257,8 @@ class AppTheme {
     }
 
     private init() {
-        let raw = UserDefaults.standard.string(forKey: "appThemeStyle") ?? "dark"
-        self.style = AppThemeStyle(rawValue: raw) ?? .dark
+        let raw = UserDefaults.standard.string(forKey: "appThemeStyle") ?? AppThemeStyle.defaultRawValue
+        self.style = AppThemeStyle(rawValue: raw) ?? .automatic
     }
 }
 
@@ -381,13 +391,6 @@ extension View {
 }
 
 extension View {
-    /// Themed glass/material background with accent tint (for confirm buttons etc.)
-    @ViewBuilder
-    func themedAccentGlass(tint: Color, in shape: some InsettableShape) -> some View {
-        self.background(tint.opacity(0.15), in: shape)
-            .overlay(shape.stroke(tint.opacity(0.3), lineWidth: 0.5))
-    }
-
     /// Conditionally applies a transform to a view.
     @ViewBuilder
     func `if`(_ condition: Bool, transform: (Self) -> some View) -> some View {

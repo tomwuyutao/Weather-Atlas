@@ -10,16 +10,20 @@ import Foundation
 import SwiftUI
 import WeatherKit
 import CoreLocation
+import MapKit
 
 // MARK: - Shared Errors and Localization
 
 enum WeatherServiceError: LocalizedError {
     case undefinedTimeZone(city: String)
+    case unresolvedPlace(city: String)
 
     var errorDescription: String? {
         switch self {
         case .undefinedTimeZone(let city):
             return "Timezone undefined for \(city)"
+        case .unresolvedPlace(let city):
+            return "Place unresolved for \(city)"
         }
     }
 }
@@ -140,6 +144,7 @@ class WeatherService {
     var listFetchDates: [String: Date] = [:]
     var otherListData: [String: [CityWeather]] = [:]
     private var resolvedTimeZones: [String: TimeZone] = [:]
+    private var resolvedPlaces: [String: ResolvedPlace] = [:]
     
     let weatherService = WeatherKit.WeatherService.shared
     
@@ -224,9 +229,10 @@ class WeatherService {
         
         for (index, city) in citiesToFetch.enumerated() {
             do {
-                let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
+                let resolvedCity = try await resolvedCity(for: city)
+                let location = CLLocation(latitude: resolvedCity.latitude, longitude: resolvedCity.longitude)
                 let weather = try await weatherService.weather(for: location)
-                let cityWeather = try await convertWeatherKitData(weather: weather, for: city)
+                let cityWeather = try await convertWeatherKitData(weather: weather, for: resolvedCity)
                 guard activeFetchToken == fetchToken else { return }
 
                 weatherData.append(cityWeather)
@@ -429,8 +435,26 @@ class WeatherService {
         let key = "cachedWeatherData_\(listID.rawValue)"
         guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
         do {
-            let cachedData = try JSONDecoder().decode([CachedCityWeather].self, from: data).compactMap { $0.toCityWeather() }
+            let decodedCache = try JSONDecoder().decode([CachedCityWeather].self, from: data)
+            let cachedData = decodedCache.compactMap { $0.toCityWeather() }
+            if cachedData.count != decodedCache.count {
+                reportDeveloperWarning(
+                    title: "Cached Weather Invalid",
+                    message: "Some cached weather entries for \(listID.rawValue) could not be restored and the cache was removed."
+                )
+                UserDefaults.standard.removeObject(forKey: key)
+                UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listID.rawValue)")
+                listFetchDates[listID.rawValue] = nil
+                if listID.rawValue == activeListID.rawValue {
+                    lastFetchDate = nil
+                }
+                return nil
+            }
             guard cachedWeatherDataLooksCurrent(cachedData, for: listID) else {
+                reportDeveloperWarning(
+                    title: "Cached Weather Stale",
+                    message: "The cached weather data for \(listID.rawValue) was not current enough to reuse and was removed."
+                )
                 UserDefaults.standard.removeObject(forKey: key)
                 UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listID.rawValue)")
                 listFetchDates[listID.rawValue] = nil
@@ -441,6 +465,10 @@ class WeatherService {
             }
             return cachedData
         } catch {
+            reportDeveloperWarning(
+                title: "Cached Weather Corrupt",
+                message: "The cached weather data for \(listID.rawValue) could not be decoded and was removed."
+            )
             UserDefaults.standard.removeObject(forKey: key)
             return nil
         }
@@ -555,37 +583,16 @@ class WeatherService {
             otherListData[listID.rawValue] = cachedData
             return
         }
-        // Load cities for this list
-        let citiesKey = "savedCitiesList_\(listID.rawValue)"
-        let citiesToFetch: [City]
-        if let data = UserDefaults.standard.data(forKey: citiesKey),
-           let cached = try? JSONDecoder().decode([CachedCity].self, from: data) {
-            // Migrate: fill in empty country from default city lists
-            let defaults = CityListID.builtInLists.flatMap { $0.defaultCities }
-            citiesToFetch = cached.compactMap { c -> City? in
-                var city = c.toCity()
-                if city.country.isEmpty, let match = defaults.first(where: { $0.name == city.name }) {
-                    city = City(id: city.id, name: city.name, country: match.country, latitude: city.latitude, longitude: city.longitude)
-                }
-                return isValidPersistedCity(city) ? city : nil
-            }
-            if citiesToFetch.count != cached.count {
-                saveCities(citiesToFetch, for: listID)
-            }
-        } else {
-            if UserDefaults.standard.data(forKey: citiesKey) != nil {
-                UserDefaults.standard.removeObject(forKey: citiesKey)
-            }
-            citiesToFetch = listID.defaultCities
-        }
+        let citiesToFetch = loadSavedCities(for: listID) ?? listID.defaultCities
         guard !citiesToFetch.isEmpty else { return }
         
         var weatherData: [CityWeather] = []
         for city in citiesToFetch {
             do {
-                let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
+                let resolvedCity = try await resolvedCity(for: city)
+                let location = CLLocation(latitude: resolvedCity.latitude, longitude: resolvedCity.longitude)
                 let weather = try await weatherService.weather(for: location)
-                let cityWeather = try await convertWeatherKitData(weather: weather, for: city)
+                let cityWeather = try await convertWeatherKitData(weather: weather, for: resolvedCity)
                 weatherData.append(cityWeather)
             } catch {
                 report(error)
@@ -599,157 +606,189 @@ class WeatherService {
         errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
     }
 
+    func reportDeveloperWarning(title: String, message: String) {
+        DeveloperWarningCenter.show(title: title, message: message)
+    }
+
     private func coordinateKey(for city: City) -> String {
         String(format: "%.3f,%.3f", city.latitude, city.longitude)
     }
 
-    private func resolvedTimeZone(for city: City) async -> TimeZone? {
+    private func preferredGeocodingLocale() -> Locale {
+        let identifier = UserDefaults.standard.string(forKey: "appLanguage") ?? Locale.autoupdatingCurrent.identifier
+        return Locale(identifier: identifier)
+    }
+
+    private func resolvedPlace(for city: City) async -> ResolvedPlace? {
         let key = coordinateKey(for: city)
-        if let cachedTimeZone = resolvedTimeZones[key] {
-            return cachedTimeZone
+        if let cachedPlace = resolvedPlaces[key] {
+            return cachedPlace
         }
 
         let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
-        do {
-            let placemarks = try await CLGeocoder().reverseGeocodeLocation(location, preferredLocale: Locale(identifier: "en_US_POSIX"))
-            if let timeZone = placemarks.first?.timeZone {
-                resolvedTimeZones[key] = timeZone
-                return timeZone
+        if #available(iOS 26.0, *) {
+            if let place = await resolvedPlaceWithMapKit(for: city, location: location) {
+                resolvedPlaces[key] = place
+                if let timeZone = place.timeZone {
+                    resolvedTimeZones[key] = timeZone
+                }
+                return place
             }
-        } catch { }
+            return nil
+        }
 
-        if let fallbackTimeZone = knownDefaultCityTimeZone(for: city) {
-            resolvedTimeZones[key] = fallbackTimeZone
-            return fallbackTimeZone
+        do {
+            let placemarks = try await CLGeocoder().reverseGeocodeLocation(location, preferredLocale: preferredGeocodingLocale())
+            guard let placemark = placemarks.first else {
+                reportDeveloperWarning(
+                    title: "Geocoder Returned No Placemark",
+                    message: "Apple reverse geocoding returned no placemark for \(city.localizedName()) at \(city.latitude), \(city.longitude)."
+                )
+                return nil
+            }
+            let resolvedName = resolvedCityName(from: placemark, originalCity: city)
+            guard let resolvedName else {
+                reportDeveloperWarning(
+                    title: "Geocoder Returned No City Name",
+                    message: "Apple reverse geocoding returned only district/road-level names for \(city.latitude), \(city.longitude). Contact developer to correct this coordinate."
+                )
+                return nil
+            }
+            let resolvedCountry = placemark.country
+                ?? placemark.isoCountryCode
+            guard let resolvedCountry else {
+                reportDeveloperWarning(
+                    title: "Geocoder Returned No Country",
+                    message: "Apple reverse geocoding returned a placemark without a country for \(resolvedName) at \(city.latitude), \(city.longitude)."
+                )
+                return nil
+            }
+            let place = ResolvedPlace(name: resolvedName, country: resolvedCountry, timeZone: placemark.timeZone)
+            resolvedPlaces[key] = place
+            if let timeZone = placemark.timeZone {
+                resolvedTimeZones[key] = timeZone
+            }
+            return place
+        } catch {
+            reportDeveloperWarning(
+                title: "Geocoder Failed",
+                message: "Apple reverse geocoding failed for \(city.localizedName()) at \(city.latitude), \(city.longitude): \(error.localizedDescription)"
+            )
+            return nil
+        }
+    }
+
+    @available(iOS 26.0, *)
+    private func resolvedPlaceWithMapKit(for city: City, location: CLLocation) async -> ResolvedPlace? {
+        let request = MKReverseGeocodingRequest(location: location)
+        request?.preferredLocale = preferredGeocodingLocale()
+
+        do {
+            guard let mapItems = try await request?.mapItems,
+                  let mapItem = mapItems.first else {
+                reportDeveloperWarning(
+                    title: "MapKit Returned No Placemark",
+                    message: "Apple reverse geocoding returned no map item for \(city.localizedName()) at \(city.latitude), \(city.longitude)."
+                )
+                return nil
+            }
+
+            let placemark = mapItem.placemark
+            guard let resolvedName = resolvedCityName(from: placemark, originalCity: city) else {
+                reportDeveloperWarning(
+                    title: "MapKit Returned No City Name",
+                    message: "Apple reverse geocoding returned only district/road-level names for \(city.latitude), \(city.longitude). Contact developer to correct this coordinate."
+                )
+                return nil
+            }
+
+            guard let resolvedCountry = placemark.country ?? placemark.isoCountryCode else {
+                reportDeveloperWarning(
+                    title: "MapKit Returned No Country",
+                    message: "Apple reverse geocoding returned a placemark without a country for \(resolvedName) at \(city.latitude), \(city.longitude)."
+                )
+                return nil
+            }
+
+            return ResolvedPlace(name: resolvedName, country: resolvedCountry, timeZone: placemark.timeZone)
+        } catch {
+            reportDeveloperWarning(
+                title: "MapKit Geocoder Failed",
+                message: "Apple reverse geocoding failed for \(city.localizedName()) at \(city.latitude), \(city.longitude): \(error.localizedDescription)"
+            )
+            return nil
+        }
+    }
+
+    private func resolvedCityName(from placemark: CLPlacemark, originalCity city: City) -> String? {
+        if let locality = cleanGeocodedCityName(placemark.locality) {
+            return locality
+        }
+
+        if let explicitName = cleanGeocodedCityName(city.name) {
+            return explicitName
         }
 
         return nil
     }
 
-    private func knownDefaultCityTimeZone(for city: City) -> TimeZone? {
-        let key = "\(city.name.lowercased())|\(city.country.lowercased())"
-        return Self.defaultCityTimeZoneIdentifiers[key].flatMap(TimeZone.init(identifier:))
+    private func cleanGeocodedCityName(_ value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty else { return nil }
+        return trimmed
     }
 
-    private static let defaultCityTimeZoneIdentifiers: [String: String] = [
-        "istanbul|turkey": "Europe/Istanbul",
-        "moscow|russia": "Europe/Moscow",
-        "london|england": "Europe/London",
-        "saint petersburg|russia": "Europe/Moscow",
-        "berlin|germany": "Europe/Berlin",
-        "madrid|spain": "Europe/Madrid",
-        "rome|italy": "Europe/Rome",
-        "kyiv|ukraine": "Europe/Kyiv",
-        "paris|france": "Europe/Paris",
-        "bucharest|romania": "Europe/Bucharest",
-        "minsk|belarus": "Europe/Minsk",
-        "vienna|austria": "Europe/Vienna",
-        "hamburg|germany": "Europe/Berlin",
-        "warsaw|poland": "Europe/Warsaw",
-        "budapest|hungary": "Europe/Budapest",
-        "barcelona|spain": "Europe/Madrid",
-        "munich|germany": "Europe/Berlin",
-        "milan|italy": "Europe/Rome",
-        "prague|czechia": "Europe/Prague",
-        "sofia|bulgaria": "Europe/Sofia",
-        "tokyo|japan": "Asia/Tokyo",
-        "delhi|india": "Asia/Kolkata",
-        "shanghai|china": "Asia/Shanghai",
-        "dhaka|bangladesh": "Asia/Dhaka",
-        "beijing|china": "Asia/Shanghai",
-        "mumbai|india": "Asia/Kolkata",
-        "osaka|japan": "Asia/Tokyo",
-        "karachi|pakistan": "Asia/Karachi",
-        "chongqing|china": "Asia/Shanghai",
-        "guangzhou|china": "Asia/Shanghai",
-        "lahore|pakistan": "Asia/Karachi",
-        "shenzhen|china": "Asia/Shanghai",
-        "bangalore|india": "Asia/Kolkata",
-        "chennai|india": "Asia/Kolkata",
-        "kolkata|india": "Asia/Kolkata",
-        "bangkok|thailand": "Asia/Bangkok",
-        "tehran|iran": "Asia/Tehran",
-        "hyderabad|india": "Asia/Kolkata",
-        "chengdu|china": "Asia/Shanghai",
-        "ho chi minh city|vietnam": "Asia/Ho_Chi_Minh",
-        "mexico city|mexico": "America/Mexico_City",
-        "new york|united states": "America/New_York",
-        "los angeles|united states": "America/Los_Angeles",
-        "toronto|canada": "America/Toronto",
-        "chicago|united states": "America/Chicago",
-        "dallas|united states": "America/Chicago",
-        "houston|united states": "America/Chicago",
-        "miami|united states": "America/New_York",
-        "philadelphia|united states": "America/New_York",
-        "atlanta|united states": "America/New_York",
-        "washington|united states": "America/New_York",
-        "boston|united states": "America/New_York",
-        "phoenix|united states": "America/Phoenix",
-        "monterrey|mexico": "America/Monterrey",
-        "guadalajara|mexico": "America/Mexico_City",
-        "san francisco|united states": "America/Los_Angeles",
-        "detroit|united states": "America/Detroit",
-        "montreal|canada": "America/Toronto",
-        "seattle|united states": "America/Los_Angeles",
-        "minneapolis|united states": "America/Chicago",
-        "sao paulo|brazil": "America/Sao_Paulo",
-        "buenos aires|argentina": "America/Argentina/Buenos_Aires",
-        "rio de janeiro|brazil": "America/Sao_Paulo",
-        "lima|peru": "America/Lima",
-        "bogota|colombia": "America/Bogota",
-        "santiago|chile": "America/Santiago",
-        "belo horizonte|brazil": "America/Sao_Paulo",
-        "caracas|venezuela": "America/Caracas",
-        "porto alegre|brazil": "America/Sao_Paulo",
-        "brasilia|brazil": "America/Sao_Paulo",
-        "recife|brazil": "America/Recife",
-        "fortaleza|brazil": "America/Fortaleza",
-        "salvador|brazil": "America/Bahia",
-        "medellin|colombia": "America/Bogota",
-        "guayaquil|ecuador": "America/Guayaquil",
-        "curitiba|brazil": "America/Sao_Paulo",
-        "quito|ecuador": "America/Guayaquil",
-        "cali|colombia": "America/Bogota",
-        "montevideo|uruguay": "America/Montevideo",
-        "asuncion|paraguay": "America/Asuncion",
-        "lagos|nigeria": "Africa/Lagos",
-        "cairo|egypt": "Africa/Cairo",
-        "kinshasa|democratic republic of the congo": "Africa/Kinshasa",
-        "johannesburg|south africa": "Africa/Johannesburg",
-        "luanda|angola": "Africa/Luanda",
-        "dar es salaam|tanzania": "Africa/Dar_es_Salaam",
-        "khartoum|sudan": "Africa/Khartoum",
-        "abidjan|cote d'ivoire": "Africa/Abidjan",
-        "alexandria|egypt": "Africa/Cairo",
-        "nairobi|kenya": "Africa/Nairobi",
-        "addis ababa|ethiopia": "Africa/Addis_Ababa",
-        "cape town|south africa": "Africa/Johannesburg",
-        "casablanca|morocco": "Africa/Casablanca",
-        "accra|ghana": "Africa/Accra",
-        "durban|south africa": "Africa/Johannesburg",
-        "dakar|senegal": "Africa/Dakar",
-        "kano|nigeria": "Africa/Lagos",
-        "ibadan|nigeria": "Africa/Lagos",
-        "pretoria|south africa": "Africa/Johannesburg",
-        "kampala|uganda": "Africa/Kampala",
-        "sydney|australia": "Australia/Sydney",
-        "melbourne|australia": "Australia/Melbourne",
-        "brisbane|australia": "Australia/Brisbane",
-        "perth|australia": "Australia/Perth",
-        "adelaide|australia": "Australia/Adelaide",
-        "gold coast|australia": "Australia/Brisbane",
-        "canberra|australia": "Australia/Sydney",
-        "newcastle|australia": "Australia/Sydney",
-        "central coast|australia": "Australia/Sydney",
-        "wollongong|australia": "Australia/Sydney"
-    ]
+    private func resolvedCity(for city: City) async throws -> City {
+        if !city.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           !city.country.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return city
+        }
+
+        guard let place = await resolvedPlace(for: city) else {
+            throw WeatherServiceError.unresolvedPlace(city: city.localizedName())
+        }
+        return City(
+            id: city.id,
+            name: place.name,
+            country: place.country,
+            latitude: city.latitude,
+            longitude: city.longitude,
+            timeZoneIdentifier: city.timeZoneIdentifier
+        )
+    }
+
+    private func resolvedTimeZone(for city: City) async -> TimeZone? {
+        let key = coordinateKey(for: city)
+        if let identifier = city.timeZoneIdentifier {
+            guard let timeZone = TimeZone(identifier: identifier) else {
+                reportDeveloperWarning(
+                    title: "Invalid City Time Zone",
+                    message: "The city \(city.localizedName()) has an invalid time zone identifier: \(identifier)."
+                )
+                return nil
+            }
+            resolvedTimeZones[key] = timeZone
+            return timeZone
+        }
+        if let cachedTimeZone = resolvedTimeZones[key] {
+            return cachedTimeZone
+        }
+        if let timeZone = await resolvedPlace(for: city)?.timeZone {
+            return timeZone
+        }
+        return nil
+    }
 
     private func resolvedTimeZoneOrThrow(for city: City) async throws -> TimeZone {
         if let timeZone = await resolvedTimeZone(for: city) {
             return timeZone
         }
 
-        throw WeatherServiceError.undefinedTimeZone(city: city.name)
+        reportDeveloperWarning(
+            title: "Time Zone Missing",
+            message: "No Apple-provided time zone was available for \(city.localizedName()) at \(city.latitude), \(city.longitude)."
+        )
+        throw WeatherServiceError.undefinedTimeZone(city: city.localizedName())
     }
 
     func convertWeatherKitData(weather: Weather, for city: City) async throws -> CityWeather {
@@ -895,11 +934,12 @@ class WeatherService {
         do {
             // Fetch weather for the city
             errorMessage = nil
-            let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
+            let resolvedCity = try await resolvedCity(for: city)
+            let location = CLLocation(latitude: resolvedCity.latitude, longitude: resolvedCity.longitude)
             let weather = try await weatherService.weather(for: location)
             
             // Convert to our model
-            let cityWeather = try await convertWeatherKitData(weather: weather, for: city)
+            let cityWeather = try await convertWeatherKitData(weather: weather, for: resolvedCity)
             
             return cityWeather
         } catch {
@@ -958,31 +998,53 @@ class WeatherService {
 struct City: Identifiable, Hashable, Codable {
     var id = UUID()
     var name: String
-    let country: String
+    var country: String
     let latitude: Double
     let longitude: Double
+    let timeZoneIdentifier: String?
     
-    init(id: UUID = UUID(), name: String, country: String = "", latitude: Double, longitude: Double) {
+    init(id: UUID = UUID(), name: String, country: String = "", latitude: Double, longitude: Double, timeZoneIdentifier: String? = nil) {
         self.id = id
         self.name = name
         self.country = country
         self.latitude = latitude
         self.longitude = longitude
+        self.timeZoneIdentifier = timeZoneIdentifier
+    }
+
+    init(id: UUID = UUID(), latitude: Double, longitude: Double, timeZoneIdentifier: String? = nil) {
+        self.init(id: id, name: "", country: "", latitude: latitude, longitude: longitude, timeZoneIdentifier: timeZoneIdentifier)
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
-        name = try container.decode(String.self, forKey: .name)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         country = try container.decodeIfPresent(String.self, forKey: .country) ?? ""
         latitude = try container.decode(Double.self, forKey: .latitude)
         longitude = try container.decode(Double.self, forKey: .longitude)
+        timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
     }
     
-    /// Returns the city name localized for the given locale.
+    /// Returns the display city name, localized through the string catalog when available.
     func localizedName(locale: Locale = .current) -> String {
-        localizedString(String.LocalizationValue(name), locale: locale)
+        if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return localizedString(String.LocalizationValue(name), locale: locale)
+        }
+        return String(format: "%.2f, %.2f", latitude, longitude)
     }
+
+    /// Returns the display country name, localized through the string catalog when available.
+    func localizedCountry(locale: Locale = .current) -> String {
+        guard !country.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
+        return localizedString(String.LocalizationValue(country), locale: locale)
+    }
+}
+
+private struct ResolvedPlace {
+    let name: String
+    let country: String
+    let timeZone: TimeZone?
 }
 
 struct CityWeather: Identifiable, Hashable {
@@ -1084,21 +1146,21 @@ struct CityWeather: Identifiable, Hashable {
         } else if symbolName.contains("moon") && !symbolName.contains("cloud") {
             return "moon.fill"
         } else if symbolName.contains("cloud") && symbolName.contains("sun") {
-            return "cloud.sun.fill"
+            return "cloud.sun"
         } else if symbolName.contains("cloud") && symbolName.contains("moon") {
-            return "cloud.moon.fill"
+            return "cloud.moon"
         } else if symbolName.contains("cloud.rain") || symbolName.contains("rain") {
-            return "cloud.rain.fill"
+            return "cloud.rain"
         } else if symbolName.contains("cloud.drizzle") || symbolName.contains("drizzle") {
-            return "cloud.drizzle.fill"
+            return "cloud.drizzle"
         } else if symbolName.contains("snow") {
-            return "cloud.snow.fill"
+            return "cloud.snow"
         } else if symbolName.contains("cloud") {
-            return "cloud.fill"
+            return "cloud"
         } else if symbolName.contains("wind") {
             return "wind"
         } else if symbolName.contains("fog") {
-            return "cloud.fog.fill"
+            return "cloud.fog"
         } else {
             return symbolName
         }
@@ -1185,15 +1247,15 @@ struct DailyForecast: Identifiable {
         if symbolName.contains("sun") && !symbolName.contains("cloud") {
             return "sun.max.fill"
         } else if symbolName.contains("cloud") && symbolName.contains("sun") {
-            return "cloud.sun.fill"
+            return "cloud.sun"
         } else if symbolName.contains("cloud.rain") || symbolName.contains("rain") {
-            return "cloud.rain.fill"
+            return "cloud.rain"
         } else if symbolName.contains("cloud.drizzle") || symbolName.contains("drizzle") {
-            return "cloud.drizzle.fill"
+            return "cloud.drizzle"
         } else if symbolName.contains("snow") {
-            return "cloud.snow.fill"
+            return "cloud.snow"
         } else if symbolName.contains("cloud") {
-            return "cloud.fill"
+            return "cloud"
         } else {
             return symbolName
         }
@@ -1323,17 +1385,17 @@ struct HourlyForecast: Identifiable {
         } else if symbolName.contains("moon") && !symbolName.contains("cloud") {
             return "moon.fill"
         } else if symbolName.contains("cloud") && symbolName.contains("sun") {
-            return "cloud.sun.fill"
+            return "cloud.sun"
         } else if symbolName.contains("cloud") && symbolName.contains("moon") {
-            return "cloud.moon.fill"
+            return "cloud.moon"
         } else if symbolName.contains("cloud.rain") || symbolName.contains("rain") {
-            return "cloud.rain.fill"
+            return "cloud.rain"
         } else if symbolName.contains("cloud.drizzle") || symbolName.contains("drizzle") {
-            return "cloud.drizzle.fill"
+            return "cloud.drizzle"
         } else if symbolName.contains("snow") {
-            return "cloud.snow.fill"
+            return "cloud.snow"
         } else if symbolName.contains("cloud") {
-            return "cloud.fill"
+            return "cloud"
         } else {
             return symbolName
         }
@@ -1344,7 +1406,7 @@ struct HourlyForecast: Identifiable {
         if symbolName.contains("sun") && !symbolName.contains("cloud") {
             return theme.sunIconColor
         } else if symbolName.contains("moon") && !symbolName.contains("cloud") {
-            return colorScheme == .light ? .indigo : .white
+            return theme.moonIconColor
         } else {
             return theme.cloudIconColor
         }
@@ -1362,7 +1424,7 @@ struct HourlyForecast: Identifiable {
     
     func partlyMoonPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
         let theme = AppTheme.shared.colors
-        return (theme.cloudIconColor, colorScheme == .light ? .indigo : .white)
+        return (theme.cloudIconColor, theme.moonIconColor)
     }
     
     var isRainIcon: Bool {
@@ -1406,6 +1468,7 @@ struct CachedCity: Codable {
     let country: String
     let latitude: Double
     let longitude: Double
+    let timeZoneIdentifier: String?
     
     init(from city: City) {
         self.id = city.id
@@ -1413,19 +1476,21 @@ struct CachedCity: Codable {
         self.country = city.country
         self.latitude = city.latitude
         self.longitude = city.longitude
+        self.timeZoneIdentifier = city.timeZoneIdentifier
     }
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decode(String.self, forKey: .name)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         country = try container.decodeIfPresent(String.self, forKey: .country) ?? ""
         latitude = try container.decode(Double.self, forKey: .latitude)
         longitude = try container.decode(Double.self, forKey: .longitude)
+        timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
     }
     
     func toCity() -> City {
-        return City(id: id, name: name, country: country, latitude: latitude, longitude: longitude)
+        return City(id: id, name: name, country: country, latitude: latitude, longitude: longitude, timeZoneIdentifier: timeZoneIdentifier)
     }
 }
 

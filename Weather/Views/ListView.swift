@@ -3,7 +3,7 @@
 //  Weather
 //
 //  Purpose: Shows the active city list, with sorting and
-//  inline edit controls for city rename/remove actions.
+//  inline edit controls for removing cities.
 //
 
 import SwiftUI
@@ -16,7 +16,7 @@ extension ContentView {
             listHeader
 
             ScrollView {
-                LazyVStack(spacing: 8) {
+                LazyVStack(spacing: 0) {
                     ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { index, candidate in
                         if listEditMode {
                             listRow(candidate, rank: index + 1)
@@ -30,6 +30,12 @@ extension ContentView {
                             .contextMenu {
                                 cityActions(for: candidate.cityWeather, in: weatherService.activeListID)
                             }
+                        }
+
+                        if index < sortedListCandidates.count - 1 {
+                            Divider()
+                                .background(theme.colors.secondaryText.opacity(0.18))
+                                .padding(.leading, listEditMode ? 78 : 34)
                         }
                     }
                 }
@@ -52,22 +58,19 @@ extension ContentView {
                     } label: {
                         Image(systemName: "checkmark")
                             .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .foregroundStyle(theme.colors.primaryText)
                             .frame(width: 46, height: 46)
-                            .background(theme.colors.accent, in: Circle())
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .themedGlass(in: Circle())
-                    .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
                 } else {
                     Menu {
                         Menu {
                             ForEach(WeatherListSortMode.allCases) { mode in
                                 Button {
-                                    weatherListSortModeRaw = mode.rawValue
+                                    listSortMode = mode.rawValue
                                 } label: {
-                                    primaryMenuLabel(mode.title(locale: locale), systemImage: listSortMode == mode ? "checkmark" : mode.icon)
+                                    primaryMenuLabel(mode.title(locale: locale), systemImage: selectedListSortMode == mode ? "checkmark" : mode.icon)
                                 }
                             }
                         } label: {
@@ -83,19 +86,19 @@ extension ContentView {
                         }
 
                         Button {
-                            activateInlineSearch()
+                            activateSearch()
                         } label: {
                             primaryMenuLabel(localizedString("Add City", locale: locale), systemImage: "plus")
                         }
                     } label: {
                         Image(systemName: "ellipsis")
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(theme.colors.primaryText)
                             .frame(width: 38, height: 38)
                             .themedGlass(in: .capsule)
                     }
                     .buttonStyle(.plain)
-                    .tint(.primary)
+                    .tint(theme.colors.primaryText)
                 }
             }
         }
@@ -119,40 +122,17 @@ extension ContentView {
             }
 
             sunnyCandidateRow(candidate, rank: rank, compact: false)
-
-            if listEditMode {
-                Button {
-                    beginEditingListCity(candidate.cityWeather)
-                } label: {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 38, height: 44)
-                        .themedGlass(in: .capsule)
-                }
-                .buttonStyle(.plain)
-            }
         }
         .animation(.smooth(duration: 0.2), value: listEditMode)
-    }
-
-    func beginEditingListCity(_ city: CityWeather) {
-        listToRenameID = nil
-        showingRenameAlert = false
-        cityToRename = city
-        cityToRenameListID = weatherService.activeListID
-        cityRenameText = city.city.localizedName(locale: locale)
-        showingCityRenameAlert = true
     }
 
     func removeListCity(_ city: CityWeather) {
         weatherService.removeCity(city, from: weatherService.activeListID)
         refreshCityOrder()
-        PlatformFeedback.lightImpact()
+        Haptics.lightImpact()
     }
 }
 
-#Preview("List View Editing") {
-    let _ = UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-    ContentView(previewListEditing: true)
+#Preview("List View") {
+    ContentView(initialRoute: .list)
 }

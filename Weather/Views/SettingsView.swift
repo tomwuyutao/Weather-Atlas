@@ -138,6 +138,8 @@ enum TemperatureUnit: String, CaseIterable {
 // MARK: - Settings Screen
 
 struct SettingsView: View {
+    // MARK: Stored Preferences
+
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.defaultRawValue
     @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.defaultRawValue
     @AppStorage("appLanguage") private var appLanguage: String = "en"
@@ -151,6 +153,9 @@ struct SettingsView: View {
 
     @State private var showingResetConfirmation = false
     @State private var showingEmailCopied = false
+    @State private var showingAttributions = false
+
+    // MARK: Resolved Preferences
 
     private var selectedUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnit) ?? .automatic
@@ -160,16 +165,28 @@ struct SettingsView: View {
         DistanceUnit(rawValue: distanceUnit) ?? .automatic
     }
 
+    // MARK: View Body
+
     @ViewBuilder
     var body: some View {
         NavigationStack {
             settingsForm
-            .navigationTitle(localizedString("Settings", locale: locale))
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Text(localizedString("Settings", locale: locale))
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(settingsTitleColor)
+                }
+
                 ToolbarItem(placement: .topBarTrailing) {
                     settingsDoneButton
                 }
+            }
+            .navigationDestination(isPresented: $showingAttributions) {
+                attributionsForm
+                    .navigationTitle(localizedString("Attributions", locale: locale))
             }
         }
         .background(theme.colors.mapOcean.ignoresSafeArea())
@@ -177,6 +194,8 @@ struct SettingsView: View {
         .presentationBackground(theme.colors.mapOcean)
         .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
     }
+
+    // MARK: Toolbar
 
     @ViewBuilder
     private var settingsDoneButton: some View {
@@ -210,16 +229,22 @@ struct SettingsView: View {
     }
 
     private var settingsRowBackground: Color {
-        theme.colors.mapLand
+        theme.colors.settingsRowFill
     }
 
     private var settingsFormBackground: Color {
         theme.colors.mapOcean
     }
 
+    private var settingsTitleColor: Color {
+        colorScheme == .dark ? theme.colors.accent : theme.colors.primaryText
+    }
+
+    // MARK: Main Settings Form
+
     private var settingsForm: some View {
         Form {
-            Section(localizedString("General", locale: locale)) {
+            Section {
                 Picker(selection: Binding(get: { temperatureUnit }, set: { temperatureUnit = $0 })) {
                     Text(localizedString("Automatic", locale: locale)).tag(TemperatureUnit.automatic.rawValue)
                     Text(localizedString("Celsius (°C)", locale: locale)).tag(TemperatureUnit.celsius.rawValue)
@@ -227,7 +252,7 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(localizedString("Temperature", locale: locale), systemImage: "thermometer.medium")
                 }
-                .tint(.secondary)
+                .tint(theme.colors.accent)
 
                 Picker(selection: Binding(get: { distanceUnit }, set: { distanceUnit = $0 })) {
                     Text(localizedString("Automatic", locale: locale)).tag(DistanceUnit.automatic.rawValue)
@@ -236,7 +261,7 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(localizedString("Distance", locale: locale), systemImage: "ruler")
                 }
-                .tint(.secondary)
+                .tint(theme.colors.accent)
 
                 Picker(selection: Binding(get: { appLanguage }, set: { appLanguage = $0 })) {
                     Text(verbatim: "English").tag("en")
@@ -253,7 +278,7 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(localizedString("Language", locale: locale), systemImage: "globe")
                 }
-                .tint(.secondary)
+                .tint(theme.colors.accent)
 
                 Picker(selection: Binding(get: { theme.style }, set: { theme.style = $0 })) {
                     Text(localizedString("Light", locale: locale)).tag(AppThemeStyle.light)
@@ -262,21 +287,23 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(localizedString("Theme", locale: locale), systemImage: "circle.lefthalf.filled")
                 }
-                .tint(.secondary)
+                .tint(theme.colors.accent)
+            } header: {
+                settingsSectionHeader(localizedString("General", locale: locale))
             }
             .listRowBackground(settingsRowBackground)
 
             Section {
-                Button(role: .destructive) {
+                Button {
                     showingResetConfirmation = true
                 } label: {
                     Label(localizedString("Reset Lists to Defaults", locale: locale), systemImage: "arrow.counterclockwise")
-                        .foregroundStyle(.red)
+                        .foregroundStyle(theme.colors.dotSun)
                 }
             }
             .listRowBackground(settingsRowBackground)
 
-            Section(localizedString("About", locale: locale)) {
+            Section {
                 settingsInfoRow(
                     localizedString("Version", locale: locale),
                     value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
@@ -296,8 +323,10 @@ struct SettingsView: View {
                 )
                 attributionsNavigationRow
                 sayHelloRow
+            } header: {
+                settingsSectionHeader(localizedString("About", locale: locale))
             }
-            .listRowBackground(theme.colors.mapLand)
+            .listRowBackground(settingsRowBackground)
         }
         .scrollContentBackground(.hidden)
             .background(settingsFormBackground)
@@ -306,9 +335,11 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: About and Attributions
+
     private var aboutForm: some View {
         Form {
-            Section(localizedString("About", locale: locale)) {
+            Section {
                 settingsInfoRow(
                     localizedString("Version", locale: locale),
                     value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
@@ -328,6 +359,8 @@ struct SettingsView: View {
                 )
                 attributionsNavigationRow
                 sayHelloRow
+            } header: {
+                settingsSectionHeader(localizedString("About", locale: locale))
             }
             .listRowBackground(settingsRowBackground)
         }
@@ -339,12 +372,18 @@ struct SettingsView: View {
     }
 
     private var attributionsNavigationRow: some View {
-        NavigationLink {
-            attributionsForm
-                .navigationTitle(localizedString("Attributions", locale: locale))
+        Button {
+            showingAttributions = true
         } label: {
-            settingsLabel(localizedString("Attributions", locale: locale), systemImage: "text.badge.checkmark")
+            HStack {
+                settingsLabel(localizedString("Attributions", locale: locale), systemImage: "text.badge.checkmark")
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(theme.colors.accent)
+            }
         }
+        .buttonStyle(.plain)
     }
 
     private var attributionsForm: some View {
@@ -356,9 +395,9 @@ struct SettingsView: View {
 
             Section(localizedString("Maps", locale: locale)) {
                 settingsLinkRow(
-                    localizedString("Apple Maps", locale: locale),
+                    "\u{F8FF} " + localizedString("Apple Maps", locale: locale),
                     value: localizedString("Legal", locale: locale),
-                    systemImage: "apple.logo",
+                    systemImage: "map",
                     url: URL(string: "https://www.apple.com/legal/internet-services/maps/legal-en.html")
                 )
             }
@@ -367,6 +406,8 @@ struct SettingsView: View {
         .scrollContentBackground(.hidden)
         .background(settingsFormBackground)
     }
+
+    // MARK: Row Builders
 
     @ViewBuilder
     private var weatherAttributionRows: some View {
@@ -392,20 +433,29 @@ struct SettingsView: View {
     private func settingsLabel(_ title: String, systemImage: String) -> some View {
         Label {
             Text(title)
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
         } icon: {
             Image(systemName: systemImage)
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.dotSun)
         }
+    }
+
+    private func settingsSectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.footnote.weight(.semibold))
+            .foregroundStyle(theme.colors.accent)
     }
 
     private func settingsInfoRow(_ title: String, value: String, systemImage: String) -> some View {
         LabeledContent {
             Text(value)
+                .foregroundStyle(theme.colors.accent)
         } label: {
             settingsLabel(title, systemImage: systemImage)
         }
     }
+
+    // MARK: Support Actions
 
     private var sayHelloRow: some View {
         Button {
@@ -414,7 +464,7 @@ struct SettingsView: View {
         } label: {
             LabeledContent {
                 Image(systemName: "doc.on.doc")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.colors.accent)
             } label: {
                 settingsLabel(localizedString("Say Hello", locale: locale), systemImage: "envelope")
             }
@@ -442,7 +492,7 @@ struct SettingsView: View {
                         Image(systemName: "arrow.up.forward")
                             .font(.caption.weight(.semibold))
                     }
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.colors.accent)
                 } label: {
                     settingsLabel(title, systemImage: systemImage)
                 }
@@ -465,6 +515,6 @@ private extension View {
     }
 }
 
-#Preview("Settings") {
+#Preview("Settings View") {
     SettingsView(weatherService: WeatherService(), onResetLists: {})
 }

@@ -3,7 +3,7 @@
 //  Weather
 //
 //  Purpose: Renders the floating weather card shown from map markers, including
-//  compact card content, expanded charts, and card placement helpers.
+//  compact card content, expanded map-card content, and placement helpers.
 //
 
 import SwiftUI
@@ -85,7 +85,7 @@ extension ContentView {
         }()
 
         if forceExpandedStyle {
-            expandedWeatherCard(
+            expandedFloatingWeatherCard(
                 for: cityWeather,
                 icon: icon,
                 primaryText: isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh),
@@ -108,20 +108,20 @@ extension ContentView {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
                         .font(.system(size: phoneCardTemperatureSize, weight: .semibold, design: .default))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(theme.colors.primaryText)
                         .contentTransition(.numericText())
                         .lineLimit(1)
 
                     Text(isOverlayActive ? overlayLabel : localizedString(isNow ? "Current Temperature" : "Highest Temperature", locale: locale))
                         .font(phoneCardMetricFont)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
                         .padding(.top, 4)
 
                     if !hideCityName {
                         Text(cityWeather.city.localizedName(locale: locale))
                             .font(phoneCardTitleFont)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
                             .padding(.top, 5)
                     }
@@ -132,9 +132,9 @@ extension ContentView {
                 Spacer(minLength: 8)
 
                 VStack(alignment: .trailing, spacing: 0) {
-                    Image(systemName: icon)
+                    Image(systemName: floatingCardIconName(for: icon))
                         .font(.system(size: phoneCardIconSize, weight: .medium))
-                        .weatherIconStyle(for: icon)
+                        .floatingCardWeatherIconStyle(for: icon)
                         .frame(width: phoneCardIconFrame.width, height: phoneCardIconFrame.height, alignment: .center)
 
                     Spacer(minLength: 8)
@@ -191,6 +191,201 @@ extension ContentView {
             return 162
         default:
             return 178
+        }
+    }
+}
+
+
+// MARK: - Floating Card Icon Style
+
+private func floatingCardIconName(for iconName: String) -> String {
+    if iconName == "cloud" {
+        return "cloud.fill"
+    }
+    if iconName == "cloud.sun" {
+        return "cloud.sun.fill"
+    }
+    return iconName
+}
+
+private extension View {
+    @ViewBuilder
+    func floatingCardWeatherIconStyle(for iconName: String) -> some View {
+        let colors = AppTheme.shared.colors
+        if iconName == "cloud" {
+            self
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(colors.dotCloudy)
+        } else if iconName == "cloud.sun" {
+            self
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(colors.dotCloudy, colors.dotPartlyCloudy)
+        } else {
+            self.weatherIconStyle(for: iconName)
+        }
+    }
+}
+
+
+// MARK: - Expanded Floating Card
+
+extension ContentView {
+    func expandedFloatingWeatherCard(
+        for cityWeather: CityWeather,
+        icon: String,
+        primaryText: String,
+        metricLabel: String,
+        tempUnit: TemperatureUnit,
+        hideCityName: Bool = false,
+        plainBackground: Bool = false
+    ) -> some View {
+        let forecasts = Array(cityWeather.dailyForecasts.prefix(10))
+        let cornerRadius: CGFloat = 28
+
+        return ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .center, spacing: 6) {
+                    if !hideCityName {
+                        Text(cityWeather.city.localizedName(locale: locale))
+                            .font(.title.weight(.semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .lineLimit(1)
+                    }
+
+                    Text(metricLabel)
+                        .font(.callout.weight(.medium))
+                        .foregroundStyle(theme.colors.secondaryText)
+                }
+                .frame(maxWidth: .infinity)
+                .multilineTextAlignment(.center)
+                .padding(.bottom, 10)
+
+                HStack(alignment: .center, spacing: 2) {
+                    Spacer(minLength: 0)
+
+                    Text(primaryText)
+                        .font(.system(size: 62, weight: .regular, design: .default))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .lineLimit(1)
+                        .id("primary-\(selectedDayOffset)-\(primaryText)")
+                        .transition(.scale(scale: 0.82).combined(with: .opacity))
+
+                    Image(systemName: floatingCardIconName(for: icon))
+                        .font(.system(size: 44, weight: .medium))
+                        .floatingCardWeatherIconStyle(for: icon)
+                        .compatSymbolReplaceTransition()
+                        .id("icon-\(selectedDayOffset)-\(icon)")
+                        .transition(.scale(scale: 0.82).combined(with: .opacity))
+                        .frame(width: 60, height: 52)
+
+                    Spacer(minLength: 0)
+                }
+                .padding(.bottom, 18)
+                .animation(.snappy(duration: 0.28), value: selectedDayOffset)
+
+                VStack(spacing: 10) {
+                    ForEach(0..<2, id: \.self) { row in
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(0..<5, id: \.self) { column in
+                                let index = row * 5 + column
+                                if index < forecasts.count {
+                                    expandedFloatingWeatherCardDayButton(
+                                        index: index,
+                                        forecast: forecasts[index],
+                                        cityWeather: cityWeather,
+                                        tempUnit: tempUnit
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 18)
+                .padding(.vertical, 16)
+                .animation(.snappy(duration: 0.24), value: selectedDayOffset)
+                .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: cornerRadius))
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 24)
+            .padding(.bottom, 8)
+            .modifier(MapExpandedCardContainer(plainBackground: plainBackground, colorScheme: colorScheme))
+            .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        }
+    }
+
+    private func expandedFloatingWeatherCardDayButton(
+        index: Int,
+        forecast: DailyForecast,
+        cityWeather: CityWeather,
+        tempUnit: TemperatureUnit
+    ) -> some View {
+        let representsNow = index == 0
+        let daySelectionOffset = representsNow ? -1 : index
+        let isSelectedDay = selectedDayOffset == daySelectionOffset
+        let condition = representsNow ? cityWeather.condition : forecast.condition
+        let icon = representsNow ? cityWeather.weatherIcon : forecast.weatherIcon
+        let dotColor = icon.contains("moon") ? theme.colors.moonIconColor : condition.dotColor
+        let temperature = representsNow ? cityWeather.temperature : forecast.dailyHigh
+
+        return Button {
+            withAnimation(.snappy(duration: 0.24)) {
+                selectedDayOffset = daySelectionOffset
+            }
+        } label: {
+            VStack(spacing: 6) {
+                Text(floatingCardDayLabel(for: daySelectionOffset))
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .lineLimit(1)
+
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: isSelectedDay ? 11 : 10, height: isSelectedDay ? 11 : 10)
+                    .shadow(color: dotColor.opacity(0.45), radius: 2)
+
+                Text(tempUnit.display(temperature))
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 10)
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .background {
+                if isSelectedDay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(theme.colors.primaryText.opacity(0.09))
+                        .matchedGeometryEffect(id: "detail-day-selection", in: detailDaySelectionNamespace)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func floatingCardDayLabel(for offset: Int) -> String {
+        if offset == -1 { return localizedString("Now", locale: locale).uppercased() }
+        if offset == 0 { return localizedString("Today", locale: locale).uppercased() }
+
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = "EEE"
+        let date = Calendar.current.date(byAdding: .day, value: offset, to: Date()) ?? Date()
+        return formatter.string(from: date).uppercased()
+    }
+}
+
+// MARK: - Expanded Floating Card Container
+
+private struct MapExpandedCardContainer: ViewModifier {
+    let plainBackground: Bool
+    let colorScheme: ColorScheme
+
+    func body(content: Content) -> some View {
+        if plainBackground {
+            content
+        } else {
+            content.modifier(MapGlassCardContainer(cornerRadius: 22, colorScheme: colorScheme))
         }
     }
 }
@@ -259,10 +454,9 @@ extension ContentView {
             }
 
             if isMapRoute, showingMapExpandedCard, let city = tappedCity {
-                mapExpandedCard(for: city, hideCityName: shouldHideInlineMapCardCityName)
+                mapExpandedCard(for: city, hideCityName: false)
                     .id(city.city.id)
                     .padding(.horizontal, floatingMapCardHorizontalPadding)
-                    .padding(.vertical, shouldAddInlineMapCardVerticalPadding ? 8 : 0)
                     .padding(.bottom, floatingMapCardBottomPadding)
                     .transition(
                         .asymmetric(

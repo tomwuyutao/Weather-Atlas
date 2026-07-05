@@ -59,7 +59,7 @@ struct MapFloatingLegend: View {
         ]
     }
 
-    // MARK: - Color functions (same as before)
+    // MARK: - Overlay Color Scales
 
     private func temperatureColor(celsius: Double) -> Color {
         if celsius <= 0 {
@@ -269,22 +269,4 @@ struct MapFloatingLegend: View {
             }
         }
     }
-}
-
-#Preview("Legend - Light") {
-    ZStack(alignment: .topLeading) {
-        Color(hex: 0xF8F4F1).ignoresSafeArea()
-        MapFloatingLegend(overlayMode: "weather", compact: true) {}
-            .padding(24)
-    }
-    .preferredColorScheme(.light)
-}
-
-#Preview("Legend - Dark") {
-    ZStack(alignment: .topLeading) {
-        Color(hex: 0x2E2961).ignoresSafeArea()
-        MapFloatingLegend(overlayMode: "weather", compact: true) {}
-            .padding(24)
-    }
-    .preferredColorScheme(.dark)
 }

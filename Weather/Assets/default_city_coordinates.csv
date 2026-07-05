@@ -1,0 +1,111 @@
+list_id,city,country,latitude,longitude,time_zone
+europe,Istanbul,Turkey,41.0082,28.9784,Europe/Istanbul
+europe,Moscow,Russia,55.7558,37.6173,Europe/Moscow
+europe,London,England,51.5074,-0.1278,Europe/London
+europe,Saint Petersburg,Russia,59.9311,30.3609,Europe/Moscow
+europe,Berlin,Germany,52.5200,13.4050,Europe/Berlin
+europe,Madrid,Spain,40.4168,-3.7038,Europe/Madrid
+europe,Rome,Italy,41.9028,12.4964,Europe/Rome
+europe,Kyiv,Ukraine,50.4501,30.5234,Europe/Kyiv
+europe,Paris,France,48.8566,2.3522,Europe/Paris
+europe,Bucharest,Romania,44.4268,26.1025,Europe/Bucharest
+europe,Minsk,Belarus,53.9006,27.5590,Europe/Minsk
+europe,Vienna,Austria,48.2082,16.3738,Europe/Vienna
+europe,Hamburg,Germany,53.5511,9.9937,Europe/Berlin
+europe,Warsaw,Poland,52.2297,21.0122,Europe/Warsaw
+europe,Budapest,Hungary,47.4979,19.0402,Europe/Budapest
+europe,Barcelona,Spain,41.3874,2.1686,Europe/Madrid
+europe,Munich,Germany,48.1351,11.5820,Europe/Berlin
+europe,Milan,Italy,45.4642,9.1900,Europe/Rome
+europe,Prague,Czechia,50.0755,14.4378,Europe/Prague
+europe,Sofia,Bulgaria,42.6977,23.3219,Europe/Sofia
+asia,Tokyo,Japan,35.6762,139.6503,Asia/Tokyo
+asia,Delhi,India,28.7041,77.1025,Asia/Kolkata
+asia,Shanghai,China,31.2304,121.4737,Asia/Shanghai
+asia,Dhaka,Bangladesh,23.8103,90.4125,Asia/Dhaka
+asia,Beijing,China,39.9042,116.4074,Asia/Shanghai
+asia,Mumbai,India,19.0760,72.8777,Asia/Kolkata
+asia,Osaka,Japan,34.6937,135.5023,Asia/Tokyo
+asia,Karachi,Pakistan,24.8607,67.0011,Asia/Karachi
+asia,Chongqing,China,29.4316,106.9123,Asia/Shanghai
+asia,Guangzhou,China,23.1291,113.2644,Asia/Shanghai
+asia,Lahore,Pakistan,31.5204,74.3587,Asia/Karachi
+asia,Shenzhen,China,22.5431,114.0579,Asia/Shanghai
+asia,Bangalore,India,12.9716,77.5946,Asia/Kolkata
+asia,Chennai,India,13.0827,80.2707,Asia/Kolkata
+asia,Kolkata,India,22.5726,88.3639,Asia/Kolkata
+asia,Bangkok,Thailand,13.7563,100.5018,Asia/Bangkok
+asia,Tehran,Iran,35.6892,51.3890,Asia/Tehran
+asia,Hyderabad,India,17.3850,78.4867,Asia/Kolkata
+asia,Chengdu,China,30.5728,104.0668,Asia/Shanghai
+asia,Ho Chi Minh City,Vietnam,10.8231,106.6297,Asia/Ho_Chi_Minh
+northAmerica,Mexico City,Mexico,19.4326,-99.1332,America/Mexico_City
+northAmerica,New York,United States,40.7128,-74.0060,America/New_York
+northAmerica,Los Angeles,United States,34.0522,-118.2437,America/Los_Angeles
+northAmerica,Toronto,Canada,43.6532,-79.3832,America/Toronto
+northAmerica,Chicago,United States,41.8781,-87.6298,America/Chicago
+northAmerica,Dallas,United States,32.7767,-96.7970,America/Chicago
+northAmerica,Houston,United States,29.7604,-95.3698,America/Chicago
+northAmerica,Miami,United States,25.7617,-80.1918,America/New_York
+northAmerica,Philadelphia,United States,39.9526,-75.1652,America/New_York
+northAmerica,Atlanta,United States,33.7490,-84.3880,America/New_York
+northAmerica,Washington,United States,38.9072,-77.0369,America/New_York
+northAmerica,Boston,United States,42.3601,-71.0589,America/New_York
+northAmerica,Phoenix,United States,33.4484,-112.0740,America/Phoenix
+northAmerica,Monterrey,Mexico,25.6866,-100.3161,America/Monterrey
+northAmerica,Guadalajara,Mexico,20.6597,-103.3496,America/Mexico_City
+northAmerica,San Francisco,United States,37.7749,-122.4194,America/Los_Angeles
+northAmerica,Detroit,United States,42.3314,-83.0458,America/Detroit
+northAmerica,Montreal,Canada,45.5017,-73.5673,America/Toronto
+northAmerica,Seattle,United States,47.6062,-122.3321,America/Los_Angeles
+northAmerica,Minneapolis,United States,44.9778,-93.2650,America/Chicago
+southAmerica,Sao Paulo,Brazil,-23.5558,-46.6396,America/Sao_Paulo
+southAmerica,Buenos Aires,Argentina,-34.6037,-58.3816,America/Argentina/Buenos_Aires
+southAmerica,Rio de Janeiro,Brazil,-22.9068,-43.1729,America/Sao_Paulo
+southAmerica,Lima,Peru,-12.0464,-77.0428,America/Lima
+southAmerica,Bogota,Colombia,4.7110,-74.0721,America/Bogota
+southAmerica,Santiago,Chile,-33.4489,-70.6693,America/Santiago
+southAmerica,Belo Horizonte,Brazil,-19.9167,-43.9345,America/Sao_Paulo
+southAmerica,Caracas,Venezuela,10.4806,-66.9036,America/Caracas
+southAmerica,Porto Alegre,Brazil,-30.0346,-51.2177,America/Sao_Paulo
+southAmerica,Brasilia,Brazil,-15.8267,-47.9218,America/Sao_Paulo
+southAmerica,Recife,Brazil,-8.0476,-34.8770,America/Recife
+southAmerica,Fortaleza,Brazil,-3.7319,-38.5267,America/Fortaleza
+southAmerica,Salvador,Brazil,-12.9777,-38.5016,America/Bahia
+southAmerica,Medellin,Colombia,6.2442,-75.5812,America/Bogota
+southAmerica,Guayaquil,Ecuador,-2.1700,-79.9224,America/Guayaquil
+southAmerica,Curitiba,Brazil,-25.4284,-49.2733,America/Sao_Paulo
+southAmerica,Quito,Ecuador,-0.1807,-78.4678,America/Guayaquil
+southAmerica,Cali,Colombia,3.4516,-76.5320,America/Bogota
+southAmerica,Montevideo,Uruguay,-34.9011,-56.1645,America/Montevideo
+southAmerica,Asuncion,Paraguay,-25.2637,-57.5759,America/Asuncion
+africa,Lagos,Nigeria,6.5244,3.3792,Africa/Lagos
+africa,Cairo,Egypt,30.0444,31.2357,Africa/Cairo
+africa,Kinshasa,Democratic Republic of the Congo,-4.4419,15.2663,Africa/Kinshasa
+africa,Johannesburg,South Africa,-26.2041,28.0473,Africa/Johannesburg
+africa,Luanda,Angola,-8.8390,13.2894,Africa/Luanda
+africa,Dar es Salaam,Tanzania,-6.7924,39.2083,Africa/Dar_es_Salaam
+africa,Khartoum,Sudan,15.5007,32.5599,Africa/Khartoum
+africa,Abidjan,Cote d'Ivoire,5.3600,-4.0083,Africa/Abidjan
+africa,Alexandria,Egypt,31.2001,29.9187,Africa/Cairo
+africa,Nairobi,Kenya,-1.2921,36.8219,Africa/Nairobi
+africa,Addis Ababa,Ethiopia,8.9806,38.7578,Africa/Addis_Ababa
+africa,Cape Town,South Africa,-33.9249,18.4241,Africa/Johannesburg
+africa,Casablanca,Morocco,33.5731,-7.5898,Africa/Casablanca
+africa,Accra,Ghana,5.6037,-0.1870,Africa/Accra
+africa,Durban,South Africa,-29.8587,31.0218,Africa/Johannesburg
+africa,Dakar,Senegal,14.7167,-17.4677,Africa/Dakar
+africa,Kano,Nigeria,12.0022,8.5920,Africa/Lagos
+africa,Ibadan,Nigeria,7.3775,3.9470,Africa/Lagos
+africa,Pretoria,South Africa,-25.7479,28.2293,Africa/Johannesburg
+africa,Kampala,Uganda,0.3476,32.5825,Africa/Kampala
+australia,Sydney,Australia,-33.8688,151.2093,Australia/Sydney
+australia,Melbourne,Australia,-37.8136,144.9631,Australia/Melbourne
+australia,Brisbane,Australia,-27.4698,153.0251,Australia/Brisbane
+australia,Perth,Australia,-31.9523,115.8613,Australia/Perth
+australia,Adelaide,Australia,-34.9285,138.6007,Australia/Adelaide
+australia,Gold Coast,Australia,-28.0167,153.4000,Australia/Brisbane
+australia,Canberra,Australia,-35.2809,149.1300,Australia/Sydney
+australia,Newcastle,Australia,-32.9283,151.7817,Australia/Sydney
+australia,Central Coast,Australia,-33.4267,151.3417,Australia/Sydney
+australia,Wollongong,Australia,-34.4278,150.8931,Australia/Sydney

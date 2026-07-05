@@ -13,6 +13,7 @@ import MapKit
 
 struct HomeStaticMapPreview: View {
     let cities: [CityWeather]
+    let fitCities: [City]
     let rankedCandidates: [SunnyCandidate]
     let selectedDayOffset: Int
     let accent: Color
@@ -62,7 +63,7 @@ struct HomeStaticMapPreview: View {
         .onAppear {
             refitApplePreview()
         }
-        .onChange(of: cities.map(\.id)) { _, _ in
+        .onChange(of: fitCities.map(\.id)) { _, _ in
             refitApplePreview()
         }
         .onChange(of: selectedDayOffset) { _, _ in
@@ -78,7 +79,7 @@ struct HomeStaticMapPreview: View {
                 .blur(radius: 6)
 
             Circle()
-                .fill((candidate?.score ?? 0) >= 55 ? accent : contextDot.opacity(0.75))
+                .fill(candidate?.score.map { $0 >= 55 ? accent : contextDot.opacity(0.75) } ?? contextDot.opacity(0.75))
                 .frame(width: 20, height: 20)
                 .shadow(color: accent.opacity(0.24), radius: 6, y: 2)
 
@@ -94,22 +95,15 @@ struct HomeStaticMapPreview: View {
         let isNow = selectedDayOffset == -1
         let condition = isNow ? cityWeather.condition : forecast.condition
         let icon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
-        if icon.contains("moon") { return Color(red: 0.64, green: 0.52, blue: 0.72) }
-        switch condition {
-        case .clear: return Color(red: 1.0, green: 0.54, blue: 0.40)
-        case .partlySunny, .partlyCloudy: return Color(red: 0.93, green: 0.70, blue: 0.41)
-        case .rain: return Color(red: 0.30, green: 0.44, blue: 0.83)
-        case .drizzle: return Color(red: 0.40, green: 0.67, blue: 0.89)
-        case .cloudy, .snow, .fog, .wind: return colorScheme == .dark
-            ? Color(red: 0.83, green: 0.89, blue: 0.93)
-            : Color(red: 0.72, green: 0.78, blue: 0.82)
-        }
+        let colors = AppTheme.shared.colors
+        return icon.contains("moon") ? colors.moonIconColor : condition.dotColor(for: colors)
     }
 
     private func fitAllCities() {
-        guard !cities.isEmpty else { return }
-        let latitudes = cities.map(\.city.latitude)
-        let longitudes = cities.map(\.city.longitude)
+        let citiesForFitting = fitCities.isEmpty ? cities.map(\.city) : fitCities
+        guard !citiesForFitting.isEmpty else { return }
+        let latitudes = citiesForFitting.map(\.latitude)
+        let longitudes = citiesForFitting.map(\.longitude)
         guard let minLatitude = latitudes.min(),
               let maxLatitude = latitudes.max(),
               let minLongitude = longitudes.min(),
@@ -132,6 +126,10 @@ struct HomeStaticMapPreview: View {
             fitAllCities()
         }
     }
+}
+
+#Preview("Home View") {
+    ContentView()
 }
 
 // MARK: - List Sorting
@@ -164,7 +162,7 @@ enum WeatherListSortMode: String, CaseIterable, Identifiable {
 
 struct SunnyCandidate: Identifiable {
     let cityWeather: CityWeather
-    let score: Double
+    let score: Double?
     let cloudCover: Double?
     let precipitationChance: Double?
     let temperature: Double
@@ -175,8 +173,8 @@ struct SunnyCandidate: Identifiable {
 // MARK: - Home and List Logic
 
 extension ContentView {
-    var listSortMode: WeatherListSortMode {
-        WeatherListSortMode(rawValue: weatherListSortModeRaw) ?? .sunny
+    var selectedListSortMode: WeatherListSortMode {
+        WeatherListSortMode(rawValue: listSortMode) ?? .sunny
     }
 
     func sunnyCandidate(for cityWeather: CityWeather) -> SunnyCandidate {
@@ -211,28 +209,63 @@ extension ContentView {
         mapCities
             .map(sunnyCandidate(for:))
             .sorted { lhs, rhs in
-                if lhs.score != rhs.score { return lhs.score > rhs.score }
-                return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
+                switch (lhs.score, rhs.score) {
+                case let (lhsScore?, rhsScore?):
+                    if lhsScore != rhsScore { return lhsScore > rhsScore }
+                    return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
+                }
             }
     }
 
-    private var homeSunnyScoreThreshold: Double {
+    var homeSunnyScoreThreshold: Double {
         70
     }
 
     var recommendedSunnyCandidates: [SunnyCandidate] {
-        sunnyCandidates.filter { $0.score >= homeSunnyScoreThreshold }
+        sunnyCandidates.filter { candidate in
+            guard let score = candidate.score else { return false }
+            return score >= homeSunnyScoreThreshold
+        }
     }
 
     var sortedListCandidates: [SunnyCandidate] {
         let candidates = mapCities.map(sunnyCandidate(for:))
-        switch listSortMode {
+        switch selectedListSortMode {
         case .temperature:
             return candidates.sorted { $0.temperature > $1.temperature }
         case .cloud:
-            return candidates.sorted { ($0.cloudCover ?? 1) < ($1.cloudCover ?? 1) }
+            return candidates.sorted { lhs, rhs in
+                switch (lhs.cloudCover, rhs.cloudCover) {
+                case let (lhsCloud?, rhsCloud?):
+                    return lhsCloud < rhsCloud
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
+                }
+            }
         case .sunny:
-            return candidates.sorted { $0.score > $1.score }
+            return candidates.sorted { lhs, rhs in
+                switch (lhs.score, rhs.score) {
+                case let (lhsScore?, rhsScore?):
+                    if lhsScore != rhsScore { return lhsScore > rhsScore }
+                    return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
+                }
+            }
         }
     }
 
@@ -286,6 +319,7 @@ extension ContentView {
     private func homeMapSnapshot(height: CGFloat) -> some View {
         HomeStaticMapPreview(
             cities: mapCities,
+            fitCities: mapFitCities,
             rankedCandidates: Array(recommendedSunnyCandidates.prefix(3)),
             selectedDayOffset: selectedDayOffset,
             accent: theme.colors.dotSun,
@@ -339,7 +373,7 @@ extension ContentView {
 
     private func homeCandidateList(limit: Int? = nil) -> some View {
         let rankedCandidates = limit.map { Array(recommendedSunnyCandidates.prefix($0)) } ?? recommendedSunnyCandidates
-        return VStack(spacing: 6) {
+        return VStack(spacing: 0) {
             if rankedCandidates.isEmpty {
                 Text(localizedString("No sunny places for this date.", locale: locale))
                     .font(.callout)
@@ -356,6 +390,12 @@ extension ContentView {
                         sunnyCandidateRow(candidate, rank: index + 1, compact: true)
                     }
                     .buttonStyle(.plain)
+
+                    if index < rankedCandidates.count - 1 {
+                        Divider()
+                            .background(theme.colors.secondaryText.opacity(0.18))
+                            .padding(.leading, 34)
+                    }
                 }
             }
         }
@@ -385,10 +425,11 @@ extension ContentView {
                 HStack(spacing: 3) {
                     Image(systemName: "thermometer.medium")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(theme.colors.secondaryText.opacity(0.72))
+                        .foregroundStyle(theme.colors.dotSun)
                         .frame(width: 13, alignment: .center)
                     Text(tempUnit.display(candidate.temperature))
                         .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.colors.dotSun)
                         .monospacedDigit()
                         .frame(width: 34, alignment: .leading)
                 }
@@ -416,25 +457,25 @@ extension ContentView {
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 10)
-        .background(theme.colors.glassFill.opacity(0.58), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(Rectangle())
     }
 
     var homeListMenu: some View {
-        atlasListMenu(titleOverride: nil)
+        listSwitcher(titleOverride: nil)
     }
     func topToolbar<Accessory: View>(
         titleOverride: String? = nil,
         @ViewBuilder accessory: () -> Accessory
     ) -> some View {
         HStack(alignment: .center, spacing: 12) {
-            atlasListMenu(titleOverride: titleOverride)
+            listSwitcher(titleOverride: titleOverride)
             Spacer(minLength: 12)
             accessory()
         }
         .frame(maxWidth: .infinity)
     }
-    func atlasListMenu(titleOverride: String?) -> some View {
+
+    func listSwitcher(titleOverride: String?) -> some View {
         Group {
             if listEditMode && titleOverride == nil {
                 Button {
@@ -444,21 +485,26 @@ extension ContentView {
                 } label: {
                     HStack(spacing: 6) {
                         Text(toolbarTitle)
-                            .font(.title2.weight(.semibold))
+                            .font(.system(.title, design: .serif).weight(.semibold))
+                            .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
                         Image(systemName: "pencil")
-                            .font(.system(size: 12, weight: .semibold))
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
                     }
                 }
                 .buttonStyle(.plain)
             } else {
                 Menu {
                     ForEach(managedLists) { listID in
-                        Button(listID.localizedDisplayName(locale: locale)) {
+                        Button {
                             listEditMode = false
                             Task {
                                 await switchToList(listID)
                             }
+                        } label: {
+                            Text(listID.localizedDisplayName(locale: locale))
+                                .foregroundStyle(theme.colors.primaryText)
                         }
                     }
 
@@ -472,16 +518,18 @@ extension ContentView {
                 } label: {
                     HStack(spacing: 6) {
                         Text(titleOverride ?? toolbarTitle)
-                            .font(.title2.weight(.semibold))
+                            .font(.system(.title, design: .serif).weight(.semibold))
+                            .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
                         if titleOverride == nil {
                             Image(systemName: "chevron.down")
-                                .font(.system(size: 12, weight: .semibold))
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(theme.colors.primaryText)
                         }
                     }
                 }
                 .menuOrder(.fixed)
-                .tint(.primary)
+                .tint(theme.colors.primaryText)
             }
         }
     }

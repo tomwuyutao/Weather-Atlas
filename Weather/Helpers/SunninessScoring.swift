@@ -13,7 +13,15 @@ enum SunninessScoring {
         condition: AppWeatherCondition,
         icon: String,
         cloudCover: Double?
-    ) -> Double {
+    ) -> Double? {
+        guard let cloudCover else {
+            DeveloperWarningCenter.show(
+                title: "Cloud Cover Missing",
+                message: "A sunniness score could not be calculated because WeatherKit returned no cloud cover value."
+            )
+            return nil
+        }
+
         if icon.contains("moon") {
             return 0
         }
@@ -32,7 +40,7 @@ enum SunninessScoring {
             conditionBase = 12
         }
 
-        let cloud = min(max(cloudCover ?? 0.5, 0), 1)
+        let cloud = min(max(cloudCover, 0), 1)
         let cloudPenalty = cloud * 42
         return max(0, min(100, conditionBase - cloudPenalty))
     }

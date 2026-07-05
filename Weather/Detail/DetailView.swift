@@ -13,61 +13,62 @@ import MapKit
 
 extension ContentView {
     @ViewBuilder
-    func selectedCityDetailDestination(cityID: UUID) -> some View {
-        if let city = detailCity(for: cityID) {
-            mapExpandedCardDetailDestination(for: city)
+    func cityDetailDestination(for cityID: UUID) -> some View {
+        if let city = cityWeatherForDetailRoute(cityID) {
+            cityDetailView(for: city, route: .cityDetail(city.id))
         }
     }
 
-    private func mapExpandedCardDetailDestination(for city: CityWeather) -> some View {
-        expandedCardDetailDestination(for: city, dismissAction: {
-            dismissRoute(.cityDetail(city.id))
-            selectedDayOffset = 0
-        })
-    }
-
-    func expandedCardDetailDestination(for city: CityWeather, dismissAction: @escaping () -> Void) -> some View {
+    func cityDetailView(for city: CityWeather, route: AppNavigationRoute) -> some View {
         ZStack(alignment: .bottom) {
-            ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 14) {
-                    detailSunninessReport(for: city)
-                }
-                .padding(.horizontal, detailViewHorizontalPadding)
-                .padding(.top, detailViewTopPadding)
-                .padding(.bottom, detailViewBottomPadding)
-                .frame(maxWidth: detailViewMaxWidth)
-                .frame(maxWidth: .infinity)
-            }
-            .id(city.id)
-            .transition(.opacity)
-            .animation(.smooth(duration: 0.24), value: city.id)
-            .scrollContentBackground(.hidden)
+            cityDetailScrollContent(for: city)
 
-            if !showingInlineSearch {
+            if !showingSearchSheet {
                 floatingBottomToolbar
                     .padding(.horizontal, 16)
                     .padding(.bottom, -2)
             }
         }
         .background {
-            detailConditionGradient(for: city)
+            theme.colors.background
                 .ignoresSafeArea()
         }
         .navigationTitle("")
         .navigationBarBackButtonHidden(true)
         .toolbar(.hidden, for: .navigationBar)
-        .tint(.primary)
+        .tint(theme.colors.primaryText)
+        .onDisappear {
+            guard case .cityDetail = route else { return }
+            selectedDayOffset = 0
+        }
     }
 
-    func detailCity(for cityID: UUID) -> CityWeather? {
+    private func cityDetailScrollContent(for city: CityWeather) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 14) {
+                detailSunninessReport(for: city)
+            }
+            .padding(.horizontal, detailViewHorizontalPadding)
+            .padding(.top, detailViewTopPadding)
+            .padding(.bottom, detailViewBottomPadding)
+            .frame(maxWidth: detailViewMaxWidth)
+            .frame(maxWidth: .infinity)
+        }
+        .id(city.id)
+        .transition(.opacity)
+        .animation(.smooth(duration: 0.24), value: city.id)
+        .scrollContentBackground(.hidden)
+    }
+
+    func cityWeatherForDetailRoute(_ cityID: UUID) -> CityWeather? {
         if let city = mapCities.first(where: { $0.id == cityID }) {
             return city
         }
         if tappedCity?.id == cityID {
             return tappedCity
         }
-        if previewCity?.id == cityID {
-            return previewCity
+        if temporaryMapSearchCity?.id == cityID {
+            return temporaryMapSearchCity
         }
         if addCityDetailCity?.id == cityID {
             return addCityDetailCity
@@ -85,7 +86,7 @@ extension ContentView {
         let condition = isNow ? city.condition : forecast.condition
 
         return VStack(alignment: .leading, spacing: 14) {
-            detailSunninessHero(
+            detailCityNameHeader(
                 city: city,
                 icon: icon,
                 condition: condition
@@ -93,77 +94,18 @@ extension ContentView {
 
             detailSunnyFactorGrid(city: city, candidate: candidate, forecast: forecast)
 
-            detailSunnyWindow(city: city)
+            detailBestFutureDates(city: city)
+
+            detailCloudCover(city: city)
 
             detailNearbyCities(city: city)
         }
     }
 
-    private func detailConditionGradient(for city: CityWeather) -> some View {
-        let tint = detailConditionTint(for: city)
-        let strongOpacity = colorScheme == .dark ? 0.36 : 0.22
-        let softOpacity = colorScheme == .dark ? 0.18 : 0.12
-        let sideOpacity = colorScheme == .dark ? 0.20 : 0.10
-        return ZStack {
-            theme.colors.background
-            LinearGradient(
-                colors: [
-                    tint.opacity(strongOpacity),
-                    tint.opacity(softOpacity),
-                    theme.colors.background.opacity(0.18),
-                    tint.opacity(sideOpacity)
-                ],
-                startPoint: .topTrailing,
-                endPoint: .bottomLeading
-            )
-            LinearGradient(
-                colors: [
-                    .clear,
-                    tint.opacity(colorScheme == .dark ? 0.10 : 0.06),
-                    .clear
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        }
-    }
-
-    private func detailConditionTint(for city: CityWeather) -> Color {
-        let isNow = selectedDayOffset == -1
-        let forecast = city.forecast(for: max(0, selectedDayOffset))
-        let condition = isNow ? city.condition : forecast.condition
-        let icon = isNow ? city.weatherIcon : forecast.weatherIcon
-
-        if icon.contains("moon") {
-            return theme.colors.moonIconColor
-        }
-
-        switch condition {
-        case .clear:
-            return theme.colors.dotSun
-        case .partlySunny:
-            return theme.colors.dotPartlyCloudy
-        case .partlyCloudy:
-            return theme.colors.dotSun.compatMix(with: theme.colors.dotCloudy, by: 0.45)
-        case .rain:
-            return theme.colors.dotRain
-        case .drizzle:
-            return theme.colors.dotDrizzle
-        case .cloudy:
-            return theme.colors.dotCloudy
-        case .snow:
-            return theme.colors.dotSnow
-        case .fog:
-            return theme.colors.dotFog
-        case .wind:
-            return theme.colors.dotWind
-        }
-    }
-
-    private func detailSunninessHero(city: CityWeather, icon: String, condition: AppWeatherCondition) -> some View {
+    private func detailCityNameHeader(city: CityWeather, icon: String, condition: AppWeatherCondition) -> some View {
         VStack(spacing: 9) {
             Text(city.city.localizedName(locale: locale))
-                .font(.largeTitle.weight(.bold))
+                .font(.system(.largeTitle, design: .serif).weight(.bold))
                 .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
@@ -214,7 +156,7 @@ extension ContentView {
                 title: localizedString("Rain", locale: locale),
                 value: rainChance.map { "\(Int($0 * 100))%" } ?? "-",
                 systemImage: "drop.fill",
-                tint: theme.colors.rainIconColor
+                tint: theme.colors.accent
             )
 
             detailSunnyFactorTile(
@@ -228,7 +170,7 @@ extension ContentView {
                 title: localizedString("Max Temp", locale: locale),
                 value: tempUnit.display(forecast.dailyHigh),
                 systemImage: "thermometer.high",
-                tint: theme.colors.dotPartlyCloudy
+                tint: theme.colors.dotSun
             )
 
             detailSunnyFactorTile(
@@ -271,10 +213,90 @@ extension ContentView {
         .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 18))
     }
 
+    // MARK: Future Date Discovery
+
+    private func detailBestFutureDates(city: CityWeather) -> some View {
+        let periods = detailSunnyPeriods(for: city)
+        let recommendations = periods
+            .filter { $0.id > 0 }
+            .filter { ($0.score ?? 0) >= homeSunnyScoreThreshold }
+            .sorted { $0.id < $1.id }
+            .prefix(5)
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Label(localizedString("Best Future Dates", locale: locale), systemImage: "sparkles")
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+
+            if recommendations.isEmpty {
+                Text(localizedString("No strong future dates", locale: locale))
+                    .font(.callout)
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(recommendations.enumerated()), id: \.element.id) { index, period in
+                        Button {
+                            withAnimation(.smooth(duration: 0.2)) {
+                                selectedDayOffset = period.id
+                            }
+                        } label: {
+                            detailFutureDateRow(
+                                period,
+                                city: city,
+                                isSelected: period.id == max(0, selectedDayOffset)
+                            )
+                        }
+                        .buttonStyle(.plain)
+
+                        if index < recommendations.count - 1 {
+                            Divider()
+                                .background(theme.colors.secondaryText.opacity(0.16))
+                                .padding(.leading, 30)
+                        }
+                    }
+                }
+            }
+        }
+        .padding(14)
+        .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
+    }
+
+    private func detailFutureDateRow(_ period: DetailSunnyPeriod, city: CityWeather, isSelected: Bool) -> some View {
+        let forecast = city.forecast(for: period.id)
+        let hours = detailDisplayHours(for: city, forecast: forecast, filtersPastToday: false)
+        let window = detailSunnyWindowSummary(for: city, hours: hours)
+
+        return HStack(spacing: 10) {
+            Image(systemName: "sun.max.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(theme.colors.dotSun)
+                .frame(width: 22)
+
+            Text(period.dayLabel)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+
+            Spacer(minLength: 8)
+
+            Text(window)
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+            Image(systemName: "checkmark")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isSelected ? theme.colors.accent : .clear)
+                .frame(width: 14)
+        }
+        .padding(.vertical, 9)
+    }
+
     // MARK: Cloud Cover
 
-    private func detailSunnyWindow(city: CityWeather) -> some View {
-        let periods = detailSunnyPeriods(for: city)
+    private func detailCloudCover(city: CityWeather) -> some View {
         let selectedDay = max(0, selectedDayOffset)
         let selectedForecast = city.forecast(for: selectedDay)
         let selectedHours = detailDisplayHours(
@@ -285,14 +307,12 @@ extension ContentView {
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label(localizedString("Cloud Cover", locale: locale), systemImage: "cloud.fill")
+                Label(localizedString("Cloud Cover", locale: locale), systemImage: "cloud")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
 
                 Spacer(minLength: 0)
             }
-
-            detailSunnyDayStrip(periods: periods, selectedDay: selectedDay, city: city)
 
             if selectedHours.isEmpty {
                 Text(localizedString("No hourly data", locale: locale))
@@ -308,49 +328,11 @@ extension ContentView {
         .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
     }
 
-    private func detailSunnyDayStrip(periods: [DetailSunnyPeriod], selectedDay: Int, city: CityWeather) -> some View {
-        let periodByDay = Dictionary(uniqueKeysWithValues: periods.map { ($0.id, $0) })
-        return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(0..<10, id: \.self) { dayOffset in
-                    let period = periodByDay[dayOffset] ?? detailFallbackSunnyPeriod(for: city, dayOffset: dayOffset)
-                    Button {
-                        withAnimation(.smooth(duration: 0.2)) {
-                            selectedDayOffset = dayOffset
-                        }
-                    } label: {
-                        detailSunnyDayButton(period, isSelected: selectedDay == dayOffset)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(.horizontal, 2)
-            .padding(.vertical, 3)
-        }
-    }
-
-    private func detailSunnyDayButton(_ period: DetailSunnyPeriod, isSelected: Bool) -> some View {
-        VStack(spacing: 6) {
-            Text(period.dayLabel)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(isSelected ? theme.colors.primaryText : theme.colors.secondaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-
-            Circle()
-                .fill(detailSunnyDayDotColor(for: period))
-                .frame(width: 6, height: 6)
-        }
-            .frame(width: 54, height: 54)
-            .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 14))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(isSelected ? theme.colors.accent.opacity(0.82) : .clear, lineWidth: 2.2)
-            }
-    }
-
     private func detailSunnyDayDotColor(for period: DetailSunnyPeriod) -> Color {
-        let normalizedScore = min(max(period.score / 100, 0), 1)
+        guard let score = period.score else {
+            return theme.colors.dotCloudy
+        }
+        let normalizedScore = min(max(score / 100, 0), 1)
         return theme.colors.dotCloudy.compatMix(with: theme.colors.dotSun, by: normalizedScore)
     }
 
@@ -476,7 +458,9 @@ extension ContentView {
                 return DetailNearbyCityContext(
                     cityWeather: nearbyCity,
                     score: score,
-                    isSunnier: score > selectedScore + 4
+                    isSunnier: score.map { nearbyScore in
+                        nearbyScore > (selectedScore ?? Double.greatestFiniteMagnitude) + 4
+                    } ?? false
                 )
             }
     }
@@ -498,10 +482,16 @@ extension ContentView {
                 await switchToList(listID)
             }
 
-            let revealedCity = weatherService.cityWeatherData.first {
+            guard let revealedCity = weatherService.cityWeatherData.first(where: {
                 abs($0.city.latitude - city.city.latitude) < 0.001
                     && abs($0.city.longitude - city.city.longitude) < 0.001
-            } ?? city
+            }) else {
+                weatherService.reportDeveloperWarning(
+                    title: "Map Reveal Failed",
+                    message: "After switching lists, the requested city \(city.city.localizedName()) was not found in fetched weather data."
+                )
+                return
+            }
 
             centerOnCityTrigger = nil
             tappedCity = revealedCity
@@ -512,44 +502,6 @@ extension ContentView {
             mapRecenterRequest = .listCoordinates
             showMapMarkerCard(revealedCity, expanded: false, focusesMarker: true)
         }
-    }
-
-    // MARK: Verdict Text Helpers
-
-    private func detailSunninessLabel(for candidate: SunnyCandidate, icon: String) -> String {
-        if icon.contains("moon") { return localizedString("Night", locale: locale) }
-        switch candidate.score {
-        case 82...:
-            return localizedString("Sunny", locale: locale)
-        case 66..<82:
-            return localizedString("Mostly sunny", locale: locale)
-        case 45..<66:
-            return localizedString("Some sun", locale: locale)
-        default:
-            return localizedString("Cloudy", locale: locale)
-        }
-    }
-
-    private func detailSunninessVerdict(for candidate: SunnyCandidate, icon: String, condition: AppWeatherCondition) -> String {
-        if icon.contains("moon") {
-            return localizedString("No useful sunshine now.", locale: locale)
-        }
-        let cloud = candidate.cloudCover.map { Int($0 * 100) }
-        let rain = candidate.precipitationChance.map { Int($0 * 100) }
-
-        if candidate.score >= 82 {
-            return localizedString("Clear and bright.", locale: locale)
-        }
-        if candidate.score >= 66 {
-            return localizedString("Good sun, minor cloud.", locale: locale)
-        }
-        if candidate.score >= 45 {
-            return cloud.map { String(format: localizedString("%@ cloud", locale: locale), "\($0)%") } ?? localizedString("Mixed brightness.", locale: locale)
-        }
-        if [.rain, .drizzle, .snow].contains(condition) || (rain ?? 0) > 45 {
-            return localizedString("Rain risk.", locale: locale)
-        }
-        return localizedString("Too much cloud.", locale: locale)
     }
 
     private func detailDisplayHours(for city: CityWeather, forecast: DailyForecast) -> [HourlyForecast] {
@@ -574,12 +526,7 @@ extension ContentView {
     private struct DetailSunnyPeriod: Identifiable {
         let id: Int
         let dayLabel: String
-        let summary: String
-        let verdict: String
-        let icon: String
-        let score: Double
-        let level: Int
-        let sunnyHourCount: Int
+        let score: Double?
     }
 
     private func detailSunnyPeriods(for city: CityWeather) -> [DetailSunnyPeriod] {
@@ -588,69 +535,15 @@ extension ContentView {
             let hours = detailDisplayHours(for: city, forecast: forecast, filtersPastToday: true)
             guard !hours.isEmpty else { return nil }
 
-            let sunnyHours = hours.filter { detailHourlySunnyLevel($0) >= 2 }
-            let moderateHours = hours.filter { detailHourlySunnyLevel($0) >= 1 }
-            let cloudValues = hours.compactMap(\.cloudCover)
-            let averageCloudCover = cloudValues.isEmpty ? nil : cloudValues.reduce(0, +) / Double(cloudValues.count)
-            let level = sunnyHours.count >= 4 ? 3 : sunnyHours.isEmpty ? (moderateHours.isEmpty ? 0 : 1) : 2
             return DetailSunnyPeriod(
                 id: dayOffset,
                 dayLabel: detailSunnyDayLabel(dayOffset: dayOffset, timeZone: city.timeZone),
-                summary: detailSunnyWindowSummary(for: city, hours: hours),
-                verdict: detailSunnyPeriodVerdict(level: level, sunnyHours: sunnyHours.count, moderateHours: moderateHours.count),
-                icon: detailSunnyPeriodIcon(level: level, fallback: forecast.weatherIcon),
                 score: SunninessScoring.score(
                     condition: forecast.condition,
                     icon: forecast.weatherIcon,
-                    cloudCover: forecast.cloudCover ?? averageCloudCover
-                ),
-                level: level,
-                sunnyHourCount: sunnyHours.count
+                    cloudCover: forecast.cloudCover
+                )
             )
-        }
-    }
-
-    private func detailFallbackSunnyPeriod(for city: CityWeather, dayOffset: Int) -> DetailSunnyPeriod {
-        let forecast = city.forecast(for: dayOffset)
-        return DetailSunnyPeriod(
-            id: dayOffset,
-            dayLabel: detailSunnyDayLabel(dayOffset: dayOffset, timeZone: city.timeZone),
-            summary: localizedString("No strong window", locale: locale),
-            verdict: localizedString("No hourly data", locale: locale),
-            icon: forecast.weatherIcon,
-            score: SunninessScoring.score(
-                condition: forecast.condition,
-                icon: forecast.weatherIcon,
-                cloudCover: forecast.cloudCover
-            ),
-            level: 0,
-            sunnyHourCount: 0
-        )
-    }
-
-    private func detailSunnyPeriodVerdict(level: Int, sunnyHours: Int, moderateHours: Int) -> String {
-        switch level {
-        case 3:
-            return "\(sunnyHours) strong sunny hours"
-        case 2:
-            return "\(sunnyHours) usable sunny hours"
-        case 1:
-            return "\(moderateHours) mixed bright hours"
-        default:
-            return localizedString("Limited sunshine", locale: locale)
-        }
-    }
-
-    private func detailSunnyPeriodIcon(level: Int, fallback: String) -> String {
-        switch level {
-        case 3:
-            return "sun.max.fill"
-        case 2:
-            return "cloud.sun.fill"
-        case 1:
-            return fallback
-        default:
-            return "cloud.fill"
         }
     }
 
@@ -673,7 +566,13 @@ extension ContentView {
 
     private func detailHourlySunnyLevel(_ hour: HourlyForecast) -> Int {
         if hour.weatherIcon.contains("moon") { return 0 }
-        let cloud = hour.cloudCover ?? 0.5
+        guard let cloud = hour.cloudCover else {
+            weatherService.reportDeveloperWarning(
+                title: "Hourly Cloud Cover Missing",
+                message: "An hourly sunny-window level could not be calculated because WeatherKit returned no cloud cover value."
+            )
+            return 0
+        }
         let rain = hour.precipitationChance ?? 0
         if rain > 0.45 { return 0 }
         if hour.weatherIcon.contains("sun.max") && cloud < 0.25 { return 3 }
@@ -752,7 +651,7 @@ extension ContentView {
 
 private struct DetailNearbyCityContext: Identifiable {
     let cityWeather: CityWeather
-    let score: Double
+    let score: Double?
     let isSunnier: Bool
 
     var id: UUID { cityWeather.id }
@@ -826,7 +725,7 @@ private struct DetailMapContextView: View {
 
             Text(selectedCity.city.localizedName(locale: locale))
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(AppTheme.shared.colors.primaryText)
                 .lineLimit(1)
         }
         .padding(.horizontal, 9)
@@ -848,14 +747,9 @@ private struct DetailMapContextView: View {
 
             Text(nearbyCity.cityWeather.city.localizedName(locale: locale))
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(AppTheme.shared.colors.primaryText)
                 .lineLimit(1)
 
-            if nearbyCity.isSunnier {
-                Image(systemName: "sun.max.fill")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.orange)
-            }
         }
         .padding(.horizontal, 7)
         .padding(.vertical, 5)

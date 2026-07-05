@@ -3,15 +3,256 @@
 //  Weather
 //
 //  Purpose: Composes the weather map screen: map controls, marker selection,
-//  camera fitting, and country-search preview controls.
+//  camera fitting, and marker selection.
 //
 
 import SwiftUI
 import CoreLocation
+import MapKit
 
 enum MapRecenterRequest: Equatable {
     case weatherCities
     case listCoordinates
+}
+
+// MARK: - Overlay Menu
+
+extension ContentView {
+    var mapOverlayOptions: [(mode: String, icon: String, label: String)] {
+        [
+            ("weather", "cloud.sun", localizedString("Weather", locale: locale)),
+            ("temperature", "thermometer.medium", localizedString("Temperature", locale: locale)),
+            ("cloud", "cloud", localizedString("Cloud Cover", locale: locale)),
+            ("rain", "cloud.rain", localizedString("Rain", locale: locale)),
+            ("wind", "wind", localizedString("Wind", locale: locale)),
+            ("uv", "sun.max.trianglebadge.exclamationmark", localizedString("UV Index", locale: locale))
+        ]
+    }
+
+    var mapOverlayMenu: some View {
+        Menu {
+            ForEach(mapOverlayOptions, id: \.mode) { option in
+                Button {
+                    Haptics.lightImpact()
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        mapOverlayMode = option.mode
+                    }
+                } label: {
+                    Label {
+                        Text(option.label)
+                            .foregroundStyle(theme.colors.primaryText)
+                    } icon: {
+                        Image(systemName: mapOverlayMode == option.mode ? "checkmark" : option.icon)
+                            .foregroundStyle(theme.colors.primaryText)
+                    }
+                }
+            }
+        } label: {
+            Image(systemName: "square.3.layers.3d")
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(theme.colors.primaryText)
+        }
+        .tint(theme.colors.primaryText)
+        .menuOrder(.fixed)
+    }
+}
+
+// MARK: - Apple Maps Implementation
+struct AppleWeatherMapView: View {
+    let cities: [CityWeather]
+    let fitCities: [City]
+    let selectedDayOffset: Int
+    let overlayMode: String
+    let filterSunny: Bool
+    let markerReloadID: Int
+    let selectedCityID: UUID?
+    @Binding var recenterRequest: MapRecenterRequest?
+    let centerOnCity: CityWeather?
+    let onMarkerTap: (CityWeather, CGPoint?) -> Void
+    let onMapClick: ((CLLocationCoordinate2D, CGPoint?) -> Void)?
+    let onMapGestureStart: (() -> Void)?
+
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var cameraPosition: MapCameraPosition = .region(Self.defaultRegion)
+    @State private var lastCenteredCityID: UUID?
+
+    // MARK: Body and Camera
+
+    var body: some View {
+        MapReader { proxy in
+            Map(position: $cameraPosition, interactionModes: .all) {
+                ForEach(visibleCities) { cityWeather in
+                    let isSelected = selectedCityID == cityWeather.id
+                    Annotation(
+                        "",
+                        coordinate: CLLocationCoordinate2D(
+                            latitude: cityWeather.city.latitude,
+                            longitude: cityWeather.city.longitude
+                        ),
+                        anchor: .center
+                    ) {
+                        Button {
+                            onMarkerTap(cityWeather, nil)
+                        } label: {
+                            WeatherMapMarker(
+                                color: markerColor(for: cityWeather),
+                                isSelected: isSelected
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+            .safeAreaPadding(.leading, 16)
+            .safeAreaPadding(.bottom, 10)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { _ in onMapGestureStart?() }
+            )
+            .simultaneousGesture(
+                SpatialTapGesture()
+                    .onEnded { value in
+                        guard let coordinate = proxy.convert(value.location, from: .local) else { return }
+                        onMapClick?(coordinate, value.location)
+                    }
+            )
+        }
+        .onAppear {
+            fitVisibleContent()
+        }
+        .onChange(of: markerReloadID) { _, _ in
+            fitVisibleContent()
+        }
+        .onChange(of: recenterRequest) { _, request in
+            guard let request else { return }
+            fitVisibleContent(using: request)
+            recenterRequest = nil
+        }
+        .onChange(of: centerOnCity?.id) { _, _ in
+            guard let centerOnCity, centerOnCity.id != lastCenteredCityID else { return }
+            lastCenteredCityID = centerOnCity.id
+            withAnimation(.smooth(duration: 0.35)) {
+                cameraPosition = .region(Self.region(centeredOn: centerOnCity.city, span: 0.35))
+            }
+        }
+    }
+
+    private var visibleCities: [CityWeather] {
+        cities.filter { cityWeather in
+            guard !filterSunny else {
+                if selectedDayOffset == -1 {
+                    return cityWeather.condition == .clear && !cityWeather.weatherIcon.contains("moon")
+                }
+                let forecast = cityWeather.forecast(for: selectedDayOffset)
+                return forecast.condition == .clear && !forecast.weatherIcon.contains("moon")
+            }
+            return true
+        }
+    }
+
+    private func fitVisibleContent(using request: MapRecenterRequest = .weatherCities) {
+        let citiesToFit = request == .listCoordinates ? fitCities : visibleCities.map(\.city)
+        let region = Self.region(for: citiesToFit)
+        withAnimation(.smooth(duration: 0.35)) {
+            cameraPosition = .region(region)
+        }
+    }
+
+    // MARK: Marker Coloring
+
+    private func markerColor(for cityWeather: CityWeather) -> Color {
+        if overlayMode == "temperature" {
+            return AppTheme.shared.colors.dotSun
+        }
+        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
+        let isNow = selectedDayOffset == -1
+        let condition = isNow ? cityWeather.condition : forecast.condition
+        let icon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
+        let colors = AppTheme.shared.colors
+        return icon.contains("moon") ? colors.moonIconColor : condition.dotColor(for: colors)
+    }
+
+    private static let defaultRegion = MKCoordinateRegion(
+        center: CLLocationCoordinate2D(latitude: 20, longitude: 0),
+        span: MKCoordinateSpan(latitudeDelta: 120, longitudeDelta: 180)
+    )
+
+    private static func region(centeredOn city: City, span: CLLocationDegrees) -> MKCoordinateRegion {
+        MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: city.latitude, longitude: city.longitude),
+            span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
+        )
+    }
+
+    private static func region(for cities: [City]) -> MKCoordinateRegion {
+        guard !cities.isEmpty else { return defaultRegion }
+        var minLat = cities[0].latitude
+        var maxLat = cities[0].latitude
+        var minLon = cities[0].longitude
+        var maxLon = cities[0].longitude
+        for city in cities.dropFirst() {
+            minLat = min(minLat, city.latitude)
+            maxLat = max(maxLat, city.latitude)
+            minLon = min(minLon, city.longitude)
+            maxLon = max(maxLon, city.longitude)
+        }
+        return paddedRegion(minLat: minLat, maxLat: maxLat, minLon: minLon, maxLon: maxLon)
+    }
+
+    private static func paddedRegion(
+        minLat: CLLocationDegrees,
+        maxLat: CLLocationDegrees,
+        minLon: CLLocationDegrees,
+        maxLon: CLLocationDegrees
+    ) -> MKCoordinateRegion {
+        let latDelta = max(1.2, (maxLat - minLat) * 1.25)
+        let lonDelta = max(1.2, (maxLon - minLon) * 1.25)
+        return MKCoordinateRegion(
+            center: CLLocationCoordinate2D(latitude: (minLat + maxLat) / 2, longitude: (minLon + maxLon) / 2),
+            span: MKCoordinateSpan(latitudeDelta: min(160, latDelta), longitudeDelta: min(340, lonDelta))
+        )
+    }
+
+}
+
+// MARK: - Weather Marker
+
+private struct WeatherMapMarker: View {
+    let color: Color
+    let isSelected: Bool
+    @State private var glowPulse = false
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(color.opacity(isSelected ? 0.34 : 0.22))
+                .frame(width: isSelected ? 28 : 18, height: isSelected ? 28 : 18)
+                .blur(radius: isSelected ? 8 : 5)
+                .scaleEffect(isSelected && glowPulse ? 1.18 : 1)
+                .animation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true), value: glowPulse)
+
+            if isSelected {
+                SelectedPulseRing(shape: .circle, color: color)
+                    .frame(width: 10, height: 10)
+                    .transition(.scale.combined(with: .opacity))
+            }
+
+            Circle()
+                .fill(color)
+                .frame(width: 9, height: 9)
+                .shadow(color: color.opacity(0.42), radius: 3)
+        }
+        .frame(width: 36, height: 36)
+        .contentShape(Circle())
+        .animation(.smooth(duration: 0.22), value: isSelected)
+        .onAppear {
+            glowPulse = isSelected
+        }
+        .onChange(of: isSelected) { _, selected in
+            glowPulse = selected
+        }
+    }
 }
 
 // MARK: - Map Controls and Interactions
@@ -20,10 +261,10 @@ extension ContentView {
     @ViewBuilder
     var mapDateSliderOverlay: some View {
         // Date slider only on map view. Home/list use the bottom date switcher.
-        if isMapRoute, !showingInlineSearch, !countryListSearchMode {
+        if isMapRoute, !showingSearchSheet {
             mapDateSlider(height: 420)
                 .frame(width: 145, height: 420, alignment: .trailing)
-                .padding(.bottom, 420)
+                .padding(.bottom, 470)
                 .padding(.trailing, 1)
                 .transition(.opacity)
         }
@@ -43,7 +284,7 @@ extension ContentView {
         mapMarkerReloadID += 1
     }
 
-    func refreshActiveWeather() {
+    func refreshWeather() {
         dismissMapSelectionForRefresh()
         Task {
             await weatherService.refreshWeather()
@@ -59,23 +300,23 @@ extension ContentView {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showingMapExpandedCard = false
             tappedCity = nil
-            previewCity = nil
+            temporaryMapSearchCity = nil
         }
     }
 
     // MARK: Marker Selection
 
     func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
-        if showingInlineSearch || inlineSearchFieldPresented {
-            showingInlineSearch = false
-            inlineSearchFieldPresented = false
+        if showingSearchSheet || searchFieldPresented {
+            showingSearchSheet = false
+            searchFieldPresented = false
             resetNativeCitySearch()
         }
 
         if showingMapExpandedCard, tappedCity?.id == city.id {
             return
         }
-        PlatformFeedback.lightImpact()
+        Haptics.lightImpact()
         showMapMarkerCard(city, anchor: anchor, expanded: false, focusesMarker: true)
     }
 
@@ -84,11 +325,11 @@ extension ContentView {
     }
 
     func dismissMapExpandedCard() {
-        let shouldRecenterAfterDismiss = previewCity != nil
+        let shouldRecenterAfterDismiss = temporaryMapSearchCity != nil
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showingMapExpandedCard = false
             tappedCity = nil
-            previewCity = nil
+            temporaryMapSearchCity = nil
             if shouldRecenterAfterDismiss {
                 mapRecenterRequest = .weatherCities
             }
@@ -109,8 +350,8 @@ extension ContentView {
 
     func deleteMapCity(_ city: CityWeather) {
         weatherService.removeCity(city)
-        if previewCity?.id == city.id {
-            previewCity = nil
+        if temporaryMapSearchCity?.id == city.id {
+            temporaryMapSearchCity = nil
         }
         showingMapExpandedCard = false
         tappedCity = nil
@@ -133,11 +374,10 @@ extension ContentView {
                 overlayMode: mapOverlayMode,
                 filterSunny: filterSunny,
                 markerReloadID: mapMarkerReloadID,
-                selectedCityID: mapFocusSelectedMarker ? tappedCity?.id : nil,
+                selectedCityID: tappedCity?.id,
                 recenterRequest: $mapRecenterRequest,
                 centerOnCity: centerOnCityTrigger,
                 onMarkerTap: { city, point in
-                    guard !countryListSearchMode else { return }
                     handleMapMarkerTap(city, anchor: point)
                 },
                 onMapClick: { coordinate, point in
@@ -169,20 +409,7 @@ extension ContentView {
                 centerMapOnDots(useListCoordinates: true)
             }
         }
-        .onChange(of: countryListPreviewCountry?.id) { _, newValue in
-            guard countryListSearchMode, newValue != nil else { return }
-            centerMapOnDots(useListCoordinates: true)
-        }
-        .onChange(of: countryListPreviewCityCount) { _, _ in
-            guard countryListSearchMode, countryListPreviewCountry != nil else { return }
-            centerMapOnDots(useListCoordinates: true)
-        }
-        .onChange(of: countryListSearchMode) { oldValue, newValue in
-            guard oldValue, !newValue else { return }
-            DispatchQueue.main.async {
-                centerMapOnDots(useListCoordinates: true)
-            }
-        }
+
 
     }
 
@@ -221,165 +448,4 @@ extension ContentView {
         .shadow(color: .black.opacity(0.16), radius: 16, y: 8)
     }
 
-    // MARK: Country Search Preview
-
-    @ViewBuilder
-    func countryListPreviewControls(showsInlineActions: Bool = true, usesPhoneCardFrame: Bool = false) -> some View {
-        if countryListSearchMode, let country = countryListPreviewCountry {
-            let cityCountRange = countryListCityCountRange(for: country)
-            VStack(spacing: 12) {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(country.name)
-                            .font(.headline)
-                            .foregroundStyle(theme.colors.primaryText)
-                            .lineLimit(1)
-                        Text(localizedString("Preview Largest Cities", locale: locale))
-                            .font(.caption.weight(.semibold))
-                            .foregroundStyle(theme.colors.secondaryText)
-                    }
-
-                    Spacer(minLength: 12)
-
-                    Text("\(countryListPreviewCityCount)")
-                        .font(.title3.weight(.bold).monospacedDigit())
-                        .foregroundStyle(theme.colors.primaryText)
-                }
-
-                Text(String(format: localizedString("Choose how many major cities to include.", locale: locale)))
-                    .font(.caption)
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Slider(
-                    value: Binding(
-                        get: { Double(countryListPreviewCityCount) },
-                        set: { newValue in
-                            countryListPreviewCityCount = countryListClampedCityCount(Int(newValue.rounded()), for: country)
-                            forceReloadMapDots()
-                        }
-                    ),
-                    in: cityCountRange,
-                    step: 1
-                )
-                .tint(theme.colors.accent)
-
-                if showsInlineActions {
-                    HStack(spacing: 10) {
-                        Button("Cancel") {
-                            cancelCountryListPreview()
-                        }
-                        .buttonStyle(.borderless)
-
-                        Spacer(minLength: 8)
-
-                        countryAddMenu(for: country, cityCount: countryListPreviewCityCount)
-                    }
-                }
-            }
-            .padding(.horizontal, usesPhoneCardFrame ? 22 : 16)
-            .padding(.vertical, usesPhoneCardFrame ? 16 : 16)
-            .frame(maxWidth: .infinity)
-            .frame(height: usesPhoneCardFrame ? floatingMapCardHeight : nil)
-            .themedGlass(in: .rect(cornerRadius: 24))
-            .contentShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .gesture(DragGesture(minimumDistance: 0))
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-    }
-
-    func countryListCityCountRange(for country: CountryCityGroup) -> ClosedRange<Double> {
-        let upper = max(1, min(30, country.cities.count))
-        let lower = min(5, upper)
-        return Double(lower)...Double(upper)
-    }
-
-    func countryListClampedCityCount(_ count: Int, for country: CountryCityGroup) -> Int {
-        let range = countryListCityCountRange(for: country)
-        return max(Int(range.lowerBound), min(Int(range.upperBound), count))
-    }
-
-    func cancelCountryListPreview() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.86)) {
-            countryListSearchMode = false
-            countryListPreviewCountry = nil
-            countryListInitialCountry = nil
-            showingInlineSearch = false
-            inlineSearchFieldPresented = false
-            inlineSearchText = ""
-        }
-        Task { @MainActor in
-            await Task.yield()
-            centerMapOnDots(useListCoordinates: true)
-        }
-    }
-
-    // MARK: Map Presentation Flags
-
-    var mapFocusSelectedMarker: Bool {
-        showingMapExpandedCard
-    }
-
-    var shouldHideInlineMapCardCityName: Bool {
-        false
-    }
-
-    var shouldAddInlineMapCardVerticalPadding: Bool {
-        true
-    }
-
-    func cityIsInActiveList(_ cityWeather: CityWeather) -> Bool {
-        weatherService.cityWeatherData.contains(where: { $0.city.name == cityWeather.city.name && $0.city.country == cityWeather.city.country })
-    }
-
-    func addCityToActiveList(_ cityWeather: CityWeather) async {
-        await weatherService.addCity(cityWeather.city)
-        PlatformFeedback.lightImpact()
-        if let newCity = weatherService.cityWeatherData.first(where: { $0.city.name == cityWeather.city.name && $0.city.country == cityWeather.city.country }) {
-            tappedCity = newCity
-        }
-    }
-}
-
-// MARK: - Overlay Menu
-extension ContentView {
-    var mapOverlayOptions: [(mode: String, icon: String, label: String)] {
-        [
-            ("weather",       "cloud.sun.fill",     localizedString("Weather", locale: locale)),
-            ("temperature",   "thermometer.medium", localizedString("Temperature", locale: locale)),
-            ("cloudCover",    "cloud.fill",         localizedString("Cloud Cover", locale: locale)),
-            ("precipitation", "drop.fill",          localizedString("Precipitation", locale: locale)),
-            ("windSpeed",     "wind",               localizedString("Wind Speed", locale: locale)),
-            ("uvIndex",       "sun.max.fill",       localizedString("UV Index", locale: locale)),
-            ("humidity",      "humidity.fill",      localizedString("Humidity", locale: locale)),
-            ("visibility",    "eye.fill",           localizedString("Visibility", locale: locale))
-        ]
-    }
-
-    var mapOverlayMenu: some View {
-        Menu {
-            ForEach(mapOverlayOptions, id: \.mode) { option in
-                Button {
-                    PlatformFeedback.lightImpact()
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        mapOverlayMode = option.mode
-                    }
-                } label: {
-                    Label {
-                        Text(option.label)
-                    } icon: {
-                        Image(systemName: mapOverlayMode == option.mode ? "checkmark" : option.icon)
-                            .foregroundStyle(.primary)
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "square.3.layers.3d")
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(.primary)
-                .foregroundColor(.primary)
-        }
-        .tint(.primary)
-        .menuOrder(.fixed)
-    }
 }

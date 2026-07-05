@@ -19,6 +19,8 @@ extension ContentView {
 }
 
 extension ContentView {
+    // MARK: - Root View Assembly
+
     @ViewBuilder
     private var rootContent: some View {
         appNavigationStack
@@ -43,9 +45,9 @@ extension ContentView {
                     routeShowsBackButton = false
                 }
             }
-            .onChange(of: inlineSearchText) { _, newValue in
-                inlineSearchSelectionIndex = 0
-                inlineSearchManager.search(query: newValue)
+            .onChange(of: searchText) { _, newValue in
+                searchSelectionIndex = 0
+                citySearchManager.search(query: newValue)
             }
             .onChange(of: theme.style) { _, _ in
                 if isMapRoute {
@@ -65,21 +67,21 @@ extension ContentView {
         viewLifecycle
             .onChange(of: showingMapExpandedCard) { _, showing in
                 if !showing {
-                    if previewCity != nil {
-                        previewCity = nil
+                    if temporaryMapSearchCity != nil {
+                        temporaryMapSearchCity = nil
                         mapRecenterRequest = .listCoordinates
                     }
                 }
             }
             .onChange(of: showingSettings) { wasShowing, isShowing in
                 if isShowing {
-                    settingsOpenedThemeStyle = theme.style
+                    themeStyleBeforeSettings = theme.style
                 } else if wasShowing {
-                    if settingsOpenedThemeStyle != theme.style, isMapRoute {
+                    if themeStyleBeforeSettings != theme.style, isMapRoute {
                         forceReloadMapDots()
                         centerMapOnDots()
                     }
-                    settingsOpenedThemeStyle = nil
+                    themeStyleBeforeSettings = nil
                 }
             }
     }
@@ -90,6 +92,11 @@ extension ContentView {
                 SettingsView(
                     weatherService: weatherService,
                     onResetLists: {
+                        withAnimation(.easeOut(duration: 0.16)) {
+                            isResettingListsToDefaults = true
+                        }
+                        showingSettings = false
+
                         Task {
                             let previouslyExpandedListIDs = expandedListIDs
                             await weatherService.resetAllLists(preloadListIDs: previouslyExpandedListIDs)
@@ -99,8 +106,8 @@ extension ContentView {
                                 refreshListOrder()
                                 refreshCityOrder()
                                 mapRecenterRequest = .listCoordinates
-                                showingSettings = false
                                 prepareFirstLaunchListPickerSelection()
+                                isResettingListsToDefaults = false
                                 withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
                                     showingFirstLaunchListPicker = true
                                 }
@@ -110,7 +117,7 @@ extension ContentView {
                 )
             }
             .sheet(isPresented: Binding(
-                get: { showingInlineSearch },
+                get: { showingSearchSheet },
                 set: { isPresented in
                     if !isPresented {
                         dismissNativeCitySearchAndRecenter()
@@ -124,6 +131,9 @@ extension ContentView {
             }
             .overlay {
                 deleteListConfirmationOverlay
+            }
+            .overlay {
+                resetListsLoadingOverlay
             }
             .overlay {
                 firstLaunchListPickerOverlay
@@ -142,16 +152,6 @@ extension ContentView {
                 renameAlertFocused = false
             }
         }
-        .onChange(of: showingCityRenameAlert) { _, isShowing in
-            if isShowing {
-                Task { @MainActor in
-                    await Task.yield()
-                    cityRenameFocused = true
-                }
-            } else {
-                cityRenameFocused = false
-            }
-        }
         .alert(localizedString("Rename", locale: locale), isPresented: $showingRenameAlert) {
             TextField(localizedString("Name", locale: locale), text: $renameAlertText)
                 .focused($renameAlertFocused)
@@ -168,22 +168,6 @@ extension ContentView {
                 listToRenameID = nil
             }
         }
-        .alert(localizedString("Rename", locale: locale), isPresented: $showingCityRenameAlert) {
-            TextField(localizedString("Name", locale: locale), text: $cityRenameText)
-                .focused($cityRenameFocused)
-            Button(localizedString("Cancel", locale: locale), role: .cancel) { }
-            Button(localizedString("OK", locale: locale)) {
-                let trimmed = cityRenameText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty, let city = cityToRename {
-                    if let cityToRenameListID {
-                        weatherService.renameCity(city, in: cityToRenameListID, to: trimmed)
-                    } else {
-                        weatherService.renameCity(city, to: trimmed)
-                    }
-                }
-                cityToRenameListID = nil
-            }
-        }
         .alert(localizedString("New List", locale: locale), isPresented: $showingAddListAlert) {
             TextField(localizedString("Name", locale: locale), text: $newListName)
             Button(localizedString("Cancel", locale: locale), role: .cancel) {
@@ -193,10 +177,22 @@ extension ContentView {
                 commitListManagerNewList()
             }
         }
-        .fullScreenCover(isPresented: $showingCountryListBuilder) {
-            CountryListBuilderView(initialCountry: countryListInitialCountry) { country, cityCount in
-                commitCountryList(country, cityCount: cityCount)
+        .alert(developerWarning?.title ?? "Unexpected App Issue", isPresented: Binding(
+            get: { developerWarning != nil },
+            set: { isPresented in
+                if !isPresented {
+                    developerWarning = nil
+                }
             }
+        )) {
+            Button(localizedString("OK", locale: locale), role: .cancel) {
+                developerWarning = nil
+            }
+        } message: {
+            Text(developerWarning?.message ?? "")
+        }
+        .onReceive(NotificationCenter.default.publisher(for: DeveloperWarningCenter.notification)) { notification in
+            developerWarning = notification.object as? DeveloperWarning
         }
         .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
     }
@@ -213,7 +209,7 @@ extension ContentView {
     var appNavigationStack: some View {
         NavigationStack(path: $navigationPath) {
             ZStack {
-                nativeCitySearch(homeView)
+                homeView
                     .allowsHitTesting(!showingListManager)
 
                 if showingListManager {
@@ -224,7 +220,7 @@ extension ContentView {
 
             }
             .animation(.smooth(duration: 0.24), value: showingListManager)
-            .animation(.spring(response: 0.32, dampingFraction: 0.88), value: showingInlineSearch)
+            .animation(.spring(response: 0.32, dampingFraction: 0.88), value: showingSearchSheet)
             .navigationDestination(for: AppNavigationRoute.self) { route in
                 switch route {
                 case .map:
@@ -232,7 +228,7 @@ extension ContentView {
                 case .list:
                     fullListDestination
                 case .cityDetail(let cityID):
-                    selectedCityDetailDestination(cityID: cityID)
+                    cityDetailDestination(for: cityID)
                 case .addCityDetail:
                     addCityDetailDestination
                 case .listManager:
@@ -242,13 +238,15 @@ extension ContentView {
         }
     }
 
+    // MARK: - Primary Destinations
+
     var homeView: some View {
         homeContent
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .bottom) {
-                if !showingInlineSearch {
+                if !showingSearchSheet {
                     homeBottomToolbar
                         .padding(.horizontal, 16)
                         .padding(.bottom, -2)
@@ -266,7 +264,7 @@ extension ContentView {
             .navigationBarBackButtonHidden(false)
             .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .bottom) {
-                if !showingInlineSearch && !countryListSearchMode {
+                if !showingSearchSheet {
                     mapBottomToolbar
                         .padding(.horizontal, 16)
                         .padding(.bottom, -2)
@@ -283,7 +281,7 @@ extension ContentView {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .overlay(alignment: .bottom) {
-                if !showingInlineSearch {
+                if !showingSearchSheet {
                     backDateBottomToolbar(.list)
                         .padding(.horizontal, 16)
                         .padding(.bottom, -2)
@@ -295,8 +293,10 @@ extension ContentView {
             }
     }
 
+    // MARK: - Map Destination
+
     var mapTopListMenu: some View {
-        atlasListMenu(titleOverride: nil)
+        listSwitcher(titleOverride: nil)
         .menuOrder(.fixed)
     }
 
@@ -304,7 +304,7 @@ extension ContentView {
         ZStack(alignment: .bottom) {
             weatherMapView
                 .overlay(alignment: .topLeading) {
-                    if isMapRoute, !showingInlineSearch {
+                    if isMapRoute, !showingSearchSheet {
                         VStack(alignment: .leading, spacing: 8) {
                             if weatherService.isLoading {
                                 LoadingWeatherOverlay(
@@ -315,7 +315,7 @@ extension ContentView {
                                 .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
                             }
 
-                            if showLegend && !countryListSearchMode {
+                            if showLegend {
                                 MapFloatingLegend(overlayMode: mapOverlayMode) {
                                     withAnimation(.smooth(duration: 0.2)) {
                                         showLegend = false
@@ -331,7 +331,7 @@ extension ContentView {
                 .animation(.smooth(duration: 0.22), value: showLegend)
                 .animation(.smooth(duration: 0.22), value: weatherService.isLoading)
                 .overlay(alignment: .topLeading) {
-                    if !showingInlineSearch {
+                    if !showingSearchSheet {
                         HStack(spacing: 8) {
                             mapTopListMenu
                             Spacer(minLength: 8)
@@ -345,91 +345,18 @@ extension ContentView {
                 .overlay(alignment: .trailing) {
                     mapDateSliderOverlay
                 }
-                .allowsHitTesting(!showingInlineSearch)
+                .allowsHitTesting(!showingSearchSheet)
 
-            if !showingInlineSearch && !countryListSearchMode {
+            if !showingSearchSheet {
                 mainOverlays
             }
 
-            if showingInlineSearch && countryListSearchMode {
-                VStack {
-                    Spacer()
-                    countryListSearchSuggestionPanel
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 92)
-                }
-                .zIndex(35)
-            }
 
-            if countryListSearchMode, countryListPreviewCountry != nil {
-                countryListPreviewOverlay
-            }
-
-        }
-        .toolbar {
-            if #available(iOS 26.0, *), !showingInlineSearch && !showingListManager {
-                if countryListSearchMode, countryListPreviewCountry != nil {
-                    countryListPreviewNativeToolbar
-                }
-            }
         }
         .tint(.primary)
     }
 
-    var countryListPreviewOverlay: some View {
-        GeometryReader { geometry in
-            let cardWidth = max(0, geometry.size.width - floatingMapCardHorizontalPadding * 2)
-            countryListPreviewControls(showsInlineActions: false, usesPhoneCardFrame: true)
-                .frame(width: cardWidth)
-                .padding(.horizontal, floatingMapCardHorizontalPadding)
-                .padding(.bottom, floatingMapCardBottomPadding)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-        }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
-    @ToolbarContentBuilder
-    var countryListPreviewNativeToolbar: some ToolbarContent {
-        ToolbarItemGroup(placement: .bottomBar) {
-            Button {
-                cancelCountryListPreview()
-            } label: {
-                Image(systemName: "xmark")
-                    .foregroundStyle(.primary)
-                    .foregroundColor(.primary)
-                    .frame(width: 44, height: 44)
-            }
-            .tint(.primary)
-            .buttonBorderShape(.circle)
-            .frame(width: 44, height: 44)
-
-            Spacer()
-
-            Menu {
-                if let country = countryListPreviewCountry {
-                    ForEach(managedLists) { listID in
-                        Button(listID.localizedDisplayName(locale: locale)) {
-                            addCountry(country, cityCount: countryListPreviewCityCount, to: listID)
-                        }
-                    }
-
-                    Divider()
-
-                    Button("Create New List \"\(country.name)\"") {
-                        addCountry(country, cityCount: countryListPreviewCityCount, to: nil)
-                    }
-                }
-            } label: {
-                Image(systemName: "plus")
-                    .foregroundStyle(.primary)
-                    .foregroundColor(.primary)
-                    .frame(width: 44, height: 44)
-            }
-            .tint(.primary)
-            .buttonBorderShape(.circle)
-            .frame(width: 44, height: 44)
-        }
-    }
+    // MARK: - List Manager Destination
 
     var nativeListManager: some View {
         ZStack(alignment: .bottom) {
@@ -438,7 +365,7 @@ extension ContentView {
                 .background(listManagerBackground)
                 .tint(.primary)
 
-            listManagerFloatingToolbarFallback
+            legacyListManagerFloatingToolbar
                 .padding(.horizontal, 16)
                 .padding(.bottom, -2)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -490,8 +417,9 @@ extension ContentView {
             }
             .nativeBottomToolbarBackground()
     }
+
     @ViewBuilder
-    var listManagerFloatingToolbarFallback: some View {
+    var legacyListManagerFloatingToolbar: some View {
         if #available(iOS 26.0, *) {
             EmptyView()
         } else {
@@ -540,6 +468,9 @@ extension ContentView {
             .controlSize(.regular)
         }
     }
+
+    // MARK: - Startup and External Entry Points
+
     func onAppearLoad() async {
         AppDelegate.updateHomeScreenListShortcuts()
         if !hasLaunchedBefore {
@@ -549,14 +480,6 @@ extension ContentView {
         }
         if visibleListIDs.isEmpty {
             visibleListIDs = [weatherService.activeListID.rawValue]
-        }
-        if previewLoading {
-            weatherService.isLoading = true
-            weatherService.loadingProgress = 0.6
-            return
-        }
-        if previewSkipsInitialWeatherFetch {
-            return
         }
         centerMapOnDots(useListCoordinates: true)
         await weatherService.fetchWeatherForAllCities()
@@ -572,12 +495,12 @@ extension ContentView {
         guard let listID = CityListID.allLists.first(where: { $0.rawValue == rawValue }) else { return }
         selectedDayOffset = 0
         showingSettings = false
-        showingInlineSearch = false
-        inlineSearchFieldPresented = false
+        showingSearchSheet = false
+        searchFieldPresented = false
         showingListManager = false
         showingMapExpandedCard = false
         tappedCity = nil
-        previewCity = nil
+        temporaryMapSearchCity = nil
         navigationPath = []
 
         Task {
@@ -594,12 +517,34 @@ extension ContentView {
 }
 
 extension ContentView {
+    // MARK: - Add City and First Launch Flows
+
     @ViewBuilder
     var addCityDetailDestination: some View {
         if let city = addCityDetailCity {
-            expandedCardDetailDestination(for: city, dismissAction: {
-                dismissRoute(.addCityDetail)
-            })
+            cityDetailView(for: city, route: .addCityDetail)
+        }
+    }
+
+    @ViewBuilder
+    var resetListsLoadingOverlay: some View {
+        if isResettingListsToDefaults {
+            theme.colors.modalOverlay
+                .ignoresSafeArea()
+
+            ProgressView()
+                .progressViewStyle(.circular)
+                .controlSize(.large)
+                .tint(theme.colors.accent)
+                .padding(24)
+                .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .stroke(.white.opacity(0.16), lineWidth: 0.7)
+                )
+                .shadow(color: .black.opacity(0.24), radius: 22, y: 12)
+                .transition(.scale(scale: 0.92).combined(with: .opacity))
+                .zIndex(1000)
         }
     }
 
@@ -693,7 +638,7 @@ extension ContentView {
         } else {
             firstLaunchSelectedListIDs.insert(listID.rawValue)
         }
-        PlatformFeedback.lightImpact()
+        Haptics.lightImpact()
     }
 
     func applyFirstLaunchListSelection() {
@@ -720,6 +665,8 @@ extension ContentView {
             }
         }
     }
+
+    // MARK: - Destructive Confirmation Overlays
 
     @ViewBuilder
     var deleteListConfirmationOverlay: some View {
@@ -785,18 +732,9 @@ extension ContentView {
             .transition(.scale(scale: 0.9).combined(with: .opacity))
         }
     }
-
-
-
-
-    
-
-
-
-
-
-
 }
+
+// MARK: - Loading Overlay
 
 private struct LoadingWeatherOverlay: View {
     let progress: Double

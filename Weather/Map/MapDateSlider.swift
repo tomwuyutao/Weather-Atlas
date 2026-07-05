@@ -55,7 +55,7 @@ extension ContentView {
                             let nearestOffset = positionToOffset(nearestPos)
                             if nearestOffset != selectedDayOffset {
                                 selectedDayOffset = nearestOffset
-                                PlatformFeedback.lightImpact()
+                                Haptics.lightImpact()
                             }
                         }
                         .onEnded { _ in
@@ -124,7 +124,7 @@ extension ContentView {
                 .fixedSize()
 
             Capsule()
-                .fill(Color.gray.opacity(0.5))
+                .fill(AppTheme.shared.colors.secondaryText.opacity(0.5))
                 .frame(width: 24, height: 16)
                 .offset(x: 9)
         }

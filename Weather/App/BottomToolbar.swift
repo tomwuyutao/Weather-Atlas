@@ -28,17 +28,6 @@ extension ContentView {
     var isMapRoute: Bool {
         currentRoute == .map
     }
-
-    var isListRoute: Bool {
-        currentRoute == .list
-    }
-
-    var isDetailRoute: Bool {
-        if case .cityDetail = currentRoute {
-            return true
-        }
-        return currentRoute == .addCityDetail
-    }
 }
 
 // MARK: - Toolbar Compatibility
@@ -61,12 +50,12 @@ extension ContentView {
         HStack(spacing: 8) {
             Image(systemName: "chevron.left")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(selectedDayOffset > -1 ? .primary : .tertiary)
+                .foregroundStyle(selectedDayOffset > -1 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
                 .frame(width: 36, height: 36)
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset > -1 {
-                        PlatformFeedback.lightImpact()
+                        Haptics.lightImpact()
                         dateSwitcherForward = false
                         withAnimation(.smooth(duration: 0.2)) {
                             selectedDayOffset -= 1
@@ -76,6 +65,7 @@ extension ContentView {
 
             Text(dateSwitcherText)
                 .font(.avenir(.caption, weight: .semibold))
+                .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
                 .frame(minWidth: 80)
@@ -116,12 +106,12 @@ extension ContentView {
 
             Image(systemName: "chevron.right")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(selectedDayOffset < 9 ? .primary : .tertiary)
+                .foregroundStyle(selectedDayOffset < 9 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
                 .frame(width: 36, height: 36)
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset < 9 {
-                        PlatformFeedback.lightImpact()
+                        Haptics.lightImpact()
                         dateSwitcherForward = true
                         withAnimation(.smooth(duration: 0.2)) {
                             selectedDayOffset += 1
@@ -167,16 +157,34 @@ extension ContentView {
     }
 
     var mapBottomToolbar: some View {
-        floatingBottomToolbar
+        HStack(alignment: .center) {
+            if let route = currentRoute {
+                bottomBackButton(route)
+            } else {
+                bottomMoreButton
+            }
+
+            Spacer(minLength: 12)
+
+            mapControls
+                .padding(.horizontal, 6)
+                .padding(.vertical, 5)
+                .themedGlass(in: .capsule)
+                .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
+
+            Spacer(minLength: 12)
+
+            bottomSearchButton
+        }
     }
 
     var bottomSearchButton: some View {
         Button {
-            activateInlineSearch()
+            activateSearch()
         } label: {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
                 .frame(width: 46, height: 46)
                 .contentShape(Circle())
         }
@@ -184,22 +192,6 @@ extension ContentView {
         .themedGlass(in: Circle())
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
         .accessibilityLabel(localizedString("Search", locale: locale))
-    }
-
-    var bottomSettingsButton: some View {
-        Button {
-            showingSettings = true
-        } label: {
-            Image(systemName: "gearshape")
-                .font(.system(size: 21, weight: .regular))
-                .foregroundStyle(.primary)
-                .frame(width: 46, height: 46)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .themedGlass(in: Circle())
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
-        .accessibilityLabel(localizedString("Settings", locale: locale))
     }
 
     var bottomMoreButton: some View {
@@ -211,7 +203,7 @@ extension ContentView {
             }
 
             Button {
-                refreshActiveWeather()
+                refreshWeather()
             } label: {
                 primaryMenuLabel(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"), systemImage: "arrow.clockwise")
             }
@@ -219,13 +211,13 @@ extension ContentView {
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 21, weight: .regular))
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
                 .frame(width: 46, height: 46)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
         .menuOrder(.fixed)
-        .tint(.primary)
+        .tint(theme.colors.primaryText)
         .themedGlass(in: Circle())
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
         .accessibilityLabel(localizedString("Menu", locale: locale))
@@ -234,9 +226,10 @@ extension ContentView {
     func primaryMenuLabel(_ title: String, systemImage: String) -> some View {
         Label {
             Text(title)
+                .foregroundStyle(theme.colors.primaryText)
         } icon: {
             Image(systemName: systemImage)
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
         }
     }
 
@@ -246,7 +239,7 @@ extension ContentView {
         } label: {
             Image(systemName: "chevron.left")
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
                 .frame(width: 46, height: 46)
                 .contentShape(Circle())
         }
@@ -263,13 +256,13 @@ extension ContentView {
                 showingAddSearchedCityListDialog = true
             } else {
                 if let listID = lists.first {
-                    addSearchedDetailCity(to: listID)
+                    addCity(to: listID)
                 }
             }
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
                 .frame(width: 46, height: 46)
                 .contentShape(Circle())
         }
@@ -285,7 +278,7 @@ extension ContentView {
         ) {
             ForEach(lists) { listID in
                 Button(listID.localizedDisplayName(locale: locale)) {
-                    addSearchedDetailCity(to: listID)
+                    addCity(to: listID)
                 }
             }
             Button(localizedString("Cancel", locale: locale), role: .cancel) {}
@@ -297,40 +290,41 @@ extension ContentView {
 
 extension ContentView {
     @ViewBuilder
-    private var nativeMenuItems: some View {
+    private var mapMoreMenuItems: some View {
         Button {
             showingSettings = true
         } label: {
             Label {
                 Text(localizedString("Settings", locale: locale))
+                    .foregroundStyle(theme.colors.primaryText)
             } icon: {
                 Image(systemName: "gearshape")
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.colors.primaryText)
             }
         }
 
-        if isMapRoute {
-            Toggle(isOn: Binding(
-                get: { showLegend },
-                set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
-            )) {
-                Label {
-                    Text(localizedString("Legend", locale: locale))
-                } icon: {
-                    Image(systemName: "eye")
-                        .foregroundStyle(.primary)
-                }
+        Toggle(isOn: Binding(
+            get: { showLegend },
+            set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
+        )) {
+            Label {
+                Text(localizedString("Legend", locale: locale))
+                    .foregroundStyle(theme.colors.primaryText)
+            } icon: {
+                Image(systemName: "eye")
+                    .foregroundStyle(theme.colors.primaryText)
             }
         }
 
         Button {
-            refreshActiveWeather()
+            refreshWeather()
         } label: {
             Label {
                 Text(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"))
+                    .foregroundStyle(theme.colors.primaryText)
             } icon: {
                 Image(systemName: "arrow.clockwise")
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.colors.primaryText)
             }
         }
         .disabled(weatherService.isLoading)
@@ -341,9 +335,10 @@ extension ContentView {
         )) {
             Label {
                 Text(localizedString("Filter Sunny", locale: locale))
+                    .foregroundStyle(theme.colors.primaryText)
             } icon: {
                 Image(systemName: "sun.max")
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.colors.primaryText)
             }
         }
 
@@ -369,102 +364,20 @@ extension ContentView {
         }
     }
 
-    var nativeMenu: some View {
+    var mapMoreMenu: some View {
         Menu {
-            nativeMenuItems
+            mapMoreMenuItems
         } label: {
             Image(systemName: "ellipsis")
-                .foregroundStyle(.primary)
-                .foregroundColor(.primary)
-                .frame(width: 44, height: 44)
+                .foregroundStyle(theme.colors.primaryText)
+                .frame(width: 46, height: 36)
                 .contentShape(Rectangle())
         }
         .menuOrder(.fixed)
+        .tint(theme.colors.primaryText)
     }
 
-    private var shouldShowPreviewAddButton: Bool {
-        guard isMapRoute,
-              showingMapExpandedCard,
-              let previewCity,
-              !cityIsInActiveList(previewCity) else {
-            return false
-        }
-        return true
-    }
-
-    private func addPreviewCityToList(_ listID: CityListID) {
-        guard let city = previewCity else { return }
-        Task {
-            if listID == weatherService.activeListID {
-                await addCityToActiveList(city)
-            } else {
-                await weatherService.addCityToList(city.city, listID: listID)
-                PlatformFeedback.lightImpact()
-                if let addedCity = weatherService.weatherData(for: listID).first(where: {
-                    $0.city.name == city.city.name && $0.city.country == city.city.country
-                }) {
-                    tappedCity = addedCity
-                }
-            }
-
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                previewCity = nil
-                showingMapExpandedCard = false
-            }
-        }
-    }
-
-    @ViewBuilder
-    func searchOrAddButton(iconSize: CGFloat, frameSize: CGFloat) -> some View {
-        if shouldShowPreviewAddButton {
-            let lists = managedLists
-            if lists.count > 1 {
-                Menu {
-                    ForEach(lists) { listID in
-                        Button(listID.localizedDisplayName(locale: locale)) {
-                            addPreviewCityToList(listID)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: iconSize, weight: .regular))
-                        .foregroundStyle(.primary)
-                        .frame(width: frameSize, height: frameSize)
-                }
-                .buttonBorderShape(.circle)
-                .frame(width: frameSize, height: frameSize)
-                .menuOrder(.fixed)
-            } else {
-                Button {
-                    if let listID = lists.first {
-                        addPreviewCityToList(listID)
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: iconSize, weight: .regular))
-                        .foregroundStyle(.primary)
-                        .frame(width: frameSize, height: frameSize)
-                }
-                .buttonStyle(.plain)
-                .buttonBorderShape(.circle)
-                .frame(width: frameSize, height: frameSize)
-                .tint(.primary)
-            }
-        } else {
-            Button {
-                activateInlineSearch()
-            } label: {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: iconSize, weight: .regular))
-                    .foregroundStyle(.primary)
-                    .frame(width: frameSize, height: frameSize)
-            }
-            .buttonStyle(.plain)
-            .tint(.primary)
-        }
-    }
-
-    var mapControlCluster: some View {
+    var mapControls: some View {
         HStack(spacing: 8) {
             Button {
                 mapRecenterRequest = nil
@@ -474,20 +387,20 @@ extension ContentView {
             } label: {
                 Image(systemName: "dot.squareshape.split.2x2")
                     .font(.system(size: 21, weight: .regular))
-                    .foregroundStyle(.primary)
-                    .frame(width: 46, height: 46)
+                    .foregroundStyle(theme.colors.primaryText)
+                    .frame(width: 46, height: 36)
             }
             .buttonStyle(.plain)
-            .tint(.primary)
+            .tint(theme.colors.primaryText)
 
             mapOverlayMenu
                 .font(.system(size: 21, weight: .regular))
-                .frame(width: 46, height: 46)
+                .frame(width: 46, height: 36)
                 .buttonStyle(.plain)
 
-            nativeMenu
+            mapMoreMenu
                 .font(.system(size: 21, weight: .regular))
-                .frame(width: 46, height: 46)
+                .frame(width: 46, height: 36)
                 .buttonStyle(.plain)
         }
         .controlSize(.regular)
@@ -521,7 +434,7 @@ extension ContentView {
         pushRoute(.cityDetail(city.id))
     }
 
-    func addSearchedDetailCity(to listID: CityListID) {
+    func addCity(to listID: CityListID) {
         guard let city = addCityDetailCity else { return }
 
         Task {
@@ -529,18 +442,24 @@ extension ContentView {
                 await addCityToActiveList(city)
             } else {
                 await weatherService.addCityToList(city.city, listID: listID)
-                PlatformFeedback.lightImpact()
+                Haptics.lightImpact()
                 await switchToList(listID)
             }
 
             await MainActor.run {
-                let savedCity = weatherService.cityWeatherData.first {
+                guard let savedCity = weatherService.cityWeatherData.first(where: {
                     $0.city.name == city.city.name && $0.city.country == city.city.country
-                } ?? city
+                }) else {
+                    weatherService.reportDeveloperWarning(
+                        title: "Added City Missing",
+                        message: "After adding \(city.city.localizedName()) to \(listID.rawValue), the saved city could not be found in fetched weather data."
+                    )
+                    return
+                }
 
                 addCityDetailCity = nil
                 tappedCity = savedCity
-                previewCity = nil
+                temporaryMapSearchCity = nil
                 navigationPath.removeAll { $0 == .addCityDetail }
                 pushRoute(.cityDetail(savedCity.id))
             }
