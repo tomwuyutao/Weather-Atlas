@@ -47,7 +47,7 @@ extension ContentView {
             }
             .onChange(of: searchText) { _, newValue in
                 searchSelectionIndex = 0
-                citySearchManager.search(query: newValue)
+                scheduleCitySearch(for: newValue)
             }
             .onChange(of: theme.style) { _, _ in
                 if isMapRoute {
@@ -91,27 +91,11 @@ extension ContentView {
             .sheet(isPresented: $showingSettings) {
                 SettingsView(
                     weatherService: weatherService,
-                    onResetLists: {
-                        withAnimation(.easeOut(duration: 0.16)) {
-                            isResettingListsToDefaults = true
-                        }
+                    onAddStarterLists: {
                         showingSettings = false
-
-                        Task {
-                            let previouslyExpandedListIDs = expandedListIDs
-                            await weatherService.resetAllLists(preloadListIDs: previouslyExpandedListIDs)
-                            await MainActor.run {
-                                expandedListIDs = Set(CityListID.builtInLists.map(\.rawValue)).intersection(previouslyExpandedListIDs)
-                                expandedListIDs.insert(weatherService.activeListID.rawValue)
-                                refreshListOrder()
-                                refreshCityOrder()
-                                mapRecenterRequest = .listCoordinates
-                                prepareFirstLaunchListPickerSelection()
-                                isResettingListsToDefaults = false
-                                withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-                                    showingFirstLaunchListPicker = true
-                                }
-                            }
+                        prepareStarterListPickerSelection(allowsCancel: true)
+                        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                            showingFirstLaunchListPicker = true
                         }
                     }
                 )
@@ -476,7 +460,10 @@ extension ContentView {
         if !hasLaunchedBefore {
             hasLaunchedBefore = true
             showLegend = true
-            prepareFirstLaunchListPickerSelection()
+            prepareStarterListPickerSelection(allowsCancel: false)
+            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                showingFirstLaunchListPicker = true
+            }
         }
         if visibleListIDs.isEmpty {
             visibleListIDs = [weatherService.activeListID.rawValue]
@@ -556,18 +543,18 @@ extension ContentView {
 
             VStack(alignment: .leading, spacing: 18) {
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(localizedString("Choose Lists", locale: locale))
+                    Text(localizedString("Choose Starter Lists", locale: locale))
                         .font(.avenir(.headline, weight: .bold))
                         .foregroundStyle(theme.colors.primaryText)
 
-                    Text(localizedString("Pick one or more default continent lists to start with.", locale: locale))
+                    Text(localizedString("Pick one or more starter lists to add.", locale: locale))
                         .font(.avenir(.subheadline, weight: .regular))
                         .foregroundStyle(theme.colors.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 VStack(spacing: 0) {
-                    ForEach(CityListID.builtInLists) { listID in
+                    ForEach(starterListPickerLists) { listID in
                         Button {
                             toggleFirstLaunchListSelection(listID)
                         } label: {
@@ -588,32 +575,56 @@ extension ContentView {
                         }
                         .buttonStyle(.plain)
 
-                        if listID.rawValue != CityListID.builtInLists.last?.rawValue {
+                        if listID.rawValue != starterListPickerLists.last?.rawValue {
                             Divider()
                                 .opacity(0.45)
                         }
                     }
+
+                    if starterListPickerLists.isEmpty {
+                        Text(localizedString("All starter lists have already been added.", locale: locale))
+                            .font(.avenir(.subheadline, weight: .regular))
+                            .foregroundStyle(theme.colors.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 11)
+                    }
                 }
 
-                Button {
-                    applyFirstLaunchListSelection()
-                } label: {
-                    HStack {
-                        Spacer(minLength: 0)
+                HStack(spacing: 10) {
+                    if starterListPickerAllowsCancel {
+                        Button {
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
+                                showingFirstLaunchListPicker = false
+                            }
+                        } label: {
+                            Text(localizedString("Cancel", locale: locale))
+                                .font(.avenir(.body, weight: .semibold))
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(theme.colors.primaryText)
+                        .background(theme.colors.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+
+                    Button {
+                        applyStarterListSelection()
+                    } label: {
                         Text(localizedString("OK", locale: locale))
                             .font(.avenir(.body, weight: .semibold))
-                        Spacer(minLength: 0)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .contentShape(Rectangle())
                     }
-                    .padding(.vertical, 12)
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.white)
+                    .background(
+                        (firstLaunchSelectedListIDs.isEmpty ? theme.colors.secondaryText : theme.colors.accent),
+                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    )
+                    .disabled(firstLaunchSelectedListIDs.isEmpty)
                 }
-                .buttonStyle(.plain)
-                .foregroundStyle(.white)
-                .background(
-                    (firstLaunchSelectedListIDs.isEmpty ? theme.colors.secondaryText : theme.colors.accent),
-                    in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                )
-                .disabled(firstLaunchSelectedListIDs.isEmpty)
             }
             .padding(18)
             .frame(width: min(340, UIScreen.main.bounds.width - 36))
@@ -628,7 +639,16 @@ extension ContentView {
         }
     }
 
-    func prepareFirstLaunchListPickerSelection() {
+    var starterListPickerLists: [CityListID] {
+        if starterListPickerAllowsCancel {
+            let availableIDs = Set(CityListID.allLists.map(\.rawValue))
+            return CityListID.builtInLists.filter { !availableIDs.contains($0.rawValue) }
+        }
+        return CityListID.builtInLists
+    }
+
+    func prepareStarterListPickerSelection(allowsCancel: Bool) {
+        starterListPickerAllowsCancel = allowsCancel
         firstLaunchSelectedListIDs = []
     }
 
@@ -641,15 +661,21 @@ extension ContentView {
         Haptics.lightImpact()
     }
 
-    func applyFirstLaunchListSelection() {
+    func applyStarterListSelection() {
         guard !firstLaunchSelectedListIDs.isEmpty else { return }
         let selectedIDs = firstLaunchSelectedListIDs
         let selectedLists = CityListID.builtInLists.filter { selectedIDs.contains($0.rawValue) }
         guard let firstList = selectedLists.first else { return }
 
-        CityListID.keepBuiltInLists(withRawValues: selectedIDs)
-        visibleListIDs = selectedIDs
-        expandedListIDs = selectedIDs
+        if starterListPickerAllowsCancel {
+            CityListID.addBuiltInLists(withRawValues: selectedIDs)
+            visibleListIDs.formUnion(selectedIDs)
+            expandedListIDs.formUnion(selectedIDs)
+        } else {
+            CityListID.keepBuiltInLists(withRawValues: selectedIDs)
+            visibleListIDs = selectedIDs
+            expandedListIDs = selectedIDs
+        }
         refreshListOrder()
         refreshCityOrder()
         withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {

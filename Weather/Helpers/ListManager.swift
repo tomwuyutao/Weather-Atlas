@@ -153,6 +153,12 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         UserDefaults.standard.removeObject(forKey: listOrderKey)
         UserDefaults.standard.removeObject(forKey: customListNamesKey)
     }
+
+    static func addBuiltInLists(withRawValues selectedIDs: Set<String>) {
+        var deleted = loadDeletedBuiltInIDs()
+        deleted.subtract(selectedIDs)
+        UserDefaults.standard.set(Array(deleted), forKey: deletedBuiltInListsKey)
+    }
     
     static func createList(name: String) -> CityListID {
         let id = CityListID(rawValue: UUID().uuidString, displayName: name)
@@ -257,6 +263,10 @@ extension WeatherService {
             let encoded = try encoder.encode(cities.map { CachedCity(from: $0) })
             UserDefaults.standard.set(encoded, forKey: citiesListKey)
         } catch {
+            DeveloperWarningCenter.show(
+                title: "City List Save Failed",
+                message: "The active city list could not be encoded and saved: \(error.localizedDescription)"
+            )
         }
     }
 
@@ -266,6 +276,10 @@ extension WeatherService {
             let encoded = try JSONEncoder().encode(cities.map { CachedCity(from: $0) })
             UserDefaults.standard.set(encoded, forKey: key)
         } catch {
+            DeveloperWarningCenter.show(
+                title: "City List Save Failed",
+                message: "The city list for \(listID.rawValue) could not be encoded and saved: \(error.localizedDescription)"
+            )
         }
     }
     

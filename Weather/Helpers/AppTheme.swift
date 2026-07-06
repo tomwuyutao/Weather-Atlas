@@ -86,6 +86,7 @@ struct ThemeColors {
 
     // Glass fill for capsule/circle backgrounds
     let glassFill: Color
+    let shadow: Color
 
     // Filter
     let filterSunny: Color
@@ -155,6 +156,7 @@ extension ThemeColors {
         chartPanelFill: Color(hex: 0xFCF6F0),
         settingsRowFill: Color(hex: 0xF6EDE4),
         glassFill: Color(hex: 0xFDF9F3),
+        shadow: Color(hex: 0x000000),
         filterSunny: Color(hex: 0xF7AB3E)
     )
 }
@@ -200,6 +202,7 @@ extension ThemeColors {
         chartPanelFill: Color(hex: 0x101C2D),
         settingsRowFill: Color(hex: 0x0B1628),
         glassFill: Color(hex: 0x0C1828),
+        shadow: Color(hex: 0x000000),
         filterSunny: Color(hex: 0xDD8019)
     )
 }

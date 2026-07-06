@@ -50,23 +50,28 @@ enum DistanceUnit: String, CaseIterable {
         }
     }
 
-    func displayWindSpeed(_ kmh: Double) -> String {
+    func displayWindSpeed(_ kmh: Double, locale: Locale = .autoupdatingCurrent) -> String {
         switch resolved {
         case .kilometers:
-            return "\(Int(kmh)) km/h"
+            return Measurement(value: kmh.rounded(), unit: UnitSpeed.kilometersPerHour)
+                .formatted(.measurement(width: .abbreviated, usage: .asProvided).locale(locale))
         case .miles:
             let mph = kmh * 0.621371
-            return "\(Int(mph)) mph"
+            return Measurement(value: mph.rounded(), unit: UnitSpeed.milesPerHour)
+                .formatted(.measurement(width: .abbreviated, usage: .asProvided).locale(locale))
         case .automatic:
-            return resolved.displayWindSpeed(kmh)
+            return resolved.displayWindSpeed(kmh, locale: locale)
         }
     }
 
-    var windSpeedUnit: String {
+    func windSpeedUnit(locale: Locale = .autoupdatingCurrent) -> String {
         switch resolved {
-        case .kilometers: return "km/h"
-        case .miles: return "mph"
-        case .automatic: return resolved.windSpeedUnit
+        case .kilometers:
+            return UnitSpeed.kilometersPerHour.symbol
+        case .miles:
+            return UnitSpeed.milesPerHour.symbol
+        case .automatic:
+            return resolved.windSpeedUnit(locale: locale)
         }
     }
 }
@@ -144,14 +149,13 @@ struct SettingsView: View {
     @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.defaultRawValue
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     let weatherService: WeatherService
-    let onResetLists: () -> Void
+    let onAddStarterLists: () -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.openURL) private var openURL
 
-    @State private var showingResetConfirmation = false
     @State private var showingEmailCopied = false
     @State private var showingAttributions = false
 
@@ -192,7 +196,6 @@ struct SettingsView: View {
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
         .presentationBackground(theme.colors.mapOcean)
-        .settingsResetAlert(isPresented: $showingResetConfirmation, locale: locale, onReset: onResetLists)
     }
 
     // MARK: Toolbar
@@ -237,7 +240,7 @@ struct SettingsView: View {
     }
 
     private var settingsTitleColor: Color {
-        colorScheme == .dark ? theme.colors.accent : theme.colors.primaryText
+        theme.colors.primaryText
     }
 
     // MARK: Main Settings Form
@@ -295,9 +298,9 @@ struct SettingsView: View {
 
             Section {
                 Button {
-                    showingResetConfirmation = true
+                    onAddStarterLists()
                 } label: {
-                    Label(localizedString("Reset Lists to Defaults", locale: locale), systemImage: "arrow.counterclockwise")
+                    Label(localizedString("Add Starter Lists", locale: locale), systemImage: "plus.circle")
                         .foregroundStyle(theme.colors.dotSun)
                 }
             }
@@ -443,7 +446,7 @@ struct SettingsView: View {
     private func settingsSectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.footnote.weight(.semibold))
-            .foregroundStyle(theme.colors.accent)
+            .foregroundStyle(theme.colors.primaryText)
     }
 
     private func settingsInfoRow(_ title: String, value: String, systemImage: String) -> some View {
@@ -502,19 +505,6 @@ struct SettingsView: View {
     }
 }
 
-private extension View {
-    func settingsResetAlert(isPresented: Binding<Bool>, locale: Locale, onReset: @escaping () -> Void) -> some View {
-        alert(localizedString("Reset Lists", locale: locale), isPresented: isPresented) {
-            Button(localizedString("Cancel", locale: locale), role: .cancel) {}
-            Button(localizedString("Reset", locale: locale), role: .destructive) {
-                onReset()
-            }
-        } message: {
-            Text(localizedString("This will reset all city lists back to their defaults. Any cities you added or removed will be lost.", locale: locale))
-        }
-    }
-}
-
 #Preview("Settings View") {
-    SettingsView(weatherService: WeatherService(), onResetLists: {})
+    SettingsView(weatherService: WeatherService(), onAddStarterLists: {})
 }

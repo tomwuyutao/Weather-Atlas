@@ -24,9 +24,17 @@ extension ContentView {
             cityDetailScrollContent(for: city)
 
             if !showingSearchSheet {
+                Color.clear
+                    .frame(height: 104)
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
+                    .onTapGesture {}
+                    .zIndex(90)
+
                 floatingBottomToolbar
                     .padding(.horizontal, 16)
                     .padding(.bottom, -2)
+                    .zIndex(100)
             }
         }
         .background {
@@ -94,9 +102,9 @@ extension ContentView {
 
             detailSunnyFactorGrid(city: city, candidate: candidate, forecast: forecast)
 
-            detailBestFutureDates(city: city)
-
             detailCloudCover(city: city)
+
+            detailBestFutureDates(city: city)
 
             detailNearbyCities(city: city)
         }
@@ -119,7 +127,7 @@ extension ContentView {
 
             Text(detailConditionText(icon: icon, condition: condition))
                 .font(.callout)
-                .foregroundStyle(theme.colors.secondaryText)
+                .foregroundStyle(theme.colors.primaryText)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -182,7 +190,7 @@ extension ContentView {
 
             detailSunnyFactorTile(
                 title: localizedString("Wind", locale: locale),
-                value: windSpeed.map { distanceUnit.displayWindSpeed($0) } ?? "-",
+                value: windSpeed.map { distanceUnit.displayWindSpeed($0, locale: locale) } ?? "-",
                 systemImage: "wind",
                 tint: theme.colors.secondaryText
             )
@@ -509,7 +517,12 @@ extension ContentView {
     }
 
     private func detailDisplayHours(for city: CityWeather, forecast: DailyForecast, filtersPastToday: Bool) -> [HourlyForecast] {
-        let currentHour: Int? = filtersPastToday && forecast.dayOffset == 0 ? Calendar.current.component(.hour, from: Date()) : nil
+        let currentHour: Int? = {
+            guard filtersPastToday && forecast.dayOffset == 0 else { return nil }
+            var calendar = Calendar.current
+            calendar.timeZone = city.timeZone
+            return calendar.component(.hour, from: Date())
+        }()
         return forecast.hourlyForecasts
             .filter { forecast in
                 guard (6...21).contains(forecast.hour) else { return false }

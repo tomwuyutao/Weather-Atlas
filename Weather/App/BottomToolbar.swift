@@ -63,46 +63,48 @@ extension ContentView {
                     }
                 }
 
-            Text(dateSwitcherText)
-                .font(.avenir(.caption, weight: .semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
-                .frame(minWidth: 80)
-                .id("date-\(selectedDayOffset)")
-                .transition(.push(from: dateSwitcherForward ? .trailing : .leading))
-                .clipped()
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    showingDatePopover = true
-                }
-                .popover(isPresented: $showingDatePopover) {
-                    DatePicker(
-                        "",
-                        selection: Binding(
-                            get: {
-                                Calendar.current.date(byAdding: .day, value: max(0, selectedDayOffset), to: Date()) ?? Date()
-                            },
-                            set: { newDate in
-                                let calendar = Calendar.current
-                                let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
-                                if let days = components.day {
-                                    withAnimation(.smooth(duration: 0.2)) {
-                                        selectedDayOffset = max(0, min(9, days))
-                                    }
+            Button {
+                showingDatePopover = true
+            } label: {
+                Text(dateSwitcherText)
+                    .font(.avenir(.caption, weight: .semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(minWidth: 80, minHeight: 36)
+                    .id("date-\(selectedDayOffset)")
+                    .transition(.push(from: dateSwitcherForward ? .trailing : .leading))
+                    .clipped()
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingDatePopover) {
+                DatePicker(
+                    "",
+                    selection: Binding(
+                        get: {
+                            Calendar.current.date(byAdding: .day, value: max(0, selectedDayOffset), to: Date()) ?? Date()
+                        },
+                        set: { newDate in
+                            let calendar = Calendar.current
+                            let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
+                            if let days = components.day {
+                                withAnimation(.smooth(duration: 0.2)) {
+                                    selectedDayOffset = max(0, min(9, days))
                                 }
                             }
-                        ),
-                        in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
-                        displayedComponents: .date
-                    )
-                    .datePickerStyle(.graphical)
-                    .labelsHidden()
-                    .frame(width: 280, height: 300)
-                    .padding(8)
-                    .presentationCompactAdaptation(.popover)
-                    .themedPopoverBackground()
-                }
+                        }
+                    ),
+                    in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .labelsHidden()
+                .frame(width: 280, height: 300)
+                .padding(8)
+                .presentationCompactAdaptation(.popover)
+                .themedPopoverBackground()
+            }
 
             Image(systemName: "chevron.right")
                 .font(.system(size: 14, weight: .semibold))
@@ -140,7 +142,7 @@ extension ContentView {
 
             Spacer(minLength: 12)
 
-            if currentRoute == .addCityDetail {
+            if currentRoute == .addCityDetail || temporaryMapSearchCity != nil {
                 bottomAddSearchedCityButton
             } else {
                 bottomSearchButton
@@ -174,7 +176,11 @@ extension ContentView {
 
             Spacer(minLength: 12)
 
-            bottomSearchButton
+            if temporaryMapSearchCity != nil {
+                bottomAddSearchedCityButton
+            } else {
+                bottomSearchButton
+            }
         }
     }
 
@@ -272,7 +278,7 @@ extension ContentView {
         .disabled(addCityDetailCity == nil || lists.isEmpty)
         .accessibilityLabel(localizedString("Add", locale: locale))
         .confirmationDialog(
-            localizedString("Add City", locale: locale),
+            localizedString("Add to List", locale: locale),
             isPresented: $showingAddSearchedCityListDialog,
             titleVisibility: .visible
         ) {

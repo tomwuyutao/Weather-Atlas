@@ -199,7 +199,9 @@ struct MapFloatingLegend: View {
                     windColor(fraction: 0.25),
                     windColor(fraction: 0)
                 ],
-                labels: distUnit.resolved == .miles ? ["60 mph", "45", "30", "15", "0"] : ["100 km/h", "75", "50", "25", "0"]
+                labels: distUnit.resolved == .miles
+                    ? [60, 45, 30, 15, 0].map { distUnit.displayWindSpeed(Double($0) / 0.621371, locale: locale) }
+                    : [100, 75, 50, 25, 0].map { distUnit.displayWindSpeed(Double($0), locale: locale) }
             )
         case "uvIndex":
             verticalGradientLegend(

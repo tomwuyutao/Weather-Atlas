@@ -58,6 +58,8 @@ struct ContentView: View {
     @State var isLoadingSearchCity = false
     @State var loadingSearchResultID: String?
     @State var searchSelectionIndex: Int = 0
+    @State var searchDebounceTask: Task<Void, Never>?
+    @State var searchIsSettled: Bool = true
 
     // MARK: Map Camera and Settings State
 
@@ -69,6 +71,7 @@ struct ContentView: View {
     @State var showingSettings: Bool = false
     @State var isResettingListsToDefaults = false
     @State var showingFirstLaunchListPicker = false
+    @State var starterListPickerAllowsCancel = false
     @State var firstLaunchSelectedListIDs: Set<String> = []
     @AppStorage("showLegend") var showLegend: Bool = true
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"

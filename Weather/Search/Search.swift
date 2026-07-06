@@ -130,17 +130,21 @@ extension ContentView {
     var searchSheet: some View {
         VStack(spacing: 16) {
             searchBar
+                .zIndex(2)
 
             if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               !sortedSearchResults.isEmpty {
-                searchSuggestionPanel
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+               !displayedSearchResults.isEmpty {
+                ScrollView(.vertical, showsIndicators: false) {
+                    searchSuggestionPanel
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             } else {
                 Spacer(minLength: 0)
             }
         }
         .padding(.horizontal, 18)
-        .padding(.top, 22)
+        .safeAreaPadding(.top, 8)
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(theme.colors.background.ignoresSafeArea())
@@ -195,19 +199,23 @@ extension ContentView {
 
     private var searchSuggestionPanel: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(sortedSearchResults.prefix(searchResultLimit).enumerated()), id: \.element.id) { index, result in
+            ForEach(Array(displayedSearchResults.prefix(searchResultLimit).enumerated()), id: \.element.id) { index, result in
                 Button {
                     guard !isLoadingSearchCity else { return }
                     Task {
                         await selectSearchResult(result)
                     }
                 } label: {
-                    citySearchSuggestionRow(for: result, isSelected: index == searchSelectionIndex)
+                    citySearchSuggestionRow(
+                        for: result,
+                        isSelected: index == searchSelectionIndex,
+                        isLoading: loadingSearchResultID == result.id
+                    )
                 }
-                .disabled(isLoadingSearchCity)
+                .allowsHitTesting(!isLoadingSearchCity)
                 .buttonStyle(.plain)
 
-                if index < min(sortedSearchResults.count, searchResultLimit) - 1 {
+                if index < min(displayedSearchResults.count, searchResultLimit) - 1 {
                     Divider()
                         .padding(.leading, 2)
                 }
@@ -246,10 +254,10 @@ extension ContentView {
 
     // MARK: - Search Result Rows
 
-    private func citySearchSuggestionRow(for result: CitySearchResult, isSelected: Bool) -> some View {
-        let existingListName = existingCityListName(for: result)
-        let titleColor = searchSuggestionTitleColor
-        let subtitleColor = searchSuggestionSubtitleColor
+    private func citySearchSuggestionRow(for result: CitySearchResult, isSelected: Bool, isLoading: Bool) -> some View {
+        let existingListName = searchIsSettled ? existingCityListName(for: result) : nil
+        let titleColor = isLoading ? searchSuggestionTitleColor.opacity(0.45) : searchSuggestionTitleColor
+        let subtitleColor = isLoading ? searchSuggestionSubtitleColor.opacity(0.45) : searchSuggestionSubtitleColor
         let rowSpacing: CGFloat = 10
         let titleFont: Font = .avenir(.body, weight: .medium)
         let subtitleFont: Font = .avenir(.caption, weight: .regular)
@@ -285,7 +293,7 @@ extension ContentView {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(subtitleColor)
                 }
-            } else if loadingSearchResultID == result.id {
+            } else if isLoading {
                 ProgressView()
                     .controlSize(.small)
             }
@@ -330,7 +338,29 @@ extension ContentView {
             }
     }
 
+    var displayedSearchResults: [CitySearchResult] {
+        searchIsSettled ? sortedSearchResults : citySearchManager.searchResults
+    }
+
     // MARK: - Search Lifecycle
+
+    func scheduleCitySearch(for query: String) {
+        searchDebounceTask?.cancel()
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedQuery.isEmpty else {
+            searchIsSettled = true
+            citySearchManager.search(query: "")
+            return
+        }
+
+        searchIsSettled = false
+        searchDebounceTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
+            citySearchManager.search(query: trimmedQuery)
+            searchIsSettled = true
+        }
+    }
 
     func activateSearch() {
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -348,6 +378,9 @@ extension ContentView {
     func resetNativeCitySearch() {
         searchText = ""
         citySearchManager.search(query: "")
+        searchDebounceTask?.cancel()
+        searchDebounceTask = nil
+        searchIsSettled = true
         searchAddTargetListID = nil
         loadingSearchResultID = nil
         searchSelectionIndex = 0
@@ -372,7 +405,7 @@ extension ContentView {
     }
 
     func confirmSearchSelection() {
-        let results = Array(sortedSearchResults.prefix(searchResultLimit))
+        let results = Array(displayedSearchResults.prefix(searchResultLimit))
         guard results.indices.contains(searchSelectionIndex), !isLoadingSearchCity else { return }
         let result = results[searchSelectionIndex]
         Task {
@@ -407,7 +440,7 @@ extension ContentView {
                 revealCityOnMap(existingCity, in: targetListID)
                 return
             }
-            handleSearchCitySelected(existingCity)
+            handleSearchCitySelected(existingCity, canAdd: false)
             return
         }
 
@@ -436,13 +469,14 @@ extension ContentView {
             }
             revealCityOnMap(tempCityWeather, in: targetListID)
         } else {
-            handleSearchCitySelected(tempCityWeather)
+            handleSearchCitySelected(tempCityWeather, canAdd: true)
         }
     }
 
-    private func handleSearchCitySelected(_ cityWeather: CityWeather) {
+    private func handleSearchCitySelected(_ cityWeather: CityWeather, canAdd: Bool) {
         if isMapRoute {
-            temporaryMapSearchCity = cityWeather
+            temporaryMapSearchCity = canAdd ? cityWeather : nil
+            addCityDetailCity = canAdd ? cityWeather : nil
             tappedCity = cityWeather
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 showingSearchSheet = false
@@ -456,8 +490,9 @@ extension ContentView {
                     showingMapExpandedCard = true
                 }
             }
-        } else {
+        } else if canAdd {
             addCityDetailCity = cityWeather
+            temporaryMapSearchCity = nil
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 showingSearchSheet = false
                 searchFieldPresented = false
@@ -466,6 +501,17 @@ extension ContentView {
             Task { @MainActor in
                 await Task.yield()
                 pushRoute(.addCityDetail)
+            }
+        } else {
+            temporaryMapSearchCity = nil
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
+                showingSearchSheet = false
+                searchFieldPresented = false
+                searchText = ""
+            }
+            Task { @MainActor in
+                await Task.yield()
+                presentDetail(for: cityWeather)
             }
         }
     }

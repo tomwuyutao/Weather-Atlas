@@ -44,10 +44,10 @@ extension ContentView {
             case "windSpeed":
                 if isNow {
                     guard let ws = cityWeather.currentWindSpeed else { return "—" }
-                    return distUnit.displayWindSpeed(ws)
+                    return distUnit.displayWindSpeed(ws, locale: locale)
                 }
                 guard let ws = forecast.windSpeed else { return "—" }
-                return distUnit.displayWindSpeed(ws)
+                return distUnit.displayWindSpeed(ws, locale: locale)
             case "uvIndex":
                 if isNow {
                     guard let uv = cityWeather.currentUVIndex else { return "—" }
@@ -395,19 +395,18 @@ struct MapGlassCardContainer: ViewModifier {
     let colorScheme: ColorScheme
 
     func body(content: Content) -> some View {
+        let colors = AppTheme.shared.colors
         content
             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             .background(
-                (colorScheme == .dark
-                 ? Color(red: 0.08, green: 0.08, blue: 0.12).opacity(0.48)
-                 : Color.white.opacity(0.62)),
+                colors.glassFill.opacity(colorScheme == .dark ? 0.48 : 0.62),
                 in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
             )
             .overlay {
                 RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                    .strokeBorder(Color.primary.opacity(0.10), lineWidth: 1)
+                    .strokeBorder(colors.primaryText.opacity(0.10), lineWidth: 1)
             }
-            .shadow(color: .black.opacity(0.16), radius: 22, x: 0, y: 10)
+            .shadow(color: colors.shadow.opacity(0.16), radius: 22, x: 0, y: 10)
     }
 }
 
