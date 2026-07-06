@@ -640,10 +640,6 @@ extension ContentView {
     }
 
     var starterListPickerLists: [CityListID] {
-        if starterListPickerAllowsCancel {
-            let availableIDs = Set(CityListID.allLists.map(\.rawValue))
-            return CityListID.builtInLists.filter { !availableIDs.contains($0.rawValue) }
-        }
         return CityListID.builtInLists
     }
 

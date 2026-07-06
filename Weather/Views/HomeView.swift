@@ -152,8 +152,8 @@ enum WeatherListSortMode: String, CaseIterable, Identifiable {
     func title(locale: Locale) -> String {
         switch self {
         case .temperature: return localizedString("Temperature", locale: locale)
-        case .cloud: return localizedString("Cloud", locale: locale)
-        case .sunny: return localizedString("Sunny", locale: locale)
+        case .cloud: return localizedString("Cloud Cover", locale: locale)
+        case .sunny: return localizedString("Sunniness", locale: locale)
         }
     }
 }
@@ -514,6 +514,20 @@ extension ContentView {
                         beginCreatingListFromSwitcher()
                     } label: {
                         primaryMenuLabel(localizedString("New List", locale: locale), systemImage: "plus")
+                    }
+
+                    Button {
+                        withAnimation(.easeOut(duration: 0.2)) {
+                            showingDeleteListConfirmation = true
+                        }
+                    } label: {
+                        Label {
+                            Text(localizedString("Delete List", locale: locale))
+                                .foregroundStyle(theme.colors.primaryText)
+                        } icon: {
+                            Image(systemName: "trash")
+                                .foregroundStyle(theme.colors.destructive)
+                        }
                     }
                 } label: {
                     HStack(spacing: 6) {

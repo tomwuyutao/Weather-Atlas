@@ -427,7 +427,7 @@ private struct TimelineChartBody: View {
                         .foregroundStyle(.secondary.opacity(0.16))
                     AxisValueLabel {
                         if let intValue = value.as(Int.self) {
-                            Text("\(intValue)%")
+                            Text(verbatim: "\(intValue)%")
                                 .font(.caption2.weight(.medium))
                                 .foregroundStyle(.secondary)
                         }

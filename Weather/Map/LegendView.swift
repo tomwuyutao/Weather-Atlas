@@ -37,7 +37,7 @@ struct MapFloatingLegend: View {
     }
 
     private var legendWidth: CGFloat {
-        overlayMode == "weather" ? (compact ? 188 : 186) : (compact ? 124 : 120)
+        overlayMode == "weather" ? (compact ? 168 : 162) : (compact ? 112 : 108)
     }
 
     private var legendLabelFont: Font {

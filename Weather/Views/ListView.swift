@@ -64,7 +64,7 @@ extension ContentView {
                     }
                     .buttonStyle(.plain)
                 } else {
-                    Menu {
+                    HStack(spacing: 10) {
                         Menu {
                             ForEach(WeatherListSortMode.allCases) { mode in
                                 Button {
@@ -74,37 +74,43 @@ extension ContentView {
                                 }
                             }
                         } label: {
-                            primaryMenuLabel(localizedString("Sort", locale: locale), systemImage: "arrow.up.arrow.down")
+                            listToolbarActionIcon("arrow.up.arrow.down", accessibilityLabel: localizedString("Sort", locale: locale))
                         }
+                        .menuOrder(.fixed)
+                        .tint(theme.colors.primaryText)
+                        .buttonStyle(.plain)
 
                         Button {
                             withAnimation(.smooth(duration: 0.2)) {
                                 listEditMode = true
                             }
                         } label: {
-                            primaryMenuLabel(localizedString("Edit", locale: locale), systemImage: "pencil")
+                            listToolbarActionIcon("pencil", accessibilityLabel: localizedString("Edit", locale: locale))
                         }
+                        .buttonStyle(.plain)
 
                         Button {
                             activateSearch()
                         } label: {
-                            primaryMenuLabel(localizedString("Add City", locale: locale), systemImage: "plus")
+                            listToolbarActionIcon("plus", accessibilityLabel: localizedString("Add City", locale: locale))
                         }
-                    } label: {
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 38, height: 38)
-                            .themedGlass(in: .capsule)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                    .tint(theme.colors.primaryText)
                 }
             }
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
         .padding(.bottom, 10)
+    }
+
+    private func listToolbarActionIcon(_ systemImage: String, accessibilityLabel: String) -> some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 17, weight: .semibold))
+            .foregroundStyle(theme.colors.primaryText)
+            .frame(width: 38, height: 38)
+            .themedGlass(in: Circle())
+            .accessibilityLabel(accessibilityLabel)
     }
 
     func listRow(_ candidate: SunnyCandidate, rank: Int) -> some View {

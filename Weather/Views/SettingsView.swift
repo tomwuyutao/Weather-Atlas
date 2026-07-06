@@ -309,7 +309,7 @@ struct SettingsView: View {
             Section {
                 settingsInfoRow(
                     localizedString("Version", locale: locale),
-                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
+                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1",
                     systemImage: "info.circle"
                 )
                 settingsLinkRow(
@@ -345,7 +345,7 @@ struct SettingsView: View {
             Section {
                 settingsInfoRow(
                     localizedString("Version", locale: locale),
-                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0",
+                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1",
                     systemImage: "info.circle"
                 )
                 settingsLinkRow(

@@ -297,18 +297,6 @@ extension ContentView {
 extension ContentView {
     @ViewBuilder
     private var mapMoreMenuItems: some View {
-        Button {
-            showingSettings = true
-        } label: {
-            Label {
-                Text(localizedString("Settings", locale: locale))
-                    .foregroundStyle(theme.colors.primaryText)
-            } icon: {
-                Image(systemName: "gearshape")
-                    .foregroundStyle(theme.colors.primaryText)
-            }
-        }
-
         Toggle(isOn: Binding(
             get: { showLegend },
             set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
@@ -318,6 +306,19 @@ extension ContentView {
                     .foregroundStyle(theme.colors.primaryText)
             } icon: {
                 Image(systemName: "eye")
+                    .foregroundStyle(theme.colors.primaryText)
+            }
+        }
+
+        Toggle(isOn: Binding(
+            get: { filterSunny },
+            set: { newValue in withAnimation { filterSunny = newValue } }
+        )) {
+            Label {
+                Text(localizedString("Filter Sunny", locale: locale))
+                    .foregroundStyle(theme.colors.primaryText)
+            } icon: {
+                Image(systemName: "sun.max")
                     .foregroundStyle(theme.colors.primaryText)
             }
         }
@@ -334,40 +335,6 @@ extension ContentView {
             }
         }
         .disabled(weatherService.isLoading)
-
-        Toggle(isOn: Binding(
-            get: { filterSunny },
-            set: { newValue in withAnimation { filterSunny = newValue } }
-        )) {
-            Label {
-                Text(localizedString("Filter Sunny", locale: locale))
-                    .foregroundStyle(theme.colors.primaryText)
-            } icon: {
-                Image(systemName: "sun.max")
-                    .foregroundStyle(theme.colors.primaryText)
-            }
-        }
-
-        Divider()
-
-        if isMapRoute,
-           showingMapExpandedCard,
-           let city = tappedCity,
-           cityIsInActiveList(city) {
-            Button(
-                localizedString("Delete", locale: locale) + " \"" + city.city.localizedName(locale: locale) + "\"",
-                systemImage: "trash",
-                role: .destructive
-            ) {
-                weatherService.removeCity(city)
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                    showingMapExpandedCard = false
-                    tappedCity = nil
-                    mapRecenterRequest = .listCoordinates
-                }
-            }
-            .tint(theme.colors.destructive)
-        }
     }
 
     var mapMoreMenu: some View {

@@ -1026,10 +1026,10 @@ struct City: Identifiable, Hashable, Codable {
         timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
     }
     
-    /// Returns the display city name, localized through the string catalog when available.
+    /// Returns the display city name stored with the city record.
     func localizedName(locale: Locale = .current) -> String {
         if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            return localizedString(String.LocalizationValue(name), locale: locale)
+            return name
         }
         return String(format: "%.2f, %.2f", latitude, longitude)
     }

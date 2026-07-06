@@ -221,15 +221,8 @@ extension ContentView {
                 }
             }
         }
-        .padding(.vertical, 10)
-        .padding(.horizontal, 14)
+        .padding(.horizontal, 12)
         .frame(maxWidth: 430)
-        .background(searchSuggestionBackground, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.38), lineWidth: 0.8)
-        }
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.14), radius: 20, y: 8)
     }
 
     private var searchResultLimit: Int { 8 }
@@ -237,7 +230,7 @@ extension ContentView {
     // MARK: - Search Styling
 
     private var searchSuggestionBackground: Color {
-        theme.colors.background
+        theme.colors.listCardFill
     }
 
     private var searchSuggestionSelectedBackground: Color {

@@ -135,7 +135,7 @@ extension ThemeColors {
         colorfulBorder: Color(hex: 0xC9C4B8),
         accent: Color(hex: 0x4D70D4),
         destructive: Color(hex: 0xD03D3B),
-        dotSun: Color(hex: 0xF7AB3E),
+        dotSun: Color(hex: 0xFFB84D),
         dotPartlyCloudy: Color(hex: 0xF8D152),
         dotCloudy: Color(hex: 0xC8C2B5),
         dotRain: Color(hex: 0x4D70D4),
@@ -147,7 +147,7 @@ extension ThemeColors {
         snowEffect: Color(hex: 0xE3E0D6).opacity(0.62),
         cloudEffect: Color(hex: 0xE3E0D6),
         windEffect: Color(hex: 0xE3E0D6).opacity(0.34),
-        sunIconColor: Color(hex: 0xF7AB3E),
+        sunIconColor: Color(hex: 0xFFB84D),
         cloudIconColor: Color(hex: 0x0F4A9C),
         rainIconColor: Color(hex: 0x8790C4),
         snowIconColor: Color(hex: 0x0F4A9C),
@@ -157,7 +157,7 @@ extension ThemeColors {
         settingsRowFill: Color(hex: 0xF6EDE4),
         glassFill: Color(hex: 0xFDF9F3),
         shadow: Color(hex: 0x000000),
-        filterSunny: Color(hex: 0xF7AB3E)
+        filterSunny: Color(hex: 0xFFB84D)
     )
 }
 
