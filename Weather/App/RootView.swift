@@ -8,16 +8,6 @@
 
 import SwiftUI
 
-// MARK: - Root Shell
-
-extension ContentView {
-
-    var listManagerBackground: Color {
-        theme.resolvedScheme(for: colorScheme) == .dark ? theme.colors.mapOcean : theme.colors.mapLand
-    }
-
-}
-
 extension ContentView {
     // MARK: - Root View Assembly
 
@@ -228,18 +218,7 @@ extension ContentView {
 
     var appNavigationStack: some View {
         NavigationStack(path: $navigationPath) {
-            ZStack {
-                homeView
-                    .allowsHitTesting(!showingListManager)
-
-                if showingListManager {
-                    nativeListManager
-                        .transition(.move(edge: .leading).combined(with: .opacity))
-                        .zIndex(1)
-                }
-
-            }
-            .animation(.smooth(duration: 0.24), value: showingListManager)
+            homeView
             .animation(.spring(response: 0.32, dampingFraction: 0.88), value: showingSearchSheet)
             .navigationDestination(for: AppNavigationRoute.self) { route in
                 switch route {
@@ -253,8 +232,6 @@ extension ContentView {
                     addCityDetailDestination
                 case .listPreview:
                     listPreviewDestination
-                case .listManager:
-                    nativeListManager
                 }
             }
         }
@@ -396,119 +373,6 @@ extension ContentView {
         .tint(.primary)
     }
 
-    // MARK: - List Manager Destination
-
-    var nativeListManager: some View {
-        ZStack(alignment: .bottom) {
-            listManagerContent
-                .scrollContentBackground(.hidden)
-                .background(listManagerBackground)
-                .tint(.primary)
-
-            legacyListManagerFloatingToolbar
-                .padding(.horizontal, 16)
-                .padding(.bottom, -2)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.hidden, for: .navigationBar)
-            .toolbar {
-                if #available(iOS 26.0, *) {
-                    ToolbarItemGroup(placement: .bottomBar) {
-                        Button {
-                            withAnimation(.smooth(duration: 0.24)) {
-                                pushRoute(.map)
-                            }
-                        } label: {
-                            Image(systemName: "map")
-                                .foregroundStyle(.primary)
-                                .foregroundColor(.primary)
-                        }
-                        .tint(.primary)
-
-                        Spacer()
-
-                        HStack(spacing: 0) {
-                            Button {
-                                beginCreatingCustomList()
-                            } label: {
-                                Image(systemName: "plus")
-                                    .foregroundStyle(.primary)
-                                    .foregroundColor(.primary)
-                                    .frame(width: 44, height: 44)
-                            }
-                            .tint(.primary)
-
-                            Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    listManagerEditMode = listManagerEditMode.isEditing ? .inactive : .active
-                                }
-                            } label: {
-                                Image(systemName: listManagerEditMode.isEditing ? "checkmark" : "pencil")
-                                    .foregroundStyle(.primary)
-                                    .foregroundColor(.primary)
-                                    .frame(width: 44, height: 44)
-                            }
-                            .tint(.primary)
-                        }
-                    }
-                }
-            }
-            .nativeBottomToolbarBackground()
-    }
-
-    @ViewBuilder
-    var legacyListManagerFloatingToolbar: some View {
-        if #available(iOS 26.0, *) {
-            EmptyView()
-        } else {
-            HStack(spacing: 0) {
-                Button {
-                    withAnimation(.smooth(duration: 0.24)) {
-                        pushRoute(.map)
-                    }
-                } label: {
-                    Image(systemName: "map")
-                        .font(.system(size: 21, weight: .regular))
-                        .foregroundStyle(.primary)
-                        .frame(width: 46, height: 46)
-                }
-                .buttonStyle(.bordered)
-                .tint(.primary)
-
-                Spacer(minLength: 12)
-
-                HStack(spacing: 8) {
-                    Button {
-                        beginCreatingCustomList()
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 21, weight: .regular))
-                            .foregroundStyle(.primary)
-                            .frame(width: 46, height: 46)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.primary)
-
-                    Button {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            listManagerEditMode = listManagerEditMode.isEditing ? .inactive : .active
-                        }
-                    } label: {
-                        Image(systemName: listManagerEditMode.isEditing ? "checkmark" : "pencil")
-                            .font(.system(size: 21, weight: .regular))
-                            .foregroundStyle(.primary)
-                            .frame(width: 46, height: 46)
-                    }
-                    .buttonStyle(.bordered)
-                    .tint(.primary)
-                }
-            }
-            .controlSize(.regular)
-        }
-    }
-
     // MARK: - Startup and External Entry Points
 
     func onAppearLoad() async {
@@ -557,9 +421,7 @@ extension ContentView {
 
         CityListID.keepBuiltInLists(withRawValues: selectedIDs)
         visibleListIDs = selectedIDs
-        expandedListIDs = selectedIDs
         refreshListOrder()
-        refreshCityOrder()
         hasLaunchedBefore = true
         showingFirstLaunchTutorial = false
 
@@ -579,7 +441,6 @@ extension ContentView {
         showingSettings = false
         showingSearchSheet = false
         searchFieldPresented = false
-        showingListManager = false
         showingMapExpandedCard = false
         tappedCity = nil
         temporaryMapSearchCity = nil
@@ -590,7 +451,6 @@ extension ContentView {
             await switchToList(listID)
             await MainActor.run {
                 visibleListIDs.insert(listID.rawValue)
-                expandedListIDs.insert(listID.rawValue)
                 mapRecenterRequest = .listCoordinates
                 centerMapOnDots(useListCoordinates: true)
                 AppDelegate.updateHomeScreenListShortcuts()
@@ -647,7 +507,6 @@ extension ContentView {
     }
 
     func previewGeneratedList(name: String, cities: [City]) {
-        listPreviewToken = UUID()
         listPreviewName = name
         listPreviewAllCities = cities
         listPreviewCityCount = min(CountryCityCatalog.defaultCountryCityCount, min(CountryCityCatalog.maxCountryCityCount, cities.count))
@@ -691,7 +550,6 @@ extension ContentView {
     }
 
     func clearGeneratedListPreview(playsHaptic: Bool = true) {
-        listPreviewToken = UUID()
         listPreviewName = nil
         listPreviewAllCities = []
         listPreviewCityCount = CountryCityCatalog.defaultCountryCityCount
@@ -712,9 +570,7 @@ extension ContentView {
             let listID = await weatherService.createCustomList(name: uniqueName, cities: cities)
             await MainActor.run {
                 visibleListIDs.insert(listID.rawValue)
-                expandedListIDs.insert(listID.rawValue)
                 refreshListOrder()
-                refreshCityOrder()
                 mapRecenterRequest = .listCoordinates
                 centerMapOnDots(useListCoordinates: true)
                 AppDelegate.updateHomeScreenListShortcuts()

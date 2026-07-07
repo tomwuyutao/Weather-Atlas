@@ -648,70 +648,15 @@ extension ContentView {
         return CityListID.allLists
     }
 
-    func managedCities(for listID: CityListID) -> [CityWeather] {
-        _ = cityOrderRevision
-        return weatherService.weatherData(for: listID)
-    }
-
-    func managedCityCount(for listID: CityListID) -> Int {
-        let cities = managedCities(for: listID)
-        return cities.isEmpty ? weatherService.cityListCoordinates(for: listID).count : cities.count
-    }
-
     func refreshListOrder() {
         listOrderRevision += 1
         AppDelegate.updateHomeScreenListShortcuts()
-    }
-
-    func refreshCityOrder() {
-        cityOrderRevision += 1
-    }
-
-    @ViewBuilder
-    func listActions(for listID: CityListID) -> some View {
-        Button {
-            beginRenamingList(listID)
-        } label: {
-            Label {
-                Text(localizedString("Rename", locale: locale))
-            } icon: {
-                Image(systemName: "pencil")
-                    .foregroundStyle(.primary)
-            }
-        }
-        .tint(.primary)
-
-        Button {
-            beginAddingCity(to: listID)
-        } label: {
-            Label {
-                Text(localizedString("Add City", locale: locale))
-            } icon: {
-                Image(systemName: "plus")
-                    .foregroundStyle(.primary)
-            }
-        }
-        .tint(.primary)
-
-        Button {
-            weatherService.deleteList(listID)
-            refreshListOrder()
-        } label: {
-            Label {
-                Text(localizedString("Delete", locale: locale))
-            } icon: {
-                Image(systemName: "trash")
-                    .foregroundStyle(.primary)
-            }
-        }
-        .tint(.primary)
     }
 
     @ViewBuilder
     func cityActions(for city: CityWeather, in listID: CityListID) -> some View {
         Button {
             weatherService.removeCity(city, from: listID)
-            refreshCityOrder()
         } label: {
             Label {
                 Text(localizedString("Delete", locale: locale))
@@ -759,28 +704,6 @@ extension ContentView {
         }
     }
 
-    func revealDefaultCityOnMap(_ city: City, in listID: CityListID) {
-        Task {
-            pushRoute(.map)
-
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
-                showingMapExpandedCard = false
-                tappedCity = nil
-            }
-
-            let revealedCity = await weatherService.switchList(to: listID, prioritizing: city)
-            mapRecenterRequest = .listCoordinates
-            refreshCityOrder()
-
-            guard let revealedCity else { return }
-            centerOnCityTrigger = revealedCity
-            try? await Task.sleep(for: .milliseconds(350))
-            await MainActor.run {
-                showMapMarkerCard(revealedCity, expanded: false, focusesMarker: true)
-            }
-        }
-    }
-
     // MARK: Rename and Add Entry Points
 
     func commitListManagerNewList() {
@@ -788,7 +711,6 @@ extension ContentView {
         guard !trimmed.isEmpty else { return }
         let newList = CityListID.createList(name: trimmed)
         refreshListOrder()
-        expandedListIDs.insert(newList.rawValue)
         newListName = ""
     }
 
@@ -796,249 +718,6 @@ extension ContentView {
         guard listID.rawValue != weatherService.activeListID.rawValue else { return }
         await weatherService.switchList(to: listID)
         mapRecenterRequest = .listCoordinates
-    }
-
-    private func beginRenamingList(_ listID: CityListID) {
-        listToRenameID = listID
-        renameAlertText = listID.localizedDisplayName(locale: locale)
-        showingRenameAlert = true
-    }
-
-    private func beginAddingCity(to listID: CityListID) {
-        searchAddTargetListID = listID
-        pushRoute(.map)
-        searchText = ""
-        activateSearch()
-    }
-}
-
-// MARK: - List Manager View
-
-extension ContentView {
-
-    var listManagerContent: some View {
-        List {
-            Section {
-                listManagerRows
-            }
-            .listRowBackground(listManagerBackground)
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .background(listManagerBackground)
-        .tint(theme.colors.accent)
-        .environment(\.editMode, $listManagerEditMode)
-        .onAppear {
-            if expandedListIDs.isEmpty {
-                expandedListIDs.insert(weatherService.activeListID.rawValue)
-            }
-        }
-    }
-
-    private var listManagerRowsHideWeatherDecorations: Bool {
-        listManagerEditMode.isEditing
-    }
-
-    // MARK: List Rows
-
-    @ViewBuilder
-    private var listManagerRows: some View {
-        ForEach(managedLists) { listID in
-            DisclosureGroup(isExpanded: listExpansionBinding(for: listID)) {
-                let cities = managedCities(for: listID)
-                if cities.isEmpty {
-                    let defaultCities = weatherService.cityListCoordinates(for: listID)
-                    if defaultCities.isEmpty {
-                        Text(localizedString("No cities", locale: locale))
-                            .font(.body)
-                            .foregroundStyle(.secondary)
-                            .padding(.vertical, 10)
-                            .padding(.leading, 22)
-                            .listRowSeparator(.hidden)
-                    } else {
-                        ForEach(defaultCities) { city in
-                            Button {
-                                revealDefaultCityOnMap(city, in: listID)
-                            } label: {
-                                listManagerDefaultCityRow(city)
-                            }
-                            .buttonStyle(.plain)
-                                .listRowSeparator(.hidden)
-                        }
-                    }
-                } else {
-                    ForEach(cities) { city in
-                        Button {
-                            revealCityOnMap(city, in: listID)
-                        } label: {
-                            listManagerCityRow(city)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            cityActions(for: city, in: listID)
-                        }
-                        .listRowSeparator(.hidden)
-                    }
-                    .onMove { source, destination in
-                        moveManagedCities(in: listID, from: source, to: destination)
-                    }
-                    .onDelete { offsets in
-                        deleteManagedCities(in: listID, at: offsets)
-                    }
-                }
-            } label: {
-                listManagerListHeader(listID)
-                    .contextMenu {
-                        listActions(for: listID)
-                    }
-            }
-            .listRowSeparator(.hidden)
-            .listRowInsets(EdgeInsets(top: 6, leading: 28, bottom: 6, trailing: 28))
-            .task(id: listID.rawValue) {
-                await weatherService.fetchWeatherForList(listID)
-                await MainActor.run {
-                    refreshCityOrder()
-                }
-            }
-        }
-        .onMove(perform: moveManagedLists)
-        .onDelete(perform: deleteManagedLists)
-    }
-
-    private func listManagerListHeader(_ listID: CityListID) -> some View {
-        VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                if !listManagerRowsHideWeatherDecorations {
-                    Image(systemName: "list.bullet")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 10, height: 18)
-                }
-
-                Text(listID.localizedDisplayName(locale: locale))
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                if !listManagerRowsHideWeatherDecorations {
-                    Text("\(managedCityCount(for: listID))")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
-                        .background(theme.colors.mapLand, in: Capsule())
-                }
-            }
-            .padding(.top, 10)
-            .padding(.bottom, 8)
-
-            Rectangle()
-                .fill(theme.colors.primaryText.opacity(0.18))
-                .frame(height: 1)
-                .padding(.leading, -10)
-                .padding(.trailing, -26)
-        }
-        .contentShape(Rectangle())
-    }
-
-    private func listManagerDefaultCityRow(_ city: City) -> some View {
-        HStack(spacing: 10) {
-            if !listManagerRowsHideWeatherDecorations {
-                Circle()
-                    .fill(theme.colors.secondaryText.opacity(0.45))
-                    .frame(width: 10, height: 10)
-                    .frame(width: 10, alignment: .center)
-            }
-
-            Text(city.localizedName(locale: locale))
-                .font(.body)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-
-            Spacer(minLength: 10)
-        }
-        .padding(.vertical, 9)
-        .padding(.leading, -18)
-        .contentShape(Rectangle())
-    }
-
-    private func listManagerCityRow(_ city: CityWeather) -> some View {
-        let dotColor = city.weatherIcon.contains("moon") ? theme.colors.moonIconColor : city.condition.dotColor(for: theme.colors)
-
-        return HStack(spacing: 10) {
-            if !listManagerRowsHideWeatherDecorations {
-                Circle()
-                    .fill(dotColor)
-                    .frame(width: 10, height: 10)
-                    .shadow(color: dotColor.opacity(0.35), radius: 3)
-                    .frame(width: 10, alignment: .center)
-            }
-
-            Text(city.city.localizedName(locale: locale))
-                .font(.body)
-                .foregroundStyle(.primary)
-                .lineLimit(1)
-
-            Spacer(minLength: 10)
-
-            if !listManagerRowsHideWeatherDecorations {
-                Text(tempUnit.display(city.temperature))
-                    .font(.callout.monospacedDigit())
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.vertical, 9)
-        .padding(.leading, -18)
-        .contentShape(Rectangle())
-    }
-
-    // MARK: Reordering and Deletion
-
-    private func moveManagedLists(from source: IndexSet, to destination: Int) {
-        weatherService.moveLists(from: source, to: destination)
-        refreshListOrder()
-        Haptics.lightImpact()
-    }
-
-    private func deleteManagedLists(at offsets: IndexSet) {
-        let lists = managedLists
-        for index in offsets {
-            guard lists.indices.contains(index) else { continue }
-            weatherService.deleteList(lists[index])
-        }
-        refreshListOrder()
-        Haptics.lightImpact()
-    }
-
-    private func moveManagedCities(in listID: CityListID, from source: IndexSet, to destination: Int) {
-        weatherService.moveCity(in: listID, from: source, to: destination)
-        refreshCityOrder()
-        Haptics.lightImpact()
-    }
-
-    private func deleteManagedCities(in listID: CityListID, at offsets: IndexSet) {
-        let cities = managedCities(for: listID)
-        for index in offsets {
-            guard cities.indices.contains(index) else { continue }
-            weatherService.removeCity(cities[index], from: listID)
-        }
-        refreshCityOrder()
-        Haptics.lightImpact()
-    }
-
-    private func listExpansionBinding(for listID: CityListID) -> Binding<Bool> {
-        Binding {
-            expandedListIDs.contains(listID.rawValue)
-        } set: { isExpanded in
-            if isExpanded {
-                expandedListIDs.insert(listID.rawValue)
-                Task { await weatherService.fetchWeatherForList(listID) }
-            } else {
-                expandedListIDs.remove(listID.rawValue)
-            }
-        }
     }
 
 }

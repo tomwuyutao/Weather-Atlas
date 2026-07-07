@@ -16,7 +16,6 @@ enum AppNavigationRoute: Hashable {
     case cityDetail(UUID)
     case addCityDetail
     case listPreview
-    case listManager
 }
 
 // MARK: - Current Route Helpers
@@ -476,13 +475,9 @@ extension ContentView {
 
 extension ContentView {
     func pushRoute(_ route: AppNavigationRoute, showsBackButton: Bool = false) {
-        if route == .map {
-            showingListManager = false
-        } else if route == .list {
-            showingListManager = false
+        if route == .list {
             showingMapExpandedCard = false
         } else if route == .listPreview {
-            showingListManager = false
             showingMapExpandedCard = false
         }
         if case .cityDetail = route {
@@ -554,9 +549,6 @@ extension ContentView {
         case .listPreview:
             navigationPath.removeAll { $0 == route }
             clearGeneratedListPreview()
-        case .listManager:
-            navigationPath.removeAll { $0 == route }
-            showingListManager = false
         }
     }
 }

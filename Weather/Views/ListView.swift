@@ -129,7 +129,6 @@ extension ContentView {
 
     func removeListCity(_ city: CityWeather) {
         weatherService.removeCity(city, from: weatherService.activeListID)
-        refreshCityOrder()
         Haptics.lightImpact()
     }
 }

@@ -97,7 +97,6 @@ struct ContentView: View {
     @State var listPreviewName: String?
     @State var listPreviewAllCities: [City] = []
     @State var listPreviewCityCount = CountryCityCatalog.defaultCountryCityCount
-    @State var listPreviewToken = UUID()
     @State var daytimeScoreRefetchKeys: Set<String> = []
     @AppStorage("showLegend") var showLegend: Bool = true
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
@@ -195,14 +194,10 @@ struct ContentView: View {
     @FocusState var searchFieldFocused: Bool
     @State var listToRenameID: CityListID?
     @State var listEditMode: Bool = false
-    @State var showingListManager: Bool = false
-    @State var expandedListIDs: Set<String> = []
     @State var listOrderRevision: Int = 0
-    @State var cityOrderRevision: Int = 0
     @State var newListName: String = ""
     @State var showingAddListAlert: Bool = false
     @State var searchAddTargetListID: CityListID?
-    @State var listManagerEditMode: EditMode = .inactive
     @State var navigationPath: [AppNavigationRoute] = []
     @State var developerWarning: DeveloperWarning?
 
