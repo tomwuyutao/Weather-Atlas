@@ -146,7 +146,7 @@ struct TutorialView: View {
                 tutorialStep(
                     number: 1,
                     title: localizedString("Build your travel list", locale: locale),
-                    subtitle: localizedString("Add the places you’re thinking about visiting.", locale: locale)
+                    subtitle: localizedString("Add the places you are planning to visit.", locale: locale)
                 )
                 tutorialStep(
                     number: 2,
@@ -155,8 +155,8 @@ struct TutorialView: View {
                 )
                 tutorialStep(
                     number: 3,
-                    title: localizedString("Spot sunshine instantly", locale: locale),
-                    subtitle: localizedString("See weather patterns across your saved places.", locale: locale)
+                    title: localizedString("Visualise on a map", locale: locale),
+                    subtitle: localizedString("Discover weather patterns across your saved places.", locale: locale)
                 )
             }
             .padding(.top, 12)
@@ -224,7 +224,7 @@ struct TutorialView: View {
                             continentSelectionMarker(isSelected: selectedContinentListIDs.contains(listID.rawValue))
 
                             Text(listID.localizedDisplayName(locale: locale))
-                                .font(.avenir(.body, weight: .bold))
+                                .font(.avenir(.body, weight: .medium))
                                 .foregroundStyle(introColors.primaryText)
 
                             Spacer()

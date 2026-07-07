@@ -298,6 +298,7 @@ extension ContentView {
         let idleVerticalPadding: CGFloat = 7
         let idleTailSize = CGSize(width: 24, height: 16)
         let hintSpacing: CGFloat = 4
+        let hintTextNudge: CGFloat = 22
         let hintGapBelowCapsule: CGFloat = 210
 
         return ZStack(alignment: .topTrailing) {
@@ -306,6 +307,7 @@ extension ContentView {
                     .font(.avenir(.title3, weight: .regular))
                     .multilineTextAlignment(.trailing)
                     .fixedSize()
+                    .offset(x: hintTextNudge)
 
                 Text(sliderDateText(for: selectedDayOffset))
                     .font(labelFont)

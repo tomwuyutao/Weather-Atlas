@@ -187,6 +187,11 @@ struct SunnyCandidate: Identifiable {
     var id: UUID { cityWeather.id }
 }
 
+struct HomeSunnyDayRecommendation: Identifiable {
+    let id: Int
+    let sunnyCityCount: Int
+}
+
 // MARK: - Home and List Logic
 
 extension ContentView {
@@ -240,6 +245,10 @@ extension ContentView {
         70
     }
 
+    var homeSunnyDayScoreThreshold: Double {
+        55
+    }
+
     var recommendedSunnyCandidates: [SunnyCandidate] {
         sunnyCandidates.filter { candidate in
             guard let score = candidate.score else { return false }
@@ -286,6 +295,29 @@ extension ContentView {
         }
     }
 
+    var homeSunnyDayRecommendations: [HomeSunnyDayRecommendation] {
+        guard !mapCities.isEmpty else { return [] }
+
+        return (1..<10).compactMap { dayOffset in
+            let scores = mapCities.compactMap { cityWeather in
+                SunninessScoring.daytimeAverageScore(
+                    for: cityWeather.forecast(for: dayOffset),
+                    timeZone: cityWeather.timeZone
+                )
+            }
+
+            guard scores.count == mapCities.count else { return nil }
+
+            let averageScore = scores.reduce(0, +) / Double(scores.count)
+            guard averageScore >= homeSunnyDayScoreThreshold else { return nil }
+
+            return HomeSunnyDayRecommendation(
+                id: dayOffset,
+                sunnyCityCount: scores.filter { $0 >= homeSunnyDayScoreThreshold }.count
+            )
+        }
+    }
+
     // MARK: Candidate Selection
 
     func selectCandidate(_ candidate: SunnyCandidate, focusMap: Bool = true) {
@@ -314,6 +346,9 @@ extension ContentView {
                     homePageHeader
                     homeMapSnapshot(height: snapshotHeight)
                     homeSunnySection
+                    if !isListPreviewActive {
+                        homeSunnyDaysSection
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -405,6 +440,83 @@ extension ContentView {
                 .buttonStyle(.plain)
             }
         }
+    }
+
+    private var homeSunnyDaysSection: some View {
+        let recommendations = homeSunnyDayRecommendations
+
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "sun.max.fill")
+                    .foregroundStyle(theme.colors.dotSun)
+                Text(localizedString("Best Future Dates", locale: locale))
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                Spacer(minLength: 8)
+            }
+
+            if recommendations.isEmpty {
+                Text(localizedString("No strong sunny days", locale: locale))
+                    .font(.callout)
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(recommendations) { day in
+                        Button {
+                            withAnimation(.smooth(duration: 0.2)) {
+                                selectedDayOffset = day.id
+                            }
+                        } label: {
+                            homeSunnyDayRow(
+                                day,
+                                isSelected: day.id == selectedDayOffset
+                            )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    private func homeSunnyDayRow(_ day: HomeSunnyDayRecommendation, isSelected: Bool) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "sun.max.fill")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(theme.colors.dotSun)
+                .frame(width: 22)
+
+            Text(homeSunnyDayLabel(dayOffset: day.id))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+
+            Spacer(minLength: 8)
+
+            Text(cityCountText(day.sunnyCityCount))
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .lineLimit(1)
+
+            Image(systemName: "checkmark")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(isSelected ? theme.colors.accent : .clear)
+                .frame(width: 14)
+        }
+        .padding(.vertical, 9)
+        .contentShape(Rectangle())
+    }
+
+    private func homeSunnyDayLabel(dayOffset: Int) -> String {
+        if dayOffset == 0 {
+            return localizedString("Today", locale: locale)
+        }
+
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "dMMM", options: 0, locale: locale)
+        return formatter.string(from: Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date())
     }
 
     private func homeCandidateList(limit: Int? = nil) -> some View {

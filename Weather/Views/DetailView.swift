@@ -104,7 +104,7 @@ extension ContentView {
 
             detailCloudCover(city: city)
 
-            detailBestFutureDates(city: city)
+            detailSunnyWindowOverview(city: city)
 
             detailNearbyCities(city: city)
         }
@@ -221,85 +221,42 @@ extension ContentView {
         .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 18))
     }
 
-    // MARK: Future Date Discovery
+    // MARK: Sunny Window Overview
 
-    private func detailBestFutureDates(city: CityWeather) -> some View {
-        let periods = detailSunnyPeriods(for: city)
-        let recommendations = periods
-            .filter { $0.id > 0 }
-            .filter { ($0.score ?? 0) >= homeSunnyScoreThreshold }
-            .sorted { $0.id < $1.id }
-            .prefix(5)
-
+    private func detailSunnyWindowOverview(city: CityWeather) -> some View {
+        let windows = detailSunnyWindowRows(for: city)
         return VStack(alignment: .leading, spacing: 10) {
-            Label(localizedString("Best Future Dates", locale: locale), systemImage: "sparkles")
+            Label(localizedString("Sunny Window", locale: locale), systemImage: "sun.max.fill")
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(theme.colors.primaryText)
 
-            if recommendations.isEmpty {
-                Text(localizedString("No strong future dates", locale: locale))
+            if windows.isEmpty {
+                Text(localizedString("No hourly data", locale: locale))
                     .font(.callout)
                     .foregroundStyle(theme.colors.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 4)
             } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(recommendations.enumerated()), id: \.element.id) { index, period in
-                        Button {
-                            withAnimation(.smooth(duration: 0.2)) {
-                                selectedDayOffset = period.id
-                            }
-                        } label: {
-                            detailFutureDateRow(
-                                period,
-                                city: city,
-                                isSelected: period.id == max(0, selectedDayOffset)
-                            )
-                        }
-                        .buttonStyle(.plain)
-
-                        if index < recommendations.count - 1 {
-                            Divider()
-                                .background(theme.colors.secondaryText.opacity(0.16))
-                                .padding(.leading, 30)
+                DetailSunnyWindowOverviewChart(
+                    rows: windows,
+                    selectedDayOffset: max(0, selectedDayOffset),
+                    locale: locale,
+                    timeZone: city.timeZone,
+                    sunnyColor: theme.colors.dotSun,
+                    trackColor: theme.colors.chartPanelFill,
+                    gridColor: theme.colors.secondaryText.opacity(0.18),
+                    primaryText: theme.colors.primaryText,
+                    secondaryText: theme.colors.secondaryText,
+                    onSelectDay: { dayOffset in
+                        withAnimation(.smooth(duration: 0.2)) {
+                            selectedDayOffset = dayOffset
                         }
                     }
-                }
+                )
             }
         }
         .padding(14)
         .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
-    }
-
-    private func detailFutureDateRow(_ period: DetailSunnyPeriod, city: CityWeather, isSelected: Bool) -> some View {
-        let forecast = city.forecast(for: period.id)
-        let hours = detailDisplayHours(for: city, forecast: forecast, filtersPastToday: false)
-        let window = detailSunnyWindowSummary(for: city, hours: hours)
-
-        return HStack(spacing: 10) {
-            Image(systemName: "sun.max.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(theme.colors.dotSun)
-                .frame(width: 22)
-
-            Text(period.dayLabel)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
-
-            Spacer(minLength: 8)
-
-            Text(window)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-
-            Image(systemName: "checkmark")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(isSelected ? theme.colors.accent : .clear)
-                .frame(width: 14)
-        }
-        .padding(.vertical, 9)
     }
 
     // MARK: Cloud Cover
@@ -315,11 +272,17 @@ extension ContentView {
 
         return VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Label(localizedString("Cloud Cover", locale: locale), systemImage: "cloud")
+                Label(localizedString("Daytime Cloud Cover", locale: locale), systemImage: "cloud")
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
 
                 Spacer(minLength: 0)
+
+                if let average = SunninessScoring.daytimeAverageCloudCover(for: selectedForecast, timeZone: city.timeZone) {
+                    Text("\(Int((average * 100).rounded()))%")
+                        .font(.subheadline.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(theme.colors.primaryText)
+                }
             }
 
             if selectedHours.isEmpty {
@@ -334,14 +297,6 @@ extension ContentView {
         }
         .padding(14)
         .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
-    }
-
-    private func detailSunnyDayDotColor(for period: DetailSunnyPeriod) -> Color {
-        guard let score = period.score else {
-            return theme.colors.dotCloudy
-        }
-        let normalizedScore = min(max(score / 100, 0), 1)
-        return theme.colors.dotCloudy.compatMix(with: theme.colors.dotSun, by: normalizedScore)
     }
 
     private func detailSunnyTimeline(hours: [HourlyForecast], timeZone: TimeZone) -> some View {
@@ -537,24 +492,54 @@ extension ContentView {
 
     // MARK: Sunny Window Computation
 
-    private struct DetailSunnyPeriod: Identifiable {
+    fileprivate struct DetailSunnyWindowRow: Identifiable {
         let id: Int
         let dayLabel: String
-        let score: Double?
+        let sunnyRanges: [ClosedRange<Int>]
     }
 
-    private func detailSunnyPeriods(for city: CityWeather) -> [DetailSunnyPeriod] {
+    private func detailSunnyWindowRows(for city: CityWeather) -> [DetailSunnyWindowRow] {
         (0..<10).compactMap { dayOffset in
             let forecast = city.forecast(for: dayOffset)
-            let hours = detailDisplayHours(for: city, forecast: forecast, filtersPastToday: true)
-            guard !hours.isEmpty else { return nil }
-
-            return DetailSunnyPeriod(
+            let daylightHours = SunninessScoring.daytimeHours(for: forecast, timeZone: city.timeZone)
+            let sunnyHours = daylightHours.compactMap { hour -> Int? in
+                guard let score = SunninessScoring.score(
+                    condition: hour.condition,
+                    icon: hour.weatherIcon,
+                    cloudCover: hour.cloudCover
+                ), score >= homeSunnyScoreThreshold else {
+                    return nil
+                }
+                return hour.hour
+            }
+            return DetailSunnyWindowRow(
                 id: dayOffset,
                 dayLabel: detailSunnyDayLabel(dayOffset: dayOffset, timeZone: city.timeZone),
-                score: SunninessScoring.daytimeAverageScore(for: forecast, timeZone: city.timeZone)
+                sunnyRanges: detailContiguousHourRanges(sunnyHours)
             )
         }
+    }
+
+    private func detailContiguousHourRanges(_ hours: [Int]) -> [ClosedRange<Int>] {
+        let sortedHours = hours.sorted()
+        guard let firstHour = sortedHours.first else { return [] }
+
+        var ranges: [ClosedRange<Int>] = []
+        var start = firstHour
+        var end = firstHour
+
+        for hour in sortedHours.dropFirst() {
+            if hour == end + 1 {
+                end = hour
+            } else {
+                ranges.append(start...end)
+                start = hour
+                end = hour
+            }
+        }
+
+        ranges.append(start...end)
+        return ranges
     }
 
     private func detailSunnyDayLabel(dayOffset: Int, timeZone: TimeZone) -> String {
@@ -655,6 +640,156 @@ extension ContentView {
         nil
     }
 
+}
+
+// MARK: - Sunny Window Overview Chart
+
+private struct DetailSunnyWindowOverviewChart: View {
+    let rows: [ContentView.DetailSunnyWindowRow]
+    let selectedDayOffset: Int
+    let locale: Locale
+    let timeZone: TimeZone
+    let sunnyColor: Color
+    let trackColor: Color
+    let gridColor: Color
+    let primaryText: Color
+    let secondaryText: Color
+    let onSelectDay: (Int) -> Void
+
+    private let axisHours = [6, 8, 10, 12, 14, 16, 18, 20]
+    private let timelineStartHour = 6.0
+    private let timelineEndHour = 21.0
+
+    var body: some View {
+        VStack(spacing: 12) {
+            GeometryReader { geometry in
+                let labelWidth: CGFloat = 72
+                let timelineWidth = max(geometry.size.width - labelWidth, 1)
+
+                VStack(spacing: 8) {
+                    axisRow(labelWidth: labelWidth, timelineWidth: timelineWidth)
+                    ZStack(alignment: .topLeading) {
+                        gridLines(labelWidth: labelWidth, timelineWidth: timelineWidth)
+                        rowsView(labelWidth: labelWidth, timelineWidth: timelineWidth)
+                    }
+                }
+            }
+            .frame(height: CGFloat(rows.count) * 34 + 30)
+
+            HStack(spacing: 18) {
+                legendItem(color: sunnyColor, text: localizedString("Sunny periods", locale: locale))
+                legendItem(color: trackColor, text: localizedString("Low sunshine chance", locale: locale))
+                Spacer(minLength: 0)
+            }
+        }
+    }
+
+    private func axisRow(labelWidth: CGFloat, timelineWidth: CGFloat) -> some View {
+        HStack(spacing: 0) {
+            Color.clear.frame(width: labelWidth)
+            ZStack(alignment: .leading) {
+                ForEach(axisHours, id: \.self) { hour in
+                    Text(formattedAxisHour(hour))
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(secondaryText)
+                        .position(
+                            x: xPosition(for: Double(hour), width: timelineWidth),
+                            y: 8
+                        )
+                }
+            }
+            .frame(width: timelineWidth, height: 16)
+        }
+    }
+
+    private func gridLines(labelWidth: CGFloat, timelineWidth: CGFloat) -> some View {
+        ZStack(alignment: .leading) {
+            ForEach(axisHours, id: \.self) { hour in
+                Rectangle()
+                    .fill(gridColor)
+                    .frame(width: 1)
+                    .frame(height: CGFloat(rows.count) * 34)
+                    .position(
+                        x: labelWidth + xPosition(for: Double(hour), width: timelineWidth),
+                        y: CGFloat(rows.count) * 17
+                    )
+            }
+        }
+    }
+
+    private func rowsView(labelWidth: CGFloat, timelineWidth: CGFloat) -> some View {
+        VStack(spacing: 10) {
+            ForEach(rows) { row in
+                Button {
+                    onSelectDay(row.id)
+                } label: {
+                    HStack(spacing: 0) {
+                        Text(row.dayLabel)
+                            .font(.caption.weight(row.id == selectedDayOffset ? .bold : .medium))
+                            .foregroundStyle(row.id == selectedDayOffset ? primaryText : secondaryText)
+                            .lineLimit(1)
+                            .frame(width: labelWidth, alignment: .leading)
+
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(trackColor)
+                                .frame(height: 12)
+
+                            ForEach(Array(row.sunnyRanges.enumerated()), id: \.offset) { _, range in
+                                Capsule()
+                                    .fill(sunnyColor)
+                                    .frame(
+                                        width: rangeWidth(for: range, timelineWidth: timelineWidth),
+                                        height: 12
+                                    )
+                                    .offset(x: xPosition(for: Double(range.lowerBound), width: timelineWidth))
+                            }
+                        }
+                        .frame(width: timelineWidth, height: 18)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    private func legendItem(color: Color, text: String) -> some View {
+        HStack(spacing: 7) {
+            Circle()
+                .fill(color)
+                .frame(width: 10, height: 10)
+            Text(text)
+                .font(.caption.weight(.medium))
+                .foregroundStyle(secondaryText)
+        }
+    }
+
+    private func formattedAxisHour(_ hour: Int) -> String {
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        var components = calendar.dateComponents([.year, .month, .day], from: Date())
+        components.hour = hour
+        components.minute = 0
+        let date = calendar.date(from: components) ?? Date()
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "HH", options: 0, locale: locale)
+        return formatter.string(from: date)
+    }
+
+    private func xPosition(for hour: Double, width: CGFloat) -> CGFloat {
+        let clampedHour = min(max(hour, timelineStartHour), timelineEndHour)
+        let fraction = (clampedHour - timelineStartHour) / (timelineEndHour - timelineStartHour)
+        return CGFloat(fraction) * width
+    }
+
+    private func rangeWidth(for range: ClosedRange<Int>, timelineWidth: CGFloat) -> CGFloat {
+        let start = xPosition(for: Double(range.lowerBound), width: timelineWidth)
+        let end = xPosition(for: Double(range.upperBound + 1), width: timelineWidth)
+        return max(end - start, 8)
+    }
 }
 
 // MARK: - Nearby Map Context Models
@@ -794,4 +929,44 @@ private extension View {
     func nearbyCityIconStyle(for iconName: String) -> some View {
         self.weatherIconStyle(for: iconName)
     }
+}
+
+private let detailPreviewCity: CityWeather = {
+    let city = City(
+        name: "Barcelona",
+        country: "Spain",
+        latitude: 41.3874,
+        longitude: 2.1686,
+        timeZoneIdentifier: "Europe/Madrid"
+    )
+    let forecasts: [DailyForecast] = [
+        .previewSunny(dayOffset: 0),
+        .previewSunny(dayOffset: 1),
+        .previewCloudy(dayOffset: 2),
+        .previewSunny(dayOffset: 3),
+        .previewSunny(dayOffset: 4),
+        .previewCloudy(dayOffset: 5)
+    ]
+
+    return CityWeather(
+        city: city,
+        condition: .clear,
+        temperature: 28,
+        symbolName: "sun.max.fill",
+        dailyForecasts: forecasts,
+        timeZone: TimeZone(identifier: "Europe/Madrid") ?? .current,
+        currentFeelsLike: 29,
+        currentCloudCover: 0.12,
+        currentWindSpeed: 11,
+        currentUVIndex: 7,
+        currentHumidity: 0.48,
+        currentVisibility: 24
+    )
+}()
+
+#Preview("Detail View") {
+    ContentView(
+        initialRoute: .cityDetail(detailPreviewCity.id),
+        previewCityWeather: detailPreviewCity
+    )
 }

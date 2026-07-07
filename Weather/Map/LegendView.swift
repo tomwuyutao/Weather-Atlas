@@ -54,7 +54,7 @@ struct MapFloatingLegend: View {
             (localizedString("Partly Sunny", locale: locale), palette.dotPartlyCloudy),
             (localizedString("Rain", locale: locale), palette.dotRain),
             (localizedString("Drizzle", locale: locale), palette.dotDrizzle),
-            (localizedString("Cloudy / Snowy / Foggy", locale: locale), palette.dotCloudy),
+            (localizedString("Cloudy, Windy,\nSnowy, Foggy", locale: locale), palette.dotCloudy),
             (localizedString("Night", locale: locale), AppTheme.shared.colors.moonIconColor)
         ]
     }
@@ -129,7 +129,7 @@ struct MapFloatingLegend: View {
         .padding(.horizontal, compact ? 12 : 14)
         .padding(.vertical, compact ? 10 : 12)
         .padding(.trailing, onClose == nil ? 0 : 20)
-        .frame(width: legendWidth, alignment: .leading)
+        .frame(width: overlayMode == "weather" ? nil : legendWidth, alignment: .leading)
         .themedGlass(in: .rect(cornerRadius: 24))
         .overlay(alignment: .topTrailing) {
             if let onClose {
@@ -257,11 +257,8 @@ struct MapFloatingLegend: View {
             Text(title)
                 .font(legendLabelFont)
                 .foregroundStyle(AppTheme.shared.colors.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
-
-            Spacer(minLength: 0)
+                .fixedSize(horizontal: true, vertical: true)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var weatherDotLegend: some View {

@@ -27,9 +27,17 @@ struct ContentView: View {
 
     // MARK: Startup Setup
 
-    init(initialRoute: AppNavigationRoute? = nil, showsMapDateSliderTutorialPreview: Bool = false) {
+    init(
+        initialRoute: AppNavigationRoute? = nil,
+        previewCityWeather: CityWeather? = nil,
+        showsMapDateSliderTutorialPreview: Bool = false
+    ) {
         if let initialRoute {
             _navigationPath = State(initialValue: [initialRoute])
+        }
+        if let previewCityWeather {
+            _tappedCity = State(initialValue: previewCityWeather)
+            _hasLaunchedBefore = AppStorage(wrappedValue: true, "hasLaunchedBefore")
         }
         if showsMapDateSliderTutorialPreview {
             _selectedDayOffset = State(initialValue: 4)

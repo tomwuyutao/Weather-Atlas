@@ -42,6 +42,21 @@ enum SunninessScoring {
         return hourlyScores.reduce(0, +) / Double(hourlyScores.count)
     }
 
+    static func daytimeAverageCloudCover(for forecast: DailyForecast, timeZone: TimeZone) -> Double? {
+        let daylightHours = daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
+        guard !daylightHours.isEmpty,
+              daylightHours.allSatisfy({ $0.cloudCover != nil }) else {
+            return nil
+        }
+
+        let cloudCover = daylightHours.compactMap(\.cloudCover)
+        return cloudCover.reduce(0, +) / Double(cloudCover.count)
+    }
+
+    static func daytimeHours(for forecast: DailyForecast, timeZone: TimeZone) -> [HourlyForecast] {
+        daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
+    }
+
     static func hasDaytimeHourlyScoreData(for forecast: DailyForecast, timeZone: TimeZone) -> Bool {
         let daylightHours = daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
         return !daylightHours.isEmpty && daylightHours.allSatisfy { $0.cloudCover != nil }
