@@ -10,7 +10,7 @@ import SwiftUI
 // MARK: - Selected Marker Effects
 
 struct SelectedPulseRing: View {
-    enum Shape { case circle, roundedRect }
+    enum Shape { case circle, roundedRect, capsule }
     let shape: Shape
     var color: Color = .white
     @State private var isPulsing = false
@@ -26,6 +26,10 @@ struct SelectedPulseRing: View {
             case .roundedRect:
                 RoundedRectangle(cornerRadius: 10)
                     .stroke(color.opacity(isPulsing ? 0.4 : 0.9), lineWidth: isPulsing ? 2.5 : 3)
+            case .capsule:
+                Capsule()
+                    .stroke(color.opacity(isPulsing ? 0.34 : 0.88), lineWidth: isPulsing ? 2.5 : 3)
+                    .scaleEffect(isPulsing ? 1.08 : 1.0)
             }
         }
         .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: isPulsing)

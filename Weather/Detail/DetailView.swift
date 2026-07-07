@@ -420,7 +420,7 @@ extension ContentView {
             Image(systemName: icon)
                 .font(.system(size: 15, weight: .semibold))
                 .nearbyCityIconStyle(for: icon)
-                .frame(width: 22)
+                .frame(width: 22, height: 24)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(nearbyCity.cityWeather.city.localizedName(locale: locale))
@@ -436,16 +436,17 @@ extension ContentView {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(theme.colors.dotSun)
                     .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .frame(height: 28)
                     .background(theme.colors.dotSun.opacity(0.12), in: Capsule())
             }
 
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(theme.colors.secondaryText)
+                .frame(width: 18, height: 24)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 9)
+        .frame(height: 50)
         .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 14))
     }
 
@@ -551,11 +552,7 @@ extension ContentView {
             return DetailSunnyPeriod(
                 id: dayOffset,
                 dayLabel: detailSunnyDayLabel(dayOffset: dayOffset, timeZone: city.timeZone),
-                score: SunninessScoring.score(
-                    condition: forecast.condition,
-                    icon: forecast.weatherIcon,
-                    cloudCover: forecast.cloudCover
-                )
+                score: SunninessScoring.daytimeAverageScore(for: forecast, timeZone: city.timeZone)
             )
         }
     }
@@ -597,7 +594,7 @@ extension ContentView {
     private func detailSunnyWindowSummary(for city: CityWeather, hours: [HourlyForecast]) -> String {
         let sunnyHours = hours.filter { detailHourlySunnyLevel($0) >= 2 }
         guard !sunnyHours.isEmpty else {
-            return localizedString("No strong window", locale: locale)
+            return localizedString("No Sun", locale: locale)
         }
 
         var bestStart = sunnyHours[0].hour
@@ -623,7 +620,7 @@ extension ContentView {
             bestEnd = currentEnd
         }
 
-        return "\(detailFormattedHour(bestStart, timeZone: city.timeZone))-\(detailFormattedHour(bestEnd + 1, timeZone: city.timeZone))"
+        return "\(detailFormattedHour(bestStart, timeZone: city.timeZone)) - \(detailFormattedHour(bestEnd + 1, timeZone: city.timeZone))"
     }
 
     private func detailFormattedHour(_ hour: Int, timeZone: TimeZone) -> String {

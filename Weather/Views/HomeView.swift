@@ -13,6 +13,7 @@ import MapKit
 
 struct HomeStaticMapPreview: View {
     let cities: [CityWeather]
+    let previewCities: [City]
     let fitCities: [City]
     let rankedCandidates: [SunnyCandidate]
     let selectedDayOffset: Int
@@ -54,6 +55,22 @@ struct HomeStaticMapPreview: View {
                             .frame(width: 8, height: 8)
                             .shadow(color: markerColor(for: cityWeather).opacity(0.42), radius: 5, y: 1)
                     }
+                }
+            }
+
+            ForEach(previewCities) { city in
+                Annotation(
+                    "",
+                    coordinate: CLLocationCoordinate2D(
+                        latitude: city.latitude,
+                        longitude: city.longitude
+                    ),
+                    anchor: .center
+                ) {
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 8, height: 8)
+                        .shadow(color: accent.opacity(0.36), radius: 5, y: 1)
                 }
             }
         }
@@ -188,11 +205,7 @@ extension ContentView {
 
         return SunnyCandidate(
             cityWeather: cityWeather,
-            score: SunninessScoring.score(
-                condition: isNow ? cityWeather.condition : forecast.condition,
-                icon: isNow ? cityWeather.weatherIcon : forecast.weatherIcon,
-                cloudCover: cloudCover
-            ),
+            score: SunninessScoring.daytimeAverageScore(for: forecast, timeZone: cityWeather.timeZone),
             cloudCover: cloudCover,
             precipitationChance: precipitationChance,
             temperature: temperature
@@ -232,6 +245,10 @@ extension ContentView {
             guard let score = candidate.score else { return false }
             return score >= homeSunnyScoreThreshold
         }
+    }
+
+    var homeVisibleCandidates: [SunnyCandidate] {
+        isListPreviewActive ? sunnyCandidates : recommendedSunnyCandidates
     }
 
     var sortedListCandidates: [SunnyCandidate] {
@@ -311,16 +328,22 @@ extension ContentView {
     }
 
     private var homePageHeader: some View {
-        topToolbar {
+        topToolbar(titleOverride: homeTitleOverride) {
             EmptyView()
         }
+    }
+
+    private var homeTitleOverride: String? {
+        guard isListPreviewActive, let listPreviewName else { return nil }
+        return "\(listPreviewName) \(localizedString("Preview", locale: locale))"
     }
 
     private func homeMapSnapshot(height: CGFloat) -> some View {
         HomeStaticMapPreview(
             cities: mapCities,
+            previewCities: isListPreviewActive ? listPreviewCities : [],
             fitCities: mapFitCities,
-            rankedCandidates: Array(recommendedSunnyCandidates.prefix(3)),
+            rankedCandidates: Array(homeVisibleCandidates.prefix(3)),
             selectedDayOffset: selectedDayOffset,
             accent: theme.colors.dotSun,
             contextDot: theme.colors.secondaryText,
@@ -336,16 +359,27 @@ extension ContentView {
         }
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onTapGesture {
-            pushRoute(.map, showsBackButton: true)
+            if !isListPreviewActive {
+                centerOnCityTrigger = nil
+                tappedCity = nil
+                showingMapExpandedCard = false
+                temporaryMapSearchCity = nil
+                pushRoute(.map, showsBackButton: true)
+            }
         }
     }
 
     private var homeSunnySection: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        let sectionIcon = isListPreviewActive ? "list.bullet" : "sun.max.fill"
+        let sectionTitle = isListPreviewActive
+            ? localizedString("List of Cities", locale: locale)
+            : localizedString("Best Sunny Places", locale: locale)
+
+        return VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                Image(systemName: "sun.max.fill")
+                Image(systemName: sectionIcon)
                     .foregroundStyle(theme.colors.dotSun)
-                Text(localizedString("Best Sunny Places", locale: locale))
+                Text(sectionTitle)
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                 Spacer(minLength: 8)
@@ -353,27 +387,33 @@ extension ContentView {
 
             homeCandidateList()
 
-            Button {
-                pushRoute(.list, showsBackButton: true)
-            } label: {
-                HStack(spacing: 8) {
-                    Text(localizedString("Show All Cities", locale: locale))
-                        .font(.callout.weight(.semibold))
-                    Image(systemName: "chevron.right")
-                        .font(.caption.weight(.semibold))
-                    Spacer(minLength: 0)
+            if !isListPreviewActive {
+                Button {
+                    pushRoute(.list, showsBackButton: true)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(localizedString("Show All Cities", locale: locale))
+                            .font(.callout.weight(.semibold))
+                        Image(systemName: "chevron.right")
+                            .font(.caption.weight(.semibold))
+                        Spacer(minLength: 0)
+                    }
+                    .foregroundStyle(theme.colors.accent)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 12)
                 }
-                .foregroundStyle(theme.colors.accent)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
         }
     }
 
     private func homeCandidateList(limit: Int? = nil) -> some View {
-        let rankedCandidates = limit.map { Array(recommendedSunnyCandidates.prefix($0)) } ?? recommendedSunnyCandidates
-        return VStack(spacing: 0) {
+        if isListPreviewActive {
+            return AnyView(homePreviewCityList())
+        }
+
+        let rankedCandidates = limit.map { Array(homeVisibleCandidates.prefix($0)) } ?? homeVisibleCandidates
+        return AnyView(VStack(spacing: 0) {
             if rankedCandidates.isEmpty {
                 Text(localizedString("No sunny places for this date.", locale: locale))
                     .font(.callout)
@@ -384,18 +424,48 @@ extension ContentView {
                     .background(theme.colors.glassFill.opacity(0.42), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             } else {
                 ForEach(Array(rankedCandidates.enumerated()), id: \.element.id) { index, candidate in
-                    Button {
-                        selectCandidate(candidate, focusMap: false)
-                    } label: {
+                    if isListPreviewActive {
                         sunnyCandidateRow(candidate, rank: index + 1, compact: true)
+                    } else {
+                        Button {
+                            selectCandidate(candidate, focusMap: false)
+                        } label: {
+                            sunnyCandidateRow(candidate, rank: index + 1, compact: true)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
 
-                    if index < rankedCandidates.count - 1 {
-                        Divider()
-                            .background(theme.colors.secondaryText.opacity(0.18))
-                            .padding(.leading, 34)
+                }
+            }
+        })
+    }
+
+    private func homePreviewCityList() -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(listPreviewCities.enumerated()), id: \.element.id) { index, city in
+                HStack(spacing: 10) {
+                    Text("\(index + 1)")
+                        .font(.caption.weight(.bold).monospacedDigit())
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .frame(width: 20)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(city.localizedName(locale: locale))
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .lineLimit(1)
                     }
+
+                    Spacer(minLength: 8)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 10)
+                .contentShape(Rectangle())
+
+                if index < listPreviewCities.count - 1 {
+                    Divider()
+                        .background(theme.colors.secondaryText.opacity(0.18))
+                        .padding(.leading, 34)
                 }
             }
         }
@@ -404,8 +474,10 @@ extension ContentView {
     func sunnyCandidateRow(_ candidate: SunnyCandidate, rank: Int? = nil, compact: Bool = false) -> some View {
         let icon = sunnyCandidateIcon(for: candidate)
         let cloudText = candidate.cloudCover.map { "\(Int($0 * 100))%" } ?? "-"
+        let cloudMetricSpacing: CGFloat = dynamicTypeSize > .large ? 7 : 3
         let cloudValueWidth: CGFloat = dynamicTypeSize > .large ? 48 : 38
-        let cloudColumnWidth: CGFloat = dynamicTypeSize > .large ? 66 : 54
+        let cloudColumnWidth: CGFloat = dynamicTypeSize > .large ? 72 : 54
+        let verticalPadding: CGFloat = compact ? 11 : 12
         return HStack(spacing: 10) {
             if let rank {
                 Text("\(rank)")
@@ -437,7 +509,7 @@ extension ContentView {
                 }
                 .frame(width: 50, alignment: .leading)
 
-                HStack(spacing: 3) {
+                HStack(spacing: cloudMetricSpacing) {
                     Image(systemName: "cloud")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(theme.colors.secondaryText.opacity(0.50))
@@ -458,7 +530,7 @@ extension ContentView {
             .lineLimit(1)
         }
         .padding(.horizontal, 10)
-        .padding(.vertical, 10)
+        .padding(.vertical, verticalPadding)
         .contentShape(Rectangle())
     }
 
@@ -513,10 +585,13 @@ extension ContentView {
                     Divider()
 
                     Button {
-                        beginCreatingListFromSwitcher()
+                        listEditMode = false
+                        activateAddListOptions()
                     } label: {
-                        primaryMenuLabel(localizedString("New List", locale: locale), systemImage: "plus")
+                        primaryMenuLabel(localizedString("Add List", locale: locale), systemImage: "plus")
                     }
+
+                    Divider()
 
                     Button {
                         withAnimation(.easeOut(duration: 0.2)) {

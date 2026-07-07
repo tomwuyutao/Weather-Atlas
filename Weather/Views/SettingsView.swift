@@ -149,7 +149,7 @@ struct SettingsView: View {
     @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.defaultRawValue
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     let weatherService: WeatherService
-    let onAddStarterLists: () -> Void
+    let onReplayTutorial: () -> Void
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
@@ -298,9 +298,9 @@ struct SettingsView: View {
 
             Section {
                 Button {
-                    onAddStarterLists()
+                    onReplayTutorial()
                 } label: {
-                    Label(localizedString("Add Starter Lists", locale: locale), systemImage: "plus.circle")
+                    Label(localizedString("Replay Tutorial", locale: locale), systemImage: "play.circle")
                         .foregroundStyle(theme.colors.dotSun)
                 }
             }
@@ -316,13 +316,13 @@ struct SettingsView: View {
                     localizedString("Website", locale: locale),
                     value: localizedString("View", locale: locale),
                     systemImage: "safari",
-                    url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/")
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas/")
                 )
                 settingsLinkRow(
                     localizedString("Privacy Policy", locale: locale),
                     value: localizedString("View", locale: locale),
                     systemImage: "hand.raised",
-                    url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/privacy/")
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas/privacy/")
                 )
                 attributionsNavigationRow
                 sayHelloRow
@@ -352,13 +352,13 @@ struct SettingsView: View {
                     localizedString("Website", locale: locale),
                     value: localizedString("View", locale: locale),
                     systemImage: "safari",
-                    url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/")
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas/")
                 )
                 settingsLinkRow(
                     localizedString("Privacy Policy", locale: locale),
                     value: localizedString("View", locale: locale),
                     systemImage: "hand.raised",
-                    url: URL(string: "https://tomwuyutao.github.io/Weather-app-website/privacy/")
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas/privacy/")
                 )
                 attributionsNavigationRow
                 sayHelloRow
@@ -402,6 +402,16 @@ struct SettingsView: View {
                     value: localizedString("Legal", locale: locale),
                     systemImage: "map",
                     url: URL(string: "https://www.apple.com/legal/internet-services/maps/legal-en.html")
+                )
+            }
+            .listRowBackground(settingsRowBackground)
+
+            Section(localizedString("Cities Data", locale: locale)) {
+                settingsLinkRow(
+                    localizedString("SimpleMaps World Cities", locale: locale),
+                    value: localizedString("View", locale: locale),
+                    systemImage: "building.2",
+                    url: URL(string: "https://simplemaps.com/data/world-cities")
                 )
             }
             .listRowBackground(settingsRowBackground)
@@ -506,5 +516,5 @@ struct SettingsView: View {
 }
 
 #Preview("Settings View") {
-    SettingsView(weatherService: WeatherService(), onAddStarterLists: {})
+    SettingsView(weatherService: WeatherService(), onReplayTutorial: {})
 }

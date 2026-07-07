@@ -91,6 +91,10 @@ struct ThemeColors {
     // Filter
     let filterSunny: Color
 
+    // Tutorial
+    let tutorialBackground: Color
+    let tutorialDot: Color
+
     /// Returns palette foreground styles for a weather SF Symbol icon name.
     func weatherIconPalette(for iconName: String) -> (primary: Color, secondary: Color) {
         if iconName.contains("sun") && iconName.contains("cloud") {
@@ -157,7 +161,9 @@ extension ThemeColors {
         settingsRowFill: Color(hex: 0xF6EDE4),
         glassFill: Color(hex: 0xFDF9F3),
         shadow: Color(hex: 0x000000),
-        filterSunny: Color(hex: 0xFFB84D)
+        filterSunny: Color(hex: 0xFFB84D),
+        tutorialBackground: Color(hex: 0x244F9C),
+        tutorialDot: Color(hex: 0xFFB84D)
     )
 }
 
@@ -203,7 +209,9 @@ extension ThemeColors {
         settingsRowFill: Color(hex: 0x0B1628),
         glassFill: Color(hex: 0x0C1828),
         shadow: Color(hex: 0x000000),
-        filterSunny: Color(hex: 0xDD8019)
+        filterSunny: Color(hex: 0xDD8019),
+        tutorialBackground: Color(hex: 0x244F9C),
+        tutorialDot: Color(hex: 0xDD8019)
     )
 }
 

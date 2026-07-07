@@ -27,9 +27,15 @@ struct ContentView: View {
 
     // MARK: Startup Setup
 
-    init(initialRoute: AppNavigationRoute? = nil) {
+    init(initialRoute: AppNavigationRoute? = nil, showsMapDateSliderTutorialPreview: Bool = false) {
         if let initialRoute {
             _navigationPath = State(initialValue: [initialRoute])
+        }
+        if showsMapDateSliderTutorialPreview {
+            _selectedDayOffset = State(initialValue: 4)
+            _hasLaunchedBefore = AppStorage(wrappedValue: true, "hasLaunchedBefore")
+            _hasSeenMapDateSliderTutorial = AppStorage(wrappedValue: false, "hasSeenMapDateSliderTutorial")
+            _showingMapDateSliderTutorial = State(initialValue: true)
         }
     }
 
@@ -70,9 +76,21 @@ struct ContentView: View {
     @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.defaultRawValue
     @State var showingSettings: Bool = false
     @State var isResettingListsToDefaults = false
-    @State var showingFirstLaunchListPicker = false
-    @State var starterListPickerAllowsCancel = false
-    @State var firstLaunchSelectedListIDs: Set<String> = []
+    @State var showingFirstLaunchTutorial = false
+    @State var showingReplayTutorial = false
+    @State var continentListTutorialSelectedIDs: Set<String> = []
+    @AppStorage("hasSeenMapDateSliderTutorial") var hasSeenMapDateSliderTutorial = false
+    @State var showingMapDateSliderTutorial = false
+    @State var isFadingMapDateSliderTutorial = false
+    @State var showingAddListOptionsSheet = false
+    @State var showingContinentListSearchSheet = false
+    @State var showingCountryListSearchSheet = false
+    @State var countryListSearchText: String = ""
+    @State var listPreviewName: String?
+    @State var listPreviewAllCities: [City] = []
+    @State var listPreviewCityCount = CountryCityCatalog.defaultCountryCityCount
+    @State var listPreviewToken = UUID()
+    @State var daytimeScoreRefetchKeys: Set<String> = []
     @AppStorage("showLegend") var showLegend: Bool = true
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
     @State var visibleListIDs: Set<String> = []
@@ -88,6 +106,9 @@ struct ContentView: View {
 
     /// Cities to display on the map: the active list plus any temporary searched city from Map search.
     var mapCities: [CityWeather] {
+        if isListPreviewActive {
+            return []
+        }
         var result = weatherService.cityWeatherData
         if let preview = temporaryMapSearchCity, !result.contains(where: { $0.city.name == preview.city.name }) {
             result.append(preview)
@@ -96,7 +117,29 @@ struct ContentView: View {
     }
 
     var mapFitCities: [City] {
-        weatherService.cityListCoordinates()
+        if isListPreviewActive {
+            return listPreviewCities
+        }
+        return weatherService.cityListCoordinates()
+    }
+
+    var listPreviewCities: [City] {
+        Array(listPreviewAllCities.prefix(listPreviewCityCount))
+    }
+
+    var listPreviewMaximumCount: Int {
+        min(CountryCityCatalog.maxCountryCityCount, listPreviewAllCities.count)
+    }
+
+    var isListPreviewActive: Bool {
+        currentRoute == .listPreview && listPreviewName != nil
+    }
+
+    func cityCountText(_ count: Int) -> String {
+        if count == 1 {
+            return "\(count) \(localizedString("City", locale: locale))"
+        }
+        return "\(count) \(localizedString("Cities", locale: locale))"
     }
 
     /// Cities to display in the list view: the saved active list only.

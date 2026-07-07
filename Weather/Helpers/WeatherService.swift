@@ -197,7 +197,8 @@ class WeatherService {
 
         if !forceRefresh,
            !cityWeatherData.isEmpty,
-           isWeatherDataFresh(for: activeListID) {
+           isWeatherDataFresh(for: activeListID),
+           cachedWeatherDataLooksCurrent(cityWeatherData, for: activeListID) {
             return
         }
 
@@ -309,6 +310,7 @@ class WeatherService {
             ?? loadCachedWeatherData(for: listID)
             ?? []
         if isWeatherDataFresh(for: listID),
+           cachedWeatherDataLooksCurrent(existingData, for: listID),
            let existingCity = existingData.first(where: { citiesMatch($0.city, priorityCity) }) {
             activeFetchToken = UUID()
             activeListID = listID
@@ -485,6 +487,9 @@ class WeatherService {
                 return false
             }
             guard !todayForecast.hourlyForecasts.isEmpty else { return false }
+            guard SunninessScoring.hasDaytimeHourlyScoreData(for: todayForecast, timeZone: cityWeather.timeZone) else {
+                return false
+            }
 
             var calendar = Calendar.current
             calendar.timeZone = cityWeather.timeZone
@@ -575,8 +580,10 @@ class WeatherService {
 
     func fetchWeatherForList(_ listID: CityListID) async {
         errorMessage = nil
-        if otherListData[listID.rawValue]?.isEmpty == false,
-           isWeatherDataFresh(for: listID) {
+        if let existingData = otherListData[listID.rawValue],
+           !existingData.isEmpty,
+           isWeatherDataFresh(for: listID),
+           cachedWeatherDataLooksCurrent(existingData, for: listID) {
             return
         }
         if let cachedData = loadCachedWeatherData(for: listID), isWeatherDataFresh(for: listID) {

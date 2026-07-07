@@ -54,7 +54,7 @@ struct MapFloatingLegend: View {
             (localizedString("Partly Sunny", locale: locale), palette.dotPartlyCloudy),
             (localizedString("Rain", locale: locale), palette.dotRain),
             (localizedString("Drizzle", locale: locale), palette.dotDrizzle),
-            (localizedString("Cloudy / Snow / Wind / Fog", locale: locale), palette.dotCloudy),
+            (localizedString("Cloudy / Snowy / Foggy", locale: locale), palette.dotCloudy),
             (localizedString("Night", locale: locale), AppTheme.shared.colors.moonIconColor)
         ]
     }

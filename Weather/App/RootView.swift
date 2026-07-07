@@ -39,6 +39,10 @@ extension ContentView {
             .onChange(of: weatherService.activeListID) { _, newListID in
                 visibleListIDs.insert(newListID.rawValue)
                 AppDelegate.updateHomeScreenListShortcuts()
+                scheduleDaytimeSunninessRefetch()
+            }
+            .onChange(of: selectedDayOffset) { _, _ in
+                scheduleDaytimeSunninessRefetch()
             }
             .onChange(of: navigationPath) { _, newPath in
                 if newPath.isEmpty {
@@ -91,13 +95,30 @@ extension ContentView {
             .sheet(isPresented: $showingSettings) {
                 SettingsView(
                     weatherService: weatherService,
-                    onAddStarterLists: {
+                    onReplayTutorial: {
                         showingSettings = false
-                        prepareStarterListPickerSelection(allowsCancel: true)
-                        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-                            showingFirstLaunchListPicker = true
-                        }
+                        showingReplayTutorial = true
                     }
+                )
+            }
+            .fullScreenCover(isPresented: $showingFirstLaunchTutorial) {
+                TutorialView(
+                    includesContinentSelection: true,
+                    continentLists: continentListTutorialLists,
+                    selectedContinentListIDs: $continentListTutorialSelectedIDs,
+                    onToggleContinentList: toggleContinentListTutorialSelection,
+                    onFinish: applyContinentListTutorialSelection,
+                    onCancel: nil
+                )
+            }
+            .fullScreenCover(isPresented: $showingReplayTutorial) {
+                TutorialView(
+                    includesContinentSelection: false,
+                    continentLists: [],
+                    selectedContinentListIDs: $continentListTutorialSelectedIDs,
+                    onToggleContinentList: { _ in },
+                    onFinish: { showingReplayTutorial = false },
+                    onCancel: nil
                 )
             }
             .sheet(isPresented: Binding(
@@ -113,14 +134,29 @@ extension ContentView {
                     .presentationDragIndicator(.visible)
                     .presentationBackground(theme.colors.background)
             }
+            .sheet(isPresented: $showingCountryListSearchSheet) {
+                countryListSearchSheet
+                    .presentationDetents([.fraction(0.82), .large])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(theme.colors.background)
+            }
+            .sheet(isPresented: $showingAddListOptionsSheet) {
+                addListOptionsSheet
+                    .presentationDetents([.fraction(0.42), .medium])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(theme.colors.background)
+            }
+            .sheet(isPresented: $showingContinentListSearchSheet) {
+                continentListSearchSheet
+                    .presentationDetents([.fraction(0.82), .large])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(theme.colors.background)
+            }
             .overlay {
                 deleteListConfirmationOverlay
             }
             .overlay {
                 resetListsLoadingOverlay
-            }
-            .overlay {
-                firstLaunchListPickerOverlay
             }
     }
 
@@ -215,6 +251,8 @@ extension ContentView {
                     cityDetailDestination(for: cityID)
                 case .addCityDetail:
                     addCityDetailDestination
+                case .listPreview:
+                    listPreviewDestination
                 case .listManager:
                     nativeListManager
                 }
@@ -252,10 +290,13 @@ extension ContentView {
                     mapBottomToolbar
                         .padding(.horizontal, 16)
                         .padding(.bottom, -2)
+                        .opacity(showingMapDateSliderTutorial && !isFadingMapDateSliderTutorial ? 0.28 : 1)
+                        .animation(.easeOut(duration: 0.5), value: isFadingMapDateSliderTutorial)
                 }
             }
             .onAppear {
                 centerMapOnDots(useListCoordinates: true)
+                showMapDateSliderTutorialIfNeeded()
             }
     }
 
@@ -326,15 +367,30 @@ extension ContentView {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
+                .overlay {
+                    if showingMapDateSliderTutorial {
+                        Color.black.opacity((colorScheme == .dark ? 0.68 : 0.52) * (isFadingMapDateSliderTutorial ? 0 : 1))
+                            .ignoresSafeArea()
+                            .allowsHitTesting(false)
+                            .animation(.easeOut(duration: 0.5), value: isFadingMapDateSliderTutorial)
+                    }
+                }
                 .overlay(alignment: .trailing) {
                     mapDateSliderOverlay
+                }
+                .overlay(alignment: .trailing) {
+                    if showingMapDateSliderTutorial {
+                        mapDateSliderTutorialOverlay
+                            .opacity(isFadingMapDateSliderTutorial ? 0 : 1)
+                            .animation(.easeOut(duration: 0.32).delay(isFadingMapDateSliderTutorial ? 0.12 : 0), value: isFadingMapDateSliderTutorial)
+                            .transition(.opacity)
+                    }
                 }
                 .allowsHitTesting(!showingSearchSheet)
 
             if !showingSearchSheet {
                 mainOverlays
             }
-
 
         }
         .tint(.primary)
@@ -458,23 +514,62 @@ extension ContentView {
     func onAppearLoad() async {
         AppDelegate.updateHomeScreenListShortcuts()
         if !hasLaunchedBefore {
-            hasLaunchedBefore = true
             showLegend = true
-            prepareStarterListPickerSelection(allowsCancel: false)
-            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-                showingFirstLaunchListPicker = true
-            }
+            prepareContinentListTutorialSelection()
+            showingFirstLaunchTutorial = true
         }
         if visibleListIDs.isEmpty {
             visibleListIDs = [weatherService.activeListID.rawValue]
         }
         centerMapOnDots(useListCoordinates: true)
         await weatherService.fetchWeatherForAllCities()
+        await refreshCitiesMissingDaytimeSunninessData()
         if !mapCities.isEmpty {
             centerMapOnDots(useListCoordinates: true)
         }
         if let pendingShortcutID = AppDelegate.takePendingListShortcutID() {
             handleOpenListShortcut(rawValue: pendingShortcutID)
+        }
+    }
+
+    var continentListTutorialLists: [CityListID] {
+        CityListID.builtInLists
+    }
+
+    func prepareContinentListTutorialSelection() {
+        continentListTutorialSelectedIDs = []
+    }
+
+    func toggleContinentListTutorialSelection(_ listID: CityListID) {
+        if continentListTutorialSelectedIDs.contains(listID.rawValue) {
+            continentListTutorialSelectedIDs.remove(listID.rawValue)
+        } else {
+            continentListTutorialSelectedIDs.insert(listID.rawValue)
+        }
+        Haptics.lightImpact()
+    }
+
+    func applyContinentListTutorialSelection() {
+        guard !continentListTutorialSelectedIDs.isEmpty else { return }
+        let selectedIDs = continentListTutorialSelectedIDs
+        let selectedLists = CityListID.builtInLists.filter { selectedIDs.contains($0.rawValue) }
+        guard let firstList = selectedLists.first else { return }
+
+        CityListID.keepBuiltInLists(withRawValues: selectedIDs)
+        visibleListIDs = selectedIDs
+        expandedListIDs = selectedIDs
+        refreshListOrder()
+        refreshCityOrder()
+        hasLaunchedBefore = true
+        showingFirstLaunchTutorial = false
+
+        Task {
+            await switchToList(firstList)
+            await MainActor.run {
+                mapRecenterRequest = .listCoordinates
+                centerMapOnDots(useListCoordinates: true)
+                AppDelegate.updateHomeScreenListShortcuts()
+            }
         }
     }
 
@@ -488,6 +583,7 @@ extension ContentView {
         showingMapExpandedCard = false
         tappedCity = nil
         temporaryMapSearchCity = nil
+        clearGeneratedListPreview(playsHaptic: false)
         navigationPath = []
 
         Task {
@@ -513,6 +609,119 @@ extension ContentView {
         }
     }
 
+    func scheduleDaytimeSunninessRefetch() {
+        Task {
+            await refreshCitiesMissingDaytimeSunninessData()
+        }
+    }
+
+    func refreshCitiesMissingDaytimeSunninessData() async {
+        let dayOffset = max(0, selectedDayOffset)
+        let citiesToRefresh = mapCities.filter { cityWeather in
+            let forecast = cityWeather.forecast(for: dayOffset)
+            return !SunninessScoring.hasDaytimeHourlyScoreData(for: forecast, timeZone: cityWeather.timeZone)
+        }
+
+        for cityWeather in citiesToRefresh {
+            let refetchKey = "\(cityWeather.id.uuidString)-\(dayOffset)"
+            guard !daytimeScoreRefetchKeys.contains(refetchKey) else { continue }
+            daytimeScoreRefetchKeys.insert(refetchKey)
+            _ = await weatherService.refreshWeatherForCity(cityWeather)
+        }
+    }
+
+    var listPreviewDestination: some View {
+        homeContent
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .overlay(alignment: .bottom) {
+                floatingBottomToolbar
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, -2)
+            }
+            .onAppear {
+                showingMapExpandedCard = false
+            }
+    }
+
+    func previewGeneratedList(name: String, cities: [City]) {
+        listPreviewToken = UUID()
+        listPreviewName = name
+        listPreviewAllCities = cities
+        listPreviewCityCount = min(CountryCityCatalog.defaultCountryCityCount, min(CountryCityCatalog.maxCountryCityCount, cities.count))
+        showingSearchSheet = false
+        showingAddListOptionsSheet = false
+        showingContinentListSearchSheet = false
+        showingCountryListSearchSheet = false
+        showingMapExpandedCard = false
+        tappedCity = nil
+        temporaryMapSearchCity = nil
+        navigationPath.removeAll { $0 == .listPreview }
+        mapRecenterRequest = .listCoordinates
+        centerMapOnDots(useListCoordinates: true)
+        Haptics.lightImpact()
+        Task { @MainActor in
+            await Task.yield()
+            pushRoute(.listPreview)
+        }
+    }
+
+    func previewContinentList(_ listID: CityListID) {
+        let populationSortedCities = CountryCityCatalog.topCities(
+            forContinentRawValue: listID.rawValue,
+            limit: CountryCityCatalog.maxCountryCityCount
+        )
+        previewGeneratedList(
+            name: listID.localizedDisplayName(locale: locale),
+            cities: populationSortedCities.isEmpty ? listID.defaultCities : populationSortedCities
+        )
+    }
+
+    func previewCountryList(_ country: CountryListOption) {
+        previewGeneratedList(
+            name: country.localizedName(locale: locale),
+            cities: CountryCityCatalog.topCities(for: country, limit: CountryCityCatalog.maxCountryCityCount)
+        )
+    }
+
+    func cancelGeneratedListPreview() {
+        dismissRoute(.listPreview)
+    }
+
+    func clearGeneratedListPreview(playsHaptic: Bool = true) {
+        listPreviewToken = UUID()
+        listPreviewName = nil
+        listPreviewAllCities = []
+        listPreviewCityCount = CountryCityCatalog.defaultCountryCityCount
+        mapRecenterRequest = .listCoordinates
+        if playsHaptic {
+            Haptics.lightImpact()
+        }
+    }
+
+    func confirmGeneratedListPreview() {
+        guard let previewName = listPreviewName,
+              !listPreviewCities.isEmpty else { return }
+        let uniqueName = CityListID.availableListName(for: previewName)
+        let cities = listPreviewCities
+        cancelGeneratedListPreview()
+
+        Task {
+            let listID = await weatherService.createCustomList(name: uniqueName, cities: cities)
+            await MainActor.run {
+                visibleListIDs.insert(listID.rawValue)
+                expandedListIDs.insert(listID.rawValue)
+                refreshListOrder()
+                refreshCityOrder()
+                mapRecenterRequest = .listCoordinates
+                centerMapOnDots(useListCoordinates: true)
+                AppDelegate.updateHomeScreenListShortcuts()
+            }
+        }
+    }
+
     @ViewBuilder
     var resetListsLoadingOverlay: some View {
         if isResettingListsToDefaults {
@@ -532,159 +741,6 @@ extension ContentView {
                 .shadow(color: .black.opacity(0.24), radius: 22, y: 12)
                 .transition(.scale(scale: 0.92).combined(with: .opacity))
                 .zIndex(1000)
-        }
-    }
-
-    @ViewBuilder
-    var firstLaunchListPickerOverlay: some View {
-        if showingFirstLaunchListPicker {
-            theme.colors.modalOverlay
-                .ignoresSafeArea()
-
-            VStack(alignment: .leading, spacing: 18) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(localizedString("Choose Starter Lists", locale: locale))
-                        .font(.avenir(.headline, weight: .bold))
-                        .foregroundStyle(theme.colors.primaryText)
-
-                    Text(localizedString("Pick one or more starter lists to add.", locale: locale))
-                        .font(.avenir(.subheadline, weight: .regular))
-                        .foregroundStyle(theme.colors.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                VStack(spacing: 0) {
-                    ForEach(starterListPickerLists) { listID in
-                        Button {
-                            toggleFirstLaunchListSelection(listID)
-                        } label: {
-                            HStack(spacing: 12) {
-                                Image(systemName: firstLaunchSelectedListIDs.contains(listID.rawValue) ? "checkmark.circle.fill" : "circle")
-                                    .font(.system(size: 20, weight: .semibold))
-                                    .foregroundStyle(firstLaunchSelectedListIDs.contains(listID.rawValue) ? theme.colors.accent : theme.colors.secondaryText)
-                                    .frame(width: 24)
-
-                                Text(listID.localizedDisplayName(locale: locale))
-                                    .font(.avenir(.body, weight: .medium))
-                                    .foregroundStyle(theme.colors.primaryText)
-
-                                Spacer(minLength: 8)
-                            }
-                            .padding(.vertical, 11)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-
-                        if listID.rawValue != starterListPickerLists.last?.rawValue {
-                            Divider()
-                                .opacity(0.45)
-                        }
-                    }
-
-                    if starterListPickerLists.isEmpty {
-                        Text(localizedString("All starter lists have already been added.", locale: locale))
-                            .font(.avenir(.subheadline, weight: .regular))
-                            .foregroundStyle(theme.colors.secondaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 11)
-                    }
-                }
-
-                HStack(spacing: 10) {
-                    if starterListPickerAllowsCancel {
-                        Button {
-                            withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-                                showingFirstLaunchListPicker = false
-                            }
-                        } label: {
-                            Text(localizedString("Cancel", locale: locale))
-                                .font(.avenir(.body, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 12)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(theme.colors.primaryText)
-                        .background(theme.colors.background, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-
-                    Button {
-                        applyStarterListSelection()
-                    } label: {
-                        Text(localizedString("OK", locale: locale))
-                            .font(.avenir(.body, weight: .semibold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(.white)
-                    .background(
-                        (firstLaunchSelectedListIDs.isEmpty ? theme.colors.secondaryText : theme.colors.accent),
-                        in: RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    )
-                    .disabled(firstLaunchSelectedListIDs.isEmpty)
-                }
-            }
-            .padding(18)
-            .frame(width: min(340, UIScreen.main.bounds.width - 36))
-            .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(.white.opacity(0.16), lineWidth: 0.7)
-            )
-            .shadow(color: .black.opacity(0.24), radius: 22, y: 12)
-            .transition(.scale(scale: 0.92).combined(with: .opacity))
-            .zIndex(1001)
-        }
-    }
-
-    var starterListPickerLists: [CityListID] {
-        return CityListID.builtInLists
-    }
-
-    func prepareStarterListPickerSelection(allowsCancel: Bool) {
-        starterListPickerAllowsCancel = allowsCancel
-        firstLaunchSelectedListIDs = []
-    }
-
-    func toggleFirstLaunchListSelection(_ listID: CityListID) {
-        if firstLaunchSelectedListIDs.contains(listID.rawValue) {
-            firstLaunchSelectedListIDs.remove(listID.rawValue)
-        } else {
-            firstLaunchSelectedListIDs.insert(listID.rawValue)
-        }
-        Haptics.lightImpact()
-    }
-
-    func applyStarterListSelection() {
-        guard !firstLaunchSelectedListIDs.isEmpty else { return }
-        let selectedIDs = firstLaunchSelectedListIDs
-        let selectedLists = CityListID.builtInLists.filter { selectedIDs.contains($0.rawValue) }
-        guard let firstList = selectedLists.first else { return }
-
-        if starterListPickerAllowsCancel {
-            CityListID.addBuiltInLists(withRawValues: selectedIDs)
-            visibleListIDs.formUnion(selectedIDs)
-            expandedListIDs.formUnion(selectedIDs)
-        } else {
-            CityListID.keepBuiltInLists(withRawValues: selectedIDs)
-            visibleListIDs = selectedIDs
-            expandedListIDs = selectedIDs
-        }
-        refreshListOrder()
-        refreshCityOrder()
-        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) {
-            showingFirstLaunchListPicker = false
-        }
-
-        Task {
-            await switchToList(firstList)
-            await MainActor.run {
-                mapRecenterRequest = .listCoordinates
-                centerMapOnDots(useListCoordinates: true)
-                AppDelegate.updateHomeScreenListShortcuts()
-            }
         }
     }
 

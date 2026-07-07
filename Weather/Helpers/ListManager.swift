@@ -167,6 +167,17 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         saveUserLists(userLists)
         return id
     }
+
+    static func availableListName(for baseName: String) -> String {
+        let existingNames = Set(allLists.map(\.displayName))
+        guard existingNames.contains(baseName) else { return baseName }
+
+        var suffix = 2
+        while existingNames.contains("\(baseName) \(suffix)") {
+            suffix += 1
+        }
+        return "\(baseName) \(suffix)"
+    }
     
     var defaultCities: [City] {
         DefaultCityCoordinateCatalog.cities(for: rawValue)

@@ -11,7 +11,13 @@ extension ContentView {
 
     // MARK: - Vertical Date Slider (Map Mode)
 
-    func mapDateSlider(height: CGFloat, transparent: Bool = false, showsSelectedLabelWhenIdle: Bool = true) -> some View {
+    func mapDateSlider(
+        height: CGFloat,
+        transparent: Bool = false,
+        showsSelectedLabelWhenIdle: Bool = true,
+        highlightsSelectedCapsule: Bool = false,
+        onSelectedOffsetChange: (() -> Void)? = nil
+    ) -> some View {
         let totalPositions = 11 // -1 (Now) through 9
         let stepHeight = height / CGFloat(totalPositions - 1)
         let touchWidth: CGFloat = selectedDayOffset > 0 ? 145 : 120
@@ -55,6 +61,7 @@ extension ContentView {
                             let nearestOffset = positionToOffset(nearestPos)
                             if nearestOffset != selectedDayOffset {
                                 selectedDayOffset = nearestOffset
+                                onSelectedOffsetChange?()
                                 Haptics.lightImpact()
                             }
                         }
@@ -97,6 +104,12 @@ extension ContentView {
                         .padding(.horizontal, isDraggingDateSlider ? dragHorizontalPadding : idleHorizontalPadding)
                         .padding(.vertical, isDraggingDateSlider ? dragVerticalPadding : idleVerticalPadding)
                         .themedGlass(in: .capsule)
+                        .overlay {
+                            if highlightsSelectedCapsule {
+                                SelectedPulseRing(shape: .capsule, color: theme.colors.accent)
+                                    .padding(-6)
+                            }
+                        }
 
                     Color.clear
                         .frame(

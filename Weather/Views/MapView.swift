@@ -15,6 +15,21 @@ enum MapRecenterRequest: Equatable {
     case listCoordinates
 }
 
+private struct MapDateSliderTutorialPreview: View {
+    init() {
+        UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
+        UserDefaults.standard.set(false, forKey: "hasSeenMapDateSliderTutorial")
+    }
+
+    var body: some View {
+        ContentView(initialRoute: .map, showsMapDateSliderTutorialPreview: true)
+    }
+}
+
+#Preview("Map Slider Tutorial") {
+    MapDateSliderTutorialPreview()
+}
+
 // MARK: - Overlay Menu
 
 extension ContentView {
@@ -22,10 +37,10 @@ extension ContentView {
         [
             ("weather", "cloud.sun", localizedString("Weather", locale: locale)),
             ("temperature", "thermometer.medium", localizedString("Temperature", locale: locale)),
-            ("cloud", "cloud", localizedString("Cloud Cover", locale: locale)),
-            ("rain", "cloud.rain", localizedString("Rain", locale: locale)),
-            ("wind", "wind", localizedString("Wind", locale: locale)),
-            ("uv", "sun.max.trianglebadge.exclamationmark", localizedString("UV Index", locale: locale))
+            ("cloudCover", "cloud", localizedString("Cloud Cover", locale: locale)),
+            ("precipitation", "cloud.rain", localizedString("Rain", locale: locale)),
+            ("windSpeed", "wind", localizedString("Wind", locale: locale)),
+            ("uvIndex", "sun.max.trianglebadge.exclamationmark", localizedString("UV Index", locale: locale))
         ]
     }
 
@@ -262,11 +277,78 @@ extension ContentView {
     var mapDateSliderOverlay: some View {
         // Date slider only on map view. Home/list use the bottom date switcher.
         if isMapRoute, !showingSearchSheet {
-            mapDateSlider(height: 420)
+            mapDateSlider(height: 420) {
+                if showingMapDateSliderTutorial {
+                    dismissMapDateSliderTutorial()
+                }
+            }
                 .frame(width: 145, height: 420, alignment: .trailing)
                 .padding(.bottom, 470)
                 .padding(.trailing, 1)
                 .transition(.opacity)
+        }
+    }
+
+    var mapDateSliderTutorialOverlay: some View {
+        let tutorialSliderHeight: CGFloat = 420
+        let capsuleY = CGFloat(max(0, min(10, selectedDayOffset + 1))) * tutorialSliderHeight / 10
+        let labelFont: Font = .avenir(.subheadline, weight: .semibold)
+        let idleMinWidth: CGFloat = 52
+        let idleHorizontalPadding: CGFloat = 12
+        let idleVerticalPadding: CGFloat = 7
+        let idleTailSize = CGSize(width: 24, height: 16)
+        let hintSpacing: CGFloat = 4
+        let hintGapBelowCapsule: CGFloat = 210
+
+        return ZStack(alignment: .topTrailing) {
+            HStack(alignment: .center, spacing: hintSpacing) {
+                Text(localizedString("Drag to change dates", locale: locale))
+                    .font(.avenir(.title3, weight: .regular))
+                    .multilineTextAlignment(.trailing)
+                    .fixedSize()
+
+                Text(sliderDateText(for: selectedDayOffset))
+                    .font(labelFont)
+                    .frame(minWidth: idleMinWidth)
+                    .fixedSize()
+                    .padding(.horizontal, idleHorizontalPadding)
+                    .padding(.vertical, idleVerticalPadding)
+                    .hidden()
+                    .overlay {
+                        Image(systemName: "arrow.down")
+                            .font(.system(size: 28, weight: .semibold))
+                    }
+
+                Color.clear
+                    .frame(width: idleTailSize.width, height: idleTailSize.height)
+                    .offset(x: 9)
+            }
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
+            .offset(y: capsuleY + hintGapBelowCapsule)
+        }
+        .frame(width: 360, height: tutorialSliderHeight, alignment: .topTrailing)
+        .padding(.bottom, 470)
+        .padding(.trailing, 1)
+        .allowsHitTesting(false)
+    }
+
+    func showMapDateSliderTutorialIfNeeded() {
+        guard !hasSeenMapDateSliderTutorial else { return }
+        selectedDayOffset = 4
+        isFadingMapDateSliderTutorial = false
+        showingMapDateSliderTutorial = true
+    }
+
+    func dismissMapDateSliderTutorial() {
+        guard showingMapDateSliderTutorial, !isFadingMapDateSliderTutorial else { return }
+        hasSeenMapDateSliderTutorial = true
+        withAnimation(.easeOut(duration: 0.5)) {
+            isFadingMapDateSliderTutorial = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.62) {
+            showingMapDateSliderTutorial = false
+            isFadingMapDateSliderTutorial = false
         }
     }
 
@@ -286,6 +368,7 @@ extension ContentView {
 
     func refreshWeather() {
         dismissMapSelectionForRefresh()
+        daytimeScoreRefetchKeys.removeAll()
         Task {
             await weatherService.refreshWeather()
             if !mapCities.isEmpty {

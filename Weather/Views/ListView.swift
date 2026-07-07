@@ -32,11 +32,6 @@ extension ContentView {
                             }
                         }
 
-                        if index < sortedListCandidates.count - 1 {
-                            Divider()
-                                .background(theme.colors.secondaryText.opacity(0.18))
-                                .padding(.leading, listEditMode ? 78 : 34)
-                        }
                     }
                 }
                 .padding(.horizontal, 16)

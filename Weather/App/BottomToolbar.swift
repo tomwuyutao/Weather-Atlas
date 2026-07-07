@@ -15,6 +15,7 @@ enum AppNavigationRoute: Hashable {
     case list
     case cityDetail(UUID)
     case addCityDetail
+    case listPreview
     case listManager
 }
 
@@ -129,7 +130,9 @@ extension ContentView {
 
     var floatingBottomToolbar: some View {
         HStack(alignment: .center) {
-            if let route = currentRoute {
+            if isListPreviewActive {
+                bottomCancelListPreviewButton
+            } else if let route = currentRoute {
                 bottomBackButton(route)
             } else {
                 bottomMoreButton
@@ -137,12 +140,20 @@ extension ContentView {
 
             Spacer(minLength: 12)
 
-            dateSwitcherCapsule
-                .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
+            Group {
+                if isListPreviewActive {
+                    listPreviewCountPickerCapsule
+                } else {
+                    dateSwitcherCapsule
+                }
+            }
+            .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
 
             Spacer(minLength: 12)
 
-            if currentRoute == .addCityDetail || temporaryMapSearchCity != nil {
+            if isListPreviewActive {
+                bottomConfirmListPreviewButton
+            } else if currentRoute == .addCityDetail || temporaryMapSearchCity != nil {
                 bottomAddSearchedCityButton
             } else {
                 bottomSearchButton
@@ -253,6 +264,87 @@ extension ContentView {
         .themedGlass(in: Circle())
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
         .accessibilityLabel(localizedString("Back", locale: locale))
+    }
+
+    var bottomCancelListPreviewButton: some View {
+        Button {
+            cancelGeneratedListPreview()
+        } label: {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .frame(width: 46, height: 46)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .themedGlass(in: Circle())
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
+        .accessibilityLabel(localizedString("Cancel", locale: locale))
+    }
+
+    var bottomConfirmListPreviewButton: some View {
+        Button {
+            confirmGeneratedListPreview()
+        } label: {
+            Image(systemName: "plus")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .frame(width: 46, height: 46)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .themedGlass(in: Circle())
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
+        .disabled(listPreviewCities.isEmpty)
+        .accessibilityLabel(localizedString("Add", locale: locale))
+    }
+
+    var listPreviewCountPickerCapsule: some View {
+        HStack(spacing: 8) {
+            Button {
+                guard listPreviewCityCount > 1 else { return }
+                Haptics.lightImpact()
+                withAnimation(.smooth(duration: 0.18)) {
+                    listPreviewCityCount -= 1
+                }
+            } label: {
+                Image(systemName: "minus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(listPreviewCityCount > 1 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
+                    .frame(width: 36, height: 36)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(listPreviewCityCount <= 1)
+
+            Text(cityCountText(listPreviewCityCount))
+                .font(.avenir(.caption, weight: .semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .frame(minWidth: 92, minHeight: 36)
+
+            Button {
+                guard listPreviewCityCount < listPreviewMaximumCount else { return }
+                Haptics.lightImpact()
+                withAnimation(.smooth(duration: 0.18)) {
+                    listPreviewCityCount += 1
+                }
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(listPreviewCityCount < listPreviewMaximumCount ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
+                    .frame(width: 36, height: 36)
+                    .contentShape(Circle())
+            }
+            .buttonStyle(.plain)
+            .disabled(listPreviewCityCount >= listPreviewMaximumCount)
+        }
+        .padding(.horizontal, 6)
+        .padding(.vertical, 5)
+        .themedGlass(in: .capsule)
+        .transition(.scale.combined(with: .opacity))
     }
 
     var bottomAddSearchedCityButton: some View {
@@ -389,6 +481,9 @@ extension ContentView {
         } else if route == .list {
             showingListManager = false
             showingMapExpandedCard = false
+        } else if route == .listPreview {
+            showingListManager = false
+            showingMapExpandedCard = false
         }
         if case .cityDetail = route {
             navigationPath.append(route)
@@ -456,6 +551,9 @@ extension ContentView {
         case .addCityDetail:
             navigationPath.removeAll { $0 == route }
             addCityDetailCity = nil
+        case .listPreview:
+            navigationPath.removeAll { $0 == route }
+            clearGeneratedListPreview()
         case .listManager:
             navigationPath.removeAll { $0 == route }
             showingListManager = false

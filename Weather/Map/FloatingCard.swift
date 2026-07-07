@@ -22,74 +22,14 @@ extension ContentView {
         let isNow = selectedDayOffset == -1
         let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
         let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
-        let distUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic
         let icon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
-        let isOverlayActive = !["weather", "temperature"].contains(mapOverlayMode)
-        let overlayLargeText: String = {
-            switch mapOverlayMode {
-            case "cloudCover":
-                if isNow {
-                    guard let cc = cityWeather.currentCloudCover else { return "—" }
-                    return "\(Int(cc * 100))%"
-                }
-                guard let cc = forecast.cloudCoverPercent else { return "—" }
-                return "\(cc)%"
-            case "precipitation":
-                if isNow {
-                    let isRaining = [.rain, .drizzle, .snow].contains(cityWeather.condition)
-                    return isRaining ? "100%" : "0%"
-                }
-                guard let pc = forecast.precipitationChance else { return "—" }
-                return "\(Int(pc * 100))%"
-            case "windSpeed":
-                if isNow {
-                    guard let ws = cityWeather.currentWindSpeed else { return "—" }
-                    return distUnit.displayWindSpeed(ws, locale: locale)
-                }
-                guard let ws = forecast.windSpeed else { return "—" }
-                return distUnit.displayWindSpeed(ws, locale: locale)
-            case "uvIndex":
-                if isNow {
-                    guard let uv = cityWeather.currentUVIndex else { return "—" }
-                    return "\(uv)"
-                }
-                guard let uv = forecast.uvIndex else { return "—" }
-                return "\(uv)"
-            case "humidity":
-                if isNow {
-                    guard let hum = cityWeather.currentHumidity else { return "—" }
-                    return "\(Int(hum * 100))%"
-                }
-                guard let hum = forecast.maxHumidity else { return "—" }
-                return "\(Int(hum * 100))%"
-            case "visibility":
-                if isNow {
-                    guard let km = cityWeather.currentVisibility else { return "—" }
-                    return distUnit.display(km)
-                }
-                guard let km = forecast.maxVisibility else { return "—" }
-                return distUnit.display(km)
-            default: return ""
-            }
-        }()
-        let overlayLabel: String = {
-            switch mapOverlayMode {
-            case "cloudCover": return "Cloud Cover"
-            case "precipitation": return "Precipitation Chance"
-            case "windSpeed": return "Wind Speed"
-            case "uvIndex": return "UV Index"
-            case "humidity": return "Humidity"
-            case "visibility": return "Visibility"
-            default: return ""
-            }
-        }()
+        let temperatureText = tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh)
+        let temperatureLabel = localizedString(isNow ? "Current Temperature" : "Highest Temperature", locale: locale)
 
         if forceExpandedStyle {
             expandedFloatingWeatherCard(
                 for: cityWeather,
                 icon: icon,
-                primaryText: isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh),
-                metricLabel: isOverlayActive ? overlayLabel : localizedString(isNow ? "Current Temperature" : "Highest Temperature", locale: locale),
                 tempUnit: tempUnit,
                 hideCityName: hideCityName,
                 plainBackground: plainBackground
@@ -106,13 +46,13 @@ extension ContentView {
 
             HStack(alignment: .bottom, spacing: phoneCardSpacing) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(isOverlayActive ? overlayLargeText : tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh))
+                    Text(temperatureText)
                         .font(.system(size: phoneCardTemperatureSize, weight: .semibold, design: .default))
                         .foregroundStyle(theme.colors.primaryText)
                         .contentTransition(.numericText())
                         .lineLimit(1)
 
-                    Text(isOverlayActive ? overlayLabel : localizedString(isNow ? "Current Temperature" : "Highest Temperature", locale: locale))
+                    Text(temperatureLabel)
                         .font(phoneCardMetricFont)
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
@@ -127,7 +67,6 @@ extension ContentView {
                     }
                 }
                 .frame(maxHeight: .infinity, alignment: .bottomLeading)
-                .animation(.smooth(duration: 0.4), value: mapOverlayMode)
 
                 Spacer(minLength: 8)
 
@@ -233,12 +172,14 @@ extension ContentView {
     func expandedFloatingWeatherCard(
         for cityWeather: CityWeather,
         icon: String,
-        primaryText: String,
-        metricLabel: String,
         tempUnit: TemperatureUnit,
         hideCityName: Bool = false,
         plainBackground: Bool = false
     ) -> some View {
+        let isNow = selectedDayOffset == -1
+        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
+        let temperatureText = tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh)
+        let temperatureLabel = localizedString(isNow ? "Current Temperature" : "Highest Temperature", locale: locale)
         let forecasts = Array(cityWeather.dailyForecasts.prefix(10))
         let cornerRadius: CGFloat = 28
 
@@ -252,7 +193,7 @@ extension ContentView {
                             .lineLimit(1)
                     }
 
-                    Text(metricLabel)
+                    Text(temperatureLabel)
                         .font(.callout.weight(.medium))
                         .foregroundStyle(theme.colors.secondaryText)
                 }
@@ -263,11 +204,11 @@ extension ContentView {
                 HStack(alignment: .center, spacing: 2) {
                     Spacer(minLength: 0)
 
-                    Text(primaryText)
+                    Text(temperatureText)
                         .font(.system(size: 62, weight: .regular, design: .default))
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
-                        .id("primary-\(selectedDayOffset)-\(primaryText)")
+                        .id("primary-\(selectedDayOffset)-\(temperatureText)")
                         .transition(.scale(scale: 0.82).combined(with: .opacity))
 
                     Image(systemName: floatingCardIconName(for: icon))
