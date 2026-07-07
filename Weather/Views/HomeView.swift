@@ -404,6 +404,8 @@ extension ContentView {
     func sunnyCandidateRow(_ candidate: SunnyCandidate, rank: Int? = nil, compact: Bool = false) -> some View {
         let icon = sunnyCandidateIcon(for: candidate)
         let cloudText = candidate.cloudCover.map { "\(Int($0 * 100))%" } ?? "-"
+        let cloudValueWidth: CGFloat = dynamicTypeSize > .large ? 48 : 38
+        let cloudColumnWidth: CGFloat = dynamicTypeSize > .large ? 66 : 54
         return HStack(spacing: 10) {
             if let rank {
                 Text("\(rank)")
@@ -443,9 +445,9 @@ extension ContentView {
                     Text(cloudText)
                         .font(.caption.weight(.semibold))
                         .monospacedDigit()
-                        .frame(width: 38, alignment: .leading)
+                        .frame(width: cloudValueWidth, alignment: .leading)
                 }
-                .frame(width: 54, alignment: .leading)
+                .frame(width: cloudColumnWidth, alignment: .leading)
 
                 Image(systemName: icon)
                     .font(.caption.weight(.semibold))
