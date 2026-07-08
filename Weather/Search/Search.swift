@@ -128,25 +128,46 @@ extension ContentView {
     // MARK: - Search Presentation
 
     var searchSheet: some View {
-        VStack(spacing: 16) {
-            searchBar
-                .zIndex(2)
-
-            if !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-               !displayedSearchResults.isEmpty {
-                ScrollView(.vertical, showsIndicators: false) {
-                    searchSuggestionPanel
+        NavigationStack {
+            List {
+                ForEach(Array(displayedSearchResults.prefix(searchResultLimit)), id: \.id) { result in
+                    Button {
+                        guard !isLoadingSearchCity else { return }
+                        Task {
+                            await selectSearchResult(result)
+                        }
+                    } label: {
+                        citySearchSuggestionRow(
+                            for: result,
+                            isLoading: loadingSearchResultID == result.id
+                        )
+                    }
+                    .allowsHitTesting(!isLoadingSearchCity)
+                    .buttonStyle(.plain)
+                    .listRowBackground(theme.colors.background)
                 }
-                .scrollDismissesKeyboard(.interactively)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else {
-                Spacer(minLength: 0)
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
+            .navigationTitle(localizedString("Search", locale: locale))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(localizedString("Cancel", locale: locale)) {
+                        dismissNativeCitySearchAndRecenter()
+                    }
+                }
+            }
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text(localizedString("Search for a city", locale: locale))
+            )
+            .onSubmit(of: .search) {
+                confirmSearchSelection()
             }
         }
-        .padding(.horizontal, 18)
-        .safeAreaPadding(.top, 28)
-        .padding(.bottom, 18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(theme.colors.background.ignoresSafeArea())
         .onAppear {
             searchFieldPresented = true
@@ -157,80 +178,9 @@ extension ContentView {
         }
     }
 
-    private var searchBar: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(theme.colors.secondaryText)
-
-            TextField(localizedString("Search for a city", locale: locale), text: $searchText)
-                .textInputAutocapitalization(.words)
-                .disableAutocorrection(true)
-                .focused($searchFieldFocused)
-                .submitLabel(.search)
-                .onSubmit {
-                    confirmSearchSelection()
-                }
-
-            Button {
-                dismissNativeCitySearchAndRecenter()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(theme.colors.secondaryText)
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, 14)
-        .frame(height: 50)
-        .background(searchSuggestionBackground, in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.38), lineWidth: 0.8)
-        }
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 18, y: 8)
-        .onAppear {
-            searchFieldPresented = true
-            searchFieldFocused = true
-        }
-    }
-
-    // MARK: - Search Suggestions
-
-    private var searchSuggestionPanel: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(Array(displayedSearchResults.prefix(searchResultLimit).enumerated()), id: \.element.id) { index, result in
-                Button {
-                    guard !isLoadingSearchCity else { return }
-                    Task {
-                        await selectSearchResult(result)
-                    }
-                } label: {
-                    citySearchSuggestionRow(
-                        for: result,
-                        isLoading: loadingSearchResultID == result.id
-                    )
-                }
-                .allowsHitTesting(!isLoadingSearchCity)
-                .buttonStyle(.plain)
-
-                if index < min(displayedSearchResults.count, searchResultLimit) - 1 {
-                    Divider()
-                        .padding(.leading, 2)
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: 430)
-    }
-
     private var searchResultLimit: Int { 8 }
 
     // MARK: - Search Styling
-
-    private var searchSuggestionBackground: Color {
-        theme.colors.listCardFill
-    }
 
     private var searchSuggestionTitleColor: Color {
         colorScheme == .dark ? .white.opacity(0.92) : .black

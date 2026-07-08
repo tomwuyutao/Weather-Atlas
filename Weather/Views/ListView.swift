@@ -15,31 +15,44 @@ extension ContentView {
         VStack(spacing: 0) {
             listHeader
 
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { index, candidate in
-                        if listEditMode {
+            List {
+                ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { index, candidate in
+                    if listEditMode {
+                        listRow(candidate, rank: index + 1)
+                    } else {
+                        Button {
+                            presentDetail(for: candidate.cityWeather)
+                        } label: {
                             listRow(candidate, rank: index + 1)
-                        } else {
-                            Button {
-                                presentDetail(for: candidate.cityWeather)
-                            } label: {
-                                listRow(candidate, rank: index + 1)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                cityActions(for: candidate.cityWeather, in: weatherService.activeListID)
-                            } preview: {
-                                listContextPreviewRow(candidate, rank: index + 1)
-                            }
                         }
-
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            cityActions(for: candidate.cityWeather, in: weatherService.activeListID)
+                        } preview: {
+                            listContextPreviewRow(candidate, rank: index + 1)
+                        }
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
+                .onDelete { offsets in
+                    for offset in offsets {
+                        guard sortedListCandidates.indices.contains(offset) else { continue }
+                        removeListCity(sortedListCandidates[offset].cityWeather)
+                    }
+                }
+                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                .listRowSeparator(.hidden)
+                .listRowBackground(theme.colors.background)
             }
+            .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            .environment(\.editMode, Binding<EditMode>(
+                get: { listEditMode ? .active : .inactive },
+                set: { mode in
+                    withAnimation(.smooth(duration: 0.2)) {
+                        listEditMode = mode.isEditing
+                    }
+                }
+            ))
         }
         .background(theme.colors.background.ignoresSafeArea())
     }
@@ -111,22 +124,7 @@ extension ContentView {
     }
 
     func listRow(_ candidate: SunnyCandidate, rank: Int) -> some View {
-        HStack(spacing: 8) {
-            if listEditMode {
-                Button {
-                    removeListCity(candidate.cityWeather)
-                } label: {
-                    Image(systemName: "minus.circle.fill")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(theme.colors.destructive)
-                        .frame(width: 34, height: 44)
-                }
-                .buttonStyle(.plain)
-            }
-
-            sunnyCandidateRow(candidate, rank: rank, compact: false)
-        }
-        .animation(.smooth(duration: 0.2), value: listEditMode)
+        sunnyCandidateRow(candidate, rank: rank, compact: false)
     }
 
     private func listContextPreviewRow(_ candidate: SunnyCandidate, rank: Int) -> some View {

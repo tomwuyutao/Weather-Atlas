@@ -49,43 +49,38 @@ struct AddSheet: View {
 
     @Environment(\.locale) private var locale
     @Environment(\.appTheme) private var theme
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        VStack(spacing: 0) {
-            addListOptionButton(
-                title: localizedString("New Empty List", locale: locale),
-                subtitle: localizedString("Start a list from scratch", locale: locale),
-                systemImage: "plus",
-                action: onNewEmptyList
-            )
+        NavigationStack {
+            List {
+                addListOptionButton(
+                    title: localizedString("New Empty List", locale: locale),
+                    subtitle: localizedString("Start a list from scratch", locale: locale),
+                    systemImage: "plus",
+                    action: onNewEmptyList
+                )
 
-            addSheetDivider
+                addListOptionButton(
+                    title: localizedString("Add Continent", locale: locale),
+                    subtitle: localizedString("Create a list of the largest cities in a continent", locale: locale),
+                    systemImage: "globe.europe.africa",
+                    action: onAddContinent
+                )
 
-            addListOptionButton(
-                title: localizedString("Add Continent", locale: locale),
-                subtitle: localizedString("Create a list of the largest cities in a continent", locale: locale),
-                systemImage: "globe.europe.africa",
-                action: onAddContinent
-            )
-
-            addSheetDivider
-
-            addListOptionButton(
-                title: localizedString("Add Country", locale: locale),
-                subtitle: localizedString("Create a list of the largest cities in a country", locale: locale),
-                systemImage: "flag",
-                action: onAddCountry
-            )
+                addListOptionButton(
+                    title: localizedString("Add Country", locale: locale),
+                    subtitle: localizedString("Create a list of the largest cities in a country", locale: locale),
+                    systemImage: "flag",
+                    action: onAddCountry
+                )
+            }
+            .listStyle(.insetGrouped)
+            .scrollContentBackground(.hidden)
+            .background(theme.colors.background.ignoresSafeArea())
+            .navigationTitle(localizedString("Add List", locale: locale))
+            .navigationBarTitleDisplayMode(.inline)
         }
-        .padding(.horizontal, 26)
-        .padding(.vertical, 16)
         .background(theme.colors.background.ignoresSafeArea())
-    }
-
-    private var addSheetDivider: some View {
-        Divider()
-            .background(Color.secondary.opacity(0.16))
     }
 
     private func addListOptionButton(
@@ -99,8 +94,7 @@ struct AddSheet: View {
                 Image(systemName: systemImage)
                     .font(.system(size: 27, weight: .regular))
                     .foregroundStyle(theme.colors.accent)
-                    .frame(width: 58, height: 58)
-                    .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 14))
+                    .frame(width: 36, height: 44)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
@@ -117,10 +111,7 @@ struct AddSheet: View {
                 Image(systemName: "chevron.right")
                     .font(.title3.weight(.medium))
                     .foregroundStyle(Color.secondary)
-                    .frame(width: 22, alignment: .trailing)
             }
-            .padding(.vertical, 16)
-            .frame(minHeight: 92)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

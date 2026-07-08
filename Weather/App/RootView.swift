@@ -137,9 +137,6 @@ extension ContentView {
                     .presentationBackground(theme.colors.background)
             }
             .overlay {
-                deleteListConfirmationOverlay
-            }
-            .overlay {
                 resetListsLoadingOverlay
             }
     }
@@ -198,7 +195,17 @@ extension ContentView {
         .onReceive(NotificationCenter.default.publisher(for: DeveloperWarningCenter.notification)) { notification in
             developerWarning = notification.object as? DeveloperWarning
         }
-        .animation(.easeOut(duration: 0.2), value: showingDeleteListConfirmation)
+        .alert(localizedString("Delete List", locale: locale), isPresented: $showingDeleteListConfirmation) {
+            Button(localizedString("Cancel", locale: locale), role: .cancel) { }
+            Button(localizedString("Delete", locale: locale), role: .destructive) {
+                weatherService.deleteCurrentList()
+            }
+        } message: {
+            Text(String(
+                format: localizedString("Are you sure you want to delete \"%@\"? This cannot be undone.", locale: locale),
+                weatherService.activeListID.localizedDisplayName(locale: locale)
+            ))
+        }
     }
 
     var homeScreenShortcutReceiver: some View {
@@ -581,72 +588,6 @@ extension ContentView {
         }
     }
 
-    // MARK: - Destructive Confirmation Overlays
-
-    @ViewBuilder
-    var deleteListConfirmationOverlay: some View {
-        if showingDeleteListConfirmation {
-            theme.colors.modalOverlay
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation(.easeOut(duration: 0.2)) {
-                        showingDeleteListConfirmation = false
-                    }
-                }
-            
-            VStack(spacing: 0) {
-                Text(localizedString("Delete List", locale: locale))
-                    .font(.avenir(.headline, weight: .bold))
-                    .padding(.top, 28)
-                    .padding(.bottom, 10)
-                
-                Text(String(format: localizedString("Are you sure you want to delete \"%@\"? This cannot be undone.", locale: locale), weatherService.activeListID.localizedDisplayName(locale: locale)))
-                    .font(.avenir(.subheadline, weight: .regular))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
-                    .padding(.bottom, 24)
-                
-                Divider()
-                
-                HStack(spacing: 0) {
-                    Button {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            showingDeleteListConfirmation = false
-                        }
-                    } label: {
-                        Text(localizedString("Cancel", locale: locale))
-                            .font(.avenir(.body, weight: .medium))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    
-                    Divider()
-                        .frame(height: 44)
-                    
-                    Button {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            showingDeleteListConfirmation = false
-                        }
-                        weatherService.deleteCurrentList()
-                    } label: {
-                        Text(localizedString("Delete", locale: locale))
-                            .font(.avenir(.body, weight: .semibold))
-                            .foregroundStyle(theme.colors.destructive)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 14)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .frame(width: 280)
-            .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 16))
-            .transition(.scale(scale: 0.9).combined(with: .opacity))
-        }
-    }
 }
 
 // MARK: - Loading Overlay
