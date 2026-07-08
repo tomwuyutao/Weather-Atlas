@@ -33,9 +33,9 @@ extension ContentView {
 // MARK: - Floating Bottom Toolbar
 
 extension ContentView {
-    private var bottomToolbarControlLength: CGFloat { 44 }
-    private var bottomToolbarCenterHeight: CGFloat { bottomToolbarControlLength }
-    private var bottomToolbarIconSize: CGFloat { 21 }
+    var bottomToolbarControlLength: CGFloat { 44 }
+    var bottomToolbarCenterHeight: CGFloat { bottomToolbarControlLength }
+    var bottomToolbarIconSize: CGFloat { 21 }
 
     @ToolbarContentBuilder
     var nativeBottomToolbarItems: some ToolbarContent {
@@ -463,7 +463,8 @@ extension ContentView {
                 }
             } label: {
                 Image(systemName: "dot.squareshape.split.2x2")
-                    .font(.system(size: 21, weight: .regular))
+                    .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                    .imageScale(.medium)
                     .foregroundStyle(theme.colors.primaryText)
                     .frame(width: bottomToolbarControlLength, height: bottomToolbarCenterHeight)
             }
@@ -471,12 +472,14 @@ extension ContentView {
             .tint(theme.colors.primaryText)
 
             mapOverlayMenu
-                .font(.system(size: 21, weight: .regular))
+                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .imageScale(.medium)
                 .frame(width: bottomToolbarControlLength, height: bottomToolbarCenterHeight)
                 .buttonStyle(.plain)
 
             mapMoreMenu
-                .font(.system(size: 21, weight: .regular))
+                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .imageScale(.medium)
                 .frame(width: bottomToolbarControlLength, height: bottomToolbarCenterHeight)
                 .buttonStyle(.plain)
         }

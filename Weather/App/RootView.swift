@@ -267,7 +267,7 @@ extension ContentView {
 
     var fullListDestination: some View {
         listView
-            .toolbar(.visible, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 showingMapExpandedCard = false
                 listEditMode = false

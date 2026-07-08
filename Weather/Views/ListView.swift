@@ -15,112 +15,127 @@ extension ContentView {
         VStack(spacing: 0) {
             listHeader
 
-            List {
-                ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { index, candidate in
-                    if listEditMode {
+            if listEditMode {
+                List {
+                    ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { _, candidate in
                         listRow(candidate, rank: nil)
-                    } else {
-                        Button {
-                            presentDetail(for: candidate.cityWeather)
-                        } label: {
-                            listRow(candidate, rank: index + 1)
-                        }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            cityActions(for: candidate.cityWeather, in: weatherService.activeListID)
-                        } preview: {
-                            listContextPreviewRow(candidate, rank: index + 1)
+                    }
+                    .onDelete { offsets in
+                        for offset in offsets {
+                            guard sortedListCandidates.indices.contains(offset) else { continue }
+                            removeListCity(sortedListCandidates[offset].cityWeather)
                         }
                     }
+                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+                    .listRowSeparator(.hidden)
+                    .listRowBackground(theme.colors.background)
                 }
-                .onDelete { offsets in
-                    for offset in offsets {
-                        guard sortedListCandidates.indices.contains(offset) else { continue }
-                        removeListCity(sortedListCandidates[offset].cityWeather)
+                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
+                .environment(\.editMode, Binding<EditMode>(
+                    get: { listEditMode ? .active : .inactive },
+                    set: { mode in
+                        withAnimation(.smooth(duration: 0.2)) {
+                            listEditMode = mode.isEditing
+                        }
                     }
+                ))
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { index, candidate in
+                            Button {
+                                presentDetail(for: candidate.cityWeather)
+                            } label: {
+                                listRow(candidate, rank: index + 1)
+                            }
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                cityActions(for: candidate.cityWeather, in: weatherService.activeListID)
+                            } preview: {
+                                listContextPreviewRow(candidate, rank: index + 1)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 16)
                 }
-                .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                .listRowSeparator(.hidden)
-                .listRowBackground(theme.colors.background)
+                .scrollContentBackground(.hidden)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .environment(\.defaultMinListRowHeight, 0)
-            .environment(\.editMode, Binding<EditMode>(
-                get: { listEditMode ? .active : .inactive },
-                set: { mode in
-                    withAnimation(.smooth(duration: 0.2)) {
-                        listEditMode = mode.isEditing
-                    }
-                }
-            ))
         }
-        .padding(.top, -56)
+        .environment(\.defaultMinListRowHeight, 0)
         .background(theme.colors.background.ignoresSafeArea())
         .navigationTitle("")
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                if listEditMode {
-                    Button {
-                        withAnimation(.smooth(duration: 0.2)) {
-                            listEditMode = false
-                        }
-                    } label: {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .frame(width: 46, height: 46)
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Menu {
-                        ForEach(WeatherListSortMode.allCases) { mode in
-                            Button {
-                                listSortMode = mode.rawValue
-                            } label: {
-                                primaryMenuLabel(mode.title(locale: locale), systemImage: selectedListSortMode == mode ? "checkmark" : mode.icon)
-                            }
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up.arrow.down")
-                    }
-                    .menuOrder(.fixed)
-                    .tint(theme.colors.primaryText)
-
-                    Button {
-                        withAnimation(.smooth(duration: 0.2)) {
-                            listEditMode = true
-                        }
-                    } label: {
-                        Image(systemName: "pencil")
-                            .foregroundStyle(theme.colors.primaryText)
-                    }
-                    .accessibilityLabel(localizedString("Edit", locale: locale))
-
-                    Button {
-                        activateSearch()
-                    } label: {
-                        Image(systemName: "plus")
-                            .foregroundStyle(theme.colors.primaryText)
-                    }
-                    .accessibilityLabel(localizedString("Add City", locale: locale))
-                }
-            }
-        }
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private var listHeader: some View {
-        HStack {
-            listNavigationTitleMenu
-
-            Spacer(minLength: 0)
+        topToolbar {
+            listTopToolbarActions
         }
         .padding(.horizontal, 16)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
+        .padding(.top, 12)
+        .padding(.bottom, 8)
+    }
+
+    private var listTopToolbarActions: some View {
+        HStack(spacing: 12) {
+            if listEditMode {
+                Button {
+                    withAnimation(.smooth(duration: 0.2)) {
+                        listEditMode = false
+                    }
+                } label: {
+                    listToolbarActionIcon("checkmark", accessibilityLabel: localizedString("Done", locale: locale))
+                }
+                .buttonStyle(.plain)
+            } else {
+                Menu {
+                    ForEach(WeatherListSortMode.allCases) { mode in
+                        Button {
+                            listSortMode = mode.rawValue
+                        } label: {
+                            primaryMenuLabel(mode.title(locale: locale), systemImage: selectedListSortMode == mode ? "checkmark" : mode.icon)
+                        }
+                    }
+                } label: {
+                    listToolbarActionIcon("arrow.up.arrow.down", accessibilityLabel: localizedString("Sort", locale: locale))
+                }
+                .menuOrder(.fixed)
+                .tint(theme.colors.primaryText)
+                .buttonStyle(.plain)
+
+                Button {
+                    withAnimation(.smooth(duration: 0.2)) {
+                        listEditMode = true
+                    }
+                } label: {
+                    listToolbarActionIcon("pencil", accessibilityLabel: localizedString("Edit", locale: locale))
+                }
+                .buttonStyle(.plain)
+
+                Button {
+                    activateSearch()
+                } label: {
+                    listToolbarActionIcon("plus", accessibilityLabel: localizedString("Add City", locale: locale))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+        .themedGlass(in: .capsule)
+    }
+
+    private func listToolbarActionIcon(_ systemImage: String, accessibilityLabel: String) -> some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 21, weight: .regular))
+            .foregroundStyle(theme.colors.primaryText)
+            .frame(width: 32, height: 36)
+            .contentShape(Rectangle())
+            .accessibilityLabel(accessibilityLabel)
     }
 
     private var listNavigationTitleMenu: some View {

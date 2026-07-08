@@ -65,6 +65,8 @@ extension ContentView {
             }
         } label: {
             Image(systemName: "square.3.layers.3d")
+                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .imageScale(.medium)
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(theme.colors.primaryText)
         }
