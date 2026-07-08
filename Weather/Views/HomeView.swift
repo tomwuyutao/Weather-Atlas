@@ -336,11 +336,17 @@ extension ContentView {
             ScrollView {
                 VStack(spacing: 20) {
                     homePageHeader(previewActive: previewActive)
-                    homeMapSnapshot(height: snapshotHeight, previewActive: previewActive)
-                    if !previewActive {
-                        homeSunnyDaysSection(previewActive: previewActive)
+                    homeCard(contentPadding: 6) {
+                        homeMapSnapshot(height: snapshotHeight, previewActive: previewActive)
                     }
-                    homeSunnySection(previewActive: previewActive)
+                    if !previewActive {
+                        homeCard {
+                            homeSunnyDaysSection(previewActive: previewActive)
+                        }
+                    }
+                    homeCard {
+                        homeSunnySection(previewActive: previewActive)
+                    }
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -352,6 +358,16 @@ extension ContentView {
         .onAppear {
             filterSunny = false
         }
+    }
+
+    private func homeCard<Content: View>(
+        contentPadding: CGFloat = 18,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .padding(contentPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 24))
     }
 
     private func homePageHeader(previewActive: Bool) -> some View {
@@ -420,12 +436,12 @@ extension ContentView {
                 } label: {
                     HStack(spacing: 8) {
                         Text(localizedString("Show All Cities", locale: locale))
-                            .font(.callout.weight(.semibold))
+                            .font(.callout.weight(.medium))
                         Image(systemName: "chevron.right")
-                            .font(.caption.weight(.semibold))
+                            .font(.caption.weight(.medium))
                         Spacer(minLength: 0)
                     }
-                    .foregroundStyle(theme.colors.accent)
+                    .foregroundStyle(theme.colors.secondaryText)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 12)
                 }
@@ -473,7 +489,6 @@ extension ContentView {
                         }
                     }
                 }
-                .padding(.horizontal, 10)
             }
         }
     }
@@ -557,7 +572,7 @@ extension ContentView {
                 .fill(fill)
 
             Text(homeSunnyCalendarDayNumber(dayOffset: day.dayOffset))
-                .font(.system(size: 18, weight: homeSunnyCalendarDayWeight(day, isSelected: isSelected), design: .default).monospacedDigit())
+                .font(.system(size: 16, weight: homeSunnyCalendarDayWeight(day, isSelected: isSelected), design: .default).monospacedDigit())
                 .foregroundStyle(homeSunnyCalendarDayTextColor(day, isSelected: isSelected))
                 .lineLimit(1)
         }
@@ -572,22 +587,25 @@ extension ContentView {
 
     private func homeSunnyHeatmapFill(sunnyCityCount: Int, maxSunnyCityCount: Int, isForecastDate: Bool) -> Color {
         guard isForecastDate else {
-            return theme.colors.secondaryText.opacity(colorScheme == .dark ? 0.18 : 0.16)
+            return theme.colors.secondaryText.opacity(colorScheme == .dark ? 0.18 : 0.10)
         }
 
         guard sunnyCityCount > 0, maxSunnyCityCount > 0 else {
-            return theme.colors.glassFill.opacity(colorScheme == .dark ? 0.34 : 0.56)
+            if colorScheme == .dark {
+                return theme.colors.secondaryText.opacity(0.16)
+            }
+            return theme.colors.glassFill.opacity(0.56)
         }
 
         let fraction = max(0, min(1, Double(sunnyCityCount) / Double(maxSunnyCityCount)))
-        return theme.colors.dotSun.opacity(0.24 + 0.62 * fraction)
+        return theme.colors.dotSun.opacity(0.34 + 0.61 * fraction)
     }
 
     private func homeSunnyCalendarDayWeight(_ day: HomeSunnyCalendarDate, isSelected: Bool) -> Font.Weight {
         if !day.isForecastDate {
             return .medium
         }
-        return isSelected ? .bold : .semibold
+        return isSelected ? .semibold : .medium
     }
 
     private func homeSunnyCalendarDayTextColor(_ day: HomeSunnyCalendarDate, isSelected: Bool) -> Color {
@@ -648,6 +666,12 @@ extension ContentView {
                         sunnyCandidateRow(candidate, rank: index + 1, compact: true)
                     }
                     .buttonStyle(.plain)
+
+                    if index < rankedCandidates.count - 1 {
+                        Divider()
+                            .background(theme.colors.secondaryText.opacity(0.16))
+                            .padding(.leading, 34)
+                    }
                 }
             }
         })
@@ -656,29 +680,29 @@ extension ContentView {
     private func homePreviewCityList() -> some View {
         VStack(spacing: 0) {
             ForEach(Array(listPreviewCities.enumerated()), id: \.element.id) { index, city in
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
                     Text("\(index + 1)")
-                        .font(.subheadline.weight(.bold).monospacedDigit())
+                        .font(.subheadline.weight(.semibold).monospacedDigit())
                         .foregroundStyle(theme.colors.secondaryText)
-                        .frame(width: 24)
+                        .frame(width: 20)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(city.localizedName(locale: locale))
-                            .font(.system(size: 16, weight: .semibold))
+                            .font(.system(size: 16, weight: .medium))
                             .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
                     }
 
                     Spacer(minLength: 8)
                 }
-                .padding(.horizontal, 10)
+                .padding(.horizontal, 0)
                 .padding(.vertical, 10)
                 .contentShape(Rectangle())
 
                 if index < listPreviewCities.count - 1 {
                     Divider()
                         .background(theme.colors.secondaryText.opacity(0.18))
-                        .padding(.leading, 34)
+                        .padding(.leading, 36)
                 }
             }
         }
@@ -696,7 +720,7 @@ extension ContentView {
         let cloudValueWidth: CGFloat = dynamicTypeSize > .large ? 48 : 38
         let cloudColumnWidth: CGFloat = dynamicTypeSize > .large ? 72 : 54
         let verticalPadding: CGFloat = compact ? 8 : 9
-        return HStack(spacing: 10) {
+        return HStack(spacing: 8) {
             if let deleteAction {
                 Button {
                     deleteAction()
@@ -716,14 +740,14 @@ extension ContentView {
                 .transition(.scale(scale: 0.82).combined(with: .opacity))
             } else if let rank {
                 Text("\(rank)")
-                    .font(.subheadline.weight(.bold).monospacedDigit())
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
                     .foregroundStyle(theme.colors.secondaryText)
-                    .frame(width: 24)
+                    .frame(width: 20)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(candidate.cityWeather.city.localizedName(locale: locale))
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
             }
@@ -734,11 +758,11 @@ extension ContentView {
             HStack(spacing: 7) {
                 HStack(spacing: 3) {
                     Image(systemName: "thermometer.medium")
-                        .font(.caption.weight(.semibold))
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(theme.colors.dotSun)
                         .frame(width: 13, alignment: .center)
                     Text(tempUnit.display(candidate.temperature))
-                        .font(.caption.weight(.semibold))
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(theme.colors.dotSun)
                         .monospacedDigit()
                         .frame(width: 34, alignment: .leading)
@@ -747,25 +771,25 @@ extension ContentView {
 
                 HStack(spacing: cloudMetricSpacing) {
                     Image(systemName: "cloud")
-                        .font(.caption.weight(.semibold))
+                        .font(.caption.weight(.medium))
                         .foregroundStyle(theme.colors.secondaryText.opacity(0.50))
                         .frame(width: 13, alignment: .center)
                     Text(cloudText)
-                        .font(.caption.weight(.semibold))
+                        .font(.caption.weight(.medium))
                         .monospacedDigit()
                         .frame(width: cloudValueWidth, alignment: .leading)
                 }
                 .frame(width: cloudColumnWidth, alignment: .leading)
 
                 Image(systemName: icon)
-                    .font(.caption.weight(.semibold))
+                    .font(.caption.weight(.medium))
                     .weatherIconStyle(for: icon)
                     .frame(width: 18, alignment: .leading)
             }
             .foregroundStyle(theme.colors.secondaryText)
             .lineLimit(1)
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, 0)
         .padding(.vertical, verticalPadding)
         .contentShape(Rectangle())
     }

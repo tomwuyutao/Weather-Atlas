@@ -499,7 +499,7 @@ extension ContentView {
         navigationPath.removeAll { $0 == .listPreview }
         Haptics.lightImpact()
         Task { @MainActor in
-            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(260))
             pushRoute(.listPreview)
         }
     }

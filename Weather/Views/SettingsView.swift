@@ -15,15 +15,24 @@ enum DistanceUnit: String, CaseIterable {
     case automatic = "automatic"
     case kilometers = "kilometers"
     case miles = "miles"
+    case metersPerSecond = "metersPerSecond"
 
-    static let defaultRawValue = DistanceUnit.automatic.rawValue
+    static var systemDefault: DistanceUnit {
+        let measurementSystem = Locale.autoupdatingCurrent.measurementSystem
+        return (measurementSystem == .us || measurementSystem == .uk) ? .miles : .kilometers
+    }
+
+    static let defaultRawValue = DistanceUnit.systemDefault.rawValue
+
+    static var settingsCases: [DistanceUnit] {
+        [.miles, .kilometers, .metersPerSecond]
+    }
 
     var resolved: DistanceUnit {
         switch self {
         case .automatic:
-            let measurementSystem = Locale.autoupdatingCurrent.measurementSystem
-            return (measurementSystem == .us || measurementSystem == .uk) ? .miles : .kilometers
-        case .kilometers, .miles:
+            return Self.systemDefault
+        case .kilometers, .miles, .metersPerSecond:
             return self
         }
     }
@@ -32,7 +41,26 @@ enum DistanceUnit: String, CaseIterable {
         switch resolved {
         case .kilometers: return "km"
         case .miles: return "mi"
+        case .metersPerSecond: return "m/s"
         case .automatic: return resolved.symbol
+        }
+    }
+
+    var windDisplayName: String {
+        switch resolved {
+        case .miles: return "Miles / Hour"
+        case .kilometers: return "Kilometers / Hour"
+        case .metersPerSecond: return "Meters / Second"
+        case .automatic: return resolved.windDisplayName
+        }
+    }
+
+    var windAbbreviation: String {
+        switch resolved {
+        case .miles: return "mph"
+        case .kilometers: return "km/h"
+        case .metersPerSecond: return "m/s"
+        case .automatic: return resolved.windAbbreviation
         }
     }
 
@@ -45,6 +73,8 @@ enum DistanceUnit: String, CaseIterable {
             let mi = km * 0.621371
             let rounded = (mi * 10).rounded() / 10
             return rounded >= 10 ? "\(Int(rounded))mi" : String(format: "%.1fmi", rounded)
+        case .metersPerSecond:
+            return DistanceUnit.kilometers.display(km)
         case .automatic:
             return resolved.display(km)
         }
@@ -53,12 +83,13 @@ enum DistanceUnit: String, CaseIterable {
     func displayWindSpeed(_ kmh: Double, locale: Locale = .autoupdatingCurrent) -> String {
         switch resolved {
         case .kilometers:
-            return Measurement(value: kmh.rounded(), unit: UnitSpeed.kilometersPerHour)
-                .formatted(.measurement(width: .abbreviated, usage: .asProvided).locale(locale))
+            return "\(Int(kmh.rounded())) km/h"
         case .miles:
             let mph = kmh * 0.621371
-            return Measurement(value: mph.rounded(), unit: UnitSpeed.milesPerHour)
-                .formatted(.measurement(width: .abbreviated, usage: .asProvided).locale(locale))
+            return "\(Int(mph.rounded())) mph"
+        case .metersPerSecond:
+            let metersPerSecond = kmh / 3.6
+            return "\(Int(metersPerSecond.rounded())) m/s"
         case .automatic:
             return resolved.displayWindSpeed(kmh, locale: locale)
         }
@@ -67,9 +98,11 @@ enum DistanceUnit: String, CaseIterable {
     func windSpeedUnit(locale: Locale = .autoupdatingCurrent) -> String {
         switch resolved {
         case .kilometers:
-            return UnitSpeed.kilometersPerHour.symbol
+            return "km/h"
         case .miles:
-            return UnitSpeed.milesPerHour.symbol
+            return "mph"
+        case .metersPerSecond:
+            return "m/s"
         case .automatic:
             return resolved.windSpeedUnit(locale: locale)
         }
@@ -81,16 +114,32 @@ enum TemperatureUnit: String, CaseIterable {
     case celsius = "celsius"
     case fahrenheit = "fahrenheit"
 
-    static let defaultRawValue = TemperatureUnit.automatic.rawValue
+    static var systemDefault: TemperatureUnit {
+        let sample = Measurement(value: 0, unit: UnitTemperature.celsius)
+            .formatted(.measurement(width: .abbreviated, usage: .weather).locale(.autoupdatingCurrent))
+        return sample.localizedCaseInsensitiveContains("F") ? .fahrenheit : .celsius
+    }
+
+    static let defaultRawValue = TemperatureUnit.systemDefault.rawValue
+
+    static var settingsCases: [TemperatureUnit] {
+        [.celsius, .fahrenheit]
+    }
 
     var resolved: TemperatureUnit {
         switch self {
         case .automatic:
-            let sample = Measurement(value: 0, unit: UnitTemperature.celsius)
-                .formatted(.measurement(width: .abbreviated, usage: .weather).locale(.autoupdatingCurrent))
-            return sample.localizedCaseInsensitiveContains("F") ? .fahrenheit : .celsius
+            return Self.systemDefault
         case .celsius, .fahrenheit:
             return self
+        }
+    }
+
+    var displayName: String {
+        switch resolved {
+        case .celsius: return "Celsius"
+        case .fahrenheit: return "Fahrenheit"
+        case .automatic: return resolved.displayName
         }
     }
 
@@ -140,6 +189,42 @@ enum TemperatureUnit: String, CaseIterable {
     }
 }
 
+enum AppTextSizeLevel: Int, CaseIterable {
+    case xSmall = 0
+    case small = 1
+    case medium = 2
+    case large = 3
+    case xLarge = 4
+    case xxLarge = 5
+    case xxxLarge = 6
+
+    static let defaultRawValue = AppTextSizeLevel.large.rawValue
+
+    var dynamicTypeSize: DynamicTypeSize {
+        switch self {
+        case .xSmall: return .xSmall
+        case .small: return .small
+        case .medium: return .medium
+        case .large: return .large
+        case .xLarge: return .xLarge
+        case .xxLarge: return .xxLarge
+        case .xxxLarge: return .xxxLarge
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .xSmall: return "Extra Small"
+        case .small: return "Small"
+        case .medium: return "Medium"
+        case .large: return "Default"
+        case .xLarge: return "Large"
+        case .xxLarge: return "Extra Large"
+        case .xxxLarge: return "Extra Extra Large"
+        }
+    }
+}
+
 // MARK: - Settings Screen
 
 struct SettingsView: View {
@@ -148,6 +233,8 @@ struct SettingsView: View {
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.defaultRawValue
     @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.defaultRawValue
     @AppStorage("appLanguage") private var appLanguage: String = "en"
+    @AppStorage("useSystemTextSize") private var useSystemTextSize: Bool = true
+    @AppStorage("appTextSizeLevel") private var appTextSizeLevel: Int = AppTextSizeLevel.defaultRawValue
     let weatherService: WeatherService
     let onReplayTutorial: () -> Void
     @Environment(\.dismiss) private var dismiss
@@ -158,6 +245,8 @@ struct SettingsView: View {
 
     @State private var showingEmailCopied = false
     @State private var showingAttributions = false
+    @State private var showingUnits = false
+    @State private var showingTextSize = false
 
     // MARK: Resolved Preferences
 
@@ -167,6 +256,18 @@ struct SettingsView: View {
 
     private var selectedDistanceUnit: DistanceUnit {
         DistanceUnit(rawValue: distanceUnit) ?? .automatic
+    }
+
+    private var unitsSummary: String {
+        "\(selectedUnit.resolved.displayName), \(selectedDistanceUnit.resolved.windAbbreviation)"
+    }
+
+    private var selectedTextSizeLevel: AppTextSizeLevel {
+        AppTextSizeLevel(rawValue: appTextSizeLevel) ?? .large
+    }
+
+    private var textSizeSummary: String {
+        useSystemTextSize ? localizedString("System", locale: locale) : selectedTextSizeLevel.displayName
     }
 
     // MARK: View Body
@@ -191,6 +292,14 @@ struct SettingsView: View {
             .navigationDestination(isPresented: $showingAttributions) {
                 attributionsForm
                     .navigationTitle(localizedString("Attributions", locale: locale))
+            }
+            .navigationDestination(isPresented: $showingUnits) {
+                unitsForm
+                    .navigationTitle(localizedString("Units", locale: locale))
+            }
+            .navigationDestination(isPresented: $showingTextSize) {
+                textSizeForm
+                    .navigationTitle(localizedString("Text Size", locale: locale))
             }
         }
         .background(theme.colors.mapOcean.ignoresSafeArea())
@@ -248,23 +357,12 @@ struct SettingsView: View {
     private var settingsForm: some View {
         Form {
             Section {
-                Picker(selection: Binding(get: { temperatureUnit }, set: { temperatureUnit = $0 })) {
-                    Text(localizedString("Automatic", locale: locale)).tag(TemperatureUnit.automatic.rawValue)
-                    Text(localizedString("Celsius (°C)", locale: locale)).tag(TemperatureUnit.celsius.rawValue)
-                    Text(localizedString("Fahrenheit (°F)", locale: locale)).tag(TemperatureUnit.fahrenheit.rawValue)
-                } label: {
-                    settingsLabel(localizedString("Temperature", locale: locale), systemImage: "thermometer.medium")
-                }
-                .tint(theme.colors.accent)
-
-                Picker(selection: Binding(get: { distanceUnit }, set: { distanceUnit = $0 })) {
-                    Text(localizedString("Automatic", locale: locale)).tag(DistanceUnit.automatic.rawValue)
-                    Text(localizedString("Kilometers (km)", locale: locale)).tag(DistanceUnit.kilometers.rawValue)
-                    Text(localizedString("Miles (mi)", locale: locale)).tag(DistanceUnit.miles.rawValue)
-                } label: {
-                    settingsLabel(localizedString("Distance", locale: locale), systemImage: "ruler")
-                }
-                .tint(theme.colors.accent)
+                settingsNavigationRow(
+                    localizedString("Units", locale: locale),
+                    value: unitsSummary,
+                    systemImage: "ruler",
+                    action: { showingUnits = true }
+                )
 
                 Picker(selection: Binding(get: { appLanguage }, set: { appLanguage = $0 })) {
                     Text(verbatim: "English").tag("en")
@@ -282,6 +380,13 @@ struct SettingsView: View {
                     settingsLabel(localizedString("Language", locale: locale), systemImage: "globe")
                 }
                 .tint(theme.colors.accent)
+
+                settingsNavigationRow(
+                    localizedString("Text Size", locale: locale),
+                    value: textSizeSummary,
+                    systemImage: "textformat.size",
+                    action: { showingTextSize = true }
+                )
 
                 Picker(selection: Binding(get: { theme.style }, set: { theme.style = $0 })) {
                     Text(localizedString("Light", locale: locale)).tag(AppThemeStyle.light)
@@ -333,7 +438,118 @@ struct SettingsView: View {
         .scrollContentBackground(.hidden)
             .background(settingsFormBackground)
         .task {
+            normalizeLegacyAutomaticUnits()
             await weatherService.loadWeatherAttributionIfNeeded()
+        }
+    }
+
+    private var textSizeForm: some View {
+        Form {
+            Section {
+                Toggle(isOn: $useSystemTextSize) {
+                    Text(localizedString("Use System Text Size", locale: locale))
+                        .foregroundStyle(theme.colors.primaryText)
+                }
+                .tint(.green)
+
+                VStack(spacing: 18) {
+                    Divider()
+
+                    HStack(spacing: 18) {
+                        Text(verbatim: "A")
+                            .font(.system(size: 18, weight: .regular))
+                            .foregroundStyle(theme.colors.secondaryText)
+
+                        steppedTextSizeSlider
+
+                        Text(verbatim: "A")
+                            .font(.system(size: 34, weight: .regular))
+                            .foregroundStyle(theme.colors.secondaryText)
+                    }
+                    .opacity(useSystemTextSize ? 0.42 : 1)
+                }
+            }
+            .listRowBackground(settingsRowBackground)
+        }
+        .scrollContentBackground(.hidden)
+        .background(settingsFormBackground)
+    }
+
+    private var steppedTextSizeSlider: some View {
+        ZStack {
+            GeometryReader { proxy in
+                let stepCount = AppTextSizeLevel.allCases.count
+                let trackInset: CGFloat = 12
+                let availableWidth = max(0, proxy.size.width - trackInset * 2)
+
+                ForEach(0..<stepCount, id: \.self) { index in
+                    Rectangle()
+                        .fill(theme.colors.secondaryText.opacity(useSystemTextSize ? 0.18 : 0.34))
+                        .frame(width: 3, height: 18)
+                        .position(
+                            x: trackInset + availableWidth * CGFloat(index) / CGFloat(stepCount - 1),
+                            y: proxy.size.height / 2
+                        )
+                }
+            }
+            .allowsHitTesting(false)
+
+            Slider(
+                value: Binding(
+                    get: { Double(appTextSizeLevel) },
+                    set: { appTextSizeLevel = Int($0.rounded()) }
+                ),
+                in: 0...Double(AppTextSizeLevel.allCases.count - 1),
+                step: 1
+            )
+            .disabled(useSystemTextSize)
+            .tint(theme.colors.accent)
+        }
+        .frame(height: 36)
+    }
+
+    private var unitsForm: some View {
+        Form {
+            Section {
+                ForEach(TemperatureUnit.settingsCases, id: \.rawValue) { unit in
+                    settingsSelectionRow(
+                        title: unit.displayName,
+                        isSelected: selectedUnit.resolved == unit,
+                        action: { temperatureUnit = unit.rawValue }
+                    )
+                }
+            } header: {
+                settingsSectionHeader(localizedString("Temperature", locale: locale))
+            }
+            .listRowBackground(settingsRowBackground)
+
+            Section {
+                ForEach(DistanceUnit.settingsCases, id: \.rawValue) { unit in
+                    settingsSelectionRow(
+                        title: unit.windDisplayName,
+                        subtitle: unit.windAbbreviation,
+                        isSelected: selectedDistanceUnit.resolved == unit,
+                        action: { distanceUnit = unit.rawValue }
+                    )
+                }
+            } header: {
+                settingsSectionHeader(localizedString("Wind Speed", locale: locale))
+            }
+            .listRowBackground(settingsRowBackground)
+        }
+        .scrollContentBackground(.hidden)
+        .background(settingsFormBackground)
+        .onAppear {
+            normalizeLegacyAutomaticUnits()
+        }
+    }
+
+    private func normalizeLegacyAutomaticUnits() {
+        if TemperatureUnit(rawValue: temperatureUnit) == .automatic {
+            temperatureUnit = TemperatureUnit.systemDefault.rawValue
+        }
+        if DistanceUnit(rawValue: distanceUnit) == .automatic {
+            distanceUnit = DistanceUnit.systemDefault.rawValue
         }
     }
 
@@ -465,6 +681,54 @@ struct SettingsView: View {
         } label: {
             settingsLabel(title, systemImage: systemImage)
         }
+    }
+
+    private func settingsNavigationRow(_ title: String, value: String, systemImage: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            LabeledContent {
+                HStack(spacing: 8) {
+                    Text(value)
+                        .foregroundStyle(theme.colors.accent)
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.colors.accent)
+                }
+            } label: {
+                settingsLabel(title, systemImage: systemImage)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func settingsSelectionRow(
+        title: String,
+        subtitle: String? = nil,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .foregroundStyle(theme.colors.primaryText)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.caption)
+                            .foregroundStyle(theme.colors.secondaryText)
+                    }
+                }
+
+                Spacer(minLength: 8)
+
+                if isSelected {
+                    Image(systemName: "checkmark")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(theme.colors.accent)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: Support Actions

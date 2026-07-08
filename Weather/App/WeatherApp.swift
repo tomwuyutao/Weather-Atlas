@@ -204,12 +204,24 @@ private struct ThemeContent: View {
     let theme: AppTheme
     let appLocale: Locale
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var systemDynamicTypeSize
+    @AppStorage("useSystemTextSize") private var useSystemTextSize: Bool = true
+    @AppStorage("appTextSizeLevel") private var appTextSizeLevel: Int = AppTextSizeLevel.defaultRawValue
+
+    private var preferredDynamicTypeSize: DynamicTypeSize {
+        (AppTextSizeLevel(rawValue: appTextSizeLevel) ?? .large).dynamicTypeSize
+    }
+
+    private var resolvedDynamicTypeSize: DynamicTypeSize {
+        useSystemTextSize ? systemDynamicTypeSize : preferredDynamicTypeSize
+    }
 
     var body: some View {
         let resolvedColors = theme.colors(for: colorScheme)
         ContentView()
             .environment(\.locale, appLocale)
             .defaultFont()
+            .environment(\.dynamicTypeSize, resolvedDynamicTypeSize)
             .environment(\.appTheme, theme)
             .environment(\.themeColors, resolvedColors)
             .tint(resolvedColors.accent)

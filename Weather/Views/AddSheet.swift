@@ -16,21 +16,21 @@ extension ContentView {
             onNewEmptyList: {
                 showingAddListOptionsSheet = false
                 Task { @MainActor in
-                    await Task.yield()
+                    try? await Task.sleep(for: .milliseconds(260))
                     beginCreatingListFromSwitcher()
                 }
             },
             onAddContinent: {
                 showingAddListOptionsSheet = false
                 Task { @MainActor in
-                    await Task.yield()
+                    try? await Task.sleep(for: .milliseconds(260))
                     activateContinentListSearch()
                 }
             },
             onAddCountry: {
                 showingAddListOptionsSheet = false
                 Task { @MainActor in
-                    await Task.yield()
+                    try? await Task.sleep(for: .milliseconds(260))
                     activateCountryListSearch()
                 }
             }

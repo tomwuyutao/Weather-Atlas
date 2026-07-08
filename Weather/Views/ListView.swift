@@ -68,16 +68,9 @@ extension ContentView {
                         listEditMode = false
                     }
                 } label: {
-                    Image(systemName: "checkmark")
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(width: 36, height: 36)
-                        .contentShape(Circle())
-                        .accessibilityLabel(localizedString("Done", locale: locale))
+                    listToolbarActionIcon("checkmark", accessibilityLabel: localizedString("Done", locale: locale))
                 }
-                .buttonStyle(.borderedProminent)
-                .buttonBorderShape(.circle)
-                .controlSize(.large)
-                .tint(theme.colors.accent)
+                .buttonStyle(.plain)
             } else {
                 Menu {
                     ForEach(WeatherListSortMode.allCases) { mode in

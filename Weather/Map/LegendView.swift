@@ -199,9 +199,7 @@ struct MapFloatingLegend: View {
                     windColor(fraction: 0.25),
                     windColor(fraction: 0)
                 ],
-                labels: distUnit.resolved == .miles
-                    ? [60, 45, 30, 15, 0].map { distUnit.displayWindSpeed(Double($0) / 0.621371, locale: locale) }
-                    : [100, 75, 50, 25, 0].map { distUnit.displayWindSpeed(Double($0), locale: locale) }
+                labels: windSpeedLegendLabels
             )
         case "uvIndex":
             verticalGradientLegend(
@@ -238,6 +236,17 @@ struct MapFloatingLegend: View {
             )
         default:
             EmptyView()
+        }
+    }
+
+    private var windSpeedLegendLabels: [String] {
+        switch distUnit.resolved {
+        case .miles:
+            return [60, 45, 30, 15, 0].map { distUnit.displayWindSpeed(Double($0) / 0.621371, locale: locale) }
+        case .metersPerSecond:
+            return [30, 20, 10, 5, 0].map { distUnit.displayWindSpeed(Double($0) * 3.6, locale: locale) }
+        case .kilometers, .automatic:
+            return [100, 75, 50, 25, 0].map { distUnit.displayWindSpeed(Double($0), locale: locale) }
         }
     }
 

@@ -112,7 +112,7 @@ extension ContentView {
     var dateSwitcherControl: some View {
         HStack(spacing: 8) {
             Image(systemName: "chevron.left")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(selectedDayOffset > 0 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
                 .frame(width: 36, height: bottomToolbarCenterHeight)
                 .contentShape(Circle())
@@ -131,7 +131,7 @@ extension ContentView {
                 showingDatePopover = true
             } label: {
                 Text(dateSwitcherText)
-                    .font(.avenir(.caption, weight: .semibold))
+                    .font(.avenir(.caption, weight: .medium))
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
@@ -149,7 +149,7 @@ extension ContentView {
             }
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(selectedDayOffset < 9 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
                 .frame(width: 36, height: bottomToolbarCenterHeight)
                 .contentShape(Circle())
