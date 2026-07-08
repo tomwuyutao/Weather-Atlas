@@ -37,7 +37,7 @@ extension ContentView {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 96)
+                .padding(.bottom, 16)
             }
             .scrollContentBackground(.hidden)
         }

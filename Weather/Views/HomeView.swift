@@ -332,7 +332,7 @@ extension ContentView {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
-                .padding(.bottom, 112)
+                .padding(.bottom, 16)
             }
             .scrollIndicators(.hidden)
             .background(theme.colors.background.ignoresSafeArea())

@@ -238,7 +238,7 @@ extension ContentView {
 
     func bottomBackButton(_ route: AppNavigationRoute) -> some View {
         Button {
-            dismissRoute(route)
+            popRoute(route)
         } label: {
             Image(systemName: "chevron.left")
                 .font(.system(size: 20, weight: .semibold))
@@ -507,29 +507,42 @@ extension ContentView {
                 addCityDetailCity = nil
                 tappedCity = savedCity
                 temporaryMapSearchCity = nil
-                navigationPath.removeAll { $0 == .addCityDetail }
+                removeRoute(.addCityDetail)
                 pushRoute(.cityDetail(savedCity.id))
             }
         }
     }
 
+    func popRoute(_ route: AppNavigationRoute) {
+        if navigationPath.last == route {
+            navigationPath.removeLast()
+            cleanupAfterLeavingRoute(route)
+        } else {
+            removeRoute(route)
+        }
+    }
+
+    func removeRoute(_ route: AppNavigationRoute) {
+        navigationPath.removeAll { $0 == route }
+        cleanupAfterLeavingRoute(route)
+    }
+
     func dismissRoute(_ route: AppNavigationRoute) {
+        removeRoute(route)
+    }
+
+    private func cleanupAfterLeavingRoute(_ route: AppNavigationRoute) {
         switch route {
         case .map:
-            navigationPath.removeAll { $0 == route }
             showingMapExpandedCard = false
             tappedCity = nil
         case .list:
-            navigationPath.removeAll { $0 == route }
             listEditMode = false
         case .cityDetail:
-            navigationPath.removeAll { $0 == route }
             selectedDayOffset = 0
         case .addCityDetail:
-            navigationPath.removeAll { $0 == route }
             addCityDetailCity = nil
         case .listPreview:
-            navigationPath.removeAll { $0 == route }
             clearGeneratedListPreview()
         }
     }

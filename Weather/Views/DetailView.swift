@@ -20,35 +20,27 @@ extension ContentView {
     }
 
     func cityDetailView(for city: CityWeather, route: AppNavigationRoute) -> some View {
-        ZStack(alignment: .bottom) {
-            cityDetailScrollContent(for: city)
-
-            if !showingSearchSheet {
-                Color.clear
-                    .frame(height: 104)
-                    .frame(maxWidth: .infinity)
-                    .contentShape(Rectangle())
-                    .onTapGesture {}
-                    .zIndex(90)
-
-                floatingBottomToolbar
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, -2)
-                    .zIndex(100)
+        cityDetailScrollContent(for: city)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if !showingSearchSheet {
+                    floatingBottomToolbar
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 6)
+                        .zIndex(100)
+                }
             }
-        }
-        .background {
-            theme.colors.background
-                .ignoresSafeArea()
-        }
-        .navigationTitle("")
-        .navigationBarBackButtonHidden(true)
-        .toolbar(.hidden, for: .navigationBar)
-        .tint(theme.colors.primaryText)
-        .onDisappear {
-            guard case .cityDetail = route else { return }
-            selectedDayOffset = 0
-        }
+            .background {
+                theme.colors.background
+                    .ignoresSafeArea()
+            }
+            .navigationTitle("")
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
+            .tint(theme.colors.primaryText)
+            .onDisappear {
+                guard case .cityDetail = route else { return }
+                selectedDayOffset = 0
+            }
     }
 
     private func cityDetailScrollContent(for city: CityWeather) -> some View {
@@ -633,7 +625,7 @@ extension ContentView {
     }
 
     private var detailViewBottomPadding: CGFloat {
-        112
+        16
     }
 
     private var detailViewMaxWidth: CGFloat? {
