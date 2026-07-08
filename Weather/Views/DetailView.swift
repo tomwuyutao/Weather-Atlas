@@ -21,9 +21,6 @@ extension ContentView {
 
     func cityDetailView(for city: CityWeather, route: AppNavigationRoute) -> some View {
         cityDetailScrollContent(for: city)
-            .toolbar {
-                nativeBottomToolbarItems
-            }
             .background {
                 theme.colors.background
                     .ignoresSafeArea()
@@ -32,10 +29,6 @@ extension ContentView {
             .navigationBarBackButtonHidden(true)
             .toolbar(.hidden, for: .navigationBar)
             .tint(theme.colors.primaryText)
-            .onDisappear {
-                guard case .cityDetail = route else { return }
-                selectedDayOffset = 0
-            }
     }
 
     private func cityDetailScrollContent(for city: CityWeather) -> some View {

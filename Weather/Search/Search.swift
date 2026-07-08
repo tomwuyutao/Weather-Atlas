@@ -154,9 +154,14 @@ extension ContentView {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(localizedString("Cancel", locale: locale)) {
+                    Button {
                         dismissNativeCitySearchAndRecenter()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
                     }
+                    .accessibilityLabel(localizedString("Cancel", locale: locale))
                 }
             }
             .searchable(
@@ -201,7 +206,7 @@ extension ContentView {
         let subtitleFont: Font = .avenir(.caption, weight: .regular)
         let statusFont: Font = .avenir(.caption2, weight: .medium)
         let statusBoldFont: Font = .avenir(.caption2, weight: .bold)
-        let rowVerticalPadding: CGFloat = 12
+        let rowVerticalPadding: CGFloat = 8
         let rowHorizontalPadding: CGFloat = 2
 
         return HStack(spacing: rowSpacing) {
@@ -238,6 +243,7 @@ extension ContentView {
         }
         .padding(.vertical, rowVerticalPadding)
         .padding(.horizontal, rowHorizontalPadding)
+        .frame(minHeight: 46)
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 

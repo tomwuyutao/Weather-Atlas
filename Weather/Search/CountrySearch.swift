@@ -12,8 +12,8 @@ import SwiftUI
 
 extension ContentView {
     var continentListSearchSheet: some View {
-        NavigationStack {
-            List {
+        ScrollView {
+            VStack(spacing: 0) {
                 ForEach(CityListID.builtInLists) { listID in
                     Button {
                         previewContinentList(listID)
@@ -21,15 +21,19 @@ extension ContentView {
                         continentListSearchResultRow(listID)
                     }
                     .buttonStyle(.plain)
-                    .listRowBackground(theme.colors.background)
+
+                    if listID != CityListID.builtInLists.last {
+                        Divider()
+                            .background(theme.colors.secondaryText.opacity(0.20))
+                    }
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(theme.colors.background.ignoresSafeArea())
-            .navigationTitle(localizedString("Add Continent", locale: locale))
-            .navigationBarTitleDisplayMode(.inline)
+            .padding(.horizontal, 22)
+            .padding(.top, 18)
         }
+        .scrollIndicators(.hidden)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 28)
         .background(theme.colors.background.ignoresSafeArea())
     }
 
@@ -66,37 +70,41 @@ extension ContentView {
 
 extension ContentView {
     var countryListSearchSheet: some View {
-        NavigationStack {
-            List {
-                let countries = filteredCountryListOptions
-                if countries.isEmpty {
-                    Text(localizedString("No countries found.", locale: locale))
-                        .font(.avenir(.body, weight: .regular))
-                        .foregroundStyle(theme.colors.secondaryText)
-                        .listRowBackground(theme.colors.background)
-                } else {
-                    ForEach(countries) { country in
-                        Button {
-                            previewCountryList(country)
-                        } label: {
-                            countryListSearchResultRow(country)
+        VStack(spacing: 18) {
+            countryListSearchBar
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    let countries = filteredCountryListOptions
+                    if countries.isEmpty {
+                        Text(localizedString("No countries found.", locale: locale))
+                            .font(.avenir(.body, weight: .regular))
+                            .foregroundStyle(theme.colors.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 18)
+                    } else {
+                        ForEach(countries) { country in
+                            Button {
+                                previewCountryList(country)
+                            } label: {
+                                countryListSearchResultRow(country)
+                            }
+                            .buttonStyle(.plain)
+
+                            if country.id != countries.last?.id {
+                                Divider()
+                                    .background(theme.colors.secondaryText.opacity(0.20))
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .listRowBackground(theme.colors.background)
                     }
                 }
+                .padding(.horizontal, 22)
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .background(theme.colors.background.ignoresSafeArea())
-            .navigationTitle(localizedString("Add Country", locale: locale))
-            .navigationBarTitleDisplayMode(.inline)
-            .searchable(
-                text: $countryListSearchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: Text(localizedString("Search for a country", locale: locale))
-            )
+            .scrollIndicators(.hidden)
         }
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 28)
         .background(theme.colors.background.ignoresSafeArea())
         .onAppear {
             countryListSearchText = ""
@@ -105,6 +113,40 @@ extension ContentView {
                 searchFieldFocused = true
             }
         }
+    }
+
+    var countryListSearchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(theme.colors.accent)
+
+            TextField(localizedString("Search for a country", locale: locale), text: $countryListSearchText)
+                .font(.avenir(.body, weight: .regular))
+                .foregroundStyle(.primary)
+                .focused($searchFieldFocused)
+                .textInputAutocapitalization(.words)
+                .disableAutocorrection(true)
+
+            if !countryListSearchText.isEmpty {
+                Button {
+                    countryListSearchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(theme.colors.accent)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 52)
+        .background(theme.colors.listCardFill, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.38), lineWidth: 0.8)
+        }
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 18, y: 8)
     }
 
     var filteredCountryListOptions: [CountryListOption] {

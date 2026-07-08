@@ -226,7 +226,11 @@ extension ContentView {
     }
 
     var sunnyCandidates: [SunnyCandidate] {
-        mapCities
+        sunnyCandidates(for: mapCities)
+    }
+
+    func sunnyCandidates(for cities: [CityWeather]) -> [SunnyCandidate] {
+        cities
             .map(sunnyCandidate(for:))
             .sorted(by: isBetterSunnyCandidate)
     }
@@ -263,10 +267,14 @@ extension ContentView {
     }
 
     var homeSunnyDayRecommendations: [HomeSunnyDayRecommendation] {
-        guard !mapCities.isEmpty else { return [] }
+        homeSunnyDayRecommendations(for: mapCities)
+    }
+
+    func homeSunnyDayRecommendations(for cities: [CityWeather]) -> [HomeSunnyDayRecommendation] {
+        guard !cities.isEmpty else { return [] }
 
         return (0..<10).map { dayOffset in
-            let sunnyForecasts = mapCities.compactMap { cityWeather -> DailyForecast? in
+            let sunnyForecasts = cities.compactMap { cityWeather -> DailyForecast? in
                 let forecast = cityWeather.forecast(for: dayOffset)
                 return SunninessScoring.condition(for: forecast.symbolName).isSunny ? forecast : nil
             }
@@ -319,16 +327,20 @@ extension ContentView {
     // MARK: Home Page
 
     var homeContent: some View {
+        homeContent(previewActive: isListPreviewActive)
+    }
+
+    func homeContent(previewActive: Bool) -> some View {
         GeometryReader { geometry in
             let snapshotHeight = min(max(geometry.size.height * 0.32, 190), 310)
             ScrollView {
                 VStack(spacing: 20) {
-                    homePageHeader
-                    homeMapSnapshot(height: snapshotHeight)
-                    if !isListPreviewActive {
-                        homeSunnyDaysSection
+                    homePageHeader(previewActive: previewActive)
+                    homeMapSnapshot(height: snapshotHeight, previewActive: previewActive)
+                    if !previewActive {
+                        homeSunnyDaysSection(previewActive: previewActive)
                     }
-                    homeSunnySection
+                    homeSunnySection(previewActive: previewActive)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -342,23 +354,23 @@ extension ContentView {
         }
     }
 
-    private var homePageHeader: some View {
-        topToolbar(titleOverride: homeTitleOverride) {
+    private func homePageHeader(previewActive: Bool) -> some View {
+        topToolbar(titleOverride: homeTitleOverride(previewActive: previewActive)) {
             EmptyView()
         }
     }
 
-    private var homeTitleOverride: String? {
-        guard isListPreviewActive, let listPreviewName else { return nil }
-        return "\(listPreviewName) \(localizedString("Preview", locale: locale))"
+    private func homeTitleOverride(previewActive: Bool) -> String? {
+        guard previewActive, let listPreviewName else { return nil }
+        return "\(listPreviewName) - \(localizedString("Preview", locale: locale))"
     }
 
-    private func homeMapSnapshot(height: CGFloat) -> some View {
+    private func homeMapSnapshot(height: CGFloat, previewActive: Bool) -> some View {
         HomeStaticMapPreview(
-            cities: mapCities,
-            previewCities: isListPreviewActive ? listPreviewCities : [],
-            fitCities: mapFitCities,
-            rankedCandidates: Array(homeVisibleCandidates.prefix(3)),
+            cities: previewActive ? [] : mapCities,
+            previewCities: previewActive ? listPreviewCities : [],
+            fitCities: previewActive ? listPreviewCities : mapFitCities,
+            rankedCandidates: previewActive ? [] : Array(sunnyCandidates(for: weatherService.cityWeatherData).filter { $0.condition.isSunny }.prefix(3)),
             selectedDayOffset: selectedDayOffset,
             accent: theme.colors.dotSun,
             contextDot: theme.colors.secondaryText,
@@ -374,7 +386,7 @@ extension ContentView {
         }
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .onTapGesture {
-            if !isListPreviewActive {
+            if !previewActive {
                 centerOnCityTrigger = nil
                 tappedCity = nil
                 showingMapExpandedCard = false
@@ -384,9 +396,9 @@ extension ContentView {
         }
     }
 
-    private var homeSunnySection: some View {
-        let sectionIcon = isListPreviewActive ? "list.bullet" : "sun.max.fill"
-        let sectionTitle = isListPreviewActive
+    private func homeSunnySection(previewActive: Bool) -> some View {
+        let sectionIcon = previewActive ? "list.bullet" : "sun.max.fill"
+        let sectionTitle = previewActive
             ? localizedString("List of Cities", locale: locale)
             : localizedString("Best Sunny Places", locale: locale)
 
@@ -400,9 +412,9 @@ extension ContentView {
                 Spacer(minLength: 8)
             }
 
-            homeCandidateList()
+            homeCandidateList(previewActive: previewActive)
 
-            if !isListPreviewActive {
+            if !previewActive {
                 Button {
                     pushRoute(.list)
                 } label: {
@@ -422,8 +434,9 @@ extension ContentView {
         }
     }
 
-    private var homeSunnyDaysSection: some View {
-        let days = homeSunnyCalendarDates
+    private func homeSunnyDaysSection(previewActive: Bool) -> some View {
+        let cities = previewActive ? [] : weatherService.cityWeatherData
+        let days = homeSunnyCalendarDates(for: cities)
 
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
@@ -456,7 +469,7 @@ extension ContentView {
 
                     LazyVGrid(columns: homeSunnyCalendarColumns, spacing: 7) {
                         ForEach(days) { day in
-                            homeSunnyHeatmapDayView(day, maxSunnyCityCount: mapCities.count)
+                            homeSunnyHeatmapDayView(day, maxSunnyCityCount: cities.count)
                         }
                     }
                 }
@@ -478,7 +491,11 @@ extension ContentView {
     }
 
     private var homeSunnyCalendarDates: [HomeSunnyCalendarDate] {
-        let recommendationsByOffset = Dictionary(uniqueKeysWithValues: homeSunnyDayRecommendations.map { ($0.id, $0) })
+        homeSunnyCalendarDates(for: mapCities)
+    }
+
+    private func homeSunnyCalendarDates(for cities: [CityWeather]) -> [HomeSunnyCalendarDate] {
+        let recommendationsByOffset = Dictionary(uniqueKeysWithValues: homeSunnyDayRecommendations(for: cities).map { ($0.id, $0) })
         let leadingCount = homeSunnyCalendarLeadingInactiveCount()
         let forecastOffsets = Array(0..<10)
         let totalBeforeTrailing = leadingCount + forecastOffsets.count
@@ -530,7 +547,8 @@ extension ContentView {
     ) -> some View {
         let fill = homeSunnyHeatmapFill(
             sunnyCityCount: day.recommendation?.sunnyCityCount ?? 0,
-            maxSunnyCityCount: maxSunnyCityCount
+            maxSunnyCityCount: maxSunnyCityCount,
+            isForecastDate: day.isForecastDate
         )
         let cornerRadius: CGFloat = 12
 
@@ -552,7 +570,11 @@ extension ContentView {
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 
-    private func homeSunnyHeatmapFill(sunnyCityCount: Int, maxSunnyCityCount: Int) -> Color {
+    private func homeSunnyHeatmapFill(sunnyCityCount: Int, maxSunnyCityCount: Int, isForecastDate: Bool) -> Color {
+        guard isForecastDate else {
+            return theme.colors.secondaryText.opacity(colorScheme == .dark ? 0.18 : 0.16)
+        }
+
         guard sunnyCityCount > 0, maxSunnyCityCount > 0 else {
             return theme.colors.glassFill.opacity(colorScheme == .dark ? 0.34 : 0.56)
         }
@@ -588,12 +610,14 @@ extension ContentView {
         return formatter.string(from: Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date())
     }
 
-    private func homeCandidateList(limit: Int? = nil) -> some View {
-        if isListPreviewActive {
+    private func homeCandidateList(limit: Int? = nil, previewActive: Bool) -> some View {
+        if previewActive {
             return AnyView(homePreviewCityList())
         }
 
-        let rankedCandidates = limit.map { Array(homeVisibleCandidates.prefix($0)) } ?? homeVisibleCandidates
+        let normalCandidates = sunnyCandidates(for: weatherService.cityWeatherData)
+            .filter { $0.condition.isSunny }
+        let rankedCandidates = limit.map { Array(normalCandidates.prefix($0)) } ?? normalCandidates
         return AnyView(VStack(spacing: 0) {
             if rankedCandidates.isEmpty {
                 Text(localizedString("No sunny places for this date.", locale: locale))
@@ -605,17 +629,12 @@ extension ContentView {
                     .background(theme.colors.glassFill.opacity(0.42), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             } else {
                 ForEach(Array(rankedCandidates.enumerated()), id: \.element.id) { index, candidate in
-                    if isListPreviewActive {
+                    Button {
+                        selectCandidate(candidate, focusMap: false)
+                    } label: {
                         sunnyCandidateRow(candidate, rank: index + 1, compact: true)
-                    } else {
-                        Button {
-                            selectCandidate(candidate, focusMap: false)
-                        } label: {
-                            sunnyCandidateRow(candidate, rank: index + 1, compact: true)
-                        }
-                        .buttonStyle(.plain)
                     }
-
+                    .buttonStyle(.plain)
                 }
             }
         })
@@ -658,7 +677,7 @@ extension ContentView {
         let cloudMetricSpacing: CGFloat = dynamicTypeSize > .large ? 7 : 3
         let cloudValueWidth: CGFloat = dynamicTypeSize > .large ? 48 : 38
         let cloudColumnWidth: CGFloat = dynamicTypeSize > .large ? 72 : 54
-        let verticalPadding: CGFloat = compact ? 11 : 12
+        let verticalPadding: CGFloat = compact ? 8 : 9
         return HStack(spacing: 10) {
             if let rank {
                 Text("\(rank)")

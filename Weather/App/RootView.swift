@@ -206,6 +206,9 @@ extension ContentView {
                 weatherService.activeListID.localizedDisplayName(locale: locale)
             ))
         }
+        .toolbar {
+            nativeBottomToolbarItems
+        }
     }
 
     var homeScreenShortcutReceiver: some View {
@@ -241,13 +244,10 @@ extension ContentView {
     // MARK: - Primary Destinations
 
     var homeView: some View {
-        homeContent
+        homeContent(previewActive: false)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
-            .toolbar {
-                nativeBottomToolbarItems
-            }
             .onAppear {
                 showingMapExpandedCard = false
             }
@@ -259,9 +259,6 @@ extension ContentView {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(false)
             .toolbar(.hidden, for: .navigationBar)
-            .toolbar {
-                nativeBottomToolbarItems
-            }
             .onAppear {
                 centerMapOnDots(useListCoordinates: true)
                 showMapDateSliderTutorialIfNeeded()
@@ -270,12 +267,7 @@ extension ContentView {
 
     var fullListDestination: some View {
         listView
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.hidden, for: .navigationBar)
-            .toolbar {
-                nativeBottomToolbarItems
-            }
+            .toolbar(.visible, for: .navigationBar)
             .onAppear {
                 showingMapExpandedCard = false
                 listEditMode = false
@@ -481,16 +473,15 @@ extension ContentView {
     }
 
     var listPreviewDestination: some View {
-        homeContent
+        homeContent(previewActive: true)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar(.hidden, for: .navigationBar)
-            .toolbar {
-                nativeBottomToolbarItems
-            }
             .onAppear {
                 showingMapExpandedCard = false
+                mapRecenterRequest = .listCoordinates
+                centerMapOnDots(useListCoordinates: true)
             }
     }
 
@@ -506,8 +497,6 @@ extension ContentView {
         tappedCity = nil
         temporaryMapSearchCity = nil
         navigationPath.removeAll { $0 == .listPreview }
-        mapRecenterRequest = .listCoordinates
-        centerMapOnDots(useListCoordinates: true)
         Haptics.lightImpact()
         Task { @MainActor in
             await Task.yield()

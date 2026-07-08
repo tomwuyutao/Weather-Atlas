@@ -33,6 +33,10 @@ extension ContentView {
 // MARK: - Floating Bottom Toolbar
 
 extension ContentView {
+    private var bottomToolbarControlLength: CGFloat { 44 }
+    private var bottomToolbarCenterHeight: CGFloat { bottomToolbarControlLength }
+    private var bottomToolbarIconSize: CGFloat { 21 }
+
     @ToolbarContentBuilder
     var nativeBottomToolbarItems: some ToolbarContent {
         if !showingSearchSheet {
@@ -110,7 +114,7 @@ extension ContentView {
             Image(systemName: "chevron.left")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(selectedDayOffset > 0 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
-                .frame(width: 36, height: 36)
+                .frame(width: 36, height: bottomToolbarCenterHeight)
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset > 0 {
@@ -123,6 +127,7 @@ extension ContentView {
                 }
 
             Button {
+                Haptics.lightImpact()
                 showingDatePopover = true
             } label: {
                 Text(dateSwitcherText)
@@ -130,45 +135,23 @@ extension ContentView {
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
                     .fixedSize(horizontal: true, vertical: false)
-                    .frame(minWidth: 80, minHeight: 36)
                     .id("date-\(selectedDayOffset)")
                     .transition(.push(from: dateSwitcherForward ? .trailing : .leading))
                     .clipped()
-                    .contentShape(Rectangle())
+                    .frame(minWidth: 80, minHeight: bottomToolbarCenterHeight)
+                    .contentShape(Capsule())
             }
             .buttonStyle(.plain)
+            .frame(minWidth: 96, minHeight: bottomToolbarCenterHeight)
+            .contentShape(Capsule())
             .popover(isPresented: $showingDatePopover) {
-                DatePicker(
-                    "",
-                    selection: Binding(
-                        get: {
-                            Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
-                        },
-                        set: { newDate in
-                            let calendar = Calendar.current
-                            let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
-                            if let days = components.day {
-                                withAnimation(.smooth(duration: 0.2)) {
-                                    selectedDayOffset = max(0, min(9, days))
-                                }
-                            }
-                        }
-                    ),
-                    in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
-                    displayedComponents: .date
-                )
-                .datePickerStyle(.graphical)
-                .labelsHidden()
-                .frame(width: 280, height: 300)
-                .padding(8)
-                .presentationCompactAdaptation(.popover)
-                .themedPopoverBackground()
+                datePickerPopoverContent
             }
 
             Image(systemName: "chevron.right")
                 .font(.system(size: 14, weight: .semibold))
                 .foregroundStyle(selectedDayOffset < 9 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
-                .frame(width: 36, height: 36)
+                .frame(width: 36, height: bottomToolbarCenterHeight)
                 .contentShape(Circle())
                 .onTapGesture {
                     if selectedDayOffset < 9 {
@@ -182,17 +165,49 @@ extension ContentView {
         }
     }
 
+    var datePickerPopoverContent: some View {
+        DatePicker(
+            "",
+            selection: Binding(
+                get: {
+                    Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
+                },
+                set: { newDate in
+                    let calendar = Calendar.current
+                    let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
+                    if let days = components.day {
+                        withAnimation(.smooth(duration: 0.2)) {
+                            selectedDayOffset = max(0, min(9, days))
+                        }
+                    }
+                }
+            ),
+            in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
+            displayedComponents: .date
+        )
+        .datePickerStyle(.graphical)
+        .labelsHidden()
+        .frame(width: 280, height: 300)
+        .padding(8)
+        .presentationCompactAdaptation(.popover)
+        .themedPopoverBackground()
+    }
+
     var bottomSearchButton: some View {
         Button {
             activateSearch()
         } label: {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 22, weight: .regular))
+                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 46, height: 46)
+                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
+        .fixedSize()
+        .controlSize(.large)
+        .buttonBorderShape(.circle)
         .accessibilityLabel(localizedString("Search", locale: locale))
     }
 
@@ -212,12 +227,16 @@ extension ContentView {
             .disabled(weatherService.isLoading)
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 21, weight: .regular))
+                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 46, height: 46)
+                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
+        .fixedSize()
+        .controlSize(.large)
+        .buttonBorderShape(.circle)
         .menuOrder(.fixed)
         .tint(theme.colors.primaryText)
         .accessibilityLabel(localizedString("Menu", locale: locale))
@@ -238,12 +257,16 @@ extension ContentView {
             popRoute(route)
         } label: {
             Image(systemName: "chevron.left")
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: bottomToolbarIconSize, weight: .semibold))
+                .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 46, height: 46)
+                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
+        .fixedSize()
+        .controlSize(.large)
+        .buttonBorderShape(.circle)
         .accessibilityLabel(localizedString("Back", locale: locale))
     }
 
@@ -252,12 +275,16 @@ extension ContentView {
             cancelGeneratedListPreview()
         } label: {
             Image(systemName: "chevron.left")
-                .font(.system(size: 20, weight: .semibold))
+                .font(.system(size: bottomToolbarIconSize, weight: .semibold))
+                .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 46, height: 46)
+                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
+        .fixedSize()
+        .controlSize(.large)
+        .buttonBorderShape(.circle)
         .accessibilityLabel(localizedString("Cancel", locale: locale))
     }
 
@@ -266,12 +293,16 @@ extension ContentView {
             confirmGeneratedListPreview()
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: bottomToolbarIconSize, weight: .semibold))
+                .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 46, height: 46)
+                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
+        .fixedSize()
+        .controlSize(.large)
+        .buttonBorderShape(.circle)
         .disabled(listPreviewCities.isEmpty)
         .accessibilityLabel(localizedString("Add", locale: locale))
     }
@@ -288,7 +319,7 @@ extension ContentView {
                 Image(systemName: "minus")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(listPreviewCityCount > 1 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
-                    .frame(width: 36, height: 36)
+                    .frame(width: 36, height: bottomToolbarCenterHeight)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
@@ -300,7 +331,7 @@ extension ContentView {
                 .monospacedDigit()
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .frame(minWidth: 92, minHeight: 36)
+                .frame(minWidth: 92, minHeight: bottomToolbarCenterHeight)
 
             Button {
                 guard listPreviewCityCount < listPreviewMaximumCount else { return }
@@ -312,11 +343,11 @@ extension ContentView {
                 Image(systemName: "plus")
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(listPreviewCityCount < listPreviewMaximumCount ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
-                    .frame(width: 36, height: 36)
+                    .frame(width: 36, height: bottomToolbarCenterHeight)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
-                .disabled(listPreviewCityCount >= listPreviewMaximumCount)
+            .disabled(listPreviewCityCount >= listPreviewMaximumCount)
         }
     }
 
@@ -332,12 +363,16 @@ extension ContentView {
             }
         } label: {
             Image(systemName: "plus")
-                .font(.system(size: 18, weight: .semibold))
+                .font(.system(size: bottomToolbarIconSize, weight: .semibold))
+                .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 46, height: 46)
+                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
                 .contentShape(Circle())
         }
-        .buttonStyle(.plain)
+        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
+        .fixedSize()
+        .controlSize(.large)
+        .buttonBorderShape(.circle)
         .disabled(addCityDetailCity == nil || lists.isEmpty)
         .accessibilityLabel(localizedString("Add", locale: locale))
         .confirmationDialog(
@@ -405,10 +440,16 @@ extension ContentView {
             mapMoreMenuItems
         } label: {
             Image(systemName: "ellipsis")
+                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 46, height: 36)
-                .contentShape(Rectangle())
+                .frame(width: bottomToolbarControlLength, height: bottomToolbarCenterHeight)
+                .contentShape(Circle())
         }
+        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
+        .fixedSize()
+        .controlSize(.large)
+        .buttonBorderShape(.circle)
         .menuOrder(.fixed)
         .tint(theme.colors.primaryText)
     }
@@ -424,22 +465,22 @@ extension ContentView {
                 Image(systemName: "dot.squareshape.split.2x2")
                     .font(.system(size: 21, weight: .regular))
                     .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 46, height: 36)
+                    .frame(width: bottomToolbarControlLength, height: bottomToolbarCenterHeight)
             }
             .buttonStyle(.plain)
             .tint(theme.colors.primaryText)
 
             mapOverlayMenu
                 .font(.system(size: 21, weight: .regular))
-                .frame(width: 46, height: 36)
+                .frame(width: bottomToolbarControlLength, height: bottomToolbarCenterHeight)
                 .buttonStyle(.plain)
 
             mapMoreMenu
                 .font(.system(size: 21, weight: .regular))
-                .frame(width: 46, height: 36)
+                .frame(width: bottomToolbarControlLength, height: bottomToolbarCenterHeight)
                 .buttonStyle(.plain)
         }
-        .controlSize(.regular)
+        .controlSize(.large)
     }
 }
 
