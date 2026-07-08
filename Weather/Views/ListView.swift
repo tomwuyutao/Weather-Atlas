@@ -29,6 +29,8 @@ extension ContentView {
                             .buttonStyle(.plain)
                             .contextMenu {
                                 cityActions(for: candidate.cityWeather, in: weatherService.activeListID)
+                            } preview: {
+                                listContextPreviewRow(candidate, rank: index + 1)
                             }
                         }
 
@@ -125,6 +127,17 @@ extension ContentView {
             sunnyCandidateRow(candidate, rank: rank, compact: false)
         }
         .animation(.smooth(duration: 0.2), value: listEditMode)
+    }
+
+    private func listContextPreviewRow(_ candidate: SunnyCandidate, rank: Int) -> some View {
+        sunnyCandidateRow(candidate, rank: rank, compact: false)
+            .padding(.vertical, 2)
+            .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(theme.colors.accent.opacity(0.35), lineWidth: 1)
+            }
+            .frame(width: 360)
     }
 
     func removeListCity(_ city: CityWeather) {

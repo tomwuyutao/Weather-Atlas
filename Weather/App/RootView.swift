@@ -34,13 +34,7 @@ extension ContentView {
             .onChange(of: selectedDayOffset) { _, _ in
                 scheduleDaytimeSunninessRefetch()
             }
-            .onChange(of: navigationPath) { _, newPath in
-                if newPath.isEmpty {
-                    routeShowsBackButton = false
-                }
-            }
             .onChange(of: searchText) { _, newValue in
-                searchSelectionIndex = 0
                 scheduleCitySearch(for: newValue)
             }
             .onChange(of: theme.style) { _, _ in
@@ -401,7 +395,10 @@ extension ContentView {
     }
 
     func prepareContinentListTutorialSelection() {
-        continentListTutorialSelectedIDs = []
+        continentListTutorialSelectedIDs = [
+            CityListID.europe.rawValue,
+            CityListID.asia.rawValue
+        ]
     }
 
     func toggleContinentListTutorialSelection(_ listID: CityListID) {
@@ -476,7 +473,7 @@ extension ContentView {
     }
 
     func refreshCitiesMissingDaytimeSunninessData() async {
-        let dayOffset = max(0, selectedDayOffset)
+        let dayOffset = selectedDayOffset
         let citiesToRefresh = mapCities.filter { cityWeather in
             let forecast = cityWeather.forecast(for: dayOffset)
             return !SunninessScoring.hasDaytimeHourlyScoreData(for: forecast, timeZone: cityWeather.timeZone)

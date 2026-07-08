@@ -102,9 +102,9 @@ struct ThemeColors {
         } else if iconName.contains("moon") && iconName.contains("cloud") {
             return (cloudIconColor, moonIconColor)
         } else if iconName.contains("drizzle") {
-            return (cloudIconColor, dotDrizzle)
+            return (cloudIconColor, cloudIconColor)
         } else if iconName.contains("rain") {
-            return (cloudIconColor, rainIconColor)
+            return (cloudIconColor, cloudIconColor)
         } else if iconName.contains("snow") {
             return (cloudIconColor, snowIconColor)
         } else if iconName.contains("fog") {

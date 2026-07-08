@@ -88,16 +88,14 @@ extension ContentView {
 
     private func detailSunninessReport(for city: CityWeather) -> some View {
         let candidate = sunnyCandidate(for: city)
-        let forecast = city.forecast(for: max(0, selectedDayOffset))
-        let isNow = selectedDayOffset == -1
+        let forecast = city.forecast(for: selectedDayOffset)
         let icon = sunnyCandidateIcon(for: candidate)
-        let condition = isNow ? city.condition : forecast.condition
 
         return VStack(alignment: .leading, spacing: 14) {
             detailCityNameHeader(
                 city: city,
                 icon: icon,
-                condition: condition
+                symbolName: forecast.symbolName
             )
 
             detailSunnyFactorGrid(city: city, candidate: candidate, forecast: forecast)
@@ -110,7 +108,7 @@ extension ContentView {
         }
     }
 
-    private func detailCityNameHeader(city: CityWeather, icon: String, condition: AppWeatherCondition) -> some View {
+    private func detailCityNameHeader(city: CityWeather, icon: String, symbolName: String) -> some View {
         VStack(spacing: 9) {
             Text(city.city.localizedName(locale: locale))
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
@@ -125,7 +123,7 @@ extension ContentView {
                 .frame(width: 62, height: 58)
                 .padding(.vertical, 8)
 
-            Text(detailConditionText(icon: icon, condition: condition))
+            Text(detailConditionText(for: symbolName))
                 .font(.callout)
                 .foregroundStyle(theme.colors.primaryText)
                 .multilineTextAlignment(.center)
@@ -135,9 +133,8 @@ extension ContentView {
         .padding(.bottom, 4)
     }
 
-    private func detailConditionText(icon: String, condition: AppWeatherCondition) -> String {
-        if icon.contains("moon") { return localizedString("Night", locale: locale) }
-        return condition.localizedDisplayName(locale: locale)
+    private func detailConditionText(for symbolName: String) -> String {
+        SunninessScoring.condition(for: symbolName).localizedDisplayName(locale: locale)
     }
 
     private func detailSunnyFactorGrid(
@@ -145,10 +142,9 @@ extension ContentView {
         candidate: SunnyCandidate,
         forecast: DailyForecast
     ) -> some View {
-        let isNow = selectedDayOffset == -1
         let rainChance = candidate.precipitationChance
-        let windSpeed = isNow ? city.currentWindSpeed : forecast.windSpeed
-        let uvIndex = isNow ? city.currentUVIndex : forecast.uvIndex
+        let windSpeed = forecast.windSpeed
+        let uvIndex = forecast.uvIndex
         let distanceUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic
         let selectedHours = detailDisplayHours(for: city, forecast: forecast, filtersPastToday: false)
 
@@ -239,12 +235,13 @@ extension ContentView {
             } else {
                 DetailSunnyWindowOverviewChart(
                     rows: windows,
-                    selectedDayOffset: max(0, selectedDayOffset),
+                    selectedDayOffset: selectedDayOffset,
                     locale: locale,
                     timeZone: city.timeZone,
                     sunnyColor: theme.colors.dotSun,
+                    partlySunnyColor: theme.colors.dotPartlyCloudy,
                     trackColor: theme.colors.chartPanelFill,
-                    gridColor: theme.colors.secondaryText.opacity(0.18),
+                    gridColor: theme.colors.secondaryText.opacity(0.10),
                     primaryText: theme.colors.primaryText,
                     secondaryText: theme.colors.secondaryText,
                     onSelectDay: { dayOffset in
@@ -262,7 +259,7 @@ extension ContentView {
     // MARK: Cloud Cover
 
     private func detailCloudCover(city: CityWeather) -> some View {
-        let selectedDay = max(0, selectedDayOffset)
+        let selectedDay = selectedDayOffset
         let selectedForecast = city.forecast(for: selectedDay)
         let selectedHours = detailDisplayHours(
             for: city,
@@ -304,7 +301,7 @@ extension ContentView {
             HourlyTimelineChart(
                 hourlyForecasts: hours.filter { $0.hour.isMultiple(of: 2) },
                 chartMetric: .cloudCover,
-                dayOffset: max(0, selectedDayOffset),
+                dayOffset: selectedDayOffset,
                 cityTimeZone: timeZone,
                 lineColor: theme.colors.dotRain,
                 showAllHours: true,
@@ -406,27 +403,38 @@ extension ContentView {
     }
 
     private func nearbyCityWeatherIcon(for city: CityWeather) -> String {
-        selectedDayOffset == -1
-            ? city.weatherIcon
-            : city.forecast(for: max(0, selectedDayOffset)).weatherIcon
+        city.forecast(for: selectedDayOffset).weatherIcon
     }
 
     private func detailNearbyCityContexts(for city: CityWeather) -> [DetailNearbyCityContext] {
-        let selectedScore = sunnyCandidate(for: city).score
+        let selectedCandidate = sunnyCandidate(for: city)
         return mapCities
             .filter { $0.id != city.id }
             .sorted { detailDistance(from: city, to: $0) < detailDistance(from: city, to: $1) }
             .prefix(3)
             .map { nearbyCity in
-                let score = sunnyCandidate(for: nearbyCity).score
+                let candidate = sunnyCandidate(for: nearbyCity)
                 return DetailNearbyCityContext(
                     cityWeather: nearbyCity,
-                    score: score,
-                    isSunnier: score.map { nearbyScore in
-                        nearbyScore > (selectedScore ?? Double.greatestFiniteMagnitude) + 4
-                    } ?? false
+                    score: candidate.score,
+                    isSunnier: isNearbyCandidate(candidate, sunnierThan: selectedCandidate)
                 )
             }
+    }
+
+    private func isNearbyCandidate(_ nearby: SunnyCandidate, sunnierThan selected: SunnyCandidate) -> Bool {
+        if nearby.condition.sunninessRank != selected.condition.sunninessRank {
+            return nearby.condition.sunninessRank < selected.condition.sunninessRank
+        }
+
+        guard nearby.condition.isSunnyOrPartlySunny,
+              selected.condition.isSunnyOrPartlySunny,
+              let nearbyCloud = nearby.cloudCover,
+              let selectedCloud = selected.cloudCover else {
+            return false
+        }
+
+        return nearbyCloud < selectedCloud
     }
 
     private func detailDistance(from first: CityWeather, to second: CityWeather) -> CLLocationDistance {
@@ -464,12 +472,12 @@ extension ContentView {
 
             await Task.yield()
             mapRecenterRequest = .listCoordinates
-            showMapMarkerCard(revealedCity, expanded: false, focusesMarker: true)
+            showMapMarkerCard(revealedCity)
         }
     }
 
     private func detailDisplayHours(for city: CityWeather, forecast: DailyForecast) -> [HourlyForecast] {
-        detailDisplayHours(for: city, forecast: forecast, filtersPastToday: selectedDayOffset == -1)
+        detailDisplayHours(for: city, forecast: forecast, filtersPastToday: false)
     }
 
     private func detailDisplayHours(for city: CityWeather, forecast: DailyForecast, filtersPastToday: Bool) -> [HourlyForecast] {
@@ -496,6 +504,7 @@ extension ContentView {
         let id: Int
         let dayLabel: String
         let sunnyRanges: [ClosedRange<Int>]
+        let partlySunnyRanges: [ClosedRange<Int>]
     }
 
     private func detailSunnyWindowRows(for city: CityWeather) -> [DetailSunnyWindowRow] {
@@ -503,19 +512,16 @@ extension ContentView {
             let forecast = city.forecast(for: dayOffset)
             let daylightHours = SunninessScoring.daytimeHours(for: forecast, timeZone: city.timeZone)
             let sunnyHours = daylightHours.compactMap { hour -> Int? in
-                guard let score = SunninessScoring.score(
-                    condition: hour.condition,
-                    icon: hour.weatherIcon,
-                    cloudCover: hour.cloudCover
-                ), score >= homeSunnyScoreThreshold else {
-                    return nil
-                }
-                return hour.hour
+                detailHourlySunnyLevel(hour) == 2 ? hour.hour : nil
+            }
+            let partlySunnyHours = daylightHours.compactMap { hour -> Int? in
+                detailHourlySunnyLevel(hour) == 1 ? hour.hour : nil
             }
             return DetailSunnyWindowRow(
                 id: dayOffset,
                 dayLabel: detailSunnyDayLabel(dayOffset: dayOffset, timeZone: city.timeZone),
-                sunnyRanges: detailContiguousHourRanges(sunnyHours)
+                sunnyRanges: detailContiguousHourRanges(sunnyHours),
+                partlySunnyRanges: detailContiguousHourRanges(partlySunnyHours)
             )
         }
     }
@@ -560,24 +566,18 @@ extension ContentView {
     }
 
     private func detailHourlySunnyLevel(_ hour: HourlyForecast) -> Int {
-        if hour.weatherIcon.contains("moon") { return 0 }
-        guard let cloud = hour.cloudCover else {
-            weatherService.reportDeveloperWarning(
-                title: "Hourly Cloud Cover Missing",
-                message: "An hourly sunny-window level could not be calculated because WeatherKit returned no cloud cover value."
-            )
+        switch SunninessScoring.condition(for: hour.symbolName) {
+        case .clear:
+            return 2
+        case .partlySunny:
+            return 1
+        default:
             return 0
         }
-        let rain = hour.precipitationChance ?? 0
-        if rain > 0.45 { return 0 }
-        if hour.weatherIcon.contains("sun.max") && cloud < 0.25 { return 3 }
-        if hour.weatherIcon.contains("sun") && cloud < 0.55 { return 2 }
-        if cloud < 0.70 && rain < 0.20 { return 1 }
-        return 0
     }
 
     private func detailSunnyWindowSummary(for city: CityWeather, hours: [HourlyForecast]) -> String {
-        let sunnyHours = hours.filter { detailHourlySunnyLevel($0) >= 2 }
+        let sunnyHours = hours.filter { detailHourlySunnyLevel($0) == 2 }
         guard !sunnyHours.isEmpty else {
             return localizedString("No Sun", locale: locale)
         }
@@ -650,6 +650,7 @@ private struct DetailSunnyWindowOverviewChart: View {
     let locale: Locale
     let timeZone: TimeZone
     let sunnyColor: Color
+    let partlySunnyColor: Color
     let trackColor: Color
     let gridColor: Color
     let primaryText: Color
@@ -659,28 +660,42 @@ private struct DetailSunnyWindowOverviewChart: View {
     private let axisHours = [6, 8, 10, 12, 14, 16, 18, 20]
     private let timelineStartHour = 6.0
     private let timelineEndHour = 21.0
+    private let rowHeight: CGFloat = 26
+    private let axisHeight: CGFloat = 20
+    private let capsuleHeight: CGFloat = 12
+    private let timelineLaneHeight: CGFloat = 18
+
+    private struct TimelineSegment: Identifiable {
+        let id: String
+        let range: ClosedRange<Int>
+        let color: Color
+    }
+
+    private struct TimelineSpan: Identifiable {
+        let id: String
+        let range: ClosedRange<Int>
+        let segments: [TimelineSegment]
+    }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: 4) {
             GeometryReader { geometry in
                 let labelWidth: CGFloat = 72
                 let timelineWidth = max(geometry.size.width - labelWidth, 1)
+                let rowsHeight = CGFloat(rows.count) * rowHeight
 
-                VStack(spacing: 8) {
+                VStack(spacing: 2) {
                     axisRow(labelWidth: labelWidth, timelineWidth: timelineWidth)
-                    ZStack(alignment: .topLeading) {
-                        gridLines(labelWidth: labelWidth, timelineWidth: timelineWidth)
+                    ZStack(alignment: .center) {
                         rowsView(labelWidth: labelWidth, timelineWidth: timelineWidth)
+                        gridLines(labelWidth: labelWidth, timelineWidth: timelineWidth)
+                            .allowsHitTesting(false)
                     }
+                    .frame(height: rowsHeight)
+                    .clipped()
                 }
             }
-            .frame(height: CGFloat(rows.count) * 34 + 30)
-
-            HStack(spacing: 18) {
-                legendItem(color: sunnyColor, text: localizedString("Sunny periods", locale: locale))
-                legendItem(color: trackColor, text: localizedString("Low sunshine chance", locale: locale))
-                Spacer(minLength: 0)
-            }
+            .frame(height: axisHeight + CGFloat(rows.count) * rowHeight)
         }
     }
 
@@ -698,27 +713,33 @@ private struct DetailSunnyWindowOverviewChart: View {
                         )
                 }
             }
-            .frame(width: timelineWidth, height: 16)
+            .frame(width: timelineWidth, height: axisHeight)
         }
     }
 
     private func gridLines(labelWidth: CGFloat, timelineWidth: CGFloat) -> some View {
-        ZStack(alignment: .leading) {
-            ForEach(axisHours, id: \.self) { hour in
-                Rectangle()
-                    .fill(gridColor)
-                    .frame(width: 1)
-                    .frame(height: CGFloat(rows.count) * 34)
-                    .position(
-                        x: labelWidth + xPosition(for: Double(hour), width: timelineWidth),
-                        y: CGFloat(rows.count) * 17
-                    )
+        let rowsHeight = CGFloat(rows.count) * rowHeight
+        let verticalInset = (timelineLaneHeight - capsuleHeight) / 2
+        let gridHeight = max(rowsHeight - verticalInset * 2, 0)
+
+        return HStack(spacing: 0) {
+            Color.clear.frame(width: labelWidth)
+
+            Path { path in
+                for hour in axisHours {
+                    let x = xPosition(for: Double(hour), width: timelineWidth)
+                    path.move(to: CGPoint(x: x, y: verticalInset))
+                    path.addLine(to: CGPoint(x: x, y: verticalInset + gridHeight))
+                }
             }
+            .stroke(gridColor, lineWidth: 1)
+            .frame(width: timelineWidth, height: rowsHeight)
         }
+        .frame(height: rowsHeight)
     }
 
     private func rowsView(labelWidth: CGFloat, timelineWidth: CGFloat) -> some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 0) {
             ForEach(rows) { row in
                 Button {
                     onSelectDay(row.id)
@@ -733,35 +754,38 @@ private struct DetailSunnyWindowOverviewChart: View {
                         ZStack(alignment: .leading) {
                             Capsule()
                                 .fill(trackColor)
-                                .frame(height: 12)
+                                .frame(height: capsuleHeight)
 
-                            ForEach(Array(row.sunnyRanges.enumerated()), id: \.offset) { _, range in
-                                Capsule()
-                                    .fill(sunnyColor)
-                                    .frame(
-                                        width: rangeWidth(for: range, timelineWidth: timelineWidth),
-                                        height: 12
-                                    )
-                                    .offset(x: xPosition(for: Double(range.lowerBound), width: timelineWidth))
+                            ForEach(timelineSpans(for: row)) { span in
+                                let spanStartX = xPosition(for: Double(span.range.lowerBound), width: timelineWidth)
+
+                                ZStack(alignment: .leading) {
+                                    ForEach(span.segments) { segment in
+                                        Rectangle()
+                                            .fill(segment.color)
+                                            .frame(
+                                                width: rangeWidth(for: segment.range, timelineWidth: timelineWidth),
+                                                height: capsuleHeight
+                                            )
+                                            .offset(x: xPosition(for: Double(segment.range.lowerBound), width: timelineWidth) - spanStartX)
+                                    }
+                                }
+                                .frame(
+                                    width: rangeWidth(for: span.range, timelineWidth: timelineWidth),
+                                    height: capsuleHeight,
+                                    alignment: .leading
+                                )
+                                .clipShape(Capsule())
+                                .offset(x: spanStartX)
                             }
                         }
-                        .frame(width: timelineWidth, height: 18)
+                        .frame(width: timelineWidth, height: timelineLaneHeight)
                     }
+                    .frame(height: rowHeight)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             }
-        }
-    }
-
-    private func legendItem(color: Color, text: String) -> some View {
-        HStack(spacing: 7) {
-            Circle()
-                .fill(color)
-                .frame(width: 10, height: 10)
-            Text(text)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(secondaryText)
         }
     }
 
@@ -777,6 +801,60 @@ private struct DetailSunnyWindowOverviewChart: View {
         formatter.timeZone = timeZone
         formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "HH", options: 0, locale: locale)
         return formatter.string(from: date)
+    }
+
+    private func timelineSpans(for row: ContentView.DetailSunnyWindowRow) -> [TimelineSpan] {
+        let segments = timelineSegments(for: row)
+        guard let firstSegment = segments.first else { return [] }
+
+        var spans: [TimelineSpan] = []
+        var currentSegments = [firstSegment]
+        var currentStart = firstSegment.range.lowerBound
+        var currentEnd = firstSegment.range.upperBound
+
+        for segment in segments.dropFirst() {
+            if segment.range.lowerBound <= currentEnd + 1 {
+                currentSegments.append(segment)
+                currentEnd = max(currentEnd, segment.range.upperBound)
+            } else {
+                spans.append(
+                    TimelineSpan(
+                        id: "\(currentStart)-\(currentEnd)-\(spans.count)",
+                        range: currentStart...currentEnd,
+                        segments: currentSegments
+                    )
+                )
+                currentSegments = [segment]
+                currentStart = segment.range.lowerBound
+                currentEnd = segment.range.upperBound
+            }
+        }
+
+        spans.append(
+            TimelineSpan(
+                id: "\(currentStart)-\(currentEnd)-\(spans.count)",
+                range: currentStart...currentEnd,
+                segments: currentSegments
+            )
+        )
+
+        return spans
+    }
+
+    private func timelineSegments(for row: ContentView.DetailSunnyWindowRow) -> [TimelineSegment] {
+        let partlySunnySegments = row.partlySunnyRanges.enumerated().map { index, range in
+            TimelineSegment(id: "partly-\(index)-\(range.lowerBound)-\(range.upperBound)", range: range, color: partlySunnyColor)
+        }
+        let sunnySegments = row.sunnyRanges.enumerated().map { index, range in
+            TimelineSegment(id: "sunny-\(index)-\(range.lowerBound)-\(range.upperBound)", range: range, color: sunnyColor)
+        }
+
+        return (partlySunnySegments + sunnySegments).sorted {
+            if $0.range.lowerBound == $1.range.lowerBound {
+                return $0.range.upperBound < $1.range.upperBound
+            }
+            return $0.range.lowerBound < $1.range.lowerBound
+        }
     }
 
     private func xPosition(for hour: Double, width: CGFloat) -> CGFloat {
@@ -796,7 +874,7 @@ private struct DetailSunnyWindowOverviewChart: View {
 
 private struct DetailNearbyCityContext: Identifiable {
     let cityWeather: CityWeather
-    let score: Double?
+    let score: Double
     let isSunnier: Bool
 
     var id: UUID { cityWeather.id }
@@ -904,9 +982,7 @@ private struct DetailMapContextView: View {
     }
 
     private func weatherIcon(for city: CityWeather) -> String {
-        selectedDayOffset == -1
-            ? city.weatherIcon
-            : city.forecast(for: max(0, selectedDayOffset)).weatherIcon
+        city.forecast(for: selectedDayOffset).weatherIcon
     }
 
     private func fitCities() {
@@ -939,14 +1015,7 @@ private let detailPreviewCity: CityWeather = {
         longitude: 2.1686,
         timeZoneIdentifier: "Europe/Madrid"
     )
-    let forecasts: [DailyForecast] = [
-        .previewSunny(dayOffset: 0),
-        .previewSunny(dayOffset: 1),
-        .previewCloudy(dayOffset: 2),
-        .previewSunny(dayOffset: 3),
-        .previewSunny(dayOffset: 4),
-        .previewCloudy(dayOffset: 5)
-    ]
+    let forecasts = (0..<10).map { detailPreviewForecast(dayOffset: $0) }
 
     return CityWeather(
         city: city,
@@ -963,6 +1032,79 @@ private let detailPreviewCity: CityWeather = {
         currentVisibility: 24
     )
 }()
+
+private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
+    let cloudPattern: [[Double]] = [
+        [0.18, 0.28, 0.41, 0.72, 0.86, 0.90, 0.95, 0.83],
+        [0.02, 0.06, 0.10, 0.26, 0.53, 0.46, 0.52, 0.27],
+        [0.12, 0.14, 0.20, 0.33, 0.62, 0.74, 0.70, 0.49],
+        [0.58, 0.64, 0.72, 0.80, 0.85, 0.78, 0.66, 0.60],
+        [0.08, 0.09, 0.14, 0.22, 0.25, 0.18, 0.16, 0.20],
+        [0.44, 0.38, 0.32, 0.28, 0.36, 0.42, 0.50, 0.48],
+        [0.76, 0.70, 0.64, 0.60, 0.58, 0.62, 0.70, 0.74],
+        [0.18, 0.16, 0.12, 0.15, 0.20, 0.28, 0.35, 0.42],
+        [0.28, 0.24, 0.18, 0.20, 0.34, 0.44, 0.38, 0.30],
+        [0.68, 0.55, 0.40, 0.34, 0.28, 0.30, 0.46, 0.58]
+    ]
+    let axisHours = [6, 8, 10, 12, 14, 16, 18, 20]
+    let selectedPattern = cloudPattern[dayOffset % cloudPattern.count]
+    let pairedClouds = Dictionary(uniqueKeysWithValues: zip(axisHours, selectedPattern))
+    let hourly = (0..<24).map { hour -> HourlyForecast in
+        let nearestAxisHour = axisHours.min { abs($0 - hour) < abs($1 - hour) } ?? 12
+        let cloud = pairedClouds[nearestAxisHour] ?? 0.4
+        let symbol: String
+        if hour < 6 || hour > 21 {
+            symbol = cloud > 0.55 ? "cloud.moon" : "moon.fill"
+        } else if cloud < 0.28 {
+            symbol = "sun.max.fill"
+        } else if cloud < 0.62 {
+            symbol = "cloud.sun"
+        } else {
+            symbol = "cloud.fill"
+        }
+
+        return HourlyForecast(
+            hour: hour,
+            temperature: 20 + Double(max(0, 8 - abs(14 - hour))) * 1.2,
+            apparentTemperature: nil,
+            symbolName: symbol,
+            condition: AppWeatherCondition.fromWeatherSymbol(symbol),
+            precipitationChance: cloud > 0.75 ? 0.18 : 0.02,
+            cloudCover: cloud,
+            windSpeed: 8,
+            uvIndex: hour >= 10 && hour <= 16 ? 7 : 2,
+            humidity: 0.48,
+            visibility: 24
+        )
+    }
+
+    let averageCloud = selectedPattern.reduce(0, +) / Double(selectedPattern.count)
+    let sunnyDay = averageCloud < 0.42
+    let symbol = sunnyDay ? "sun.max.fill" : averageCloud < 0.65 ? "cloud.sun" : "cloud.fill"
+    let baseDate = Calendar.current.startOfDay(for: Date())
+    let date = Calendar.current.date(byAdding: .day, value: dayOffset, to: baseDate) ?? baseDate
+
+    return DailyForecast(
+        dayOffset: dayOffset,
+        dailyLow: 20 + Double(dayOffset % 3),
+        dailyHigh: 28 + Double(dayOffset % 6),
+        symbolName: symbol,
+        condition: AppWeatherCondition.fromWeatherSymbol(symbol),
+        hourlyForecasts: hourly,
+        cloudCover: averageCloud,
+        precipitationChance: averageCloud > 0.70 ? 0.22 : 0.04,
+        visibility: 24,
+        feelsLikeLow: nil,
+        feelsLikeHigh: nil,
+        humidity: 0.48,
+        windSpeed: 9,
+        uvIndex: sunnyDay ? 8 : 5,
+        maxHumidity: 0.58,
+        maxVisibility: 24,
+        sunrise: Calendar.current.date(bySettingHour: 6, minute: 0, second: 0, of: date),
+        sunset: Calendar.current.date(bySettingHour: 21, minute: 0, second: 0, of: date)
+    )
+}
 
 #Preview("Detail View") {
     ContentView(

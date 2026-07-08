@@ -18,7 +18,7 @@ extension ContentView {
         highlightsSelectedCapsule: Bool = false,
         onSelectedOffsetChange: (() -> Void)? = nil
     ) -> some View {
-        let totalPositions = 11 // -1 (Now) through 9
+        let totalPositions = 10 // Today through day 9
         let stepHeight = height / CGFloat(totalPositions - 1)
         let touchWidth: CGFloat = selectedDayOffset > 0 ? 145 : 120
         let touchHeight: CGFloat = 80
@@ -32,9 +32,9 @@ extension ContentView {
         let idleTailSize = CGSize(width: 24, height: 16)
         let dragTailSize = CGSize(width: 30, height: 20)
 
-        // Convert between slider position (0...10) and dayOffset (-1...9)
-        func positionToOffset(_ pos: Int) -> Int { pos - 1 }
-        func offsetToPosition(_ offset: Int) -> Int { offset + 1 }
+        // Convert between slider position (0...9) and dayOffset (0...9)
+        func positionToOffset(_ pos: Int) -> Int { pos }
+        func offsetToPosition(_ offset: Int) -> Int { max(0, min(9, offset)) }
 
         let capsuleY = (isDraggingDateSlider ? sliderDragFraction * CGFloat(totalPositions - 1) : CGFloat(offsetToPosition(selectedDayOffset))) * stepHeight
 
@@ -74,13 +74,6 @@ extension ContentView {
                             }
                         }
                 )
-
-            // Now endpoint (top)
-            if isDraggingDateSlider && sliderDragFraction > 0.05 {
-                sliderEndpointLabel(text: localizedString("Now", locale: locale), isWhite: false)
-                    .offset(y: -4)
-                    .transition(.opacity)
-            }
 
             // Final day endpoint (bottom)
             if isDraggingDateSlider && sliderDragFraction < 0.95 {
@@ -144,7 +137,6 @@ extension ContentView {
     }
 
     func sliderDateText(for day: Int) -> String {
-        if day == -1 { return localizedString("Now", locale: locale) }
         if day == 0 { return localizedString("Today", locale: locale) }
         let formatter = DateFormatter()
         formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMdEEE", options: 0, locale: locale)

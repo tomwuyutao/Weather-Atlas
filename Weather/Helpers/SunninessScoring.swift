@@ -9,35 +9,29 @@
 import Foundation
 
 enum SunninessScoring {
-    static func score(
-        condition: AppWeatherCondition,
-        icon: String,
-        cloudCover: Double?
-    ) -> Double? {
-        guard let cloudCover else {
-            DeveloperWarningCenter.show(
-                title: "Cloud Cover Missing",
-                message: "A sunniness score could not be calculated because WeatherKit returned no cloud cover value."
-            )
-            return nil
-        }
+    static func condition(for symbolName: String) -> AppWeatherCondition {
+        AppWeatherCondition.fromWeatherSymbol(symbolName)
+    }
 
-        return scoreValue(condition: condition, icon: icon, cloudCover: cloudCover)
+    static func score(for symbolName: String) -> Double {
+        condition(for: symbolName).sunninessScore
+    }
+
+    static func score(for forecast: DailyForecast) -> Double {
+        score(for: forecast.symbolName)
+    }
+
+    static func score(for forecast: HourlyForecast) -> Double {
+        score(for: forecast.symbolName)
     }
 
     static func daytimeAverageScore(for forecast: DailyForecast, timeZone: TimeZone) -> Double? {
         let daylightHours = daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
-        guard !daylightHours.isEmpty,
-              daylightHours.allSatisfy({ $0.cloudCover != nil }) else {
+        guard !daylightHours.isEmpty else {
             return nil
         }
 
-        let hourlyScores: [Double] = daylightHours.compactMap { hour -> Double? in
-            guard let cloudCover = hour.cloudCover else {
-                return nil
-            }
-            return scoreValue(condition: hour.condition, icon: hour.weatherIcon, cloudCover: cloudCover)
-        }
+        let hourlyScores = daylightHours.map { score(for: $0) }
 
         return hourlyScores.reduce(0, +) / Double(hourlyScores.count)
     }
@@ -59,35 +53,7 @@ enum SunninessScoring {
 
     static func hasDaytimeHourlyScoreData(for forecast: DailyForecast, timeZone: TimeZone) -> Bool {
         let daylightHours = daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
-        return !daylightHours.isEmpty && daylightHours.allSatisfy { $0.cloudCover != nil }
-    }
-
-    private static func scoreValue(
-        condition: AppWeatherCondition,
-        icon: String,
-        cloudCover: Double
-    ) -> Double {
-        if icon.contains("moon") {
-            return 0
-        }
-
-        let conditionBase: Double
-        switch condition {
-        case .clear:
-            conditionBase = 100
-        case .partlySunny:
-            conditionBase = 82
-        case .partlyCloudy:
-            conditionBase = 66
-        case .cloudy, .fog, .wind:
-            conditionBase = 34
-        case .rain, .drizzle, .snow:
-            conditionBase = 12
-        }
-
-        let cloud = min(max(cloudCover, 0), 1)
-        let cloudPenalty = cloud * 42
-        return max(0, min(100, conditionBase - cloudPenalty))
+        return !daylightHours.isEmpty
     }
 
     private static func daytimeHourlyForecasts(for forecast: DailyForecast, timeZone: TimeZone) -> [HourlyForecast] {

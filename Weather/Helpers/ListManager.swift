@@ -699,7 +699,7 @@ extension ContentView {
             centerOnCityTrigger = revealedCity
             try? await Task.sleep(for: .milliseconds(500))
             await MainActor.run {
-                showMapMarkerCard(revealedCity, expanded: false, focusesMarker: true)
+                showMapMarkerCard(revealedCity)
             }
         }
     }

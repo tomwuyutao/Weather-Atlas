@@ -47,6 +47,7 @@ enum AppWeatherCondition: String, Codable {
     case snow
     case fog
     case wind
+    case night
     
     /// Internal name used for cache serialization — do NOT localize
     var displayName: String {
@@ -69,6 +70,8 @@ enum AppWeatherCondition: String, Codable {
             return "Fog"
         case .wind:
             return "Windy"
+        case .night:
+            return "Night"
         }
     }
     
@@ -92,20 +95,8 @@ enum AppWeatherCondition: String, Codable {
             return localizedString("Fog", locale: locale)
         case .wind:
             return localizedString("Windy", locale: locale)
-        }
-    }
-    
-    var estimatedCloudCover: Int {
-        switch self {
-        case .clear: return 5
-        case .partlySunny: return 35
-        case .partlyCloudy: return 65
-        case .cloudy: return 80
-        case .rain: return 90
-        case .drizzle: return 90
-        case .snow: return 85
-        case .fog: return 70
-        case .wind: return 20
+        case .night:
+            return localizedString("Night", locale: locale)
         }
     }
     
@@ -124,6 +115,80 @@ enum AppWeatherCondition: String, Codable {
         case .snow: return theme.dotSnow
         case .fog: return theme.dotFog
         case .wind: return theme.dotWind
+        case .night: return theme.moonIconColor
+        }
+    }
+
+    var sunninessScore: Double {
+        switch self {
+        case .clear:
+            return 100
+        case .partlySunny:
+            return 50
+        default:
+            return 0
+        }
+    }
+
+    var sunninessRank: Int {
+        switch self {
+        case .clear: return 0
+        case .partlySunny: return 1
+        case .partlyCloudy: return 2
+        case .cloudy: return 3
+        case .wind: return 4
+        case .fog: return 5
+        case .drizzle: return 6
+        case .rain: return 7
+        case .snow: return 8
+        case .night: return 9
+        }
+    }
+
+    var isSunny: Bool {
+        self == .clear
+    }
+
+    var isSunnyOrPartlySunny: Bool {
+        self == .clear || self == .partlySunny
+    }
+
+    static func fromWeatherSymbol(_ symbolName: String) -> AppWeatherCondition {
+        let symbol = symbolName.lowercased()
+
+        if symbol.contains("moon") { return .night }
+        if symbol.contains("drizzle") { return .drizzle }
+        if symbol.contains("rain") || symbol.contains("thunderstorm") || symbol.contains("storm") { return .rain }
+        if symbol.contains("snow") || symbol.contains("sleet") || symbol.contains("flurr") { return .snow }
+        if symbol.contains("wind") || symbol.contains("hurricane") || symbol.contains("tropicalstorm") { return .wind }
+        if symbol.contains("fog") || symbol.contains("haze") || symbol.contains("smoke") { return .fog }
+        if symbol.contains("cloud") && symbol.contains("sun") { return .partlySunny }
+        if symbol.contains("sun.max") || symbol == "sun" || symbol == "sun.fill" { return .clear }
+        if symbol.contains("partly") && symbol.contains("cloud") { return .partlyCloudy }
+        if symbol.contains("cloud") { return .cloudy }
+        return .cloudy
+    }
+
+    var displayIcon: String {
+        switch self {
+        case .clear:
+            return "sun.max.fill"
+        case .partlySunny:
+            return "cloud.sun"
+        case .partlyCloudy, .cloudy:
+            return "cloud"
+        case .rain:
+            return "cloud.rain"
+        case .drizzle:
+            return "cloud.drizzle"
+        case .snow:
+            return "cloud.snow"
+        case .fog:
+            return "cloud.fog"
+        case .wind:
+            return "wind"
+        case .night:
+            return "moon.fill"
         }
     }
 }
@@ -807,7 +872,7 @@ class WeatherService {
         // Current weather
         let currentTemp = weather.currentWeather.temperature.value
         let currentSymbol = weather.currentWeather.symbolName
-        let currentCondition = mapWeatherKitCondition(weather.currentWeather.condition, symbolName: currentSymbol)
+        let currentCondition = AppWeatherCondition.fromWeatherSymbol(currentSymbol)
         
         // Current weather overlay data
         let currentFeelsLike = weather.currentWeather.apparentTemperature.converted(to: .celsius).value
@@ -820,7 +885,7 @@ class WeatherService {
         // Daily forecasts
         let dailyForecasts = weather.dailyForecast.forecast.prefix(10).enumerated().map { (index, day) -> DailyForecast in
             let daySymbol = day.symbolName
-            let dayCondition = mapWeatherKitCondition(day.condition, symbolName: daySymbol)
+            let dayCondition = AppWeatherCondition.fromWeatherSymbol(daySymbol)
             
             // Generate hourly forecasts for this day
             let hourlyForecasts = generateHourlyFromDaily(day: day, dayOffset: index, allHourly: weather.hourlyForecast.forecast, timeZone: timeZone)
@@ -900,7 +965,7 @@ class WeatherService {
                 temperature: hourWeather.temperature.value,
                 apparentTemperature: hourWeather.apparentTemperature.value,
                 symbolName: hourWeather.symbolName,
-                condition: mapWeatherKitCondition(hourWeather.condition, symbolName: hourWeather.symbolName),
+                condition: AppWeatherCondition.fromWeatherSymbol(hourWeather.symbolName),
                 precipitationChance: hourWeather.precipitationChance,
                 cloudCover: hourWeather.cloudCover,
                 windSpeed: hourWeather.wind.speed.converted(to: .kilometersPerHour).value,
@@ -910,33 +975,6 @@ class WeatherService {
             )
         }
     }
-    
-    
-    private func mapWeatherKitCondition(_ condition: WeatherCondition, symbolName: String) -> AppWeatherCondition {
-        switch condition {
-        case .clear, .mostlyClear:
-            return .clear
-        case .partlyCloudy:
-            return symbolName.contains("sun") ? .partlySunny : .partlyCloudy
-        case .mostlyCloudy:
-            return .partlyCloudy
-        case .cloudy:
-            return .cloudy
-        case .rain, .heavyRain, .isolatedThunderstorms, .scatteredThunderstorms, .strongStorms, .thunderstorms, .sunShowers:
-            return .rain
-        case .drizzle, .freezingDrizzle:
-            return .drizzle
-        case .snow, .blowingSnow, .flurries, .freezingRain, .heavySnow, .sleet, .wintryMix, .sunFlurries:
-            return .snow
-        case .haze, .smoky, .foggy:
-            return .fog
-        case .blizzard, .blowingDust, .breezy, .frigid, .hail, .hot, .hurricane, .tropicalStorm, .windy:
-            return .wind
-        @unknown default:
-            return .partlyCloudy
-        }
-    }
-    
     func fetchWeatherForCity(_ city: City) async -> CityWeather? {
         do {
             // Fetch weather for the city
@@ -1063,7 +1101,7 @@ struct CityWeather: Identifiable, Hashable {
     let dailyForecasts: [DailyForecast]
     let timeZone: TimeZone
     
-    // Current weather overlay data (for "Now" mode)
+    // Current weather metrics used by map overlays and detail cards.
     var currentFeelsLike: Double?       // °C
     var currentCloudCover: Double?
     var currentWindSpeed: Double?       // km/h
@@ -1133,7 +1171,7 @@ struct CityWeather: Identifiable, Hashable {
         dailyForecasts.first { $0.dayOffset == dayOffset } ?? dailyForecasts[0]
     }
     
-    /// Whether current weather data is available for the given overlay mode ("Now" mode).
+    /// Whether current weather data is available for the given overlay mode.
     func hasCurrentData(forOverlay overlayMode: String) -> Bool {
         switch overlayMode {
         case "cloudCover":    return currentCloudCover != nil
@@ -1147,39 +1185,11 @@ struct CityWeather: Identifiable, Hashable {
     }
     
     var weatherIcon: String {
-        // Map SF Symbol names to simplified icons
-        if symbolName.contains("sun") && !symbolName.contains("cloud") {
-            return "sun.max.fill"
-        } else if symbolName.contains("moon") && !symbolName.contains("cloud") {
-            return "moon.fill"
-        } else if symbolName.contains("cloud") && symbolName.contains("sun") {
-            return "cloud.sun"
-        } else if symbolName.contains("cloud") && symbolName.contains("moon") {
-            return "cloud.moon"
-        } else if symbolName.contains("cloud.rain") || symbolName.contains("rain") {
-            return "cloud.rain"
-        } else if symbolName.contains("cloud.drizzle") || symbolName.contains("drizzle") {
-            return "cloud.drizzle"
-        } else if symbolName.contains("snow") {
-            return "cloud.snow"
-        } else if symbolName.contains("cloud") {
-            return "cloud"
-        } else if symbolName.contains("wind") {
-            return "wind"
-        } else if symbolName.contains("fog") {
-            return "cloud.fog"
-        } else {
-            return symbolName
-        }
+        AppWeatherCondition.fromWeatherSymbol(symbolName).displayIcon
     }
     
     var weatherColor: Color {
-        let theme = AppTheme.shared.colors
-        if symbolName.contains("sun") && !symbolName.contains("cloud") {
-            return theme.sunIconColor
-        } else {
-            return theme.cloudIconColor
-        }
+        AppWeatherCondition.fromWeatherSymbol(symbolName).dotColor
     }
 }
 // MARK: - Forecast Models
@@ -1251,30 +1261,11 @@ struct DailyForecast: Identifiable {
     let sunset: Date?
     
     var weatherIcon: String {
-        if symbolName.contains("sun") && !symbolName.contains("cloud") {
-            return "sun.max.fill"
-        } else if symbolName.contains("cloud") && symbolName.contains("sun") {
-            return "cloud.sun"
-        } else if symbolName.contains("cloud.rain") || symbolName.contains("rain") {
-            return "cloud.rain"
-        } else if symbolName.contains("cloud.drizzle") || symbolName.contains("drizzle") {
-            return "cloud.drizzle"
-        } else if symbolName.contains("snow") {
-            return "cloud.snow"
-        } else if symbolName.contains("cloud") {
-            return "cloud"
-        } else {
-            return symbolName
-        }
+        AppWeatherCondition.fromWeatherSymbol(symbolName).displayIcon
     }
     
     var weatherColor: Color {
-        let theme = AppTheme.shared.colors
-        if symbolName.contains("sun") && !symbolName.contains("cloud") {
-            return theme.sunIconColor
-        } else {
-            return theme.cloudIconColor
-        }
+        AppWeatherCondition.fromWeatherSymbol(symbolName).dotColor
     }
     
     // Themed color variant
@@ -1285,7 +1276,7 @@ struct DailyForecast: Identifiable {
     // Palette colors for rain icons
     func rainPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
         let theme = AppTheme.shared.colors
-        return (theme.cloudIconColor, theme.rainIconColor)
+        return (theme.cloudIconColor, theme.cloudIconColor)
     }
     
     // Palette colors for partially sunny icons
@@ -1295,11 +1286,11 @@ struct DailyForecast: Identifiable {
     }
     
     var isRainIcon: Bool {
-        symbolName.contains("rain") || symbolName.contains("drizzle")
+        [.rain, .drizzle].contains(AppWeatherCondition.fromWeatherSymbol(symbolName))
     }
     
     var isPartiallySunnyIcon: Bool {
-        symbolName.contains("cloud") && symbolName.contains("sun")
+        AppWeatherCondition.fromWeatherSymbol(symbolName) == .partlySunny
     }
     
     var cloudCoverPercent: Int? {
@@ -1387,41 +1378,16 @@ struct HourlyForecast: Identifiable {
     let visibility: Double?  // km
     
     var weatherIcon: String {
-        if symbolName.contains("sun") && !symbolName.contains("cloud") {
-            return "sun.max.fill"
-        } else if symbolName.contains("moon") && !symbolName.contains("cloud") {
-            return "moon.fill"
-        } else if symbolName.contains("cloud") && symbolName.contains("sun") {
-            return "cloud.sun"
-        } else if symbolName.contains("cloud") && symbolName.contains("moon") {
-            return "cloud.moon"
-        } else if symbolName.contains("cloud.rain") || symbolName.contains("rain") {
-            return "cloud.rain"
-        } else if symbolName.contains("cloud.drizzle") || symbolName.contains("drizzle") {
-            return "cloud.drizzle"
-        } else if symbolName.contains("snow") {
-            return "cloud.snow"
-        } else if symbolName.contains("cloud") {
-            return "cloud"
-        } else {
-            return symbolName
-        }
+        AppWeatherCondition.fromWeatherSymbol(symbolName).displayIcon
     }
     
     func weatherColor(for colorScheme: ColorScheme) -> Color {
-        let theme = AppTheme.shared.colors
-        if symbolName.contains("sun") && !symbolName.contains("cloud") {
-            return theme.sunIconColor
-        } else if symbolName.contains("moon") && !symbolName.contains("cloud") {
-            return theme.moonIconColor
-        } else {
-            return theme.cloudIconColor
-        }
+        AppWeatherCondition.fromWeatherSymbol(symbolName).dotColor
     }
     
     func rainPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
         let theme = AppTheme.shared.colors
-        return (theme.cloudIconColor, theme.rainIconColor)
+        return (theme.cloudIconColor, theme.cloudIconColor)
     }
     
     func partlySunnyPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
@@ -1435,15 +1401,15 @@ struct HourlyForecast: Identifiable {
     }
     
     var isRainIcon: Bool {
-        symbolName.contains("rain") || symbolName.contains("drizzle")
+        [.rain, .drizzle].contains(AppWeatherCondition.fromWeatherSymbol(symbolName))
     }
     
     var isPartiallySunnyIcon: Bool {
-        symbolName.contains("cloud") && symbolName.contains("sun")
+        AppWeatherCondition.fromWeatherSymbol(symbolName) == .partlySunny
     }
     
     var isPartlyMoonIcon: Bool {
-        symbolName.contains("cloud") && symbolName.contains("moon")
+        AppWeatherCondition.fromWeatherSymbol(symbolName) == .night
     }
     
     var cloudCoverPercent: Int? {
@@ -1519,9 +1485,9 @@ struct CachedCityWeather: Codable {
     init(from cityWeather: CityWeather) {
         id = cityWeather.id
         city = CachedCity(from: cityWeather.city)
-        condition = cityWeather.condition
         temperature = cityWeather.temperature
         symbolName = cityWeather.symbolName
+        condition = AppWeatherCondition.fromWeatherSymbol(cityWeather.symbolName)
         dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
         timeZoneIdentifier = cityWeather.timeZone.identifier
         currentFeelsLike = cityWeather.currentFeelsLike
@@ -1541,7 +1507,7 @@ struct CachedCityWeather: Codable {
         return CityWeather(
             id: id,
             city: decodedCity,
-            condition: condition,
+            condition: AppWeatherCondition.fromWeatherSymbol(symbolName),
             temperature: temperature,
             symbolName: symbolName,
             dailyForecasts: forecasts,
@@ -1581,7 +1547,7 @@ struct CachedDailyForecast: Codable {
         dailyLow = forecast.dailyLow
         dailyHigh = forecast.dailyHigh
         symbolName = forecast.symbolName
-        condition = forecast.condition
+        condition = AppWeatherCondition.fromWeatherSymbol(forecast.symbolName)
         hourlyForecasts = forecast.hourlyForecasts.map { CachedHourlyForecast(from: $0) }
         cloudCover = forecast.cloudCover
         precipitationChance = forecast.precipitationChance
@@ -1603,7 +1569,7 @@ struct CachedDailyForecast: Codable {
             dailyLow: dailyLow,
             dailyHigh: dailyHigh,
             symbolName: symbolName,
-            condition: condition,
+            condition: AppWeatherCondition.fromWeatherSymbol(symbolName),
             hourlyForecasts: hourlyForecasts.map { $0.toHourlyForecast() },
             cloudCover: cloudCover,
             precipitationChance: precipitationChance,
@@ -1639,7 +1605,7 @@ struct CachedHourlyForecast: Codable {
         temperature = forecast.temperature
         apparentTemperature = forecast.apparentTemperature
         symbolName = forecast.symbolName
-        condition = forecast.condition
+        condition = AppWeatherCondition.fromWeatherSymbol(forecast.symbolName)
         precipitationChance = forecast.precipitationChance
         cloudCover = forecast.cloudCover
         windSpeed = forecast.windSpeed
@@ -1654,7 +1620,7 @@ struct CachedHourlyForecast: Codable {
             temperature: temperature,
             apparentTemperature: apparentTemperature,
             symbolName: symbolName,
-            condition: condition,
+            condition: AppWeatherCondition.fromWeatherSymbol(symbolName),
             precipitationChance: precipitationChance,
             cloudCover: cloudCover,
             windSpeed: windSpeed,

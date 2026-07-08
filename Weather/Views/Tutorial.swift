@@ -101,7 +101,7 @@ struct TutorialView: View {
 
                 VStack(spacing: 0) {
                     Spacer()
-                        .frame(height: proxy.size.height * 0.62)
+                        .frame(height: proxy.size.height * 0.58)
 
                     Text(localizedString("Welcome to Weather Atlas", locale: locale))
                         .font(.system(size: 34, weight: .bold, design: .serif))
@@ -155,7 +155,7 @@ struct TutorialView: View {
                 )
                 tutorialStep(
                     number: 3,
-                    title: localizedString("Visualise on a map", locale: locale),
+                    title: localizedString("Visualise weather on a map", locale: locale),
                     subtitle: localizedString("Discover weather patterns across your saved places.", locale: locale)
                 )
             }

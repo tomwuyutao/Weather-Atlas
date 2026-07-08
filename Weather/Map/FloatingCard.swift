@@ -19,12 +19,11 @@ extension ContentView {
         hideCityName: Bool = false,
         plainBackground: Bool = false
     ) -> some View {
-        let isNow = selectedDayOffset == -1
-        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
         let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
-        let icon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
-        let temperatureText = tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh)
-        let temperatureLabel = localizedString(isNow ? "Current Temperature" : "Highest Temperature", locale: locale)
+        let icon = forecast.weatherIcon
+        let temperatureText = tempUnit.display(forecast.dailyHigh)
+        let temperatureLabel = localizedString("Highest Temperature", locale: locale)
 
         if forceExpandedStyle {
             expandedFloatingWeatherCard(
@@ -85,7 +84,7 @@ extension ContentView {
                                     let index = row * 5 + column
                                     if index < cityWeather.dailyForecasts.count {
                                         let dayForecast = cityWeather.dailyForecasts[index]
-                                        let dayDotColor = dayForecast.weatherIcon.contains("moon") ? theme.colors.moonIconColor : dayForecast.condition.dotColor
+                                        let dayDotColor = SunninessScoring.condition(for: dayForecast.symbolName).dotColor
                                         Circle()
                                             .fill(dayDotColor)
                                             .frame(width: index == selectedDayOffset ? phoneCardSelectedDotSize : phoneCardDotSize, height: index == selectedDayOffset ? phoneCardSelectedDotSize : phoneCardDotSize)
@@ -176,10 +175,9 @@ extension ContentView {
         hideCityName: Bool = false,
         plainBackground: Bool = false
     ) -> some View {
-        let isNow = selectedDayOffset == -1
-        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
-        let temperatureText = tempUnit.display(isNow ? cityWeather.temperature : forecast.dailyHigh)
-        let temperatureLabel = localizedString(isNow ? "Current Temperature" : "Highest Temperature", locale: locale)
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        let temperatureText = tempUnit.display(forecast.dailyHigh)
+        let temperatureLabel = localizedString("Highest Temperature", locale: locale)
         let forecasts = Array(cityWeather.dailyForecasts.prefix(10))
         let cornerRadius: CGFloat = 28
 
@@ -260,13 +258,11 @@ extension ContentView {
         cityWeather: CityWeather,
         tempUnit: TemperatureUnit
     ) -> some View {
-        let representsNow = index == 0
-        let daySelectionOffset = representsNow ? -1 : index
+        let daySelectionOffset = index
         let isSelectedDay = selectedDayOffset == daySelectionOffset
-        let condition = representsNow ? cityWeather.condition : forecast.condition
-        let icon = representsNow ? cityWeather.weatherIcon : forecast.weatherIcon
-        let dotColor = icon.contains("moon") ? theme.colors.moonIconColor : condition.dotColor
-        let temperature = representsNow ? cityWeather.temperature : forecast.dailyHigh
+        let condition = SunninessScoring.condition(for: forecast.symbolName)
+        let dotColor = condition.dotColor
+        let temperature = forecast.dailyHigh
 
         return Button {
             withAnimation(.snappy(duration: 0.24)) {
@@ -305,7 +301,6 @@ extension ContentView {
     }
 
     private func floatingCardDayLabel(for offset: Int) -> String {
-        if offset == -1 { return localizedString("Now", locale: locale).uppercased() }
         if offset == 0 { return localizedString("Today", locale: locale).uppercased() }
 
         let formatter = DateFormatter()

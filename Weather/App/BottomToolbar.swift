@@ -30,19 +30,6 @@ extension ContentView {
     }
 }
 
-// MARK: - Toolbar Compatibility
-
-extension View {
-    @ViewBuilder
-    func nativeBottomToolbarBackground() -> some View {
-        if #available(iOS 26.0, *) {
-            self.toolbarBackground(.visible, for: .bottomBar)
-        } else {
-            self
-        }
-    }
-}
-
 // MARK: - Floating Bottom Toolbar
 
 extension ContentView {
@@ -50,11 +37,11 @@ extension ContentView {
         HStack(spacing: 8) {
             Image(systemName: "chevron.left")
                 .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(selectedDayOffset > -1 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
+                .foregroundStyle(selectedDayOffset > 0 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
                 .frame(width: 36, height: 36)
                 .contentShape(Circle())
                 .onTapGesture {
-                    if selectedDayOffset > -1 {
+                    if selectedDayOffset > 0 {
                         Haptics.lightImpact()
                         dateSwitcherForward = false
                         withAnimation(.smooth(duration: 0.2)) {
@@ -83,7 +70,7 @@ extension ContentView {
                     "",
                     selection: Binding(
                         get: {
-                            Calendar.current.date(byAdding: .day, value: max(0, selectedDayOffset), to: Date()) ?? Date()
+                            Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
                         },
                         set: { newDate in
                             let calendar = Calendar.current
@@ -474,7 +461,7 @@ extension ContentView {
 // MARK: - Navigation Helpers
 
 extension ContentView {
-    func pushRoute(_ route: AppNavigationRoute, showsBackButton: Bool = false) {
+    func pushRoute(_ route: AppNavigationRoute) {
         if route == .list {
             showingMapExpandedCard = false
         } else if route == .listPreview {
@@ -483,9 +470,6 @@ extension ContentView {
         if case .cityDetail = route {
             navigationPath.append(route)
             return
-        }
-        if route == .map || route == .list {
-            routeShowsBackButton = showsBackButton
         }
         guard !navigationPath.contains(route) else { return }
         navigationPath.append(route)
@@ -533,12 +517,10 @@ extension ContentView {
         switch route {
         case .map:
             navigationPath.removeAll { $0 == route }
-            routeShowsBackButton = false
             showingMapExpandedCard = false
             tappedCity = nil
         case .list:
             navigationPath.removeAll { $0 == route }
-            routeShowsBackButton = false
             listEditMode = false
         case .cityDetail:
             navigationPath.removeAll { $0 == route }

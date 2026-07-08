@@ -60,7 +60,6 @@ struct ContentView: View {
     @State var addCityDetailCity: CityWeather?
     @State var showingAddSearchedCityListDialog: Bool = false
     @State var temporaryMapSearchCity: CityWeather?
-    @State var routeShowsBackButton: Bool = false
 
     // MARK: Map Overlay State
 
@@ -71,7 +70,6 @@ struct ContentView: View {
     @State var citySearchManager = CitySearchManager()
     @State var isLoadingSearchCity = false
     @State var loadingSearchResultID: String?
-    @State var searchSelectionIndex: Int = 0
     @State var searchDebounceTask: Task<Void, Never>?
     @State var searchIsSettled: Bool = true
 
@@ -210,7 +208,6 @@ struct ContentView: View {
     // Map date slider is in MapDateSlider.swift
 
     var dateSwitcherText: String {
-        if selectedDayOffset == -1 { return localizedString("Now", locale: locale) }
         if selectedDayOffset == 0 { return localizedString("Today", locale: locale) }
         let formatter = DateFormatter()
         formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMdEEE", options: 0, locale: locale)

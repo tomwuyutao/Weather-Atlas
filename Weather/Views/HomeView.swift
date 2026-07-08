@@ -96,7 +96,7 @@ struct HomeStaticMapPreview: View {
                 .blur(radius: 6)
 
             Circle()
-                .fill(candidate?.score.map { $0 >= 55 ? accent : contextDot.opacity(0.75) } ?? contextDot.opacity(0.75))
+                .fill(candidate?.condition.isSunny == true ? accent : contextDot.opacity(0.75))
                 .frame(width: 20, height: 20)
                 .shadow(color: accent.opacity(0.24), radius: 6, y: 2)
 
@@ -108,12 +108,8 @@ struct HomeStaticMapPreview: View {
     }
 
     private func markerColor(for cityWeather: CityWeather) -> Color {
-        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
-        let isNow = selectedDayOffset == -1
-        let condition = isNow ? cityWeather.condition : forecast.condition
-        let icon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
-        let colors = AppTheme.shared.colors
-        return icon.contains("moon") ? colors.moonIconColor : condition.dotColor(for: colors)
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        return SunninessScoring.condition(for: forecast.symbolName).dotColor
     }
 
     private func fitAllCities() {
@@ -179,7 +175,8 @@ enum WeatherListSortMode: String, CaseIterable, Identifiable {
 
 struct SunnyCandidate: Identifiable {
     let cityWeather: CityWeather
-    let score: Double?
+    let score: Double
+    let condition: AppWeatherCondition
     let cloudCover: Double?
     let precipitationChance: Double?
     let temperature: Double
@@ -190,6 +187,17 @@ struct SunnyCandidate: Identifiable {
 struct HomeSunnyDayRecommendation: Identifiable {
     let id: Int
     let sunnyCityCount: Int
+    let averageSunnyCloudCover: Double?
+}
+
+private struct HomeSunnyCalendarDate: Identifiable {
+    let id: Int
+    let dayOffset: Int
+    let recommendation: HomeSunnyDayRecommendation?
+
+    var isForecastDate: Bool {
+        recommendation != nil
+    }
 }
 
 // MARK: - Home and List Logic
@@ -200,60 +208,31 @@ extension ContentView {
     }
 
     func sunnyCandidate(for cityWeather: CityWeather) -> SunnyCandidate {
-        let isNow = selectedDayOffset == -1
-        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
-        let cloudCover = isNow ? cityWeather.currentCloudCover : forecast.cloudCover
-        let precipitationChance: Double? = isNow
-            ? ([.rain, .drizzle, .snow].contains(cityWeather.condition) ? 1 : 0)
-            : forecast.precipitationChance
-        let temperature = isNow ? cityWeather.temperature : forecast.dailyHigh
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        let condition = SunninessScoring.condition(for: forecast.symbolName)
 
         return SunnyCandidate(
             cityWeather: cityWeather,
-            score: SunninessScoring.daytimeAverageScore(for: forecast, timeZone: cityWeather.timeZone),
-            cloudCover: cloudCover,
-            precipitationChance: precipitationChance,
-            temperature: temperature
+            score: condition.sunninessScore,
+            condition: condition,
+            cloudCover: forecast.cloudCover,
+            precipitationChance: forecast.precipitationChance,
+            temperature: forecast.dailyHigh
         )
     }
 
     func sunnyCandidateIcon(for candidate: SunnyCandidate) -> String {
-        selectedDayOffset == -1
-            ? candidate.cityWeather.weatherIcon
-            : candidate.cityWeather.forecast(for: max(0, selectedDayOffset)).weatherIcon
+        candidate.condition.displayIcon
     }
 
     var sunnyCandidates: [SunnyCandidate] {
         mapCities
             .map(sunnyCandidate(for:))
-            .sorted { lhs, rhs in
-                switch (lhs.score, rhs.score) {
-                case let (lhsScore?, rhsScore?):
-                    if lhsScore != rhsScore { return lhsScore > rhsScore }
-                    return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
-                case (_?, nil):
-                    return true
-                case (nil, _?):
-                    return false
-                case (nil, nil):
-                    return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
-                }
-            }
-    }
-
-    var homeSunnyScoreThreshold: Double {
-        70
-    }
-
-    var homeSunnyDayScoreThreshold: Double {
-        55
+            .sorted(by: isBetterSunnyCandidate)
     }
 
     var recommendedSunnyCandidates: [SunnyCandidate] {
-        sunnyCandidates.filter { candidate in
-            guard let score = candidate.score else { return false }
-            return score >= homeSunnyScoreThreshold
-        }
+        sunnyCandidates.filter { $0.condition.isSunny }
     }
 
     var homeVisibleCandidates: [SunnyCandidate] {
@@ -279,42 +258,43 @@ extension ContentView {
                 }
             }
         case .sunny:
-            return candidates.sorted { lhs, rhs in
-                switch (lhs.score, rhs.score) {
-                case let (lhsScore?, rhsScore?):
-                    if lhsScore != rhsScore { return lhsScore > rhsScore }
-                    return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
-                case (_?, nil):
-                    return true
-                case (nil, _?):
-                    return false
-                case (nil, nil):
-                    return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
-                }
-            }
+            return candidates.sorted(by: isBetterSunnyCandidate)
         }
     }
 
     var homeSunnyDayRecommendations: [HomeSunnyDayRecommendation] {
         guard !mapCities.isEmpty else { return [] }
 
-        return (1..<10).compactMap { dayOffset in
-            let scores = mapCities.compactMap { cityWeather in
-                SunninessScoring.daytimeAverageScore(
-                    for: cityWeather.forecast(for: dayOffset),
-                    timeZone: cityWeather.timeZone
-                )
+        return (0..<10).map { dayOffset in
+            let sunnyForecasts = mapCities.compactMap { cityWeather -> DailyForecast? in
+                let forecast = cityWeather.forecast(for: dayOffset)
+                return SunninessScoring.condition(for: forecast.symbolName).isSunny ? forecast : nil
             }
 
-            guard scores.count == mapCities.count else { return nil }
-
-            let averageScore = scores.reduce(0, +) / Double(scores.count)
-            guard averageScore >= homeSunnyDayScoreThreshold else { return nil }
+            let cloudCovers = sunnyForecasts.compactMap(\.cloudCover)
 
             return HomeSunnyDayRecommendation(
                 id: dayOffset,
-                sunnyCityCount: scores.filter { $0 >= homeSunnyDayScoreThreshold }.count
+                sunnyCityCount: sunnyForecasts.count,
+                averageSunnyCloudCover: cloudCovers.isEmpty ? nil : cloudCovers.reduce(0, +) / Double(cloudCovers.count)
             )
+        }
+    }
+
+    private func isBetterSunnyCandidate(_ lhs: SunnyCandidate, than rhs: SunnyCandidate) -> Bool {
+        if lhs.condition.sunninessRank != rhs.condition.sunninessRank {
+            return lhs.condition.sunninessRank < rhs.condition.sunninessRank
+        }
+
+        switch (lhs.cloudCover, rhs.cloudCover) {
+        case let (lhsCloud?, rhsCloud?) where lhsCloud != rhsCloud:
+            return lhsCloud < rhsCloud
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        default:
+            return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
         }
     }
 
@@ -323,11 +303,11 @@ extension ContentView {
     func selectCandidate(_ candidate: SunnyCandidate, focusMap: Bool = true) {
         let city = candidate.cityWeather
         if focusMap {
-            pushRoute(.map, showsBackButton: true)
+            pushRoute(.map)
             centerOnCityTrigger = city
             Task { @MainActor in
                 await Task.yield()
-                showMapMarkerCard(city, expanded: false, focusesMarker: true)
+                showMapMarkerCard(city)
             }
         } else {
             tappedCity = city
@@ -342,13 +322,13 @@ extension ContentView {
         GeometryReader { geometry in
             let snapshotHeight = min(max(geometry.size.height * 0.32, 190), 310)
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: 20) {
                     homePageHeader
                     homeMapSnapshot(height: snapshotHeight)
-                    homeSunnySection
                     if !isListPreviewActive {
                         homeSunnyDaysSection
                     }
+                    homeSunnySection
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -399,7 +379,7 @@ extension ContentView {
                 tappedCity = nil
                 showingMapExpandedCard = false
                 temporaryMapSearchCity = nil
-                pushRoute(.map, showsBackButton: true)
+                pushRoute(.map)
             }
         }
     }
@@ -424,7 +404,7 @@ extension ContentView {
 
             if !isListPreviewActive {
                 Button {
-                    pushRoute(.list, showsBackButton: true)
+                    pushRoute(.list)
                 } label: {
                     HStack(spacing: 8) {
                         Text(localizedString("Show All Cities", locale: locale))
@@ -443,11 +423,11 @@ extension ContentView {
     }
 
     private var homeSunnyDaysSection: some View {
-        let recommendations = homeSunnyDayRecommendations
+        let days = homeSunnyCalendarDates
 
-        return VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
-                Image(systemName: "sun.max.fill")
+                Image(systemName: "sparkles")
                     .foregroundStyle(theme.colors.dotSun)
                 Text(localizedString("Best Future Dates", locale: locale))
                     .font(.title3.weight(.semibold))
@@ -455,57 +435,146 @@ extension ContentView {
                 Spacer(minLength: 8)
             }
 
-            if recommendations.isEmpty {
+            if days.isEmpty {
                 Text(localizedString("No strong sunny days", locale: locale))
                     .font(.callout)
                     .foregroundStyle(theme.colors.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 4)
             } else {
-                VStack(spacing: 0) {
-                    ForEach(recommendations) { day in
-                        Button {
-                            withAnimation(.smooth(duration: 0.2)) {
-                                selectedDayOffset = day.id
-                            }
-                        } label: {
-                            homeSunnyDayRow(
-                                day,
-                                isSelected: day.id == selectedDayOffset
-                            )
+                VStack(spacing: 7) {
+                    LazyVGrid(columns: homeSunnyCalendarColumns, spacing: 0) {
+                        ForEach(homeSunnyCalendarWeekdayLabels, id: \.self) { label in
+                            Text(label)
+                                .font(.caption.weight(.semibold))
+                                .foregroundStyle(theme.colors.secondaryText)
+                                .frame(maxWidth: .infinity)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
                         }
-                        .buttonStyle(.plain)
+                    }
+
+                    LazyVGrid(columns: homeSunnyCalendarColumns, spacing: 7) {
+                        ForEach(days) { day in
+                            homeSunnyHeatmapDayView(day, maxSunnyCityCount: mapCities.count)
+                        }
                     }
                 }
+                .padding(.horizontal, 10)
             }
         }
     }
 
-    private func homeSunnyDayRow(_ day: HomeSunnyDayRecommendation, isSelected: Bool) -> some View {
-        HStack(spacing: 10) {
-            Image(systemName: "sun.max.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(theme.colors.dotSun)
-                .frame(width: 22)
+    private var homeSunnyCalendarColumns: [GridItem] {
+        Array(repeating: GridItem(.flexible(), spacing: 7), count: 7)
+    }
 
-            Text(homeSunnyDayLabel(dayOffset: day.id))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
+    private var homeSunnyCalendarWeekdayLabels: [String] {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        let symbols = formatter.shortStandaloneWeekdaySymbols ?? formatter.shortWeekdaySymbols ?? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        let mondayIndex = 1
+        return Array(symbols[mondayIndex...]) + Array(symbols[..<mondayIndex])
+    }
 
-            Spacer(minLength: 8)
+    private var homeSunnyCalendarDates: [HomeSunnyCalendarDate] {
+        let recommendationsByOffset = Dictionary(uniqueKeysWithValues: homeSunnyDayRecommendations.map { ($0.id, $0) })
+        let leadingCount = homeSunnyCalendarLeadingInactiveCount()
+        let forecastOffsets = Array(0..<10)
+        let totalBeforeTrailing = leadingCount + forecastOffsets.count
+        let trailingCount = (7 - (totalBeforeTrailing % 7)) % 7
+        let leadingOffsets = leadingCount == 0 ? [] : Array((-leadingCount)..<0)
+        let trailingOffsets = trailingCount == 0 ? [] : Array(10..<(10 + trailingCount))
 
-            Text(cityCountText(day.sunnyCityCount))
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(1)
-
-            Image(systemName: "checkmark")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(isSelected ? theme.colors.accent : .clear)
-                .frame(width: 14)
+        return (leadingOffsets + forecastOffsets + trailingOffsets).map { dayOffset in
+            HomeSunnyCalendarDate(
+                id: dayOffset,
+                dayOffset: dayOffset,
+                recommendation: recommendationsByOffset[dayOffset]
+            )
         }
-        .padding(.vertical, 9)
-        .contentShape(Rectangle())
+    }
+
+    private func homeSunnyCalendarLeadingInactiveCount() -> Int {
+        let sundayBasedWeekday = Calendar.current.component(.weekday, from: Date()) - 1
+        let mondayIndex = 1
+        return (sundayBasedWeekday - mondayIndex + 7) % 7
+    }
+
+    @ViewBuilder
+    private func homeSunnyHeatmapDayView(_ day: HomeSunnyCalendarDate, maxSunnyCityCount: Int) -> some View {
+        if let recommendation = day.recommendation {
+            Button {
+                withAnimation(.smooth(duration: 0.2)) {
+                    selectedDayOffset = recommendation.id
+                }
+            } label: {
+                homeSunnyHeatmapDayCell(
+                    day,
+                    maxSunnyCityCount: maxSunnyCityCount,
+                    isSelected: recommendation.id == selectedDayOffset
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(homeSunnyHeatmapAccessibilityLabel(recommendation))
+        } else {
+            homeSunnyHeatmapDayCell(day, maxSunnyCityCount: maxSunnyCityCount, isSelected: false)
+                .accessibilityLabel(homeSunnyCalendarInactiveAccessibilityLabel(day))
+        }
+    }
+
+    private func homeSunnyHeatmapDayCell(
+        _ day: HomeSunnyCalendarDate,
+        maxSunnyCityCount: Int,
+        isSelected: Bool
+    ) -> some View {
+        let fill = homeSunnyHeatmapFill(
+            sunnyCityCount: day.recommendation?.sunnyCityCount ?? 0,
+            maxSunnyCityCount: maxSunnyCityCount
+        )
+        let cornerRadius: CGFloat = 12
+
+        return ZStack {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .fill(fill)
+
+            Text(homeSunnyCalendarDayNumber(dayOffset: day.dayOffset))
+                .font(.headline.weight(.semibold).monospacedDigit())
+                .foregroundStyle(day.isForecastDate ? theme.colors.primaryText : theme.colors.secondaryText.opacity(0.50))
+                .lineLimit(1)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                .stroke(isSelected ? theme.colors.accent : .white.opacity(0.16), lineWidth: isSelected ? 2 : 0.7)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .padding(2)
+        .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+    }
+
+    private func homeSunnyHeatmapFill(sunnyCityCount: Int, maxSunnyCityCount: Int) -> Color {
+        guard sunnyCityCount > 0, maxSunnyCityCount > 0 else {
+            return theme.colors.glassFill.opacity(colorScheme == .dark ? 0.34 : 0.56)
+        }
+
+        let fraction = max(0, min(1, Double(sunnyCityCount) / Double(maxSunnyCityCount)))
+        let warmColor = theme.colors.dotSun.compatMix(with: theme.colors.destructive, by: 0.34 * fraction)
+        return warmColor.opacity(0.24 + 0.62 * fraction)
+    }
+
+    private func homeSunnyCalendarDayNumber(dayOffset: Int) -> String {
+        let date = Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
+        return "\(Calendar.current.component(.day, from: date))"
+    }
+
+    private func homeSunnyHeatmapAccessibilityLabel(_ day: HomeSunnyDayRecommendation) -> String {
+        let totalCities = max(mapCities.count, 1)
+        let percentSunny = Int((Double(day.sunnyCityCount) / Double(totalCities) * 100).rounded())
+        return "\(homeSunnyDayLabel(dayOffset: day.id)), \(percentSunny)% \(localizedString("Sunny", locale: locale))"
+    }
+
+    private func homeSunnyCalendarInactiveAccessibilityLabel(_ day: HomeSunnyCalendarDate) -> String {
+        "\(homeSunnyDayLabel(dayOffset: day.dayOffset)), \(localizedString("No forecast", locale: locale))"
     }
 
     private func homeSunnyDayLabel(dayOffset: Int) -> String {

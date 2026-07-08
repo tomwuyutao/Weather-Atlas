@@ -51,6 +51,7 @@ extension ContentView {
                     Haptics.lightImpact()
                     withAnimation(.easeInOut(duration: 0.2)) {
                         mapOverlayMode = option.mode
+                        forceReloadMapDots()
                     }
                 } label: {
                     Label {
@@ -83,8 +84,8 @@ struct AppleWeatherMapView: View {
     let selectedCityID: UUID?
     @Binding var recenterRequest: MapRecenterRequest?
     let centerOnCity: CityWeather?
-    let onMarkerTap: (CityWeather, CGPoint?) -> Void
-    let onMapClick: ((CLLocationCoordinate2D, CGPoint?) -> Void)?
+    let onMarkerTap: (CityWeather) -> Void
+    let onMapClick: (() -> Void)?
     let onMapGestureStart: (() -> Void)?
 
     @Environment(\.colorScheme) private var colorScheme
@@ -107,12 +108,13 @@ struct AppleWeatherMapView: View {
                         anchor: .center
                     ) {
                         Button {
-                            onMarkerTap(cityWeather, nil)
+                            onMarkerTap(cityWeather)
                         } label: {
                             WeatherMapMarker(
                                 color: markerColor(for: cityWeather),
                                 isSelected: isSelected
                             )
+                            .id(markerIdentity(for: cityWeather, isSelected: isSelected))
                         }
                         .buttonStyle(.plain)
                     }
@@ -128,8 +130,8 @@ struct AppleWeatherMapView: View {
             .simultaneousGesture(
                 SpatialTapGesture()
                     .onEnded { value in
-                        guard let coordinate = proxy.convert(value.location, from: .local) else { return }
-                        onMapClick?(coordinate, value.location)
+                        guard proxy.convert(value.location, from: .local) != nil else { return }
+                        onMapClick?()
                     }
             )
         }
@@ -156,11 +158,8 @@ struct AppleWeatherMapView: View {
     private var visibleCities: [CityWeather] {
         cities.filter { cityWeather in
             guard !filterSunny else {
-                if selectedDayOffset == -1 {
-                    return cityWeather.condition == .clear && !cityWeather.weatherIcon.contains("moon")
-                }
                 let forecast = cityWeather.forecast(for: selectedDayOffset)
-                return forecast.condition == .clear && !forecast.weatherIcon.contains("moon")
+                return SunninessScoring.condition(for: forecast.symbolName).isSunny
             }
             return true
         }
@@ -177,15 +176,78 @@ struct AppleWeatherMapView: View {
     // MARK: Marker Coloring
 
     private func markerColor(for cityWeather: CityWeather) -> Color {
-        if overlayMode == "temperature" {
-            return AppTheme.shared.colors.dotSun
-        }
-        let forecast = cityWeather.forecast(for: max(0, selectedDayOffset))
-        let isNow = selectedDayOffset == -1
-        let condition = isNow ? cityWeather.condition : forecast.condition
-        let icon = isNow ? cityWeather.weatherIcon : forecast.weatherIcon
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
         let colors = AppTheme.shared.colors
-        return icon.contains("moon") ? colors.moonIconColor : condition.dotColor(for: colors)
+
+        switch overlayMode {
+        case "temperature":
+            let celsius = selectedDayOffset == 0 ? cityWeather.temperature : forecast.dailyHigh
+            return temperatureColor(celsius: celsius, colors: colors)
+        case "cloudCover":
+            guard let cloudCover = forecast.cloudCover else { return unavailableOverlayColor(colors: colors) }
+            return cloudCoverColor(cloudCover, colors: colors)
+        case "precipitation":
+            guard let precipitationChance = forecast.precipitationChance else { return unavailableOverlayColor(colors: colors) }
+            return precipitationColor(precipitationChance, colors: colors)
+        case "windSpeed":
+            guard let windSpeed = forecast.windSpeed else { return unavailableOverlayColor(colors: colors) }
+            return windColor(kmh: windSpeed, colors: colors)
+        case "uvIndex":
+            guard let uvIndex = forecast.uvIndex else { return unavailableOverlayColor(colors: colors) }
+            return uvColor(index: uvIndex, colors: colors)
+        default:
+            return SunninessScoring.condition(for: forecast.symbolName).dotColor
+        }
+    }
+
+    private func temperatureColor(celsius: Double, colors: ThemeColors) -> Color {
+        let partlySunny = colors.dotPartlyCloudy.compatMix(with: colors.filterSunny, by: 0.18)
+        if celsius <= 0 {
+            return colors.dotRain.compatMix(with: colors.dotDrizzle, by: clamped((celsius + 20) / 20))
+        } else if celsius <= 10 {
+            return colors.dotDrizzle.compatMix(with: colors.dotCloudy, by: clamped(celsius / 10))
+        } else if celsius <= 20 {
+            return colors.dotCloudy.compatMix(with: partlySunny, by: clamped((celsius - 10) / 10))
+        } else {
+            return partlySunny.compatMix(with: colors.destructive, by: clamped((celsius - 20) / 20))
+        }
+    }
+
+    private func cloudCoverColor(_ cloudCover: Double, colors: ThemeColors) -> Color {
+        colors.dotRain.compatMix(with: colors.dotCloudy, by: clamped(cloudCover))
+    }
+
+    private func precipitationColor(_ precipitationChance: Double, colors: ThemeColors) -> Color {
+        colors.dotCloudy.compatMix(with: colors.dotDrizzle, by: clamped(precipitationChance))
+    }
+
+    private func windColor(kmh: Double, colors: ThemeColors) -> Color {
+        let partlySunny = colors.dotPartlyCloudy.compatMix(with: colors.filterSunny, by: 0.18)
+        return colors.dotCloudy.compatMix(with: partlySunny, by: clamped(kmh / 100))
+    }
+
+    private func uvColor(index: Int, colors: ThemeColors) -> Color {
+        colors.dotCloudy.compatMix(with: colors.destructive, by: clamped(Double(index) / 11))
+    }
+
+    private func unavailableOverlayColor(colors: ThemeColors) -> Color {
+        colors.secondaryText.opacity(0.45)
+    }
+
+    private func clamped(_ value: Double) -> Double {
+        max(0, min(1, value))
+    }
+
+    private func markerIdentity(for cityWeather: CityWeather, isSelected: Bool) -> String {
+        let scheme = colorScheme == .dark ? "dark" : "light"
+        return [
+            cityWeather.id.uuidString,
+            overlayMode,
+            "\(selectedDayOffset)",
+            "\(markerReloadID)",
+            isSelected ? "selected" : "idle",
+            scheme
+        ].joined(separator: "-")
     }
 
     private static let defaultRegion = MKCoordinateRegion(
@@ -273,25 +335,31 @@ private struct WeatherMapMarker: View {
 // MARK: - Map Controls and Interactions
 
 extension ContentView {
+    private var mapDateSliderHeight: CGFloat { 420 }
+    private var mapDateSliderWidth: CGFloat { 145 }
+    private var mapDateSliderBottomPadding: CGFloat { 470 }
+    private var mapDateSliderTrailingPadding: CGFloat { 1 }
+
     @ViewBuilder
     var mapDateSliderOverlay: some View {
         // Date slider only on map view. Home/list use the bottom date switcher.
         if isMapRoute, !showingSearchSheet {
-            mapDateSlider(height: 420) {
+            mapDateSlider(height: mapDateSliderHeight) {
                 if showingMapDateSliderTutorial {
                     dismissMapDateSliderTutorial()
                 }
             }
-                .frame(width: 145, height: 420, alignment: .trailing)
-                .padding(.bottom, 470)
-                .padding(.trailing, 1)
+                .frame(width: mapDateSliderWidth, height: mapDateSliderHeight, alignment: .trailing)
+                .padding(.bottom, mapDateSliderBottomPadding)
+                .padding(.trailing, mapDateSliderTrailingPadding)
                 .transition(.opacity)
         }
     }
 
     var mapDateSliderTutorialOverlay: some View {
-        let tutorialSliderHeight: CGFloat = 420
-        let capsuleY = CGFloat(max(0, min(10, selectedDayOffset + 1))) * tutorialSliderHeight / 10
+        let sliderHeight = mapDateSliderHeight
+        let sliderStepHeight = sliderHeight / 9
+        let selectedCapsuleY = CGFloat(max(0, min(9, selectedDayOffset))) * sliderStepHeight
         let labelFont: Font = .avenir(.subheadline, weight: .semibold)
         let idleMinWidth: CGFloat = 52
         let idleHorizontalPadding: CGFloat = 12
@@ -299,7 +367,7 @@ extension ContentView {
         let idleTailSize = CGSize(width: 24, height: 16)
         let hintSpacing: CGFloat = 4
         let hintTextNudge: CGFloat = 22
-        let hintGapBelowCapsule: CGFloat = 210
+        let hintGapBelowSelectedCapsule: CGFloat = sliderHeight / 2
 
         return ZStack(alignment: .topTrailing) {
             HStack(alignment: .center, spacing: hintSpacing) {
@@ -327,11 +395,11 @@ extension ContentView {
             }
             .foregroundStyle(.white)
             .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
-            .offset(y: capsuleY + hintGapBelowCapsule)
+            .offset(y: selectedCapsuleY + hintGapBelowSelectedCapsule)
         }
-        .frame(width: 360, height: tutorialSliderHeight, alignment: .topTrailing)
-        .padding(.bottom, 470)
-        .padding(.trailing, 1)
+        .frame(width: mapDateSliderWidth + 215, height: sliderHeight, alignment: .topTrailing)
+        .padding(.bottom, mapDateSliderBottomPadding)
+        .padding(.trailing, mapDateSliderTrailingPadding)
         .allowsHitTesting(false)
     }
 
@@ -391,7 +459,7 @@ extension ContentView {
 
     // MARK: Marker Selection
 
-    func handleMapMarkerTap(_ city: CityWeather, anchor: CGPoint? = nil) {
+    func handleMapMarkerTap(_ city: CityWeather) {
         if showingSearchSheet || searchFieldPresented {
             showingSearchSheet = false
             searchFieldPresented = false
@@ -402,10 +470,10 @@ extension ContentView {
             return
         }
         Haptics.lightImpact()
-        showMapMarkerCard(city, anchor: anchor, expanded: false, focusesMarker: true)
+        showMapMarkerCard(city)
     }
 
-    func handleMapBackgroundClick(_ coordinate: CLLocationCoordinate2D, anchor: CGPoint? = nil) {
+    func handleMapBackgroundClick() {
         dismissMapExpandedCard()
     }
 
@@ -421,7 +489,7 @@ extension ContentView {
         }
     }
 
-    func showMapMarkerCard(_ city: CityWeather, anchor: CGPoint? = nil, expanded: Bool, focusesMarker: Bool) {
+    func showMapMarkerCard(_ city: CityWeather) {
         if showingMapExpandedCard && tappedCity?.id == city.id {
             presentDetail(for: city)
             return
@@ -462,11 +530,11 @@ extension ContentView {
                 selectedCityID: tappedCity?.id,
                 recenterRequest: $mapRecenterRequest,
                 centerOnCity: centerOnCityTrigger,
-                onMarkerTap: { city, point in
-                    handleMapMarkerTap(city, anchor: point)
+                onMarkerTap: { city in
+                    handleMapMarkerTap(city)
                 },
-                onMapClick: { coordinate, point in
-                    handleMapBackgroundClick(coordinate, anchor: point)
+                onMapClick: {
+                    handleMapBackgroundClick()
                 },
                 onMapGestureStart: {
                     if showingMapExpandedCard {

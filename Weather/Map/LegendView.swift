@@ -78,15 +78,15 @@ struct MapFloatingLegend: View {
     }
 
     private func precipitationColor(percent: Double) -> Color {
-        Color.white.compatMix(with: palette.dotDrizzle, by: max(0, min(1, percent / 100.0)))
+        palette.dotCloudy.compatMix(with: palette.dotDrizzle, by: max(0, min(1, percent / 100.0)))
     }
 
     private func windColor(fraction: Double) -> Color {
-        Color.white.compatMix(with: saturatedPartlySunnyColor, by: max(0, min(1, fraction)))
+        palette.dotCloudy.compatMix(with: saturatedPartlySunnyColor, by: max(0, min(1, fraction)))
     }
 
     private func uvColor(fraction: Double) -> Color {
-        Color.white.compatMix(with: palette.destructive, by: max(0, min(1, fraction)))
+        palette.dotCloudy.compatMix(with: palette.destructive, by: max(0, min(1, fraction)))
     }
 
     private func humidityColor(fraction: Double) -> Color {

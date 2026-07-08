@@ -144,7 +144,7 @@ extension ContentView {
             }
         }
         .padding(.horizontal, 18)
-        .safeAreaPadding(.top, 8)
+        .safeAreaPadding(.top, 28)
         .padding(.bottom, 18)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(theme.colors.background.ignoresSafeArea())
@@ -208,7 +208,6 @@ extension ContentView {
                 } label: {
                     citySearchSuggestionRow(
                         for: result,
-                        isSelected: index == searchSelectionIndex,
                         isLoading: loadingSearchResultID == result.id
                     )
                 }
@@ -233,10 +232,6 @@ extension ContentView {
         theme.colors.listCardFill
     }
 
-    private var searchSuggestionSelectedBackground: Color {
-        theme.colors.listCardFill.opacity(0.92)
-    }
-
     private var searchSuggestionTitleColor: Color {
         colorScheme == .dark ? .white.opacity(0.92) : .black
     }
@@ -247,7 +242,7 @@ extension ContentView {
 
     // MARK: - Search Result Rows
 
-    private func citySearchSuggestionRow(for result: CitySearchResult, isSelected: Bool, isLoading: Bool) -> some View {
+    private func citySearchSuggestionRow(for result: CitySearchResult, isLoading: Bool) -> some View {
         let existingListName = searchIsSettled ? existingCityListName(for: result) : nil
         let titleColor = isLoading ? searchSuggestionTitleColor.opacity(0.45) : searchSuggestionTitleColor
         let subtitleColor = isLoading ? searchSuggestionSubtitleColor.opacity(0.45) : searchSuggestionSubtitleColor
@@ -256,7 +251,7 @@ extension ContentView {
         let subtitleFont: Font = .avenir(.caption, weight: .regular)
         let statusFont: Font = .avenir(.caption2, weight: .medium)
         let statusBoldFont: Font = .avenir(.caption2, weight: .bold)
-        let rowVerticalPadding: CGFloat = 8
+        let rowVerticalPadding: CGFloat = 12
         let rowHorizontalPadding: CGFloat = 2
 
         return HStack(spacing: rowSpacing) {
@@ -376,7 +371,6 @@ extension ContentView {
         searchIsSettled = true
         searchAddTargetListID = nil
         loadingSearchResultID = nil
-        searchSelectionIndex = 0
     }
 
     func dismissNativeCitySearchAndRecenter() {
@@ -398,9 +392,7 @@ extension ContentView {
     }
 
     func confirmSearchSelection() {
-        let results = Array(displayedSearchResults.prefix(searchResultLimit))
-        guard results.indices.contains(searchSelectionIndex), !isLoadingSearchCity else { return }
-        let result = results[searchSelectionIndex]
+        guard let result = displayedSearchResults.prefix(searchResultLimit).first, !isLoadingSearchCity else { return }
         Task {
             await selectSearchResult(result)
         }
