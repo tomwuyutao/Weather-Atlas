@@ -12,38 +12,15 @@ import SwiftUI
 
 extension ContentView {
     var listView: some View {
-        VStack(spacing: 0) {
-            listHeader
-
-            if listEditMode {
-                List {
-                    ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { _, candidate in
-                        listRow(candidate, rank: nil)
-                    }
-                    .onDelete { offsets in
-                        for offset in offsets {
-                            guard sortedListCandidates.indices.contains(offset) else { continue }
-                            removeListCity(sortedListCandidates[offset].cityWeather)
-                        }
-                    }
-                    .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-                    .listRowSeparator(.hidden)
-                    .listRowBackground(theme.colors.background)
-                }
-                .listStyle(.plain)
-                .scrollContentBackground(.hidden)
-                .environment(\.editMode, Binding<EditMode>(
-                    get: { listEditMode ? .active : .inactive },
-                    set: { mode in
-                        withAnimation(.smooth(duration: 0.2)) {
-                            listEditMode = mode.isEditing
-                        }
-                    }
-                ))
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { index, candidate in
+        ZStack(alignment: .top) {
+            ScrollView {
+                LazyVStack(spacing: 0) {
+                    ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { index, candidate in
+                        if listEditMode {
+                            listRow(candidate, rank: nil) {
+                                removeListCity(candidate.cityWeather)
+                            }
+                        } else {
                             Button {
                                 presentDetail(for: candidate.cityWeather)
                             } label: {
@@ -57,11 +34,14 @@ extension ContentView {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 16)
                 }
-                .scrollContentBackground(.hidden)
+                .padding(.horizontal, 16)
+                .padding(.top, 76)
+                .padding(.bottom, 16)
             }
+            .scrollContentBackground(.hidden)
+
+            listHeader
         }
         .environment(\.defaultMinListRowHeight, 0)
         .background(theme.colors.background.ignoresSafeArea())
@@ -69,6 +49,7 @@ extension ContentView {
         .navigationBarBackButtonHidden(true)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .navigationBar)
+        .animation(.smooth(duration: 0.24), value: listEditMode)
     }
 
     private var listHeader: some View {
@@ -77,7 +58,6 @@ extension ContentView {
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
-        .padding(.bottom, 8)
     }
 
     private var listTopToolbarActions: some View {
@@ -104,7 +84,7 @@ extension ContentView {
                     listToolbarActionIcon("arrow.up.arrow.down", accessibilityLabel: localizedString("Sort", locale: locale))
                 }
                 .menuOrder(.fixed)
-                .tint(theme.colors.primaryText)
+                .tint(theme.colors.accent)
                 .buttonStyle(.plain)
 
                 Button {
@@ -147,8 +127,17 @@ extension ContentView {
                         await switchToList(listID)
                     }
                 } label: {
-                    Text(listID.localizedDisplayName(locale: locale))
-                        .foregroundStyle(theme.colors.primaryText)
+                    HStack {
+                        Text(listID.localizedDisplayName(locale: locale))
+                            .foregroundStyle(theme.colors.primaryText)
+
+                        Spacer()
+
+                        if listID.rawValue == weatherService.activeListID.rawValue {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(theme.colors.primaryText)
+                        }
+                    }
                 }
             }
 
@@ -161,7 +150,14 @@ extension ContentView {
                 primaryMenuLabel(localizedString("Add List", locale: locale), systemImage: "plus")
             }
 
-            Divider()
+            Button {
+                listEditMode = false
+                listToRenameID = weatherService.activeListID
+                renameAlertText = weatherService.activeListID.localizedDisplayName(locale: locale)
+                showingRenameAlert = true
+            } label: {
+                primaryMenuLabel(localizedString("Rename List", locale: locale), systemImage: "pencil")
+            }
 
             Button {
                 showingDeleteListConfirmation = true
@@ -171,6 +167,7 @@ extension ContentView {
                         .foregroundStyle(theme.colors.primaryText)
                 } icon: {
                     Image(systemName: "trash")
+                        .symbolRenderingMode(.monochrome)
                         .foregroundStyle(theme.colors.destructive)
                 }
             }
@@ -187,12 +184,11 @@ extension ContentView {
             }
         }
         .menuOrder(.fixed)
-        .tint(theme.colors.primaryText)
         .buttonStyle(.plain)
     }
 
-    func listRow(_ candidate: SunnyCandidate, rank: Int?) -> some View {
-        sunnyCandidateRow(candidate, rank: rank, compact: true)
+    func listRow(_ candidate: SunnyCandidate, rank: Int?, deleteAction: (() -> Void)? = nil) -> some View {
+        sunnyCandidateRow(candidate, rank: rank, compact: true, deleteAction: deleteAction)
     }
 
     private func listContextPreviewRow(_ candidate: SunnyCandidate, rank: Int) -> some View {

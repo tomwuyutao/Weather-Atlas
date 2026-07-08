@@ -59,7 +59,7 @@ extension ContentView {
                             .foregroundStyle(theme.colors.primaryText)
                     } icon: {
                         Image(systemName: mapOverlayMode == option.mode ? "checkmark" : option.icon)
-                            .foregroundStyle(theme.colors.primaryText)
+                            .foregroundStyle(theme.colors.accent)
                     }
                 }
             }
@@ -70,7 +70,7 @@ extension ContentView {
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(theme.colors.primaryText)
         }
-        .tint(theme.colors.primaryText)
+        .tint(theme.colors.accent)
         .menuOrder(.fixed)
     }
 }

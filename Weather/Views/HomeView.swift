@@ -442,7 +442,7 @@ extension ContentView {
             HStack(spacing: 8) {
                 Image(systemName: "sparkles")
                     .foregroundStyle(theme.colors.dotSun)
-                Text(localizedString("Best Future Dates", locale: locale))
+                Text(localizedString("Best Sunny Dates", locale: locale))
                     .font(.title3.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                 Spacer(minLength: 8)
@@ -580,8 +580,7 @@ extension ContentView {
         }
 
         let fraction = max(0, min(1, Double(sunnyCityCount) / Double(maxSunnyCityCount)))
-        let warmColor = theme.colors.dotSun.compatMix(with: theme.colors.destructive, by: 0.34 * fraction)
-        return warmColor.opacity(0.24 + 0.62 * fraction)
+        return theme.colors.dotSun.opacity(0.24 + 0.62 * fraction)
     }
 
     private func homeSunnyCalendarDayNumber(dayOffset: Int) -> String {
@@ -671,7 +670,12 @@ extension ContentView {
         }
     }
 
-    func sunnyCandidateRow(_ candidate: SunnyCandidate, rank: Int? = nil, compact: Bool = false) -> some View {
+    func sunnyCandidateRow(
+        _ candidate: SunnyCandidate,
+        rank: Int? = nil,
+        compact: Bool = false,
+        deleteAction: (() -> Void)? = nil
+    ) -> some View {
         let icon = sunnyCandidateIcon(for: candidate)
         let cloudText = candidate.cloudCover.map { "\(Int($0 * 100))%" } ?? "-"
         let cloudMetricSpacing: CGFloat = dynamicTypeSize > .large ? 7 : 3
@@ -679,7 +683,24 @@ extension ContentView {
         let cloudColumnWidth: CGFloat = dynamicTypeSize > .large ? 72 : 54
         let verticalPadding: CGFloat = compact ? 8 : 9
         return HStack(spacing: 10) {
-            if let rank {
+            if let deleteAction {
+                Button {
+                    deleteAction()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(theme.colors.destructive)
+                            .frame(width: 28, height: 28)
+
+                        Image(systemName: "minus")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .buttonStyle(.plain)
+                .frame(width: 20, height: 32)
+                .transition(.scale(scale: 0.82).combined(with: .opacity))
+            } else if let rank {
                 Text("\(rank)")
                     .font(.caption.weight(.bold).monospacedDigit())
                     .foregroundStyle(theme.colors.secondaryText)
@@ -692,6 +713,7 @@ extension ContentView {
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
             }
+            .padding(.leading, deleteAction == nil ? 0 : 6)
 
             Spacer(minLength: 8)
 
@@ -777,8 +799,17 @@ extension ContentView {
                                 await switchToList(listID)
                             }
                         } label: {
-                            Text(listID.localizedDisplayName(locale: locale))
-                                .foregroundStyle(theme.colors.primaryText)
+                            HStack {
+                                Text(listID.localizedDisplayName(locale: locale))
+                                    .foregroundStyle(theme.colors.primaryText)
+
+                                Spacer()
+
+                                if listID.rawValue == weatherService.activeListID.rawValue {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(theme.colors.primaryText)
+                                }
+                            }
                         }
                     }
 
@@ -791,7 +822,14 @@ extension ContentView {
                         primaryMenuLabel(localizedString("Add List", locale: locale), systemImage: "plus")
                     }
 
-                    Divider()
+                    Button {
+                        listEditMode = false
+                        listToRenameID = weatherService.activeListID
+                        renameAlertText = weatherService.activeListID.localizedDisplayName(locale: locale)
+                        showingRenameAlert = true
+                    } label: {
+                        primaryMenuLabel(localizedString("Rename List", locale: locale), systemImage: "pencil")
+                    }
 
                     Button {
                         withAnimation(.easeOut(duration: 0.2)) {
@@ -803,6 +841,7 @@ extension ContentView {
                                 .foregroundStyle(theme.colors.primaryText)
                         } icon: {
                             Image(systemName: "trash")
+                                .symbolRenderingMode(.monochrome)
                                 .foregroundStyle(theme.colors.destructive)
                         }
                     }
@@ -820,7 +859,6 @@ extension ContentView {
                     }
                 }
                 .menuOrder(.fixed)
-                .tint(theme.colors.primaryText)
             }
         }
     }

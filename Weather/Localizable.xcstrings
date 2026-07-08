@@ -1434,72 +1434,72 @@
         }
       }
     },
-    "Best Future Dates" : {
+    "Best Sunny Dates" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Beste zukünftige Tage"
+            "value" : "Beste Sonnendaten"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Best Future Dates"
+            "value" : "Best Sunny Dates"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mejores fechas próximas"
+            "value" : "Mejores fechas soleadas"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Meilleures dates à venir"
+            "value" : "Meilleures dates ensoleillées"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Date future migliori"
+            "value" : "Migliori date soleggiate"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "今後のおすすめ日"
+            "value" : "晴れの日ベスト"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "앞으로 좋은 날짜"
+            "value" : "가장 맑은 날짜"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Melhores datas futuras"
+            "value" : "Melhores datas ensolaradas"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Лучшие будущие даты"
+            "value" : "Лучшие солнечные даты"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未来好天气"
+            "value" : "最佳晴天日期"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未來好天氣"
+            "value" : "最佳晴天日期"
           }
         }
       }
@@ -7546,6 +7546,9 @@
           }
         }
       }
+    },
+    "Rename List" : {
+
     },
     "Replay Tutorial" : {
       "localizations" : {

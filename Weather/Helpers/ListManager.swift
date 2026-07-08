@@ -662,10 +662,10 @@ extension ContentView {
                 Text(localizedString("Delete", locale: locale))
             } icon: {
                 Image(systemName: "trash")
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.colors.destructive)
             }
         }
-        .tint(.primary)
+        .tint(theme.colors.destructive)
     }
 
     func beginCreatingListFromSwitcher() {
@@ -770,7 +770,7 @@ extension ContentView {
                             .foregroundStyle(theme.colors.primaryText)
                     } icon: {
                         Image(systemName: "plus")
-                            .foregroundStyle(theme.colors.primaryText)
+                            .foregroundStyle(theme.colors.accent)
                     }
                 }
             }
@@ -780,7 +780,6 @@ extension ContentView {
                 .foregroundColor(.primary)
         }
         .menuOrder(.fixed)
-        .tint(theme.colors.primaryText)
     }
 
 }

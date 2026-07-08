@@ -233,12 +233,12 @@ extension ContentView {
                 .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
                 .contentShape(Circle())
         }
+        .menuOrder(.fixed)
+        .tint(theme.colors.accent)
         .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
         .fixedSize()
         .controlSize(.large)
         .buttonBorderShape(.circle)
-        .menuOrder(.fixed)
-        .tint(theme.colors.primaryText)
         .accessibilityLabel(localizedString("Menu", locale: locale))
     }
 
@@ -248,7 +248,7 @@ extension ContentView {
                 .foregroundStyle(theme.colors.primaryText)
         } icon: {
             Image(systemName: systemImage)
-                .foregroundStyle(theme.colors.primaryText)
+                .foregroundStyle(theme.colors.accent)
         }
     }
 
@@ -404,7 +404,7 @@ extension ContentView {
                     .foregroundStyle(theme.colors.primaryText)
             } icon: {
                 Image(systemName: "eye")
-                    .foregroundStyle(theme.colors.primaryText)
+                    .foregroundStyle(theme.colors.accent)
             }
         }
 
@@ -417,7 +417,7 @@ extension ContentView {
                     .foregroundStyle(theme.colors.primaryText)
             } icon: {
                 Image(systemName: "sun.max")
-                    .foregroundStyle(theme.colors.primaryText)
+                    .foregroundStyle(theme.colors.accent)
             }
         }
 
@@ -429,7 +429,7 @@ extension ContentView {
                     .foregroundStyle(theme.colors.primaryText)
             } icon: {
                 Image(systemName: "arrow.clockwise")
-                    .foregroundStyle(theme.colors.primaryText)
+                    .foregroundStyle(theme.colors.accent)
             }
         }
         .disabled(weatherService.isLoading)
@@ -451,7 +451,7 @@ extension ContentView {
         .controlSize(.large)
         .buttonBorderShape(.circle)
         .menuOrder(.fixed)
-        .tint(theme.colors.primaryText)
+        .tint(theme.colors.accent)
     }
 
     var mapControls: some View {

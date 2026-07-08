@@ -300,8 +300,7 @@ struct SettingsView: View {
                 Button {
                     onReplayTutorial()
                 } label: {
-                    Label(localizedString("Replay Tutorial", locale: locale), systemImage: "play.circle")
-                        .foregroundStyle(theme.colors.dotSun)
+                    settingsLabel(localizedString("Replay Tutorial", locale: locale), systemImage: "play.circle")
                 }
             }
             .listRowBackground(settingsRowBackground)

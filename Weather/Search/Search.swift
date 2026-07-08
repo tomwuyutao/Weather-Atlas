@@ -142,7 +142,6 @@ extension ContentView {
                             isLoading: loadingSearchResultID == result.id
                         )
                     }
-                    .allowsHitTesting(!isLoadingSearchCity)
                     .buttonStyle(.plain)
                     .listRowBackground(theme.colors.background)
                 }
@@ -245,6 +244,7 @@ extension ContentView {
         .padding(.horizontal, rowHorizontalPadding)
         .frame(minHeight: 46)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Result Identity and Sorting
