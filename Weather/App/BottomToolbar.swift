@@ -248,8 +248,11 @@ extension ContentView {
                 .foregroundStyle(theme.colors.primaryText)
         } icon: {
             Image(systemName: systemImage)
+                .symbolRenderingMode(.monochrome)
                 .foregroundStyle(theme.colors.accent)
+                .tint(theme.colors.accent)
         }
+        .tint(theme.colors.accent)
     }
 
     func bottomBackButton(_ route: AppNavigationRoute) -> some View {
@@ -399,38 +402,23 @@ extension ContentView {
             get: { showLegend },
             set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
         )) {
-            Label {
-                Text(localizedString("Legend", locale: locale))
-                    .foregroundStyle(theme.colors.primaryText)
-            } icon: {
-                Image(systemName: "eye")
-                    .foregroundStyle(theme.colors.accent)
-            }
+            primaryMenuLabel(localizedString("Legend", locale: locale), systemImage: "eye")
         }
 
         Toggle(isOn: Binding(
             get: { filterSunny },
             set: { newValue in withAnimation { filterSunny = newValue } }
         )) {
-            Label {
-                Text(localizedString("Filter Sunny", locale: locale))
-                    .foregroundStyle(theme.colors.primaryText)
-            } icon: {
-                Image(systemName: "sun.max")
-                    .foregroundStyle(theme.colors.accent)
-            }
+            primaryMenuLabel(localizedString("Filter Sunny", locale: locale), systemImage: "sun.max")
         }
 
         Button {
             refreshWeather()
         } label: {
-            Label {
-                Text(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"))
-                    .foregroundStyle(theme.colors.primaryText)
-            } icon: {
-                Image(systemName: "arrow.clockwise")
-                    .foregroundStyle(theme.colors.accent)
-            }
+            primaryMenuLabel(
+                localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"),
+                systemImage: "arrow.clockwise"
+            )
         }
         .disabled(weatherService.isLoading)
     }

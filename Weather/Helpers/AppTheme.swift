@@ -31,6 +31,7 @@ enum AppThemeStyle: String, CaseIterable {
 
 struct ThemeColors {
     // Text
+    let titleText: Color
     let primaryText: Color
     let secondaryText: Color
 
@@ -123,8 +124,9 @@ struct ThemeColors {
 
 extension ThemeColors {
     static let light = ThemeColors(
-        primaryText: Color(hex: 0x0F4A9C),
-        secondaryText: Color(hex: 0x4D70D4),
+        titleText: Color(hex: 0x1B3F73),
+        primaryText: Color(hex: 0x1B3F73),
+        secondaryText: Color(hex: 0x516071),
         background: Color(hex: 0xFDF9F3),
         searchOverlayBackground: Color(hex: 0xFDF9F3).opacity(0.97),
         modalOverlay: Color.black.opacity(0.24),
@@ -137,10 +139,10 @@ extension ThemeColors {
         colorfulLand: Color(hex: 0xFDF9F3),
         colorfulLandActive: Color(hex: 0xFDF9F3),
         colorfulBorder: Color(hex: 0xC9C4B8),
-        accent: Color(hex: 0x4D70D4),
+        accent: Color(hex: 0x1B3F73),
         destructive: Color(hex: 0xD03D3B),
         dotSun: Color(hex: 0xFFB84D),
-        dotPartlyCloudy: Color(hex: 0xD8C46F),
+        dotPartlyCloudy: Color(hex: 0xFFE7B3),
         dotCloudy: Color(hex: 0xC8C2B5),
         dotRain: Color(hex: 0x4D70D4),
         dotDrizzle: Color(hex: 0x62B9D2),
@@ -171,8 +173,9 @@ extension ThemeColors {
 
 extension ThemeColors {
     static let dark = ThemeColors(
+        titleText: Color(hex: 0xF7F3EA),
         primaryText: Color(hex: 0xF7F3EA),
-        secondaryText: Color(hex: 0x6F86FF),
+        secondaryText: Color(hex: 0xA9B1C4),
         background: Color(hex: 0x040C1A),
         searchOverlayBackground: Color(hex: 0x040C1A).opacity(0.97),
         modalOverlay: Color.black.opacity(0.5),
@@ -185,33 +188,33 @@ extension ThemeColors {
         colorfulLand: Color(hex: 0x0B1628),
         colorfulLandActive: Color(hex: 0x10213A),
         colorfulBorder: Color(hex: 0x223A5C),
-        accent: Color(hex: 0x6F86FF),
-        destructive: Color(hex: 0xFF4940),
-        dotSun: Color(hex: 0xDD8019),
-        dotPartlyCloudy: Color(hex: 0xB88A45),
-        dotCloudy: Color(hex: 0x8792A8),
-        dotRain: Color(hex: 0x6F86FF),
-        dotDrizzle: Color(hex: 0x5EC4DA),
-        dotSnow: Color(hex: 0xA9B1C4),
-        dotFog: Color(hex: 0x78849A),
-        dotWind: Color(hex: 0x78849A),
-        rainEffect: Color(hex: 0x6F86FF).opacity(0.55),
-        snowEffect: Color(hex: 0xA9B1C4).opacity(0.48),
-        cloudEffect: Color(hex: 0x8792A8),
-        windEffect: Color(hex: 0x78849A).opacity(0.28),
-        sunIconColor: Color(hex: 0xDD8019),
-        cloudIconColor: Color(hex: 0x6F86FF),
-        rainIconColor: Color(hex: 0x8EA0F8),
-        snowIconColor: Color(hex: 0xAEBBFF),
-        moonIconColor: Color(hex: 0x957DF6),
+        accent: Color(hex: 0x1B3F73),
+        destructive: Color(hex: 0xD03D3B),
+        dotSun: Color(hex: 0xFFB84D),
+        dotPartlyCloudy: Color(hex: 0xFFE7B3),
+        dotCloudy: Color(hex: 0xC8C2B5),
+        dotRain: Color(hex: 0x4D70D4),
+        dotDrizzle: Color(hex: 0x62B9D2),
+        dotSnow: Color(hex: 0xC8C2B5),
+        dotFog: Color(hex: 0xC8C2B5),
+        dotWind: Color(hex: 0xC8C2B5),
+        rainEffect: Color(hex: 0x4D70D4).opacity(0.32),
+        snowEffect: Color(hex: 0xE3E0D6).opacity(0.62),
+        cloudEffect: Color(hex: 0xE3E0D6),
+        windEffect: Color(hex: 0xE3E0D6).opacity(0.34),
+        sunIconColor: Color(hex: 0xFFB84D),
+        cloudIconColor: Color(hex: 0x0F4A9C),
+        rainIconColor: Color(hex: 0x8790C4),
+        snowIconColor: Color(hex: 0x0F4A9C),
+        moonIconColor: Color(hex: 0x5A389F),
         listCardFill: Color(hex: 0x0C1828),
         chartPanelFill: Color(hex: 0x101C2D),
         settingsRowFill: Color(hex: 0x0B1628),
         glassFill: Color(hex: 0x0C1828),
         shadow: Color(hex: 0x000000),
-        filterSunny: Color(hex: 0xDD8019),
+        filterSunny: Color(hex: 0xFFB84D),
         tutorialBackground: Color(hex: 0x244F9C),
-        tutorialDot: Color(hex: 0xDD8019)
+        tutorialDot: Color(hex: 0xFFB84D)
     )
 }
 

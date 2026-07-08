@@ -744,7 +744,7 @@ extension ContentView {
     func detailActionsMenu(for city: CityWeather) -> some View {
         Menu {
             if cityIsInActiveList(city) {
-                Button(localizedString("Delete City", locale: locale), systemImage: "trash", role: .destructive) {
+                Button(role: .destructive) {
                     weatherService.removeCity(city)
                     dismissRoute(.cityDetail(city.id))
                     showingMapExpandedCard = false
@@ -752,6 +752,15 @@ extension ContentView {
                     selectedDayOffset = 0
                     if isMapRoute {
                         mapRecenterRequest = .listCoordinates
+                    }
+                } label: {
+                    Label {
+                        Text(localizedString("Delete City", locale: locale))
+                    } icon: {
+                        Image(systemName: "trash")
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(theme.colors.destructive)
+                            .tint(theme.colors.destructive)
                     }
                 }
                 .tint(theme.colors.destructive)
@@ -765,13 +774,7 @@ extension ContentView {
                         }
                     }
                 } label: {
-                    Label {
-                        Text(localizedString("Add City", locale: locale))
-                            .foregroundStyle(theme.colors.primaryText)
-                    } icon: {
-                        Image(systemName: "plus")
-                            .foregroundStyle(theme.colors.accent)
-                    }
+                    primaryMenuLabel(localizedString("Add City", locale: locale), systemImage: "plus")
                 }
             }
         } label: {

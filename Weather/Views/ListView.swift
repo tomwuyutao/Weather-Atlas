@@ -68,9 +68,16 @@ extension ContentView {
                         listEditMode = false
                     }
                 } label: {
-                    listToolbarActionIcon("checkmark", accessibilityLabel: localizedString("Done", locale: locale))
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(width: 36, height: 36)
+                        .contentShape(Circle())
+                        .accessibilityLabel(localizedString("Done", locale: locale))
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.borderedProminent)
+                .buttonBorderShape(.circle)
+                .controlSize(.large)
+                .tint(theme.colors.accent)
             } else {
                 Menu {
                     ForEach(WeatherListSortMode.allCases) { mode in
@@ -174,13 +181,13 @@ extension ContentView {
         } label: {
             HStack(spacing: 4) {
                 Text(toolbarTitle)
-                    .font(.system(.title, design: .serif).weight(.semibold))
+                    .font(.system(size: 34, weight: .semibold, design: .serif))
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
 
                 Image(systemName: "chevron.down")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(theme.colors.primaryText)
+                    .foregroundStyle(theme.colors.accent)
             }
         }
         .menuOrder(.fixed)

@@ -92,7 +92,7 @@ extension ContentView {
         VStack(spacing: 9) {
             Text(city.city.localizedName(locale: locale))
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
-                .foregroundStyle(theme.colors.primaryText)
+                .foregroundStyle(theme.colors.titleText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
                 .multilineTextAlignment(.center)
@@ -168,7 +168,7 @@ extension ContentView {
                 title: localizedString("Wind", locale: locale),
                 value: windSpeed.map { distanceUnit.displayWindSpeed($0, locale: locale) } ?? "-",
                 systemImage: "wind",
-                tint: theme.colors.secondaryText
+                tint: theme.colors.accent
             )
         }
     }
@@ -283,7 +283,7 @@ extension ContentView {
                 chartMetric: .cloudCover,
                 dayOffset: selectedDayOffset,
                 cityTimeZone: timeZone,
-                lineColor: theme.colors.dotRain,
+                lineColor: theme.colors.accent,
                 showAllHours: true,
                 compactLayout: true,
                 placesLabelsBelowChart: true,

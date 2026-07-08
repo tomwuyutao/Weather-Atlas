@@ -54,13 +54,7 @@ extension ContentView {
                         forceReloadMapDots()
                     }
                 } label: {
-                    Label {
-                        Text(option.label)
-                            .foregroundStyle(theme.colors.primaryText)
-                    } icon: {
-                        Image(systemName: mapOverlayMode == option.mode ? "checkmark" : option.icon)
-                            .foregroundStyle(theme.colors.accent)
-                    }
+                    primaryMenuLabel(option.label, systemImage: mapOverlayMode == option.mode ? "checkmark" : option.icon)
                 }
             }
         } label: {

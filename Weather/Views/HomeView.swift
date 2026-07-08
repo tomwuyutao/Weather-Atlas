@@ -407,7 +407,7 @@ extension ContentView {
                 Image(systemName: sectionIcon)
                     .foregroundStyle(theme.colors.dotSun)
                 Text(sectionTitle)
-                    .font(.title3.weight(.semibold))
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                 Spacer(minLength: 8)
             }
@@ -443,7 +443,7 @@ extension ContentView {
                 Image(systemName: "sparkles")
                     .foregroundStyle(theme.colors.dotSun)
                 Text(localizedString("Best Sunny Dates", locale: locale))
-                    .font(.title3.weight(.semibold))
+                    .font(.headline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                 Spacer(minLength: 8)
             }
@@ -459,8 +459,8 @@ extension ContentView {
                     LazyVGrid(columns: homeSunnyCalendarColumns, spacing: 0) {
                         ForEach(homeSunnyCalendarWeekdayLabels, id: \.self) { label in
                             Text(label)
-                                .font(.caption.weight(.semibold))
-                                .foregroundStyle(theme.colors.secondaryText)
+                                .font(.caption2.weight(.medium))
+                                .foregroundStyle(theme.colors.secondaryText.opacity(0.45))
                                 .frame(maxWidth: .infinity)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.72)
@@ -557,8 +557,8 @@ extension ContentView {
                 .fill(fill)
 
             Text(homeSunnyCalendarDayNumber(dayOffset: day.dayOffset))
-                .font(.headline.weight(.semibold).monospacedDigit())
-                .foregroundStyle(day.isForecastDate ? theme.colors.primaryText : theme.colors.secondaryText.opacity(0.50))
+                .font(.system(size: 18, weight: homeSunnyCalendarDayWeight(day, isSelected: isSelected), design: .default).monospacedDigit())
+                .foregroundStyle(homeSunnyCalendarDayTextColor(day, isSelected: isSelected))
                 .lineLimit(1)
         }
         .overlay {
@@ -581,6 +581,20 @@ extension ContentView {
 
         let fraction = max(0, min(1, Double(sunnyCityCount) / Double(maxSunnyCityCount)))
         return theme.colors.dotSun.opacity(0.24 + 0.62 * fraction)
+    }
+
+    private func homeSunnyCalendarDayWeight(_ day: HomeSunnyCalendarDate, isSelected: Bool) -> Font.Weight {
+        if !day.isForecastDate {
+            return .medium
+        }
+        return isSelected ? .bold : .semibold
+    }
+
+    private func homeSunnyCalendarDayTextColor(_ day: HomeSunnyCalendarDate, isSelected: Bool) -> Color {
+        if !day.isForecastDate {
+            return theme.colors.primaryText.opacity(0.45)
+        }
+        return isSelected ? theme.colors.accent : theme.colors.primaryText
     }
 
     private func homeSunnyCalendarDayNumber(dayOffset: Int) -> String {
@@ -644,13 +658,13 @@ extension ContentView {
             ForEach(Array(listPreviewCities.enumerated()), id: \.element.id) { index, city in
                 HStack(spacing: 10) {
                     Text("\(index + 1)")
-                        .font(.caption.weight(.bold).monospacedDigit())
+                        .font(.subheadline.weight(.bold).monospacedDigit())
                         .foregroundStyle(theme.colors.secondaryText)
-                        .frame(width: 20)
+                        .frame(width: 24)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(city.localizedName(locale: locale))
-                            .font(.headline.weight(.semibold))
+                            .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
                     }
@@ -698,18 +712,18 @@ extension ContentView {
                     }
                 }
                 .buttonStyle(.plain)
-                .frame(width: 20, height: 32)
+                .frame(width: 24, height: 32)
                 .transition(.scale(scale: 0.82).combined(with: .opacity))
             } else if let rank {
                 Text("\(rank)")
-                    .font(.caption.weight(.bold).monospacedDigit())
+                    .font(.subheadline.weight(.bold).monospacedDigit())
                     .foregroundStyle(theme.colors.secondaryText)
-                    .frame(width: 20)
+                    .frame(width: 24)
             }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(candidate.cityWeather.city.localizedName(locale: locale))
-                    .font(.headline.weight(.semibold))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
             }
@@ -781,13 +795,14 @@ extension ContentView {
                 } label: {
                     HStack(spacing: 6) {
                         Text(toolbarTitle)
-                            .font(.system(.title, design: .serif).weight(.semibold))
+                            .font(.system(size: 34, weight: .semibold, design: .serif))
                             .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
                         Image(systemName: "pencil")
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(theme.colors.primaryText)
+                            .foregroundStyle(theme.colors.accent)
                     }
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
             } else {
@@ -848,13 +863,13 @@ extension ContentView {
                 } label: {
                     HStack(spacing: 6) {
                         Text(titleOverride ?? toolbarTitle)
-                            .font(.system(.title, design: .serif).weight(.semibold))
+                            .font(.system(size: 34, weight: .semibold, design: .serif))
                             .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
                         if titleOverride == nil {
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(theme.colors.primaryText)
+                                .foregroundStyle(theme.colors.accent)
                         }
                     }
                 }
