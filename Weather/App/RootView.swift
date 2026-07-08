@@ -238,12 +238,8 @@ extension ContentView {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if !showingSearchSheet {
-                    homeBottomToolbar
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 6)
-                }
+            .toolbar {
+                nativeBottomToolbarItems
             }
             .onAppear {
                 showingMapExpandedCard = false
@@ -256,14 +252,8 @@ extension ContentView {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(false)
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if !showingSearchSheet {
-                    mapBottomToolbar
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 6)
-                        .opacity(showingMapDateSliderTutorial && !isFadingMapDateSliderTutorial ? 0.28 : 1)
-                        .animation(.easeOut(duration: 0.5), value: isFadingMapDateSliderTutorial)
-                }
+            .toolbar {
+                nativeBottomToolbarItems
             }
             .onAppear {
                 centerMapOnDots(useListCoordinates: true)
@@ -276,12 +266,8 @@ extension ContentView {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if !showingSearchSheet {
-                    backDateBottomToolbar(.list)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 6)
-                }
+            .toolbar {
+                nativeBottomToolbarItems
             }
             .onAppear {
                 showingMapExpandedCard = false
@@ -493,10 +479,8 @@ extension ContentView {
             .navigationBarTitleDisplayMode(.inline)
             .navigationBarBackButtonHidden(true)
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                floatingBottomToolbar
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 6)
+            .toolbar {
+                nativeBottomToolbarItems
             }
             .onAppear {
                 showingMapExpandedCard = false

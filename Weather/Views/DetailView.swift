@@ -21,13 +21,8 @@ extension ContentView {
 
     func cityDetailView(for city: CityWeather, route: AppNavigationRoute) -> some View {
         cityDetailScrollContent(for: city)
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                if !showingSearchSheet {
-                    floatingBottomToolbar
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 6)
-                        .zIndex(100)
-                }
+            .toolbar {
+                nativeBottomToolbarItems
             }
             .background {
                 theme.colors.background

@@ -33,7 +33,79 @@ extension ContentView {
 // MARK: - Floating Bottom Toolbar
 
 extension ContentView {
-    var dateSwitcherCapsule: some View {
+    @ToolbarContentBuilder
+    var nativeBottomToolbarItems: some ToolbarContent {
+        if !showingSearchSheet {
+            if #available(iOS 26.0, *) {
+                ToolbarItem(placement: .bottomBar) {
+                    bottomLeadingToolbarControl
+                }
+
+                ToolbarSpacer(.flexible, placement: .bottomBar)
+
+                ToolbarItem(placement: .bottomBar) {
+                    bottomCenterToolbarControl
+                }
+
+                ToolbarSpacer(.flexible, placement: .bottomBar)
+
+                ToolbarItem(placement: .bottomBar) {
+                    bottomTrailingToolbarControl
+                }
+            } else {
+                ToolbarItem(placement: .bottomBar) {
+                    HStack(spacing: 12) {
+                        bottomLeadingToolbarControl
+
+                        Spacer(minLength: 12)
+
+                        bottomCenterToolbarControl
+
+                        Spacer(minLength: 12)
+
+                        bottomTrailingToolbarControl
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    var bottomLeadingToolbarControl: some View {
+        if isListPreviewActive {
+            bottomCancelListPreviewButton
+        } else if let route = currentRoute {
+            bottomBackButton(route)
+        } else {
+            bottomMoreButton
+        }
+    }
+
+    @ViewBuilder
+    var bottomCenterToolbarControl: some View {
+        if isListPreviewActive {
+            listPreviewCountPickerControl
+        } else if isMapRoute {
+            mapControls
+                .opacity(showingMapDateSliderTutorial && !isFadingMapDateSliderTutorial ? 0.28 : 1)
+                .animation(.easeOut(duration: 0.5), value: isFadingMapDateSliderTutorial)
+        } else {
+            dateSwitcherControl
+        }
+    }
+
+    @ViewBuilder
+    var bottomTrailingToolbarControl: some View {
+        if isListPreviewActive {
+            bottomConfirmListPreviewButton
+        } else if currentRoute == .addCityDetail || temporaryMapSearchCity != nil {
+            bottomAddSearchedCityButton
+        } else {
+            bottomSearchButton
+        }
+    }
+
+    var dateSwitcherControl: some View {
         HStack(spacing: 8) {
             Image(systemName: "chevron.left")
                 .font(.system(size: 14, weight: .semibold))
@@ -108,77 +180,6 @@ extension ContentView {
                     }
                 }
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
-        .themedGlass(in: .capsule)
-        .transition(.scale.combined(with: .opacity))
-    }
-
-    var floatingBottomToolbar: some View {
-        HStack(alignment: .center) {
-            if isListPreviewActive {
-                bottomCancelListPreviewButton
-            } else if let route = currentRoute {
-                bottomBackButton(route)
-            } else {
-                bottomMoreButton
-            }
-
-            Spacer(minLength: 12)
-
-            Group {
-                if isListPreviewActive {
-                    listPreviewCountPickerCapsule
-                } else {
-                    dateSwitcherCapsule
-                }
-            }
-            .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
-
-            Spacer(minLength: 12)
-
-            if isListPreviewActive {
-                bottomConfirmListPreviewButton
-            } else if currentRoute == .addCityDetail || temporaryMapSearchCity != nil {
-                bottomAddSearchedCityButton
-            } else {
-                bottomSearchButton
-            }
-        }
-    }
-
-    var homeBottomToolbar: some View {
-        floatingBottomToolbar
-    }
-
-    func backDateBottomToolbar(_ route: AppNavigationRoute) -> some View {
-        floatingBottomToolbar
-    }
-
-    var mapBottomToolbar: some View {
-        HStack(alignment: .center) {
-            if let route = currentRoute {
-                bottomBackButton(route)
-            } else {
-                bottomMoreButton
-            }
-
-            Spacer(minLength: 12)
-
-            mapControls
-                .padding(.horizontal, 6)
-                .padding(.vertical, 5)
-                .themedGlass(in: .capsule)
-                .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
-
-            Spacer(minLength: 12)
-
-            if temporaryMapSearchCity != nil {
-                bottomAddSearchedCityButton
-            } else {
-                bottomSearchButton
-            }
-        }
     }
 
     var bottomSearchButton: some View {
@@ -192,8 +193,6 @@ extension ContentView {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .themedGlass(in: Circle())
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
         .accessibilityLabel(localizedString("Search", locale: locale))
     }
 
@@ -221,8 +220,6 @@ extension ContentView {
         .buttonStyle(.plain)
         .menuOrder(.fixed)
         .tint(theme.colors.primaryText)
-        .themedGlass(in: Circle())
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
         .accessibilityLabel(localizedString("Menu", locale: locale))
     }
 
@@ -247,8 +244,6 @@ extension ContentView {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .themedGlass(in: Circle())
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
         .accessibilityLabel(localizedString("Back", locale: locale))
     }
 
@@ -263,8 +258,6 @@ extension ContentView {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .themedGlass(in: Circle())
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
         .accessibilityLabel(localizedString("Cancel", locale: locale))
     }
 
@@ -279,13 +272,11 @@ extension ContentView {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .themedGlass(in: Circle())
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
         .disabled(listPreviewCities.isEmpty)
         .accessibilityLabel(localizedString("Add", locale: locale))
     }
 
-    var listPreviewCountPickerCapsule: some View {
+    var listPreviewCountPickerControl: some View {
         HStack(spacing: 8) {
             Button {
                 guard listPreviewCityCount > 1 else { return }
@@ -325,12 +316,8 @@ extension ContentView {
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
-            .disabled(listPreviewCityCount >= listPreviewMaximumCount)
+                .disabled(listPreviewCityCount >= listPreviewMaximumCount)
         }
-        .padding(.horizontal, 6)
-        .padding(.vertical, 5)
-        .themedGlass(in: .capsule)
-        .transition(.scale.combined(with: .opacity))
     }
 
     var bottomAddSearchedCityButton: some View {
@@ -351,8 +338,6 @@ extension ContentView {
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .themedGlass(in: Circle())
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.22 : 0.10), radius: 18, y: 8)
         .disabled(addCityDetailCity == nil || lists.isEmpty)
         .accessibilityLabel(localizedString("Add", locale: locale))
         .confirmationDialog(
