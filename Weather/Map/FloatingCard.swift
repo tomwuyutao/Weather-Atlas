@@ -58,7 +58,7 @@ extension ContentView {
                         .padding(.top, 4)
 
                     if !hideCityName {
-                        Text(cityWeather.city.localizedName(locale: locale))
+                        Text(localizedCityName(for: cityWeather.city))
                             .font(phoneCardTitleFont)
                             .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
@@ -185,7 +185,7 @@ extension ContentView {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .center, spacing: 6) {
                     if !hideCityName {
-                        Text(cityWeather.city.localizedName(locale: locale))
+                        Text(localizedCityName(for: cityWeather.city))
                             .font(.title.weight(.semibold))
                             .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)

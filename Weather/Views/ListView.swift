@@ -15,25 +15,17 @@ extension ContentView {
         ZStack(alignment: .top) {
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(Array(sortedListCandidates.enumerated()), id: \.element.id) { index, candidate in
-                        if listEditMode {
-                            listRow(candidate, rank: nil) {
-                                removeListCity(candidate.cityWeather)
-                            }
-                        } else {
-                            Button {
-                                presentDetail(for: candidate.cityWeather)
-                            } label: {
-                                listRow(candidate, rank: index + 1)
-                            }
-                            .buttonStyle(.plain)
-                            .contextMenu {
-                                cityActions(for: candidate.cityWeather, in: weatherService.activeListID)
-                            } preview: {
-                                listContextPreviewRow(candidate, rank: index + 1)
-                            }
-                        }
-                    }
+                    listCandidateRows(
+                        sortedListCandidates,
+                        showsDividers: false,
+                        selectionAction: { candidate in
+                            presentDetail(for: candidate.cityWeather)
+                        },
+                        deleteAction: listEditMode ? { candidate in
+                            removeListCity(candidate.cityWeather)
+                        } : nil,
+                        contextMenuListID: weatherService.activeListID
+                    )
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 76)
@@ -186,6 +178,51 @@ extension ContentView {
 
     func listRow(_ candidate: SunnyCandidate, rank: Int?, deleteAction: (() -> Void)? = nil) -> some View {
         sunnyCandidateRow(candidate, rank: rank, compact: true, deleteAction: deleteAction)
+    }
+
+    @ViewBuilder
+    func listCandidateRows(
+        _ candidates: [SunnyCandidate],
+        showsDividers: Bool,
+        selectionAction: ((SunnyCandidate) -> Void)?,
+        deleteAction: ((SunnyCandidate) -> Void)? = nil,
+        contextMenuListID: CityListID? = nil
+    ) -> some View {
+        ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
+            let candidateDeleteAction = deleteAction.map { action in
+                { action(candidate) }
+            }
+            let rank = candidateDeleteAction == nil ? index + 1 : nil
+
+            if let selectionAction, candidateDeleteAction == nil, let contextMenuListID {
+                Button {
+                    selectionAction(candidate)
+                } label: {
+                    listRow(candidate, rank: rank)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    cityActions(for: candidate.cityWeather, in: contextMenuListID)
+                } preview: {
+                    listContextPreviewRow(candidate, rank: index + 1)
+                }
+            } else if let selectionAction, candidateDeleteAction == nil {
+                Button {
+                    selectionAction(candidate)
+                } label: {
+                    listRow(candidate, rank: rank)
+                }
+                .buttonStyle(.plain)
+            } else {
+                listRow(candidate, rank: rank, deleteAction: candidateDeleteAction)
+            }
+
+            if showsDividers && index < candidates.count - 1 {
+                Divider()
+                    .background(theme.colors.secondaryText.opacity(0.16))
+                    .padding(.leading, 34)
+            }
+        }
     }
 
     private func listContextPreviewRow(_ candidate: SunnyCandidate, rank: Int) -> some View {

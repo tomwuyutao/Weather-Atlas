@@ -85,8 +85,10 @@ struct ContentView: View {
     @State var showingCountryListSearchSheet = false
     @State var countryListSearchText: String = ""
     @State var listPreviewName: String?
+    @State var listPreviewNameSource: CityListNameSource?
     @State var listPreviewAllCities: [City] = []
     @State var listPreviewCityCount = CountryCityCatalog.defaultCountryCityCount
+    @State var localizedCityNameCache: [String: String] = [:]
     @State var daytimeScoreRefetchKeys: Set<String> = []
     @AppStorage("showLegend") var showLegend: Bool = true
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
@@ -137,6 +139,41 @@ struct ContentView: View {
             return "\(count) \(localizedString("City", locale: locale))"
         }
         return "\(count) \(localizedString("Cities", locale: locale))"
+    }
+
+    func localizedCityName(for city: City) -> String {
+        let fallback = city.localizedName(locale: locale)
+        let languageIdentifier = CityNameTranslationCache.languageIdentifier(for: locale)
+        guard !languageIdentifier.hasPrefix("en") else { return fallback }
+        let key = CityNameTranslationCache.key(for: city)
+        return localizedCityNameCache[key] ?? fallback
+    }
+
+    var cityNameTranslationInputs: [CityNameTranslationInput] {
+        let languageIdentifier = CityNameTranslationCache.languageIdentifier(for: locale)
+        guard !languageIdentifier.hasPrefix("en") else { return [] }
+
+        let optionalCities = [addCityDetailCity?.city, temporaryMapSearchCity?.city].compactMap { $0 }
+        let cities = mapCities.map(\.city)
+            + listViewCities.map(\.city)
+            + listPreviewAllCities
+            + optionalCities
+
+        var seenKeys: Set<String> = []
+        return cities.compactMap { city in
+            let sourceName = city.localizedName(locale: Locale(identifier: "en"))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !sourceName.isEmpty else { return nil }
+            let key = CityNameTranslationCache.key(for: city)
+            guard localizedCityNameCache[key] == nil, seenKeys.insert(key).inserted else { return nil }
+            return CityNameTranslationInput(key: key, sourceName: sourceName)
+        }
+    }
+
+    var cityNameTranslationTaskID: String {
+        let languageIdentifier = CityNameTranslationCache.languageIdentifier(for: locale)
+        let keys = cityNameTranslationInputs.map(\.key).sorted().joined(separator: "|")
+        return "\(languageIdentifier):\(keys)"
     }
 
     /// Cities to display in the list view: the saved active list only.

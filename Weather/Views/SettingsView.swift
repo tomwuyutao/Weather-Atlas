@@ -241,12 +241,16 @@ struct SettingsView: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.openURL) private var openURL
 
     @State private var showingEmailCopied = false
     @State private var showingAttributions = false
     @State private var showingUnits = false
     @State private var showingTextSize = false
+    @State private var textSizeSliderValue = Double(AppTextSizeLevel.defaultRawValue)
+    @State private var isDraggingTextSizeSlider = false
+    @State private var isCommittingTextSizeSlider = false
 
     // MARK: Resolved Preferences
 
@@ -470,42 +474,238 @@ struct SettingsView: View {
                 }
             }
             .listRowBackground(settingsRowBackground)
+
+            Section {
+                VStack(alignment: .leading, spacing: 8) {
+                    textSizePreviewCard
+                        .environment(\.dynamicTypeSize, textSizePreviewDynamicTypeSize)
+
+                    Text(localizedString("This previews how text size affects the app.", locale: locale))
+                        .font(.footnote)
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .listRowBackground(settingsRowBackground)
         }
         .scrollContentBackground(.hidden)
         .background(settingsFormBackground)
+        .onAppear {
+            textSizeSliderValue = Double(appTextSizeLevel)
+        }
+        .onChange(of: appTextSizeLevel) { _, newValue in
+            if isCommittingTextSizeSlider {
+                isCommittingTextSizeSlider = false
+                return
+            }
+            guard !isDraggingTextSizeSlider else { return }
+            textSizeSliderValue = Double(newValue)
+        }
     }
 
     private var steppedTextSizeSlider: some View {
-        ZStack {
-            GeometryReader { proxy in
-                let stepCount = AppTextSizeLevel.allCases.count
-                let trackInset: CGFloat = 12
-                let availableWidth = max(0, proxy.size.width - trackInset * 2)
-
-                ForEach(0..<stepCount, id: \.self) { index in
-                    Rectangle()
-                        .fill(theme.colors.secondaryText.opacity(useSystemTextSize ? 0.18 : 0.34))
-                        .frame(width: 3, height: 18)
-                        .position(
-                            x: trackInset + availableWidth * CGFloat(index) / CGFloat(stepCount - 1),
-                            y: proxy.size.height / 2
-                        )
+        Slider(
+            value: Binding(
+                get: { textSizeSliderValue },
+                set: { newValue in
+                    textSizeSliderValue = min(max(newValue, 0), Double(AppTextSizeLevel.allCases.count - 1))
+                }
+            ),
+            in: 0...Double(AppTextSizeLevel.allCases.count - 1),
+            onEditingChanged: { isEditing in
+                isDraggingTextSizeSlider = isEditing
+                if !isEditing {
+                    commitTextSizeSliderValue()
                 }
             }
-            .allowsHitTesting(false)
-
-            Slider(
-                value: Binding(
-                    get: { Double(appTextSizeLevel) },
-                    set: { appTextSizeLevel = Int($0.rounded()) }
-                ),
-                in: 0...Double(AppTextSizeLevel.allCases.count - 1),
-                step: 1
-            )
-            .disabled(useSystemTextSize)
-            .tint(theme.colors.accent)
-        }
+        )
+        .disabled(useSystemTextSize)
+        .tint(theme.colors.accent)
         .frame(height: 36)
+    }
+
+    private func commitTextSizeSliderValue() {
+        let maximumLevel = AppTextSizeLevel.allCases.count - 1
+        let roundedValue = min(max(Int(textSizeSliderValue.rounded()), 0), maximumLevel)
+        isCommittingTextSizeSlider = true
+        appTextSizeLevel = roundedValue
+        Task { @MainActor in
+            await Task.yield()
+            isCommittingTextSizeSlider = false
+        }
+    }
+
+    private var textSizePreviewDynamicTypeSize: DynamicTypeSize {
+        if useSystemTextSize {
+            return dynamicTypeSize
+        }
+        let previewLevel = AppTextSizeLevel(rawValue: Int(textSizeSliderValue.rounded())) ?? selectedTextSizeLevel
+        return previewLevel.dynamicTypeSize
+    }
+
+    private var textSizePreviewCard: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "sun.max.fill")
+                    .foregroundStyle(theme.colors.dotSun)
+                Text(localizedString("Best Sunny Places", locale: locale))
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                Spacer(minLength: 8)
+            }
+
+            let candidates = textSizePreviewCandidates
+            if candidates.isEmpty {
+                Text(localizedString("No sunny places for this date.", locale: locale))
+                    .font(.callout)
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 12)
+                    .background(theme.colors.glassFill.opacity(0.42), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
+                        SunnyCandidateRow(
+                            candidate: candidate,
+                            rank: index + 1,
+                            compact: true,
+                            tempUnit: selectedUnit
+                        )
+
+                        if index < candidates.count - 1 {
+                            Divider()
+                                .background(theme.colors.secondaryText.opacity(0.16))
+                                .padding(.leading, 34)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var textSizePreviewCandidates: [SunnyCandidate] {
+        Array(
+            textSizePreviewCandidates(for: textSizePreviewCities, dayOffset: textSizePreviewDayOffset)
+                .filter { $0.condition.isSunny }
+                .prefix(3)
+        )
+    }
+
+    private var textSizePreviewDayOffset: Int {
+        let cities = textSizePreviewCities
+        let dayOffsets = Array(1...9)
+        return dayOffsets.first { dayOffset in
+            textSizePreviewCandidates(for: cities, dayOffset: dayOffset).contains { $0.condition.isSunny }
+        } ?? 1
+    }
+
+    private var textSizePreviewCities: [CityWeather] {
+        weatherService.cityWeatherData.isEmpty ? Self.samplePreviewCities : weatherService.cityWeatherData
+    }
+
+    private func textSizePreviewCandidates(for cities: [CityWeather], dayOffset: Int) -> [SunnyCandidate] {
+        cities
+            .map { cityWeather -> SunnyCandidate in
+                let forecast = cityWeather.forecast(for: dayOffset)
+                let condition = SunninessScoring.condition(for: forecast.symbolName)
+                return SunnyCandidate(
+                    cityWeather: cityWeather,
+                    score: condition.sunninessScore,
+                    condition: condition,
+                    cloudCover: forecast.cloudCover,
+                    precipitationChance: forecast.precipitationChance,
+                    temperature: forecast.dailyHigh
+                )
+            }
+            .sorted(by: isBetterTextSizePreviewCandidate)
+    }
+
+    private func isBetterTextSizePreviewCandidate(_ lhs: SunnyCandidate, than rhs: SunnyCandidate) -> Bool {
+        if lhs.condition.sunninessRank != rhs.condition.sunninessRank {
+            return lhs.condition.sunninessRank < rhs.condition.sunninessRank
+        }
+
+        switch (lhs.cloudCover, rhs.cloudCover) {
+        case let (lhsCloud?, rhsCloud?) where lhsCloud != rhsCloud:
+            return lhsCloud < rhsCloud
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        default:
+            return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
+        }
+    }
+
+    private static let samplePreviewCities: [CityWeather] = [
+        samplePreviewCity(name: "Barcelona", country: "Spain", latitude: 41.3874, longitude: 2.1686, dayOneSymbol: "sun.max.fill", high: 29, cloudCover: 0.08),
+        samplePreviewCity(name: "Rome", country: "Italy", latitude: 41.9028, longitude: 12.4964, dayOneSymbol: "sun.max.fill", high: 28, cloudCover: 0.12),
+        samplePreviewCity(name: "Lisbon", country: "Portugal", latitude: 38.7223, longitude: -9.1393, dayOneSymbol: "cloud.sun", high: 25, cloudCover: 0.32)
+    ]
+
+    private static func samplePreviewCity(
+        name: String,
+        country: String,
+        latitude: Double,
+        longitude: Double,
+        dayOneSymbol: String,
+        high: Double,
+        cloudCover: Double
+    ) -> CityWeather {
+        let city = City(
+            name: name,
+            country: country,
+            latitude: latitude,
+            longitude: longitude,
+            timeZoneIdentifier: "Europe/Madrid"
+        )
+        let forecasts = (0..<10).map { dayOffset in
+            samplePreviewForecast(
+                dayOffset: dayOffset,
+                symbolName: dayOffset == 1 ? dayOneSymbol : "cloud.sun",
+                high: high + Double(dayOffset % 3),
+                cloudCover: dayOffset == 1 ? cloudCover : 0.45
+            )
+        }
+        let condition = AppWeatherCondition.fromWeatherSymbol(dayOneSymbol)
+        return CityWeather(
+            city: city,
+            condition: condition,
+            temperature: high,
+            symbolName: dayOneSymbol,
+            dailyForecasts: forecasts,
+            timeZone: TimeZone(identifier: city.timeZoneIdentifier ?? "Europe/Madrid") ?? .current,
+            currentCloudCover: cloudCover
+        )
+    }
+
+    private static func samplePreviewForecast(
+        dayOffset: Int,
+        symbolName: String,
+        high: Double,
+        cloudCover: Double
+    ) -> DailyForecast {
+        DailyForecast(
+            dayOffset: dayOffset,
+            dailyLow: high - 7,
+            dailyHigh: high,
+            symbolName: symbolName,
+            condition: AppWeatherCondition.fromWeatherSymbol(symbolName),
+            hourlyForecasts: [],
+            cloudCover: cloudCover,
+            precipitationChance: cloudCover > 0.65 ? 0.18 : 0.03,
+            visibility: 24,
+            feelsLikeLow: nil,
+            feelsLikeHigh: nil,
+            humidity: 0.48,
+            windSpeed: 9,
+            uvIndex: 7,
+            maxHumidity: 0.58,
+            maxVisibility: 24,
+            sunrise: nil,
+            sunset: nil
+        )
     }
 
     private var unitsForm: some View {

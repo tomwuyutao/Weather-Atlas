@@ -91,7 +91,7 @@ extension ContentView {
 
     private func detailCityNameHeader(city: CityWeather, icon: String, symbolName: String) -> some View {
         VStack(spacing: 9) {
-            Text(city.city.localizedName(locale: locale))
+            Text(localizedCityName(for: city.city))
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
                 .foregroundStyle(theme.colors.titleText)
                 .lineLimit(1)
@@ -390,6 +390,10 @@ extension ContentView {
             DetailMapContextView(
                 selectedCity: city,
                 nearbyCities: nearbyCities,
+                selectedCityName: localizedCityName(for: city.city),
+                nearbyCityNames: Dictionary(uniqueKeysWithValues: nearbyCities.map {
+                    ($0.cityWeather.id, localizedCityName(for: $0.cityWeather.city))
+                }),
                 selectedDayOffset: selectedDayOffset,
                 locale: locale,
                 accent: theme.colors.accent,
@@ -430,7 +434,7 @@ extension ContentView {
                 .frame(width: 22, height: 24)
 
             VStack(alignment: .leading, spacing: 1) {
-                Text(nearbyCity.cityWeather.city.localizedName(locale: locale))
+                Text(localizedCityName(for: nearbyCity.cityWeather.city))
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
@@ -938,6 +942,8 @@ private struct DetailNearbyCityContext: Identifiable {
 private struct DetailMapContextView: View {
     let selectedCity: CityWeather
     let nearbyCities: [DetailNearbyCityContext]
+    let selectedCityName: String
+    let nearbyCityNames: [UUID: String]
     let selectedDayOffset: Int
     let locale: Locale
     let accent: Color
@@ -945,8 +951,33 @@ private struct DetailMapContextView: View {
     let onSelectMapCity: (CityWeather) -> Void
     let onSelectCity: (CityWeather) -> Void
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var cameraPosition: MapCameraPosition = .automatic
     private let mapSaturation: Double = 0.72
+
+    private var usesExpandedMarkers: Bool {
+        dynamicTypeSize > .large
+    }
+
+    private var selectedMarkerHorizontalPadding: CGFloat {
+        usesExpandedMarkers ? 12 : 9
+    }
+
+    private var selectedMarkerVerticalPadding: CGFloat {
+        usesExpandedMarkers ? 8 : 6
+    }
+
+    private var nearbyMarkerHorizontalPadding: CGFloat {
+        usesExpandedMarkers ? 10 : 7
+    }
+
+    private var nearbyMarkerVerticalPadding: CGFloat {
+        usesExpandedMarkers ? 7 : 5
+    }
+
+    private var markerSpacing: CGFloat {
+        usesExpandedMarkers ? 7 : 5
+    }
 
     private var markerSaturationCompensation: Double {
         mapSaturation == 0 ? 1 : 1 / mapSaturation
@@ -1002,18 +1033,19 @@ private struct DetailMapContextView: View {
 
     private var selectedCityMarker: some View {
         let icon = weatherIcon(for: selectedCity)
-        return HStack(spacing: 6) {
+        return HStack(spacing: markerSpacing) {
             Image(systemName: icon)
                 .font(.system(size: 10, weight: .semibold))
                 .nearbyCityIconStyle(for: icon)
 
-            Text(selectedCity.city.localizedName(locale: locale))
+            Text(selectedCityName)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                 .lineLimit(1)
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 6)
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal, selectedMarkerHorizontalPadding)
+        .padding(.vertical, selectedMarkerVerticalPadding)
         .background(.thinMaterial, in: Capsule())
         .overlay {
             Capsule()
@@ -1025,23 +1057,24 @@ private struct DetailMapContextView: View {
 
     private func nearbyWeatherMarker(for nearbyCity: DetailNearbyCityContext) -> some View {
         let icon = weatherIcon(for: nearbyCity.cityWeather)
-        return HStack(spacing: 5) {
+        return HStack(spacing: markerSpacing) {
             Image(systemName: icon)
                 .font(.system(size: 10, weight: .semibold))
                 .nearbyCityIconStyle(for: icon)
 
-            Text(nearbyCity.cityWeather.city.localizedName(locale: locale))
+            Text(nearbyCityNames[nearbyCity.cityWeather.id] ?? nearbyCity.cityWeather.city.localizedName(locale: locale))
                 .font(.caption2.weight(.semibold))
                 .foregroundStyle(AppTheme.shared.colors.primaryText)
                 .lineLimit(1)
 
         }
-        .padding(.horizontal, 7)
-        .padding(.vertical, 5)
+        .fixedSize(horizontal: true, vertical: false)
+        .padding(.horizontal, nearbyMarkerHorizontalPadding)
+        .padding(.vertical, nearbyMarkerVerticalPadding)
         .background(.thinMaterial, in: Capsule())
         .shadow(color: .black.opacity(0.10), radius: 6, y: 2)
         .saturation(markerSaturationCompensation)
-        .accessibilityLabel(nearbyCity.cityWeather.city.localizedName(locale: locale))
+        .accessibilityLabel(nearbyCityNames[nearbyCity.cityWeather.id] ?? nearbyCity.cityWeather.city.localizedName(locale: locale))
     }
 
     private func weatherIcon(for city: CityWeather) -> String {

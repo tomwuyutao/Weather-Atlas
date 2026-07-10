@@ -15,11 +15,96 @@ import Translation
 
 // MARK: - List Identity
 
+enum CityListNameSource: Equatable, Hashable, Codable {
+    case country(iso2: String, duplicateIndex: Int?)
+    case continent(rawValue: String, duplicateIndex: Int?)
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case value
+        case duplicateIndex
+    }
+
+    enum Kind: String, Codable {
+        case country
+        case continent
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let kind = try container.decode(Kind.self, forKey: .kind)
+        let value = try container.decode(String.self, forKey: .value)
+        let duplicateIndex = try container.decodeIfPresent(Int.self, forKey: .duplicateIndex)
+
+        switch kind {
+        case .country:
+            self = .country(iso2: value, duplicateIndex: duplicateIndex)
+        case .continent:
+            self = .continent(rawValue: value, duplicateIndex: duplicateIndex)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .country(iso2, duplicateIndex):
+            try container.encode(Kind.country, forKey: .kind)
+            try container.encode(iso2, forKey: .value)
+            try container.encodeIfPresent(duplicateIndex, forKey: .duplicateIndex)
+        case let .continent(rawValue, duplicateIndex):
+            try container.encode(Kind.continent, forKey: .kind)
+            try container.encode(rawValue, forKey: .value)
+            try container.encodeIfPresent(duplicateIndex, forKey: .duplicateIndex)
+        }
+    }
+
+    func localizedDisplayName(locale: Locale) -> String {
+        let baseName: String
+        let duplicateIndex: Int?
+
+        switch self {
+        case let .country(iso2, index):
+            baseName = locale.localizedString(forRegionCode: iso2) ?? iso2
+            duplicateIndex = index
+        case let .continent(rawValue, index):
+            baseName = CityListID.localizedBuiltInDisplayName(for: rawValue, locale: locale) ?? rawValue
+            duplicateIndex = index
+        }
+
+        guard let duplicateIndex else { return baseName }
+        return "\(baseName) \(duplicateIndex)"
+    }
+
+    func withDuplicateIndex(_ index: Int?) -> CityListNameSource {
+        switch self {
+        case let .country(iso2, _):
+            return .country(iso2: iso2, duplicateIndex: index)
+        case let .continent(rawValue, _):
+            return .continent(rawValue: rawValue, duplicateIndex: index)
+        }
+    }
+}
+
 struct CityListID: Identifiable, Equatable, Hashable, Codable {
     let rawValue: String
     let displayName: String
+    let nameSource: CityListNameSource?
+
+    init(rawValue: String, displayName: String, nameSource: CityListNameSource? = nil) {
+        self.rawValue = rawValue
+        self.displayName = displayName
+        self.nameSource = nameSource
+    }
     
     var id: String { rawValue }
+
+    static func == (lhs: CityListID, rhs: CityListID) -> Bool {
+        lhs.rawValue == rhs.rawValue
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(rawValue)
+    }
     
     static let europe = CityListID(rawValue: "europe", displayName: "Europe")
     static let asia = CityListID(rawValue: "asia", displayName: "Asia")
@@ -32,6 +117,13 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         if let customName = Self.customDisplayName(for: rawValue) {
             return customName
         }
+        if let nameSource {
+            return nameSource.localizedDisplayName(locale: locale)
+        }
+        return Self.localizedBuiltInDisplayName(for: rawValue, locale: locale) ?? displayName
+    }
+
+    static func localizedBuiltInDisplayName(for rawValue: String, locale: Locale = .current) -> String? {
         switch rawValue {
         case "europe": return localizedString("Europe", locale: locale)
         case "asia": return localizedString("Asia", locale: locale)
@@ -39,7 +131,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         case "southAmerica": return localizedString("South America", locale: locale)
         case "africa": return localizedString("Africa", locale: locale)
         case "australia": return localizedString("Australia", locale: locale)
-        default: return displayName
+        default: return nil
         }
     }
 
@@ -160,8 +252,8 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         UserDefaults.standard.set(Array(deleted), forKey: deletedBuiltInListsKey)
     }
     
-    static func createList(name: String) -> CityListID {
-        let id = CityListID(rawValue: UUID().uuidString, displayName: name)
+    static func createList(name: String, nameSource: CityListNameSource? = nil) -> CityListID {
+        let id = CityListID(rawValue: UUID().uuidString, displayName: name, nameSource: nameSource)
         var userLists = loadUserLists()
         userLists.append(id)
         saveUserLists(userLists)
@@ -178,6 +270,24 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         }
         return "\(baseName) \(suffix)"
     }
+
+    static func availableGeneratedListIdentity(
+        for source: CityListNameSource,
+        locale: Locale
+    ) -> (displayName: String, nameSource: CityListNameSource) {
+        let sourceWithoutSuffix = source.withDuplicateIndex(nil)
+        let existingNames = Set(allLists.map { $0.localizedDisplayName(locale: locale) })
+        let baseName = sourceWithoutSuffix.localizedDisplayName(locale: locale)
+        guard existingNames.contains(baseName) else {
+            return (baseName, sourceWithoutSuffix)
+        }
+
+        var suffix = 2
+        while existingNames.contains("\(baseName) \(suffix)") {
+            suffix += 1
+        }
+        return ("\(baseName) \(suffix)", sourceWithoutSuffix.withDuplicateIndex(suffix))
+    }
     
     var defaultCities: [City] {
         DefaultCityCoordinateCatalog.cities(for: rawValue)
@@ -190,12 +300,12 @@ private enum DefaultCityCoordinateCatalog {
     }
 
     private static let citiesByListID: [String: [City]] = {
-        guard let url = Bundle.main.url(forResource: "default_city_coordinates", withExtension: "csv")
-                ?? Bundle.main.url(forResource: "default_city_coordinates", withExtension: "csv", subdirectory: "Assets"),
+        guard let url = Bundle.main.url(forResource: "continent_city_coordinates", withExtension: "csv")
+                ?? Bundle.main.url(forResource: "continent_city_coordinates", withExtension: "csv", subdirectory: "Assets"),
               let csv = try? String(contentsOf: url, encoding: .utf8) else {
             DeveloperWarningCenter.show(
                 title: "Default City Coordinates Missing",
-                message: "The bundled default_city_coordinates.csv file could not be loaded. Default lists would become empty."
+                message: "The bundled continent_city_coordinates.csv file could not be loaded. Default lists would become empty."
             )
             return [:]
         }
@@ -210,7 +320,7 @@ private enum DefaultCityCoordinateCatalog {
                   let longitude = Double(fields[4]) else {
                 DeveloperWarningCenter.show(
                     title: "Default City Coordinates Invalid",
-                    message: "The bundled default_city_coordinates.csv row \(rowIndex + 2) is malformed and cannot be loaded."
+                    message: "The bundled continent_city_coordinates.csv row \(rowIndex + 2) is malformed and cannot be loaded."
                 )
                 continue
             }
@@ -220,7 +330,7 @@ private enum DefaultCityCoordinateCatalog {
             guard TimeZone(identifier: timeZoneIdentifier) != nil else {
                 DeveloperWarningCenter.show(
                     title: "Default City Time Zone Invalid",
-                    message: "The bundled default_city_coordinates.csv row for \(latitude), \(longitude) has an invalid time zone identifier: \(timeZoneIdentifier)."
+                    message: "The bundled continent_city_coordinates.csv row for \(latitude), \(longitude) has an invalid time zone identifier: \(timeZoneIdentifier)."
                 )
                 continue
             }
@@ -546,8 +656,8 @@ extension WeatherService {
         }
     }
 
-    func createCustomList(name: String, cities: [City]) async -> CityListID {
-        let listID = CityListID.createList(name: name)
+    func createCustomList(name: String, cities: [City], nameSource: CityListNameSource? = nil) async -> CityListID {
+        let listID = CityListID.createList(name: name, nameSource: nameSource)
         saveCities(cities, for: listID)
         otherListData[listID.rawValue] = []
         await switchList(to: listID)
@@ -709,7 +819,7 @@ extension ContentView {
     func commitListManagerNewList() {
         let trimmed = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        let newList = CityListID.createList(name: trimmed)
+        _ = CityListID.createList(name: trimmed)
         refreshListOrder()
         newListName = ""
     }

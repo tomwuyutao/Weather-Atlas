@@ -151,6 +151,101 @@ struct HomeStaticMapPreview: View {
     }
 }
 
+struct SunnyCandidateRow: View {
+    let candidate: SunnyCandidate
+    var rank: Int? = nil
+    var compact: Bool = false
+    let tempUnit: TemperatureUnit
+    var cityNameOverride: String? = nil
+    var deleteAction: (() -> Void)? = nil
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.locale) private var locale
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let icon = candidate.condition.displayIcon
+        let cloudText = candidate.cloudCover.map { "\(Int($0 * 100))%" } ?? "-"
+        let cloudMetricSpacing: CGFloat = dynamicTypeSize > .large ? 7 : 3
+        let cloudValueWidth: CGFloat = dynamicTypeSize > .large ? 48 : 38
+        let cloudColumnWidth: CGFloat = dynamicTypeSize > .large ? 72 : 54
+        let verticalPadding: CGFloat = compact ? 8 : 9
+
+        HStack(spacing: 8) {
+            if let deleteAction {
+                Button {
+                    deleteAction()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(theme.colors.destructive)
+                            .frame(width: 28, height: 28)
+
+                        Image(systemName: "minus")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                }
+                .buttonStyle(.plain)
+                .frame(width: 24, height: 32)
+                .transition(.scale(scale: 0.82).combined(with: .opacity))
+            } else if let rank {
+                Text("\(rank)")
+                    .font(.subheadline.weight(.semibold).monospacedDigit())
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .frame(width: 20)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(cityNameOverride ?? candidate.cityWeather.city.localizedName(locale: locale))
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+            }
+            .padding(.leading, deleteAction == nil ? 0 : 6)
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 7) {
+                HStack(spacing: 3) {
+                    Image(systemName: "thermometer.medium")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(theme.colors.dotSun)
+                        .frame(width: 13, alignment: .center)
+                    Text(tempUnit.display(candidate.temperature))
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(theme.colors.dotSun)
+                        .monospacedDigit()
+                        .frame(width: 34, alignment: .leading)
+                }
+                .frame(width: 50, alignment: .leading)
+
+                HStack(spacing: cloudMetricSpacing) {
+                    Image(systemName: "cloud")
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(theme.colors.secondaryText.opacity(0.50))
+                        .frame(width: 13, alignment: .center)
+                    Text(cloudText)
+                        .font(.caption.weight(.medium))
+                        .monospacedDigit()
+                        .frame(width: cloudValueWidth, alignment: .leading)
+                }
+                .frame(width: cloudColumnWidth, alignment: .leading)
+
+                Image(systemName: icon)
+                    .font(.caption.weight(.medium))
+                    .weatherIconStyle(for: icon)
+                    .frame(width: 18, alignment: .leading)
+            }
+            .foregroundStyle(theme.colors.secondaryText)
+            .lineLimit(1)
+        }
+        .padding(.horizontal, 0)
+        .padding(.vertical, verticalPadding)
+        .contentShape(Rectangle())
+    }
+}
+
 #Preview("Home View") {
     ContentView()
 }
@@ -672,20 +767,13 @@ extension ContentView {
                     .padding(.vertical, 12)
                     .background(theme.colors.glassFill.opacity(0.42), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
             } else {
-                ForEach(Array(rankedCandidates.enumerated()), id: \.element.id) { index, candidate in
-                    Button {
+                listCandidateRows(
+                    rankedCandidates,
+                    showsDividers: true,
+                    selectionAction: { candidate in
                         selectCandidate(candidate, focusMap: false)
-                    } label: {
-                        sunnyCandidateRow(candidate, rank: index + 1, compact: true)
                     }
-                    .buttonStyle(.plain)
-
-                    if index < rankedCandidates.count - 1 {
-                        Divider()
-                            .background(theme.colors.secondaryText.opacity(0.16))
-                            .padding(.leading, 34)
-                    }
-                }
+                )
             }
         })
     }
@@ -700,8 +788,8 @@ extension ContentView {
                         .frame(width: 20)
 
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(city.localizedName(locale: locale))
-                            .font(.system(size: 16, weight: .medium))
+                        Text(localizedCityName(for: city))
+                            .font(.body.weight(.medium))
                             .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
                     }
@@ -727,84 +815,14 @@ extension ContentView {
         compact: Bool = false,
         deleteAction: (() -> Void)? = nil
     ) -> some View {
-        let icon = sunnyCandidateIcon(for: candidate)
-        let cloudText = candidate.cloudCover.map { "\(Int($0 * 100))%" } ?? "-"
-        let cloudMetricSpacing: CGFloat = dynamicTypeSize > .large ? 7 : 3
-        let cloudValueWidth: CGFloat = dynamicTypeSize > .large ? 48 : 38
-        let cloudColumnWidth: CGFloat = dynamicTypeSize > .large ? 72 : 54
-        let verticalPadding: CGFloat = compact ? 8 : 9
-        return HStack(spacing: 8) {
-            if let deleteAction {
-                Button {
-                    deleteAction()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(theme.colors.destructive)
-                            .frame(width: 28, height: 28)
-
-                        Image(systemName: "minus")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .buttonStyle(.plain)
-                .frame(width: 24, height: 32)
-                .transition(.scale(scale: 0.82).combined(with: .opacity))
-            } else if let rank {
-                Text("\(rank)")
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .frame(width: 20)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(candidate.cityWeather.city.localizedName(locale: locale))
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .lineLimit(1)
-            }
-            .padding(.leading, deleteAction == nil ? 0 : 6)
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 7) {
-                HStack(spacing: 3) {
-                    Image(systemName: "thermometer.medium")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(theme.colors.dotSun)
-                        .frame(width: 13, alignment: .center)
-                    Text(tempUnit.display(candidate.temperature))
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(theme.colors.dotSun)
-                        .monospacedDigit()
-                        .frame(width: 34, alignment: .leading)
-                }
-                .frame(width: 50, alignment: .leading)
-
-                HStack(spacing: cloudMetricSpacing) {
-                    Image(systemName: "cloud")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(theme.colors.secondaryText.opacity(0.50))
-                        .frame(width: 13, alignment: .center)
-                    Text(cloudText)
-                        .font(.caption.weight(.medium))
-                        .monospacedDigit()
-                        .frame(width: cloudValueWidth, alignment: .leading)
-                }
-                .frame(width: cloudColumnWidth, alignment: .leading)
-
-                Image(systemName: icon)
-                    .font(.caption.weight(.medium))
-                    .weatherIconStyle(for: icon)
-                    .frame(width: 18, alignment: .leading)
-            }
-            .foregroundStyle(theme.colors.secondaryText)
-            .lineLimit(1)
-        }
-        .padding(.horizontal, 0)
-        .padding(.vertical, verticalPadding)
-        .contentShape(Rectangle())
+        SunnyCandidateRow(
+            candidate: candidate,
+            rank: rank,
+            compact: compact,
+            tempUnit: tempUnit,
+            cityNameOverride: localizedCityName(for: candidate.cityWeather.city),
+            deleteAction: deleteAction
+        )
     }
 
     var homeListMenu: some View {

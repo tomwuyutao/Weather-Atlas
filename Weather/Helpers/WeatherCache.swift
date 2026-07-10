@@ -1,0 +1,358 @@
+//
+//  WeatherCache.swift
+//  Weather
+//
+//  Purpose: Persists per-list weather snapshots and validates cache freshness.
+//
+
+import Foundation
+
+// MARK: - Weather Cache
+
+extension WeatherService {
+    func saveCachedWeatherData(_ data: [CityWeather], for listID: CityListID) {
+        let key = "cachedWeatherData_\(listID.rawValue)"
+        do {
+            let cached = data.map { CachedCityWeather(from: $0) }
+            let encoded = try JSONEncoder().encode(cached)
+            UserDefaults.standard.set(encoded, forKey: key)
+        } catch {
+            UserDefaults.standard.removeObject(forKey: key)
+        }
+    }
+
+    func loadCachedWeatherData(for listID: CityListID) -> [CityWeather]? {
+        let key = "cachedWeatherData_\(listID.rawValue)"
+        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
+        do {
+            let decodedCache = try JSONDecoder().decode([CachedCityWeather].self, from: data)
+            let cachedData = decodedCache.compactMap { $0.toCityWeather() }
+            if cachedData.count != decodedCache.count {
+                reportDeveloperWarning(
+                    title: "Cached Weather Invalid",
+                    message: "Some cached weather entries for \(listID.rawValue) could not be restored and the cache was removed."
+                )
+                removeCache(for: listID)
+                return nil
+            }
+            guard cachedWeatherDataLooksCurrent(cachedData, for: listID) else {
+                reportDeveloperWarning(
+                    title: "Cached Weather Stale",
+                    message: "The cached weather data for \(listID.rawValue) was not current enough to reuse and was removed."
+                )
+                removeCache(for: listID)
+                return nil
+            }
+            return cachedData
+        } catch {
+            reportDeveloperWarning(
+                title: "Cached Weather Corrupt",
+                message: "The cached weather data for \(listID.rawValue) could not be decoded and was removed."
+            )
+            UserDefaults.standard.removeObject(forKey: key)
+            return nil
+        }
+    }
+
+    func cachedWeatherDataLooksCurrent(_ data: [CityWeather], for listID: CityListID, now: Date = Date()) -> Bool {
+        guard fetchDate(for: listID) != nil else { return false }
+        return data.allSatisfy { cityWeather in
+            guard hasResolvedTimeZone(cityWeather) else {
+                return false
+            }
+
+            guard let todayForecast = cityWeather.dailyForecasts.first(where: { $0.dayOffset == 0 }) else {
+                return false
+            }
+            guard !todayForecast.hourlyForecasts.isEmpty else { return false }
+            guard SunninessScoring.hasDaytimeHourlyScoreData(for: todayForecast, timeZone: cityWeather.timeZone) else {
+                return false
+            }
+
+            var calendar = Calendar.current
+            calendar.timeZone = cityWeather.timeZone
+            let currentHour = calendar.component(.hour, from: now)
+            guard currentHour < 20,
+                  let firstHour = todayForecast.hourlyForecasts.map(\.hour).min() else {
+                return true
+            }
+
+            return firstHour <= currentHour + 2
+        }
+    }
+
+    func hasResolvedTimeZone(_ cityWeather: CityWeather) -> Bool {
+        let identifier = cityWeather.timeZone.identifier
+        guard identifier == "UTC" || identifier == "GMT" || identifier.hasPrefix("GMT+") || identifier.hasPrefix("GMT-") else {
+            return true
+        }
+
+        // A named city should use the civil timezone returned by Core Location.
+        // Raw GMT zones here mean an older cache entry or failed lookup would draw local-time charts incorrectly.
+        return cityWeather.city.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    func clearPersistedWeatherCaches() {
+        UserDefaults.standard.removeObject(forKey: "cachedWeatherData")
+        UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp")
+        for listID in CityListID.allLists {
+            UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
+        }
+    }
+
+    func fetchDate(for listID: CityListID) -> Date? {
+        if let fetchDate = listFetchDates[listID.rawValue] {
+            return fetchDate
+        }
+
+        let key = "weatherCacheTimestamp_\(listID.rawValue)"
+        guard let fetchDate = UserDefaults.standard.object(forKey: key) as? Date else {
+            return nil
+        }
+        listFetchDates[listID.rawValue] = fetchDate
+        return fetchDate
+    }
+
+    func isWeatherDataFresh(for listID: CityListID, now: Date = Date()) -> Bool {
+        guard let fetchDate = fetchDate(for: listID) else {
+            return false
+        }
+        return now.timeIntervalSince(fetchDate) < weatherCacheDuration
+    }
+
+    func cacheData(_ data: [CityWeather], updateFetchDate: Bool = false) {
+        saveCachedWeatherData(data, for: activeListID)
+        guard updateFetchDate else { return }
+
+        let fetchDate = Date()
+        listFetchDates[activeListID.rawValue] = fetchDate
+        UserDefaults.standard.set(fetchDate, forKey: cacheTimestampKey)
+        lastFetchDate = fetchDate
+    }
+
+    func cacheData(_ data: [CityWeather], for listID: CityListID, updateFetchDate: Bool = false) {
+        saveCachedWeatherData(data, for: listID)
+        guard updateFetchDate else { return }
+
+        let fetchDate = Date()
+        listFetchDates[listID.rawValue] = fetchDate
+        UserDefaults.standard.set(fetchDate, forKey: "weatherCacheTimestamp_\(listID.rawValue)")
+        if listID.rawValue == activeListID.rawValue {
+            lastFetchDate = fetchDate
+        }
+    }
+
+    func clearCache() {
+        UserDefaults.standard.removeObject(forKey: cacheKey)
+        UserDefaults.standard.removeObject(forKey: cacheTimestampKey)
+        listFetchDates[activeListID.rawValue] = nil
+        lastFetchDate = nil
+    }
+
+    private func removeCache(for listID: CityListID) {
+        UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
+        UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listID.rawValue)")
+        listFetchDates[listID.rawValue] = nil
+        if listID.rawValue == activeListID.rawValue {
+            lastFetchDate = nil
+        }
+    }
+}
+
+// MARK: - Cache Models
+
+struct CachedCity: Codable {
+    let id: UUID
+    let name: String
+    let country: String
+    let latitude: Double
+    let longitude: Double
+    let timeZoneIdentifier: String?
+
+    init(from city: City) {
+        self.id = city.id
+        self.name = city.name
+        self.country = city.country
+        self.latitude = city.latitude
+        self.longitude = city.longitude
+        self.timeZoneIdentifier = city.timeZoneIdentifier
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
+        country = try container.decodeIfPresent(String.self, forKey: .country) ?? ""
+        latitude = try container.decode(Double.self, forKey: .latitude)
+        longitude = try container.decode(Double.self, forKey: .longitude)
+        timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
+    }
+
+    func toCity() -> City {
+        City(id: id, name: name, country: country, latitude: latitude, longitude: longitude, timeZoneIdentifier: timeZoneIdentifier)
+    }
+}
+
+struct CachedCityWeather: Codable {
+    let id: UUID
+    let city: CachedCity
+    let condition: AppWeatherCondition
+    let temperature: Double
+    let symbolName: String
+    let dailyForecasts: [CachedDailyForecast]
+    let timeZoneIdentifier: String
+    let currentFeelsLike: Double?
+    let currentCloudCover: Double?
+    let currentWindSpeed: Double?
+    let currentUVIndex: Int?
+    let currentHumidity: Double?
+    let currentVisibility: Double?
+
+    init(from cityWeather: CityWeather) {
+        id = cityWeather.id
+        city = CachedCity(from: cityWeather.city)
+        temperature = cityWeather.temperature
+        symbolName = cityWeather.symbolName
+        condition = AppWeatherCondition.fromWeatherSymbol(cityWeather.symbolName)
+        dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
+        timeZoneIdentifier = cityWeather.timeZone.identifier
+        currentFeelsLike = cityWeather.currentFeelsLike
+        currentCloudCover = cityWeather.currentCloudCover
+        currentWindSpeed = cityWeather.currentWindSpeed
+        currentUVIndex = cityWeather.currentUVIndex
+        currentHumidity = cityWeather.currentHumidity
+        currentVisibility = cityWeather.currentVisibility
+    }
+
+    func toCityWeather() -> CityWeather? {
+        let decodedCity = city.toCity()
+        let forecasts = dailyForecasts.map { $0.toDailyForecast() }
+        guard !forecasts.isEmpty else { return nil }
+        guard let timeZone = TimeZone(identifier: timeZoneIdentifier) else { return nil }
+
+        return CityWeather(
+            id: id,
+            city: decodedCity,
+            condition: AppWeatherCondition.fromWeatherSymbol(symbolName),
+            temperature: temperature,
+            symbolName: symbolName,
+            dailyForecasts: forecasts,
+            timeZone: timeZone,
+            currentFeelsLike: currentFeelsLike,
+            currentCloudCover: currentCloudCover,
+            currentWindSpeed: currentWindSpeed,
+            currentUVIndex: currentUVIndex,
+            currentHumidity: currentHumidity,
+            currentVisibility: currentVisibility
+        )
+    }
+}
+
+struct CachedDailyForecast: Codable {
+    let dayOffset: Int
+    let dailyLow: Double
+    let dailyHigh: Double
+    let symbolName: String
+    let condition: AppWeatherCondition
+    let hourlyForecasts: [CachedHourlyForecast]
+    let cloudCover: Double?
+    let precipitationChance: Double?
+    let visibility: Double?
+    let feelsLikeLow: Double?
+    let feelsLikeHigh: Double?
+    let humidity: Double?
+    let windSpeed: Double?
+    let uvIndex: Int?
+    let maxHumidity: Double?
+    let maxVisibility: Double?
+    let sunrise: Date?
+    let sunset: Date?
+
+    init(from forecast: DailyForecast) {
+        dayOffset = forecast.dayOffset
+        dailyLow = forecast.dailyLow
+        dailyHigh = forecast.dailyHigh
+        symbolName = forecast.symbolName
+        condition = AppWeatherCondition.fromWeatherSymbol(forecast.symbolName)
+        hourlyForecasts = forecast.hourlyForecasts.map { CachedHourlyForecast(from: $0) }
+        cloudCover = forecast.cloudCover
+        precipitationChance = forecast.precipitationChance
+        visibility = forecast.visibility
+        feelsLikeLow = forecast.feelsLikeLow
+        feelsLikeHigh = forecast.feelsLikeHigh
+        humidity = forecast.humidity
+        windSpeed = forecast.windSpeed
+        uvIndex = forecast.uvIndex
+        maxHumidity = forecast.maxHumidity
+        maxVisibility = forecast.maxVisibility
+        sunrise = forecast.sunrise
+        sunset = forecast.sunset
+    }
+
+    func toDailyForecast() -> DailyForecast {
+        DailyForecast(
+            dayOffset: dayOffset,
+            dailyLow: dailyLow,
+            dailyHigh: dailyHigh,
+            symbolName: symbolName,
+            condition: AppWeatherCondition.fromWeatherSymbol(symbolName),
+            hourlyForecasts: hourlyForecasts.map { $0.toHourlyForecast() },
+            cloudCover: cloudCover,
+            precipitationChance: precipitationChance,
+            visibility: visibility,
+            feelsLikeLow: feelsLikeLow,
+            feelsLikeHigh: feelsLikeHigh,
+            humidity: humidity,
+            windSpeed: windSpeed,
+            uvIndex: uvIndex,
+            maxHumidity: maxHumidity,
+            maxVisibility: maxVisibility,
+            sunrise: sunrise,
+            sunset: sunset
+        )
+    }
+}
+
+struct CachedHourlyForecast: Codable {
+    let hour: Int
+    let temperature: Double
+    let apparentTemperature: Double?
+    let symbolName: String
+    let condition: AppWeatherCondition
+    let precipitationChance: Double?
+    let cloudCover: Double?
+    let windSpeed: Double?
+    let uvIndex: Int?
+    let humidity: Double?
+    let visibility: Double?
+
+    init(from forecast: HourlyForecast) {
+        hour = forecast.hour
+        temperature = forecast.temperature
+        apparentTemperature = forecast.apparentTemperature
+        symbolName = forecast.symbolName
+        condition = AppWeatherCondition.fromWeatherSymbol(forecast.symbolName)
+        precipitationChance = forecast.precipitationChance
+        cloudCover = forecast.cloudCover
+        windSpeed = forecast.windSpeed
+        uvIndex = forecast.uvIndex
+        humidity = forecast.humidity
+        visibility = forecast.visibility
+    }
+
+    func toHourlyForecast() -> HourlyForecast {
+        HourlyForecast(
+            hour: hour,
+            temperature: temperature,
+            apparentTemperature: apparentTemperature,
+            symbolName: symbolName,
+            condition: AppWeatherCondition.fromWeatherSymbol(symbolName),
+            precipitationChance: precipitationChance,
+            cloudCover: cloudCover,
+            windSpeed: windSpeed,
+            uvIndex: uvIndex,
+            humidity: humidity,
+            visibility: visibility
+        )
+    }
+}

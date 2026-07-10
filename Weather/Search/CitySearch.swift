@@ -1,5 +1,5 @@
 //
-//  Search.swift
+//  CitySearch.swift
 //  Weather
 //
 //  Purpose: Wraps MapKit city search and the in-app search sheet used by
@@ -201,10 +201,10 @@ extension ContentView {
         let titleColor = isLoading ? searchSuggestionTitleColor.opacity(0.45) : searchSuggestionTitleColor
         let subtitleColor = isLoading ? searchSuggestionSubtitleColor.opacity(0.45) : searchSuggestionSubtitleColor
         let rowSpacing: CGFloat = 10
-        let titleFont: Font = .avenir(.body, weight: .medium)
-        let subtitleFont: Font = .avenir(.caption, weight: .regular)
-        let statusFont: Font = .avenir(.caption2, weight: .medium)
-        let statusBoldFont: Font = .avenir(.caption2, weight: .bold)
+        let titleFont: Font = .body.weight(.medium)
+        let subtitleFont: Font = .caption
+        let statusFont: Font = .caption2.weight(.medium)
+        let statusBoldFont: Font = .caption2.weight(.bold)
         let rowVerticalPadding: CGFloat = 8
         let rowHorizontalPadding: CGFloat = 2
 

@@ -2,10 +2,10 @@
 //  RefreshDefaultCityCoordinates.swift
 //  Weather Atlas developer tool
 //
-//  Purpose: Regenerates the bundled default_city_coordinates.csv by resolving
+//  Purpose: Regenerates the bundled continent_city_coordinates.csv by resolving
 //  each starter city through Apple Maps search. Build/run from the repo root:
-//  swiftc -parse-as-library Tools/RefreshDefaultCityCoordinates.swift -o /tmp/refresh_default_city_coordinates
-//  /tmp/refresh_default_city_coordinates
+//  swiftc -parse-as-library Tools/RefreshDefaultCityCoordinates.swift -o /tmp/refresh_continent_city_coordinates
+//  /tmp/refresh_continent_city_coordinates
 //
 
 import Foundation
@@ -71,7 +71,7 @@ private struct RefreshDefaultCityCoordinates {
         let outputURL = root
             .appendingPathComponent("Weather")
             .appendingPathComponent("Assets")
-            .appendingPathComponent("default_city_coordinates.csv")
+            .appendingPathComponent("continent_city_coordinates.csv")
 
         guard FileManager.default.fileExists(atPath: seedURL.path) else {
             throw RefreshError.missingSeedFile(seedURL)
@@ -92,7 +92,7 @@ private struct RefreshDefaultCityCoordinates {
         }
 
         try write(resolvedCities, to: outputURL)
-        print("Wrote \(resolvedCities.count) Apple Maps-resolved default cities to \(outputURL.path)")
+        print("Wrote \(resolvedCities.count) Apple Maps-resolved continent cities to \(outputURL.path)")
     }
 }
 

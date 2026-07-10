@@ -20,6 +20,9 @@ struct TutorialView: View {
     let onSelectCountryList: (CountryListOption) async -> Void
     let onFinish: () -> Void
     var onCancel: (() -> Void)?
+    var initialPage: Int = 0
+    var initialIsCreatingList: Bool = false
+    var initialCreatingListName: String? = nil
 
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -30,6 +33,7 @@ struct TutorialView: View {
     @State private var countrySearchText = ""
     @State private var isCreatingList = false
     @State private var creatingListName: String?
+    @State private var didApplyInitialState = false
 
     private var pageCount: Int {
         includesContinentSelection ? 4 : 2
@@ -78,6 +82,9 @@ struct TutorialView: View {
                 .presentationBackground(theme.colors.background)
         }
         .interactiveDismissDisabled(isCreatingList)
+        .onAppear {
+            applyInitialStateIfNeeded()
+        }
     }
 
     private var tutorialBackground: Color {
@@ -308,47 +315,24 @@ struct TutorialView: View {
     // MARK: Creating Page
 
     private var creatingListPage: some View {
-        VStack(alignment: .leading, spacing: 26) {
-            tutorialHeaderInset
+        VStack(spacing: 22) {
+            Spacer()
+                .frame(height: 260)
 
-            Text(localizedString("Creating your city list", locale: locale))
-                .font(tutorialTitle)
-                .foregroundStyle(introColors.primaryText)
-                .lineLimit(3)
-                .minimumScaleFactor(0.78)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack(alignment: .leading, spacing: 18) {
-                ProgressView()
-                    .controlSize(.large)
-                    .tint(primaryButtonColor)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .padding(.bottom, 2)
-
+            VStack(spacing: 18) {
                 Text(creatingListTitle)
                     .font(.avenir(.title3, weight: .semibold))
                     .foregroundStyle(introColors.primaryText)
+                    .multilineTextAlignment(.center)
                     .lineSpacing(6)
                     .fixedSize(horizontal: false, vertical: true)
-
-                Text(localizedString("Fetching weather for every city so your atlas is ready when you enter the app.", locale: locale))
-                    .font(.avenir(.body, weight: .regular))
-                    .foregroundStyle(introColors.primaryText.opacity(0.62))
-                    .lineSpacing(5)
-                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .center)
 
                 ProgressView(value: min(max(creationProgress, 0), 1))
                     .tint(primaryButtonColor)
-                    .padding(.top, 4)
-            }
-            .padding(22)
-            .background(introColors.listCardFill.opacity(0.78), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 22, style: .continuous)
-                    .stroke(introColors.mapBorder.opacity(0.24), lineWidth: 1)
             }
 
-            Spacer(minLength: 0)
+            Spacer()
         }
         .padding(.horizontal, tutorialHorizontalPadding)
     }
@@ -588,6 +572,14 @@ struct TutorialView: View {
             }
         }
     }
+
+    private func applyInitialStateIfNeeded() {
+        guard !didApplyInitialState else { return }
+        didApplyInitialState = true
+        page = min(max(initialPage, 0), pageCount - 1)
+        isCreatingList = initialIsCreatingList
+        creatingListName = initialCreatingListName
+    }
 }
 
 // MARK: - Preview
@@ -605,6 +597,26 @@ struct TutorialView: View {
         onSelectCountryList: { _ in },
         onFinish: {},
         onCancel: nil
+    )
+    .environment(\.appTheme, AppTheme.shared)
+}
+
+#Preview("Tutorial Creating List") {
+    @Previewable @State var selectedIDs: Set<String> = [CityListID.europe.rawValue]
+
+    TutorialView(
+        includesContinentSelection: true,
+        continentLists: CityListID.builtInLists,
+        selectedContinentListIDs: $selectedIDs,
+        selectedCountryListIDs: .constant([]),
+        creationProgress: 0.42,
+        onSelectContinentList: { _ in },
+        onSelectCountryList: { _ in },
+        onFinish: {},
+        onCancel: nil,
+        initialPage: 3,
+        initialIsCreatingList: true,
+        initialCreatingListName: CityListID.europe.localizedDisplayName()
     )
     .environment(\.appTheme, AppTheme.shared)
 }

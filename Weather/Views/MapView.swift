@@ -54,6 +54,76 @@ extension ContentView {
         .tint(theme.colors.accent)
         .menuOrder(.fixed)
     }
+
+    @ViewBuilder
+    private var mapMoreMenuItems: some View {
+        Toggle(isOn: Binding(
+            get: { showLegend },
+            set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
+        )) {
+            primaryMenuLabel(localizedString("Legend", locale: locale), systemImage: "eye")
+        }
+
+        Toggle(isOn: Binding(
+            get: { filterSunny },
+            set: { newValue in withAnimation { filterSunny = newValue } }
+        )) {
+            primaryMenuLabel(localizedString("Filter Sunny", locale: locale), systemImage: "sun.max")
+        }
+
+        Button {
+            refreshWeather()
+        } label: {
+            primaryMenuLabel(
+                localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"),
+                systemImage: "arrow.clockwise"
+            )
+        }
+        .disabled(weatherService.isLoading)
+    }
+
+    var mapMoreMenu: some View {
+        Menu {
+            mapMoreMenuItems
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .imageScale(.medium)
+                .foregroundStyle(theme.colors.primaryText)
+                .frame(width: 32, height: 36)
+                .contentShape(Rectangle())
+        }
+        .menuOrder(.fixed)
+        .tint(theme.colors.accent)
+    }
+
+    var mapControls: some View {
+        topToolbarActionCapsule(spacing: 18) {
+            Button {
+                mapRecenterRequest = nil
+                DispatchQueue.main.async {
+                    mapRecenterRequest = .listCoordinates
+                }
+            } label: {
+                Image(systemName: "dot.squareshape.split.2x2")
+                    .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                    .imageScale(.medium)
+                    .foregroundStyle(theme.colors.primaryText)
+                    .frame(width: 32, height: 36)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .tint(theme.colors.primaryText)
+
+            mapOverlayMenu
+                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .imageScale(.medium)
+
+            mapMoreMenu
+                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .imageScale(.medium)
+        }
+    }
 }
 
 // MARK: - Apple Maps Implementation
@@ -114,10 +184,9 @@ struct AppleWeatherMapView: View {
             .saturation(mapSaturation)
             .safeAreaPadding(.leading, 16)
             .safeAreaPadding(.bottom, 10)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 2)
-                    .onChanged { _ in onMapGestureStart?() }
-            )
+            .onMapCameraChange(frequency: .onEnd) { _ in
+                onMapGestureStart?()
+            }
             .simultaneousGesture(
                 SpatialTapGesture()
                     .onEnded { value in
@@ -285,6 +354,34 @@ struct AppleWeatherMapView: View {
 }
 
 // MARK: - Weather Marker
+
+private struct SelectedPulseRing: View {
+    enum Shape { case circle, roundedRect, capsule }
+    let shape: Shape
+    var color: Color = .white
+    @State private var isPulsing = false
+
+    var body: some View {
+        Group {
+            switch shape {
+            case .circle:
+                Circle()
+                    .stroke(color.opacity(isPulsing ? 0.3 : 0.8), lineWidth: isPulsing ? 1.5 : 2.5)
+                    .frame(width: 22, height: 22)
+                    .scaleEffect(isPulsing ? 1.22 : 1.0)
+            case .roundedRect:
+                RoundedRectangle(cornerRadius: 10)
+                    .stroke(color.opacity(isPulsing ? 0.4 : 0.9), lineWidth: isPulsing ? 2.5 : 3)
+            case .capsule:
+                Capsule()
+                    .stroke(color.opacity(isPulsing ? 0.34 : 0.88), lineWidth: isPulsing ? 2.5 : 3)
+                    .scaleEffect(isPulsing ? 1.08 : 1.0)
+            }
+        }
+        .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: isPulsing)
+        .onAppear { isPulsing = true }
+    }
+}
 
 private struct WeatherMapMarker: View {
     let color: Color

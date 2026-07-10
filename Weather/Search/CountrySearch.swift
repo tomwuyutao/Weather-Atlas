@@ -1,5 +1,5 @@
 //
-//  CountryListSearch.swift
+//  CountrySearch.swift
 //  Weather
 //
 //  Purpose: Presents the country picker used to preview generated country

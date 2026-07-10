@@ -46,7 +46,7 @@ struct CountryCityCatalogEntry: Hashable {
 
 enum CountryCityCatalog {
     static let defaultCountryCityCount = 15
-    static let maxCountryCityCount = 15
+    static let maxCountryCityCount = 25
 
     static func countries(locale: Locale) -> [CountryListOption] {
         countriesByCode.values.sorted {

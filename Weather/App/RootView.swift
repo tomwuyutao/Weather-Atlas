@@ -23,8 +23,18 @@ extension ContentView {
     private var viewLifecycle: some View {
         rootContent
             .task { await onAppearLoad() }
+            .task(id: CityNameTranslationCache.languageIdentifier(for: locale)) {
+                await MainActor.run {
+                    localizedCityNameCache = CityNameTranslationCache.load(
+                        languageIdentifier: CityNameTranslationCache.languageIdentifier(for: locale)
+                    )
+                }
+            }
             .background {
                 homeScreenShortcutReceiver
+            }
+            .background {
+                cityNameTranslationTask
             }
             .onChange(of: weatherService.activeListID) { _, newListID in
                 visibleListIDs.insert(newListID.rawValue)
@@ -49,6 +59,31 @@ extension ContentView {
                     centerMapOnDots(useListCoordinates: true)
                 }
             }
+    }
+
+    @ViewBuilder
+    private var cityNameTranslationTask: some View {
+        #if canImport(Translation)
+        if #available(iOS 18.0, *) {
+            let languageIdentifier = CityNameTranslationCache.languageIdentifier(for: locale)
+            if !languageIdentifier.hasPrefix("en"), !cityNameTranslationInputs.isEmpty {
+                CityNameTranslationTaskView(
+                    inputs: cityNameTranslationInputs,
+                    sourceLanguage: Locale.Language(identifier: "en"),
+                    targetLanguage: Locale.Language(identifier: locale.identifier)
+                ) { translations in
+                    mergeCityNameTranslations(translations)
+                }
+                .id(cityNameTranslationTaskID)
+            }
+        }
+        #endif
+    }
+
+    private func mergeCityNameTranslations(_ translations: [String: String]) {
+        let languageIdentifier = CityNameTranslationCache.languageIdentifier(for: locale)
+        localizedCityNameCache.merge(translations) { _, new in new }
+        CityNameTranslationCache.save(localizedCityNameCache, languageIdentifier: languageIdentifier)
     }
 
     private var viewStateObservers: some View {
@@ -422,9 +457,14 @@ extension ContentView {
         }
 
         for country in selectedCountries {
+            let identity = CityListID.availableGeneratedListIdentity(
+                for: .country(iso2: country.iso2, duplicateIndex: nil),
+                locale: locale
+            )
             let listID = await weatherService.createCustomList(
-                name: CityListID.availableListName(for: country.localizedName(locale: locale)),
-                cities: CountryCityCatalog.topCities(for: country)
+                name: identity.displayName,
+                cities: CountryCityCatalog.topCities(for: country),
+                nameSource: identity.nameSource
             )
             if firstList == nil {
                 firstList = listID
@@ -522,8 +562,9 @@ extension ContentView {
             }
     }
 
-    func previewGeneratedList(name: String, cities: [City]) {
+    func previewGeneratedList(name: String, cities: [City], nameSource: CityListNameSource? = nil) {
         listPreviewName = name
+        listPreviewNameSource = nameSource
         listPreviewAllCities = cities
         listPreviewCityCount = min(CountryCityCatalog.defaultCountryCityCount, min(CountryCityCatalog.maxCountryCityCount, cities.count))
         showingSearchSheet = false
@@ -548,14 +589,16 @@ extension ContentView {
         )
         previewGeneratedList(
             name: listID.localizedDisplayName(locale: locale),
-            cities: populationSortedCities.isEmpty ? listID.defaultCities : populationSortedCities
+            cities: populationSortedCities.isEmpty ? listID.defaultCities : populationSortedCities,
+            nameSource: .continent(rawValue: listID.rawValue, duplicateIndex: nil)
         )
     }
 
     func previewCountryList(_ country: CountryListOption) {
         previewGeneratedList(
             name: country.localizedName(locale: locale),
-            cities: CountryCityCatalog.topCities(for: country, limit: CountryCityCatalog.maxCountryCityCount)
+            cities: CountryCityCatalog.topCities(for: country, limit: CountryCityCatalog.maxCountryCityCount),
+            nameSource: .country(iso2: country.iso2, duplicateIndex: nil)
         )
     }
 
@@ -565,6 +608,7 @@ extension ContentView {
 
     func clearGeneratedListPreview(playsHaptic: Bool = true) {
         listPreviewName = nil
+        listPreviewNameSource = nil
         listPreviewAllCities = []
         listPreviewCityCount = CountryCityCatalog.defaultCountryCityCount
         mapRecenterRequest = .listCoordinates
@@ -576,12 +620,16 @@ extension ContentView {
     func confirmGeneratedListPreview() {
         guard let previewName = listPreviewName,
               !listPreviewCities.isEmpty else { return }
-        let uniqueName = CityListID.availableListName(for: previewName)
+        let generatedIdentity = listPreviewNameSource.map {
+            CityListID.availableGeneratedListIdentity(for: $0, locale: locale)
+        }
+        let uniqueName = generatedIdentity?.displayName ?? CityListID.availableListName(for: previewName)
+        let nameSource = generatedIdentity?.nameSource
         let cities = listPreviewCities
         cancelGeneratedListPreview()
 
         Task {
-            let listID = await weatherService.createCustomList(name: uniqueName, cities: cities)
+            let listID = await weatherService.createCustomList(name: uniqueName, cities: cities, nameSource: nameSource)
             await MainActor.run {
                 visibleListIDs.insert(listID.rawValue)
                 refreshListOrder()

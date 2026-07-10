@@ -1,5 +1,5 @@
 //
-//  LegendView.swift
+//  Legend.swift
 //  Weather
 //
 //  Purpose: Draws the floating map legend for weather dots and metric
