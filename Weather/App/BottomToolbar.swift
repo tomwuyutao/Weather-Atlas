@@ -384,7 +384,7 @@ extension ContentView {
     }
 }
 
-// MARK: - Map and Menu Controls
+// MARK: - Map and Menu Controls //? those buttons are no longer in bottomtoolbar. move them to mapview
 
 extension ContentView {
     @ViewBuilder

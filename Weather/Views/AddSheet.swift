@@ -161,11 +161,3 @@ struct AddListOptionButton: View {
         }
     }
 }
-
-#Preview("Add Sheet") {
-    AddSheet(
-        onNewEmptyList: {},
-        onAddContinent: {},
-        onAddCountry: {}
-    )
-}
