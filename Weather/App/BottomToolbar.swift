@@ -33,9 +33,8 @@ extension ContentView {
 // MARK: - Floating Bottom Toolbar
 
 extension ContentView {
-    var bottomToolbarControlLength: CGFloat { 44 }
-    var bottomToolbarCenterHeight: CGFloat { bottomToolbarControlLength }
     var bottomToolbarIconSize: CGFloat { 21 }
+    var bottomCenterToolbarWidth: CGFloat { 165 }
 
     @ToolbarContentBuilder
     var nativeBottomToolbarItems: some ToolbarContent {
@@ -89,10 +88,6 @@ extension ContentView {
     var bottomCenterToolbarControl: some View {
         if isListPreviewActive {
             listPreviewCountPickerControl
-        } else if isMapRoute {
-            mapControls
-                .opacity(showingMapDateSliderTutorial && !isFadingMapDateSliderTutorial ? 0.28 : 1)
-                .animation(.easeOut(duration: 0.5), value: isFadingMapDateSliderTutorial)
         } else {
             dateSwitcherControl
         }
@@ -110,59 +105,92 @@ extension ContentView {
     }
 
     var dateSwitcherControl: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Image(systemName: "chevron.left")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(selectedDayOffset > 0 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
-                .frame(width: 36, height: bottomToolbarCenterHeight)
-                .contentShape(Circle())
+                .frame(minWidth: 30, minHeight: 32)
+                .contentShape(Rectangle())
                 .onTapGesture {
-                    if selectedDayOffset > 0 {
-                        Haptics.lightImpact()
-                        dateSwitcherForward = false
-                        withAnimation(.smooth(duration: 0.2)) {
-                            selectedDayOffset -= 1
-                        }
+                    guard selectedDayOffset > 0 else { return }
+                    Haptics.lightImpact()
+                    dateSwitcherForward = false
+                    withAnimation(.smooth(duration: 0.2)) {
+                        selectedDayOffset -= 1
                     }
                 }
+            .onLongPressGesture(minimumDuration: 0.45) {
+                guard selectedDayOffset > 0 else { return }
+                Haptics.lightImpact()
+                dateSwitcherForward = false
+                withAnimation(.smooth(duration: 0.2)) {
+                    selectedDayOffset = 0
+                }
+            }
+            .accessibilityLabel(localizedString("Previous Day", locale: locale))
+            .accessibilityAddTraits(.isButton)
 
             Button {
                 Haptics.lightImpact()
                 showingDatePopover = true
             } label: {
-                Text(dateSwitcherText)
-                    .font(.avenir(.caption, weight: .medium))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .id("date-\(selectedDayOffset)")
-                    .transition(.push(from: dateSwitcherForward ? .trailing : .leading))
-                    .clipped()
-                    .frame(minWidth: 80, minHeight: bottomToolbarCenterHeight)
-                    .contentShape(Capsule())
+                ZStack {
+                    ForEach(0...9, id: \.self) { dayOffset in
+                        Text(dateSwitcherText(for: dayOffset))
+                            .font(.avenir(.subheadline, weight: .medium))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .hidden()
+                    }
+
+                    Text(dateSwitcherText)
+                        .font(.avenir(.subheadline, weight: .medium))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+                        .id("date-\(selectedDayOffset)")
+                        .transition(.push(from: dateSwitcherForward ? .trailing : .leading))
+                        .clipped()
+                }
             }
-            .buttonStyle(.plain)
-            .frame(minWidth: 96, minHeight: bottomToolbarCenterHeight)
-            .contentShape(Capsule())
             .popover(isPresented: $showingDatePopover) {
                 datePickerPopoverContent
             }
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(selectedDayOffset < 9 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
-                .frame(width: 36, height: bottomToolbarCenterHeight)
-                .contentShape(Circle())
+                .frame(minWidth: 30, minHeight: 32)
+                .contentShape(Rectangle())
                 .onTapGesture {
-                    if selectedDayOffset < 9 {
-                        Haptics.lightImpact()
-                        dateSwitcherForward = true
-                        withAnimation(.smooth(duration: 0.2)) {
-                            selectedDayOffset += 1
-                        }
+                    guard selectedDayOffset < 9 else { return }
+                    Haptics.lightImpact()
+                    dateSwitcherForward = true
+                    withAnimation(.smooth(duration: 0.2)) {
+                        selectedDayOffset += 1
                     }
                 }
+            .onLongPressGesture(minimumDuration: 0.45) {
+                guard selectedDayOffset < 9 else { return }
+                Haptics.lightImpact()
+                dateSwitcherForward = true
+                withAnimation(.smooth(duration: 0.2)) {
+                    selectedDayOffset = 9
+                }
+            }
+            .accessibilityLabel(localizedString("Next Day", locale: locale))
+            .accessibilityAddTraits(.isButton)
         }
+        .padding(.horizontal, 3)
+        .frame(width: bottomCenterToolbarWidth)
+    }
+
+    func dateSwitcherText(for dayOffset: Int) -> String {
+        if dayOffset == 0 { return localizedString("Today", locale: locale) }
+        let formatter = DateFormatter()
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMdEEE", options: 0, locale: locale)
+        formatter.locale = locale
+        return formatter.string(from: Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date())
     }
 
     var datePickerPopoverContent: some View {
@@ -201,13 +229,7 @@ extension ContentView {
                 .font(.system(size: bottomToolbarIconSize, weight: .regular))
                 .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-                .contentShape(Circle())
         }
-        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-        .fixedSize()
-        .controlSize(.large)
-        .buttonBorderShape(.circle)
         .accessibilityLabel(localizedString("Search", locale: locale))
     }
 
@@ -230,15 +252,9 @@ extension ContentView {
                 .font(.system(size: bottomToolbarIconSize, weight: .regular))
                 .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-                .contentShape(Circle())
         }
         .menuOrder(.fixed)
         .tint(theme.colors.accent)
-        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-        .fixedSize()
-        .controlSize(.large)
-        .buttonBorderShape(.circle)
         .accessibilityLabel(localizedString("Menu", locale: locale))
     }
 
@@ -263,13 +279,7 @@ extension ContentView {
                 .font(.system(size: bottomToolbarIconSize, weight: .semibold))
                 .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-                .contentShape(Circle())
         }
-        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-        .fixedSize()
-        .controlSize(.large)
-        .buttonBorderShape(.circle)
         .accessibilityLabel(localizedString("Back", locale: locale))
     }
 
@@ -281,13 +291,7 @@ extension ContentView {
                 .font(.system(size: bottomToolbarIconSize, weight: .semibold))
                 .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-                .contentShape(Circle())
         }
-        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-        .fixedSize()
-        .controlSize(.large)
-        .buttonBorderShape(.circle)
         .accessibilityLabel(localizedString("Cancel", locale: locale))
     }
 
@@ -299,19 +303,13 @@ extension ContentView {
                 .font(.system(size: bottomToolbarIconSize, weight: .semibold))
                 .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-                .contentShape(Circle())
         }
-        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-        .fixedSize()
-        .controlSize(.large)
-        .buttonBorderShape(.circle)
         .disabled(listPreviewCities.isEmpty)
         .accessibilityLabel(localizedString("Add", locale: locale))
     }
 
     var listPreviewCountPickerControl: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 6) {
             Button {
                 guard listPreviewCityCount > 1 else { return }
                 Haptics.lightImpact()
@@ -320,21 +318,19 @@ extension ContentView {
                 }
             } label: {
                 Image(systemName: "minus")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(listPreviewCityCount > 1 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
-                    .frame(width: 36, height: bottomToolbarCenterHeight)
-                    .contentShape(Circle())
+                    .frame(minWidth: 30, minHeight: 32)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             .disabled(listPreviewCityCount <= 1)
 
             Text(cityCountText(listPreviewCityCount))
-                .font(.avenir(.caption, weight: .semibold))
+                .font(.avenir(.subheadline, weight: .medium))
                 .foregroundStyle(theme.colors.primaryText)
                 .monospacedDigit()
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
-                .frame(minWidth: 92, minHeight: bottomToolbarCenterHeight)
 
             Button {
                 guard listPreviewCityCount < listPreviewMaximumCount else { return }
@@ -344,14 +340,15 @@ extension ContentView {
                 }
             } label: {
                 Image(systemName: "plus")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 12, weight: .medium))
                     .foregroundStyle(listPreviewCityCount < listPreviewMaximumCount ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
-                    .frame(width: 36, height: bottomToolbarCenterHeight)
-                    .contentShape(Circle())
+                    .frame(minWidth: 30, minHeight: 32)
+                    .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
             .disabled(listPreviewCityCount >= listPreviewMaximumCount)
         }
+        .padding(.horizontal, 3)
+        .frame(width: bottomCenterToolbarWidth)
     }
 
     var bottomAddSearchedCityButton: some View {
@@ -369,13 +366,7 @@ extension ContentView {
                 .font(.system(size: bottomToolbarIconSize, weight: .semibold))
                 .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-                .contentShape(Circle())
         }
-        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-        .fixedSize()
-        .controlSize(.large)
-        .buttonBorderShape(.circle)
         .disabled(addCityDetailCity == nil || lists.isEmpty)
         .accessibilityLabel(localizedString("Add", locale: locale))
         .confirmationDialog(
@@ -431,19 +422,15 @@ extension ContentView {
                 .font(.system(size: bottomToolbarIconSize, weight: .regular))
                 .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: bottomToolbarControlLength, height: bottomToolbarCenterHeight)
-                .contentShape(Circle())
+                .frame(width: 32, height: 36)
+                .contentShape(Rectangle())
         }
-        .frame(width: bottomToolbarControlLength, height: bottomToolbarControlLength)
-        .fixedSize()
-        .controlSize(.large)
-        .buttonBorderShape(.circle)
         .menuOrder(.fixed)
         .tint(theme.colors.accent)
     }
 
     var mapControls: some View {
-        HStack(spacing: 8) {
+        topToolbarActionCapsule(spacing: 18) {
             Button {
                 mapRecenterRequest = nil
                 DispatchQueue.main.async {
@@ -454,7 +441,8 @@ extension ContentView {
                     .font(.system(size: bottomToolbarIconSize, weight: .regular))
                     .imageScale(.medium)
                     .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: bottomToolbarControlLength, height: bottomToolbarCenterHeight)
+                    .frame(width: 32, height: 36)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .tint(theme.colors.primaryText)
@@ -462,16 +450,11 @@ extension ContentView {
             mapOverlayMenu
                 .font(.system(size: bottomToolbarIconSize, weight: .regular))
                 .imageScale(.medium)
-                .frame(width: bottomToolbarControlLength, height: bottomToolbarCenterHeight)
-                .buttonStyle(.plain)
 
             mapMoreMenu
                 .font(.system(size: bottomToolbarIconSize, weight: .regular))
                 .imageScale(.medium)
-                .frame(width: bottomToolbarControlLength, height: bottomToolbarCenterHeight)
-                .buttonStyle(.plain)
         }
-        .controlSize(.large)
     }
 }
 

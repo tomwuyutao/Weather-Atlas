@@ -90,7 +90,10 @@ extension ContentView {
                     includesContinentSelection: true,
                     continentLists: continentListTutorialLists,
                     selectedContinentListIDs: $continentListTutorialSelectedIDs,
-                    onToggleContinentList: toggleContinentListTutorialSelection,
+                    selectedCountryListIDs: $countryListTutorialSelectedIDs,
+                    creationProgress: weatherService.loadingProgress,
+                    onSelectContinentList: finishTutorialWithContinentList,
+                    onSelectCountryList: finishTutorialWithCountryList,
                     onFinish: applyContinentListTutorialSelection,
                     onCancel: nil
                 )
@@ -100,7 +103,10 @@ extension ContentView {
                     includesContinentSelection: false,
                     continentLists: [],
                     selectedContinentListIDs: $continentListTutorialSelectedIDs,
-                    onToggleContinentList: { _ in },
+                    selectedCountryListIDs: $countryListTutorialSelectedIDs,
+                    creationProgress: 0,
+                    onSelectContinentList: { _ in },
+                    onSelectCountryList: { _ in },
                     onFinish: { showingReplayTutorial = false },
                     onCancel: nil
                 )
@@ -261,7 +267,6 @@ extension ContentView {
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
                 centerMapOnDots(useListCoordinates: true)
-                showMapDateSliderTutorialIfNeeded()
             }
     }
 
@@ -275,11 +280,6 @@ extension ContentView {
     }
 
     // MARK: - Map Destination
-
-    var mapTopListMenu: some View {
-        listSwitcher(titleOverride: nil)
-        .menuOrder(.fixed)
-    }
 
     var mapTabContent: some View {
         ZStack(alignment: .bottom) {
@@ -313,33 +313,14 @@ extension ContentView {
                 .animation(.smooth(duration: 0.22), value: weatherService.isLoading)
                 .overlay(alignment: .topLeading) {
                     if !showingSearchSheet {
-                        HStack(spacing: 8) {
-                            mapTopListMenu
-                            Spacer(minLength: 8)
+                        topToolbar {
+                            mapControls
                         }
-                        .padding(.leading, 16)
-                        .padding(.trailing, 16)
-                        .safeAreaPadding(.top, 20)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-                .overlay {
-                    if showingMapDateSliderTutorial {
-                        Color.black.opacity((colorScheme == .dark ? 0.68 : 0.52) * (isFadingMapDateSliderTutorial ? 0 : 1))
-                            .ignoresSafeArea()
-                            .allowsHitTesting(false)
-                            .animation(.easeOut(duration: 0.5), value: isFadingMapDateSliderTutorial)
-                    }
-                }
-                .overlay(alignment: .trailing) {
-                    mapDateSliderOverlay
-                }
-                .overlay(alignment: .trailing) {
-                    if showingMapDateSliderTutorial {
-                        mapDateSliderTutorialOverlay
-                            .opacity(isFadingMapDateSliderTutorial ? 0 : 1)
-                            .animation(.easeOut(duration: 0.32).delay(isFadingMapDateSliderTutorial ? 0.12 : 0), value: isFadingMapDateSliderTutorial)
-                            .transition(.opacity)
+                        .padding(.horizontal, 16)
+                        .safeAreaPadding(.top, 12)
+                        .contentShape(Rectangle())
+                        .background(Color.clear)
+                        .zIndex(120)
                     }
                 }
                 .allowsHitTesting(!showingSearchSheet)
@@ -356,7 +337,8 @@ extension ContentView {
 
     func onAppearLoad() async {
         AppDelegate.updateHomeScreenListShortcuts()
-        if !hasLaunchedBefore {
+        let shouldShowFirstLaunchTutorial = !hasLaunchedBefore
+        if shouldShowFirstLaunchTutorial {
             showLegend = true
             prepareContinentListTutorialSelection()
             showingFirstLaunchTutorial = true
@@ -365,8 +347,10 @@ extension ContentView {
             visibleListIDs = [weatherService.activeListID.rawValue]
         }
         centerMapOnDots(useListCoordinates: true)
-        await weatherService.fetchWeatherForAllCities()
-        await refreshCitiesMissingDaytimeSunninessData()
+        if !shouldShowFirstLaunchTutorial {
+            await weatherService.fetchWeatherForAllCities()
+            await refreshCitiesMissingDaytimeSunninessData()
+        }
         if !mapCities.isEmpty {
             centerMapOnDots(useListCoordinates: true)
         }
@@ -380,10 +364,20 @@ extension ContentView {
     }
 
     func prepareContinentListTutorialSelection() {
-        continentListTutorialSelectedIDs = [
-            CityListID.europe.rawValue,
-            CityListID.asia.rawValue
-        ]
+        continentListTutorialSelectedIDs = []
+        countryListTutorialSelectedIDs = []
+    }
+
+    func finishTutorialWithContinentList(_ listID: CityListID) async {
+        continentListTutorialSelectedIDs = [listID.rawValue]
+        countryListTutorialSelectedIDs = []
+        await applyContinentListTutorialSelectionAndLoad()
+    }
+
+    func finishTutorialWithCountryList(_ country: CountryListOption) async {
+        continentListTutorialSelectedIDs = []
+        countryListTutorialSelectedIDs = [country.id]
+        await applyContinentListTutorialSelectionAndLoad()
     }
 
     func toggleContinentListTutorialSelection(_ listID: CityListID) {
@@ -395,26 +389,69 @@ extension ContentView {
         Haptics.lightImpact()
     }
 
+    func toggleCountryListTutorialSelection(_ country: CountryListOption) {
+        if countryListTutorialSelectedIDs.contains(country.id) {
+            countryListTutorialSelectedIDs.remove(country.id)
+        } else {
+            countryListTutorialSelectedIDs.insert(country.id)
+        }
+        Haptics.lightImpact()
+    }
+
     func applyContinentListTutorialSelection() {
-        guard !continentListTutorialSelectedIDs.isEmpty else { return }
-        let selectedIDs = continentListTutorialSelectedIDs
-        let selectedLists = CityListID.builtInLists.filter { selectedIDs.contains($0.rawValue) }
-        guard let firstList = selectedLists.first else { return }
-
-        CityListID.keepBuiltInLists(withRawValues: selectedIDs)
-        visibleListIDs = selectedIDs
-        refreshListOrder()
-        hasLaunchedBefore = true
-        showingFirstLaunchTutorial = false
-
         Task {
-            await switchToList(firstList)
-            await MainActor.run {
-                mapRecenterRequest = .listCoordinates
-                centerMapOnDots(useListCoordinates: true)
-                AppDelegate.updateHomeScreenListShortcuts()
+            await applyContinentListTutorialSelectionAndLoad()
+        }
+    }
+
+    func applyContinentListTutorialSelectionAndLoad() async {
+        let selectedContinentIDs = continentListTutorialSelectedIDs
+        let selectedCountryIDs = countryListTutorialSelectedIDs
+        guard !selectedContinentIDs.isEmpty || !selectedCountryIDs.isEmpty else { return }
+        let selectedLists = CityListID.builtInLists.filter { selectedContinentIDs.contains($0.rawValue) }
+
+        CityListID.keepBuiltInLists(withRawValues: selectedContinentIDs)
+        visibleListIDs = selectedContinentIDs
+        refreshListOrder()
+        navigationPath = []
+
+        var firstList = selectedLists.first
+        var createdCountryListIDs: [CityListID] = []
+        let selectedCountries = CountryCityCatalog.countries(locale: locale).filter {
+            selectedCountryIDs.contains($0.id)
+        }
+
+        for country in selectedCountries {
+            let listID = await weatherService.createCustomList(
+                name: CityListID.availableListName(for: country.localizedName(locale: locale)),
+                cities: CountryCityCatalog.topCities(for: country)
+            )
+            if firstList == nil {
+                firstList = listID
+            }
+            createdCountryListIDs.append(listID)
+        }
+
+        if let firstList {
+            if firstList.rawValue == weatherService.activeListID.rawValue {
+                await weatherService.fetchWeatherForAllCities()
+            } else {
+                await switchToList(firstList)
             }
         }
+
+        visibleListIDs.formUnion(createdCountryListIDs.map(\.rawValue))
+        refreshListOrder()
+        mapRecenterRequest = .listCoordinates
+        centerMapOnDots(useListCoordinates: true)
+        AppDelegate.updateHomeScreenListShortcuts()
+
+        if !mapCities.isEmpty {
+            await refreshCitiesMissingDaytimeSunninessData()
+        }
+
+        hasLaunchedBefore = true
+        showingFirstLaunchTutorial = false
     }
 
     func handleOpenListShortcut(rawValue: String) {

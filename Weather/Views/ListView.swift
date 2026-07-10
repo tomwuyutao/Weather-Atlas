@@ -61,7 +61,7 @@ extension ContentView {
     }
 
     private var listTopToolbarActions: some View {
-        HStack(spacing: 12) {
+        topToolbarActionCapsule {
             if listEditMode {
                 Button {
                     withAnimation(.smooth(duration: 0.2)) {
@@ -104,9 +104,6 @@ extension ContentView {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 12)
-        .frame(height: 44)
-        .themedGlass(in: .capsule)
     }
 
     private func listToolbarActionIcon(_ systemImage: String, accessibilityLabel: String) -> some View {
@@ -147,7 +144,7 @@ extension ContentView {
                 listEditMode = false
                 activateAddListOptions()
             } label: {
-                primaryMenuLabel(localizedString("Add List", locale: locale), systemImage: "plus")
+                primaryMenuLabel(localizedString("New List", locale: locale), systemImage: "plus")
             }
 
             Button {
@@ -174,7 +171,7 @@ extension ContentView {
         } label: {
             HStack(spacing: 4) {
                 Text(toolbarTitle)
-                    .font(.system(size: 34, weight: .semibold, design: .serif))
+                    .font(.system(size: 32, weight: .semibold, design: .serif))
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
 

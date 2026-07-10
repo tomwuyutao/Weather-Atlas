@@ -3,7 +3,7 @@
 //  Weather
 //
 //  Purpose: Builds the city detail screen around sunniness: verdict, factors,
-//  sunny windows, nearby comparisons, and the expanded weather card.
+//  sunny hours, nearby comparisons, and the expanded weather card.
 //
 
 import SwiftUI
@@ -46,6 +46,9 @@ extension ContentView {
         .transition(.opacity)
         .animation(.smooth(duration: 0.24), value: city.id)
         .scrollContentBackground(.hidden)
+        .sheet(isPresented: $showingDetailCloudCoverSheet) {
+            detailCloudCoverSheet(city: city)
+        }
     }
 
     func cityWeatherForDetailRoute(_ cityID: UUID) -> CityWeather? {
@@ -79,8 +82,6 @@ extension ContentView {
             )
 
             detailSunnyFactorGrid(city: city, candidate: candidate, forecast: forecast)
-
-            detailCloudCover(city: city)
 
             detailSunnyWindowOverview(city: city)
 
@@ -123,14 +124,12 @@ extension ContentView {
         forecast: DailyForecast
     ) -> some View {
         let rainChance = candidate.precipitationChance
-        let windSpeed = forecast.windSpeed
         let uvIndex = forecast.uvIndex
-        let distanceUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic
         let selectedHours = detailDisplayHours(for: city, forecast: forecast, filtersPastToday: false)
 
         return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
             detailSunnyFactorTile(
-                title: localizedString("Sunny Window", locale: locale),
+                title: localizedString("Sunny Hours", locale: locale),
                 value: detailSunnyWindowSummary(for: city, hours: selectedHours),
                 systemImage: "sun.max.fill",
                 tint: theme.colors.dotSun
@@ -165,16 +164,27 @@ extension ContentView {
             )
 
             detailSunnyFactorTile(
-                title: localizedString("Wind", locale: locale),
-                value: windSpeed.map { distanceUnit.displayWindSpeed($0, locale: locale) } ?? "-",
-                systemImage: "wind",
-                tint: theme.colors.accent
+                title: localizedString("Cloud Cover", locale: locale),
+                value: forecast.cloudCoverPercent.map { "\($0)%" } ?? "-",
+                systemImage: "cloud.fill",
+                tint: theme.colors.accent,
+                action: {
+                    Haptics.lightImpact()
+                    showingDetailCloudCoverSheet = true
+                }
             )
         }
     }
 
-    private func detailSunnyFactorTile(title: String, value: String, systemImage: String, tint: Color) -> some View {
-        HStack(spacing: 10) {
+    @ViewBuilder
+    private func detailSunnyFactorTile(
+        title: String,
+        value: String,
+        systemImage: String,
+        tint: Color,
+        action: (() -> Void)? = nil
+    ) -> some View {
+        let tile = HStack(spacing: 10) {
             Image(systemName: systemImage)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(tint)
@@ -193,16 +203,27 @@ extension ContentView {
 
             Spacer(minLength: 0)
         }
-        .padding(12)
-        .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 18))
+
+        if let action {
+            Button(action: action) {
+                tile
+                    .padding(12)
+                    .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 18))
+            }
+            .buttonStyle(.plain)
+        } else {
+            tile
+                .padding(12)
+                .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 18))
+        }
     }
 
-    // MARK: Sunny Window Overview
+    // MARK: Sunny Hours Overview
 
     private func detailSunnyWindowOverview(city: CityWeather) -> some View {
         let windows = detailSunnyWindowRows(for: city)
         return VStack(alignment: .leading, spacing: 10) {
-            Label(localizedString("Sunny Window", locale: locale), systemImage: "sun.max.fill")
+            Label(localizedString("Sunny Hours", locale: locale), systemImage: "sun.max.fill")
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(theme.colors.primaryText)
 
@@ -230,13 +251,67 @@ extension ContentView {
                         }
                     }
                 )
+
+                sunnyWindowLegend
             }
         }
         .padding(14)
         .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
     }
 
+    private var sunnyWindowLegend: some View {
+        HStack(spacing: 14) {
+            sunnyWindowLegendItem(
+                title: localizedString("Sunny", locale: locale),
+                color: theme.colors.dotSun
+            )
+            sunnyWindowLegendItem(
+                title: localizedString("Partly Sunny", locale: locale),
+                color: theme.colors.dotPartlyCloudy
+            )
+        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 4)
+    }
+
+    private func sunnyWindowLegendItem(title: String, color: Color) -> some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+                .shadow(color: color.opacity(0.35), radius: 2)
+
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(theme.colors.secondaryText)
+                .lineLimit(1)
+        }
+    }
+
     // MARK: Cloud Cover
+
+    private func detailCloudCoverSheet(city: CityWeather) -> some View {
+        NavigationStack {
+            ScrollView {
+                detailCloudCover(city: city)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 18)
+                    .padding(.bottom, 24)
+            }
+            .background(theme.colors.background.ignoresSafeArea())
+            .navigationTitle(localizedString("Daytime Cloud Cover", locale: locale))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(localizedString("Done", locale: locale)) {
+                        showingDetailCloudCoverSheet = false
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
 
     private func detailCloudCover(city: CityWeather) -> some View {
         let selectedDay = selectedDayOffset
@@ -478,7 +553,7 @@ extension ContentView {
             .sorted { $0.hour < $1.hour }
     }
 
-    // MARK: Sunny Window Computation
+    // MARK: Sunny Hours Computation
 
     fileprivate struct DetailSunnyWindowRow: Identifiable {
         let id: Int
@@ -622,7 +697,7 @@ extension ContentView {
 
 }
 
-// MARK: - Sunny Window Overview Chart
+// MARK: - Sunny Hours Overview Chart
 
 private struct DetailSunnyWindowOverviewChart: View {
     let rows: [ContentView.DetailSunnyWindowRow]
@@ -871,6 +946,11 @@ private struct DetailMapContextView: View {
     let onSelectCity: (CityWeather) -> Void
 
     @State private var cameraPosition: MapCameraPosition = .automatic
+    private let mapSaturation: Double = 0.72
+
+    private var markerSaturationCompensation: Double {
+        mapSaturation == 0 ? 1 : 1 / mapSaturation
+    }
 
     private var displayedCities: [CityWeather] {
         [selectedCity] + nearbyCities.map(\.cityWeather)
@@ -907,6 +987,7 @@ private struct DetailMapContextView: View {
             }
         }
         .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+        .saturation(mapSaturation)
         .background(water)
         .onTapGesture {
             onSelectMapCity(selectedCity)
@@ -939,6 +1020,7 @@ private struct DetailMapContextView: View {
                 .stroke(accent.opacity(0.50), lineWidth: 2)
         }
         .shadow(color: accent.opacity(0.20), radius: 8, y: 2)
+        .saturation(markerSaturationCompensation)
     }
 
     private func nearbyWeatherMarker(for nearbyCity: DetailNearbyCityContext) -> some View {
@@ -958,6 +1040,7 @@ private struct DetailMapContextView: View {
         .padding(.vertical, 5)
         .background(.thinMaterial, in: Capsule())
         .shadow(color: .black.opacity(0.10), radius: 6, y: 2)
+        .saturation(markerSaturationCompensation)
         .accessibilityLabel(nearbyCity.cityWeather.city.localizedName(locale: locale))
     }
 

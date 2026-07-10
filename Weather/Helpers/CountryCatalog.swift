@@ -46,7 +46,7 @@ struct CountryCityCatalogEntry: Hashable {
 
 enum CountryCityCatalog {
     static let defaultCountryCityCount = 15
-    static let maxCountryCityCount = 20
+    static let maxCountryCityCount = 15
 
     static func countries(locale: Locale) -> [CountryListOption] {
         countriesByCode.values.sorted {
@@ -137,7 +137,7 @@ enum CountryCityCatalog {
             guard fields.count == 7,
                   let latitude = Double(fields[3]),
                   let longitude = Double(fields[4]),
-                  let population = Int(fields[6]) else {
+                  let population = parsePopulation(fields[6]) else {
                 DeveloperWarningCenter.show(
                     title: "Country City Catalog Invalid",
                     message: "The bundled country_city_coordinates.csv row \(rowIndex + 2) is malformed and cannot be loaded."
@@ -212,5 +212,15 @@ enum CountryCityCatalog {
 
         fields.append(current)
         return fields
+    }
+
+    private static func parsePopulation(_ value: String) -> Int? {
+        if let population = Int(value) {
+            return population
+        }
+        guard let population = Double(value), population.isFinite else {
+            return nil
+        }
+        return Int(population.rounded())
     }
 }

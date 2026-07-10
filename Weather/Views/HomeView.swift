@@ -19,8 +19,10 @@ struct HomeStaticMapPreview: View {
     let selectedDayOffset: Int
     let accent: Color
     let contextDot: Color
+    let previewDot: Color
     let land: Color
     let water: Color
+    let mapSaturation: Double
     @Environment(\.colorScheme) private var colorScheme
     @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 48, longitude: 12),
@@ -29,6 +31,10 @@ struct HomeStaticMapPreview: View {
 
     private var rankByCityID: [UUID: Int] {
         Dictionary(uniqueKeysWithValues: rankedCandidates.prefix(3).enumerated().map { ($0.element.cityWeather.id, $0.offset + 1) })
+    }
+
+    private var markerSaturationCompensation: Double {
+        mapSaturation == 0 ? 1 : 1 / mapSaturation
     }
 
     var body: some View {
@@ -54,6 +60,7 @@ struct HomeStaticMapPreview: View {
                             .fill(markerColor(for: cityWeather))
                             .frame(width: 8, height: 8)
                             .shadow(color: markerColor(for: cityWeather).opacity(0.42), radius: 5, y: 1)
+                            .saturation(markerSaturationCompensation)
                     }
                 }
             }
@@ -68,13 +75,15 @@ struct HomeStaticMapPreview: View {
                     anchor: .center
                 ) {
                     Circle()
-                        .fill(accent)
+                        .fill(previewDot)
                         .frame(width: 8, height: 8)
-                        .shadow(color: accent.opacity(0.36), radius: 5, y: 1)
+                        .shadow(color: previewDot.opacity(0.36), radius: 5, y: 1)
+                        .saturation(markerSaturationCompensation)
                 }
             }
         }
         .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+        .saturation(mapSaturation)
         .allowsHitTesting(false)
         .background(water)
         .onAppear {
@@ -105,6 +114,7 @@ struct HomeStaticMapPreview: View {
                 .foregroundStyle(.white)
         }
         .frame(width: 30, height: 30)
+        .saturation(markerSaturationCompensation)
     }
 
     private func markerColor(for cityWeather: CityWeather) -> Color {
@@ -390,8 +400,10 @@ extension ContentView {
             selectedDayOffset: selectedDayOffset,
             accent: theme.colors.dotSun,
             contextDot: theme.colors.secondaryText,
+            previewDot: theme.colors.primaryText,
             land: theme.colors.mapLand,
-            water: theme.colors.mapOcean
+            water: theme.colors.mapOcean,
+            mapSaturation: 0.72
         )
         .accessibilityHidden(true)
         .frame(height: height)
@@ -578,7 +590,7 @@ extension ContentView {
         }
         .overlay {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(isSelected ? theme.colors.accent : .white.opacity(0.16), lineWidth: isSelected ? 2 : 0.7)
+                .stroke(isSelected ? theme.colors.accent : .white.opacity(0.16), lineWidth: isSelected ? 1.65 : 0.7)
         }
         .aspectRatio(1, contentMode: .fit)
         .padding(2)
@@ -598,7 +610,8 @@ extension ContentView {
         }
 
         let fraction = max(0, min(1, Double(sunnyCityCount) / Double(maxSunnyCityCount)))
-        return theme.colors.dotSun.opacity(0.34 + 0.61 * fraction)
+        let curvedFraction = pow(fraction, 1.55)
+        return theme.colors.dotSun.opacity(0.16 + 0.79 * curvedFraction)
     }
 
     private func homeSunnyCalendarDayWeight(_ day: HomeSunnyCalendarDate, isSelected: Bool) -> Font.Weight {
@@ -809,6 +822,18 @@ extension ContentView {
         .frame(maxWidth: .infinity)
     }
 
+    func topToolbarActionCapsule<Content: View>(
+        spacing: CGFloat = 12,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: spacing) {
+            content()
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 44)
+        .themedGlass(in: .capsule)
+    }
+
     func listSwitcher(titleOverride: String?) -> some View {
         Group {
             if listEditMode && titleOverride == nil {
@@ -819,7 +844,7 @@ extension ContentView {
                 } label: {
                     HStack(spacing: 6) {
                         Text(toolbarTitle)
-                            .font(.system(size: 34, weight: .semibold, design: .serif))
+                            .font(.system(size: 32, weight: .semibold, design: .serif))
                             .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
                         Image(systemName: "pencil")
@@ -858,7 +883,7 @@ extension ContentView {
                         listEditMode = false
                         activateAddListOptions()
                     } label: {
-                        primaryMenuLabel(localizedString("Add List", locale: locale), systemImage: "plus")
+                        primaryMenuLabel(localizedString("New List", locale: locale), systemImage: "plus")
                     }
 
                     Button {
@@ -887,7 +912,7 @@ extension ContentView {
                 } label: {
                     HStack(spacing: 6) {
                         Text(titleOverride ?? toolbarTitle)
-                            .font(.system(size: 34, weight: .semibold, design: .serif))
+                            .font(.system(size: 32, weight: .semibold, design: .serif))
                             .foregroundStyle(theme.colors.primaryText)
                             .lineLimit(1)
                         if titleOverride == nil {

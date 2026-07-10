@@ -15,21 +15,6 @@ enum MapRecenterRequest: Equatable {
     case listCoordinates
 }
 
-private struct MapDateSliderTutorialPreview: View {
-    init() {
-        UserDefaults.standard.set(true, forKey: "hasLaunchedBefore")
-        UserDefaults.standard.set(false, forKey: "hasSeenMapDateSliderTutorial")
-    }
-
-    var body: some View {
-        ContentView(initialRoute: .map, showsMapDateSliderTutorialPreview: true)
-    }
-}
-
-#Preview("Map Slider Tutorial") {
-    MapDateSliderTutorialPreview()
-}
-
 // MARK: - Overlay Menu
 
 extension ContentView {
@@ -63,6 +48,8 @@ extension ContentView {
                 .imageScale(.medium)
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(theme.colors.primaryText)
+                .frame(width: 32, height: 36)
+                .contentShape(Rectangle())
         }
         .tint(theme.colors.accent)
         .menuOrder(.fixed)
@@ -88,6 +75,12 @@ struct AppleWeatherMapView: View {
     @State private var cameraPosition: MapCameraPosition = .region(Self.defaultRegion)
     @State private var lastCenteredCityID: UUID?
 
+    private let mapSaturation: Double = 0.72
+
+    private var markerSaturationCompensation: Double {
+        mapSaturation == 0 ? 1 : 1 / mapSaturation
+    }
+
     // MARK: Body and Camera
 
     var body: some View {
@@ -111,12 +104,14 @@ struct AppleWeatherMapView: View {
                                 isSelected: isSelected
                             )
                             .id(markerIdentity(for: cityWeather, isSelected: isSelected))
+                            .saturation(markerSaturationCompensation)
                         }
                         .buttonStyle(.plain)
                     }
                 }
             }
             .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+            .saturation(mapSaturation)
             .safeAreaPadding(.leading, 16)
             .safeAreaPadding(.bottom, 10)
             .simultaneousGesture(
@@ -331,93 +326,6 @@ private struct WeatherMapMarker: View {
 // MARK: - Map Controls and Interactions
 
 extension ContentView {
-    private var mapDateSliderHeight: CGFloat { 420 }
-    private var mapDateSliderWidth: CGFloat { 145 }
-    private var mapDateSliderBottomPadding: CGFloat { 470 }
-    private var mapDateSliderTrailingPadding: CGFloat { 1 }
-
-    @ViewBuilder
-    var mapDateSliderOverlay: some View {
-        // Date slider only on map view. Home/list use the bottom date switcher.
-        if isMapRoute, !showingSearchSheet {
-            mapDateSlider(height: mapDateSliderHeight) {
-                if showingMapDateSliderTutorial {
-                    dismissMapDateSliderTutorial()
-                }
-            }
-                .frame(width: mapDateSliderWidth, height: mapDateSliderHeight, alignment: .trailing)
-                .padding(.bottom, mapDateSliderBottomPadding)
-                .padding(.trailing, mapDateSliderTrailingPadding)
-                .transition(.opacity)
-        }
-    }
-
-    var mapDateSliderTutorialOverlay: some View {
-        let sliderHeight = mapDateSliderHeight
-        let sliderStepHeight = sliderHeight / 9
-        let selectedCapsuleY = CGFloat(max(0, min(9, selectedDayOffset))) * sliderStepHeight
-        let labelFont: Font = .avenir(.subheadline, weight: .semibold)
-        let idleMinWidth: CGFloat = 52
-        let idleHorizontalPadding: CGFloat = 12
-        let idleVerticalPadding: CGFloat = 7
-        let idleTailSize = CGSize(width: 24, height: 16)
-        let hintSpacing: CGFloat = 4
-        let hintTextNudge: CGFloat = 22
-        let hintGapBelowSelectedCapsule: CGFloat = sliderHeight / 2
-
-        return ZStack(alignment: .topTrailing) {
-            HStack(alignment: .center, spacing: hintSpacing) {
-                Text(localizedString("Drag to change dates", locale: locale))
-                    .font(.avenir(.title3, weight: .regular))
-                    .multilineTextAlignment(.trailing)
-                    .fixedSize()
-                    .offset(x: hintTextNudge)
-
-                Text(sliderDateText(for: selectedDayOffset))
-                    .font(labelFont)
-                    .frame(minWidth: idleMinWidth)
-                    .fixedSize()
-                    .padding(.horizontal, idleHorizontalPadding)
-                    .padding(.vertical, idleVerticalPadding)
-                    .hidden()
-                    .overlay {
-                        Image(systemName: "arrow.down")
-                            .font(.system(size: 28, weight: .semibold))
-                    }
-
-                Color.clear
-                    .frame(width: idleTailSize.width, height: idleTailSize.height)
-                    .offset(x: 9)
-            }
-            .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.45), radius: 4, y: 2)
-            .offset(y: selectedCapsuleY + hintGapBelowSelectedCapsule)
-        }
-        .frame(width: mapDateSliderWidth + 215, height: sliderHeight, alignment: .topTrailing)
-        .padding(.bottom, mapDateSliderBottomPadding)
-        .padding(.trailing, mapDateSliderTrailingPadding)
-        .allowsHitTesting(false)
-    }
-
-    func showMapDateSliderTutorialIfNeeded() {
-        guard !hasSeenMapDateSliderTutorial else { return }
-        selectedDayOffset = 4
-        isFadingMapDateSliderTutorial = false
-        showingMapDateSliderTutorial = true
-    }
-
-    func dismissMapDateSliderTutorial() {
-        guard showingMapDateSliderTutorial, !isFadingMapDateSliderTutorial else { return }
-        hasSeenMapDateSliderTutorial = true
-        withAnimation(.easeOut(duration: 0.5)) {
-            isFadingMapDateSliderTutorial = true
-        }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.62) {
-            showingMapDateSliderTutorial = false
-            isFadingMapDateSliderTutorial = false
-        }
-    }
-
     // MARK: Camera Controls
 
     func centerMapOnDots(useListCoordinates: Bool = false) {

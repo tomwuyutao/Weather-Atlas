@@ -49,7 +49,6 @@ struct AddSheet: View {
 
     @Environment(\.locale) private var locale
     @Environment(\.appTheme) private var theme
-    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -90,27 +89,47 @@ struct AddSheet: View {
 
     private func addListOptionButton(
         title: String,
-        subtitle: String,
+        subtitle: String?,
         systemImage: String,
         action: @escaping () -> Void
     ) -> some View {
+        AddListOptionButton(
+            title: title,
+            subtitle: subtitle,
+            systemImage: systemImage,
+            action: action
+        )
+    }
+}
+
+struct AddListOptionButton: View {
+    let title: String
+    let subtitle: String?
+    let systemImage: String
+    var titleWeight: Font.Weight = .semibold
+    var titleColor: Color = .primary
+    var showsIconBackground: Bool = true
+    let action: () -> Void
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
         Button(action: action) {
             HStack(spacing: 18) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 27, weight: .regular))
-                    .foregroundStyle(theme.colors.accent)
-                    .frame(width: 58, height: 58)
-                    .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 14))
+                addListOptionIcon
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
-                        .font(.avenir(.headline, weight: .semibold))
-                        .foregroundStyle(Color.primary)
+                        .font(.avenir(.headline, weight: titleWeight))
+                        .foregroundStyle(titleColor)
 
-                    Text(subtitle)
-                        .font(.avenir(.footnote, weight: .regular))
-                        .foregroundStyle(Color.secondary)
-                        .lineLimit(2)
+                    if let subtitle {
+                        Text(subtitle)
+                            .font(.avenir(.footnote, weight: .regular))
+                            .foregroundStyle(Color.secondary)
+                            .lineLimit(2)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -120,10 +139,26 @@ struct AddSheet: View {
                     .frame(width: 22, alignment: .trailing)
             }
             .padding(.vertical, 16)
-            .frame(minHeight: 92)
+            .frame(minHeight: subtitle == nil ? 82 : 92)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var addListOptionIcon: some View {
+        if showsIconBackground {
+            Image(systemName: systemImage)
+                .font(.system(size: 27, weight: .regular))
+                .foregroundStyle(theme.colors.accent)
+                .frame(width: 58, height: 58)
+                .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 14))
+        } else {
+            Image(systemName: systemImage)
+                .font(.system(size: 33, weight: .regular))
+                .foregroundStyle(theme.colors.primaryText)
+                .frame(width: 58, height: 58)
+        }
     }
 }
 

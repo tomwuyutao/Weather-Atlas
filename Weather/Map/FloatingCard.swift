@@ -22,8 +22,8 @@ extension ContentView {
         let forecast = cityWeather.forecast(for: selectedDayOffset)
         let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
         let icon = forecast.weatherIcon
-        let temperatureText = tempUnit.display(forecast.dailyHigh)
-        let temperatureLabel = localizedString("Highest Temperature", locale: locale)
+        let sunnyHoursText = mapSunnyHoursSummary(for: cityWeather, forecast: forecast)
+        let sunnyHoursLabel = localizedString("Sunny Hours", locale: locale)
 
         if forceExpandedStyle {
             expandedFloatingWeatherCard(
@@ -45,13 +45,13 @@ extension ContentView {
 
             HStack(alignment: .bottom, spacing: phoneCardSpacing) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(temperatureText)
+                    Text(sunnyHoursText)
                         .font(.system(size: phoneCardTemperatureSize, weight: .semibold, design: .default))
                         .foregroundStyle(theme.colors.primaryText)
-                        .contentTransition(.numericText())
                         .lineLimit(1)
+                        .minimumScaleFactor(0.74)
 
-                    Text(temperatureLabel)
+                    Text(sunnyHoursLabel)
                         .font(phoneCardMetricFont)
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
@@ -176,8 +176,8 @@ extension ContentView {
         plainBackground: Bool = false
     ) -> some View {
         let forecast = cityWeather.forecast(for: selectedDayOffset)
-        let temperatureText = tempUnit.display(forecast.dailyHigh)
-        let temperatureLabel = localizedString("Highest Temperature", locale: locale)
+        let sunnyHoursText = mapSunnyHoursSummary(for: cityWeather, forecast: forecast)
+        let sunnyHoursLabel = localizedString("Sunny Hours", locale: locale)
         let forecasts = Array(cityWeather.dailyForecasts.prefix(10))
         let cornerRadius: CGFloat = 28
 
@@ -191,7 +191,7 @@ extension ContentView {
                             .lineLimit(1)
                     }
 
-                    Text(temperatureLabel)
+                    Text(sunnyHoursLabel)
                         .font(.callout.weight(.medium))
                         .foregroundStyle(theme.colors.secondaryText)
                 }
@@ -202,11 +202,12 @@ extension ContentView {
                 HStack(alignment: .center, spacing: 2) {
                     Spacer(minLength: 0)
 
-                    Text(temperatureText)
+                    Text(sunnyHoursText)
                         .font(.system(size: 62, weight: .regular, design: .default))
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
-                        .id("primary-\(selectedDayOffset)-\(temperatureText)")
+                        .minimumScaleFactor(0.48)
+                        .id("primary-\(selectedDayOffset)-\(sunnyHoursText)")
                         .transition(.scale(scale: 0.82).combined(with: .opacity))
 
                     Image(systemName: floatingCardIconName(for: icon))
@@ -250,6 +251,56 @@ extension ContentView {
             .modifier(MapExpandedCardContainer(plainBackground: plainBackground, colorScheme: colorScheme))
             .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         }
+    }
+
+    private func mapSunnyHoursSummary(for city: CityWeather, forecast: DailyForecast) -> String {
+        let sunnyHours = SunninessScoring.daytimeHours(for: forecast, timeZone: city.timeZone)
+            .filter { SunninessScoring.condition(for: $0.symbolName) == .clear }
+            .map(\.hour)
+            .sorted()
+
+        guard !sunnyHours.isEmpty else {
+            return localizedString("No Sun", locale: locale)
+        }
+
+        var bestStart = sunnyHours[0]
+        var bestEnd = sunnyHours[0]
+        var currentStart = sunnyHours[0]
+        var currentEnd = sunnyHours[0]
+
+        for hour in sunnyHours.dropFirst() {
+            if hour == currentEnd + 1 {
+                currentEnd = hour
+            } else {
+                if currentEnd - currentStart > bestEnd - bestStart {
+                    bestStart = currentStart
+                    bestEnd = currentEnd
+                }
+                currentStart = hour
+                currentEnd = hour
+            }
+        }
+
+        if currentEnd - currentStart > bestEnd - bestStart {
+            bestStart = currentStart
+            bestEnd = currentEnd
+        }
+
+        return "\(mapFormattedHour(bestStart, timeZone: city.timeZone)) - \(mapFormattedHour(bestEnd + 1, timeZone: city.timeZone))"
+    }
+
+    private func mapFormattedHour(_ hour: Int, timeZone: TimeZone) -> String {
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        var components = calendar.dateComponents([.year, .month, .day], from: Date())
+        components.hour = hour
+        components.minute = 0
+        let date = calendar.date(from: components) ?? Date()
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale)
+        return formatter.string(from: date)
     }
 
     private func expandedFloatingWeatherCardDayButton(
@@ -360,9 +411,9 @@ extension ContentView {
 
     var floatingMapCardBottomPadding: CGFloat {
         if #available(iOS 26.0, *) {
-            return 58
+            return 24
         } else {
-            return 48
+            return 22
         }
     }
 

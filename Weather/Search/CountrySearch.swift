@@ -39,17 +39,10 @@ extension ContentView {
 
     func continentListSearchResultRow(_ listID: CityListID) -> some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(listID.localizedDisplayName(locale: locale))
-                    .font(.avenir(.headline, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                Text(cityCountText(CountryCityCatalog.cityCount(forContinentRawValue: listID.rawValue)))
-                    .font(.avenir(.subheadline, weight: .regular))
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .lineLimit(1)
-            }
+            Text(listID.localizedDisplayName(locale: locale))
+                .font(.avenir(.headline, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
 
             Spacer(minLength: 8)
 
@@ -57,7 +50,7 @@ extension ContentView {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(theme.colors.accent)
         }
-        .padding(.vertical, 12)
+        .padding(.vertical, 14)
         .contentShape(Rectangle())
     }
 
@@ -162,17 +155,10 @@ extension ContentView {
 
     func countryListSearchResultRow(_ country: CountryListOption) -> some View {
         HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(country.localizedName(locale: locale))
-                    .font(.avenir(.headline, weight: .semibold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                Text(cityCountText(country.cities.count))
-                    .font(.avenir(.subheadline, weight: .regular))
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .lineLimit(1)
-            }
+            Text(country.localizedName(locale: locale))
+                .font(.avenir(.headline, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
 
             Spacer(minLength: 8)
 

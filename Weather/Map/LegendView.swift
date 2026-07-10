@@ -240,13 +240,21 @@ struct MapFloatingLegend: View {
     }
 
     private var windSpeedLegendLabels: [String] {
+        let values: [Int]
+        let unit: String
         switch distUnit.resolved {
         case .miles:
-            return [60, 45, 30, 15, 0].map { distUnit.displayWindSpeed(Double($0) / 0.621371, locale: locale) }
+            values = [60, 45, 30, 15, 0]
+            unit = "mph"
         case .metersPerSecond:
-            return [30, 20, 10, 5, 0].map { distUnit.displayWindSpeed(Double($0) * 3.6, locale: locale) }
+            values = [30, 20, 10, 5, 0]
+            unit = "m/s"
         case .kilometers, .automatic:
-            return [100, 75, 50, 25, 0].map { distUnit.displayWindSpeed(Double($0), locale: locale) }
+            values = [100, 75, 50, 25, 0]
+            unit = "km/h"
+        }
+        return values.enumerated().map { index, value in
+            index == values.count - 1 ? "\(value) \(unit)" : "\(value)"
         }
     }
 

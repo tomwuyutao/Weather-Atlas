@@ -14,16 +14,25 @@ struct TutorialView: View {
     let includesContinentSelection: Bool
     let continentLists: [CityListID]
     @Binding var selectedContinentListIDs: Set<String>
-    let onToggleContinentList: (CityListID) -> Void
+    @Binding var selectedCountryListIDs: Set<String>
+    let creationProgress: Double
+    let onSelectContinentList: (CityListID) async -> Void
+    let onSelectCountryList: (CountryListOption) async -> Void
     let onFinish: () -> Void
     var onCancel: (() -> Void)?
 
     @Environment(\.appTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
     @State private var page = 0
+    @State private var showingContinentSearch = false
+    @State private var showingCountrySearch = false
+    @State private var countrySearchText = ""
+    @State private var isCreatingList = false
+    @State private var creatingListName: String?
 
     private var pageCount: Int {
-        includesContinentSelection ? 3 : 2
+        includesContinentSelection ? 4 : 2
     }
 
     var body: some View {
@@ -41,9 +50,13 @@ struct TutorialView: View {
                 if includesContinentSelection {
                     continentSelectionPage
                         .tag(2)
+
+                    creatingListPage
+                        .tag(3)
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+            .disabled(isCreatingList)
 
             VStack {
                 Spacer()
@@ -52,6 +65,19 @@ struct TutorialView: View {
                     .padding(.bottom, 28)
             }
         }
+        .sheet(isPresented: $showingContinentSearch) {
+            tutorialContinentSearchSheet
+                .presentationDetents([.fraction(0.82), .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(theme.colors.background)
+        }
+        .sheet(isPresented: $showingCountrySearch) {
+            tutorialCountrySearchSheet
+                .presentationDetents([.fraction(0.82), .large])
+                .presentationDragIndicator(.visible)
+                .presentationBackground(theme.colors.background)
+        }
+        .interactiveDismissDisabled(isCreatingList)
     }
 
     private var tutorialBackground: Color {
@@ -75,7 +101,7 @@ struct TutorialView: View {
     }
 
     private var tutorialTopSpacer: CGFloat {
-        86
+        62
     }
 
     private var tutorialTitle: Font {
@@ -202,76 +228,271 @@ struct TutorialView: View {
     // MARK: Continent Selection Page
 
     private var continentSelectionPage: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 22) {
             tutorialHeaderInset
 
-            Text(localizedString("Choose something to start with", locale: locale))
+            Text(localizedString("Let's add your first city list", locale: locale))
                 .font(tutorialTitle)
                 .foregroundStyle(introColors.primaryText)
-                .lineLimit(2)
+                .lineLimit(3)
                 .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.bottom, 16)
 
-            VStack(spacing: 0) {
-                ForEach(continentLists) { listID in
-                    Button {
-                        withAnimation(.smooth(duration: 0.18)) {
-                            onToggleContinentList(listID)
-                        }
-                    } label: {
-                        HStack(spacing: 14) {
-                            continentSelectionMarker(isSelected: selectedContinentListIDs.contains(listID.rawValue))
+            (
+                Text(localizedString("Pick a place and we'll create a list of ", locale: locale))
+                    + Text(localizedString("15 big cities", locale: locale)).fontWeight(.bold)
+                    + Text(localizedString(" for you.", locale: locale))
+            )
+            .font(.avenir(.body, weight: .regular))
+            .foregroundStyle(introColors.primaryText.opacity(0.64))
+            .lineSpacing(6)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.bottom, 18)
 
-                            Text(listID.localizedDisplayName(locale: locale))
-                                .font(.avenir(.body, weight: .medium))
-                                .foregroundStyle(introColors.primaryText)
+            VStack(spacing: 16) {
+                tutorialAddListOptionCard(
+                    title: localizedString("Pick a Continent", locale: locale),
+                    systemImage: "globe.europe.africa"
+                ) {
+                    showingContinentSearch = true
+                }
 
-                            Spacer()
-                        }
-                        .padding(.vertical, 13)
-                        .padding(.horizontal, 20)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-
-                    if listID.rawValue != continentLists.last?.rawValue {
-                        Divider()
-                            .overlay(introColors.mapBorder.opacity(0.34))
-                            .padding(.leading, 64)
-                    }
+                tutorialAddListOptionCard(
+                    title: localizedString("Pick a Country", locale: locale),
+                    systemImage: "flag"
+                ) {
+                    countrySearchText = ""
+                    showingCountrySearch = true
                 }
             }
-            .background(introColors.listCardFill.opacity(0.78), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(introColors.mapBorder.opacity(0.28), lineWidth: 1)
-            )
 
-            Spacer(minLength: 92)
+            Spacer(minLength: 0)
         }
         .padding(.horizontal, tutorialHorizontalPadding)
     }
 
-    private func continentSelectionMarker(isSelected: Bool) -> some View {
-        ZStack {
-            Circle()
-                .fill(isSelected ? primaryButtonColor : .clear)
-                .frame(width: 24, height: 24)
+    private var filteredTutorialCountryOptions: [CountryListOption] {
+        let countries = CountryCityCatalog.countries(locale: locale)
+        let query = countrySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return countries }
+        return countries.filter {
+            $0.localizedName(locale: locale).localizedCaseInsensitiveContains(query)
+                || $0.englishName.localizedCaseInsensitiveContains(query)
+                || $0.iso2.localizedCaseInsensitiveContains(query)
+        }
+    }
 
-            Circle()
-                .stroke(isSelected ? primaryButtonColor : introColors.mapBorder, lineWidth: 2.2)
-                .frame(width: 24, height: 24)
+    private func tutorialAddListOptionCard(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        AddListOptionButton(
+            title: title,
+            subtitle: nil,
+            systemImage: systemImage,
+            titleWeight: .medium,
+            titleColor: introColors.primaryText,
+            showsIconBackground: false,
+            action: action
+        )
+        .padding(.horizontal, 18)
+        .padding(.vertical, 10)
+        .background(introColors.listCardFill.opacity(0.78), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .stroke(introColors.mapBorder.opacity(0.24), lineWidth: 1)
+        }
+    }
 
-            if isSelected {
-                Image(systemName: "checkmark")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(.white)
-                    .transition(.scale.combined(with: .opacity))
+    // MARK: Creating Page
+
+    private var creatingListPage: some View {
+        VStack(alignment: .leading, spacing: 26) {
+            tutorialHeaderInset
+
+            Text(localizedString("Creating your city list", locale: locale))
+                .font(tutorialTitle)
+                .foregroundStyle(introColors.primaryText)
+                .lineLimit(3)
+                .minimumScaleFactor(0.78)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            VStack(alignment: .leading, spacing: 18) {
+                ProgressView()
+                    .controlSize(.large)
+                    .tint(primaryButtonColor)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.bottom, 2)
+
+                Text(creatingListTitle)
+                    .font(.avenir(.title3, weight: .semibold))
+                    .foregroundStyle(introColors.primaryText)
+                    .lineSpacing(6)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(localizedString("Fetching weather for every city so your atlas is ready when you enter the app.", locale: locale))
+                    .font(.avenir(.body, weight: .regular))
+                    .foregroundStyle(introColors.primaryText.opacity(0.62))
+                    .lineSpacing(5)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                ProgressView(value: min(max(creationProgress, 0), 1))
+                    .tint(primaryButtonColor)
+                    .padding(.top, 4)
+            }
+            .padding(22)
+            .background(introColors.listCardFill.opacity(0.78), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .stroke(introColors.mapBorder.opacity(0.24), lineWidth: 1)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, tutorialHorizontalPadding)
+    }
+
+    private var creatingListTitle: String {
+        guard let creatingListName else {
+            return localizedString("Creating a list of 15 cities", locale: locale)
+        }
+        return "\(localizedString("Creating a list of 15 cities in", locale: locale)) \(creatingListName)"
+    }
+
+    private var tutorialContinentSearchSheet: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                ForEach(continentLists) { listID in
+                    Button {
+                        beginCreatingContinentList(listID)
+                    } label: {
+                        tutorialContinentSearchRow(listID)
+                    }
+                    .buttonStyle(.plain)
+
+                    if listID != continentLists.last {
+                        Divider()
+                            .background(theme.colors.secondaryText.opacity(0.20))
+                    }
+                }
+            }
+            .padding(.horizontal, 22)
+            .padding(.top, 18)
+        }
+        .scrollIndicators(.hidden)
+        .padding(.horizontal, 18)
+        .padding(.bottom, 28)
+        .background(theme.colors.background.ignoresSafeArea())
+    }
+
+    private var tutorialCountrySearchSheet: some View {
+        VStack(spacing: 18) {
+            tutorialCountrySearchBar
+
+            ScrollView {
+                VStack(spacing: 0) {
+                    let countries = filteredTutorialCountryOptions
+                    if countries.isEmpty {
+                        Text(localizedString("No countries found.", locale: locale))
+                            .font(.avenir(.body, weight: .regular))
+                            .foregroundStyle(theme.colors.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 18)
+                    } else {
+                        ForEach(countries) { country in
+                            Button {
+                                beginCreatingCountryList(country)
+                            } label: {
+                                tutorialCountrySearchRow(country)
+                            }
+                            .buttonStyle(.plain)
+
+                            if country.id != countries.last?.id {
+                                Divider()
+                                    .background(theme.colors.secondaryText.opacity(0.20))
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal, 22)
+            }
+            .scrollIndicators(.hidden)
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 28)
+        .background(theme.colors.background.ignoresSafeArea())
+        .onAppear {
+            countrySearchText = ""
+        }
+    }
+
+    private var tutorialCountrySearchBar: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(theme.colors.accent)
+
+            TextField(localizedString("Search for a country", locale: locale), text: $countrySearchText)
+                .font(.avenir(.body, weight: .regular))
+                .foregroundStyle(.primary)
+                .textInputAutocapitalization(.words)
+                .disableAutocorrection(true)
+
+            if !countrySearchText.isEmpty {
+                Button {
+                    countrySearchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(theme.colors.accent)
+                }
+                .buttonStyle(.plain)
             }
         }
-        .frame(width: 36, height: 24)
-        .animation(.smooth(duration: 0.18), value: isSelected)
+        .padding(.horizontal, 16)
+        .frame(height: 52)
+        .background(theme.colors.listCardFill, in: Capsule())
+        .overlay {
+            Capsule()
+                .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.38), lineWidth: 0.8)
+        }
+        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 18, y: 8)
+    }
+
+    private func tutorialContinentSearchRow(_ listID: CityListID) -> some View {
+        HStack(spacing: 12) {
+            Text(listID.localizedDisplayName(locale: locale))
+                .font(.avenir(.headline, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.colors.accent)
+        }
+        .padding(.vertical, 14)
+        .contentShape(Rectangle())
+    }
+
+    private func tutorialCountrySearchRow(_ country: CountryListOption) -> some View {
+        HStack(spacing: 12) {
+            Text(country.localizedName(locale: locale))
+                .font(.avenir(.headline, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.colors.accent)
+        }
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
     }
 
     // MARK: Footer
@@ -287,29 +508,31 @@ struct TutorialView: View {
                 }
             }
 
-            HStack(spacing: 12) {
-                if let onCancel {
-                    Button(localizedString("Cancel", locale: locale)) {
-                        onCancel()
+            if !isCreatingList {
+                HStack(spacing: 12) {
+                    if let onCancel {
+                        Button(localizedString("Cancel", locale: locale)) {
+                            onCancel()
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(page < 2 ? introColors.primaryText : .white)
+                        .foregroundStyle(page < 2 ? introColors.primaryText : .white)
+                        .controlSize(.large)
                     }
-                    .buttonStyle(.bordered)
-                    .tint(page < 2 ? introColors.primaryText : .white)
-                    .foregroundStyle(page < 2 ? introColors.primaryText : .white)
-                    .controlSize(.large)
-                }
 
-                Button {
-                    advanceOrFinish()
-                } label: {
-                    Text(primaryButtonTitle)
-                        .font(.avenir(.body, weight: .bold))
-                        .frame(maxWidth: .infinity)
+                    Button {
+                        advanceOrFinish()
+                    } label: {
+                        Text(primaryButtonTitle)
+                            .font(.avenir(.body, weight: .bold))
+                            .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(primaryButtonColor)
+                    .foregroundStyle(primaryButtonTextColor)
+                    .controlSize(.large)
+                    .disabled(includesContinentSelection && page == 2)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(primaryButtonColor)
-                .foregroundStyle(primaryButtonTextColor)
-                .controlSize(.large)
-                .disabled(includesContinentSelection && page == 2 && selectedContinentListIDs.isEmpty)
             }
         }
     }
@@ -334,24 +557,52 @@ struct TutorialView: View {
             onFinish()
         }
     }
+
+    private func beginCreatingContinentList(_ listID: CityListID) {
+        showingContinentSearch = false
+        creatingListName = listID.localizedDisplayName(locale: locale)
+        startCreatingList {
+            await onSelectContinentList(listID)
+        }
+    }
+
+    private func beginCreatingCountryList(_ country: CountryListOption) {
+        showingCountrySearch = false
+        creatingListName = country.localizedName(locale: locale)
+        startCreatingList {
+            await onSelectCountryList(country)
+        }
+    }
+
+    private func startCreatingList(_ action: @escaping () async -> Void) {
+        guard !isCreatingList else { return }
+        isCreatingList = true
+        withAnimation(.smooth(duration: 0.22)) {
+            page = 3
+        }
+
+        Task {
+            await action()
+            await MainActor.run {
+                isCreatingList = false
+            }
+        }
+    }
 }
 
 // MARK: - Preview
 
 #Preview("Tutorial") {
-    @Previewable @State var selectedIDs: Set<String> = [CityListID.europe.rawValue]
+    @Previewable @State var selectedIDs: Set<String> = []
 
     TutorialView(
         includesContinentSelection: true,
         continentLists: CityListID.builtInLists,
         selectedContinentListIDs: $selectedIDs,
-        onToggleContinentList: { listID in
-            if selectedIDs.contains(listID.rawValue) {
-                selectedIDs.remove(listID.rawValue)
-            } else {
-                selectedIDs.insert(listID.rawValue)
-            }
-        },
+        selectedCountryListIDs: .constant([]),
+        creationProgress: 0.42,
+        onSelectContinentList: { _ in },
+        onSelectCountryList: { _ in },
         onFinish: {},
         onCancel: nil
     )

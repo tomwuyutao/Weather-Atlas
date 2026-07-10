@@ -29,8 +29,7 @@ struct ContentView: View {
 
     init(
         initialRoute: AppNavigationRoute? = nil,
-        previewCityWeather: CityWeather? = nil,
-        showsMapDateSliderTutorialPreview: Bool = false
+        previewCityWeather: CityWeather? = nil
     ) {
         if let initialRoute {
             _navigationPath = State(initialValue: [initialRoute])
@@ -38,12 +37,6 @@ struct ContentView: View {
         if let previewCityWeather {
             _tappedCity = State(initialValue: previewCityWeather)
             _hasLaunchedBefore = AppStorage(wrappedValue: true, "hasLaunchedBefore")
-        }
-        if showsMapDateSliderTutorialPreview {
-            _selectedDayOffset = State(initialValue: 4)
-            _hasLaunchedBefore = AppStorage(wrappedValue: true, "hasLaunchedBefore")
-            _hasSeenMapDateSliderTutorial = AppStorage(wrappedValue: false, "hasSeenMapDateSliderTutorial")
-            _showingMapDateSliderTutorial = State(initialValue: true)
         }
     }
 
@@ -55,6 +48,7 @@ struct ContentView: View {
     @Namespace var detailDaySelectionNamespace
     @State var tappedCity: CityWeather?
     @State var showingMapExpandedCard: Bool = false
+    @State var showingDetailCloudCoverSheet: Bool = false
     @AppStorage("weatherListSortMode") var listSortMode: String = WeatherListSortMode.sunny.rawValue
     @AppStorage("hasLaunchedBefore") var hasLaunchedBefore: Bool = false
     @State var addCityDetailCity: CityWeather?
@@ -85,9 +79,7 @@ struct ContentView: View {
     @State var showingFirstLaunchTutorial = false
     @State var showingReplayTutorial = false
     @State var continentListTutorialSelectedIDs: Set<String> = []
-    @AppStorage("hasSeenMapDateSliderTutorial") var hasSeenMapDateSliderTutorial = false
-    @State var showingMapDateSliderTutorial = false
-    @State var isFadingMapDateSliderTutorial = false
+    @State var countryListTutorialSelectedIDs: Set<String> = []
     @State var showingAddListOptionsSheet = false
     @State var showingContinentListSearchSheet = false
     @State var showingCountryListSearchSheet = false
@@ -205,8 +197,6 @@ struct ContentView: View {
 
     // Map controls are in MapView.swift.
     // Floating and expanded card content is in FloatingCard.swift.
-    // Map date slider is in MapDateSlider.swift
-
     var dateSwitcherText: String {
         if selectedDayOffset == 0 { return localizedString("Today", locale: locale) }
         let formatter = DateFormatter()
