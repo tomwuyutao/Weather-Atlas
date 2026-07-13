@@ -46,6 +46,7 @@ struct AddSheet: View {
     let onNewEmptyList: () -> Void
     let onAddContinent: () -> Void
     let onAddCountry: () -> Void
+    var usesListManagerStyle = false
 
     @Environment(\.locale) private var locale
     @Environment(\.appTheme) private var theme
@@ -79,7 +80,12 @@ struct AddSheet: View {
         }
         .padding(.horizontal, 26)
         .padding(.vertical, 16)
-        .background(theme.colors.background.ignoresSafeArea())
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(addSheetBackground.ignoresSafeArea())
+    }
+
+    private var addSheetBackground: Color {
+        usesListManagerStyle ? theme.colors.mapOcean : theme.colors.background
     }
 
     private var addSheetDivider: some View {
@@ -107,8 +113,9 @@ struct AddListOptionButton: View {
     let subtitle: String?
     let systemImage: String
     var titleWeight: Font.Weight = .semibold
-    var titleColor: Color = .primary
+    var titleColor: Color = AppTheme.shared.colors.primaryText
     var showsIconBackground: Bool = true
+    var iconColor: Color? = nil
     let action: () -> Void
 
     @Environment(\.appTheme) private var theme
@@ -127,7 +134,7 @@ struct AddListOptionButton: View {
                     if let subtitle {
                         Text(subtitle)
                             .font(.avenir(.footnote, weight: .regular))
-                            .foregroundStyle(Color.secondary)
+                            .foregroundStyle(theme.colors.secondaryText)
                             .lineLimit(2)
                     }
                 }
@@ -135,7 +142,7 @@ struct AddListOptionButton: View {
 
                 Image(systemName: "chevron.right")
                     .font(.title3.weight(.medium))
-                    .foregroundStyle(Color.secondary)
+                    .foregroundStyle(theme.colors.secondaryText)
                     .frame(width: 22, alignment: .trailing)
             }
             .padding(.vertical, 16)
@@ -150,13 +157,13 @@ struct AddListOptionButton: View {
         if showsIconBackground {
             Image(systemName: systemImage)
                 .font(.system(size: 27, weight: .regular))
-                .foregroundStyle(theme.colors.accent)
+                .foregroundStyle(iconColor ?? theme.colors.accent)
                 .frame(width: 58, height: 58)
                 .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 14))
         } else {
             Image(systemName: systemImage)
                 .font(.system(size: 33, weight: .regular))
-                .foregroundStyle(theme.colors.primaryText)
+                .foregroundStyle(iconColor ?? theme.colors.primaryText)
                 .frame(width: 58, height: 58)
         }
     }

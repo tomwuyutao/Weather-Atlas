@@ -8,6 +8,14 @@
 
 import SwiftUI
 
+private struct MapFloatingCardMetric {
+    let value: String
+    let label: String
+    let iconName: String
+    let tint: Color
+    let usesWeatherIconStyle: Bool
+}
+
 extension ContentView {
 
     // MARK: - Expanded Card Content
@@ -21,37 +29,39 @@ extension ContentView {
     ) -> some View {
         let forecast = cityWeather.forecast(for: selectedDayOffset)
         let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
-        let icon = forecast.weatherIcon
-        let sunnyHoursText = mapSunnyHoursSummary(for: cityWeather, forecast: forecast)
-        let sunnyHoursLabel = localizedString("Sunny Hours", locale: locale)
+        let distanceUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic
+        let metric = mapFloatingCardMetric(
+            for: cityWeather,
+            forecast: forecast,
+            tempUnit: tempUnit,
+            distanceUnit: distanceUnit
+        )
 
         if forceExpandedStyle {
             expandedFloatingWeatherCard(
                 for: cityWeather,
-                icon: icon,
+                metric: metric,
                 tempUnit: tempUnit,
                 hideCityName: hideCityName,
                 plainBackground: plainBackground
             )
         } else {
             let phoneCardSpacing: CGFloat = 16
-            let phoneCardTemperatureSize: CGFloat = 38
+            let phoneCardTemperatureSize: CGFloat = 32
             let phoneCardIconSize: CGFloat = 40
             let phoneCardIconFrame = CGSize(width: 56, height: 48)
             let phoneCardMetricFont = Font.caption.weight(.medium)
             let phoneCardTitleFont = Font.headline.weight(.semibold)
-            let phoneCardSelectedDotSize: CGFloat = 8
-            let phoneCardDotSize: CGFloat = 6
 
-            HStack(alignment: .bottom, spacing: phoneCardSpacing) {
+            HStack(alignment: .center, spacing: phoneCardSpacing) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(sunnyHoursText)
+                    Text(metric.value)
                         .font(.system(size: phoneCardTemperatureSize, weight: .semibold, design: .default))
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.74)
 
-                    Text(sunnyHoursLabel)
+                    Text(metric.label)
                         .font(phoneCardMetricFont)
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
@@ -65,41 +75,13 @@ extension ContentView {
                             .padding(.top, 5)
                     }
                 }
-                .frame(maxHeight: .infinity, alignment: .bottomLeading)
+                .frame(maxHeight: .infinity, alignment: .center)
 
                 Spacer(minLength: 8)
 
-                VStack(alignment: .trailing, spacing: 0) {
-                    Image(systemName: floatingCardIconName(for: icon))
-                        .font(.system(size: phoneCardIconSize, weight: .medium))
-                        .floatingCardWeatherIconStyle(for: icon)
-                        .frame(width: phoneCardIconFrame.width, height: phoneCardIconFrame.height, alignment: .center)
-
-                    Spacer(minLength: 8)
-
-                    VStack(spacing: 4) {
-                        ForEach(0..<2, id: \.self) { row in
-                            HStack(spacing: 4) {
-                                ForEach(0..<5, id: \.self) { column in
-                                    let index = row * 5 + column
-                                    if index < cityWeather.dailyForecasts.count {
-                                        let dayForecast = cityWeather.dailyForecasts[index]
-                                        let dayDotColor = SunninessScoring.condition(for: dayForecast.symbolName).dotColor
-                                        Circle()
-                                            .fill(dayDotColor)
-                                            .frame(width: index == selectedDayOffset ? phoneCardSelectedDotSize : phoneCardDotSize, height: index == selectedDayOffset ? phoneCardSelectedDotSize : phoneCardDotSize)
-                                            .frame(width: phoneCardSelectedDotSize, height: phoneCardSelectedDotSize, alignment: .center)
-                                            .shadow(color: dayDotColor.opacity(0.55), radius: 3)
-                                            .opacity(index == selectedDayOffset ? 1 : 0.58)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    .frame(height: 30, alignment: .bottom)
-                    .offset(y: -1)
-                }
-                .frame(maxHeight: .infinity, alignment: .topTrailing)
+                floatingCardMetricIcon(metric, size: phoneCardIconSize)
+                    .frame(width: phoneCardIconFrame.width, height: phoneCardIconFrame.height, alignment: .center)
+                    .frame(maxHeight: .infinity, alignment: .center)
             }
             .padding(.horizontal, 22)
             .padding(.vertical, 16)
@@ -131,19 +113,93 @@ extension ContentView {
             return 178
         }
     }
+
+    private func mapFloatingCardMetric(
+        for cityWeather: CityWeather,
+        forecast: DailyForecast,
+        tempUnit: TemperatureUnit,
+        distanceUnit: DistanceUnit
+    ) -> MapFloatingCardMetric {
+        switch mapOverlayMode {
+        case "temperature":
+            let temperature = selectedDayOffset == 0 ? cityWeather.temperature : forecast.dailyHigh
+            return MapFloatingCardMetric(
+                value: tempUnit.display(temperature),
+                label: localizedString("Temperature", locale: locale),
+                iconName: forecast.weatherIcon,
+                tint: theme.colors.primaryText,
+                usesWeatherIconStyle: true
+            )
+        case "cloudCover":
+            return MapFloatingCardMetric(
+                value: percentageText(forecast.cloudCover),
+                label: localizedString("Cloud Cover", locale: locale),
+                iconName: forecast.weatherIcon,
+                tint: theme.colors.primaryText,
+                usesWeatherIconStyle: true
+            )
+        case "precipitation":
+            return MapFloatingCardMetric(
+                value: percentageText(forecast.precipitationChance),
+                label: localizedString("Rain", locale: locale),
+                iconName: forecast.weatherIcon,
+                tint: theme.colors.primaryText,
+                usesWeatherIconStyle: true
+            )
+        case "windSpeed":
+            let value = forecast.windSpeed.map { distanceUnit.displayWindSpeed($0, locale: locale) } ?? "-"
+            return MapFloatingCardMetric(
+                value: value,
+                label: localizedString("Wind", locale: locale),
+                iconName: forecast.weatherIcon,
+                tint: theme.colors.primaryText,
+                usesWeatherIconStyle: true
+            )
+        case "uvIndex":
+            return MapFloatingCardMetric(
+                value: forecast.uvIndex.map(String.init) ?? "-",
+                label: localizedString("UV Index", locale: locale),
+                iconName: forecast.weatherIcon,
+                tint: theme.colors.primaryText,
+                usesWeatherIconStyle: true
+            )
+        default:
+            let icon = forecast.weatherIcon
+            return MapFloatingCardMetric(
+                value: mapSunnyHoursSummary(for: cityWeather, forecast: forecast),
+                label: localizedString("Sunny Hours", locale: locale),
+                iconName: icon,
+                tint: theme.colors.primaryText,
+                usesWeatherIconStyle: true
+            )
+        }
+    }
+
+    private func percentageText(_ value: Double?) -> String {
+        guard let value else { return "-" }
+        return "\(Int((value * 100).rounded()))%"
+    }
 }
 
 
 // MARK: - Floating Card Icon Style
 
 private func floatingCardIconName(for iconName: String) -> String {
-    if iconName == "cloud" {
-        return "cloud.fill"
-    }
-    if iconName == "cloud.sun" {
-        return "cloud.sun.fill"
-    }
     return iconName
+}
+
+@ViewBuilder
+private func floatingCardMetricIcon(_ metric: MapFloatingCardMetric, size: CGFloat) -> some View {
+    if metric.usesWeatherIconStyle {
+        Image(systemName: floatingCardIconName(for: metric.iconName))
+            .font(.system(size: size, weight: .medium))
+            .floatingCardWeatherIconStyle(for: metric.iconName)
+    } else {
+        Image(systemName: metric.iconName)
+            .font(.system(size: size, weight: .medium))
+            .symbolRenderingMode(.monochrome)
+            .foregroundStyle(metric.tint)
+    }
 }
 
 private extension View {
@@ -157,7 +213,7 @@ private extension View {
         } else if iconName == "cloud.sun" {
             self
                 .symbolRenderingMode(.palette)
-                .foregroundStyle(colors.dotCloudy, colors.dotPartlyCloudy)
+                .foregroundStyle(colors.dotCloudy, colors.sunIconColor)
         } else {
             self.weatherIconStyle(for: iconName)
         }
@@ -168,16 +224,13 @@ private extension View {
 // MARK: - Expanded Floating Card
 
 extension ContentView {
-    func expandedFloatingWeatherCard(
+    private func expandedFloatingWeatherCard(
         for cityWeather: CityWeather,
-        icon: String,
+        metric: MapFloatingCardMetric,
         tempUnit: TemperatureUnit,
         hideCityName: Bool = false,
         plainBackground: Bool = false
     ) -> some View {
-        let forecast = cityWeather.forecast(for: selectedDayOffset)
-        let sunnyHoursText = mapSunnyHoursSummary(for: cityWeather, forecast: forecast)
-        let sunnyHoursLabel = localizedString("Sunny Hours", locale: locale)
         let forecasts = Array(cityWeather.dailyForecasts.prefix(10))
         let cornerRadius: CGFloat = 28
 
@@ -191,7 +244,7 @@ extension ContentView {
                             .lineLimit(1)
                     }
 
-                    Text(sunnyHoursLabel)
+                    Text(metric.label)
                         .font(.callout.weight(.medium))
                         .foregroundStyle(theme.colors.secondaryText)
                 }
@@ -202,19 +255,17 @@ extension ContentView {
                 HStack(alignment: .center, spacing: 2) {
                     Spacer(minLength: 0)
 
-                    Text(sunnyHoursText)
+                    Text(metric.value)
                         .font(.system(size: 62, weight: .regular, design: .default))
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.48)
-                        .id("primary-\(selectedDayOffset)-\(sunnyHoursText)")
+                        .id("primary-\(mapOverlayMode)-\(selectedDayOffset)-\(metric.value)")
                         .transition(.scale(scale: 0.82).combined(with: .opacity))
 
-                    Image(systemName: floatingCardIconName(for: icon))
-                        .font(.system(size: 44, weight: .medium))
-                        .floatingCardWeatherIconStyle(for: icon)
+                    floatingCardMetricIcon(metric, size: 44)
                         .compatSymbolReplaceTransition()
-                        .id("icon-\(selectedDayOffset)-\(icon)")
+                        .id("icon-\(mapOverlayMode)-\(selectedDayOffset)-\(metric.iconName)")
                         .transition(.scale(scale: 0.82).combined(with: .opacity))
                         .frame(width: 60, height: 52)
 

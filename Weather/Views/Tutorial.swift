@@ -44,23 +44,10 @@ struct TutorialView: View {
             tutorialBackground
                 .ignoresSafeArea()
 
-            TabView(selection: $page) {
-                welcomePage
-                    .tag(0)
-
-                stepsPage
-                    .tag(1)
-
-                if includesContinentSelection {
-                    continentSelectionPage
-                        .tag(2)
-
-                    creatingListPage
-                        .tag(3)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .disabled(isCreatingList)
+            tutorialPage
+                .id(page)
+                .transition(.opacity)
+                .animation(.smooth(duration: 0.2), value: page)
 
             VStack {
                 Spacer()
@@ -278,6 +265,20 @@ struct TutorialView: View {
         .padding(.horizontal, tutorialHorizontalPadding)
     }
 
+    @ViewBuilder
+    private var tutorialPage: some View {
+        switch page {
+        case 0:
+            welcomePage
+        case 1:
+            stepsPage
+        case 2 where includesContinentSelection:
+            continentSelectionPage
+        default:
+            creatingListPage
+        }
+    }
+
     private var filteredTutorialCountryOptions: [CountryListOption] {
         let countries = CountryCityCatalog.countries(locale: locale)
         let query = countrySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -301,6 +302,7 @@ struct TutorialView: View {
             titleWeight: .medium,
             titleColor: introColors.primaryText,
             showsIconBackground: false,
+            iconColor: introColors.accent,
             action: action
         )
         .padding(.horizontal, 18)
@@ -330,6 +332,7 @@ struct TutorialView: View {
 
                 ProgressView(value: min(max(creationProgress, 0), 1))
                     .tint(primaryButtonColor)
+                    .frame(width: 240)
             }
 
             Spacer()
@@ -420,7 +423,7 @@ struct TutorialView: View {
 
             TextField(localizedString("Search for a country", locale: locale), text: $countrySearchText)
                 .font(.avenir(.body, weight: .regular))
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
                 .textInputAutocapitalization(.words)
                 .disableAutocorrection(true)
 
@@ -449,7 +452,7 @@ struct TutorialView: View {
         HStack(spacing: 12) {
             Text(listID.localizedDisplayName(locale: locale))
                 .font(.avenir(.headline, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(1)
 
             Spacer(minLength: 8)
@@ -466,7 +469,7 @@ struct TutorialView: View {
         HStack(spacing: 12) {
             Text(country.localizedName(locale: locale))
                 .font(.avenir(.headline, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(1)
 
             Spacer(minLength: 8)

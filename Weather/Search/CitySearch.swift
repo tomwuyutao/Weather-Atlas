@@ -409,6 +409,7 @@ extension ContentView {
                 searchText = ""
             }
             revealCityOnMap(tempCityWeather, in: targetListID)
+            showCityAddedConfirmation("\(localizedCityName(for: tempCityWeather.city)) was added to \(targetListID.localizedDisplayName(locale: locale)).")
         } else {
             handleSearchCitySelected(tempCityWeather, canAdd: true)
         }

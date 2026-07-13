@@ -523,7 +523,12 @@ class WeatherService {
     }
     
     func report(_ error: Error) {
-        errorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+        #if DEBUG
+        print("[WeatherService] \(error.localizedDescription)")
+        #endif
+
+        let locale = Locale(identifier: UserDefaults.standard.string(forKey: "appLanguage") ?? Locale.autoupdatingCurrent.identifier)
+        errorMessage = localizedString("We couldn't load weather. Please try again.", locale: locale)
     }
 
     func reportDeveloperWarning(title: String, message: String) {
@@ -829,7 +834,16 @@ struct CityWeather: Identifiable, Hashable {
     
     // Get forecast for a specific day
     func forecast(for dayOffset: Int) -> DailyForecast {
-        dailyForecasts.first { $0.dayOffset == dayOffset } ?? dailyForecasts[0]
+        if let forecast = dailyForecasts.first(where: { $0.dayOffset == dayOffset }) {
+            return forecast
+        }
+
+        DeveloperWarningCenter.showOnce(
+            key: "missing-forecast-day-\(id.uuidString)-\(dayOffset)",
+            title: "Forecast Day Missing",
+            message: "\(city.localizedName()) has no forecast data for day \(dayOffset). The app is showing its first available forecast instead."
+        )
+        return dailyForecasts[0]
     }
     
     /// Whether current weather data is available for the given overlay mode.
@@ -1005,7 +1019,7 @@ extension DailyForecast {
             dayOffset: dayOffset,
             dailyLow: 18,
             dailyHigh: 24,
-            symbolName: "cloud.fill",
+            symbolName: "cloud",
             condition: .cloudy,
             hourlyForecasts: [],
             cloudCover: nil,

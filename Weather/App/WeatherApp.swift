@@ -78,8 +78,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             UIApplicationShortcutItem(
                 type: shortcutType(for: listID),
                 localizedTitle: listID.localizedDisplayName(),
-                localizedSubtitle: String(localized: "Open on Map"),
-                icon: UIApplicationShortcutIcon(systemImageName: "map"),
+                localizedSubtitle: nil,
+                icon: UIApplicationShortcutIcon(systemImageName: "list.bullet"),
                 userInfo: ["listID": listID.rawValue as NSString]
             )
         }

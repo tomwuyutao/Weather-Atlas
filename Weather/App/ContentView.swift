@@ -48,7 +48,6 @@ struct ContentView: View {
     @Namespace var detailDaySelectionNamespace
     @State var tappedCity: CityWeather?
     @State var showingMapExpandedCard: Bool = false
-    @State var showingDetailCloudCoverSheet: Bool = false
     @AppStorage("weatherListSortMode") var listSortMode: String = WeatherListSortMode.sunny.rawValue
     @AppStorage("hasLaunchedBefore") var hasLaunchedBefore: Bool = false
     @State var addCityDetailCity: CityWeather?
@@ -64,6 +63,7 @@ struct ContentView: View {
     @State var citySearchManager = CitySearchManager()
     @State var isLoadingSearchCity = false
     @State var loadingSearchResultID: String?
+    @State var addedCityConfirmation: String?
     @State var searchDebounceTask: Task<Void, Never>?
     @State var searchIsSettled: Bool = true
 
@@ -81,6 +81,12 @@ struct ContentView: View {
     @State var continentListTutorialSelectedIDs: Set<String> = []
     @State var countryListTutorialSelectedIDs: Set<String> = []
     @State var showingAddListOptionsSheet = false
+    @State var showingListManagementSheet = false
+    @State var showingListManagementAddOptions = false
+    @State var listManagementEditMode: EditMode = .inactive
+    @State var inlineListRenameID: CityListID?
+    @State var inlineListName: String = ""
+    @FocusState var inlineListNameFocused: Bool
     @State var showingContinentListSearchSheet = false
     @State var showingCountryListSearchSheet = false
     @State var countryListSearchText: String = ""
@@ -88,11 +94,14 @@ struct ContentView: View {
     @State var listPreviewNameSource: CityListNameSource?
     @State var listPreviewAllCities: [City] = []
     @State var listPreviewCityCount = CountryCityCatalog.defaultCountryCityCount
-    @State var localizedCityNameCache: [String: String] = [:]
     @State var daytimeScoreRefetchKeys: Set<String> = []
     @AppStorage("showLegend") var showLegend: Bool = true
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
     @State var visibleListIDs: Set<String> = []
+    @State var allListsWeatherData: [CityWeather] = []
+    @State var allListsSourceListIDs: [String: CityListID] = [:]
+    @State var isLoadingAllLists = false
+    @State var isShowingAllLists = false
 
     // MARK: Environment
 
@@ -103,12 +112,12 @@ struct ContentView: View {
 
     // MARK: Active City Collections
 
-    /// Cities to display on the map: the active list plus any temporary searched city from Map search.
+    /// Cities to display on the map: the active list or aggregate list plus any temporary searched city.
     var mapCities: [CityWeather] {
         if isListPreviewActive {
             return []
         }
-        var result = weatherService.cityWeatherData
+        var result = isShowingAllLists ? allListsWeatherData : weatherService.cityWeatherData
         if let preview = temporaryMapSearchCity, !result.contains(where: { $0.city.name == preview.city.name }) {
             result.append(preview)
         }
@@ -118,6 +127,9 @@ struct ContentView: View {
     var mapFitCities: [City] {
         if isListPreviewActive {
             return listPreviewCities
+        }
+        if isShowingAllLists {
+            return allListsWeatherData.map(\.city)
         }
         return weatherService.cityListCoordinates()
     }
@@ -142,38 +154,8 @@ struct ContentView: View {
     }
 
     func localizedCityName(for city: City) -> String {
-        let fallback = city.localizedName(locale: locale)
-        let languageIdentifier = CityNameTranslationCache.languageIdentifier(for: locale)
-        guard !languageIdentifier.hasPrefix("en") else { return fallback }
-        let key = CityNameTranslationCache.key(for: city)
-        return localizedCityNameCache[key] ?? fallback
-    }
-
-    var cityNameTranslationInputs: [CityNameTranslationInput] {
-        let languageIdentifier = CityNameTranslationCache.languageIdentifier(for: locale)
-        guard !languageIdentifier.hasPrefix("en") else { return [] }
-
-        let optionalCities = [addCityDetailCity?.city, temporaryMapSearchCity?.city].compactMap { $0 }
-        let cities = mapCities.map(\.city)
-            + listViewCities.map(\.city)
-            + listPreviewAllCities
-            + optionalCities
-
-        var seenKeys: Set<String> = []
-        return cities.compactMap { city in
-            let sourceName = city.localizedName(locale: Locale(identifier: "en"))
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !sourceName.isEmpty else { return nil }
-            let key = CityNameTranslationCache.key(for: city)
-            guard localizedCityNameCache[key] == nil, seenKeys.insert(key).inserted else { return nil }
-            return CityNameTranslationInput(key: key, sourceName: sourceName)
-        }
-    }
-
-    var cityNameTranslationTaskID: String {
-        let languageIdentifier = CityNameTranslationCache.languageIdentifier(for: locale)
-        let keys = cityNameTranslationInputs.map(\.key).sorted().joined(separator: "|")
-        return "\(languageIdentifier):\(keys)"
+        CityNameLocalizationCatalog.localizedName(for: city, locale: locale)
+            ?? city.localizedName(locale: locale)
     }
 
     /// Cities to display in the list view: the saved active list only.
@@ -210,16 +192,16 @@ struct ContentView: View {
     // MARK: - Root View State
     @State var dateSwitcherForward: Bool = true
     @State var showingDatePopover: Bool = false
-    @State var isDraggingDateSlider: Bool = false
-    @State var sliderDragStartDay: Int = 0
-    @State var sliderDragFraction: CGFloat = 0
 
     @State var showingDeleteListConfirmation: Bool = false
+    @State var listToDeleteID: CityListID?
     @State var showingRenameAlert: Bool = false
+    @State var showingCityRenameAlert: Bool = false
     @State var renameAlertText: String = ""
     @FocusState var renameAlertFocused: Bool
     @FocusState var searchFieldFocused: Bool
     @State var listToRenameID: CityListID?
+    @State var cityToRename: City?
     @State var listEditMode: Bool = false
     @State var listOrderRevision: Int = 0
     @State var newListName: String = ""
@@ -229,7 +211,10 @@ struct ContentView: View {
     @State var developerWarning: DeveloperWarning?
 
     var toolbarTitle: String {
-        weatherService.activeListID.localizedDisplayName(locale: locale)
+        if isShowingAllLists {
+            return localizedString("All Cities", locale: locale)
+        }
+        return weatherService.activeListID.localizedDisplayName(locale: locale)
     }
 
     // Map controls are in MapView.swift.

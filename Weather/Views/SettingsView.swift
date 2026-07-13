@@ -46,12 +46,12 @@ enum DistanceUnit: String, CaseIterable {
         }
     }
 
-    var windDisplayName: String {
+    func windDisplayName(locale: Locale = .current) -> String {
         switch resolved {
-        case .miles: return "Miles / Hour"
-        case .kilometers: return "Kilometers / Hour"
-        case .metersPerSecond: return "Meters / Second"
-        case .automatic: return resolved.windDisplayName
+        case .miles: return localizedString("Miles / Hour", locale: locale)
+        case .kilometers: return localizedString("Kilometers / Hour", locale: locale)
+        case .metersPerSecond: return localizedString("Meters / Second", locale: locale)
+        case .automatic: return resolved.windDisplayName(locale: locale)
         }
     }
 
@@ -117,7 +117,13 @@ enum TemperatureUnit: String, CaseIterable {
     static var systemDefault: TemperatureUnit {
         let sample = Measurement(value: 0, unit: UnitTemperature.celsius)
             .formatted(.measurement(width: .abbreviated, usage: .weather).locale(.autoupdatingCurrent))
-        return sample.localizedCaseInsensitiveContains("F") ? .fahrenheit : .celsius
+        if sample.localizedCaseInsensitiveContains("F") {
+            return .fahrenheit
+        }
+        if sample.localizedCaseInsensitiveContains("C") {
+            return .celsius
+        }
+        return .celsius
     }
 
     static let defaultRawValue = TemperatureUnit.systemDefault.rawValue
@@ -135,11 +141,11 @@ enum TemperatureUnit: String, CaseIterable {
         }
     }
 
-    var displayName: String {
+    func displayName(locale: Locale = .current) -> String {
         switch resolved {
-        case .celsius: return "Celsius"
-        case .fahrenheit: return "Fahrenheit"
-        case .automatic: return resolved.displayName
+        case .celsius: return localizedString("Celsius (°C)", locale: locale)
+        case .fahrenheit: return localizedString("Fahrenheit (°F)", locale: locale)
+        case .automatic: return resolved.displayName(locale: locale)
         }
     }
 
@@ -212,15 +218,15 @@ enum AppTextSizeLevel: Int, CaseIterable {
         }
     }
 
-    var displayName: String {
+    func displayName(locale: Locale) -> String {
         switch self {
-        case .xSmall: return "Extra Small"
-        case .small: return "Small"
-        case .medium: return "Medium"
-        case .large: return "Default"
-        case .xLarge: return "Large"
-        case .xxLarge: return "Extra Large"
-        case .xxxLarge: return "Extra Extra Large"
+        case .xSmall: return localizedString("Extra Small", locale: locale)
+        case .small: return localizedString("Small", locale: locale)
+        case .medium: return localizedString("Medium", locale: locale)
+        case .large: return localizedString("Default", locale: locale)
+        case .xLarge: return localizedString("Large", locale: locale)
+        case .xxLarge: return localizedString("Extra Large", locale: locale)
+        case .xxxLarge: return localizedString("Extra Extra Large", locale: locale)
         }
     }
 }
@@ -241,7 +247,7 @@ struct SettingsView: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.dynamicTypeSize) private var systemDynamicTypeSize
     @Environment(\.openURL) private var openURL
 
     @State private var showingEmailCopied = false
@@ -250,7 +256,6 @@ struct SettingsView: View {
     @State private var showingTextSize = false
     @State private var textSizeSliderValue = Double(AppTextSizeLevel.defaultRawValue)
     @State private var isDraggingTextSizeSlider = false
-    @State private var isCommittingTextSizeSlider = false
 
     // MARK: Resolved Preferences
 
@@ -263,15 +268,25 @@ struct SettingsView: View {
     }
 
     private var unitsSummary: String {
-        "\(selectedUnit.resolved.displayName), \(selectedDistanceUnit.resolved.windAbbreviation)"
+        let windUnit: String
+        if locale.language.languageCode?.identifier == "en" {
+            windUnit = selectedDistanceUnit.resolved.windAbbreviation
+        } else {
+            windUnit = selectedDistanceUnit.resolved.windDisplayName(locale: locale)
+        }
+        return "\(selectedUnit.resolved.displayName(locale: locale)), \(windUnit)"
     }
 
     private var selectedTextSizeLevel: AppTextSizeLevel {
         AppTextSizeLevel(rawValue: appTextSizeLevel) ?? .large
     }
 
+    private var resolvedDynamicTypeSize: DynamicTypeSize {
+        useSystemTextSize ? systemDynamicTypeSize : selectedTextSizeLevel.dynamicTypeSize
+    }
+
     private var textSizeSummary: String {
-        useSystemTextSize ? localizedString("System", locale: locale) : selectedTextSizeLevel.displayName
+        useSystemTextSize ? localizedString("System", locale: locale) : selectedTextSizeLevel.displayName(locale: locale)
     }
 
     // MARK: View Body
@@ -309,6 +324,7 @@ struct SettingsView: View {
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
         .presentationBackground(theme.colors.mapOcean)
+        .environment(\.dynamicTypeSize, resolvedDynamicTypeSize)
     }
 
     // MARK: Toolbar
@@ -331,7 +347,7 @@ struct SettingsView: View {
         .if(usesLiquidGlassForm) { view in
             view
                 .buttonStyle(.borderedProminent)
-                .tint(theme.colors.accent)
+                .tint(theme.colors.primaryText)
         }
         .buttonStyle(.plain)
     }
@@ -383,7 +399,7 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(localizedString("Language", locale: locale), systemImage: "globe")
                 }
-                .tint(theme.colors.accent)
+                .tint(theme.colors.secondaryText)
 
                 settingsNavigationRow(
                     localizedString("Text Size", locale: locale),
@@ -399,7 +415,7 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(localizedString("Theme", locale: locale), systemImage: "circle.lefthalf.filled")
                 }
-                .tint(theme.colors.accent)
+                .tint(theme.colors.secondaryText)
             } header: {
                 settingsSectionHeader(localizedString("General", locale: locale))
             }
@@ -424,13 +440,13 @@ struct SettingsView: View {
                     localizedString("Website", locale: locale),
                     value: localizedString("View", locale: locale),
                     systemImage: "safari",
-                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas/")
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas-Site/")
                 )
                 settingsLinkRow(
                     localizedString("Privacy Policy", locale: locale),
                     value: localizedString("View", locale: locale),
                     systemImage: "hand.raised",
-                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas/privacy/")
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas-Site/privacy/")
                 )
                 attributionsNavigationRow
                 sayHelloRow
@@ -457,8 +473,6 @@ struct SettingsView: View {
                 .tint(.green)
 
                 VStack(spacing: 18) {
-                    Divider()
-
                     HStack(spacing: 18) {
                         Text(verbatim: "A")
                             .font(.system(size: 18, weight: .regular))
@@ -471,33 +485,23 @@ struct SettingsView: View {
                             .foregroundStyle(theme.colors.secondaryText)
                     }
                     .opacity(useSystemTextSize ? 0.42 : 1)
-                }
-            }
-            .listRowBackground(settingsRowBackground)
 
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    textSizePreviewCard
-                        .environment(\.dynamicTypeSize, textSizePreviewDynamicTypeSize)
-
-                    Text(localizedString("This previews how text size affects the app.", locale: locale))
-                        .font(.footnote)
+                    Text(textSizeSliderDescription)
+                        .font(.callout.weight(.medium))
                         .foregroundStyle(theme.colors.secondaryText)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(maxWidth: .infinity)
                 }
             }
             .listRowBackground(settingsRowBackground)
+
         }
         .scrollContentBackground(.hidden)
         .background(settingsFormBackground)
+        .background(NavigationPopGestureDisabler())
         .onAppear {
             textSizeSliderValue = Double(appTextSizeLevel)
         }
         .onChange(of: appTextSizeLevel) { _, newValue in
-            if isCommittingTextSizeSlider {
-                isCommittingTextSizeSlider = false
-                return
-            }
             guard !isDraggingTextSizeSlider else { return }
             textSizeSliderValue = Double(newValue)
         }
@@ -508,14 +512,16 @@ struct SettingsView: View {
             value: Binding(
                 get: { textSizeSliderValue },
                 set: { newValue in
-                    textSizeSliderValue = min(max(newValue, 0), Double(AppTextSizeLevel.allCases.count - 1))
+                    let clampedValue = min(max(newValue, 0), Double(AppTextSizeLevel.allCases.count - 1))
+                    textSizeSliderValue = clampedValue
+                    appTextSizeLevel = Int(clampedValue.rounded())
                 }
             ),
             in: 0...Double(AppTextSizeLevel.allCases.count - 1),
             onEditingChanged: { isEditing in
                 isDraggingTextSizeSlider = isEditing
                 if !isEditing {
-                    commitTextSizeSliderValue()
+                    textSizeSliderValue = Double(appTextSizeLevel)
                 }
             }
         )
@@ -524,188 +530,12 @@ struct SettingsView: View {
         .frame(height: 36)
     }
 
-    private func commitTextSizeSliderValue() {
-        let maximumLevel = AppTextSizeLevel.allCases.count - 1
-        let roundedValue = min(max(Int(textSizeSliderValue.rounded()), 0), maximumLevel)
-        isCommittingTextSizeSlider = true
-        appTextSizeLevel = roundedValue
-        Task { @MainActor in
-            await Task.yield()
-            isCommittingTextSizeSlider = false
+    private var textSizeSliderDescription: String {
+        guard !useSystemTextSize else {
+            return localizedString("System", locale: locale)
         }
-    }
-
-    private var textSizePreviewDynamicTypeSize: DynamicTypeSize {
-        if useSystemTextSize {
-            return dynamicTypeSize
-        }
-        let previewLevel = AppTextSizeLevel(rawValue: Int(textSizeSliderValue.rounded())) ?? selectedTextSizeLevel
-        return previewLevel.dynamicTypeSize
-    }
-
-    private var textSizePreviewCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "sun.max.fill")
-                    .foregroundStyle(theme.colors.dotSun)
-                Text(localizedString("Best Sunny Places", locale: locale))
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-                Spacer(minLength: 8)
-            }
-
-            let candidates = textSizePreviewCandidates
-            if candidates.isEmpty {
-                Text(localizedString("No sunny places for this date.", locale: locale))
-                    .font(.callout)
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 12)
-                    .background(theme.colors.glassFill.opacity(0.42), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
-                        SunnyCandidateRow(
-                            candidate: candidate,
-                            rank: index + 1,
-                            compact: true,
-                            tempUnit: selectedUnit
-                        )
-
-                        if index < candidates.count - 1 {
-                            Divider()
-                                .background(theme.colors.secondaryText.opacity(0.16))
-                                .padding(.leading, 34)
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    private var textSizePreviewCandidates: [SunnyCandidate] {
-        Array(
-            textSizePreviewCandidates(for: textSizePreviewCities, dayOffset: textSizePreviewDayOffset)
-                .filter { $0.condition.isSunny }
-                .prefix(3)
-        )
-    }
-
-    private var textSizePreviewDayOffset: Int {
-        let cities = textSizePreviewCities
-        let dayOffsets = Array(1...9)
-        return dayOffsets.first { dayOffset in
-            textSizePreviewCandidates(for: cities, dayOffset: dayOffset).contains { $0.condition.isSunny }
-        } ?? 1
-    }
-
-    private var textSizePreviewCities: [CityWeather] {
-        weatherService.cityWeatherData.isEmpty ? Self.samplePreviewCities : weatherService.cityWeatherData
-    }
-
-    private func textSizePreviewCandidates(for cities: [CityWeather], dayOffset: Int) -> [SunnyCandidate] {
-        cities
-            .map { cityWeather -> SunnyCandidate in
-                let forecast = cityWeather.forecast(for: dayOffset)
-                let condition = SunninessScoring.condition(for: forecast.symbolName)
-                return SunnyCandidate(
-                    cityWeather: cityWeather,
-                    score: condition.sunninessScore,
-                    condition: condition,
-                    cloudCover: forecast.cloudCover,
-                    precipitationChance: forecast.precipitationChance,
-                    temperature: forecast.dailyHigh
-                )
-            }
-            .sorted(by: isBetterTextSizePreviewCandidate)
-    }
-
-    private func isBetterTextSizePreviewCandidate(_ lhs: SunnyCandidate, than rhs: SunnyCandidate) -> Bool {
-        if lhs.condition.sunninessRank != rhs.condition.sunninessRank {
-            return lhs.condition.sunninessRank < rhs.condition.sunninessRank
-        }
-
-        switch (lhs.cloudCover, rhs.cloudCover) {
-        case let (lhsCloud?, rhsCloud?) where lhsCloud != rhsCloud:
-            return lhsCloud < rhsCloud
-        case (_?, nil):
-            return true
-        case (nil, _?):
-            return false
-        default:
-            return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
-        }
-    }
-
-    private static let samplePreviewCities: [CityWeather] = [
-        samplePreviewCity(name: "Barcelona", country: "Spain", latitude: 41.3874, longitude: 2.1686, dayOneSymbol: "sun.max.fill", high: 29, cloudCover: 0.08),
-        samplePreviewCity(name: "Rome", country: "Italy", latitude: 41.9028, longitude: 12.4964, dayOneSymbol: "sun.max.fill", high: 28, cloudCover: 0.12),
-        samplePreviewCity(name: "Lisbon", country: "Portugal", latitude: 38.7223, longitude: -9.1393, dayOneSymbol: "cloud.sun", high: 25, cloudCover: 0.32)
-    ]
-
-    private static func samplePreviewCity(
-        name: String,
-        country: String,
-        latitude: Double,
-        longitude: Double,
-        dayOneSymbol: String,
-        high: Double,
-        cloudCover: Double
-    ) -> CityWeather {
-        let city = City(
-            name: name,
-            country: country,
-            latitude: latitude,
-            longitude: longitude,
-            timeZoneIdentifier: "Europe/Madrid"
-        )
-        let forecasts = (0..<10).map { dayOffset in
-            samplePreviewForecast(
-                dayOffset: dayOffset,
-                symbolName: dayOffset == 1 ? dayOneSymbol : "cloud.sun",
-                high: high + Double(dayOffset % 3),
-                cloudCover: dayOffset == 1 ? cloudCover : 0.45
-            )
-        }
-        let condition = AppWeatherCondition.fromWeatherSymbol(dayOneSymbol)
-        return CityWeather(
-            city: city,
-            condition: condition,
-            temperature: high,
-            symbolName: dayOneSymbol,
-            dailyForecasts: forecasts,
-            timeZone: TimeZone(identifier: city.timeZoneIdentifier ?? "Europe/Madrid") ?? .current,
-            currentCloudCover: cloudCover
-        )
-    }
-
-    private static func samplePreviewForecast(
-        dayOffset: Int,
-        symbolName: String,
-        high: Double,
-        cloudCover: Double
-    ) -> DailyForecast {
-        DailyForecast(
-            dayOffset: dayOffset,
-            dailyLow: high - 7,
-            dailyHigh: high,
-            symbolName: symbolName,
-            condition: AppWeatherCondition.fromWeatherSymbol(symbolName),
-            hourlyForecasts: [],
-            cloudCover: cloudCover,
-            precipitationChance: cloudCover > 0.65 ? 0.18 : 0.03,
-            visibility: 24,
-            feelsLikeLow: nil,
-            feelsLikeHigh: nil,
-            humidity: 0.48,
-            windSpeed: 9,
-            uvIndex: 7,
-            maxHumidity: 0.58,
-            maxVisibility: 24,
-            sunrise: nil,
-            sunset: nil
-        )
+        let sliderLevel = AppTextSizeLevel(rawValue: Int(textSizeSliderValue.rounded())) ?? selectedTextSizeLevel
+        return sliderLevel.displayName(locale: locale)
     }
 
     private var unitsForm: some View {
@@ -713,7 +543,7 @@ struct SettingsView: View {
             Section {
                 ForEach(TemperatureUnit.settingsCases, id: \.rawValue) { unit in
                     settingsSelectionRow(
-                        title: unit.displayName,
+                        title: unit.displayName(locale: locale),
                         isSelected: selectedUnit.resolved == unit,
                         action: { temperatureUnit = unit.rawValue }
                     )
@@ -726,7 +556,7 @@ struct SettingsView: View {
             Section {
                 ForEach(DistanceUnit.settingsCases, id: \.rawValue) { unit in
                     settingsSelectionRow(
-                        title: unit.windDisplayName,
+                        title: unit.windDisplayName(locale: locale),
                         subtitle: unit.windAbbreviation,
                         isSelected: selectedDistanceUnit.resolved == unit,
                         action: { distanceUnit = unit.rawValue }
@@ -767,13 +597,13 @@ struct SettingsView: View {
                     localizedString("Website", locale: locale),
                     value: localizedString("View", locale: locale),
                     systemImage: "safari",
-                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas/")
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas-Site/")
                 )
                 settingsLinkRow(
                     localizedString("Privacy Policy", locale: locale),
                     value: localizedString("View", locale: locale),
                     systemImage: "hand.raised",
-                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas/privacy/")
+                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas-Site/privacy/")
                 )
                 attributionsNavigationRow
                 sayHelloRow
@@ -798,7 +628,7 @@ struct SettingsView: View {
                 Spacer(minLength: 8)
                 Image(systemName: "chevron.right")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(theme.colors.accent)
+                    .foregroundStyle(theme.colors.secondaryText)
             }
         }
         .buttonStyle(.plain)
@@ -812,22 +642,12 @@ struct SettingsView: View {
             .listRowBackground(settingsRowBackground)
 
             Section(localizedString("Maps", locale: locale)) {
-                settingsLinkRow(
-                    "\u{F8FF} " + localizedString("Apple Maps", locale: locale),
-                    value: localizedString("Legal", locale: locale),
-                    systemImage: "map",
-                    url: URL(string: "https://www.apple.com/legal/internet-services/maps/legal-en.html")
-                )
+                mapAttributionRows
             }
             .listRowBackground(settingsRowBackground)
 
-            Section(localizedString("Cities Data", locale: locale)) {
-                settingsLinkRow(
-                    localizedString("SimpleMaps World Cities", locale: locale),
-                    value: localizedString("View", locale: locale),
-                    systemImage: "building.2",
-                    url: URL(string: "https://simplemaps.com/data/world-cities")
-                )
+            Section(localizedString("Cities", locale: locale)) {
+                citiesAttributionRows
             }
             .listRowBackground(settingsRowBackground)
         }
@@ -858,6 +678,53 @@ struct SettingsView: View {
         )
     }
 
+    @ViewBuilder
+    private var mapAttributionRows: some View {
+        settingsInfoRow(
+            localizedString("Map Data", locale: locale),
+            value: "\u{F8FF} " + localizedString("Apple Maps", locale: locale),
+            systemImage: "map"
+        )
+        settingsLinkRow(
+            localizedString("Maps Legal Sources", locale: locale),
+            value: localizedString("View", locale: locale),
+            systemImage: "doc.text",
+            url: URL(string: "https://www.apple.com/legal/internet-services/maps/legal-en.html")
+        )
+        settingsLinkRow(
+            localizedString("About MapKit", locale: locale),
+            value: localizedString("View", locale: locale),
+            systemImage: "doc.text",
+            url: URL(string: "https://developer.apple.com/documentation/mapkit/")
+        )
+    }
+
+    @ViewBuilder
+    private var citiesAttributionRows: some View {
+        settingsInfoRow(
+            localizedString("Cities Data", locale: locale),
+            value: localizedString("SimpleMaps World Cities", locale: locale),
+            systemImage: "building.2"
+        )
+        settingsLinkRow(
+            localizedString("About SimpleMaps", locale: locale),
+            value: localizedString("View", locale: locale),
+            systemImage: "doc.text",
+            url: URL(string: "https://simplemaps.com/data/world-cities")
+        )
+        settingsInfoRow(
+            localizedString("City Name Translations", locale: locale),
+            value: "GeoNames",
+            systemImage: "character.book.closed"
+        )
+        settingsLinkRow(
+            localizedString("About GeoNames", locale: locale),
+            value: localizedString("View", locale: locale),
+            systemImage: "doc.text",
+            url: URL(string: "https://www.geonames.org/about.html")
+        )
+    }
+
     private func settingsLabel(_ title: String, systemImage: String) -> some View {
         Label {
             Text(title)
@@ -877,7 +744,7 @@ struct SettingsView: View {
     private func settingsInfoRow(_ title: String, value: String, systemImage: String) -> some View {
         LabeledContent {
             Text(value)
-                .foregroundStyle(theme.colors.accent)
+                .foregroundStyle(theme.colors.secondaryText)
         } label: {
             settingsLabel(title, systemImage: systemImage)
         }
@@ -888,10 +755,10 @@ struct SettingsView: View {
             LabeledContent {
                 HStack(spacing: 8) {
                     Text(value)
-                        .foregroundStyle(theme.colors.accent)
+                        .foregroundStyle(theme.colors.secondaryText)
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
-                        .foregroundStyle(theme.colors.accent)
+                        .foregroundStyle(theme.colors.secondaryText)
                 }
             } label: {
                 settingsLabel(title, systemImage: systemImage)
@@ -923,7 +790,7 @@ struct SettingsView: View {
                 if isSelected {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.semibold))
-                        .foregroundStyle(theme.colors.accent)
+                        .foregroundStyle(theme.colors.secondaryText)
                 }
             }
             .contentShape(Rectangle())
@@ -940,7 +807,7 @@ struct SettingsView: View {
         } label: {
             LabeledContent {
                 Image(systemName: "doc.on.doc")
-                    .foregroundStyle(theme.colors.accent)
+                    .foregroundStyle(theme.colors.secondaryText)
             } label: {
                 settingsLabel(localizedString("Say Hello", locale: locale), systemImage: "envelope")
             }
@@ -968,13 +835,29 @@ struct SettingsView: View {
                         Image(systemName: "arrow.up.forward")
                             .font(.caption.weight(.semibold))
                     }
-                    .foregroundStyle(theme.colors.accent)
+                    .foregroundStyle(theme.colors.secondaryText)
                 } label: {
                     settingsLabel(title, systemImage: systemImage)
                 }
             }
             .buttonStyle(.plain)
         }
+    }
+}
+
+private struct NavigationPopGestureDisabler: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController {
+        UIViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
+        DispatchQueue.main.async {
+            uiViewController.navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+        }
+    }
+
+    static func dismantleUIViewController(_ uiViewController: UIViewController, coordinator: ()) {
+        uiViewController.navigationController?.interactivePopGestureRecognizer?.isEnabled = true
     }
 }
 

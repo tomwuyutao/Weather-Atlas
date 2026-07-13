@@ -41,7 +41,7 @@ extension ContentView {
         HStack(spacing: 12) {
             Text(listID.localizedDisplayName(locale: locale))
                 .font(.avenir(.headline, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(1)
 
             Spacer(minLength: 8)
@@ -116,7 +116,7 @@ extension ContentView {
 
             TextField(localizedString("Search for a country", locale: locale), text: $countryListSearchText)
                 .font(.avenir(.body, weight: .regular))
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
                 .focused($searchFieldFocused)
                 .textInputAutocapitalization(.words)
                 .disableAutocorrection(true)
@@ -157,7 +157,7 @@ extension ContentView {
         HStack(spacing: 12) {
             Text(country.localizedName(locale: locale))
                 .font(.avenir(.headline, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(1)
 
             Spacer(minLength: 8)

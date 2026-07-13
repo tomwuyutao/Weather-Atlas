@@ -106,20 +106,18 @@ extension ContentView {
 
     var dateSwitcherControl: some View {
         HStack(spacing: 6) {
-            Image(systemName: "chevron.left")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(selectedDayOffset > 0 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
-                .frame(minWidth: 30, minHeight: 32)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    guard selectedDayOffset > 0 else { return }
-                    Haptics.lightImpact()
-                    dateSwitcherForward = false
-                    withAnimation(.smooth(duration: 0.2)) {
-                        selectedDayOffset -= 1
-                    }
+            dateStepperButton(
+                systemImage: "chevron.left",
+                isEnabled: selectedDayOffset > 0,
+                accessibilityLabel: localizedString("Previous Day", locale: locale)
+            ) {
+                guard selectedDayOffset > 0 else { return }
+                Haptics.lightImpact()
+                dateSwitcherForward = false
+                withAnimation(.smooth(duration: 0.2)) {
+                    selectedDayOffset -= 1
                 }
-            .onLongPressGesture(minimumDuration: 0.45) {
+            } longPressAction: {
                 guard selectedDayOffset > 0 else { return }
                 Haptics.lightImpact()
                 dateSwitcherForward = false
@@ -127,8 +125,6 @@ extension ContentView {
                     selectedDayOffset = 0
                 }
             }
-            .accessibilityLabel(localizedString("Previous Day", locale: locale))
-            .accessibilityAddTraits(.isButton)
 
             Button {
                 Haptics.lightImpact()
@@ -152,25 +148,26 @@ extension ContentView {
                         .transition(.push(from: dateSwitcherForward ? .trailing : .leading))
                         .clipped()
                 }
+                .frame(minWidth: 72, minHeight: 32)
+                .contentShape(Capsule())
             }
+            .buttonStyle(.plain)
             .popover(isPresented: $showingDatePopover) {
                 datePickerPopoverContent
             }
 
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(selectedDayOffset < 9 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
-                .frame(minWidth: 30, minHeight: 32)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    guard selectedDayOffset < 9 else { return }
-                    Haptics.lightImpact()
-                    dateSwitcherForward = true
-                    withAnimation(.smooth(duration: 0.2)) {
-                        selectedDayOffset += 1
-                    }
+            dateStepperButton(
+                systemImage: "chevron.right",
+                isEnabled: selectedDayOffset < 9,
+                accessibilityLabel: localizedString("Next Day", locale: locale)
+            ) {
+                guard selectedDayOffset < 9 else { return }
+                Haptics.lightImpact()
+                dateSwitcherForward = true
+                withAnimation(.smooth(duration: 0.2)) {
+                    selectedDayOffset += 1
                 }
-            .onLongPressGesture(minimumDuration: 0.45) {
+            } longPressAction: {
                 guard selectedDayOffset < 9 else { return }
                 Haptics.lightImpact()
                 dateSwitcherForward = true
@@ -178,11 +175,27 @@ extension ContentView {
                     selectedDayOffset = 9
                 }
             }
-            .accessibilityLabel(localizedString("Next Day", locale: locale))
-            .accessibilityAddTraits(.isButton)
         }
         .padding(.horizontal, 3)
         .frame(width: bottomCenterToolbarWidth)
+    }
+
+    func dateStepperButton(
+        systemImage: String,
+        isEnabled: Bool,
+        accessibilityLabel: String,
+        action: @escaping () -> Void,
+        longPressAction: @escaping () -> Void
+    ) -> some View {
+        Image(systemName: systemImage)
+            .font(.system(size: 12, weight: .medium))
+            .foregroundStyle(isEnabled ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
+            .frame(minWidth: 30, minHeight: 32)
+            .contentShape(Rectangle())
+            .onTapGesture(perform: action)
+            .onLongPressGesture(minimumDuration: 0.45, perform: longPressAction)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityAddTraits(.isButton)
     }
 
     func dateSwitcherText(for dayOffset: Int) -> String {
@@ -273,6 +286,7 @@ extension ContentView {
 
     func bottomBackButton(_ route: AppNavigationRoute) -> some View {
         Button {
+            print("[Navigation] Back button tapped for \(String(describing: route)); path before: \(navigationPath)")
             popRoute(route)
         } label: {
             Image(systemName: "chevron.left")
@@ -436,17 +450,20 @@ extension ContentView {
                 temporaryMapSearchCity = nil
                 removeRoute(.addCityDetail)
                 pushRoute(.cityDetail(savedCity.id))
+                showCityAddedConfirmation("\(localizedCityName(for: savedCity.city)) was added to \(listID.localizedDisplayName(locale: locale)).")
             }
         }
     }
 
     func popRoute(_ route: AppNavigationRoute) {
+        print("[Navigation] popRoute requested for \(String(describing: route)); current route: \(String(describing: currentRoute)); path before: \(navigationPath)")
         if navigationPath.last == route {
             navigationPath.removeLast()
             cleanupAfterLeavingRoute(route)
         } else {
             removeRoute(route)
         }
+        print("[Navigation] popRoute finished for \(String(describing: route)); path after: \(navigationPath)")
     }
 
     func removeRoute(_ route: AppNavigationRoute) {

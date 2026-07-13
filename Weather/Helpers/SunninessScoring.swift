@@ -36,17 +36,6 @@ enum SunninessScoring {
         return hourlyScores.reduce(0, +) / Double(hourlyScores.count)
     }
 
-    static func daytimeAverageCloudCover(for forecast: DailyForecast, timeZone: TimeZone) -> Double? {
-        let daylightHours = daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
-        guard !daylightHours.isEmpty,
-              daylightHours.allSatisfy({ $0.cloudCover != nil }) else {
-            return nil
-        }
-
-        let cloudCover = daylightHours.compactMap(\.cloudCover)
-        return cloudCover.reduce(0, +) / Double(cloudCover.count)
-    }
-
     static func daytimeHours(for forecast: DailyForecast, timeZone: TimeZone) -> [HourlyForecast] {
         daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
     }
@@ -60,6 +49,11 @@ enum SunninessScoring {
         guard !forecast.hourlyForecasts.isEmpty else { return [] }
         guard let sunrise = forecast.sunrise,
               let sunset = forecast.sunset else {
+            DeveloperWarningCenter.showOnce(
+                key: "daytime-hours-fallback-\(timeZone.identifier)-\(forecast.dayOffset)",
+                title: "Sunrise or Sunset Missing",
+                message: "Forecast day \(forecast.dayOffset) has no sunrise or sunset data. The app is using 6 AM to 9 PM as its daytime range."
+            )
             return forecast.hourlyForecasts
                 .filter { (6...21).contains($0.hour) }
                 .sorted { $0.hour < $1.hour }

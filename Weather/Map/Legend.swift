@@ -109,7 +109,7 @@ struct MapFloatingLegend: View {
                 ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
                     Text(label)
                         .font(legendValueFont)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.shared.colors.secondaryText)
                     if index < labels.count - 1 {
                         Spacer(minLength: 0)
                     }
@@ -136,7 +136,7 @@ struct MapFloatingLegend: View {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
                         .font(.system(size: compact ? 10 : 11, weight: .semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(AppTheme.shared.colors.secondaryText)
                         .frame(width: compact ? 26 : 28, height: compact ? 26 : 28)
                         .contentShape(Rectangle())
                 }

@@ -23,18 +23,8 @@ extension ContentView {
     private var viewLifecycle: some View {
         rootContent
             .task { await onAppearLoad() }
-            .task(id: CityNameTranslationCache.languageIdentifier(for: locale)) {
-                await MainActor.run {
-                    localizedCityNameCache = CityNameTranslationCache.load(
-                        languageIdentifier: CityNameTranslationCache.languageIdentifier(for: locale)
-                    )
-                }
-            }
             .background {
                 homeScreenShortcutReceiver
-            }
-            .background {
-                cityNameTranslationTask
             }
             .onChange(of: weatherService.activeListID) { _, newListID in
                 visibleListIDs.insert(newListID.rawValue)
@@ -59,31 +49,6 @@ extension ContentView {
                     centerMapOnDots(useListCoordinates: true)
                 }
             }
-    }
-
-    @ViewBuilder
-    private var cityNameTranslationTask: some View {
-        #if canImport(Translation)
-        if #available(iOS 18.0, *) {
-            let languageIdentifier = CityNameTranslationCache.languageIdentifier(for: locale)
-            if !languageIdentifier.hasPrefix("en"), !cityNameTranslationInputs.isEmpty {
-                CityNameTranslationTaskView(
-                    inputs: cityNameTranslationInputs,
-                    sourceLanguage: Locale.Language(identifier: "en"),
-                    targetLanguage: Locale.Language(identifier: locale.identifier)
-                ) { translations in
-                    mergeCityNameTranslations(translations)
-                }
-                .id(cityNameTranslationTaskID)
-            }
-        }
-        #endif
-    }
-
-    private func mergeCityNameTranslations(_ translations: [String: String]) {
-        let languageIdentifier = CityNameTranslationCache.languageIdentifier(for: locale)
-        localizedCityNameCache.merge(translations) { _, new in new }
-        CityNameTranslationCache.save(localizedCityNameCache, languageIdentifier: languageIdentifier)
     }
 
     private var viewStateObservers: some View {
@@ -171,6 +136,12 @@ extension ContentView {
                     .presentationDragIndicator(.visible)
                     .presentationBackground(theme.colors.background)
             }
+            .sheet(isPresented: $showingListManagementSheet) {
+                listManagementSheet
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+                    .presentationBackground(theme.colors.mapOcean)
+            }
             .sheet(isPresented: $showingContinentListSearchSheet) {
                 continentListSearchSheet
                     .presentationDetents([.fraction(0.82), .large])
@@ -180,11 +151,24 @@ extension ContentView {
             .overlay {
                 resetListsLoadingOverlay
             }
+            .overlay {
+                cityAddedConfirmationOverlay
+            }
     }
 
     private var viewAlerts: some View {
         viewSheetsAndOverlays
         .onChange(of: showingRenameAlert) { _, isShowing in
+            if isShowing {
+                Task { @MainActor in
+                    await Task.yield()
+                    renameAlertFocused = true
+                }
+            } else {
+                renameAlertFocused = false
+            }
+        }
+        .onChange(of: showingCityRenameAlert) { _, isShowing in
             if isShowing {
                 Task { @MainActor in
                     await Task.yield()
@@ -208,6 +192,20 @@ extension ContentView {
                     }
                 }
                 listToRenameID = nil
+            }
+        }
+        .alert(localizedString("Rename", locale: locale), isPresented: $showingCityRenameAlert) {
+            TextField(localizedString("Name", locale: locale), text: $renameAlertText)
+                .focused($renameAlertFocused)
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {
+                cityToRename = nil
+            }
+            Button(localizedString("OK", locale: locale)) {
+                let trimmed = renameAlertText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let cityToRename, !trimmed.isEmpty {
+                    CityListID.saveCustomCityName(trimmed, for: cityToRename)
+                }
+                cityToRename = nil
             }
         }
         .alert(localizedString("New List", locale: locale), isPresented: $showingAddListAlert) {
@@ -237,18 +235,48 @@ extension ContentView {
             developerWarning = notification.object as? DeveloperWarning
         }
         .alert(localizedString("Delete List", locale: locale), isPresented: $showingDeleteListConfirmation) {
-            Button(localizedString("Cancel", locale: locale), role: .cancel) { }
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {
+                listToDeleteID = nil
+            }
             Button(localizedString("Delete", locale: locale), role: .destructive) {
-                weatherService.deleteCurrentList()
+                if let listToDeleteID {
+                    weatherService.deleteList(listToDeleteID)
+                    refreshListOrder()
+                }
+                self.listToDeleteID = nil
             }
         } message: {
             Text(String(
                 format: localizedString("Are you sure you want to delete \"%@\"? This cannot be undone.", locale: locale),
-                weatherService.activeListID.localizedDisplayName(locale: locale)
+                (listToDeleteID ?? weatherService.activeListID).localizedDisplayName(locale: locale)
             ))
         }
         .toolbar {
             nativeBottomToolbarItems
+        }
+    }
+
+    @ViewBuilder
+    private var cityAddedConfirmationOverlay: some View {
+        if let message = addedCityConfirmation {
+            CityAddedConfirmationView(message: message)
+                .allowsHitTesting(false)
+            .transition(.scale(scale: 0.86).combined(with: .opacity))
+            .animation(.spring(response: 0.32, dampingFraction: 0.72), value: message)
+        }
+    }
+
+    func showCityAddedConfirmation(_ message: String) {
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
+            addedCityConfirmation = message
+        }
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.8))
+            guard addedCityConfirmation == message else { return }
+            withAnimation(.easeOut(duration: 0.2)) {
+                addedCityConfirmation = nil
+            }
         }
     }
 
@@ -365,7 +393,7 @@ extension ContentView {
             }
 
         }
-        .tint(.primary)
+        .tint(theme.colors.accent)
     }
 
     // MARK: - Startup and External Entry Points
@@ -510,12 +538,45 @@ extension ContentView {
             await switchToList(listID)
             await MainActor.run {
                 visibleListIDs.insert(listID.rawValue)
-                mapRecenterRequest = .listCoordinates
-                centerMapOnDots(useListCoordinates: true)
                 AppDelegate.updateHomeScreenListShortcuts()
             }
         }
     }
+}
+
+private struct CityAddedConfirmationView: View {
+    let message: String
+
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 27, weight: .bold))
+                .foregroundStyle(theme.colors.accent)
+                .symbolEffect(.bounce, value: message)
+
+            Text(message)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .multilineTextAlignment(.center)
+        }
+        .padding(.horizontal, 28)
+        .padding(.vertical, 24)
+        .frame(maxWidth: 300)
+        .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .shadow(color: .black.opacity(0.16), radius: 18, y: 8)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(message)
+    }
+}
+
+#Preview("City Added Confirmation") {
+    CityAddedConfirmationView(message: "Oxford was added to Europe.")
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(ThemeColors.light.background)
+        .environment(\.appTheme, AppTheme.shared)
 }
 
 extension ContentView {
@@ -677,7 +738,7 @@ private struct LoadingWeatherOverlay: View {
 
             Text(localizedString("Loading Weather", locale: locale))
                 .font(.avenir(.subheadline, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(AppTheme.shared.colors.primaryText)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)

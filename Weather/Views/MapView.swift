@@ -20,7 +20,7 @@ enum MapRecenterRequest: Equatable {
 extension ContentView {
     var mapOverlayOptions: [(mode: String, icon: String, label: String)] {
         [
-            ("weather", "cloud.sun", localizedString("Weather", locale: locale)),
+        ("weather", "sun.max.fill", localizedString("Sunniness", locale: locale)),
             ("temperature", "thermometer.medium", localizedString("Temperature", locale: locale)),
             ("cloudCover", "cloud", localizedString("Cloud Cover", locale: locale)),
             ("precipitation", "cloud.rain", localizedString("Rain", locale: locale)),
@@ -441,7 +441,11 @@ extension ContentView {
         dismissMapSelectionForRefresh()
         daytimeScoreRefetchKeys.removeAll()
         Task {
-            await weatherService.refreshWeather()
+            if isShowingAllLists {
+                await loadAllListsWeatherData()
+            } else {
+                await weatherService.refreshWeather()
+            }
             if !mapCities.isEmpty {
                 centerMapOnDots(useListCoordinates: true)
             }

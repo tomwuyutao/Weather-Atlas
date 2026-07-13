@@ -2,25 +2,39 @@
 //  CityNameTranslation.swift
 //  Weather
 //
-//  Purpose: Translates city display names with Apple's Translation framework
-//  and caches translated names per target locale.
+//  Purpose: Loads the bundled GeoNames city-name localization catalog.
 //
 
 import Foundation
-import SwiftUI
-#if canImport(Translation)
-import Translation
-#endif
 
-struct CityNameTranslationInput: Hashable, Identifiable {
-    let key: String
-    let sourceName: String
-
-    var id: String { key }
+private struct CityNameLocalizationDocument: Decodable {
+    let cities: [CityNameLocalizationEntry]
 }
 
-enum CityNameTranslationCache {
-    private static let keyPrefix = "cityNameTranslations"
+private struct CityNameLocalizationEntry: Decodable {
+    let key: String
+    let names: [String: String]
+}
+
+enum CityNameLocalizationCatalog {
+    private static let namesByCityKey: [String: [String: String]] = {
+        guard let url = Bundle.main.url(forResource: "city_name_localizations", withExtension: "json"),
+              let data = try? Data(contentsOf: url),
+              let document = try? JSONDecoder().decode(CityNameLocalizationDocument.self, from: data) else {
+            return [:]
+        }
+        return Dictionary(uniqueKeysWithValues: document.cities.map { ($0.key, $0.names) })
+    }()
+
+    static func localizedName(for city: City, locale: Locale) -> String? {
+        guard let names = namesByCityKey[key(for: city)] else { return nil }
+        let localized = names[languageIdentifier(for: locale)]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let localized, !localized.isEmpty {
+            return localized
+        }
+        let english = names["en"]?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return english?.isEmpty == false ? english : nil
+    }
 
     static func key(for city: City) -> String {
         let latitude = String(format: "%.4f", city.latitude)
@@ -28,65 +42,13 @@ enum CityNameTranslationCache {
         return "\(city.name)|\(city.country)|\(latitude)|\(longitude)"
     }
 
-    static func languageIdentifier(for locale: Locale) -> String {
+    private static func languageIdentifier(for locale: Locale) -> String {
+        let identifier = locale.identifier
+        if identifier.hasPrefix("zh-Hant") { return "zh-Hant" }
+        if identifier.hasPrefix("zh-Hans") { return "zh-Hans" }
         if #available(iOS 16.0, *) {
-            return locale.language.languageCode?.identifier ?? locale.identifier
+            return locale.language.languageCode?.identifier ?? "en"
         }
-        return locale.identifier
-    }
-
-    static func load(languageIdentifier: String) -> [String: String] {
-        UserDefaults.standard.dictionary(forKey: storageKey(languageIdentifier: languageIdentifier)) as? [String: String] ?? [:]
-    }
-
-    static func save(_ cache: [String: String], languageIdentifier: String) {
-        UserDefaults.standard.set(cache, forKey: storageKey(languageIdentifier: languageIdentifier))
-    }
-
-    private static func storageKey(languageIdentifier: String) -> String {
-        "\(keyPrefix).\(languageIdentifier)"
+        return Locale(identifier: identifier).languageCode ?? "en"
     }
 }
-
-#if canImport(Translation)
-@available(iOS 18.0, *)
-struct CityNameTranslationTaskView: View {
-    let inputs: [CityNameTranslationInput]
-    let sourceLanguage: Locale.Language
-    let targetLanguage: Locale.Language
-    let onTranslations: ([String: String]) -> Void
-
-    var body: some View {
-        Color.clear
-            .frame(width: 0, height: 0)
-            .translationTask(source: sourceLanguage, target: targetLanguage) { session in
-                await translateMissingNames(with: session)
-            }
-    }
-
-    private func translateMissingNames(with session: TranslationSession) async {
-        let requests = inputs.map {
-            TranslationSession.Request(sourceText: $0.sourceName, clientIdentifier: $0.key)
-        }
-        guard !requests.isEmpty else { return }
-
-        do {
-            let responses = try await session.translations(from: requests)
-            let translations = Dictionary(
-                uniqueKeysWithValues: responses.compactMap { response -> (String, String)? in
-                    guard let key = response.clientIdentifier else { return nil }
-                    let translated = response.targetText.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !translated.isEmpty else { return nil }
-                    return (key, translated)
-                }
-            )
-            guard !translations.isEmpty else { return }
-            await MainActor.run {
-                onTranslations(translations)
-            }
-        } catch {
-            // Keep original city names if translation is unavailable or the language pair is unsupported.
-        }
-    }
-}
-#endif

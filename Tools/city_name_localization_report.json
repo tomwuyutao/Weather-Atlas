@@ -1,0 +1,59 @@
+{
+  "catalogRows": 4300,
+  "matchCounts": {
+    "coordinate": 38,
+    "exact": 3897,
+    "full-coordinate": 10,
+    "full-exact": 276,
+    "full-fuzzy": 16,
+    "full-name-exact": 11,
+    "full-name-fuzzy": 2,
+    "fuzzy": 39,
+    "unmatched": 11
+  },
+  "localeCoverage": {
+    "en": 4300,
+    "fr": 2710,
+    "de": 2831,
+    "it": 1306,
+    "ja": 2673,
+    "ko": 1867,
+    "pt": 2375,
+    "ru": 3127,
+    "es": 2442,
+    "zh-Hans": 2168,
+    "zh-Hant": 2141
+  },
+  "missingByLocale": {
+    "en": 0,
+    "fr": 1590,
+    "de": 1469,
+    "it": 2994,
+    "ja": 1627,
+    "ko": 2433,
+    "pt": 1925,
+    "ru": 1173,
+    "es": 1858,
+    "zh-Hans": 2132,
+    "zh-Hant": 2159
+  },
+  "unresolvedCities": 0,
+  "remainingUnmatchedGeoNames": 11,
+  "strictMissingByLocale": {
+    "en": 0,
+    "fr": 575,
+    "de": 634,
+    "it": 985,
+    "ja": 795,
+    "ko": 1514,
+    "pt": 1052,
+    "ru": 680,
+    "es": 814,
+    "zh-Hans": 1431,
+    "zh-Hant": 1451
+  },
+  "wikipediaRecoveries": 7,
+  "aiFallbackRecords": 0,
+  "wikidataValuesApplied": 9346,
+  "referenceOverridesApplied": 15
+}

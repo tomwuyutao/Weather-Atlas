@@ -99,7 +99,7 @@ struct ThemeColors {
     /// Returns palette foreground styles for a weather SF Symbol icon name.
     func weatherIconPalette(for iconName: String) -> (primary: Color, secondary: Color) {
         if iconName.contains("sun") && iconName.contains("cloud") {
-            return (cloudIconColor, dotPartlyCloudy)
+            return (cloudIconColor, sunIconColor)
         } else if iconName.contains("moon") && iconName.contains("cloud") {
             return (cloudIconColor, moonIconColor)
         } else if iconName.contains("drizzle") {

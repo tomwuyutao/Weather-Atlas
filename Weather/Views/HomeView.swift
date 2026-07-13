@@ -15,10 +15,7 @@ struct HomeStaticMapPreview: View {
     let cities: [CityWeather]
     let previewCities: [City]
     let fitCities: [City]
-    let rankedCandidates: [SunnyCandidate]
     let selectedDayOffset: Int
-    let accent: Color
-    let contextDot: Color
     let previewDot: Color
     let land: Color
     let water: Color
@@ -28,10 +25,6 @@ struct HomeStaticMapPreview: View {
         center: CLLocationCoordinate2D(latitude: 48, longitude: 12),
         span: MKCoordinateSpan(latitudeDelta: 28, longitudeDelta: 38)
     ))
-
-    private var rankByCityID: [UUID: Int] {
-        Dictionary(uniqueKeysWithValues: rankedCandidates.prefix(3).enumerated().map { ($0.element.cityWeather.id, $0.offset + 1) })
-    }
 
     private var markerSaturationCompensation: Double {
         mapSaturation == 0 ? 1 : 1 / mapSaturation
@@ -53,15 +46,11 @@ struct HomeStaticMapPreview: View {
                     ),
                     anchor: .center
                 ) {
-                    if let rank = rankByCityID[cityWeather.id] {
-                        numberedDot(rank: rank, candidate: rankedCandidates.first { $0.id == cityWeather.id })
-                    } else {
-                        Circle()
-                            .fill(markerColor(for: cityWeather))
-                            .frame(width: 8, height: 8)
-                            .shadow(color: markerColor(for: cityWeather).opacity(0.42), radius: 5, y: 1)
-                            .saturation(markerSaturationCompensation)
-                    }
+                    Circle()
+                        .fill(markerColor(for: cityWeather))
+                        .frame(width: 8, height: 8)
+                        .shadow(color: markerColor(for: cityWeather).opacity(0.42), radius: 5, y: 1)
+                        .saturation(markerSaturationCompensation)
                 }
             }
 
@@ -95,26 +84,6 @@ struct HomeStaticMapPreview: View {
         .onChange(of: selectedDayOffset) { _, _ in
             refitApplePreview()
         }
-    }
-
-    private func numberedDot(rank: Int, candidate: SunnyCandidate?) -> some View {
-        ZStack {
-            Circle()
-                .fill(accent.opacity(0.20))
-                .frame(width: 28, height: 28)
-                .blur(radius: 6)
-
-            Circle()
-                .fill(candidate?.condition.isSunny == true ? accent : contextDot.opacity(0.75))
-                .frame(width: 20, height: 20)
-                .shadow(color: accent.opacity(0.24), radius: 6, y: 2)
-
-            Text("\(rank)")
-                .font(.caption2.weight(.bold).monospacedDigit())
-                .foregroundStyle(.white)
-        }
-        .frame(width: 30, height: 30)
-        .saturation(markerSaturationCompensation)
     }
 
     private func markerColor(for cityWeather: CityWeather) -> Color {
@@ -155,9 +124,11 @@ struct SunnyCandidateRow: View {
     let candidate: SunnyCandidate
     var rank: Int? = nil
     var compact: Bool = false
+    var showsConditionIcon: Bool = true
+    var showsWeatherMetrics: Bool = true
     let tempUnit: TemperatureUnit
     var cityNameOverride: String? = nil
-    var deleteAction: (() -> Void)? = nil
+    var cityRenameAction: (() -> Void)? = nil
 
     @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
@@ -166,34 +137,11 @@ struct SunnyCandidateRow: View {
     var body: some View {
         let icon = candidate.condition.displayIcon
         let cloudText = candidate.cloudCover.map { "\(Int($0 * 100))%" } ?? "-"
-        let cloudMetricSpacing: CGFloat = dynamicTypeSize > .large ? 7 : 3
-        let cloudValueWidth: CGFloat = dynamicTypeSize > .large ? 48 : 38
-        let cloudColumnWidth: CGFloat = dynamicTypeSize > .large ? 72 : 54
         let verticalPadding: CGFloat = compact ? 8 : 9
 
-        HStack(spacing: 8) {
-            if let deleteAction {
-                Button {
-                    deleteAction()
-                } label: {
-                    ZStack {
-                        Circle()
-                            .fill(theme.colors.destructive)
-                            .frame(width: 28, height: 28)
-
-                        Image(systemName: "minus")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                }
-                .buttonStyle(.plain)
-                .frame(width: 24, height: 32)
-                .transition(.scale(scale: 0.82).combined(with: .opacity))
-            } else if let rank {
-                Text("\(rank)")
-                    .font(.subheadline.weight(.semibold).monospacedDigit())
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .frame(width: 20)
+        HStack(spacing: CityListLayout.columnSpacing) {
+            if let rank {
+                CityRankLabel(rank: rank)
             }
 
             VStack(alignment: .leading, spacing: 2) {
@@ -202,48 +150,180 @@ struct SunnyCandidateRow: View {
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
             }
-            .padding(.leading, deleteAction == nil ? 0 : 6)
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 7) {
-                HStack(spacing: 3) {
-                    Image(systemName: "thermometer.medium")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(theme.colors.dotSun)
-                        .frame(width: 13, alignment: .center)
-                    Text(tempUnit.display(candidate.temperature))
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(theme.colors.dotSun)
-                        .monospacedDigit()
-                        .frame(width: 34, alignment: .leading)
-                }
-                .frame(width: 50, alignment: .leading)
+            if showsWeatherMetrics {
+                HStack(spacing: 0) {
+                    HStack(spacing: 3) {
+                        Image(systemName: "thermometer.medium")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(theme.colors.dotSun)
+                        Text(tempUnit.display(candidate.temperature))
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(theme.colors.dotSun)
+                            .monospacedDigit()
+                    }
+                    .frame(width: temperatureMetricWidth, alignment: .leading)
 
-                HStack(spacing: cloudMetricSpacing) {
-                    Image(systemName: "cloud")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(theme.colors.secondaryText.opacity(0.50))
-                        .frame(width: 13, alignment: .center)
-                    Text(cloudText)
-                        .font(.caption.weight(.medium))
-                        .monospacedDigit()
-                        .frame(width: cloudValueWidth, alignment: .leading)
-                }
-                .frame(width: cloudColumnWidth, alignment: .leading)
+                    HStack(spacing: 3) {
+                        Image(systemName: "cloud")
+                            .font(.caption.weight(.medium))
+                            .foregroundStyle(theme.colors.secondaryText.opacity(0.50))
+                        Text(cloudText)
+                            .font(.caption.weight(.medium))
+                            .monospacedDigit()
+                    }
+                    .frame(width: cloudMetricWidth, alignment: .leading)
+                    .padding(.trailing, 5)
 
-                Image(systemName: icon)
-                    .font(.caption.weight(.medium))
-                    .weatherIconStyle(for: icon)
-                    .frame(width: 18, alignment: .leading)
+                    if showsConditionIcon {
+                        Image(systemName: icon)
+                            .font(.caption.weight(.medium))
+                            .weatherIconStyle(for: icon)
+                            .frame(width: conditionMetricWidth, alignment: .trailing)
+                    }
+                }
+                .foregroundStyle(theme.colors.secondaryText)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
             }
-            .foregroundStyle(theme.colors.secondaryText)
-            .lineLimit(1)
+
+            if let cityRenameAction {
+                Button(action: cityRenameAction) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 19, weight: .regular))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 32, height: 36)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(localizedString("Rename", locale: locale))
+            }
         }
         .padding(.horizontal, 0)
         .padding(.vertical, verticalPadding)
         .contentShape(Rectangle())
     }
+
+    private var temperatureMetricWidth: CGFloat {
+        dynamicTypeSize > .large ? 72 : 58
+    }
+
+    private var cloudMetricWidth: CGFloat {
+        dynamicTypeSize > .large ? 68 : 56
+    }
+
+    private var conditionMetricWidth: CGFloat {
+        dynamicTypeSize > .large ? 26 : 22
+    }
+}
+
+struct CityRankLabel: View {
+    let rank: Int
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        Text(verbatim: String(rank))
+            .font(.system(size: rankFontSize, weight: .semibold, design: .default))
+            .foregroundStyle(theme.colors.secondaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .padding(.leading, 5)
+            .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
+    }
+
+    private var rankFontSize: CGFloat {
+        switch dynamicTypeSize {
+        case .xSmall: return 13
+        case .small: return 14
+        case .medium: return 15
+        case .large: return 16
+        case .xLarge: return 18
+        case .xxLarge: return 20
+        case .xxxLarge: return 22
+        case .accessibility1, .accessibility2: return 24
+        case .accessibility3, .accessibility4, .accessibility5: return 26
+        @unknown default: return 16
+        }
+    }
+}
+
+struct SunnyCandidateRows: View {
+    let candidates: [SunnyCandidate]
+    let tempUnit: TemperatureUnit
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
+                SunnyCandidateRow(
+                    candidate: candidate,
+                    rank: index + 1,
+                    compact: true,
+                    tempUnit: tempUnit,
+                    cityNameOverride: CityNameLocalizationCatalog.localizedName(for: candidate.cityWeather.city, locale: locale)
+                        ?? candidate.cityWeather.city.localizedName(locale: locale)
+                )
+
+                if index < candidates.count - 1 {
+                    Divider()
+                        .background(theme.colors.secondaryText.opacity(0.16))
+                        .padding(.leading, CityListLayout.cityNameLeadingInset)
+                }
+            }
+        }
+    }
+}
+
+struct SunnyPlacesSectionHeader: View {
+    let icon: String
+    let title: String
+
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: CityListLayout.columnSpacing) {
+            Image(systemName: icon)
+                .foregroundStyle(theme.colors.primaryText)
+                .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
+            Text(title)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+            Spacer(minLength: 8)
+        }
+    }
+}
+
+struct CityNameListRow: View {
+    let rank: Int
+    let cityName: String
+
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: CityListLayout.columnSpacing) {
+            CityRankLabel(rank: rank)
+
+            Text(cityName)
+                .font(.body.weight(.medium))
+                .foregroundStyle(theme.colors.primaryText)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+        }
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+    }
+}
+
+enum CityListLayout {
+    static let rankColumnWidth: CGFloat = 32
+    static let columnSpacing: CGFloat = 8
+    static let cityNameLeadingInset = rankColumnWidth + columnSpacing
 }
 
 #Preview("Home View") {
@@ -253,9 +333,9 @@ struct SunnyCandidateRow: View {
 // MARK: - List Sorting
 
 enum WeatherListSortMode: String, CaseIterable, Identifiable {
+    case sunny
     case temperature
     case cloud
-    case sunny
 
     var id: String { rawValue }
 
@@ -287,6 +367,14 @@ struct SunnyCandidate: Identifiable {
     let temperature: Double
 
     var id: UUID { cityWeather.id }
+}
+
+struct SunninessCandidateGroup: Identifiable {
+    let title: String
+    let icon: String
+    let candidates: [SunnyCandidate]
+
+    var id: String { title }
 }
 
 struct HomeSunnyDayRecommendation: Identifiable {
@@ -349,7 +437,11 @@ extension ContentView {
     }
 
     var sortedListCandidates: [SunnyCandidate] {
-        let candidates = mapCities.map(sunnyCandidate(for:))
+        sortedCandidates(for: mapCities)
+    }
+
+    func sortedCandidates(for cities: [CityWeather]) -> [SunnyCandidate] {
+        let candidates = cities.map(sunnyCandidate(for:))
         switch selectedListSortMode {
         case .temperature:
             return candidates.sorted { $0.temperature > $1.temperature }
@@ -367,8 +459,51 @@ extension ContentView {
                 }
             }
         case .sunny:
-            return candidates.sorted(by: isBetterSunnyCandidate)
+            return sunninessCandidateGroups(from: candidates).flatMap(\.candidates)
         }
+    }
+
+    /// Keeps the ranking rule visible in the UI: clear-sky cities come first,
+    /// and each displayed weather group is ordered by lower cloud cover.
+    var sunninessCandidateGroups: [SunninessCandidateGroup] {
+        sunninessCandidateGroups(from: mapCities.map(sunnyCandidate(for:)))
+    }
+
+    func sunninessCandidateGroups(from candidates: [SunnyCandidate]) -> [SunninessCandidateGroup] {
+        let sunny = candidates.filter { $0.condition == .clear }.sorted(by: isLowerCloudCover)
+        let partlySunny = candidates.filter { $0.condition == .partlySunny }.sorted(by: isLowerCloudCover)
+        let remaining = candidates.filter {
+            $0.condition != .clear
+                && $0.condition != .partlySunny
+                && $0.condition != .drizzle
+                && $0.condition != .rain
+        }
+        .sorted(by: isLowerCloudCover)
+        let rainy = candidates.filter { $0.condition == .drizzle || $0.condition == .rain }
+            .sorted(by: isLowerCloudCover)
+
+        return [
+            SunninessCandidateGroup(
+                title: localizedString("Sunny", locale: locale),
+                icon: "sun.max.fill",
+                candidates: sunny
+            ),
+            SunninessCandidateGroup(
+                title: localizedString("Partly Sunny", locale: locale),
+                icon: "cloud.sun",
+                candidates: partlySunny
+            ),
+            SunninessCandidateGroup(
+                title: localizedString("Cloudy, Windy,\nSnowy, Foggy", locale: locale),
+                icon: "cloud",
+                candidates: remaining
+            ),
+            SunninessCandidateGroup(
+                title: localizedString("Drizzle / Rain", locale: locale),
+                icon: "cloud.rain",
+                candidates: rainy
+            )
+        ].filter { !$0.candidates.isEmpty }
     }
 
     var homeSunnyDayRecommendations: [HomeSunnyDayRecommendation] {
@@ -399,6 +534,19 @@ extension ContentView {
             return lhs.condition.sunninessRank < rhs.condition.sunninessRank
         }
 
+        switch (lhs.cloudCover, rhs.cloudCover) {
+        case let (lhsCloud?, rhsCloud?) where lhsCloud != rhsCloud:
+            return lhsCloud < rhsCloud
+        case (_?, nil):
+            return true
+        case (nil, _?):
+            return false
+        default:
+            return lhs.cityWeather.city.localizedName(locale: locale) < rhs.cityWeather.city.localizedName(locale: locale)
+        }
+    }
+
+    private func isLowerCloudCover(_ lhs: SunnyCandidate, _ rhs: SunnyCandidate) -> Bool {
         switch (lhs.cloudCover, rhs.cloudCover) {
         case let (lhsCloud?, rhsCloud?) where lhsCloud != rhsCloud:
             return lhsCloud < rhsCloud
@@ -449,7 +597,7 @@ extension ContentView {
                             homeSunnyDaysSection(previewActive: previewActive)
                         }
                     }
-                    homeCard {
+                    homeCard(contentPadding: 12) {
                         homeSunnySection(previewActive: previewActive)
                     }
                 }
@@ -491,10 +639,7 @@ extension ContentView {
             cities: previewActive ? [] : mapCities,
             previewCities: previewActive ? listPreviewCities : [],
             fitCities: previewActive ? listPreviewCities : mapFitCities,
-            rankedCandidates: previewActive ? [] : Array(sunnyCandidates(for: weatherService.cityWeatherData).filter { $0.condition.isSunny }.prefix(3)),
             selectedDayOffset: selectedDayOffset,
-            accent: theme.colors.dotSun,
-            contextDot: theme.colors.secondaryText,
             previewDot: theme.colors.primaryText,
             land: theme.colors.mapLand,
             water: theme.colors.mapOcean,
@@ -519,21 +664,14 @@ extension ContentView {
         }
     }
 
-    private func homeSunnySection(previewActive: Bool) -> some View {
+    func homeSunnySection(previewActive: Bool) -> some View {
         let sectionIcon = previewActive ? "list.bullet" : "sun.max.fill"
         let sectionTitle = previewActive
             ? localizedString("List of Cities", locale: locale)
             : localizedString("Best Sunny Places", locale: locale)
 
         return VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: sectionIcon)
-                    .foregroundStyle(theme.colors.dotSun)
-                Text(sectionTitle)
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-                Spacer(minLength: 8)
-            }
+            SunnyPlacesSectionHeader(icon: sectionIcon, title: sectionTitle)
 
             homeCandidateList(previewActive: previewActive)
 
@@ -562,9 +700,10 @@ extension ContentView {
         let days = homeSunnyCalendarDates(for: cities)
 
         return VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
+            HStack(spacing: CityListLayout.columnSpacing) {
                 Image(systemName: "sparkles")
-                    .foregroundStyle(theme.colors.dotSun)
+                    .foregroundStyle(theme.colors.primaryText)
+                    .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
                 Text(localizedString("Best Sunny Dates", locale: locale))
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
@@ -781,29 +920,15 @@ extension ContentView {
     private func homePreviewCityList() -> some View {
         VStack(spacing: 0) {
             ForEach(Array(listPreviewCities.enumerated()), id: \.element.id) { index, city in
-                HStack(spacing: 8) {
-                    Text("\(index + 1)")
-                        .font(.subheadline.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(theme.colors.secondaryText)
-                        .frame(width: 20)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(localizedCityName(for: city))
-                            .font(.body.weight(.medium))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .lineLimit(1)
-                    }
-
-                    Spacer(minLength: 8)
-                }
-                .padding(.horizontal, 0)
-                .padding(.vertical, 10)
-                .contentShape(Rectangle())
+                CityNameListRow(
+                    rank: index + 1,
+                    cityName: localizedCityName(for: city)
+                )
 
                 if index < listPreviewCities.count - 1 {
                     Divider()
                         .background(theme.colors.secondaryText.opacity(0.18))
-                        .padding(.leading, 36)
+                        .padding(.leading, CityListLayout.cityNameLeadingInset)
                 }
             }
         }
@@ -813,15 +938,20 @@ extension ContentView {
         _ candidate: SunnyCandidate,
         rank: Int? = nil,
         compact: Bool = false,
-        deleteAction: (() -> Void)? = nil
+        showsConditionIcon: Bool = true,
+        showsWeatherMetrics: Bool = true,
+        cityNameOverride: String? = nil,
+        cityRenameAction: (() -> Void)? = nil
     ) -> some View {
         SunnyCandidateRow(
             candidate: candidate,
             rank: rank,
             compact: compact,
+            showsConditionIcon: showsConditionIcon,
+            showsWeatherMetrics: showsWeatherMetrics,
             tempUnit: tempUnit,
-            cityNameOverride: localizedCityName(for: candidate.cityWeather.city),
-            deleteAction: deleteAction
+            cityNameOverride: cityNameOverride ?? localizedCityName(for: candidate.cityWeather.city),
+            cityRenameAction: cityRenameAction
         )
     }
 
@@ -854,26 +984,7 @@ extension ContentView {
 
     func listSwitcher(titleOverride: String?) -> some View {
         Group {
-            if listEditMode && titleOverride == nil {
-                Button {
-                    listToRenameID = weatherService.activeListID
-                    renameAlertText = weatherService.activeListID.localizedDisplayName(locale: locale)
-                    showingRenameAlert = true
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(toolbarTitle)
-                            .font(.system(size: 32, weight: .semibold, design: .serif))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .lineLimit(1)
-                        Image(systemName: "pencil")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(theme.colors.accent)
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-            } else {
-                Menu {
+            Menu {
                     ForEach(managedLists) { listID in
                         Button {
                             listEditMode = false
@@ -887,7 +998,7 @@ extension ContentView {
 
                                 Spacer()
 
-                                if listID.rawValue == weatherService.activeListID.rawValue {
+                                if !isShowingAllLists && listID.rawValue == weatherService.activeListID.rawValue {
                                     Image(systemName: "checkmark")
                                         .foregroundStyle(theme.colors.primaryText)
                                 }
@@ -895,37 +1006,22 @@ extension ContentView {
                         }
                     }
 
+                    if managedLists.count > 1 {
+                        Button {
+                            listEditMode = false
+                            showAllLists()
+                        } label: {
+                            primaryMenuLabel(localizedString("View All Lists", locale: locale), systemImage: "list.bullet")
+                        }
+                    }
+
                     Divider()
 
                     Button {
                         listEditMode = false
-                        activateAddListOptions()
+                        showingListManagementSheet = true
                     } label: {
-                        primaryMenuLabel(localizedString("New List", locale: locale), systemImage: "plus")
-                    }
-
-                    Button {
-                        listEditMode = false
-                        listToRenameID = weatherService.activeListID
-                        renameAlertText = weatherService.activeListID.localizedDisplayName(locale: locale)
-                        showingRenameAlert = true
-                    } label: {
-                        primaryMenuLabel(localizedString("Rename List", locale: locale), systemImage: "pencil")
-                    }
-
-                    Button {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            showingDeleteListConfirmation = true
-                        }
-                    } label: {
-                        Label {
-                            Text(localizedString("Delete List", locale: locale))
-                                .foregroundStyle(theme.colors.primaryText)
-                        } icon: {
-                            Image(systemName: "trash")
-                                .symbolRenderingMode(.monochrome)
-                                .foregroundStyle(theme.colors.destructive)
-                        }
+                        primaryMenuLabel(localizedString("Manage Lists", locale: locale), systemImage: "slider.horizontal.3")
                     }
                 } label: {
                     HStack(spacing: 6) {
@@ -940,8 +1036,8 @@ extension ContentView {
                         }
                     }
                 }
-                .menuOrder(.fixed)
-            }
+            .menuOrder(.fixed)
         }
     }
+
 }
