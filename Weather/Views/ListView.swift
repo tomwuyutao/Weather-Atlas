@@ -196,76 +196,6 @@ extension ContentView {
             .accessibilityLabel(accessibilityLabel)
     }
 
-    private var listNavigationTitleMenu: some View {
-        Menu {
-            ForEach(managedLists) { listID in
-                Button {
-                    listEditMode = false
-                    Task {
-                        await switchToList(listID)
-                    }
-                } label: {
-                    HStack {
-                        Text(listID.localizedDisplayName(locale: locale))
-                            .foregroundStyle(theme.colors.primaryText)
-
-                        Spacer()
-
-                        if listID.rawValue == weatherService.activeListID.rawValue {
-                            Image(systemName: "checkmark")
-                                .foregroundStyle(theme.colors.primaryText)
-                        }
-                    }
-                }
-            }
-
-            Divider()
-
-            Button {
-                listEditMode = false
-                activateAddListOptions()
-            } label: {
-                primaryMenuLabel(localizedString("New List", locale: locale), systemImage: "plus")
-            }
-
-            Button {
-                listEditMode = false
-                listToRenameID = weatherService.activeListID
-                renameAlertText = weatherService.activeListID.localizedDisplayName(locale: locale)
-                showingRenameAlert = true
-            } label: {
-                primaryMenuLabel(localizedString("Rename List", locale: locale), systemImage: "pencil")
-            }
-
-            Button {
-                listToDeleteID = weatherService.activeListID
-                showingDeleteListConfirmation = true
-            } label: {
-                Label {
-                    Text(localizedString("Delete List", locale: locale))
-                        .foregroundStyle(theme.colors.primaryText)
-                } icon: {
-                    Image(systemName: "trash")
-                        .symbolRenderingMode(.monochrome)
-                        .foregroundStyle(theme.colors.destructive)
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Text(toolbarTitle)
-                    .font(.system(size: 32, weight: .semibold, design: .serif))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .lineLimit(1)
-
-                Image(systemName: "chevron.down")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(theme.colors.accent)
-            }
-        }
-        .menuOrder(.fixed)
-        .buttonStyle(.plain)
-    }
-
     func listRow(
         _ candidate: SunnyCandidate,
         rank: Int?,
@@ -358,7 +288,7 @@ extension ContentView {
 
     private func beginCityRename(_ city: City) {
         cityToRename = city
-        renameAlertText = CityListID.customCityName(for: city) ?? localizedCityName(for: city)
+        cityRenameText = CityListID.customCityName(for: city) ?? localizedCityName(for: city)
         showingCityRenameAlert = true
     }
 }

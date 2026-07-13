@@ -8,45 +8,10 @@
 
 import SwiftUI
 
-// MARK: - Add List Options
-
-extension ContentView {
-    var addListOptionsSheet: some View {
-        AddSheet(
-            onNewEmptyList: {
-                showingAddListOptionsSheet = false
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(260))
-                    beginCreatingListFromSwitcher()
-                }
-            },
-            onAddContinent: {
-                showingAddListOptionsSheet = false
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(260))
-                    activateContinentListSearch()
-                }
-            },
-            onAddCountry: {
-                showingAddListOptionsSheet = false
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(260))
-                    activateCountryListSearch()
-                }
-            }
-        )
-    }
-
-    func activateAddListOptions() {
-        showingAddListOptionsSheet = true
-    }
-}
-
 struct AddSheet: View {
     let onNewEmptyList: () -> Void
     let onAddContinent: () -> Void
     let onAddCountry: () -> Void
-    var usesListManagerStyle = false
 
     @Environment(\.locale) private var locale
     @Environment(\.appTheme) private var theme
@@ -81,11 +46,7 @@ struct AddSheet: View {
         .padding(.horizontal, 26)
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(addSheetBackground.ignoresSafeArea())
-    }
-
-    private var addSheetBackground: Color {
-        usesListManagerStyle ? theme.colors.mapOcean : theme.colors.background
+        .background(theme.colors.mapOcean.ignoresSafeArea())
     }
 
     private var addSheetDivider: some View {

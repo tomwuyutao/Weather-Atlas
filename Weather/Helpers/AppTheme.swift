@@ -261,15 +261,6 @@ class AppTheme {
         }
     }
 
-    /// The effective color scheme after resolving "automatic".
-    func resolvedScheme(for systemScheme: ColorScheme) -> ColorScheme {
-        switch style {
-        case .light: return .light
-        case .dark: return .dark
-        case .automatic: return systemScheme
-        }
-    }
-
     private init() {
         let raw = UserDefaults.standard.string(forKey: "appThemeStyle") ?? AppThemeStyle.defaultRawValue
         self.style = AppThemeStyle(rawValue: raw) ?? .automatic

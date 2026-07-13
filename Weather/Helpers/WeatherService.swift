@@ -2,8 +2,7 @@
 //  WeatherService.swift
 //  Weather
 //
-//  Purpose: Owns weather fetching, weather caching, weather models, forecast
-//  models, and cache serialization. List mutation lives in ListManager.swift.
+//  Purpose: Fetches WeatherKit data and defines the app's weather models.
 //
 
 import Foundation
@@ -199,7 +198,6 @@ class WeatherService {
     var isLoading = false
     var loadingProgress: Double = 0
     var errorMessage: String?
-    var forecastDays: [ForecastDay] = []
     var lastFetchDate: Date?
     var weatherAttribution: WeatherAttribution?
     var activeListID: CityListID = .europe
@@ -247,7 +245,6 @@ class WeatherService {
     }
     
     func fetchWeatherForAllCities(forceRefresh: Bool = false) async {
-        generateForecastDays()
         errorMessage = nil
         if !forceRefresh,
            cityWeatherData.isEmpty,
@@ -329,32 +326,6 @@ class WeatherService {
     func refreshWeather() async {
         clearCache()
         await fetchWeatherForAllCities(forceRefresh: true)
-    }
-    
-    func resetAllLists(preloadListIDs: Set<String> = []) async {
-        // Clear saved cities for all lists (including user-created)
-        for listID in CityListID.allLists {
-            let citiesKey = "savedCitiesList_\(listID.rawValue)"
-            let cacheKey = "cachedWeatherData_\(listID.rawValue)"
-            let timestampKey = "weatherCacheTimestamp_\(listID.rawValue)"
-            UserDefaults.standard.removeObject(forKey: citiesKey)
-            UserDefaults.standard.removeObject(forKey: cacheKey)
-            UserDefaults.standard.removeObject(forKey: timestampKey)
-        }
-        listFetchDates.removeAll()
-        otherListData.removeAll()
-        // Restore built-in lists and clear user-created lists
-        CityListID.restoreBuiltInLists()
-        CityListID.saveUserLists([])
-        // Switch to first built-in list
-        activeListID = .europe
-        UserDefaults.standard.set(CityListID.europe.rawValue, forKey: Self.activeListKey)
-        cityWeatherData = []
-        await fetchWeatherForAllCities()
-
-        for listID in CityListID.builtInLists where preloadListIDs.contains(listID.rawValue) && listID != activeListID {
-            await fetchWeatherForList(listID)
-        }
     }
     
     func switchList(to listID: CityListID) async {
@@ -541,56 +512,23 @@ class WeatherService {
     }
     
     func convertWeatherKitData(weather: Weather, for city: City, timeZone: TimeZone) -> CityWeather {
-        // Current weather
         let currentTemp = weather.currentWeather.temperature.value
-        let currentSymbol = weather.currentWeather.symbolName
-        let currentCondition = AppWeatherCondition.fromWeatherSymbol(currentSymbol)
         
-        // Current weather overlay data
-        let currentFeelsLike = weather.currentWeather.apparentTemperature.converted(to: .celsius).value
-        let currentVisibilityKm = weather.currentWeather.visibility.converted(to: .kilometers).value
-        let currentHumidity = weather.currentWeather.humidity
-        let currentWindSpeedKmh = weather.currentWeather.wind.speed.converted(to: .kilometersPerHour).value
-        let currentUV = weather.currentWeather.uvIndex.value
-        let currentCloudCover = weather.currentWeather.cloudCover
-        
-        // Daily forecasts
         let dailyForecasts = weather.dailyForecast.forecast.prefix(10).enumerated().map { (index, day) -> DailyForecast in
             let daySymbol = day.symbolName
-            let dayCondition = AppWeatherCondition.fromWeatherSymbol(daySymbol)
-            
-            // Generate hourly forecasts for this day
+            let daytimeForecast = day.daytimeForecast
             let hourlyForecasts = generateHourlyFromDaily(day: day, dayOffset: index, allHourly: weather.hourlyForecast.forecast, timeZone: timeZone)
-            
-            // Derive full-day feels-like range from all hourly apparent temperatures
-            let apparentTemps = hourlyForecasts.compactMap(\.apparentTemperature)
-            let feelsLikeLow = apparentTemps.min()
-            let feelsLikeHigh = apparentTemps.max()
-            // Compute full-day values from hourly data so the app remains compatible with iOS 17.
-            let hourlyPrecipChances = hourlyForecasts.compactMap(\.precipitationChance)
-            let hourlyCloudCover = hourlyForecasts.compactMap(\.cloudCover)
-            let hourlyHumidity = hourlyForecasts.compactMap(\.humidity)
-            let hourlyVisibility = hourlyForecasts.compactMap(\.visibility)
-            let fullDayPrecipChance: Double? = hourlyPrecipChances.max()
-            let fullDayCloudCover = hourlyCloudCover.isEmpty ? nil : hourlyCloudCover.reduce(0, +) / Double(hourlyCloudCover.count)
 
             return DailyForecast(
                 dayOffset: index,
                 dailyLow: day.lowTemperature.value,
                 dailyHigh: day.highTemperature.value,
                 symbolName: daySymbol,
-                condition: dayCondition,
                 hourlyForecasts: hourlyForecasts,
-                cloudCover: index == 0 ? currentCloudCover : fullDayCloudCover,
-                precipitationChance: fullDayPrecipChance,
-                visibility: index == 0 ? currentVisibilityKm : nil,
-                feelsLikeLow: feelsLikeLow,
-                feelsLikeHigh: feelsLikeHigh,
-                humidity: index == 0 ? currentHumidity : nil,
-                windSpeed: day.wind.speed.converted(to: .kilometersPerHour).value,
+                cloudCover: daytimeForecast.cloudCover,
+                precipitationChance: daytimeForecast.precipitationChance,
+                windSpeed: daytimeForecast.wind.speed.converted(to: .kilometersPerHour).value,
                 uvIndex: day.uvIndex.value,
-                maxHumidity: hourlyHumidity.max(),
-                maxVisibility: hourlyVisibility.max(),
                 sunrise: day.sun.sunrise,
                 sunset: day.sun.sunset
             )
@@ -598,17 +536,9 @@ class WeatherService {
         
         return CityWeather(
             city: city,
-            condition: currentCondition,
             temperature: currentTemp,
-            symbolName: currentSymbol,
             dailyForecasts: Array(dailyForecasts),
-            timeZone: timeZone,
-            currentFeelsLike: currentFeelsLike,
-            currentCloudCover: currentCloudCover,
-            currentWindSpeed: currentWindSpeedKmh,
-            currentUVIndex: currentUV,
-            currentHumidity: currentHumidity,
-            currentVisibility: currentVisibilityKm
+            timeZone: timeZone
         )
     }
     
@@ -620,7 +550,9 @@ class WeatherService {
         let todayStart = calendar.startOfDay(for: Date())
         let dayStart = calendar.date(byAdding: .day, value: dayOffset, to: todayStart)
             ?? calendar.startOfDay(for: day.date)
-        let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart)!
+        guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
+            return []
+        }
         
         // Filter hourly forecasts for this specific day
         let dayHourlyData = allHourly.filter { hourWeather in
@@ -630,20 +562,9 @@ class WeatherService {
         if dayHourlyData.isEmpty { return [] }
         
         return dayHourlyData.map { hourWeather in
-            // Extract hour in the city's local timezone
-            let hour = calendar.component(.hour, from: hourWeather.date)
             return HourlyForecast(
-                hour: hour,
-                temperature: hourWeather.temperature.value,
-                apparentTemperature: hourWeather.apparentTemperature.value,
-                symbolName: hourWeather.symbolName,
-                condition: AppWeatherCondition.fromWeatherSymbol(hourWeather.symbolName),
-                precipitationChance: hourWeather.precipitationChance,
-                cloudCover: hourWeather.cloudCover,
-                windSpeed: hourWeather.wind.speed.converted(to: .kilometersPerHour).value,
-                uvIndex: hourWeather.uvIndex.value,
-                humidity: hourWeather.humidity,
-                visibility: hourWeather.visibility.converted(to: .kilometers).value
+                hour: calendar.component(.hour, from: hourWeather.date),
+                symbolName: hourWeather.symbolName
             )
         }
     }
@@ -698,16 +619,6 @@ class WeatherService {
         cacheData(listData, for: listID)
     }
     
-    private func generateForecastDays() {
-        let calendar = Calendar.current
-        let today = Date()
-        
-        forecastDays = (0..<10).map { dayOffset in
-            let date = calendar.date(byAdding: .day, value: dayOffset, to: today)!
-            return ForecastDay(date: date, dayOffset: dayOffset)
-        }
-    }
-    
 }
 
 // MARK: - City Models
@@ -751,79 +662,39 @@ struct City: Identifiable, Hashable, Codable {
         return String(format: "%.2f, %.2f", latitude, longitude)
     }
 
-    /// Returns the display country name, localized through the string catalog when available.
-    func localizedCountry(locale: Locale = .current) -> String {
-        guard !country.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "" }
-        return localizedString(String.LocalizationValue(country), locale: locale)
-    }
 }
 
 struct CityWeather: Identifiable, Hashable {
     let id: UUID
     var city: City
-    let condition: AppWeatherCondition
     let temperature: Double
-    let symbolName: String
     let dailyForecasts: [DailyForecast]
     let timeZone: TimeZone
-    
-    // Current weather metrics used by map overlays and detail cards.
-    var currentFeelsLike: Double?       // °C
-    var currentCloudCover: Double?
-    var currentWindSpeed: Double?       // km/h
-    var currentUVIndex: Int?
-    var currentHumidity: Double?        // 0-1
-    var currentVisibility: Double?      // km
 
     init(
         id: UUID = UUID(),
         city: City,
-        condition: AppWeatherCondition,
         temperature: Double,
-        symbolName: String,
         dailyForecasts: [DailyForecast],
-        timeZone: TimeZone,
-        currentFeelsLike: Double? = nil,
-        currentCloudCover: Double? = nil,
-        currentWindSpeed: Double? = nil,
-        currentUVIndex: Int? = nil,
-        currentHumidity: Double? = nil,
-        currentVisibility: Double? = nil
+        timeZone: TimeZone
     ) {
         self.id = id
         self.city = city
-        self.condition = condition
         self.temperature = temperature
-        self.symbolName = symbolName
         self.dailyForecasts = dailyForecasts
         self.timeZone = timeZone
-        self.currentFeelsLike = currentFeelsLike
-        self.currentCloudCover = currentCloudCover
-        self.currentWindSpeed = currentWindSpeed
-        self.currentUVIndex = currentUVIndex
-        self.currentHumidity = currentHumidity
-        self.currentVisibility = currentVisibility
     }
 
     func replacingID(_ id: UUID) -> CityWeather {
         CityWeather(
             id: id,
             city: city,
-            condition: condition,
             temperature: temperature,
-            symbolName: symbolName,
             dailyForecasts: dailyForecasts,
-            timeZone: timeZone,
-            currentFeelsLike: currentFeelsLike,
-            currentCloudCover: currentCloudCover,
-            currentWindSpeed: currentWindSpeed,
-            currentUVIndex: currentUVIndex,
-            currentHumidity: currentHumidity,
-            currentVisibility: currentVisibility
+            timeZone: timeZone
         )
     }
-    
-    // Hashable conformance
+
     static func == (lhs: CityWeather, rhs: CityWeather) -> Bool {
         lhs.id == rhs.id
     }
@@ -832,7 +703,6 @@ struct CityWeather: Identifiable, Hashable {
         hasher.combine(id)
     }
     
-    // Get forecast for a specific day
     func forecast(for dayOffset: Int) -> DailyForecast {
         if let forecast = dailyForecasts.first(where: { $0.dayOffset == dayOffset }) {
             return forecast
@@ -846,73 +716,8 @@ struct CityWeather: Identifiable, Hashable {
         return dailyForecasts[0]
     }
     
-    /// Whether current weather data is available for the given overlay mode.
-    func hasCurrentData(forOverlay overlayMode: String) -> Bool {
-        switch overlayMode {
-        case "cloudCover":    return currentCloudCover != nil
-        case "precipitation": return true // derived from condition
-        case "windSpeed":     return currentWindSpeed != nil
-        case "uvIndex":       return currentUVIndex != nil
-        case "humidity":      return currentHumidity != nil
-        case "visibility":    return currentVisibility != nil
-        default:              return true
-        }
-    }
-    
-    var weatherIcon: String {
-        AppWeatherCondition.fromWeatherSymbol(symbolName).displayIcon
-    }
-    
-    var weatherColor: Color {
-        AppWeatherCondition.fromWeatherSymbol(symbolName).dotColor
-    }
 }
 // MARK: - Forecast Models
-
-struct ForecastDay: Identifiable {
-    let id = UUID()
-    let date: Date
-    let dayOffset: Int
-    
-    func displayText(locale: Locale = .current) -> String {
-        if dayOffset == 0 {
-            return localizedString("Today", locale: locale)
-        } else if dayOffset == 1 {
-            return localizedString("Tomorrow", locale: locale)
-        } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "EEEMMMd", options: 0, locale: locale)
-            formatter.locale = locale
-            return formatter.string(from: date)
-        }
-    }
-    
-    func shortDisplayText(locale: Locale = .current) -> String {
-        if dayOffset == 0 {
-            return localizedString("Today", locale: locale)
-        } else if dayOffset == 1 {
-            return localizedString("Tomorrow", locale: locale)
-        } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "EEEdM", options: 0, locale: locale)
-            formatter.locale = locale
-            return formatter.string(from: date)
-        }
-    }
-    
-    func veryShortDisplayText(locale: Locale = .current) -> String {
-        if dayOffset == 0 {
-            return localizedString("Today", locale: locale)
-        } else if dayOffset == 1 {
-            return localizedString("Tmrw", locale: locale)
-        } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "EEE", options: 0, locale: locale)
-            formatter.locale = locale
-            return formatter.string(from: date)
-        }
-    }
-}
 
 struct DailyForecast: Identifiable {
     let id = UUID()
@@ -920,18 +725,11 @@ struct DailyForecast: Identifiable {
     let dailyLow: Double   // entire day low temperature
     let dailyHigh: Double  // entire day high temperature
     let symbolName: String
-    let condition: AppWeatherCondition
     let hourlyForecasts: [HourlyForecast]
     let cloudCover: Double?  // 0.0 to 1.0, nil if unavailable
     let precipitationChance: Double?  // 0.0 to 1.0, nil if unavailable
-    let visibility: Double?     // km, only available for day 0 (current weather)
-    let feelsLikeLow: Double?   // °C, full-day min apparent temp
-    let feelsLikeHigh: Double?  // °C, full-day max apparent temp
-    let humidity: Double?       // 0.0–1.0, only available for day 0 (current weather)
     let windSpeed: Double?      // km/h, full-day wind speed
     let uvIndex: Int?           // 0–11+
-    let maxHumidity: Double?    // 0.0–1.0, daily max humidity
-    let maxVisibility: Double?  // km, daily max visibility
     let sunrise: Date?
     let sunset: Date?
     
@@ -939,171 +737,13 @@ struct DailyForecast: Identifiable {
         AppWeatherCondition.fromWeatherSymbol(symbolName).displayIcon
     }
     
-    var weatherColor: Color {
-        AppWeatherCondition.fromWeatherSymbol(symbolName).dotColor
-    }
-    
-    // Themed color variant
-    func weatherColor(for colorScheme: ColorScheme) -> Color {
-        return weatherColor
-    }
-    
-    // Palette colors for rain icons
-    func rainPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
-        let theme = AppTheme.shared.colors
-        return (theme.cloudIconColor, theme.cloudIconColor)
-    }
-    
-    // Palette colors for partially sunny icons
-    func partlySunnyPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
-        let theme = AppTheme.shared.colors
-        return (theme.cloudIconColor, theme.sunIconColor)
-    }
-    
-    var isRainIcon: Bool {
-        [.rain, .drizzle].contains(AppWeatherCondition.fromWeatherSymbol(symbolName))
-    }
-    
-    var isPartiallySunnyIcon: Bool {
-        AppWeatherCondition.fromWeatherSymbol(symbolName) == .partlySunny
-    }
-    
     var cloudCoverPercent: Int? {
         cloudCover.map { Int($0 * 100) }
-    }
-    
-    var dailyTempString: String {
-        "\(Int(dailyLow))-\(Int(dailyHigh))°"
-    }
-    
-    /// Whether this forecast has the data required by the given overlay mode.
-    func hasData(forOverlay overlayMode: String) -> Bool {
-        switch overlayMode {
-        case "cloudCover":    return cloudCover != nil
-        case "precipitation": return precipitationChance != nil
-        case "windSpeed":     return windSpeed != nil
-        case "uvIndex":       return uvIndex != nil
-        case "humidity":      return maxHumidity != nil
-        case "visibility":    return maxVisibility != nil
-        default:              return true
-        }
-    }
-}
-
-extension DailyForecast {
-    static func previewSunny(dayOffset: Int) -> DailyForecast {
-        DailyForecast(
-            dayOffset: dayOffset,
-            dailyLow: 18,
-            dailyHigh: 24,
-            symbolName: "sun.max.fill",
-            condition: .clear,
-            hourlyForecasts: [],
-            cloudCover: nil,
-            precipitationChance: nil,
-            visibility: nil,
-            feelsLikeLow: nil,
-            feelsLikeHigh: nil,
-            humidity: nil,
-            windSpeed: nil,
-            uvIndex: nil,
-            maxHumidity: nil,
-            maxVisibility: nil,
-            sunrise: nil,
-            sunset: nil
-        )
-    }
-
-    static func previewCloudy(dayOffset: Int) -> DailyForecast {
-        DailyForecast(
-            dayOffset: dayOffset,
-            dailyLow: 18,
-            dailyHigh: 24,
-            symbolName: "cloud",
-            condition: .cloudy,
-            hourlyForecasts: [],
-            cloudCover: nil,
-            precipitationChance: nil,
-            visibility: nil,
-            feelsLikeLow: nil,
-            feelsLikeHigh: nil,
-            humidity: nil,
-            windSpeed: nil,
-            uvIndex: nil,
-            maxHumidity: nil,
-            maxVisibility: nil,
-            sunrise: nil,
-            sunset: nil
-        )
     }
 }
 
 struct HourlyForecast: Identifiable {
     let id = UUID()
     let hour: Int  // 0-23
-    let temperature: Double
-    let apparentTemperature: Double?  // feels like, nil if unavailable
     let symbolName: String
-    let condition: AppWeatherCondition
-    let precipitationChance: Double?  // 0.0 to 1.0, nil if unavailable
-    let cloudCover: Double?  // 0.0 to 1.0, nil if unavailable
-    let windSpeed: Double?  // km/h
-    let uvIndex: Int?
-    let humidity: Double?  // 0.0 to 1.0
-    let visibility: Double?  // km
-    
-    var weatherIcon: String {
-        AppWeatherCondition.fromWeatherSymbol(symbolName).displayIcon
-    }
-    
-    func weatherColor(for colorScheme: ColorScheme) -> Color {
-        AppWeatherCondition.fromWeatherSymbol(symbolName).dotColor
-    }
-    
-    func rainPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
-        let theme = AppTheme.shared.colors
-        return (theme.cloudIconColor, theme.cloudIconColor)
-    }
-    
-    func partlySunnyPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
-        let theme = AppTheme.shared.colors
-        return (theme.cloudIconColor, theme.sunIconColor)
-    }
-    
-    func partlyMoonPaletteColors(for colorScheme: ColorScheme) -> (primary: Color, secondary: Color) {
-        let theme = AppTheme.shared.colors
-        return (theme.cloudIconColor, theme.moonIconColor)
-    }
-    
-    var isRainIcon: Bool {
-        [.rain, .drizzle].contains(AppWeatherCondition.fromWeatherSymbol(symbolName))
-    }
-    
-    var isPartiallySunnyIcon: Bool {
-        AppWeatherCondition.fromWeatherSymbol(symbolName) == .partlySunny
-    }
-    
-    var isPartlyMoonIcon: Bool {
-        AppWeatherCondition.fromWeatherSymbol(symbolName) == .night
-    }
-    
-    var cloudCoverPercent: Int? {
-        cloudCover.map { Int($0 * 100) }
-    }
-    
-    func formattedHour(locale: Locale = .current) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale)
-        formatter.locale = locale
-        var components = DateComponents()
-        components.hour = hour
-        if let date = Calendar.current.date(from: components) {
-            return formatter.string(from: date)
-        }
-        return "\(hour)"
-    }
-    
-    func shortFormattedHour(locale: Locale = .current) -> String {
-        return String(format: "%02d", hour)
-    }
 }

@@ -1,9 +1,8 @@
 //
-//  ListManager.swift
+//  CityListStore.swift
 //  Weather
 //
-//  Purpose: Lets users edit saved city lists, rename lists, reorder cities,
-//  and manage list names.
+//  Purpose: Persists city lists and provides their list and city mutations.
 //
 
 import SwiftUI
@@ -137,7 +136,6 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
     }
 
     static let builtInLists: [CityListID] = [.europe, .asia, .northAmerica, .southAmerica, .africa, .australia]
-    static let defaultGeneratedCityCount = CountryCityCatalog.defaultCountryCityCount
     
     private static let userListsKey = "userCreatedLists"
     private static let deletedBuiltInListsKey = "deletedBuiltInLists"
@@ -258,12 +256,6 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         UserDefaults.standard.set(Array(deleted), forKey: deletedBuiltInListsKey)
     }
     
-    static func restoreBuiltInLists() {
-        UserDefaults.standard.removeObject(forKey: deletedBuiltInListsKey)
-        UserDefaults.standard.removeObject(forKey: listOrderKey)
-        UserDefaults.standard.removeObject(forKey: customListNamesKey)
-    }
-
     static func keepBuiltInLists(withRawValues selectedIDs: Set<String>) {
         let deleted = builtInLists
             .map(\.rawValue)
@@ -271,12 +263,6 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         UserDefaults.standard.set(deleted, forKey: deletedBuiltInListsKey)
         UserDefaults.standard.removeObject(forKey: listOrderKey)
         UserDefaults.standard.removeObject(forKey: customListNamesKey)
-    }
-
-    static func addBuiltInLists(withRawValues selectedIDs: Set<String>) {
-        var deleted = loadDeletedBuiltInIDs()
-        deleted.subtract(selectedIDs)
-        UserDefaults.standard.set(Array(deleted), forKey: deletedBuiltInListsKey)
     }
 
     static func isBuiltInRawValue(_ rawValue: String) -> Bool {
@@ -425,32 +411,6 @@ extension WeatherService {
 
     // MARK: - List Mutations
 
-    func addNewList(name: String) async {
-        let newList = CityListID.createList(name: name)
-        cityWeatherData = []
-        activeListID = newList
-        UserDefaults.standard.set(newList.rawValue, forKey: Self.activeListKey)
-        lastFetchDate = nil
-        // New list starts empty, no fetch needed
-    }
-    
-    func renameCurrentList(to newName: String) {
-        let renamed = CityListID(rawValue: activeListID.rawValue, displayName: newName)
-        // Load raw user lists without filtering to find lists with empty names
-        var userLists: [CityListID] = {
-            guard let data = UserDefaults.standard.data(forKey: "userCreatedLists"),
-                  let lists = try? JSONDecoder().decode([CityListID].self, from: data) else {
-                return []
-            }
-            return lists
-        }()
-        if let index = userLists.firstIndex(where: { $0.rawValue == activeListID.rawValue }) {
-            userLists[index] = renamed
-            CityListID.saveUserLists(userLists)
-        }
-        activeListID = renamed
-    }
-    
     func deleteCurrentList() {
         let listToDelete = activeListID
         // Remove stored data for this list
@@ -533,21 +493,6 @@ extension WeatherService {
             CityListID.saveUserLists(userLists)
         }
         CityListID.saveListOrder(CityListID.allLists)
-    }
-
-    func moveList(_ listID: CityListID, direction: ListMoveDirection) {
-        var lists = CityListID.allLists
-        guard let index = lists.firstIndex(where: { $0.rawValue == listID.rawValue }) else { return }
-        let newIndex: Int
-        switch direction {
-        case .up:
-            newIndex = max(0, index - 1)
-        case .down:
-            newIndex = min(lists.count - 1, index + 1)
-        }
-        guard newIndex != index else { return }
-        lists.swapAt(index, newIndex)
-        CityListID.saveListOrder(lists)
     }
 
     func moveLists(from source: IndexSet, to destination: Int) {
@@ -669,89 +614,6 @@ extension WeatherService {
         return listID
     }
 
-    func addCities(_ cities: [City], to listID: CityListID) async {
-        guard !cities.isEmpty else { return }
-        let existingCities = cityListCoordinates(for: listID)
-        var mergedCities = existingCities
-        for city in cities where !mergedCities.contains(where: { citiesMatch($0, city) }) {
-            mergedCities.append(city)
-        }
-
-        saveCities(mergedCities, for: listID)
-        UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
-        UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listID.rawValue)")
-        otherListData[listID.rawValue] = nil
-        listFetchDates[listID.rawValue] = nil
-
-        if listID.rawValue == activeListID.rawValue {
-            cityWeatherData = []
-            lastFetchDate = nil
-            await fetchWeatherForAllCities(forceRefresh: true)
-        }
-    }
-
-    func moveCity(from source: IndexSet, to destination: Int) {
-        var reorderedCities = cityWeatherData
-        reorderedCities.move(fromOffsets: source, toOffset: destination)
-        cityWeatherData = reorderedCities
-        // Update cache after reordering cities
-        cacheData(cityWeatherData)
-        // Save the updated cities list
-        saveCitiesList()
-    }
-
-    func moveCity(in listID: CityListID, from source: IndexSet, to destination: Int) {
-        if listID.rawValue == activeListID.rawValue {
-            moveCity(from: source, to: destination)
-            return
-        }
-        var listData = otherListData[listID.rawValue] ?? []
-        listData.move(fromOffsets: source, toOffset: destination)
-        otherListData[listID.rawValue] = listData
-        saveCities(listData.map(\.city), for: listID)
-        cacheData(listData, for: listID)
-    }
-
-    func moveCity(id cityID: String, from sourceListID: CityListID, to targetListID: CityListID, destination: Int?) -> Bool {
-        var sourceData = weatherData(for: sourceListID)
-        guard let sourceIndex = sourceData.firstIndex(where: { $0.id.uuidString == cityID }) else { return false }
-        let city = sourceData.remove(at: sourceIndex)
-
-        var targetData = sourceListID == targetListID ? sourceData : weatherData(for: targetListID)
-        let rawDestination = destination ?? targetData.count
-        let adjustedDestination: Int
-        if sourceListID == targetListID, rawDestination > sourceIndex {
-            adjustedDestination = max(0, min(targetData.count, rawDestination - 1))
-        } else {
-            adjustedDestination = max(0, min(targetData.count, rawDestination))
-        }
-        targetData.insert(city, at: adjustedDestination)
-
-        setWeatherData(sourceData, for: sourceListID)
-        if sourceListID == targetListID {
-            setWeatherData(targetData, for: sourceListID)
-        } else {
-            setWeatherData(targetData, for: targetListID)
-        }
-        return true
-    }
-
-    private func setWeatherData(_ data: [CityWeather], for listID: CityListID) {
-        if listID.rawValue == activeListID.rawValue {
-            cityWeatherData = data
-            cacheData(cityWeatherData)
-            saveCitiesList()
-        } else {
-            otherListData[listID.rawValue] = data
-            saveCities(data.map(\.city), for: listID)
-            cacheData(data, for: listID)
-        }
-    }
-}
-
-enum ListMoveDirection {
-    case up
-    case down
 }
 
 // MARK: - List Manager State and Actions
@@ -792,7 +654,7 @@ extension ContentView {
 
         Button {
             cityToRename = city.city
-            renameAlertText = CityListID.customCityName(for: city.city)
+            cityRenameText = CityListID.customCityName(for: city.city)
                 ?? localizedCityName(for: city.city)
             showingCityRenameAlert = true
         } label: {
@@ -810,10 +672,6 @@ extension ContentView {
             }
         }
         .tint(theme.colors.destructive)
-    }
-
-    func beginCreatingListFromSwitcher() {
-        beginCreatingCustomList()
     }
 
     func beginCreatingCustomList() {
@@ -875,9 +733,6 @@ extension ContentView {
     }
 
     func loadAllListsWeatherData() async {
-        isLoadingAllLists = true
-        defer { isLoadingAllLists = false }
-
         for listID in managedLists {
             await weatherService.fetchWeatherForList(listID)
         }
@@ -923,12 +778,6 @@ extension ContentView {
 // MARK: - City List Actions
 
 extension ContentView {
-    func cityIsInActiveList(_ cityWeather: CityWeather) -> Bool {
-        weatherService.cityWeatherData.contains {
-            $0.city.name == cityWeather.city.name && $0.city.country == cityWeather.city.country
-        }
-    }
-
     func addCityToActiveList(_ cityWeather: CityWeather) async {
         await weatherService.addCity(cityWeather.city)
         Haptics.lightImpact()
@@ -937,53 +786,6 @@ extension ContentView {
         }) {
             tappedCity = addedCity
         }
-    }
-
-    func detailActionsMenu(for city: CityWeather) -> some View {
-        let sourceListID = isShowingAllLists
-            ? sourceListID(for: city)
-            : (cityIsInActiveList(city) ? weatherService.activeListID : nil)
-
-        return Menu {
-            if let sourceListID {
-                Button(role: .destructive) {
-                    removeDisplayedCity(city, from: sourceListID)
-                    dismissRoute(.cityDetail(city.id))
-                    showingMapExpandedCard = false
-                    tappedCity = nil
-                    selectedDayOffset = 0
-                    if isMapRoute {
-                        mapRecenterRequest = .listCoordinates
-                    }
-                } label: {
-                    Label {
-                        Text(localizedString("Delete City", locale: locale))
-                    } icon: {
-                        Image(systemName: "trash")
-                            .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(theme.colors.destructive)
-                            .tint(theme.colors.destructive)
-                    }
-                }
-                .tint(theme.colors.destructive)
-            } else {
-                Button {
-                    Task {
-                        await addCityToActiveList(city)
-                        dismissRoute(.cityDetail(city.id))
-                        if isMapRoute {
-                            mapRecenterRequest = .listCoordinates
-                        }
-                    }
-                } label: {
-                    primaryMenuLabel(localizedString("Add City", locale: locale), systemImage: "plus")
-                }
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .foregroundStyle(theme.colors.primaryText)
-        }
-        .menuOrder(.fixed)
     }
 
 }

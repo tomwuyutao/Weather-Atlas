@@ -2,8 +2,7 @@
 //  SunninessScoring.swift
 //  Weather
 //
-//  Purpose: Provides the shared, minimal sunniness score used by home,
-//  list ranking, and city detail.
+//  Purpose: Provides shared sunniness scoring and sunny-hour calculations.
 //
 
 import Foundation
@@ -25,17 +24,6 @@ enum SunninessScoring {
         score(for: forecast.symbolName)
     }
 
-    static func daytimeAverageScore(for forecast: DailyForecast, timeZone: TimeZone) -> Double? {
-        let daylightHours = daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
-        guard !daylightHours.isEmpty else {
-            return nil
-        }
-
-        let hourlyScores = daylightHours.map { score(for: $0) }
-
-        return hourlyScores.reduce(0, +) / Double(hourlyScores.count)
-    }
-
     static func daytimeHours(for forecast: DailyForecast, timeZone: TimeZone) -> [HourlyForecast] {
         daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
     }
@@ -43,6 +31,55 @@ enum SunninessScoring {
     static func hasDaytimeHourlyScoreData(for forecast: DailyForecast, timeZone: TimeZone) -> Bool {
         let daylightHours = daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
         return !daylightHours.isEmpty
+    }
+
+    static func longestSunnyHourRange(in forecasts: [HourlyForecast]) -> ClosedRange<Int>? {
+        let sunnyHours = forecasts.compactMap { forecast in
+            condition(for: forecast.symbolName) == .clear ? forecast.hour : nil
+        }
+        return contiguousHourRanges(sunnyHours).reduce(nil) { longest, range in
+            guard let longest else { return range }
+            return range.upperBound - range.lowerBound > longest.upperBound - longest.lowerBound
+                ? range
+                : longest
+        }
+    }
+
+    static func contiguousHourRanges(_ hours: [Int]) -> [ClosedRange<Int>] {
+        let sortedHours = hours.sorted()
+        guard let firstHour = sortedHours.first else { return [] }
+
+        var ranges: [ClosedRange<Int>] = []
+        var start = firstHour
+        var end = firstHour
+
+        for hour in sortedHours.dropFirst() {
+            if hour == end + 1 {
+                end = hour
+            } else {
+                ranges.append(start...end)
+                start = hour
+                end = hour
+            }
+        }
+
+        ranges.append(start...end)
+        return ranges
+    }
+
+    static func formattedHour(_ hour: Int, timeZone: TimeZone, locale: Locale) -> String {
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        var components = calendar.dateComponents([.year, .month, .day], from: Date())
+        components.hour = hour
+        components.minute = 0
+
+        let date = calendar.date(from: components) ?? Date()
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.timeZone = timeZone
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale)
+        return formatter.string(from: date)
     }
 
     private static func daytimeHourlyForecasts(for forecast: DailyForecast, timeZone: TimeZone) -> [HourlyForecast] {

@@ -254,35 +254,6 @@ struct CityRankLabel: View {
     }
 }
 
-struct SunnyCandidateRows: View {
-    let candidates: [SunnyCandidate]
-    let tempUnit: TemperatureUnit
-
-    @Environment(\.appTheme) private var theme
-    @Environment(\.locale) private var locale
-
-    var body: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
-                SunnyCandidateRow(
-                    candidate: candidate,
-                    rank: index + 1,
-                    compact: true,
-                    tempUnit: tempUnit,
-                    cityNameOverride: CityNameLocalizationCatalog.localizedName(for: candidate.cityWeather.city, locale: locale)
-                        ?? candidate.cityWeather.city.localizedName(locale: locale)
-                )
-
-                if index < candidates.count - 1 {
-                    Divider()
-                        .background(theme.colors.secondaryText.opacity(0.16))
-                        .padding(.leading, CityListLayout.cityNameLeadingInset)
-                }
-            }
-        }
-    }
-}
-
 struct SunnyPlacesSectionHeader: View {
     let icon: String
     let title: String
@@ -383,8 +354,7 @@ struct SunninessCandidateGroup: Identifiable {
 
 struct HomeSunnyDayRecommendation: Identifiable {
     let id: Int
-    let sunnyCityCount: Int
-    let averageSunnyCloudCover: Double?
+    let sunnyCityCount: Double
 }
 
 private struct HomeSunnyCalendarDate: Identifiable {
@@ -400,6 +370,65 @@ private struct HomeSunnyCalendarDate: Identifiable {
 // MARK: - Home and List Logic
 
 extension ContentView {
+    var widgetWeatherDataSignature: String {
+        weatherService.cityWeatherData.map { cityWeather in
+            let forecast = cityWeather.forecast(for: selectedDayOffset)
+            let cloudCover = forecast.cloudCover.map { String($0) } ?? ""
+            return "\(cityWeather.id.uuidString)|\(forecast.symbolName)|\(forecast.dailyHigh)|\(cloudCover)"
+        }
+        .joined(separator: ",")
+    }
+
+    func updateBestSunnyPlacesWidget() {
+        guard !isListPreviewActive else { return }
+        let lists = managedLists.map { listID -> BestSunnyPlacesWidgetList in
+            let weatherData = weatherService.weatherData(for: listID)
+            let candidates = sunnyCandidates(for: weatherData)
+            let topCityIDs = candidates
+                .filter { $0.condition.isSunnyOrPartlySunny }
+                .prefix(3)
+                .map { BestSunnyPlacesWidgetStore.cityIdentifier(for: $0.cityWeather.city, in: listID) }
+            let cities = weatherData.map { cityWeather in
+                let selectedForecast = cityWeather.forecast(for: selectedDayOffset)
+                let todayForecast = cityWeather.forecast(for: 0)
+                let daytimeHours = SunninessScoring.daytimeHours(for: todayForecast, timeZone: cityWeather.timeZone)
+
+                return BestSunnyPlacesWidgetCity(
+                    id: BestSunnyPlacesWidgetStore.cityIdentifier(for: cityWeather.city, in: listID),
+                    cityName: CityListID.customCityName(for: cityWeather.city)
+                        ?? cityWeather.city.localizedName(locale: locale),
+                    temperature: tempUnit.display(selectedForecast.dailyHigh),
+                    cloudCover: selectedForecast.cloudCover.map { "\(Int($0 * 100))%" } ?? "-",
+                    conditionIcon: SunninessScoring.condition(for: selectedForecast.symbolName).displayIcon,
+                    daytimeHours: daytimeHours.map(\.hour),
+                    sunnyHours: daytimeHours
+                        .filter { SunninessScoring.condition(for: $0.symbolName) == .clear }
+                        .map(\.hour),
+                    partlySunnyHours: daytimeHours
+                        .filter { SunninessScoring.condition(for: $0.symbolName) == .partlySunny }
+                        .map(\.hour)
+                )
+            }
+
+            return BestSunnyPlacesWidgetList(
+                id: listID.rawValue,
+                displayName: listID.localizedDisplayName(locale: locale),
+                listName: listID.localizedDisplayName(locale: locale),
+                title: localizedString("Best Sunny Places", locale: locale),
+                topCityIDs: topCityIDs,
+                cities: cities
+            )
+        }
+
+        BestSunnyPlacesWidgetStore.save(
+            BestSunnyPlacesWidgetCatalog(
+                activeListID: weatherService.activeListID.rawValue,
+                updatedAt: .now,
+                lists: lists
+            )
+        )
+    }
+
     var selectedListSortMode: WeatherListSortMode {
         WeatherListSortMode(rawValue: listSortMode) ?? .sunny
     }
@@ -430,14 +459,6 @@ extension ContentView {
         cities
             .map(sunnyCandidate(for:))
             .sorted(by: isBetterSunnyCandidate)
-    }
-
-    var recommendedSunnyCandidates: [SunnyCandidate] {
-        sunnyCandidates.filter { $0.condition.isSunnyOrPartlySunny }
-    }
-
-    var homeVisibleCandidates: [SunnyCandidate] {
-        isListPreviewActive ? sunnyCandidates : recommendedSunnyCandidates
     }
 
     var sortedListCandidates: [SunnyCandidate] {
@@ -518,17 +539,20 @@ extension ContentView {
         guard !cities.isEmpty else { return [] }
 
         return (0..<10).map { dayOffset in
-            let sunnyForecasts = cities.compactMap { cityWeather -> DailyForecast? in
-                let forecast = cityWeather.forecast(for: dayOffset)
-                return SunninessScoring.condition(for: forecast.symbolName).isSunny ? forecast : nil
+            let sunnyCityCount = cities.reduce(0.0) { count, cityWeather in
+                switch SunninessScoring.condition(for: cityWeather.forecast(for: dayOffset).symbolName) {
+                case .clear:
+                    return count + 1
+                case .partlySunny:
+                    return count + 0.5
+                default:
+                    return count
+                }
             }
-
-            let cloudCovers = sunnyForecasts.compactMap(\.cloudCover)
 
             return HomeSunnyDayRecommendation(
                 id: dayOffset,
-                sunnyCityCount: sunnyForecasts.count,
-                averageSunnyCloudCover: cloudCovers.isEmpty ? nil : cloudCovers.reduce(0, +) / Double(cloudCovers.count)
+                sunnyCityCount: sunnyCityCount
             )
         }
     }
@@ -835,7 +859,7 @@ extension ContentView {
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 
-    private func homeSunnyHeatmapFill(sunnyCityCount: Int, maxSunnyCityCount: Int, isForecastDate: Bool) -> Color {
+    private func homeSunnyHeatmapFill(sunnyCityCount: Double, maxSunnyCityCount: Int, isForecastDate: Bool) -> Color {
         guard isForecastDate else {
             return theme.colors.secondaryText.opacity(colorScheme == .dark ? 0.18 : 0.10)
         }
@@ -847,7 +871,7 @@ extension ContentView {
             return theme.colors.glassFill.opacity(0.56)
         }
 
-        let fraction = max(0, min(1, Double(sunnyCityCount) / Double(maxSunnyCityCount)))
+        let fraction = max(0, min(1, sunnyCityCount / Double(maxSunnyCityCount)))
         let curvedFraction = pow(fraction, 1.55)
         return theme.colors.dotSun.opacity(0.16 + 0.79 * curvedFraction)
     }
@@ -873,7 +897,7 @@ extension ContentView {
 
     private func homeSunnyHeatmapAccessibilityLabel(_ day: HomeSunnyDayRecommendation) -> String {
         let totalCities = max(mapCities.count, 1)
-        let percentSunny = Int((Double(day.sunnyCityCount) / Double(totalCities) * 100).rounded())
+        let percentSunny = Int((day.sunnyCityCount / Double(totalCities) * 100).rounded())
         return "\(homeSunnyDayLabel(dayOffset: day.id)), \(percentSunny)% \(localizedString("Sunny", locale: locale))"
     }
 
@@ -959,9 +983,6 @@ extension ContentView {
         )
     }
 
-    var homeListMenu: some View {
-        listSwitcher(titleOverride: nil)
-    }
     func topToolbar<Accessory: View>(
         titleOverride: String? = nil,
         @ViewBuilder accessory: () -> Accessory

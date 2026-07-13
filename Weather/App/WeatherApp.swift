@@ -151,6 +151,17 @@ struct WeatherApp: App {
             }
             UserDefaults.standard.set(true, forKey: migrationKey)
         }
+
+        // Daily weather metrics now come from WeatherKit's native daytime forecast.
+        // Refresh weather snapshots once without affecting saved city lists or preferences.
+        let weatherCacheMigrationKey = "weatherCacheDaytimeForecastMigrationV1"
+        if !UserDefaults.standard.bool(forKey: weatherCacheMigrationKey) {
+            let cacheKeyPrefixes = ["cachedWeatherData", "weatherCacheTimestamp"]
+            for key in UserDefaults.standard.dictionaryRepresentation().keys where cacheKeyPrefixes.contains(where: { key.hasPrefix($0) }) {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+            UserDefaults.standard.set(true, forKey: weatherCacheMigrationKey)
+        }
         
         // Keep native bars transparent so Liquid Glass floats over app content.
         let navBarAppearance = UINavigationBarAppearance()

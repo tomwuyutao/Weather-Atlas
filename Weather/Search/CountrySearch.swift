@@ -2,8 +2,7 @@
 //  CountrySearch.swift
 //  Weather
 //
-//  Purpose: Presents the country picker used to preview generated country
-//  lists before they are added to the user's saved lists.
+//  Purpose: Provides continent and country pickers for generated list previews.
 //
 
 import SwiftUI
@@ -11,12 +10,6 @@ import SwiftUI
 // MARK: - Continent List Search
 
 extension ContentView {
-    var continentListSearchSheet: some View {
-        continentListSearchContent { listID in
-            previewContinentList(listID)
-        }
-    }
-
     func continentListSearchContent(onSelect: @escaping (CityListID) -> Void) -> some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -60,20 +53,11 @@ extension ContentView {
         .contentShape(Rectangle())
     }
 
-    func activateContinentListSearch() {
-        showingContinentListSearchSheet = true
-    }
 }
 
 // MARK: - Country List Search
 
 extension ContentView {
-    var countryListSearchSheet: some View {
-        countryListSearchContent { country in
-            previewCountryList(country)
-        }
-    }
-
     func countryListSearchContent(onSelect: @escaping (CountryListOption) -> Void) -> some View {
         VStack(spacing: 18) {
             countryListSearchBar
@@ -182,8 +166,4 @@ extension ContentView {
         .contentShape(Rectangle())
     }
 
-    func activateCountryListSearch() {
-        countryListSearchText = ""
-        showingCountryListSearchSheet = true
-    }
 }

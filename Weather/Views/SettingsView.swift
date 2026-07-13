@@ -37,15 +37,6 @@ enum DistanceUnit: String, CaseIterable {
         }
     }
 
-    var symbol: String {
-        switch resolved {
-        case .kilometers: return "km"
-        case .miles: return "mi"
-        case .metersPerSecond: return "m/s"
-        case .automatic: return resolved.symbol
-        }
-    }
-
     func windDisplayName(locale: Locale = .current) -> String {
         switch resolved {
         case .miles: return localizedString("Miles / Hour", locale: locale)
@@ -64,22 +55,6 @@ enum DistanceUnit: String, CaseIterable {
         }
     }
 
-    func display(_ km: Double) -> String {
-        switch resolved {
-        case .kilometers:
-            let rounded = (km * 10).rounded() / 10
-            return rounded >= 10 ? "\(Int(rounded))km" : String(format: "%.1fkm", rounded)
-        case .miles:
-            let mi = km * 0.621371
-            let rounded = (mi * 10).rounded() / 10
-            return rounded >= 10 ? "\(Int(rounded))mi" : String(format: "%.1fmi", rounded)
-        case .metersPerSecond:
-            return DistanceUnit.kilometers.display(km)
-        case .automatic:
-            return resolved.display(km)
-        }
-    }
-
     func displayWindSpeed(_ kmh: Double, locale: Locale = .autoupdatingCurrent) -> String {
         switch resolved {
         case .kilometers:
@@ -95,18 +70,6 @@ enum DistanceUnit: String, CaseIterable {
         }
     }
 
-    func windSpeedUnit(locale: Locale = .autoupdatingCurrent) -> String {
-        switch resolved {
-        case .kilometers:
-            return "km/h"
-        case .miles:
-            return "mph"
-        case .metersPerSecond:
-            return "m/s"
-        case .automatic:
-            return resolved.windSpeedUnit(locale: locale)
-        }
-    }
 }
 
 enum TemperatureUnit: String, CaseIterable {
@@ -149,14 +112,6 @@ enum TemperatureUnit: String, CaseIterable {
         }
     }
 
-    var symbol: String {
-        switch resolved {
-        case .celsius: return "°C"
-        case .fahrenheit: return "°F"
-        case .automatic: return resolved.symbol
-        }
-    }
-
     func display(_ celsius: Double) -> String {
         switch resolved {
         case .celsius:
@@ -168,31 +123,6 @@ enum TemperatureUnit: String, CaseIterable {
         }
     }
 
-    func displayRange(low: Double, high: Double) -> String {
-        switch resolved {
-        case .celsius:
-            return "\(Int(low))-\(Int(high))°"
-        case .fahrenheit:
-            let fLow = Int(low * 9.0 / 5.0 + 32)
-            let fHigh = Int(high * 9.0 / 5.0 + 32)
-            return "\(fLow)-\(fHigh)°"
-        case .automatic:
-            return resolved.displayRange(low: low, high: high)
-        }
-    }
-
-    func displaySlash(low: Double, high: Double) -> String {
-        switch resolved {
-        case .celsius:
-            return "\(Int(low))°/\(Int(high))°"
-        case .fahrenheit:
-            let fLow = Int(low * 9.0 / 5.0 + 32)
-            let fHigh = Int(high * 9.0 / 5.0 + 32)
-            return "\(fLow)°/\(fHigh)°"
-        case .automatic:
-            return resolved.displaySlash(low: low, high: high)
-        }
-    }
 }
 
 enum AppTextSizeLevel: Int, CaseIterable {
@@ -584,40 +514,6 @@ struct SettingsView: View {
     }
 
     // MARK: About and Attributions
-
-    private var aboutForm: some View {
-        Form {
-            Section {
-                settingsInfoRow(
-                    localizedString("Version", locale: locale),
-                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1",
-                    systemImage: "info.circle"
-                )
-                settingsLinkRow(
-                    localizedString("Website", locale: locale),
-                    value: localizedString("View", locale: locale),
-                    systemImage: "safari",
-                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas-Site/")
-                )
-                settingsLinkRow(
-                    localizedString("Privacy Policy", locale: locale),
-                    value: localizedString("View", locale: locale),
-                    systemImage: "hand.raised",
-                    url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas-Site/privacy/")
-                )
-                attributionsNavigationRow
-                sayHelloRow
-            } header: {
-                settingsSectionHeader(localizedString("About", locale: locale))
-            }
-            .listRowBackground(settingsRowBackground)
-        }
-        .scrollContentBackground(.hidden)
-            .background(settingsFormBackground)
-        .task {
-            await weatherService.loadWeatherAttributionIfNeeded()
-        }
-    }
 
     private var attributionsNavigationRow: some View {
         Button {

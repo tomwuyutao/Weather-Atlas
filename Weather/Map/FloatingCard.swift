@@ -305,53 +305,14 @@ extension ContentView {
     }
 
     private func mapSunnyHoursSummary(for city: CityWeather, forecast: DailyForecast) -> String {
-        let sunnyHours = SunninessScoring.daytimeHours(for: forecast, timeZone: city.timeZone)
-            .filter { SunninessScoring.condition(for: $0.symbolName) == .clear }
-            .map(\.hour)
-            .sorted()
-
-        guard !sunnyHours.isEmpty else {
+        let daytimeHours = SunninessScoring.daytimeHours(for: forecast, timeZone: city.timeZone)
+        guard let range = SunninessScoring.longestSunnyHourRange(in: daytimeHours) else {
             return localizedString("No Sun", locale: locale)
         }
 
-        var bestStart = sunnyHours[0]
-        var bestEnd = sunnyHours[0]
-        var currentStart = sunnyHours[0]
-        var currentEnd = sunnyHours[0]
-
-        for hour in sunnyHours.dropFirst() {
-            if hour == currentEnd + 1 {
-                currentEnd = hour
-            } else {
-                if currentEnd - currentStart > bestEnd - bestStart {
-                    bestStart = currentStart
-                    bestEnd = currentEnd
-                }
-                currentStart = hour
-                currentEnd = hour
-            }
-        }
-
-        if currentEnd - currentStart > bestEnd - bestStart {
-            bestStart = currentStart
-            bestEnd = currentEnd
-        }
-
-        return "\(mapFormattedHour(bestStart, timeZone: city.timeZone)) - \(mapFormattedHour(bestEnd + 1, timeZone: city.timeZone))"
-    }
-
-    private func mapFormattedHour(_ hour: Int, timeZone: TimeZone) -> String {
-        var calendar = Calendar.current
-        calendar.timeZone = timeZone
-        var components = calendar.dateComponents([.year, .month, .day], from: Date())
-        components.hour = hour
-        components.minute = 0
-        let date = calendar.date(from: components) ?? Date()
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.timeZone = timeZone
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale)
-        return formatter.string(from: date)
+        let start = SunninessScoring.formattedHour(range.lowerBound, timeZone: city.timeZone, locale: locale)
+        let end = SunninessScoring.formattedHour(range.upperBound + 1, timeZone: city.timeZone, locale: locale)
+        return "\(start) - \(end)"
     }
 
     private func expandedFloatingWeatherCardDayButton(
@@ -468,24 +429,14 @@ extension ContentView {
         }
     }
 
-    private var dateSliderDismissPassthroughWidth: CGFloat {
-        160
-    }
-
     private var floatingMapCardOverlay: some View {
         Group {
             if isMapRoute, showingMapExpandedCard {
-                HStack(spacing: 0) {
-                    Color.clear
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            dismissMapExpandedCard()
-                        }
-
-                    Color.clear
-                        .frame(width: dateSliderDismissPassthroughWidth)
-                        .allowsHitTesting(false)
-                }
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        dismissMapExpandedCard()
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .zIndex(10)
             }

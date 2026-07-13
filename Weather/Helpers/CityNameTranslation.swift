@@ -46,9 +46,6 @@ enum CityNameLocalizationCatalog {
         let identifier = locale.identifier
         if identifier.hasPrefix("zh-Hant") { return "zh-Hant" }
         if identifier.hasPrefix("zh-Hans") { return "zh-Hans" }
-        if #available(iOS 16.0, *) {
-            return locale.language.languageCode?.identifier ?? "en"
-        }
-        return Locale(identifier: identifier).languageCode ?? "en"
+        return identifier.components(separatedBy: CharacterSet(charactersIn: "_-@")).first ?? "en"
     }
 }

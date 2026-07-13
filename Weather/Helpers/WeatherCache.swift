@@ -92,14 +92,6 @@ extension WeatherService {
         return cityWeather.city.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    func clearPersistedWeatherCaches() {
-        UserDefaults.standard.removeObject(forKey: "cachedWeatherData")
-        UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp")
-        for listID in CityListID.allLists {
-            UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
-        }
-    }
-
     func fetchDate(for listID: CityListID) -> Date? {
         if let fetchDate = listFetchDates[listID.rawValue] {
             return fetchDate
@@ -196,32 +188,16 @@ struct CachedCity: Codable {
 struct CachedCityWeather: Codable {
     let id: UUID
     let city: CachedCity
-    let condition: AppWeatherCondition
     let temperature: Double
-    let symbolName: String
     let dailyForecasts: [CachedDailyForecast]
     let timeZoneIdentifier: String
-    let currentFeelsLike: Double?
-    let currentCloudCover: Double?
-    let currentWindSpeed: Double?
-    let currentUVIndex: Int?
-    let currentHumidity: Double?
-    let currentVisibility: Double?
 
     init(from cityWeather: CityWeather) {
         id = cityWeather.id
         city = CachedCity(from: cityWeather.city)
         temperature = cityWeather.temperature
-        symbolName = cityWeather.symbolName
-        condition = AppWeatherCondition.fromWeatherSymbol(cityWeather.symbolName)
         dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
         timeZoneIdentifier = cityWeather.timeZone.identifier
-        currentFeelsLike = cityWeather.currentFeelsLike
-        currentCloudCover = cityWeather.currentCloudCover
-        currentWindSpeed = cityWeather.currentWindSpeed
-        currentUVIndex = cityWeather.currentUVIndex
-        currentHumidity = cityWeather.currentHumidity
-        currentVisibility = cityWeather.currentVisibility
     }
 
     func toCityWeather() -> CityWeather? {
@@ -233,17 +209,9 @@ struct CachedCityWeather: Codable {
         return CityWeather(
             id: id,
             city: decodedCity,
-            condition: AppWeatherCondition.fromWeatherSymbol(symbolName),
             temperature: temperature,
-            symbolName: symbolName,
             dailyForecasts: forecasts,
-            timeZone: timeZone,
-            currentFeelsLike: currentFeelsLike,
-            currentCloudCover: currentCloudCover,
-            currentWindSpeed: currentWindSpeed,
-            currentUVIndex: currentUVIndex,
-            currentHumidity: currentHumidity,
-            currentVisibility: currentVisibility
+            timeZone: timeZone
         )
     }
 }
@@ -253,18 +221,11 @@ struct CachedDailyForecast: Codable {
     let dailyLow: Double
     let dailyHigh: Double
     let symbolName: String
-    let condition: AppWeatherCondition
     let hourlyForecasts: [CachedHourlyForecast]
     let cloudCover: Double?
     let precipitationChance: Double?
-    let visibility: Double?
-    let feelsLikeLow: Double?
-    let feelsLikeHigh: Double?
-    let humidity: Double?
     let windSpeed: Double?
     let uvIndex: Int?
-    let maxHumidity: Double?
-    let maxVisibility: Double?
     let sunrise: Date?
     let sunset: Date?
 
@@ -273,18 +234,11 @@ struct CachedDailyForecast: Codable {
         dailyLow = forecast.dailyLow
         dailyHigh = forecast.dailyHigh
         symbolName = forecast.symbolName
-        condition = AppWeatherCondition.fromWeatherSymbol(forecast.symbolName)
         hourlyForecasts = forecast.hourlyForecasts.map { CachedHourlyForecast(from: $0) }
         cloudCover = forecast.cloudCover
         precipitationChance = forecast.precipitationChance
-        visibility = forecast.visibility
-        feelsLikeLow = forecast.feelsLikeLow
-        feelsLikeHigh = forecast.feelsLikeHigh
-        humidity = forecast.humidity
         windSpeed = forecast.windSpeed
         uvIndex = forecast.uvIndex
-        maxHumidity = forecast.maxHumidity
-        maxVisibility = forecast.maxVisibility
         sunrise = forecast.sunrise
         sunset = forecast.sunset
     }
@@ -295,18 +249,11 @@ struct CachedDailyForecast: Codable {
             dailyLow: dailyLow,
             dailyHigh: dailyHigh,
             symbolName: symbolName,
-            condition: AppWeatherCondition.fromWeatherSymbol(symbolName),
             hourlyForecasts: hourlyForecasts.map { $0.toHourlyForecast() },
             cloudCover: cloudCover,
             precipitationChance: precipitationChance,
-            visibility: visibility,
-            feelsLikeLow: feelsLikeLow,
-            feelsLikeHigh: feelsLikeHigh,
-            humidity: humidity,
             windSpeed: windSpeed,
             uvIndex: uvIndex,
-            maxHumidity: maxHumidity,
-            maxVisibility: maxVisibility,
             sunrise: sunrise,
             sunset: sunset
         )
@@ -315,44 +262,17 @@ struct CachedDailyForecast: Codable {
 
 struct CachedHourlyForecast: Codable {
     let hour: Int
-    let temperature: Double
-    let apparentTemperature: Double?
     let symbolName: String
-    let condition: AppWeatherCondition
-    let precipitationChance: Double?
-    let cloudCover: Double?
-    let windSpeed: Double?
-    let uvIndex: Int?
-    let humidity: Double?
-    let visibility: Double?
 
     init(from forecast: HourlyForecast) {
         hour = forecast.hour
-        temperature = forecast.temperature
-        apparentTemperature = forecast.apparentTemperature
         symbolName = forecast.symbolName
-        condition = AppWeatherCondition.fromWeatherSymbol(forecast.symbolName)
-        precipitationChance = forecast.precipitationChance
-        cloudCover = forecast.cloudCover
-        windSpeed = forecast.windSpeed
-        uvIndex = forecast.uvIndex
-        humidity = forecast.humidity
-        visibility = forecast.visibility
     }
 
     func toHourlyForecast() -> HourlyForecast {
         HourlyForecast(
             hour: hour,
-            temperature: temperature,
-            apparentTemperature: apparentTemperature,
-            symbolName: symbolName,
-            condition: AppWeatherCondition.fromWeatherSymbol(symbolName),
-            precipitationChance: precipitationChance,
-            cloudCover: cloudCover,
-            windSpeed: windSpeed,
-            uvIndex: uvIndex,
-            humidity: humidity,
-            visibility: visibility
+            symbolName: symbolName
         )
     }
 }

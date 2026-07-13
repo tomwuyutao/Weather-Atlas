@@ -286,7 +286,6 @@ extension ContentView {
 
     func bottomBackButton(_ route: AppNavigationRoute) -> some View {
         Button {
-            print("[Navigation] Back button tapped for \(String(describing: route)); path before: \(navigationPath)")
             popRoute(route)
         } label: {
             Image(systemName: "chevron.left")
@@ -456,14 +455,12 @@ extension ContentView {
     }
 
     func popRoute(_ route: AppNavigationRoute) {
-        print("[Navigation] popRoute requested for \(String(describing: route)); current route: \(String(describing: currentRoute)); path before: \(navigationPath)")
         if navigationPath.last == route {
             navigationPath.removeLast()
             cleanupAfterLeavingRoute(route)
         } else {
             removeRoute(route)
         }
-        print("[Navigation] popRoute finished for \(String(describing: route)); path after: \(navigationPath)")
     }
 
     func removeRoute(_ route: AppNavigationRoute) {

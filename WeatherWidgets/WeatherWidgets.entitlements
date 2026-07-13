@@ -6,7 +6,5 @@
 	<array>
 		<string>group.Yutao-Wu.Weather</string>
 	</array>
-	<key>com.apple.developer.weatherkit</key>
-	<true/>
 </dict>
 </plist>

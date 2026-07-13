@@ -1,5 +1,5 @@
 //
-//  ListManagementSheet.swift
+//  ListManager.swift
 //  Weather
 //
 //  Purpose: Provides the dedicated sheet for creating, reordering, renaming,
@@ -92,7 +92,7 @@ extension ContentView {
                 showingListManagementAddOptions = false
                 Task { @MainActor in
                     try? await Task.sleep(for: .milliseconds(260))
-                    beginCreatingListFromSwitcher()
+                    beginCreatingCustomList()
                 }
             },
             onAddContinent: {
@@ -100,8 +100,7 @@ extension ContentView {
             },
             onAddCountry: {
                 showingListManagementCountryPicker = true
-            },
-            usesListManagerStyle: true
+            }
         )
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .toolbarBackground(theme.colors.mapOcean, for: .navigationBar)

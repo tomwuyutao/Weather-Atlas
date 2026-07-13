@@ -483,32 +483,10 @@ extension ContentView {
             return DetailSunnyWindowRow(
                 id: dayOffset,
                 dayLabel: detailSunnyDayLabel(dayOffset: dayOffset, timeZone: city.timeZone),
-                sunnyRanges: detailContiguousHourRanges(sunnyHours),
-                partlySunnyRanges: detailContiguousHourRanges(partlySunnyHours)
+                sunnyRanges: SunninessScoring.contiguousHourRanges(sunnyHours),
+                partlySunnyRanges: SunninessScoring.contiguousHourRanges(partlySunnyHours)
             )
         }
-    }
-
-    private func detailContiguousHourRanges(_ hours: [Int]) -> [ClosedRange<Int>] {
-        let sortedHours = hours.sorted()
-        guard let firstHour = sortedHours.first else { return [] }
-
-        var ranges: [ClosedRange<Int>] = []
-        var start = firstHour
-        var end = firstHour
-
-        for hour in sortedHours.dropFirst() {
-            if hour == end + 1 {
-                end = hour
-            } else {
-                ranges.append(start...end)
-                start = hour
-                end = hour
-            }
-        }
-
-        ranges.append(start...end)
-        return ranges
     }
 
     private func detailSunnyDayLabel(dayOffset: Int, timeZone: TimeZone) -> String {
@@ -540,49 +518,13 @@ extension ContentView {
     }
 
     private func detailSunnyWindowSummary(for city: CityWeather, hours: [HourlyForecast]) -> String {
-        let sunnyHours = hours.filter { detailHourlySunnyLevel($0) == 2 }
-        guard !sunnyHours.isEmpty else {
+        guard let range = SunninessScoring.longestSunnyHourRange(in: hours) else {
             return localizedString("No Sun", locale: locale)
         }
 
-        var bestStart = sunnyHours[0].hour
-        var bestEnd = sunnyHours[0].hour
-        var currentStart = sunnyHours[0].hour
-        var currentEnd = sunnyHours[0].hour
-
-        for hour in sunnyHours.dropFirst().map(\.hour) {
-            if hour == currentEnd + 1 {
-                currentEnd = hour
-            } else {
-                if currentEnd - currentStart > bestEnd - bestStart {
-                    bestStart = currentStart
-                    bestEnd = currentEnd
-                }
-                currentStart = hour
-                currentEnd = hour
-            }
-        }
-
-        if currentEnd - currentStart > bestEnd - bestStart {
-            bestStart = currentStart
-            bestEnd = currentEnd
-        }
-
-        return "\(detailFormattedHour(bestStart, timeZone: city.timeZone)) - \(detailFormattedHour(bestEnd + 1, timeZone: city.timeZone))"
-    }
-
-    private func detailFormattedHour(_ hour: Int, timeZone: TimeZone) -> String {
-        var calendar = Calendar.current
-        calendar.timeZone = timeZone
-        var components = calendar.dateComponents([.year, .month, .day], from: Date())
-        components.hour = hour
-        components.minute = 0
-        let date = calendar.date(from: components) ?? Date()
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.timeZone = timeZone
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale)
-        return formatter.string(from: date)
+        let start = SunninessScoring.formattedHour(range.lowerBound, timeZone: city.timeZone, locale: locale)
+        let end = SunninessScoring.formattedHour(range.upperBound + 1, timeZone: city.timeZone, locale: locale)
+        return "\(start) - \(end)"
     }
 
     // MARK: Detail Layout Metrics
@@ -1024,17 +966,9 @@ private let detailPreviewCity: CityWeather = {
 
     return CityWeather(
         city: city,
-        condition: .clear,
         temperature: 28,
-        symbolName: "sun.max.fill",
         dailyForecasts: forecasts,
-        timeZone: TimeZone(identifier: "Europe/Madrid") ?? .current,
-        currentFeelsLike: 29,
-        currentCloudCover: 0.12,
-        currentWindSpeed: 11,
-        currentUVIndex: 7,
-        currentHumidity: 0.48,
-        currentVisibility: 24
+        timeZone: TimeZone(identifier: "Europe/Madrid") ?? .current
     )
 }()
 
@@ -1070,16 +1004,7 @@ private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
 
         return HourlyForecast(
             hour: hour,
-            temperature: 20 + Double(max(0, 8 - abs(14 - hour))) * 1.2,
-            apparentTemperature: nil,
-            symbolName: symbol,
-            condition: AppWeatherCondition.fromWeatherSymbol(symbol),
-            precipitationChance: cloud > 0.75 ? 0.18 : 0.02,
-            cloudCover: cloud,
-            windSpeed: 8,
-            uvIndex: hour >= 10 && hour <= 16 ? 7 : 2,
-            humidity: 0.48,
-            visibility: 24
+            symbolName: symbol
         )
     }
 
@@ -1094,18 +1019,11 @@ private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
         dailyLow: 20 + Double(dayOffset % 3),
         dailyHigh: 28 + Double(dayOffset % 6),
         symbolName: symbol,
-        condition: AppWeatherCondition.fromWeatherSymbol(symbol),
         hourlyForecasts: hourly,
         cloudCover: averageCloud,
         precipitationChance: averageCloud > 0.70 ? 0.22 : 0.04,
-        visibility: 24,
-        feelsLikeLow: nil,
-        feelsLikeHigh: nil,
-        humidity: 0.48,
         windSpeed: 9,
         uvIndex: sunnyDay ? 8 : 5,
-        maxHumidity: 0.58,
-        maxVisibility: 24,
         sunrise: Calendar.current.date(bySettingHour: 6, minute: 0, second: 0, of: date),
         sunset: Calendar.current.date(bySettingHour: 21, minute: 0, second: 0, of: date)
     )

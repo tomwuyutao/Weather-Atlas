@@ -79,13 +79,6 @@ enum CountryCityCatalog {
         return Array(cities.prefix(cappedLimit)).map(\.appCity)
     }
 
-    static func cityCount(forContinentRawValue rawValue: String) -> Int {
-        guard let countryCodes = continentCountryCodes[rawValue] else { return 0 }
-        return countryCodes.reduce(0) { count, code in
-            count + (countriesByCode[code]?.cities.count ?? 0)
-        }
-    }
-
     private static let continentCountryCodes: [String: Set<String>] = [
         "europe": [
             "AL", "AD", "AT", "BY", "BE", "BA", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",

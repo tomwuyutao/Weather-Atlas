@@ -36,7 +36,7 @@ struct TutorialView: View {
     @State private var didApplyInitialState = false
 
     private var pageCount: Int {
-        includesContinentSelection ? 4 : 2
+        includesContinentSelection ? 3 : 2
     }
 
     var body: some View {
@@ -44,10 +44,20 @@ struct TutorialView: View {
             tutorialBackground
                 .ignoresSafeArea()
 
-            tutorialPage
-                .id(page)
-                .transition(.opacity)
-                .animation(.smooth(duration: 0.2), value: page)
+            TabView(selection: $page) {
+                welcomePage
+                    .tag(0)
+
+                stepsPage
+                    .tag(1)
+
+                if includesContinentSelection {
+                    tutorialListSelectionPage
+                        .tag(2)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .disabled(isCreatingList)
 
             VStack {
                 Spacer()
@@ -83,11 +93,11 @@ struct TutorialView: View {
     }
 
     private var primaryButtonTextColor: Color {
-        introColors.primaryText
+        colorScheme == .dark ? introColors.background : introColors.primaryText
     }
 
     private var introColors: ThemeColors {
-        .light
+        theme.colors
     }
 
     private var tutorialHorizontalPadding: CGFloat {
@@ -266,16 +276,11 @@ struct TutorialView: View {
     }
 
     @ViewBuilder
-    private var tutorialPage: some View {
-        switch page {
-        case 0:
-            welcomePage
-        case 1:
-            stepsPage
-        case 2 where includesContinentSelection:
-            continentSelectionPage
-        default:
+    private var tutorialListSelectionPage: some View {
+        if isCreatingList {
             creatingListPage
+        } else {
+            continentSelectionPage
         }
     }
 
@@ -443,7 +448,7 @@ struct TutorialView: View {
         .background(theme.colors.listCardFill, in: Capsule())
         .overlay {
             Capsule()
-                .stroke(.white.opacity(colorScheme == .dark ? 0.16 : 0.38), lineWidth: 0.8)
+                .stroke(theme.colors.primaryText.opacity(colorScheme == .dark ? 0.16 : 0.12), lineWidth: 0.8)
         }
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 18, y: 8)
     }
@@ -502,8 +507,8 @@ struct TutorialView: View {
                             onCancel()
                         }
                         .buttonStyle(.bordered)
-                        .tint(page < 2 ? introColors.primaryText : .white)
-                        .foregroundStyle(page < 2 ? introColors.primaryText : .white)
+                        .tint(introColors.accent)
+                        .foregroundStyle(introColors.primaryText)
                         .controlSize(.large)
                     }
 
@@ -565,7 +570,7 @@ struct TutorialView: View {
         guard !isCreatingList else { return }
         isCreatingList = true
         withAnimation(.smooth(duration: 0.22)) {
-            page = 3
+            page = 2
         }
 
         Task {
@@ -617,7 +622,7 @@ struct TutorialView: View {
         onSelectCountryList: { _ in },
         onFinish: {},
         onCancel: nil,
-        initialPage: 3,
+        initialPage: 2,
         initialIsCreatingList: true,
         initialCreatingListName: CityListID.europe.localizedDisplayName()
     )

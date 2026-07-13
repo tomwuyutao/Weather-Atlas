@@ -506,22 +506,7 @@ extension ContentView {
         }
     }
 
-    func deleteMapCity(_ city: CityWeather) {
-        weatherService.removeCity(city)
-        if temporaryMapSearchCity?.id == city.id {
-            temporaryMapSearchCity = nil
-        }
-        showingMapExpandedCard = false
-        tappedCity = nil
-        selectedDayOffset = 0
-        mapRecenterRequest = .listCoordinates
-    }
-
     // MARK: Map Composition
-
-    var weatherMapView: some View {
-        mapView
-    }
 
     var mapView: some View {
         ZStack {

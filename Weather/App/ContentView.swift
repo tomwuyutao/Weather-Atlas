@@ -75,12 +75,10 @@ struct ContentView: View {
     @AppStorage("temperatureUnit") var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
     @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.defaultRawValue
     @State var showingSettings: Bool = false
-    @State var isResettingListsToDefaults = false
     @State var showingFirstLaunchTutorial = false
     @State var showingReplayTutorial = false
     @State var continentListTutorialSelectedIDs: Set<String> = []
     @State var countryListTutorialSelectedIDs: Set<String> = []
-    @State var showingAddListOptionsSheet = false
     @State var showingListManagementSheet = false
     @State var showingListManagementAddOptions = false
     @State var showingListManagementContinentPicker = false
@@ -89,8 +87,6 @@ struct ContentView: View {
     @State var inlineListRenameID: CityListID?
     @State var inlineListName: String = ""
     @FocusState var inlineListNameFocused: Bool
-    @State var showingContinentListSearchSheet = false
-    @State var showingCountryListSearchSheet = false
     @State var countryListSearchText: String = ""
     @State var listPreviewName: String?
     @State var listPreviewNameSource: CityListNameSource?
@@ -99,10 +95,8 @@ struct ContentView: View {
     @State var daytimeScoreRefetchKeys: Set<String> = []
     @AppStorage("showLegend") var showLegend: Bool = true
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
-    @State var visibleListIDs: Set<String> = []
     @State var allListsWeatherData: [CityWeather] = []
     @State var allListsSourceListIDs: [String: CityListID] = [:]
-    @State var isLoadingAllLists = false
     @State var isShowingAllLists = false
 
     // MARK: Environment
@@ -160,11 +154,6 @@ struct ContentView: View {
             ?? city.localizedName(locale: locale)
     }
 
-    /// Cities to display in the list view: the saved active list only.
-    var listViewCities: [CityWeather] {
-        weatherService.cityWeatherData
-    }
-
     var tempUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
     }
@@ -197,12 +186,10 @@ struct ContentView: View {
 
     @State var showingDeleteListConfirmation: Bool = false
     @State var listToDeleteID: CityListID?
-    @State var showingRenameAlert: Bool = false
     @State var showingCityRenameAlert: Bool = false
-    @State var renameAlertText: String = ""
-    @FocusState var renameAlertFocused: Bool
+    @State var cityRenameText: String = ""
+    @FocusState var cityRenameFocused: Bool
     @FocusState var searchFieldFocused: Bool
-    @State var listToRenameID: CityListID?
     @State var cityToRename: City?
     @State var listEditMode: Bool = false
     @State var listOrderRevision: Int = 0

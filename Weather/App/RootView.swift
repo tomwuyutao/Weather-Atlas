@@ -11,28 +11,36 @@ import SwiftUI
 extension ContentView {
     // MARK: - Root View Assembly
 
-    @ViewBuilder
-    private var rootContent: some View {
-        appNavigationStack
-    }
-
     var rootView: some View {
         viewAlerts
     }
 
     private var viewLifecycle: some View {
-        rootContent
-            .task { await onAppearLoad() }
+        appNavigationStack
+            .task {
+                await onAppearLoad()
+                updateBestSunnyPlacesWidget()
+            }
             .background {
                 homeScreenShortcutReceiver
             }
-            .onChange(of: weatherService.activeListID) { _, newListID in
-                visibleListIDs.insert(newListID.rawValue)
+            .onChange(of: weatherService.activeListID) { _, _ in
                 AppDelegate.updateHomeScreenListShortcuts()
                 scheduleDaytimeSunninessRefetch()
+                updateBestSunnyPlacesWidget()
             }
             .onChange(of: selectedDayOffset) { _, _ in
                 scheduleDaytimeSunninessRefetch()
+                updateBestSunnyPlacesWidget()
+            }
+            .onChange(of: widgetWeatherDataSignature) { _, _ in
+                updateBestSunnyPlacesWidget()
+            }
+            .onChange(of: temperatureUnitRaw) { _, _ in
+                updateBestSunnyPlacesWidget()
+            }
+            .onChange(of: locale.identifier) { _, _ in
+                updateBestSunnyPlacesWidget()
             }
             .onChange(of: searchText) { _, newValue in
                 scheduleCitySearch(for: newValue)
@@ -124,32 +132,11 @@ extension ContentView {
                     .presentationDragIndicator(.visible)
                     .presentationBackground(theme.colors.background)
             }
-            .sheet(isPresented: $showingCountryListSearchSheet) {
-                countryListSearchSheet
-                    .presentationDetents([.fraction(0.82), .large])
-                    .presentationDragIndicator(.visible)
-                    .presentationBackground(theme.colors.background)
-            }
-            .sheet(isPresented: $showingAddListOptionsSheet) {
-                addListOptionsSheet
-                    .presentationDetents([.fraction(0.42), .medium])
-                    .presentationDragIndicator(.visible)
-                    .presentationBackground(theme.colors.background)
-            }
             .sheet(isPresented: $showingListManagementSheet) {
                 listManagementSheet
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
                     .presentationBackground(theme.colors.mapOcean)
-            }
-            .sheet(isPresented: $showingContinentListSearchSheet) {
-                continentListSearchSheet
-                    .presentationDetents([.fraction(0.82), .large])
-                    .presentationDragIndicator(.visible)
-                    .presentationBackground(theme.colors.background)
-            }
-            .overlay {
-                resetListsLoadingOverlay
             }
             .overlay {
                 cityAddedConfirmationOverlay
@@ -158,50 +145,24 @@ extension ContentView {
 
     private var viewAlerts: some View {
         viewSheetsAndOverlays
-        .onChange(of: showingRenameAlert) { _, isShowing in
-            if isShowing {
-                Task { @MainActor in
-                    await Task.yield()
-                    renameAlertFocused = true
-                }
-            } else {
-                renameAlertFocused = false
-            }
-        }
         .onChange(of: showingCityRenameAlert) { _, isShowing in
             if isShowing {
                 Task { @MainActor in
                     await Task.yield()
-                    renameAlertFocused = true
+                    cityRenameFocused = true
                 }
             } else {
-                renameAlertFocused = false
-            }
-        }
-        .alert(localizedString("Rename", locale: locale), isPresented: $showingRenameAlert) {
-            TextField(localizedString("Name", locale: locale), text: $renameAlertText)
-                .focused($renameAlertFocused)
-            Button(localizedString("Cancel", locale: locale), role: .cancel) { }
-            Button(localizedString("OK", locale: locale)) {
-                let trimmed = renameAlertText.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    if let listToRenameID {
-                        weatherService.renameList(listToRenameID, to: trimmed)
-                    } else {
-                        weatherService.renameCurrentList(to: trimmed)
-                    }
-                }
-                listToRenameID = nil
+                cityRenameFocused = false
             }
         }
         .alert(localizedString("Rename", locale: locale), isPresented: $showingCityRenameAlert) {
-            TextField(localizedString("Name", locale: locale), text: $renameAlertText)
-                .focused($renameAlertFocused)
+            TextField(localizedString("Name", locale: locale), text: $cityRenameText)
+                .focused($cityRenameFocused)
             Button(localizedString("Cancel", locale: locale), role: .cancel) {
                 cityToRename = nil
             }
             Button(localizedString("OK", locale: locale)) {
-                let trimmed = renameAlertText.trimmingCharacters(in: .whitespacesAndNewlines)
+                let trimmed = cityRenameText.trimmingCharacters(in: .whitespacesAndNewlines)
                 if let cityToRename, !trimmed.isEmpty {
                     CityListID.saveCustomCityName(trimmed, for: cityToRename)
                 }
@@ -346,7 +307,7 @@ extension ContentView {
 
     var mapTabContent: some View {
         ZStack(alignment: .bottom) {
-            weatherMapView
+            mapView
                 .overlay(alignment: .topLeading) {
                     if isMapRoute, !showingSearchSheet {
                         VStack(alignment: .leading, spacing: 8) {
@@ -406,9 +367,6 @@ extension ContentView {
             prepareContinentListTutorialSelection()
             showingFirstLaunchTutorial = true
         }
-        if visibleListIDs.isEmpty {
-            visibleListIDs = [weatherService.activeListID.rawValue]
-        }
         centerMapOnDots(useListCoordinates: true)
         if !shouldShowFirstLaunchTutorial {
             await weatherService.fetchWeatherForAllCities()
@@ -443,24 +401,6 @@ extension ContentView {
         await applyContinentListTutorialSelectionAndLoad()
     }
 
-    func toggleContinentListTutorialSelection(_ listID: CityListID) {
-        if continentListTutorialSelectedIDs.contains(listID.rawValue) {
-            continentListTutorialSelectedIDs.remove(listID.rawValue)
-        } else {
-            continentListTutorialSelectedIDs.insert(listID.rawValue)
-        }
-        Haptics.lightImpact()
-    }
-
-    func toggleCountryListTutorialSelection(_ country: CountryListOption) {
-        if countryListTutorialSelectedIDs.contains(country.id) {
-            countryListTutorialSelectedIDs.remove(country.id)
-        } else {
-            countryListTutorialSelectedIDs.insert(country.id)
-        }
-        Haptics.lightImpact()
-    }
-
     func applyContinentListTutorialSelection() {
         Task {
             await applyContinentListTutorialSelectionAndLoad()
@@ -474,12 +414,10 @@ extension ContentView {
         let selectedLists = CityListID.builtInLists.filter { selectedContinentIDs.contains($0.rawValue) }
 
         CityListID.keepBuiltInLists(withRawValues: selectedContinentIDs)
-        visibleListIDs = selectedContinentIDs
         refreshListOrder()
         navigationPath = []
 
         var firstList = selectedLists.first
-        var createdCountryListIDs: [CityListID] = []
         let selectedCountries = CountryCityCatalog.countries(locale: locale).filter {
             selectedCountryIDs.contains($0.id)
         }
@@ -497,7 +435,6 @@ extension ContentView {
             if firstList == nil {
                 firstList = listID
             }
-            createdCountryListIDs.append(listID)
         }
 
         if let firstList {
@@ -508,7 +445,6 @@ extension ContentView {
             }
         }
 
-        visibleListIDs.formUnion(createdCountryListIDs.map(\.rawValue))
         refreshListOrder()
         mapRecenterRequest = .listCoordinates
         centerMapOnDots(useListCoordinates: true)
@@ -537,7 +473,6 @@ extension ContentView {
         Task {
             await switchToList(listID)
             await MainActor.run {
-                visibleListIDs.insert(listID.rawValue)
                 AppDelegate.updateHomeScreenListShortcuts()
             }
         }
@@ -629,9 +564,6 @@ extension ContentView {
         listPreviewAllCities = cities
         listPreviewCityCount = min(CountryCityCatalog.defaultCountryCityCount, min(CountryCityCatalog.maxCountryCityCount, cities.count))
         showingSearchSheet = false
-        showingAddListOptionsSheet = false
-        showingContinentListSearchSheet = false
-        showingCountryListSearchSheet = false
         showingMapExpandedCard = false
         tappedCity = nil
         temporaryMapSearchCity = nil
@@ -690,36 +622,13 @@ extension ContentView {
         cancelGeneratedListPreview()
 
         Task {
-            let listID = await weatherService.createCustomList(name: uniqueName, cities: cities, nameSource: nameSource)
+            _ = await weatherService.createCustomList(name: uniqueName, cities: cities, nameSource: nameSource)
             await MainActor.run {
-                visibleListIDs.insert(listID.rawValue)
                 refreshListOrder()
                 mapRecenterRequest = .listCoordinates
                 centerMapOnDots(useListCoordinates: true)
                 AppDelegate.updateHomeScreenListShortcuts()
             }
-        }
-    }
-
-    @ViewBuilder
-    var resetListsLoadingOverlay: some View {
-        if isResettingListsToDefaults {
-            theme.colors.modalOverlay
-                .ignoresSafeArea()
-
-            ProgressView()
-                .progressViewStyle(.circular)
-                .controlSize(.large)
-                .tint(theme.colors.accent)
-                .padding(24)
-                .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .stroke(.white.opacity(0.16), lineWidth: 0.7)
-                )
-                .shadow(color: .black.opacity(0.24), radius: 22, y: 12)
-                .transition(.scale(scale: 0.92).combined(with: .opacity))
-                .zIndex(1000)
         }
     }
 
