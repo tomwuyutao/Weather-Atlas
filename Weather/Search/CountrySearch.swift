@@ -12,11 +12,17 @@ import SwiftUI
 
 extension ContentView {
     var continentListSearchSheet: some View {
+        continentListSearchContent { listID in
+            previewContinentList(listID)
+        }
+    }
+
+    func continentListSearchContent(onSelect: @escaping (CityListID) -> Void) -> some View {
         ScrollView {
             VStack(spacing: 0) {
                 ForEach(CityListID.builtInLists) { listID in
                     Button {
-                        previewContinentList(listID)
+                        onSelect(listID)
                     } label: {
                         continentListSearchResultRow(listID)
                     }
@@ -63,6 +69,12 @@ extension ContentView {
 
 extension ContentView {
     var countryListSearchSheet: some View {
+        countryListSearchContent { country in
+            previewCountryList(country)
+        }
+    }
+
+    func countryListSearchContent(onSelect: @escaping (CountryListOption) -> Void) -> some View {
         VStack(spacing: 18) {
             countryListSearchBar
 
@@ -78,7 +90,7 @@ extension ContentView {
                     } else {
                         ForEach(countries) { country in
                             Button {
-                                previewCountryList(country)
+                                onSelect(country)
                             } label: {
                                 countryListSearchResultRow(country)
                             }

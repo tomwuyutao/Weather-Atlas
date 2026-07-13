@@ -50,8 +50,10 @@ enum CountryCityCatalog {
 
     static func countries(locale: Locale) -> [CountryListOption] {
         countriesByCode.values.sorted {
-            if $0.cities.count != $1.cities.count {
-                return $0.cities.count > $1.cities.count
+            let leftCityCount = worldCityCountsByCountryCode[$0.iso2] ?? 0
+            let rightCityCount = worldCityCountsByCountryCode[$1.iso2] ?? 0
+            if leftCityCount != rightCityCount {
+                return leftCityCount > rightCityCount
             }
             return $0.localizedName(locale: locale).localizedCaseInsensitiveCompare($1.localizedName(locale: locale)) == .orderedAscending
         }
@@ -181,6 +183,28 @@ enum CountryCityCatalog {
                 cities: sortedCities
             )
         }
+    }()
+
+    /// Uses the complete bundled city dataset to rank country suggestions, rather
+    /// than the smaller set of cities retained for generated lists.
+    private static let worldCityCountsByCountryCode: [String: Int] = {
+        guard let url = Bundle.main.url(forResource: "worldcities", withExtension: "csv")
+                ?? Bundle.main.url(forResource: "worldcities", withExtension: "csv", subdirectory: "Assets"),
+              let csv = try? String(contentsOf: url, encoding: .utf8) else {
+            DeveloperWarningCenter.show(
+                title: "World Cities Catalog Missing",
+                message: "The bundled worldcities.csv file could not be loaded. Country search ordering is unavailable."
+            )
+            return [:]
+        }
+
+        var counts: [String: Int] = [:]
+        for line in csv.split(whereSeparator: \.isNewline).dropFirst() {
+            let fields = parseCSVLine(String(line))
+            guard fields.indices.contains(5), !fields[5].isEmpty else { continue }
+            counts[fields[5], default: 0] += 1
+        }
+        return counts
     }()
 
     private static func parseCSVLine(_ line: String) -> [String] {

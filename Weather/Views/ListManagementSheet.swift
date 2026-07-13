@@ -81,6 +81,8 @@ extension ContentView {
             commitInlineListRename()
             listManagementEditMode = .inactive
             showingListManagementAddOptions = false
+            showingListManagementContinentPicker = false
+            showingListManagementCountryPicker = false
         }
     }
 
@@ -94,26 +96,46 @@ extension ContentView {
                 }
             },
             onAddContinent: {
-                showingListManagementAddOptions = false
-                showingListManagementSheet = false
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(260))
-                    activateContinentListSearch()
-                }
+                showingListManagementContinentPicker = true
             },
             onAddCountry: {
-                showingListManagementAddOptions = false
-                showingListManagementSheet = false
-                Task { @MainActor in
-                    try? await Task.sleep(for: .milliseconds(260))
-                    activateCountryListSearch()
-                }
+                showingListManagementCountryPicker = true
             },
             usesListManagerStyle: true
         )
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .toolbarBackground(theme.colors.mapOcean, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        .navigationDestination(isPresented: $showingListManagementContinentPicker) {
+            listManagementContinentPicker
+                .navigationTitle(localizedString("Add Continent", locale: locale))
+                .navigationBarTitleDisplayMode(.inline)
+        }
+        .navigationDestination(isPresented: $showingListManagementCountryPicker) {
+            listManagementCountryPicker
+                .navigationTitle(localizedString("Add Country", locale: locale))
+                .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+
+    private var listManagementContinentPicker: some View {
+        continentListSearchContent { listID in
+            showingListManagementSheet = false
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(260))
+                previewContinentList(listID)
+            }
+        }
+    }
+
+    private var listManagementCountryPicker: some View {
+        countryListSearchContent { country in
+            showingListManagementSheet = false
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(260))
+                previewCountryList(country)
+            }
+        }
     }
 
     @ViewBuilder

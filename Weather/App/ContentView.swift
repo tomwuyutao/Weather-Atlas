@@ -83,6 +83,8 @@ struct ContentView: View {
     @State var showingAddListOptionsSheet = false
     @State var showingListManagementSheet = false
     @State var showingListManagementAddOptions = false
+    @State var showingListManagementContinentPicker = false
+    @State var showingListManagementCountryPicker = false
     @State var listManagementEditMode: EditMode = .inactive
     @State var inlineListRenameID: CityListID?
     @State var inlineListName: String = ""

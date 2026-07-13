@@ -94,23 +94,27 @@ struct HomeStaticMapPreview: View {
     private func fitAllCities() {
         let citiesForFitting = fitCities.isEmpty ? cities.map(\.city) : fitCities
         guard !citiesForFitting.isEmpty else { return }
-        let latitudes = citiesForFitting.map(\.latitude)
-        let longitudes = citiesForFitting.map(\.longitude)
-        guard let minLatitude = latitudes.min(),
-              let maxLatitude = latitudes.max(),
-              let minLongitude = longitudes.min(),
-              let maxLongitude = longitudes.max() else { return }
+        let points = citiesForFitting.map {
+            MKMapPoint(CLLocationCoordinate2D(latitude: $0.latitude, longitude: $0.longitude))
+        }
+        let cityRect = points.reduce(MKMapRect.null) { rect, point in
+            rect.union(MKMapRect(x: point.x, y: point.y, width: 1, height: 1))
+        }
 
-        let center = CLLocationCoordinate2D(
-            latitude: (minLatitude + maxLatitude) / 2,
-            longitude: (minLongitude + maxLongitude) / 2
+        // A geographic degree span does not translate directly to the visible map area.
+        // Fit MapKit's projected coordinates instead, with extra breathing room for lists
+        // that span several regions (for example, Africa plus Australia).
+        let widestRelativeSpan = max(
+            cityRect.width / MKMapSize.world.width,
+            cityRect.height / MKMapSize.world.height
         )
-        let latitudeDelta = max(8, min(160, (maxLatitude - minLatitude) * 1.45))
-        let longitudeDelta = max(10, min(320, (maxLongitude - minLongitude) * 1.45))
-        cameraPosition = .region(MKCoordinateRegion(
-            center: center,
-            span: MKCoordinateSpan(latitudeDelta: latitudeDelta, longitudeDelta: longitudeDelta)
-        ))
+        let paddingMultiplier: Double = widestRelativeSpan > 0.22 ? 0.62 : 0.34
+        let minimumPadding = widestRelativeSpan > 0.22 ? 1_400_000.0 : 650_000.0
+        let fittedRect = cityRect.insetBy(
+            dx: -max(cityRect.width * paddingMultiplier, minimumPadding),
+            dy: -max(cityRect.height * paddingMultiplier, minimumPadding)
+        )
+        cameraPosition = .rect(fittedRect)
     }
 
     private func refitApplePreview() {
@@ -429,7 +433,7 @@ extension ContentView {
     }
 
     var recommendedSunnyCandidates: [SunnyCandidate] {
-        sunnyCandidates.filter { $0.condition.isSunny }
+        sunnyCandidates.filter { $0.condition.isSunnyOrPartlySunny }
     }
 
     var homeVisibleCandidates: [SunnyCandidate] {
@@ -894,7 +898,7 @@ extension ContentView {
         }
 
         let normalCandidates = sunnyCandidates(for: weatherService.cityWeatherData)
-            .filter { $0.condition.isSunny }
+            .filter { $0.condition.isSunnyOrPartlySunny }
         let rankedCandidates = limit.map { Array(normalCandidates.prefix($0)) } ?? normalCandidates
         return AnyView(VStack(spacing: 0) {
             if rankedCandidates.isEmpty {
