@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+
+# Xcode user-specific and generated files
+xcuserdata/
+*.xcuserstate
+DerivedData/
+build/
+*.moved-aside
+*.xccheckout
+*.xcscmblueprint
+
+# Local developer-tool output
+Tools/__pycache__/
+Tools/cache/
+*.pyc
+
+# Local assistant transcripts must never be committed
+codex-messages-*.txt
