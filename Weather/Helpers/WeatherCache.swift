@@ -7,24 +7,72 @@
 
 import Foundation
 
+private enum WeatherSnapshotStorage {
+    private static let directoryName = "WeatherSnapshots"
+
+    static func read(for listID: CityListID) throws -> Data? {
+        let url = try fileURL(for: listID)
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        return try Data(contentsOf: url)
+    }
+
+    static func write(_ data: Data, for listID: CityListID) throws {
+        let url = try fileURL(for: listID)
+        try FileManager.default.createDirectory(
+            at: url.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        try data.write(to: url, options: .atomic)
+    }
+
+    static func remove(for listID: CityListID) {
+        guard let url = try? fileURL(for: listID) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    private static func fileURL(for listID: CityListID) throws -> URL {
+        let caches = try FileManager.default.url(
+            for: .cachesDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        )
+        let safeID = listID.rawValue.map { character in
+            character.isLetter || character.isNumber || character == "-" ? character : "_"
+        }
+        return caches
+            .appending(path: directoryName, directoryHint: .isDirectory)
+            .appending(path: String(safeID) + ".json")
+    }
+}
+
 // MARK: - Weather Cache
 
 extension WeatherService {
     func saveCachedWeatherData(_ data: [CityWeather], for listID: CityListID) {
-        let key = "cachedWeatherData_\(listID.rawValue)"
         do {
             let cached = data.map { CachedCityWeather(from: $0) }
             let encoded = try JSONEncoder().encode(cached)
-            UserDefaults.standard.set(encoded, forKey: key)
+            try WeatherSnapshotStorage.write(encoded, for: listID)
+            UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
         } catch {
-            UserDefaults.standard.removeObject(forKey: key)
+            WeatherSnapshotStorage.remove(for: listID)
         }
     }
 
     func loadCachedWeatherData(for listID: CityListID) -> [CityWeather]? {
         let key = "cachedWeatherData_\(listID.rawValue)"
-        guard let data = UserDefaults.standard.data(forKey: key) else { return nil }
         do {
+            let data: Data
+            if let storedData = try WeatherSnapshotStorage.read(for: listID) {
+                data = storedData
+            } else if let legacyData = UserDefaults.standard.data(forKey: key) {
+                data = legacyData
+                try WeatherSnapshotStorage.write(legacyData, for: listID)
+                UserDefaults.standard.removeObject(forKey: key)
+            } else {
+                return nil
+            }
             let decodedCache = try JSONDecoder().decode([CachedCityWeather].self, from: data)
             let cachedData = decodedCache.compactMap { $0.toCityWeather() }
             if cachedData.count != decodedCache.count {
@@ -49,7 +97,7 @@ extension WeatherService {
                 title: "Cached Weather Corrupt",
                 message: "The cached weather data for \(listID.rawValue) could not be decoded and was removed."
             )
-            UserDefaults.standard.removeObject(forKey: key)
+            removeCache(for: listID)
             return nil
         }
     }
@@ -73,7 +121,7 @@ extension WeatherService {
             calendar.timeZone = cityWeather.timeZone
             let currentHour = calendar.component(.hour, from: now)
             guard currentHour < 20,
-                  let firstHour = todayForecast.hourlyForecasts.map(\.hour).min() else {
+                  let firstHour = todayForecast.hourlyForecasts.map({ $0.hour(in: cityWeather.timeZone) }).min() else {
                 return true
             }
 
@@ -135,13 +183,11 @@ extension WeatherService {
     }
 
     func clearCache() {
-        UserDefaults.standard.removeObject(forKey: cacheKey)
-        UserDefaults.standard.removeObject(forKey: cacheTimestampKey)
-        listFetchDates[activeListID.rawValue] = nil
-        lastFetchDate = nil
+        removeCache(for: activeListID)
     }
 
-    private func removeCache(for listID: CityListID) {
+    func removeCache(for listID: CityListID) {
+        WeatherSnapshotStorage.remove(for: listID)
         UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
         UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(listID.rawValue)")
         listFetchDates[listID.rawValue] = nil
@@ -202,9 +248,9 @@ struct CachedCityWeather: Codable {
 
     func toCityWeather() -> CityWeather? {
         let decodedCity = city.toCity()
-        let forecasts = dailyForecasts.map { $0.toDailyForecast() }
-        guard !forecasts.isEmpty else { return nil }
         guard let timeZone = TimeZone(identifier: timeZoneIdentifier) else { return nil }
+        let forecasts = dailyForecasts.map { $0.toDailyForecast(timeZone: timeZone) }
+        guard !forecasts.isEmpty else { return nil }
 
         return CityWeather(
             id: id,
@@ -217,6 +263,7 @@ struct CachedCityWeather: Codable {
 }
 
 struct CachedDailyForecast: Codable {
+    let date: Date?
     let dayOffset: Int
     let dailyLow: Double
     let dailyHigh: Double
@@ -230,6 +277,7 @@ struct CachedDailyForecast: Codable {
     let sunset: Date?
 
     init(from forecast: DailyForecast) {
+        date = forecast.date
         dayOffset = forecast.dayOffset
         dailyLow = forecast.dailyLow
         dailyHigh = forecast.dailyHigh
@@ -243,13 +291,21 @@ struct CachedDailyForecast: Codable {
         sunset = forecast.sunset
     }
 
-    func toDailyForecast() -> DailyForecast {
-        DailyForecast(
+    func toDailyForecast(timeZone: TimeZone) -> DailyForecast {
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        let restoredDate = date
+            ?? sunrise
+            ?? sunset
+            ?? calendar.date(byAdding: .day, value: dayOffset, to: Date())
+            ?? Date()
+        return DailyForecast(
+            date: restoredDate,
             dayOffset: dayOffset,
             dailyLow: dailyLow,
             dailyHigh: dailyHigh,
             symbolName: symbolName,
-            hourlyForecasts: hourlyForecasts.map { $0.toHourlyForecast() },
+            hourlyForecasts: hourlyForecasts.map { $0.toHourlyForecast(on: restoredDate, timeZone: timeZone) },
             cloudCover: cloudCover,
             precipitationChance: precipitationChance,
             windSpeed: windSpeed,
@@ -261,17 +317,24 @@ struct CachedDailyForecast: Codable {
 }
 
 struct CachedHourlyForecast: Codable {
-    let hour: Int
+    let date: Date?
+    let hour: Int?
     let symbolName: String
 
     init(from forecast: HourlyForecast) {
-        hour = forecast.hour
+        date = forecast.date
+        hour = nil
         symbolName = forecast.symbolName
     }
 
-    func toHourlyForecast() -> HourlyForecast {
-        HourlyForecast(
-            hour: hour,
+    func toHourlyForecast(on day: Date, timeZone: TimeZone) -> HourlyForecast {
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        let restoredDate = date
+            ?? hour.flatMap { calendar.date(bySettingHour: $0, minute: 0, second: 0, of: day) }
+            ?? day
+        return HourlyForecast(
+            date: restoredDate,
             symbolName: symbolName
         )
     }

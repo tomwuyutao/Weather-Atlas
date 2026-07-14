@@ -17,10 +17,10 @@ struct HomeStaticMapPreview: View {
     let fitCities: [City]
     let selectedDayOffset: Int
     let previewDot: Color
-    let land: Color
     let water: Color
     let mapSaturation: Double
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appTheme) private var theme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 48, longitude: 12),
         span: MKCoordinateSpan(latitudeDelta: 28, longitudeDelta: 38)
@@ -46,11 +46,7 @@ struct HomeStaticMapPreview: View {
                     ),
                     anchor: .center
                 ) {
-                    Circle()
-                        .fill(markerColor(for: cityWeather))
-                        .frame(width: 8, height: 8)
-                        .shadow(color: markerColor(for: cityWeather).opacity(0.42), radius: 5, y: 1)
-                        .saturation(markerSaturationCompensation)
+                    staticMapMarker(color: markerColor(for: cityWeather))
                 }
             }
 
@@ -63,11 +59,7 @@ struct HomeStaticMapPreview: View {
                     ),
                     anchor: .center
                 ) {
-                    Circle()
-                        .fill(previewDot)
-                        .frame(width: 8, height: 8)
-                        .shadow(color: previewDot.opacity(0.36), radius: 5, y: 1)
-                        .saturation(markerSaturationCompensation)
+                    staticMapMarker(color: previewDot)
                 }
             }
         }
@@ -76,19 +68,43 @@ struct HomeStaticMapPreview: View {
         .allowsHitTesting(false)
         .background(water)
         .onAppear {
-            refitApplePreview()
+            fitAllCities()
         }
         .onChange(of: fitCities.map(\.id)) { _, _ in
-            refitApplePreview()
-        }
-        .onChange(of: selectedDayOffset) { _, _ in
-            refitApplePreview()
+            fitAllCities()
         }
     }
 
     private func markerColor(for cityWeather: CityWeather) -> Color {
         let forecast = cityWeather.forecast(for: selectedDayOffset)
-        return SunninessScoring.condition(for: forecast.symbolName).dotColor
+        return SunninessScoring.condition(for: forecast.symbolName).dotColor(for: theme.colors)
+    }
+
+    @ViewBuilder
+    private func staticMapMarker(color: Color) -> some View {
+        if colorSchemeContrast == .increased {
+            // Accessibility: An opaque backing and high-contrast outline keep the
+            // weather color perceivable over every possible MapKit tile.
+            ZStack {
+                Circle()
+                    .fill(theme.colors.glassFill)
+                    .frame(width: 18, height: 18)
+                    .overlay {
+                        Circle().stroke(theme.colors.primaryText, lineWidth: 2)
+                    }
+
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+            }
+            .saturation(markerSaturationCompensation)
+        } else {
+            Circle()
+                .fill(color)
+                .frame(width: 8, height: 8)
+                .shadow(color: color.opacity(0.42), radius: 5, y: 1)
+                .saturation(markerSaturationCompensation)
+        }
     }
 
     private func fitAllCities() {
@@ -108,8 +124,13 @@ struct HomeStaticMapPreview: View {
             cityRect.width / MKMapSize.world.width,
             cityRect.height / MKMapSize.world.height
         )
-        let paddingMultiplier: Double = widestRelativeSpan > 0.22 ? 0.62 : 0.34
-        let minimumPadding = widestRelativeSpan > 0.22 ? 1_400_000.0 : 650_000.0
+        // Widely scattered cities need increasingly more room than a local list.
+        // There is deliberately no upper cap here; MapKit itself limits the view
+        // to the world map when the fitted rectangle reaches that extent.
+        let paddingMultiplier: Double = widestRelativeSpan > 0.22
+            ? max(0.85, widestRelativeSpan * 2.4)
+            : 0.34
+        let minimumPadding = widestRelativeSpan > 0.22 ? 2_000_000.0 : 650_000.0
         let fittedRect = cityRect.insetBy(
             dx: -max(cityRect.width * paddingMultiplier, minimumPadding),
             dy: -max(cityRect.height * paddingMultiplier, minimumPadding)
@@ -117,11 +138,6 @@ struct HomeStaticMapPreview: View {
         cameraPosition = .rect(fittedRect)
     }
 
-    private func refitApplePreview() {
-        DispatchQueue.main.async {
-            fitAllCities()
-        }
-    }
 }
 
 struct SunnyCandidateRow: View {
@@ -138,75 +154,173 @@ struct SunnyCandidateRow: View {
     @Environment(\.locale) private var locale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    @ViewBuilder
     var body: some View {
+        if cityRenameAction == nil {
+            rowContent
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(rowAccessibilityLabel)
+                .accessibilityValue(rowAccessibilityValue)
+                // Accessibility: Use the visibly rendered city name as the first
+                // Voice Control command even when VoiceOver also announces rank.
+                .accessibilityInputLabels([
+                    Text(cityName),
+                    Text(rowAccessibilityLabel)
+                ])
+        } else {
+            // Keep the city summary and rename as separate VoiceOver controls
+            // while preserving the standard editing interactions.
+            rowContent
+        }
+    }
+
+    @ViewBuilder
+    private var rowContent: some View {
+        // Accessibility: Use a wrapping layout at accessibility Dynamic Type sizes
+        // while keeping the standard compact row unchanged at normal sizes.
+        if dynamicTypeSize.isAccessibilitySize {
+            HStack(alignment: .top, spacing: CityListLayout.columnSpacing) {
+                if let rank {
+                    CityRankLabel(rank: rank)
+                        .accessibilityHidden(true)
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    cityNameLabel(lineLimit: 2)
+
+                    if showsWeatherMetrics {
+                        weatherMetrics(usesFixedColumns: false)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                renameButton
+            }
+            .padding(.horizontal, 0)
+            .padding(.vertical, verticalPadding)
+            .contentShape(Rectangle())
+        } else {
+            HStack(spacing: CityListLayout.columnSpacing) {
+                if let rank {
+                    CityRankLabel(rank: rank)
+                        .accessibilityHidden(true)
+                }
+
+                cityNameLabel(lineLimit: 1)
+
+                Spacer(minLength: 8)
+
+                if showsWeatherMetrics {
+                    weatherMetrics(usesFixedColumns: true)
+                }
+
+                renameButton
+            }
+            .padding(.horizontal, 0)
+            .padding(.vertical, verticalPadding)
+            .contentShape(Rectangle())
+        }
+    }
+
+    private func cityNameLabel(lineLimit: Int) -> some View {
+        Text(cityName)
+            .font(.body.weight(.medium))
+            .foregroundStyle(theme.colors.primaryText)
+            .lineLimit(lineLimit)
+            .accessibilityLabel(rowAccessibilityLabel)
+    }
+
+    private func weatherMetrics(usesFixedColumns: Bool) -> some View {
         let icon = candidate.condition.displayIcon
-        let cloudText = candidate.cloudCover.map { "\(Int($0 * 100))%" } ?? "-"
-        let verticalPadding: CGFloat = compact ? 8 : 9
+        let cloudText = candidate.cloudCover.map { "\(Int(($0 * 100).rounded()))%" } ?? "-"
 
-        HStack(spacing: CityListLayout.columnSpacing) {
-            if let rank {
-                CityRankLabel(rank: rank)
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(cityNameOverride ?? candidate.cityWeather.city.localizedName(locale: locale))
-                    .font(.body.weight(.medium))
+        return HStack(spacing: usesFixedColumns ? 0 : 10) {
+            HStack(spacing: 3) {
+                Image(systemName: "thermometer.medium")
+                    .font(.caption.weight(.medium))
                     .foregroundStyle(theme.colors.primaryText)
-                    .lineLimit(1)
+                    .accessibilityHidden(true)
+                Text(tempUnit.display(candidate.temperature))
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .monospacedDigit()
             }
+            .frame(width: usesFixedColumns ? temperatureMetricWidth : nil, alignment: .leading)
 
-            Spacer(minLength: 8)
-
-            if showsWeatherMetrics {
-                HStack(spacing: 0) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "thermometer.medium")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(theme.colors.dotSun)
-                        Text(tempUnit.display(candidate.temperature))
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(theme.colors.dotSun)
-                            .monospacedDigit()
-                    }
-                    .frame(width: temperatureMetricWidth, alignment: .leading)
-
-                    HStack(spacing: 3) {
-                        Image(systemName: "cloud")
-                            .font(.caption.weight(.medium))
-                            .foregroundStyle(theme.colors.secondaryText.opacity(0.50))
-                        Text(cloudText)
-                            .font(.caption.weight(.medium))
-                            .monospacedDigit()
-                    }
-                    .frame(width: cloudMetricWidth, alignment: .leading)
-                    .padding(.trailing, 5)
-
-                    if showsConditionIcon {
-                        Image(systemName: icon)
-                            .font(.caption.weight(.medium))
-                            .weatherIconStyle(for: icon)
-                            .frame(width: conditionMetricWidth, alignment: .trailing)
-                    }
-                }
-                .foregroundStyle(theme.colors.secondaryText)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+            HStack(spacing: 3) {
+                Image(systemName: "cloud")
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(theme.colors.secondaryText.opacity(0.50))
+                    .accessibilityHidden(true)
+                Text(cloudText)
+                    .font(.caption.weight(.medium))
+                    .monospacedDigit()
             }
+            .frame(width: usesFixedColumns ? cloudMetricWidth : nil, alignment: .leading)
+            .padding(.trailing, usesFixedColumns ? 5 : 0)
 
-            if let cityRenameAction {
-                Button(action: cityRenameAction) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 19, weight: .regular))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 32, height: 36)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(localizedString("Rename", locale: locale))
+            if showsConditionIcon {
+                Image(systemName: icon)
+                    .font(.caption.weight(.medium))
+                    .weatherIconStyle(for: icon)
+                    .frame(width: usesFixedColumns ? conditionMetricWidth : nil, alignment: .trailing)
+                    .accessibilityHidden(true)
             }
         }
-        .padding(.horizontal, 0)
-        .padding(.vertical, verticalPadding)
-        .contentShape(Rectangle())
+        .foregroundStyle(theme.colors.secondaryText)
+        .lineLimit(1)
+        .fixedSize(horizontal: !dynamicTypeSize.isAccessibilitySize, vertical: false)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var renameButton: some View {
+        if let cityRenameAction {
+            Button(action: cityRenameAction) {
+                Image(systemName: "pencil")
+                    .font(.system(size: 19, weight: .regular))
+                    .foregroundStyle(theme.colors.primaryText)
+                    // Accessibility: Enlarge only the control's hit target; the
+                    // compensating padding below preserves the visual row spacing.
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .padding(.horizontal, -6)
+            .padding(.vertical, -4)
+            .accessibilityLabel("\(localizedString("Rename", locale: locale)), \(cityName)")
+        }
+    }
+
+    private var cityName: String {
+        cityNameOverride ?? candidate.cityWeather.city.localizedName(locale: locale)
+    }
+
+    // MARK: - Accessibility - Candidate Row Descriptions
+
+    private var rowAccessibilityLabel: String {
+        guard let rank else { return cityName }
+        return "\(rank), \(cityName)"
+    }
+
+    private var rowAccessibilityValue: String {
+        var values = [candidate.condition.localizedDisplayName(locale: locale)]
+
+        if showsWeatherMetrics {
+            values.append("\(localizedString("Temperature", locale: locale)), \(tempUnit.display(candidate.temperature))")
+            let cloudValue = candidate.cloudCover
+                .map { "\(Int(($0 * 100).rounded()))%" }
+                ?? localizedString("No forecast", locale: locale)
+            values.append("\(localizedString("Cloud Cover", locale: locale)), \(cloudValue)")
+        }
+
+        return values.joined(separator: ", ")
+    }
+
+    // MARK: - Layout
+
+    private var verticalPadding: CGFloat {
+        compact ? 8 : 9
     }
 
     private var temperatureMetricWidth: CGFloat {
@@ -259,17 +373,27 @@ struct SunnyPlacesSectionHeader: View {
     let title: String
 
     @Environment(\.appTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(spacing: CityListLayout.columnSpacing) {
-            Image(systemName: icon)
-                .foregroundStyle(theme.colors.primaryText)
-                .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
+            // Accessibility: Omit the decorative icon when large text needs the
+            // full row width; the heading retains its semantic label below.
+            if !dynamicTypeSize.isAccessibilitySize {
+                Image(systemName: icon)
+                    .foregroundStyle(theme.colors.primaryText)
+                    .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
+                    .accessibilityHidden(true)
+            }
             Text(title)
                 .font(.headline.weight(.semibold))
                 .foregroundStyle(theme.colors.primaryText)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             Spacer(minLength: 8)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -278,6 +402,7 @@ struct CityNameListRow: View {
     let cityName: String
 
     @Environment(\.appTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         HStack(spacing: CityListLayout.columnSpacing) {
@@ -286,12 +411,14 @@ struct CityNameListRow: View {
             Text(cityName)
                 .font(.body.weight(.medium))
                 .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
 
             Spacer(minLength: 8)
         }
         .padding(.vertical, 10)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(rank), \(cityName)")
     }
 }
 
@@ -335,7 +462,6 @@ enum WeatherListSortMode: String, CaseIterable, Identifiable {
 
 struct SunnyCandidate: Identifiable {
     let cityWeather: CityWeather
-    let score: Double
     let condition: AppWeatherCondition
     let cloudCover: Double?
     let precipitationChance: Double?
@@ -370,60 +496,43 @@ private struct HomeSunnyCalendarDate: Identifiable {
 // MARK: - Home and List Logic
 
 extension ContentView {
-    var widgetWeatherDataSignature: String {
-        weatherService.cityWeatherData.map { cityWeather in
-            let forecast = cityWeather.forecast(for: selectedDayOffset)
-            let cloudCover = forecast.cloudCover.map { String($0) } ?? ""
-            return "\(cityWeather.id.uuidString)|\(forecast.symbolName)|\(forecast.dailyHigh)|\(cloudCover)"
-        }
-        .joined(separator: ",")
-    }
-
     func updateBestSunnyPlacesWidget() {
         guard !isListPreviewActive else { return }
         let lists = managedLists.map { listID -> WidgetDataList in
             let weatherData = weatherService.weatherData(for: listID)
-            let candidates = sunnyCandidates(for: weatherData)
-            let topCityIDs = candidates
-                .filter { $0.condition.isSunnyOrPartlySunny }
-                .prefix(3)
-                .map { WidgetDataStore.cityIdentifier(for: $0.cityWeather.city, in: listID) }
             let cities = weatherData.map { cityWeather in
-                let selectedForecast = cityWeather.forecast(for: selectedDayOffset)
                 let todayForecast = cityWeather.forecast(for: 0)
                 let daytimeHours = SunninessScoring.daytimeHours(for: todayForecast, timeZone: cityWeather.timeZone)
 
                 return WidgetDataCity(
-                    id: WidgetDataStore.cityIdentifier(for: cityWeather.city, in: listID),
+                    id: WidgetDataStore.cityIdentifier(
+                        country: cityWeather.city.country,
+                        latitude: cityWeather.city.latitude,
+                        longitude: cityWeather.city.longitude,
+                        listID: listID.rawValue
+                    ),
                     cityName: CityListID.customCityName(for: cityWeather.city)
                         ?? cityWeather.city.localizedName(locale: locale),
-                    temperature: tempUnit.display(selectedForecast.dailyHigh),
-                    cloudCover: selectedForecast.cloudCover.map { "\(Int($0 * 100))%" } ?? "-",
-                    conditionIcon: SunninessScoring.condition(for: selectedForecast.symbolName).displayIcon,
-                    daytimeHours: daytimeHours.map(\.hour),
+                    timeZoneIdentifier: cityWeather.timeZone.identifier,
+                    daytimeHours: daytimeHours.map { $0.hour(in: cityWeather.timeZone) },
                     sunnyHours: daytimeHours
                         .filter { SunninessScoring.condition(for: $0.symbolName) == .clear }
-                        .map(\.hour),
+                        .map { $0.hour(in: cityWeather.timeZone) },
                     partlySunnyHours: daytimeHours
                         .filter { SunninessScoring.condition(for: $0.symbolName) == .partlySunny }
-                        .map(\.hour)
+                        .map { $0.hour(in: cityWeather.timeZone) }
                 )
             }
 
             return WidgetDataList(
                 id: listID.rawValue,
                 displayName: listID.localizedDisplayName(locale: locale),
-                listName: listID.localizedDisplayName(locale: locale),
-                title: localizedString("Best Sunny Places", locale: locale),
-                topCityIDs: topCityIDs,
                 cities: cities
             )
         }
 
         WidgetDataStore.save(
             WidgetDataCatalog(
-                activeListID: weatherService.activeListID.rawValue,
-                updatedAt: .now,
                 lists: lists
             )
         )
@@ -439,7 +548,6 @@ extension ContentView {
 
         return SunnyCandidate(
             cityWeather: cityWeather,
-            score: condition.sunninessScore,
             condition: condition,
             cloudCover: forecast.cloudCover,
             precipitationChance: forecast.precipitationChance,
@@ -519,12 +627,12 @@ extension ContentView {
                 candidates: partlySunny
             ),
             SunninessCandidateGroup(
-                title: localizedString("Cloudy, Windy,\nSnowy, Foggy", locale: locale),
+                title: localizedString("Cloudy, Windy, Snowy, Foggy", locale: locale),
                 icon: "cloud",
                 candidates: remaining
             ),
             SunninessCandidateGroup(
-                title: localizedString("Drizzle / Rain", locale: locale),
+                title: localizedString("Drizzle, Rain", locale: locale),
                 icon: "cloud.rain",
                 candidates: rainy
             )
@@ -593,14 +701,9 @@ extension ContentView {
         let city = candidate.cityWeather
         if focusMap {
             pushRoute(.map)
-            centerOnCityTrigger = city
-            Task { @MainActor in
-                await Task.yield()
-                showMapMarkerCard(city)
-            }
+            centerMap(on: city)
+            showMapMarkerCard(city)
         } else {
-            tappedCity = city
-            showingMapExpandedCard = false
             presentDetail(for: city)
         }
     }
@@ -658,18 +761,42 @@ extension ContentView {
     }
 
     private func homeTitleOverride(previewActive: Bool) -> String? {
-        guard previewActive, let listPreviewName else { return nil }
-        return "\(listPreviewName) - \(localizedString("Preview", locale: locale))"
+        guard previewActive, let previewName = listPreviewState.name else { return nil }
+        return "\(previewName) - \(localizedString("Preview", locale: locale))"
     }
 
+    @ViewBuilder
     private func homeMapSnapshot(height: CGFloat, previewActive: Bool) -> some View {
+        if previewActive {
+            homeMapSnapshotVisual(height: height, previewActive: true)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(localizedString("Maps", locale: locale))
+                .accessibilityValue(cityCountText(listPreviewCities.count))
+        } else {
+            // Accessibility: A semantic Button makes the entire map card operable
+            // by VoiceOver, Voice Control, Switch Control, and direct touch.
+            Button {
+                selectedMapCity = nil
+                showingMapExpandedCard = false
+                citySearchState.temporaryMapCity = nil
+                pushRoute(.map)
+            } label: {
+                homeMapSnapshotVisual(height: height, previewActive: false)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(localizedString("Maps", locale: locale))
+            .accessibilityValue(cityCountText(mapCities.count))
+            .accessibilityHint(localizedString("Opens map", locale: locale))
+        }
+    }
+
+    private func homeMapSnapshotVisual(height: CGFloat, previewActive: Bool) -> some View {
         HomeStaticMapPreview(
             cities: previewActive ? [] : mapCities,
             previewCities: previewActive ? listPreviewCities : [],
             fitCities: previewActive ? listPreviewCities : mapFitCities,
             selectedDayOffset: selectedDayOffset,
             previewDot: theme.colors.primaryText,
-            land: theme.colors.mapLand,
             water: theme.colors.mapOcean,
             mapSaturation: 0.72
         )
@@ -681,15 +808,6 @@ extension ContentView {
                 .stroke(.white.opacity(0.12), lineWidth: 0.8)
         }
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .onTapGesture {
-            if !previewActive {
-                centerOnCityTrigger = nil
-                tappedCity = nil
-                showingMapExpandedCard = false
-                temporaryMapSearchCity = nil
-                pushRoute(.map)
-            }
-        }
     }
 
     func homeSunnySection(previewActive: Bool) -> some View {
@@ -712,6 +830,7 @@ extension ContentView {
                             .font(.callout.weight(.medium))
                         Image(systemName: "chevron.right")
                             .font(.caption.weight(.medium))
+                            .accessibilityHidden(true)
                         Spacer(minLength: 0)
                     }
                     .foregroundStyle(theme.colors.secondaryText)
@@ -729,14 +848,20 @@ extension ContentView {
 
         return VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: CityListLayout.columnSpacing) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
+                        .accessibilityHidden(true)
+                }
                 Text(localizedString("Best Sunny Dates", locale: locale))
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                 Spacer(minLength: 8)
             }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(localizedString("Best Sunny Dates", locale: locale))
+            .accessibilityAddTraits(.isHeader)
 
             if days.isEmpty {
                 Text(localizedString("No strong sunny days", locale: locale))
@@ -744,16 +869,32 @@ extension ContentView {
                     .foregroundStyle(theme.colors.secondaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.vertical, 4)
+            } else if dynamicTypeSize.isAccessibilitySize {
+                // Accessibility: Replace the seven-column heatmap with readable,
+                // full-width controls at accessibility Dynamic Type sizes.
+                if days.contains(where: { $0.recommendation != nil }) {
+                    VStack(spacing: 8) {
+                        ForEach(days.filter(\.isForecastDate)) { day in
+                            homeSunnyAccessibilityDayRow(day, maxSunnyCityCount: cities.count)
+                        }
+                    }
+                } else {
+                    Text(localizedString("No strong sunny days", locale: locale))
+                        .font(.callout)
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } else {
                 VStack(spacing: 7) {
                     LazyVGrid(columns: homeSunnyCalendarColumns, spacing: 0) {
                         ForEach(homeSunnyCalendarWeekdayLabels, id: \.self) { label in
                             Text(label)
                                 .font(.caption2.weight(.medium))
-                                .foregroundStyle(theme.colors.secondaryText.opacity(0.45))
+                                .foregroundStyle(theme.colors.secondaryText)
                                 .frame(maxWidth: .infinity)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.72)
+                                .accessibilityHidden(true)
                         }
                     }
 
@@ -772,9 +913,9 @@ extension ContentView {
     }
 
     private var homeSunnyCalendarWeekdayLabels: [String] {
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        let symbols = formatter.shortStandaloneWeekdaySymbols ?? formatter.shortWeekdaySymbols ?? ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = locale
+        let symbols = calendar.shortStandaloneWeekdaySymbols
         let mondayIndex = 1
         return Array(symbols[mondayIndex...]) + Array(symbols[..<mondayIndex])
     }
@@ -810,6 +951,7 @@ extension ContentView {
     @ViewBuilder
     private func homeSunnyHeatmapDayView(_ day: HomeSunnyCalendarDate, maxSunnyCityCount: Int) -> some View {
         if let recommendation = day.recommendation {
+            let isSelected = recommendation.id == selectedDayOffset
             Button {
                 withAnimation(.smooth(duration: 0.2)) {
                     selectedDayOffset = recommendation.id
@@ -818,16 +960,80 @@ extension ContentView {
                 homeSunnyHeatmapDayCell(
                     day,
                     maxSunnyCityCount: maxSunnyCityCount,
-                    isSelected: recommendation.id == selectedDayOffset
+                    isSelected: isSelected
                 )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(homeSunnyHeatmapAccessibilityLabel(recommendation))
+            .accessibilityLabel(homeSunnyDayLabel(dayOffset: recommendation.id))
+            .accessibilityValue(homeSunnyHeatmapAccessibilityValue(recommendation))
+            // Accessibility: The compact heatmap visibly shows the calendar day
+            // number, so Voice Control accepts that text as well as the full date.
+            .accessibilityInputLabels([
+                Text(homeSunnyCalendarDayNumber(dayOffset: recommendation.id)),
+                Text(homeSunnyDayLabel(dayOffset: recommendation.id))
+            ])
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
         } else {
             homeSunnyHeatmapDayCell(day, maxSunnyCityCount: maxSunnyCityCount, isSelected: false)
+                .accessibilityElement(children: .ignore)
                 .accessibilityLabel(homeSunnyCalendarInactiveAccessibilityLabel(day))
         }
     }
+
+    // MARK: - Accessibility - Large Text Calendar
+
+    @ViewBuilder
+    private func homeSunnyAccessibilityDayRow(_ day: HomeSunnyCalendarDate, maxSunnyCityCount: Int) -> some View {
+        if let recommendation = day.recommendation {
+            let isSelected = recommendation.id == selectedDayOffset
+            Button {
+                withAnimation(.smooth(duration: 0.2)) {
+                    selectedDayOffset = recommendation.id
+                }
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 12) {
+                    Text(homeSunnyDayLabel(dayOffset: recommendation.id))
+                        .font(.body.weight(isSelected ? .bold : .semibold))
+
+                    Spacer(minLength: 8)
+
+                    Text(homeSunnyHeatmapAccessibilityValue(recommendation))
+                        .font(.body)
+                        .multilineTextAlignment(.trailing)
+                }
+                .foregroundStyle(
+                    homeSunnyHeatmapTextColor(
+                        sunnyCityCount: recommendation.sunnyCityCount,
+                        isForecastDate: true,
+                        isSelected: isSelected
+                    )
+                )
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .frame(minHeight: 44)
+                .background(
+                    homeSunnyHeatmapFill(
+                        sunnyCityCount: recommendation.sunnyCityCount,
+                        maxSunnyCityCount: maxSunnyCityCount,
+                        isForecastDate: true
+                    ),
+                    in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(isSelected ? theme.colors.accent : .white.opacity(0.16), lineWidth: isSelected ? 1.65 : 0.7)
+                }
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(homeSunnyDayLabel(dayOffset: recommendation.id))
+            .accessibilityValue(homeSunnyHeatmapAccessibilityValue(recommendation))
+            .accessibilityInputLabels([Text(homeSunnyDayLabel(dayOffset: recommendation.id))])
+            .accessibilityAddTraits(isSelected ? .isSelected : [])
+        }
+    }
+
+    // MARK: - Sunny Calendar Rendering
 
     private func homeSunnyHeatmapDayCell(
         _ day: HomeSunnyCalendarDate,
@@ -845,14 +1051,38 @@ extension ContentView {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
                 .fill(fill)
 
-            Text(homeSunnyCalendarDayNumber(dayOffset: day.dayOffset))
-                .font(.system(size: 16, weight: homeSunnyCalendarDayWeight(day, isSelected: isSelected), design: .default).monospacedDigit())
-                .foregroundStyle(homeSunnyCalendarDayTextColor(day, isSelected: isSelected))
-                .lineLimit(1)
+            VStack(spacing: 0) {
+                Text(homeSunnyCalendarDayNumber(dayOffset: day.dayOffset))
+                    .font(.system(size: 16, weight: homeSunnyCalendarDayWeight(day, isSelected: isSelected), design: .default).monospacedDigit())
+
+                if (differentiateWithoutColor || colorSchemeContrast == .increased),
+                   let recommendation = day.recommendation,
+                   maxSunnyCityCount > 0 {
+                    // Accessibility: Expose heatmap intensity numerically when color
+                    // alone must not carry meaning or Increase Contrast is enabled.
+                    Text("\(Int((recommendation.sunnyCityCount / Double(maxSunnyCityCount) * 100).rounded()))%")
+                        .font(.system(size: 8, weight: .semibold, design: .rounded).monospacedDigit())
+                }
+            }
+            .foregroundStyle(
+                homeSunnyHeatmapTextColor(
+                    sunnyCityCount: day.recommendation?.sunnyCityCount ?? 0,
+                    isForecastDate: day.isForecastDate,
+                    isSelected: isSelected
+                )
+            )
+            .lineLimit(1)
         }
         .overlay {
             RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-                .stroke(isSelected ? theme.colors.accent : .white.opacity(0.16), lineWidth: isSelected ? 1.65 : 0.7)
+                // Accessibility: In Increase Contrast, every heatmap cell receives
+                // a measured outline in addition to its numeric intensity label.
+                .stroke(
+                    isSelected
+                        ? theme.colors.accent
+                        : (colorSchemeContrast == .increased ? theme.colors.primaryText : .white.opacity(0.16)),
+                    lineWidth: isSelected ? 1.65 : (colorSchemeContrast == .increased ? 1.25 : 0.7)
+                )
         }
         .aspectRatio(1, contentMode: .fit)
         .padding(2)
@@ -871,6 +1101,12 @@ extension ContentView {
             return theme.colors.glassFill.opacity(0.56)
         }
 
+        if colorSchemeContrast == .increased {
+            // Accessibility: The numeric percentage carries intensity in Increase
+            // Contrast, so sunny cells use one solid, measured-contrast fill.
+            return theme.colors.dotSun
+        }
+
         let fraction = max(0, min(1, sunnyCityCount / Double(maxSunnyCityCount)))
         let curvedFraction = pow(fraction, 1.55)
         return theme.colors.dotSun.opacity(0.16 + 0.79 * curvedFraction)
@@ -883,10 +1119,22 @@ extension ContentView {
         return isSelected ? .semibold : .medium
     }
 
-    private func homeSunnyCalendarDayTextColor(_ day: HomeSunnyCalendarDate, isSelected: Bool) -> Color {
-        if !day.isForecastDate {
-            return theme.colors.primaryText.opacity(0.45)
+    private func homeSunnyHeatmapTextColor(
+        sunnyCityCount: Double,
+        isForecastDate: Bool,
+        isSelected: Bool
+    ) -> Color {
+        if !isForecastDate {
+            return theme.colors.secondaryText
         }
+
+        if colorSchemeContrast == .increased,
+           colorScheme == .dark,
+           sunnyCityCount > 0 {
+            // Accessibility: Bright increased-contrast yellow needs a dark foreground.
+            return theme.colors.background
+        }
+
         return isSelected ? theme.colors.accent : theme.colors.primaryText
     }
 
@@ -895,10 +1143,12 @@ extension ContentView {
         return "\(Calendar.current.component(.day, from: date))"
     }
 
-    private func homeSunnyHeatmapAccessibilityLabel(_ day: HomeSunnyDayRecommendation) -> String {
+    // MARK: - Accessibility - Calendar Descriptions
+
+    private func homeSunnyHeatmapAccessibilityValue(_ day: HomeSunnyDayRecommendation) -> String {
         let totalCities = max(mapCities.count, 1)
         let percentSunny = Int((day.sunnyCityCount / Double(totalCities) * 100).rounded())
-        return "\(homeSunnyDayLabel(dayOffset: day.id)), \(percentSunny)% \(localizedString("Sunny", locale: locale))"
+        return "\(percentSunny)% \(localizedString("Sunny", locale: locale))"
     }
 
     private func homeSunnyCalendarInactiveAccessibilityLabel(_ day: HomeSunnyCalendarDate) -> String {
@@ -910,11 +1160,16 @@ extension ContentView {
             return localizedString("Today", locale: locale)
         }
 
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "dMMM", options: 0, locale: locale)
-        return formatter.string(from: Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date())
+        let date = Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
+        return date.formatted(
+            Date.FormatStyle.dateTime
+                .day()
+                .month(.abbreviated)
+                .locale(locale)
+        )
     }
+
+    // MARK: - Candidate List
 
     private func homeCandidateList(limit: Int? = nil, previewActive: Bool) -> some View {
         if previewActive {
@@ -1026,9 +1281,15 @@ extension ContentView {
                                 if !isShowingAllLists && listID.rawValue == weatherService.activeListID.rawValue {
                                     Image(systemName: "checkmark")
                                         .foregroundStyle(theme.colors.primaryText)
+                                        .accessibilityHidden(true)
                                 }
                             }
                         }
+                        .accessibilityAddTraits(
+                            !isShowingAllLists && listID.rawValue == weatherService.activeListID.rawValue
+                                ? .isSelected
+                                : []
+                        )
                     }
 
                     if managedLists.count > 1 {
@@ -1038,13 +1299,16 @@ extension ContentView {
                         } label: {
                             primaryMenuLabel(localizedString("View All Lists", locale: locale), systemImage: "list.bullet")
                         }
+                        // Accessibility: Expose the aggregate-list state without
+                        // relying on which menu row was most recently chosen.
+                        .accessibilityAddTraits(isShowingAllLists ? .isSelected : [])
                     }
 
                     Divider()
 
                     Button {
                         listEditMode = false
-                        showingListManagementSheet = true
+                        listManagementState.isPresented = true
                     } label: {
                         primaryMenuLabel(localizedString("Manage Lists", locale: locale), systemImage: "slider.horizontal.3")
                     }
@@ -1058,10 +1322,17 @@ extension ContentView {
                             Image(systemName: "chevron.down")
                                 .font(.system(size: 14, weight: .semibold))
                                 .foregroundStyle(theme.colors.accent)
+                                .accessibilityHidden(true)
                         }
                     }
                 }
             .menuOrder(.fixed)
+            // Accessibility: Match the Voice Control name to the list title that
+            // is visibly rendered (for example, "Europe").
+            .accessibilityLabel(titleOverride ?? toolbarTitle)
+            .accessibilityValue(localizedString("List of Cities", locale: locale))
+            .accessibilityInputLabels([Text(titleOverride ?? toolbarTitle)])
+            .accessibilitySortPriority(2)
         }
     }
 

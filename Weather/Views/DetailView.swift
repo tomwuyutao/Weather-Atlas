@@ -12,20 +12,15 @@ import MapKit
 // MARK: - City Detail Routing
 
 extension ContentView {
-    @ViewBuilder
-    func cityDetailDestination(for cityID: UUID) -> some View {
-        if let city = cityWeatherForDetailRoute(cityID) {
-            cityDetailView(for: city, route: .cityDetail(city.id))
-        }
-    }
-
-    func cityDetailView(for city: CityWeather, route: AppNavigationRoute) -> some View {
+    func cityDetailView(for city: CityWeather) -> some View {
         cityDetailScrollContent(for: city)
             .background {
                 theme.colors.background
                     .ignoresSafeArea()
             }
-            .navigationTitle("")
+            // Accessibility: The navigation bar is visually hidden, but a
+            // meaningful title still identifies this destination semantically.
+            .navigationTitle(localizedCityName(for: city.city))
             .navigationBarBackButtonHidden(true)
             .toolbar(.hidden, for: .navigationBar)
             .tint(theme.colors.primaryText)
@@ -46,25 +41,6 @@ extension ContentView {
         .transition(.opacity)
         .animation(.smooth(duration: 0.24), value: city.id)
         .scrollContentBackground(.hidden)
-    }
-
-    func cityWeatherForDetailRoute(_ cityID: UUID) -> CityWeather? {
-        if let city = mapCities.first(where: { $0.id == cityID }) {
-            return city
-        }
-        if let city = allListsWeatherData.first(where: { $0.id == cityID }) {
-            return city
-        }
-        if tappedCity?.id == cityID {
-            return tappedCity
-        }
-        if temporaryMapSearchCity?.id == cityID {
-            return temporaryMapSearchCity
-        }
-        if addCityDetailCity?.id == cityID {
-            return addCityDetailCity
-        }
-        return nil
     }
 
     // MARK: Sunniness Report
@@ -90,8 +66,11 @@ extension ContentView {
     }
 
     private func detailCityNameHeader(city: CityWeather, icon: String, symbolName: String) -> some View {
-        VStack(spacing: 9) {
-            Text(localizedCityName(for: city.city))
+        let cityName = localizedCityName(for: city.city)
+        let condition = detailConditionText(for: symbolName)
+
+        return VStack(spacing: 9) {
+            Text(cityName)
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
                 .foregroundStyle(theme.colors.titleText)
                 .lineLimit(1)
@@ -103,8 +82,9 @@ extension ContentView {
                 .font(.system(size: 52, weight: .semibold))
                 .frame(width: 62, height: 58)
                 .padding(.vertical, 8)
+                .accessibilityHidden(true)
 
-            Text(detailConditionText(for: symbolName))
+            Text(condition)
                 .font(.callout)
                 .foregroundStyle(theme.colors.primaryText)
                 .multilineTextAlignment(.center)
@@ -112,6 +92,10 @@ extension ContentView {
         .frame(maxWidth: .infinity)
         .padding(.top, 2)
         .padding(.bottom, 4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(cityName)
+        .accessibilityValue(condition)
+        .accessibilityAddTraits(.isHeader)
     }
 
     private func detailConditionText(for symbolName: String) -> String {
@@ -127,7 +111,13 @@ extension ContentView {
         let uvIndex = forecast.uvIndex
         let selectedHours = detailDisplayHours(for: city, forecast: forecast, filtersPastToday: false)
 
-        return LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+        // Accessibility: Factor tiles become a single column so their labels and
+        // values remain readable at accessibility Dynamic Type sizes.
+        let columns = dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.flexible()), GridItem(.flexible())]
+
+        return LazyVGrid(columns: columns, spacing: 10) {
             detailSunnyFactorTile(
                 title: localizedString("Sunny Hours", locale: locale),
                 value: detailSunnyWindowSummary(for: city, hours: selectedHours),
@@ -179,11 +169,17 @@ extension ContentView {
         systemImage: String,
         tint: Color
     ) -> some View {
+        // Accessibility: Replace the visual placeholder with a spoken explanation
+        // while leaving the compact dash unchanged on screen.
+        let accessibilityValue = value == "-"
+            ? localizedString("No forecast", locale: locale)
+            : value
         let tile = HStack(spacing: 10) {
             Image(systemName: systemImage)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(tint)
                 .frame(width: 24)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -202,6 +198,10 @@ extension ContentView {
         tile
             .padding(12)
             .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 18))
+            // Accessibility: Expose each visual tile as one concise label/value pair.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(title)
+            .accessibilityValue(accessibilityValue)
     }
 
     // MARK: Sunny Hours Overview
@@ -259,14 +259,24 @@ extension ContentView {
         }
         .frame(maxWidth: .infinity, alignment: .center)
         .padding(.top, 4)
+        // Accessibility: Each chart row already describes both sunny states and
+        // their ranges, so hiding the visual key avoids duplicate announcements.
+        .accessibilityHidden(true)
     }
 
     private func sunnyWindowLegendItem(title: String, color: Color) -> some View {
         HStack(spacing: 6) {
-            Circle()
-                .fill(color)
-                .frame(width: 7, height: 7)
-                .shadow(color: color.opacity(0.35), radius: 2)
+            Group {
+                if differentiateWithoutColor, title == localizedString("Partly Sunny", locale: locale) {
+                    Circle()
+                        .stroke(color, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
+                } else {
+                    Circle()
+                        .fill(color)
+                }
+            }
+            .frame(width: 7, height: 7)
+            .shadow(color: color.opacity(0.35), radius: 2)
 
             Text(title)
                 .font(.caption2.weight(.medium))
@@ -286,38 +296,43 @@ extension ContentView {
                 systemImage: "map.fill"
             )
 
-            DetailMapContextView(
-                selectedCity: city,
-                nearbyCities: nearbyCities,
-                selectedCityName: localizedCityName(for: city.city),
-                nearbyCityNames: Dictionary(uniqueKeysWithValues: nearbyCities.map {
-                    ($0.cityWeather.id, localizedCityName(for: $0.cityWeather.city))
-                }),
-                selectedDayOffset: selectedDayOffset,
-                locale: locale,
-                accent: theme.colors.accent,
-                water: theme.colors.mapOcean,
-                onOpenInMap: { openDetailCityOnMap(city) }
-            )
-            .frame(height: 190)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            // MapKit can absorb taps on the map surface, so place a dedicated
-            // transparent control above the preview. It always opens the map
-            // focused on the city whose detail screen is being shown.
-            .overlay {
+            ZStack {
+                DetailMapContextView(
+                    selectedCity: city,
+                    nearbyCities: nearbyCities,
+                    selectedCityName: localizedCityName(for: city.city),
+                    nearbyCityNames: Dictionary(uniqueKeysWithValues: nearbyCities.map {
+                        ($0.cityWeather.id, localizedCityName(for: $0.cityWeather.city))
+                    }),
+                    selectedDayOffset: selectedDayOffset,
+                    locale: locale,
+                    accent: theme.colors.accent,
+                    water: theme.colors.mapOcean
+                )
+                .allowsHitTesting(false)
+                // Accessibility: The map image is represented by the full-card
+                // semantic button layered immediately below.
+                .accessibilityHidden(true)
+
                 Button {
                     openDetailCityOnMap(city)
                 } label: {
-                    Color.clear
-                        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    Rectangle()
+                        .fill(.clear)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(localizedCityName(for: city.city))
-                .accessibilityHint("Opens map")
+                .accessibilityValue(localizedString("Maps", locale: locale))
+                .accessibilityInputLabels([Text(localizedCityName(for: city.city))])
+                .accessibilityHint(localizedString("Opens map", locale: locale))
             }
+            .frame(height: 190)
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(.white.opacity(0.10), lineWidth: 0.6)
+                    .allowsHitTesting(false)
             }
 
             if !nearbyCities.isEmpty {
@@ -329,6 +344,13 @@ extension ContentView {
                             detailNearbyCityRow(nearbyCity)
                         }
                         .buttonStyle(.plain)
+                        // Accessibility: Apply semantics to the actionable Button
+                        // itself so Voice Control uses the visibly rendered city name.
+                        .accessibilityLabel(localizedCityName(for: nearbyCity.cityWeather.city))
+                        .accessibilityValue(detailNearbyCityAccessibilityValue(nearbyCity))
+                        .accessibilityInputLabels([
+                            Text(localizedCityName(for: nearbyCity.cityWeather.city))
+                        ])
                     }
                 }
             }
@@ -341,6 +363,9 @@ extension ContentView {
         Label(title, systemImage: systemImage)
             .font(.headline.weight(.semibold))
             .foregroundStyle(theme.colors.primaryText)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(title)
+        .accessibilityAddTraits(.isHeader)
     }
 
     private func detailNearbyCityRow(_ nearbyCity: DetailNearbyCityContext) -> some View {
@@ -350,6 +375,7 @@ extension ContentView {
                 .font(.system(size: 15, weight: .semibold))
                 .nearbyCityIconStyle(for: icon)
                 .frame(width: CityListLayout.rankColumnWidth, height: 24)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(localizedCityName(for: nearbyCity.cityWeather.city))
@@ -363,7 +389,7 @@ extension ContentView {
             if nearbyCity.isSunnier {
                 Text(localizedString("Sunnier", locale: locale))
                     .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.colors.dotSun)
+                    .foregroundStyle(theme.colors.primaryText)
                     .padding(.horizontal, 8)
                     .frame(height: 28)
                     .background(theme.colors.dotSun.opacity(0.12), in: Capsule())
@@ -373,11 +399,26 @@ extension ContentView {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(theme.colors.secondaryText)
                 .frame(width: 18, height: 24)
+                .accessibilityHidden(true)
         }
         .padding(.horizontal, 10)
         .frame(height: 50)
         .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 14))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(localizedCityName(for: nearbyCity.cityWeather.city))
+        .accessibilityValue(detailNearbyCityAccessibilityValue(nearbyCity))
     }
+
+    // MARK: - Accessibility - Nearby City Descriptions
+
+    private func detailNearbyCityAccessibilityValue(_ nearbyCity: DetailNearbyCityContext) -> String {
+        let forecast = nearbyCity.cityWeather.forecast(for: selectedDayOffset)
+        let condition = SunninessScoring.condition(for: forecast.symbolName).localizedDisplayName(locale: locale)
+        guard nearbyCity.isSunnier else { return condition }
+        return "\(condition), \(localizedString("Sunnier", locale: locale))"
+    }
+
+    // MARK: - Nearby City Data
 
     private func nearbyCityWeatherIcon(for city: CityWeather) -> String {
         city.forecast(for: selectedDayOffset).weatherIcon
@@ -393,7 +434,6 @@ extension ContentView {
                 let candidate = sunnyCandidate(for: nearbyCity)
                 return DetailNearbyCityContext(
                     cityWeather: nearbyCity,
-                    score: candidate.score,
                     isSunnier: isNearbyCandidate(candidate, sunnierThan: selectedCandidate)
                 )
             }
@@ -421,8 +461,7 @@ extension ContentView {
     }
 
     private func selectDetailNearbyCity(_ city: CityWeather) {
-        tappedCity = city
-        pushRoute(.cityDetail(city.id))
+        pushRoute(.cityDetail(city))
     }
 
     private func openDetailCityOnMap(_ city: CityWeather) {
@@ -442,15 +481,10 @@ extension ContentView {
                 return
             }
 
-            // Clear first so the destination observes a new focus request even
-            // when the same city was previously selected on the map.
-            centerOnCityTrigger = nil
-            tappedCity = revealedCity
+            selectedMapCity = revealedCity
             showingMapExpandedCard = false
-            pushRoute(.map)
-
-            await Task.yield()
-            centerOnCityTrigger = revealedCity
+            navigateToMap()
+            centerMap(on: revealedCity)
             showMapMarkerCard(revealedCity)
         }
     }
@@ -468,13 +502,14 @@ extension ContentView {
         }()
         return forecast.hourlyForecasts
             .filter { forecast in
-                guard (6...21).contains(forecast.hour) else { return false }
+                let hour = forecast.hour(in: city.timeZone)
+                guard (6...21).contains(hour) else { return false }
                 if let currentHour {
-                    return forecast.hour >= currentHour
+                    return hour >= currentHour
                 }
                 return true
             }
-            .sorted { $0.hour < $1.hour }
+            .sorted { $0.date < $1.date }
     }
 
     // MARK: Sunny Hours Computation
@@ -491,10 +526,10 @@ extension ContentView {
             let forecast = city.forecast(for: dayOffset)
             let daylightHours = SunninessScoring.daytimeHours(for: forecast, timeZone: city.timeZone)
             let sunnyHours = daylightHours.compactMap { hour -> Int? in
-                detailHourlySunnyLevel(hour) == 2 ? hour.hour : nil
+                detailHourlySunnyLevel(hour) == 2 ? hour.hour(in: city.timeZone) : nil
             }
             let partlySunnyHours = daylightHours.compactMap { hour -> Int? in
-                detailHourlySunnyLevel(hour) == 1 ? hour.hour : nil
+                detailHourlySunnyLevel(hour) == 1 ? hour.hour(in: city.timeZone) : nil
             }
             return DetailSunnyWindowRow(
                 id: dayOffset,
@@ -509,11 +544,9 @@ extension ContentView {
         if dayOffset == 0 {
             return localizedString("Today", locale: locale)
         }
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.timeZone = timeZone
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "dMMM", options: 0, locale: locale)
-        return formatter.string(from: forecastDate(dayOffset: dayOffset, timeZone: timeZone))
+        var format = Date.FormatStyle.dateTime.day().month(.abbreviated).locale(locale)
+        format.timeZone = timeZone
+        return forecastDate(dayOffset: dayOffset, timeZone: timeZone).formatted(format)
     }
 
     private func forecastDate(dayOffset: Int, timeZone: TimeZone) -> Date {
@@ -534,7 +567,7 @@ extension ContentView {
     }
 
     private func detailSunnyWindowSummary(for city: CityWeather, hours: [HourlyForecast]) -> String {
-        guard let range = SunninessScoring.longestSunnyHourRange(in: hours) else {
+        guard let range = SunninessScoring.longestSunnyHourRange(in: hours, timeZone: city.timeZone) else {
             return localizedString("No Sun", locale: locale)
         }
 
@@ -577,6 +610,9 @@ private struct DetailSunnyWindowOverviewChart: View {
     let primaryText: Color
     let secondaryText: Color
     let onSelectDay: (Int) -> Void
+    // Accessibility: Replace color-only chart distinctions with line patterns
+    // when the system's Differentiate Without Color setting is enabled.
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
     private let axisHours = [6, 8, 10, 12, 14, 16, 18, 20]
     private let timelineStartHour = 6.0
@@ -590,6 +626,7 @@ private struct DetailSunnyWindowOverviewChart: View {
         let id: String
         let range: ClosedRange<Int>
         let color: Color
+        let isPartlySunny: Bool
     }
 
     private struct TimelineSpan: Identifiable {
@@ -636,6 +673,7 @@ private struct DetailSunnyWindowOverviewChart: View {
             }
             .frame(width: timelineWidth, height: axisHeight)
         }
+        .accessibilityHidden(true)
     }
 
     private func gridLines(labelWidth: CGFloat, timelineWidth: CGFloat) -> some View {
@@ -685,6 +723,20 @@ private struct DetailSunnyWindowOverviewChart: View {
                                                 width: rangeWidth(for: segment.range, timelineWidth: timelineWidth),
                                                 height: capsuleHeight
                                             )
+                                            .overlay {
+                                                if differentiateWithoutColor {
+                                                    // Accessibility: Solid and dashed outlines distinguish
+                                                    // sunny and partly sunny intervals without relying on hue.
+                                                    Rectangle()
+                                                        .stroke(
+                                                            primaryText.opacity(0.82),
+                                                            style: StrokeStyle(
+                                                                lineWidth: 1,
+                                                                dash: segment.isPartlySunny ? [2, 2] : []
+                                                            )
+                                                        )
+                                                }
+                                            }
                                             .offset(x: xPosition(for: Double(segment.range.lowerBound), width: timelineWidth) - spanStartX)
                                     }
                                 }
@@ -703,9 +755,56 @@ private struct DetailSunnyWindowOverviewChart: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(row.dayLabel)
+                .accessibilityValue(accessibilitySummary(for: row))
+                .accessibilityAddTraits(row.id == selectedDayOffset ? [.isSelected] : [])
             }
         }
     }
+
+    // MARK: - Accessibility - Chart Descriptions
+
+    private func accessibilitySummary(for row: ContentView.DetailSunnyWindowRow) -> String {
+        var summaries: [String] = []
+
+        if !row.sunnyRanges.isEmpty {
+            summaries.append(
+                "\(localizedString("Sunny", locale: locale)): \(accessibilityRanges(row.sunnyRanges))"
+            )
+        }
+
+        if !row.partlySunnyRanges.isEmpty {
+            summaries.append(
+                "\(localizedString("Partly Sunny", locale: locale)): \(accessibilityRanges(row.partlySunnyRanges))"
+            )
+        }
+
+        return summaries.isEmpty
+            ? localizedString("No Sun", locale: locale)
+            : summaries.joined(separator: "; ")
+    }
+
+    private func accessibilityRanges(_ ranges: [ClosedRange<Int>]) -> String {
+        ranges.map { range in
+            // Accessibility: Speak localized clock times instead of terse numeric
+            // chart-axis labels such as "06 - 09".
+            let start = SunninessScoring.formattedHour(
+                range.lowerBound,
+                timeZone: timeZone,
+                locale: locale
+            )
+            let end = SunninessScoring.formattedHour(
+                range.upperBound + 1,
+                timeZone: timeZone,
+                locale: locale
+            )
+            return "\(start) - \(end)"
+        }
+        .joined(separator: ", ")
+    }
+
+    // MARK: - Chart Labels and Formatting
 
     private func dayLabel(_ row: ContentView.DetailSunnyWindowRow) -> some View {
         let isSelected = row.id == selectedDayOffset
@@ -717,17 +816,8 @@ private struct DetailSunnyWindowOverviewChart: View {
     }
 
     private func formattedAxisHour(_ hour: Int) -> String {
-        var calendar = Calendar.current
-        calendar.timeZone = timeZone
-        var components = calendar.dateComponents([.year, .month, .day], from: Date())
-        components.hour = hour
-        components.minute = 0
-        let date = calendar.date(from: components) ?? Date()
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.timeZone = timeZone
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "HH", options: 0, locale: locale)
-        return formatter.string(from: date)
+        // Chart axes must remain unambiguous regardless of the device's 12-hour setting.
+        String(format: "%02d", hour % 24)
     }
 
     private func timelineSpans(for row: ContentView.DetailSunnyWindowRow) -> [TimelineSpan] {
@@ -770,10 +860,20 @@ private struct DetailSunnyWindowOverviewChart: View {
 
     private func timelineSegments(for row: ContentView.DetailSunnyWindowRow) -> [TimelineSegment] {
         let partlySunnySegments = row.partlySunnyRanges.enumerated().map { index, range in
-            TimelineSegment(id: "partly-\(index)-\(range.lowerBound)-\(range.upperBound)", range: range, color: partlySunnyColor)
+            TimelineSegment(
+                id: "partly-\(index)-\(range.lowerBound)-\(range.upperBound)",
+                range: range,
+                color: partlySunnyColor,
+                isPartlySunny: true
+            )
         }
         let sunnySegments = row.sunnyRanges.enumerated().map { index, range in
-            TimelineSegment(id: "sunny-\(index)-\(range.lowerBound)-\(range.upperBound)", range: range, color: sunnyColor)
+            TimelineSegment(
+                id: "sunny-\(index)-\(range.lowerBound)-\(range.upperBound)",
+                range: range,
+                color: sunnyColor,
+                isPartlySunny: false
+            )
         }
 
         return (partlySunnySegments + sunnySegments).sorted {
@@ -801,7 +901,6 @@ private struct DetailSunnyWindowOverviewChart: View {
 
 private struct DetailNearbyCityContext: Identifiable {
     let cityWeather: CityWeather
-    let score: Double
     let isSunnier: Bool
 
     var id: UUID { cityWeather.id }
@@ -816,12 +915,15 @@ private struct DetailMapContextView: View {
     let locale: Locale
     let accent: Color
     let water: Color
-    let onOpenInMap: () -> Void
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.appTheme) private var theme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var cameraPosition: MapCameraPosition = .automatic
     private let mapSaturation: Double = 0.72
 
+    // Accessibility: Allow map labels and their padding to grow with Dynamic Type
+    // while keeping the compact marker treatment at the default text size.
     private var usesExpandedMarkers: Bool {
         dynamicTypeSize > .large
     }
@@ -861,12 +963,7 @@ private struct DetailMapContextView: View {
                 coordinate: CLLocationCoordinate2D(latitude: selectedCity.city.latitude, longitude: selectedCity.city.longitude),
                 anchor: .center
             ) {
-                Button {
-                    onOpenInMap()
-                } label: {
-                    selectedCityMarker
-                }
-                .buttonStyle(.plain)
+                selectedCityMarker
             }
 
             ForEach(nearbyCities) { nearbyCity in
@@ -875,21 +972,13 @@ private struct DetailMapContextView: View {
                     coordinate: CLLocationCoordinate2D(latitude: nearbyCity.cityWeather.city.latitude, longitude: nearbyCity.cityWeather.city.longitude),
                     anchor: .center
                 ) {
-                    Button {
-                        onOpenInMap()
-                    } label: {
-                        nearbyWeatherMarker(for: nearbyCity)
-                    }
-                    .buttonStyle(.plain)
+                    nearbyWeatherMarker(for: nearbyCity)
                 }
             }
         }
         .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
         .saturation(mapSaturation)
         .background(water)
-        .onTapGesture {
-            onOpenInMap()
-        }
         .onAppear {
             fitCities()
         }
@@ -907,16 +996,25 @@ private struct DetailMapContextView: View {
 
             Text(selectedCityName)
                 .font(.caption.weight(.semibold))
-                .foregroundStyle(AppTheme.shared.colors.primaryText)
+                .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(1)
         }
         .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, selectedMarkerHorizontalPadding)
         .padding(.vertical, selectedMarkerVerticalPadding)
-        .background(.thinMaterial, in: Capsule())
+        .background {
+            if colorSchemeContrast == .increased {
+                Capsule().fill(theme.colors.glassFill)
+            } else {
+                Capsule().fill(.thinMaterial)
+            }
+        }
         .overlay {
             Capsule()
-                .stroke(accent.opacity(0.50), lineWidth: 2)
+                .stroke(
+                    colorSchemeContrast == .increased ? theme.colors.primaryText : accent.opacity(0.50),
+                    lineWidth: 2
+                )
         }
         .shadow(color: accent.opacity(0.20), radius: 8, y: 2)
         .saturation(markerSaturationCompensation)
@@ -931,14 +1029,25 @@ private struct DetailMapContextView: View {
 
             Text(nearbyCityNames[nearbyCity.cityWeather.id] ?? nearbyCity.cityWeather.city.localizedName(locale: locale))
                 .font(.caption2.weight(.semibold))
-                .foregroundStyle(AppTheme.shared.colors.primaryText)
+                .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(1)
 
         }
         .fixedSize(horizontal: true, vertical: false)
         .padding(.horizontal, nearbyMarkerHorizontalPadding)
         .padding(.vertical, nearbyMarkerVerticalPadding)
-        .background(.thinMaterial, in: Capsule())
+        .background {
+            if colorSchemeContrast == .increased {
+                Capsule().fill(theme.colors.glassFill)
+            } else {
+                Capsule().fill(.thinMaterial)
+            }
+        }
+        .overlay {
+            if colorSchemeContrast == .increased {
+                Capsule().stroke(theme.colors.primaryText, lineWidth: 1.5)
+            }
+        }
         .shadow(color: .black.opacity(0.10), radius: 6, y: 2)
         .saturation(markerSaturationCompensation)
         .accessibilityLabel(nearbyCityNames[nearbyCity.cityWeather.id] ?? nearbyCity.cityWeather.city.localizedName(locale: locale))
@@ -1004,6 +1113,8 @@ private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
     let axisHours = [6, 8, 10, 12, 14, 16, 18, 20]
     let selectedPattern = cloudPattern[dayOffset % cloudPattern.count]
     let pairedClouds = Dictionary(uniqueKeysWithValues: zip(axisHours, selectedPattern))
+    let baseDate = Calendar.current.startOfDay(for: Date())
+    let date = Calendar.current.date(byAdding: .day, value: dayOffset, to: baseDate) ?? baseDate
     let hourly = (0..<24).map { hour -> HourlyForecast in
         let nearestAxisHour = axisHours.min { abs($0 - hour) < abs($1 - hour) } ?? 12
         let cloud = pairedClouds[nearestAxisHour] ?? 0.4
@@ -1019,7 +1130,7 @@ private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
         }
 
         return HourlyForecast(
-            hour: hour,
+            date: Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: date) ?? date,
             symbolName: symbol
         )
     }
@@ -1027,10 +1138,9 @@ private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
     let averageCloud = selectedPattern.reduce(0, +) / Double(selectedPattern.count)
     let sunnyDay = averageCloud < 0.42
     let symbol = sunnyDay ? "sun.max.fill" : averageCloud < 0.65 ? "cloud.sun" : "cloud"
-    let baseDate = Calendar.current.startOfDay(for: Date())
-    let date = Calendar.current.date(byAdding: .day, value: dayOffset, to: baseDate) ?? baseDate
 
     return DailyForecast(
+        date: date,
         dayOffset: dayOffset,
         dailyLow: 20 + Double(dayOffset % 3),
         dailyHigh: 28 + Double(dayOffset % 6),
@@ -1046,8 +1156,5 @@ private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
 }
 
 #Preview("Detail View") {
-    ContentView(
-        initialRoute: .cityDetail(detailPreviewCity.id),
-        previewCityWeather: detailPreviewCity
-    )
+    ContentView(initialRoute: .cityDetail(detailPreviewCity))
 }

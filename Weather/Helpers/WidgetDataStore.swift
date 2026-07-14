@@ -11,9 +11,7 @@ import WidgetKit
 struct WidgetDataCity: Codable, Hashable, Identifiable {
     let id: String
     let cityName: String
-    let temperature: String
-    let cloudCover: String
-    let conditionIcon: String
+    let timeZoneIdentifier: String?
     let daytimeHours: [Int]
     let sunnyHours: [Int]
     let partlySunnyHours: [Int]
@@ -22,15 +20,10 @@ struct WidgetDataCity: Codable, Hashable, Identifiable {
 struct WidgetDataList: Codable, Hashable, Identifiable {
     let id: String
     let displayName: String
-    let listName: String
-    let title: String
-    let topCityIDs: [String]
     let cities: [WidgetDataCity]
 }
 
 struct WidgetDataCatalog: Codable, Hashable {
-    let activeListID: String
-    let updatedAt: Date
     let lists: [WidgetDataList]
 }
 
@@ -39,10 +32,17 @@ enum WidgetDataStore {
     static let catalogKey = "bestSunnyPlacesWidgetCatalog"
     static let kind = "BestSunnyPlacesWidget"
 
-    static func cityIdentifier(for city: City, in listID: CityListID) -> String {
-        let latitude = String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), city.latitude)
-        let longitude = String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), city.longitude)
-        return "\(listID.rawValue)|\(city.country)|\(latitude)|\(longitude)"
+    static func cityIdentifier(country: String, latitude: Double, longitude: Double, listID: String) -> String {
+        let latitude = String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), latitude)
+        let longitude = String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), longitude)
+        return "\(listID)|\(country)|\(latitude)|\(longitude)"
+    }
+
+    static func catalog() -> WidgetDataCatalog? {
+        guard let data = UserDefaults(suiteName: appGroupIdentifier)?.data(forKey: catalogKey) else {
+            return nil
+        }
+        return try? JSONDecoder().decode(WidgetDataCatalog.self, from: data)
     }
 
     static func save(_ catalog: WidgetDataCatalog) {

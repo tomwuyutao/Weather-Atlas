@@ -50,6 +50,7 @@
 		5908967630063DF500EB20E0 /* Exceptions for "Weather" folder in "WeatherWidgets" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Helpers/WidgetDataStore.swift,
 				Views/Widgets.swift,
 			);
 			target = A10000000000000000000008 /* WeatherWidgets */;

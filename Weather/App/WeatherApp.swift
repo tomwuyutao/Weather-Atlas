@@ -163,22 +163,6 @@ struct WeatherApp: App {
             UserDefaults.standard.set(true, forKey: weatherCacheMigrationKey)
         }
         
-        // Keep native bars transparent so Liquid Glass floats over app content.
-        let navBarAppearance = UINavigationBarAppearance()
-        navBarAppearance.configureWithTransparentBackground()
-        navBarAppearance.backgroundColor = .clear
-        navBarAppearance.shadowColor = .clear
-        UINavigationBar.appearance().standardAppearance = navBarAppearance
-        UINavigationBar.appearance().scrollEdgeAppearance = navBarAppearance
-        UINavigationBar.appearance().compactAppearance = navBarAppearance
-        UINavigationBar.appearance().compactScrollEdgeAppearance = navBarAppearance
-
-        let tabBarAppearance = UITabBarAppearance()
-        tabBarAppearance.configureWithTransparentBackground()
-        tabBarAppearance.backgroundColor = .clear
-        tabBarAppearance.shadowColor = .clear
-        UITabBar.appearance().standardAppearance = tabBarAppearance
-        UITabBar.appearance().scrollEdgeAppearance = tabBarAppearance
     }
 
     var body: some Scene {
@@ -210,12 +194,16 @@ private struct ThemeRoot: View {
 
 /// Inner layer: reads `colorScheme` *after* `preferredColorScheme` has been applied,
 /// so automatic mode sees the correct system value and forced modes see their override.
-/// Also keeps `AppTheme.shared.systemScheme` in sync so view modifiers update reactively.
+/// Also keeps the shared theme's system scheme in sync for environment-driven modifiers.
 private struct ThemeContent: View {
     let theme: AppTheme
     let appLocale: Locale
     @Environment(\.colorScheme) private var colorScheme
+    // Accessibility: Propagate Increase Contrast into the app's custom color palettes.
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.dynamicTypeSize) private var systemDynamicTypeSize
+    // Accessibility: Read Reduce Motion once at the app root so every screen follows it.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("useSystemTextSize") private var useSystemTextSize: Bool = true
     @AppStorage("appTextSizeLevel") private var appTextSizeLevel: Int = AppTextSizeLevel.defaultRawValue
 
@@ -228,45 +216,24 @@ private struct ThemeContent: View {
     }
 
     var body: some View {
-        let resolvedColors = theme.colors(for: colorScheme)
+        let resolvedColors = theme.colors(for: colorScheme, contrast: colorSchemeContrast)
         ContentView()
             .environment(\.locale, appLocale)
-            .defaultFont()
             .environment(\.dynamicTypeSize, resolvedDynamicTypeSize)
             .environment(\.appTheme, theme)
-            .environment(\.themeColors, resolvedColors)
             .tint(resolvedColors.accent)
+            // Accessibility: Disable app-supplied animation without altering state transitions.
+            .transaction { transaction in
+                if reduceMotion {
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
+            }
             .onChange(of: colorScheme, initial: true) { _, newScheme in
                 theme.systemScheme = newScheme
             }
-    }
-}
-
-// MARK: - Shared View and Font Helpers
-
-extension View {
-    func defaultFont() -> some View {
-        self
-    }
-}
-
-extension Font {
-    static func avenir(_ style: TextStyle, weight: Font.Weight = .regular) -> Font {
-        let size: CGFloat
-        switch style {
-        case .largeTitle: size = 34
-        case .title: size = 28
-        case .title2: size = 22
-        case .title3: size = 20
-        case .headline: size = 17
-        case .subheadline: size = 15
-        case .body: size = 17
-        case .callout: size = 16
-        case .footnote: size = 13
-        case .caption: size = 12
-        case .caption2: size = 11
-        @unknown default: size = 17
-        }
-        return .system(size: size, weight: weight, design: .default)
+            .onChange(of: colorSchemeContrast, initial: true) { _, newContrast in
+                theme.systemContrast = newContrast
+            }
     }
 }

@@ -10,11 +10,6 @@ import SwiftUI
 import CoreLocation
 import MapKit
 
-enum MapRecenterRequest: Equatable {
-    case weatherCities
-    case listCoordinates
-}
-
 // MARK: - Overlay Menu
 
 extension ContentView {
@@ -29,6 +24,11 @@ extension ContentView {
         ]
     }
 
+    private var selectedMapOverlayLabel: String {
+        mapOverlayOptions.first(where: { $0.mode == mapOverlayMode })?.label
+            ?? localizedString("Sunniness", locale: locale)
+    }
+
     var mapOverlayMenu: some View {
         Menu {
             ForEach(mapOverlayOptions, id: \.mode) { option in
@@ -36,11 +36,11 @@ extension ContentView {
                     Haptics.lightImpact()
                     withAnimation(.easeInOut(duration: 0.2)) {
                         mapOverlayMode = option.mode
-                        forceReloadMapDots()
                     }
                 } label: {
                     primaryMenuLabel(option.label, systemImage: mapOverlayMode == option.mode ? "checkmark" : option.icon)
                 }
+                .accessibilityAddTraits(mapOverlayMode == option.mode ? .isSelected : [])
             }
         } label: {
             Image(systemName: "square.3.layers.3d")
@@ -48,11 +48,20 @@ extension ContentView {
                 .imageScale(.medium)
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 32, height: 36)
+                // Accessibility: Expand the semantic menu target while negative
+                // outer padding preserves the visible glass-control spacing.
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
+        .padding(.horizontal, -6)
+        .padding(.vertical, -4)
         .tint(theme.colors.accent)
         .menuOrder(.fixed)
+        .accessibilityLabel(localizedString("Weather", locale: locale))
+        .accessibilityValue(selectedMapOverlayLabel)
+        // Accessibility: Give Voice Control a stable spoken target for this
+        // icon-only menu without changing its visible presentation.
+        .accessibilityInputLabels([Text(localizedString("Weather", locale: locale))])
     }
 
     @ViewBuilder
@@ -90,30 +99,38 @@ extension ContentView {
                 .font(.system(size: bottomToolbarIconSize, weight: .regular))
                 .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 32, height: 36)
+                // Accessibility: Use the full recommended target without
+                // changing the rendered SF Symbol or glass capsule.
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
+        .padding(.horizontal, -6)
+        .padding(.vertical, -4)
         .menuOrder(.fixed)
         .tint(theme.colors.accent)
+        .accessibilityLabel(localizedString("Menu", locale: locale))
+        .accessibilityInputLabels([Text(localizedString("Menu", locale: locale))])
     }
 
     var mapControls: some View {
         topToolbarActionCapsule(spacing: 18) {
             Button {
-                mapRecenterRequest = nil
-                DispatchQueue.main.async {
-                    mapRecenterRequest = .listCoordinates
-                }
+                centerMapOnDots(useListCoordinates: true)
             } label: {
                 Image(systemName: "dot.squareshape.split.2x2")
                     .font(.system(size: bottomToolbarIconSize, weight: .regular))
                     .imageScale(.medium)
                     .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 32, height: 36)
+                    // Accessibility: The complete 44-point label is tappable.
+                    .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
+            .padding(.horizontal, -6)
+            .padding(.vertical, -4)
             .tint(theme.colors.primaryText)
+            .accessibilityLabel(localizedString("Cities", locale: locale))
+            .accessibilityInputLabels([Text(localizedString("Cities", locale: locale))])
 
             mapOverlayMenu
                 .font(.system(size: bottomToolbarIconSize, weight: .regular))
@@ -123,6 +140,9 @@ extension ContentView {
                 .font(.system(size: bottomToolbarIconSize, weight: .regular))
                 .imageScale(.medium)
         }
+        // Accessibility: Keep persistent map controls ahead of the interactive
+        // annotation field in VoiceOver's traversal order.
+        .accessibilitySortPriority(1)
     }
 }
 
@@ -133,17 +153,14 @@ struct AppleWeatherMapView: View {
     let selectedDayOffset: Int
     let overlayMode: String
     let filterSunny: Bool
-    let markerReloadID: Int
-    let selectedCityID: UUID?
-    @Binding var recenterRequest: MapRecenterRequest?
-    let centerOnCity: CityWeather?
-    let onMarkerTap: (CityWeather) -> Void
-    let onMapClick: (() -> Void)?
-    let onMapGestureStart: (() -> Void)?
+    @Binding var cameraPosition: MapCameraPosition
+    @Binding var selectedCityID: UUID?
 
-    @Environment(\.colorScheme) private var colorScheme
-    @State private var cameraPosition: MapCameraPosition = .region(Self.defaultRegion)
-    @State private var lastCenteredCityID: UUID?
+    @Environment(\.appTheme) private var theme
+    @Environment(\.locale) private var locale
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
 
     private let mapSaturation: Double = 0.72
 
@@ -154,64 +171,44 @@ struct AppleWeatherMapView: View {
     // MARK: Body and Camera
 
     var body: some View {
-        MapReader { proxy in
-            Map(position: $cameraPosition, interactionModes: .all) {
-                ForEach(visibleCities) { cityWeather in
-                    let isSelected = selectedCityID == cityWeather.id
-                    Annotation(
-                        "",
-                        coordinate: CLLocationCoordinate2D(
-                            latitude: cityWeather.city.latitude,
-                            longitude: cityWeather.city.longitude
-                        ),
-                        anchor: .center
-                    ) {
-                        Button {
-                            onMarkerTap(cityWeather)
-                        } label: {
-                            WeatherMapMarker(
-                                color: markerColor(for: cityWeather),
-                                isSelected: isSelected
-                            )
-                            .id(markerIdentity(for: cityWeather, isSelected: isSelected))
-                            .saturation(markerSaturationCompensation)
-                        }
-                        .buttonStyle(.plain)
+        Map(position: $cameraPosition) {
+            ForEach(visibleCities) { cityWeather in
+                Annotation(
+                    "",
+                    coordinate: CLLocationCoordinate2D(
+                        latitude: cityWeather.city.latitude,
+                        longitude: cityWeather.city.longitude
+                    ),
+                    anchor: .center
+                ) {
+                    Button {
+                        selectedCityID = cityWeather.id
+                    } label: {
+                        WeatherMapMarker(
+                            color: markerColor(for: cityWeather),
+                            isSelected: selectedCityID == cityWeather.id,
+                            differentiatingText: markerDifferentiatingText(for: cityWeather),
+                            differentiatingSymbol: markerDifferentiatingSymbol(for: cityWeather)
+                        )
+                        .saturation(markerSaturationCompensation)
                     }
+                    .buttonStyle(.plain)
+                    // Accessibility: Combine the marker's visual layers into one
+                    // city control with the active metric exposed as its value.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(cityWeather.city.localizedName(locale: locale))
+                    .accessibilityValue(markerAccessibilityValue(for: cityWeather))
+                    .accessibilityInputLabels(markerAccessibilityInputLabels(for: cityWeather))
+                    .accessibilityAddTraits(selectedCityID == cityWeather.id ? [.isSelected] : [])
                 }
             }
-            .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
-            .saturation(mapSaturation)
-            .safeAreaPadding(.leading, 16)
-            .safeAreaPadding(.bottom, 10)
-            .onMapCameraChange(frequency: .onEnd) { _ in
-                onMapGestureStart?()
-            }
-            .simultaneousGesture(
-                SpatialTapGesture()
-                    .onEnded { value in
-                        guard proxy.convert(value.location, from: .local) != nil else { return }
-                        onMapClick?()
-                    }
-            )
         }
+        .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
+        .saturation(mapSaturation)
+        .safeAreaPadding(.leading, 16)
+        .safeAreaPadding(.bottom, 10)
         .onAppear {
             fitVisibleContent()
-        }
-        .onChange(of: markerReloadID) { _, _ in
-            fitVisibleContent()
-        }
-        .onChange(of: recenterRequest) { _, request in
-            guard let request else { return }
-            fitVisibleContent(using: request)
-            recenterRequest = nil
-        }
-        .onChange(of: centerOnCity?.id) { _, _ in
-            guard let centerOnCity, centerOnCity.id != lastCenteredCityID else { return }
-            lastCenteredCityID = centerOnCity.id
-            withAnimation(.smooth(duration: 0.35)) {
-                cameraPosition = .region(Self.region(centeredOn: centerOnCity.city, span: 0.35))
-            }
         }
     }
 
@@ -225,19 +222,92 @@ struct AppleWeatherMapView: View {
         }
     }
 
-    private func fitVisibleContent(using request: MapRecenterRequest = .weatherCities) {
-        let citiesToFit = request == .listCoordinates ? fitCities : visibleCities.map(\.city)
-        let region = Self.region(for: citiesToFit)
+    private func fitVisibleContent() {
+        let citiesToFit = fitCities.isEmpty ? visibleCities.map(\.city) : fitCities
+        let region = MapRegionFitting.region(for: citiesToFit)
         withAnimation(.smooth(duration: 0.35)) {
             cameraPosition = .region(region)
         }
+    }
+
+    // MARK: - Accessibility - Marker Descriptions
+
+    private func markerAccessibilityValue(for cityWeather: CityWeather) -> String {
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        let metricName: String
+        let metricValue: String
+
+        switch overlayMode {
+        case "temperature":
+            let celsius = selectedDayOffset == 0 ? cityWeather.temperature : forecast.dailyHigh
+            metricName = localizedString("Temperature", locale: locale)
+            metricValue = (TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic).display(celsius)
+        case "cloudCover":
+            metricName = localizedString("Cloud Cover", locale: locale)
+            metricValue = forecast.cloudCover.map { "\(Int(($0 * 100).rounded()))%" }
+                ?? localizedString("No forecast", locale: locale)
+        case "precipitation":
+            metricName = localizedString("Rain", locale: locale)
+            metricValue = forecast.precipitationChance.map { "\(Int(($0 * 100).rounded()))%" }
+                ?? localizedString("No forecast", locale: locale)
+        case "windSpeed":
+            metricName = localizedString("Wind", locale: locale)
+            metricValue = forecast.windSpeed.map {
+                (DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic).displayWindSpeed($0)
+            } ?? localizedString("No forecast", locale: locale)
+        case "uvIndex":
+            metricName = localizedString("UV Index", locale: locale)
+            metricValue = forecast.uvIndex.map(String.init)
+                ?? localizedString("No forecast", locale: locale)
+        default:
+            metricName = localizedString("Sunniness", locale: locale)
+            metricValue = SunninessScoring.condition(for: forecast.symbolName).localizedDisplayName(locale: locale)
+        }
+
+        return "\(metricName), \(metricValue)"
+    }
+
+    private func markerAccessibilityInputLabels(for cityWeather: CityWeather) -> [Text] {
+        var labels = [Text(cityWeather.city.localizedName(locale: locale))]
+        if let visibleMetric = markerDifferentiatingText(for: cityWeather) {
+            // Accessibility: When Differentiate Without Color displays text inside
+            // a marker, let Voice Control target that same visible metric too.
+            labels.append(Text(visibleMetric))
+        }
+        return labels
+    }
+
+    private func markerDifferentiatingText(for cityWeather: CityWeather) -> String? {
+        let forecast = cityWeather.forecast(for: selectedDayOffset)
+        switch overlayMode {
+        case "temperature":
+            let celsius = selectedDayOffset == 0 ? cityWeather.temperature : forecast.dailyHigh
+            return (TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic).display(celsius)
+        case "cloudCover":
+            return forecast.cloudCover.map { "\(Int(($0 * 100).rounded()))%" } ?? "-"
+        case "precipitation":
+            return forecast.precipitationChance.map { "\(Int(($0 * 100).rounded()))%" } ?? "-"
+        case "windSpeed":
+            return forecast.windSpeed.map {
+                (DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic).displayWindSpeed($0)
+            } ?? "-"
+        case "uvIndex":
+            return forecast.uvIndex.map(String.init) ?? "-"
+        default:
+            return nil
+        }
+    }
+
+    private func markerDifferentiatingSymbol(for cityWeather: CityWeather) -> String? {
+        guard overlayMode == "weather" else { return nil }
+        return cityWeather.forecast(for: selectedDayOffset).weatherIcon
     }
 
     // MARK: Marker Coloring
 
     private func markerColor(for cityWeather: CityWeather) -> Color {
         let forecast = cityWeather.forecast(for: selectedDayOffset)
-        let colors = AppTheme.shared.colors
+        let colors = theme.colors
 
         switch overlayMode {
         case "temperature":
@@ -256,73 +326,66 @@ struct AppleWeatherMapView: View {
             guard let uvIndex = forecast.uvIndex else { return unavailableOverlayColor(colors: colors) }
             return uvColor(index: uvIndex, colors: colors)
         default:
-            return SunninessScoring.condition(for: forecast.symbolName).dotColor
+            return SunninessScoring.condition(for: forecast.symbolName).dotColor(for: colors)
         }
     }
 
     private func temperatureColor(celsius: Double, colors: ThemeColors) -> Color {
-        let partlySunny = colors.dotPartlyCloudy.compatMix(with: colors.filterSunny, by: 0.18)
+        let partlySunny = colors.dotPartlyCloudy.interpolated(with: colors.filterSunny, by: 0.18)
         if celsius <= 0 {
-            return colors.dotRain.compatMix(with: colors.dotDrizzle, by: clamped((celsius + 20) / 20))
+            return colors.dotRain.interpolated(with: colors.dotDrizzle, by: clamped((celsius + 20) / 20))
         } else if celsius <= 10 {
-            return colors.dotDrizzle.compatMix(with: colors.dotCloudy, by: clamped(celsius / 10))
+            return colors.dotDrizzle.interpolated(with: colors.dotCloudy, by: clamped(celsius / 10))
         } else if celsius <= 20 {
-            return colors.dotCloudy.compatMix(with: partlySunny, by: clamped((celsius - 10) / 10))
+            return colors.dotCloudy.interpolated(with: partlySunny, by: clamped((celsius - 10) / 10))
         } else {
-            return partlySunny.compatMix(with: colors.destructive, by: clamped((celsius - 20) / 20))
+            return partlySunny.interpolated(with: colors.destructive, by: clamped((celsius - 20) / 20))
         }
     }
 
     private func cloudCoverColor(_ cloudCover: Double, colors: ThemeColors) -> Color {
-        colors.dotRain.compatMix(with: colors.dotCloudy, by: clamped(cloudCover))
+        colors.dotRain.interpolated(with: colors.dotCloudy, by: clamped(cloudCover))
     }
 
     private func precipitationColor(_ precipitationChance: Double, colors: ThemeColors) -> Color {
-        colors.dotCloudy.compatMix(with: colors.dotDrizzle, by: clamped(precipitationChance))
+        colors.dotCloudy.interpolated(with: colors.dotDrizzle, by: clamped(precipitationChance))
     }
 
     private func windColor(kmh: Double, colors: ThemeColors) -> Color {
-        let partlySunny = colors.dotPartlyCloudy.compatMix(with: colors.filterSunny, by: 0.18)
-        return colors.dotCloudy.compatMix(with: partlySunny, by: clamped(kmh / 100))
+        let partlySunny = colors.dotPartlyCloudy.interpolated(with: colors.filterSunny, by: 0.18)
+        return colors.dotCloudy.interpolated(with: partlySunny, by: clamped(kmh / 100))
     }
 
     private func uvColor(index: Int, colors: ThemeColors) -> Color {
-        colors.dotCloudy.compatMix(with: colors.destructive, by: clamped(Double(index) / 11))
+        colors.dotCloudy.interpolated(with: colors.destructive, by: clamped(Double(index) / 11))
     }
 
     private func unavailableOverlayColor(colors: ThemeColors) -> Color {
-        colors.secondaryText.opacity(0.45)
+        // Accessibility: Preserve the no-data marker at full contrast when requested;
+        // its reduced standard opacity remains unchanged.
+        colorSchemeContrast == .increased ? colors.secondaryText : colors.secondaryText.opacity(0.45)
     }
 
     private func clamped(_ value: Double) -> Double {
         max(0, min(1, value))
     }
 
-    private func markerIdentity(for cityWeather: CityWeather, isSelected: Bool) -> String {
-        let scheme = colorScheme == .dark ? "dark" : "light"
-        return [
-            cityWeather.id.uuidString,
-            overlayMode,
-            "\(selectedDayOffset)",
-            "\(markerReloadID)",
-            isSelected ? "selected" : "idle",
-            scheme
-        ].joined(separator: "-")
-    }
+}
 
-    private static let defaultRegion = MKCoordinateRegion(
+private enum MapRegionFitting {
+    static let defaultRegion = MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 20, longitude: 0),
         span: MKCoordinateSpan(latitudeDelta: 120, longitudeDelta: 180)
     )
 
-    private static func region(centeredOn city: City, span: CLLocationDegrees) -> MKCoordinateRegion {
+    static func region(centeredOn city: City, span: CLLocationDegrees) -> MKCoordinateRegion {
         MKCoordinateRegion(
             center: CLLocationCoordinate2D(latitude: city.latitude, longitude: city.longitude),
             span: MKCoordinateSpan(latitudeDelta: span, longitudeDelta: span)
         )
     }
 
-    private static func region(for cities: [City]) -> MKCoordinateRegion {
+    static func region(for cities: [City]) -> MKCoordinateRegion {
         guard !cities.isEmpty else { return defaultRegion }
         var minLat = cities[0].latitude
         var maxLat = cities[0].latitude
@@ -350,43 +413,44 @@ struct AppleWeatherMapView: View {
             span: MKCoordinateSpan(latitudeDelta: min(160, latDelta), longitudeDelta: min(340, lonDelta))
         )
     }
-
 }
 
 // MARK: - Weather Marker
 
 private struct SelectedPulseRing: View {
-    enum Shape { case circle, roundedRect, capsule }
-    let shape: Shape
     var color: Color = .white
     @State private var isPulsing = false
+    // Accessibility: Stop the repeating selection pulse when Reduce Motion is on.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Group {
-            switch shape {
-            case .circle:
-                Circle()
-                    .stroke(color.opacity(isPulsing ? 0.3 : 0.8), lineWidth: isPulsing ? 1.5 : 2.5)
-                    .frame(width: 22, height: 22)
-                    .scaleEffect(isPulsing ? 1.22 : 1.0)
-            case .roundedRect:
-                RoundedRectangle(cornerRadius: 10)
-                    .stroke(color.opacity(isPulsing ? 0.4 : 0.9), lineWidth: isPulsing ? 2.5 : 3)
-            case .capsule:
-                Capsule()
-                    .stroke(color.opacity(isPulsing ? 0.34 : 0.88), lineWidth: isPulsing ? 2.5 : 3)
-                    .scaleEffect(isPulsing ? 1.08 : 1.0)
-            }
+        Circle()
+            .stroke(color.opacity(isPulsing ? 0.3 : 0.8), lineWidth: isPulsing ? 1.5 : 2.5)
+            .frame(width: 22, height: 22)
+            .scaleEffect(isPulsing ? 1.22 : 1.0)
+        .animation(
+            reduceMotion ? nil : .easeInOut(duration: 1.2).repeatForever(autoreverses: true),
+            value: isPulsing
+        )
+        .onAppear { isPulsing = !reduceMotion }
+        .onChange(of: reduceMotion) { _, shouldReduceMotion in
+            isPulsing = !shouldReduceMotion
         }
-        .animation(.easeInOut(duration: 1.2).repeatForever(autoreverses: true), value: isPulsing)
-        .onAppear { isPulsing = true }
     }
 }
 
 private struct WeatherMapMarker: View {
     let color: Color
     let isSelected: Bool
+    let differentiatingText: String?
+    let differentiatingSymbol: String?
     @State private var glowPulse = false
+    // Accessibility: These environment values alter only motion and redundant
+    // marker encoding; selection and map behavior remain unchanged.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.appTheme) private var theme
 
     var body: some View {
         ZStack {
@@ -395,27 +459,83 @@ private struct WeatherMapMarker: View {
                 .frame(width: isSelected ? 28 : 18, height: isSelected ? 28 : 18)
                 .blur(radius: isSelected ? 8 : 5)
                 .scaleEffect(isSelected && glowPulse ? 1.18 : 1)
-                .animation(.easeInOut(duration: 1.15).repeatForever(autoreverses: true), value: glowPulse)
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 1.15).repeatForever(autoreverses: true),
+                    value: glowPulse
+                )
 
-            if isSelected {
-                SelectedPulseRing(shape: .circle, color: color)
+            if isSelected && !differentiateWithoutColor {
+                SelectedPulseRing(color: color)
                     .frame(width: 10, height: 10)
                     .transition(.scale.combined(with: .opacity))
             }
 
-            Circle()
-                .fill(color)
-                .frame(width: 9, height: 9)
-                .shadow(color: color.opacity(0.42), radius: 3)
+            if differentiateWithoutColor {
+                // Accessibility: Show a symbol or metric value so marker meaning
+                // is not conveyed by color alone.
+                Group {
+                    if let differentiatingText {
+                        Text(differentiatingText)
+                            .font(.caption2.weight(.bold))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                            .padding(.horizontal, 5)
+                    } else if let differentiatingSymbol {
+                        Image(systemName: differentiatingSymbol)
+                            .font(.caption2.weight(.bold))
+                            .padding(5)
+                    }
+                }
+                .foregroundStyle(.primary)
+                .frame(minWidth: 26, maxWidth: 40, minHeight: 24)
+                .background {
+                    if colorSchemeContrast == .increased {
+                        Capsule().fill(theme.colors.glassFill)
+                    } else {
+                        Capsule().fill(.regularMaterial)
+                    }
+                }
+                .overlay {
+                    Capsule()
+                        .stroke(
+                            colorSchemeContrast == .increased ? theme.colors.primaryText : color,
+                            lineWidth: isSelected ? 3 : 2
+                        )
+                }
+            } else if colorSchemeContrast == .increased {
+                // Accessibility: Place the metric color on an opaque, outlined disk so
+                // it retains sufficient contrast over every possible MapKit background.
+                Circle()
+                    .fill(theme.colors.glassFill)
+                    .frame(width: isSelected ? 24 : 20, height: isSelected ? 24 : 20)
+                    .overlay {
+                        Circle()
+                            .stroke(theme.colors.primaryText, lineWidth: isSelected ? 2.5 : 2)
+                    }
+
+                Circle()
+                    .fill(color)
+                    .frame(width: 10, height: 10)
+            } else {
+                Circle()
+                    .fill(color)
+                    .frame(width: 9, height: 9)
+                    .shadow(color: color.opacity(0.42), radius: 3)
+            }
         }
-        .frame(width: 36, height: 36)
+        // Accessibility: Enlarge the map marker's hit region without enlarging
+        // the normal visual dot.
+        .frame(width: 44, height: 44)
         .contentShape(Circle())
         .animation(.smooth(duration: 0.22), value: isSelected)
         .onAppear {
-            glowPulse = isSelected
+            glowPulse = isSelected && !reduceMotion
         }
         .onChange(of: isSelected) { _, selected in
-            glowPulse = selected
+            glowPulse = selected && !reduceMotion
+        }
+        .onChange(of: reduceMotion) { _, shouldReduceMotion in
+            glowPulse = isSelected && !shouldReduceMotion
         }
     }
 }
@@ -426,15 +546,16 @@ extension ContentView {
     // MARK: Camera Controls
 
     func centerMapOnDots(useListCoordinates: Bool = false) {
-        mapMarkerReloadID += 1
-        mapRecenterRequest = nil
-        DispatchQueue.main.async {
-            mapRecenterRequest = useListCoordinates ? .listCoordinates : .weatherCities
+        let cities = useListCoordinates ? mapFitCities : mapCities.map(\.city)
+        withAnimation(.smooth(duration: 0.35)) {
+            mapCameraPosition = .region(MapRegionFitting.region(for: cities))
         }
     }
 
-    func forceReloadMapDots() {
-        mapMarkerReloadID += 1
+    func centerMap(on city: CityWeather) {
+        withAnimation(.smooth(duration: 0.35)) {
+            mapCameraPosition = .region(MapRegionFitting.region(centeredOn: city.city, span: 0.35))
+        }
     }
 
     func refreshWeather() {
@@ -453,56 +574,30 @@ extension ContentView {
     }
 
     private func dismissMapSelectionForRefresh() {
-        guard showingMapExpandedCard || tappedCity != nil else { return }
+        guard showingMapExpandedCard || selectedMapCity != nil else { return }
 
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showingMapExpandedCard = false
-            tappedCity = nil
-            temporaryMapSearchCity = nil
+            selectedMapCity = nil
+            citySearchState.temporaryMapCity = nil
         }
-    }
-
-    // MARK: Marker Selection
-
-    func handleMapMarkerTap(_ city: CityWeather) {
-        if showingSearchSheet || searchFieldPresented {
-            showingSearchSheet = false
-            searchFieldPresented = false
-            resetNativeCitySearch()
-        }
-
-        if showingMapExpandedCard, tappedCity?.id == city.id {
-            return
-        }
-        Haptics.lightImpact()
-        showMapMarkerCard(city)
-    }
-
-    func handleMapBackgroundClick() {
-        dismissMapExpandedCard()
     }
 
     func dismissMapExpandedCard() {
-        let shouldRecenterAfterDismiss = temporaryMapSearchCity != nil
+        let shouldRecenterAfterDismiss = citySearchState.temporaryMapCity != nil
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             showingMapExpandedCard = false
-            tappedCity = nil
-            temporaryMapSearchCity = nil
+            selectedMapCity = nil
+            citySearchState.temporaryMapCity = nil
             if shouldRecenterAfterDismiss {
-                mapRecenterRequest = .weatherCities
+                centerMapOnDots()
             }
         }
     }
 
     func showMapMarkerCard(_ city: CityWeather) {
-        if showingMapExpandedCard && tappedCity?.id == city.id {
-            presentDetail(for: city)
-            return
-        }
-
-        tappedCity = city
         withAnimation(.spring(response: 0.22, dampingFraction: 0.88)) {
-            showingMapExpandedCard = true
+            selectedMapCity = city
         }
     }
 
@@ -516,21 +611,8 @@ extension ContentView {
                 selectedDayOffset: selectedDayOffset,
                 overlayMode: mapOverlayMode,
                 filterSunny: filterSunny,
-                markerReloadID: mapMarkerReloadID,
-                selectedCityID: tappedCity?.id,
-                recenterRequest: $mapRecenterRequest,
-                centerOnCity: centerOnCityTrigger,
-                onMarkerTap: { city in
-                    handleMapMarkerTap(city)
-                },
-                onMapClick: {
-                    handleMapBackgroundClick()
-                },
-                onMapGestureStart: {
-                    if showingMapExpandedCard {
-                        dismissMapExpandedCard()
-                    }
-                }
+                cameraPosition: $mapCameraPosition,
+                selectedCityID: $selectedMapCityID
             )
             .ignoresSafeArea()
 
@@ -547,6 +629,11 @@ extension ContentView {
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .ignoresSafeArea()
         .animation(.smooth(duration: 0.2), value: weatherService.errorMessage)
+        .onChange(of: selectedMapCityID) { previousID, selectedID in
+            if selectedID != nil, selectedID != previousID {
+                Haptics.lightImpact()
+            }
+        }
         .onChange(of: weatherService.isLoading) { wasLoading, isLoading in
             if wasLoading, !isLoading, !mapCities.isEmpty {
                 centerMapOnDots(useListCoordinates: true)
@@ -560,11 +647,12 @@ extension ContentView {
         HStack(spacing: 10) {
             Image(systemName: "exclamationmark.triangle.fill")
                 .foregroundStyle(theme.colors.destructive)
+                .accessibilityHidden(true)
 
             Text(message)
                 .font(.callout.weight(.medium))
                 .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(2)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
 
             Spacer(minLength: 8)
 
@@ -574,10 +662,14 @@ extension ContentView {
                 Image(systemName: "xmark")
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(theme.colors.secondaryText)
-                    .frame(width: 26, height: 26)
+                    // Accessibility: Keep the compact icon but make its full
+                    // 44-point circular region dismiss the banner.
+                    .frame(width: 44, height: 44)
                     .contentShape(Circle())
             }
             .buttonStyle(.plain)
+            .padding(-9)
+            .accessibilityLabel(localizedString("Cancel", locale: locale))
         }
         .padding(.leading, 14)
         .padding(.trailing, 8)

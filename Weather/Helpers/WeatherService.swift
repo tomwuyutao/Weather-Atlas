@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftUI
+import Observation
 import WeatherKit
 import CoreLocation
 
@@ -98,10 +99,6 @@ enum AppWeatherCondition: String, Codable {
         }
     }
     
-    var dotColor: Color {
-        dotColor(for: AppTheme.shared.colors)
-    }
-    
     func dotColor(for theme: ThemeColors) -> Color {
         switch self {
         case .clear: return theme.dotSun
@@ -114,17 +111,6 @@ enum AppWeatherCondition: String, Codable {
         case .fog: return theme.dotFog
         case .wind: return theme.dotWind
         case .night: return theme.moonIconColor
-        }
-    }
-
-    var sunninessScore: Double {
-        switch self {
-        case .clear:
-            return 100
-        case .partlySunny:
-            return 50
-        default:
-            return 0
         }
     }
 
@@ -194,17 +180,21 @@ enum AppWeatherCondition: String, Codable {
 @Observable
 @MainActor
 class WeatherService {
-    var cityWeatherData: [CityWeather] = []
+    var availableLists: [CityListID] = CityListID.allLists
+    var weatherDataByListID: [String: [CityWeather]] = [:]
+    var cityWeatherData: [CityWeather] {
+        get { weatherDataByListID[activeListID.rawValue] ?? [] }
+        set { weatherDataByListID[activeListID.rawValue] = newValue }
+    }
     var isLoading = false
     var loadingProgress: Double = 0
     var errorMessage: String?
     var lastFetchDate: Date?
     var weatherAttribution: WeatherAttribution?
     var activeListID: CityListID = .europe
-    private var activeFetchToken = UUID()
+    @ObservationIgnored private var activeFetchTask: Task<Void, Never>?
     let weatherCacheDuration: TimeInterval = 2 * 60 * 60
     var listFetchDates: [String: Date] = [:]
-    var otherListData: [String: [CityWeather]] = [:]
     var resolvedTimeZones: [String: TimeZone] = [:]
     var resolvedPlaces: [String: ResolvedPlace] = [:]
     
@@ -212,20 +202,25 @@ class WeatherService {
     
     static let activeListKey = "activeListID"
     
-    // Per-list cache keys
-    var cacheKey: String { "cachedWeatherData_\(activeListID.rawValue)" }
+    // Per-list persistence keys
     var cacheTimestampKey: String { "weatherCacheTimestamp_\(activeListID.rawValue)" }
     var citiesListKey: String { "savedCitiesList_\(activeListID.rawValue)" }
     
     init() {
         if let saved = UserDefaults.standard.string(forKey: Self.activeListKey),
-           let listID = CityListID.allLists.first(where: { $0.rawValue == saved }) {
+           let listID = availableLists.first(where: { $0.rawValue == saved }) {
             activeListID = listID
         }
         if let cachedData = loadCachedWeatherData(for: activeListID), isWeatherDataFresh(for: activeListID) {
             cityWeatherData = cachedData
-            otherListData[activeListID.rawValue] = cachedData
             lastFetchDate = fetchDate(for: activeListID)
+        }
+    }
+
+    func reloadAvailableLists() {
+        availableLists = CityListID.allLists
+        if let refreshedActiveList = availableLists.first(where: { $0.rawValue == activeListID.rawValue }) {
+            activeListID = refreshedActiveList
         }
     }
 
@@ -245,31 +240,44 @@ class WeatherService {
     }
     
     func fetchWeatherForAllCities(forceRefresh: Bool = false) async {
+        activeFetchTask?.cancel()
+        let targetListID = activeListID
+        let task = Task { [weak self] in
+            guard let self else { return }
+            await self.performActiveListFetch(for: targetListID, forceRefresh: forceRefresh)
+        }
+        activeFetchTask = task
+        await task.value
+    }
+
+    private func performActiveListFetch(for targetListID: CityListID, forceRefresh: Bool) async {
+        guard activeListID == targetListID, !Task.isCancelled else { return }
         errorMessage = nil
+        let currentData = weatherDataByListID[targetListID.rawValue] ?? []
         if !forceRefresh,
-           cityWeatherData.isEmpty,
+           currentData.isEmpty,
            let cachedData = loadCachedWeatherData(for: activeListID),
            isWeatherDataFresh(for: activeListID) {
-            cityWeatherData = cachedData
-            otherListData[activeListID.rawValue] = cachedData
+            weatherDataByListID[activeListID.rawValue] = cachedData
             lastFetchDate = fetchDate(for: activeListID)
+            loadingProgress = 1
+            isLoading = false
             return
         }
 
         if !forceRefresh,
-           !cityWeatherData.isEmpty,
+           !currentData.isEmpty,
            isWeatherDataFresh(for: activeListID),
-           cachedWeatherDataLooksCurrent(cityWeatherData, for: activeListID) {
+           cachedWeatherDataLooksCurrent(currentData, for: activeListID) {
+            loadingProgress = 1
+            isLoading = false
             return
         }
 
-        let fetchToken = UUID()
-        activeFetchToken = fetchToken
-        let targetListID = activeListID
         isLoading = true
         loadingProgress = 0
         defer {
-            if activeFetchToken == fetchToken {
+            if !Task.isCancelled, activeListID == targetListID {
                 isLoading = false
             }
         }
@@ -277,50 +285,37 @@ class WeatherService {
         // Load the saved cities list, or use defaults for active list
         let citiesToFetch = loadSavedCities(for: targetListID) ?? targetListID.defaultCities
         guard !citiesToFetch.isEmpty else {
-            cityWeatherData = []
-            otherListData[targetListID.rawValue] = []
+            weatherDataByListID[targetListID.rawValue] = []
             loadingProgress = 1
             return
         }
         
         var weatherData: [CityWeather] = []
-        otherListData[targetListID.rawValue] = []
-        if activeListID.rawValue == targetListID.rawValue {
-            cityWeatherData = []
-        }
+        weatherDataByListID[targetListID.rawValue] = []
         
         for (index, city) in citiesToFetch.enumerated() {
+            guard activeListID == targetListID, !Task.isCancelled else { return }
             do {
                 let resolvedCity = try await resolvedCity(for: city)
                 let location = CLLocation(latitude: resolvedCity.latitude, longitude: resolvedCity.longitude)
                 let weather = try await weatherService.weather(for: location)
                 let cityWeather = try await convertWeatherKitData(weather: weather, for: resolvedCity)
-                guard activeFetchToken == fetchToken else { return }
+                guard activeListID == targetListID, !Task.isCancelled else { return }
 
                 weatherData.append(cityWeather)
-                otherListData[targetListID.rawValue] = weatherData
-                if activeListID.rawValue == targetListID.rawValue {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        cityWeatherData = weatherData
-                        loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
-                    }
-                }
+                weatherDataByListID[targetListID.rawValue] = weatherData
             } catch {
+                guard !Task.isCancelled else { return }
                 report(error)
-                if activeFetchToken == fetchToken {
-                    withAnimation(.easeInOut(duration: 0.15)) {
-                        loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
-                    }
-                }
             }
+            loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
         }
         
-        guard activeFetchToken == fetchToken, activeListID.rawValue == targetListID.rawValue else {
+        guard !Task.isCancelled, activeListID == targetListID else {
             return
         }
         
-        // Mark this list as freshly fetched.
-        cacheData(weatherData, updateFetchDate: true)
+        cacheData(weatherData, for: targetListID, updateFetchDate: true)
     }
     
     func refreshWeather() async {
@@ -330,33 +325,34 @@ class WeatherService {
     
     func switchList(to listID: CityListID) async {
         guard listID != activeListID else { return }
-        activeFetchToken = UUID()
+        activeFetchTask?.cancel()
         activeListID = listID
+        isLoading = false
         UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
-        cityWeatherData = otherListData[listID.rawValue] ?? loadCachedWeatherData(for: listID) ?? []
-        otherListData[listID.rawValue] = cityWeatherData
+        weatherDataByListID[listID.rawValue] = weatherDataByListID[listID.rawValue]
+            ?? loadCachedWeatherData(for: listID)
+            ?? []
         lastFetchDate = fetchDate(for: listID)
         await fetchWeatherForAllCities()
     }
 
     func switchList(to listID: CityListID, prioritizing priorityCity: City) async -> CityWeather? {
-        let existingData = otherListData[listID.rawValue]
+        let existingData = weatherDataByListID[listID.rawValue]
             ?? (listID == activeListID ? cityWeatherData : nil)
             ?? loadCachedWeatherData(for: listID)
             ?? []
         if isWeatherDataFresh(for: listID),
            cachedWeatherDataLooksCurrent(existingData, for: listID),
            let existingCity = existingData.first(where: { citiesMatch($0.city, priorityCity) }) {
-            activeFetchToken = UUID()
+            activeFetchTask?.cancel()
             activeListID = listID
             UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
-            cityWeatherData = existingData
+            weatherDataByListID[listID.rawValue] = existingData
             lastFetchDate = fetchDate(for: listID)
             return existingCity
         }
 
-        let fetchToken = UUID()
-        activeFetchToken = fetchToken
+        activeFetchTask?.cancel()
         activeListID = listID
         UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
         lastFetchDate = nil
@@ -365,40 +361,37 @@ class WeatherService {
 
         let citiesToFetch = orderedCitiesForFetch(listID: listID, prioritizing: priorityCity)
         guard !citiesToFetch.isEmpty else {
-            cityWeatherData = []
-            otherListData[listID.rawValue] = []
+            weatherDataByListID[listID.rawValue] = []
             isLoading = false
             loadingProgress = 1
             return nil
         }
 
-        cityWeatherData = []
-        otherListData[listID.rawValue] = []
+        weatherDataByListID[listID.rawValue] = []
 
-        guard let priorityWeather = await fetchWeatherForCity(citiesToFetch[0]),
-              activeFetchToken == fetchToken,
-              activeListID == listID else {
-            Task {
-                await finishPrioritizedListFetch(
+        let priorityWeather = await fetchWeatherForCity(citiesToFetch[0])
+        guard !Task.isCancelled, activeListID == listID else { return nil }
+        guard let priorityWeather else {
+            activeFetchTask = Task { [weak self] in
+                guard let self else { return }
+                await self.finishPrioritizedListFetch(
                     listID: listID,
                     citiesToFetch: citiesToFetch,
-                    initialWeatherData: [],
-                    fetchToken: fetchToken
+                    initialWeatherData: []
                 )
             }
             return nil
         }
 
-        cityWeatherData = [priorityWeather]
-        otherListData[listID.rawValue] = [priorityWeather]
+        weatherDataByListID[listID.rawValue] = [priorityWeather]
         loadingProgress = 1 / Double(citiesToFetch.count)
 
-        Task {
-            await finishPrioritizedListFetch(
+        activeFetchTask = Task { [weak self] in
+            guard let self else { return }
+            await self.finishPrioritizedListFetch(
                 listID: listID,
                 citiesToFetch: Array(citiesToFetch.dropFirst()),
-                initialWeatherData: [priorityWeather],
-                fetchToken: fetchToken
+                initialWeatherData: [priorityWeather]
             )
         }
 
@@ -418,60 +411,56 @@ class WeatherService {
     }
 
     func citiesMatch(_ lhs: City, _ rhs: City) -> Bool {
-        lhs.latitude == rhs.latitude && lhs.longitude == rhs.longitude
+        if lhs.name.caseInsensitiveCompare(rhs.name) == .orderedSame,
+           lhs.country.caseInsensitiveCompare(rhs.country) == .orderedSame {
+            return true
+        }
+
+        let lhsLocation = CLLocation(latitude: lhs.latitude, longitude: lhs.longitude)
+        let rhsLocation = CLLocation(latitude: rhs.latitude, longitude: rhs.longitude)
+        return lhsLocation.distance(from: rhsLocation) <= 5_000
     }
 
     private func finishPrioritizedListFetch(
         listID: CityListID,
         citiesToFetch: [City],
-        initialWeatherData: [CityWeather],
-        fetchToken: UUID
+        initialWeatherData: [CityWeather]
     ) async {
         var weatherData = initialWeatherData
         let totalCount = weatherData.count + citiesToFetch.count
 
         for city in citiesToFetch {
-            guard activeFetchToken == fetchToken else { return }
+            guard !Task.isCancelled, activeListID == listID else { return }
             if let cityWeather = await fetchWeatherForCity(city) {
-                guard activeFetchToken == fetchToken else { return }
+                guard !Task.isCancelled, activeListID == listID else { return }
                 weatherData.append(cityWeather)
-                otherListData[listID.rawValue] = weatherData
-                if activeListID == listID {
-                    withAnimation(.easeInOut(duration: 0.18)) {
-                        cityWeatherData = weatherData
-                        loadingProgress = Double(weatherData.count) / Double(max(totalCount, 1))
-                    }
-                }
+                weatherDataByListID[listID.rawValue] = weatherData
+                loadingProgress = Double(weatherData.count) / Double(max(totalCount, 1))
             }
         }
 
-        guard activeFetchToken == fetchToken else { return }
-        if activeListID == listID {
-            isLoading = false
-            loadingProgress = 1
-            lastFetchDate = Date()
-        }
-        otherListData[listID.rawValue] = weatherData
+        guard !Task.isCancelled, activeListID == listID else { return }
+        isLoading = false
+        loadingProgress = 1
+        lastFetchDate = Date()
+        weatherDataByListID[listID.rawValue] = weatherData
         cacheData(weatherData, for: listID, updateFetchDate: true)
     }
     
     func weatherData(for listID: CityListID) -> [CityWeather] {
-        if listID.rawValue == activeListID.rawValue {
-            return cityWeatherData
-        }
-        return otherListData[listID.rawValue] ?? []
+        return weatherDataByListID[listID.rawValue] ?? []
     }
 
     func fetchWeatherForList(_ listID: CityListID) async {
         errorMessage = nil
-        if let existingData = otherListData[listID.rawValue],
+        if let existingData = weatherDataByListID[listID.rawValue],
            !existingData.isEmpty,
            isWeatherDataFresh(for: listID),
            cachedWeatherDataLooksCurrent(existingData, for: listID) {
             return
         }
         if let cachedData = loadCachedWeatherData(for: listID), isWeatherDataFresh(for: listID) {
-            otherListData[listID.rawValue] = cachedData
+            weatherDataByListID[listID.rawValue] = cachedData
             return
         }
         let citiesToFetch = loadSavedCities(for: listID) ?? listID.defaultCities
@@ -489,7 +478,7 @@ class WeatherService {
                 report(error)
             }
         }
-        otherListData[listID.rawValue] = weatherData
+        weatherDataByListID[listID.rawValue] = weatherData
         cacheData(weatherData, for: listID, updateFetchDate: true)
     }
     
@@ -517,9 +506,14 @@ class WeatherService {
         let dailyForecasts = weather.dailyForecast.forecast.prefix(10).enumerated().map { (index, day) -> DailyForecast in
             let daySymbol = day.symbolName
             let daytimeForecast = day.daytimeForecast
-            let hourlyForecasts = generateHourlyFromDaily(day: day, dayOffset: index, allHourly: weather.hourlyForecast.forecast, timeZone: timeZone)
+            let hourlyForecasts = generateHourlyFromDaily(
+                day: day,
+                allHourly: weather.hourlyForecast.forecast,
+                timeZone: timeZone
+            )
 
             return DailyForecast(
+                date: day.date,
                 dayOffset: index,
                 dailyLow: day.lowTemperature.value,
                 dailyHigh: day.highTemperature.value,
@@ -542,19 +536,15 @@ class WeatherService {
         )
     }
     
-    private func generateHourlyFromDaily(day: DayWeather, dayOffset: Int, allHourly: [HourWeather], timeZone: TimeZone) -> [HourlyForecast] {
-        // Use the city's local calendar for the day calculation
+    private func generateHourlyFromDaily(day: DayWeather, allHourly: [HourWeather], timeZone: TimeZone) -> [HourlyForecast] {
         var calendar = Calendar.current
         calendar.timeZone = timeZone
 
-        let todayStart = calendar.startOfDay(for: Date())
-        let dayStart = calendar.date(byAdding: .day, value: dayOffset, to: todayStart)
-            ?? calendar.startOfDay(for: day.date)
+        let dayStart = calendar.startOfDay(for: day.date)
         guard let dayEnd = calendar.date(byAdding: .day, value: 1, to: dayStart) else {
             return []
         }
-        
-        // Filter hourly forecasts for this specific day
+
         let dayHourlyData = allHourly.filter { hourWeather in
             hourWeather.date >= dayStart && hourWeather.date < dayEnd
         }
@@ -562,10 +552,7 @@ class WeatherService {
         if dayHourlyData.isEmpty { return [] }
         
         return dayHourlyData.map { hourWeather in
-            return HourlyForecast(
-                hour: calendar.component(.hour, from: hourWeather.date),
-                symbolName: hourWeather.symbolName
-            )
+            HourlyForecast(date: hourWeather.date, symbolName: hourWeather.symbolName)
         }
     }
     func fetchWeatherForCity(_ city: City) async -> CityWeather? {
@@ -594,7 +581,7 @@ class WeatherService {
         let refreshedWeather = fetchedWeather.replacingID(cityWeather.id)
         replaceWeatherData(refreshedWeather, matching: cityWeather.id, in: activeListID)
 
-        for listID in CityListID.allLists where listID.rawValue != activeListID.rawValue {
+        for listID in availableLists where listID.rawValue != activeListID.rawValue {
             replaceWeatherData(refreshedWeather, matching: cityWeather.id, in: listID)
         }
 
@@ -605,17 +592,16 @@ class WeatherService {
         if listID.rawValue == activeListID.rawValue {
             guard let index = cityWeatherData.firstIndex(where: { $0.id == cityID }) else { return }
             cityWeatherData[index] = refreshedWeather
-            otherListData[listID.rawValue] = cityWeatherData
             cacheData(cityWeatherData, for: listID)
             return
         }
 
-        guard var listData = otherListData[listID.rawValue],
+        guard var listData = weatherDataByListID[listID.rawValue],
               let index = listData.firstIndex(where: { $0.id == cityID }) else {
             return
         }
         listData[index] = refreshedWeather
-        otherListData[listID.rawValue] = listData
+        weatherDataByListID[listID.rawValue] = listData
         cacheData(listData, for: listID)
     }
     
@@ -713,7 +699,11 @@ struct CityWeather: Identifiable, Hashable {
             title: "Forecast Day Missing",
             message: "\(city.localizedName()) has no forecast data for day \(dayOffset). The app is showing its first available forecast instead."
         )
-        return dailyForecasts[0]
+        return dailyForecasts.first ?? .unavailable(
+            dayOffset: dayOffset,
+            temperature: temperature,
+            timeZone: timeZone
+        )
     }
     
 }
@@ -721,6 +711,7 @@ struct CityWeather: Identifiable, Hashable {
 
 struct DailyForecast: Identifiable {
     let id = UUID()
+    let date: Date
     let dayOffset: Int
     let dailyLow: Double   // entire day low temperature
     let dailyHigh: Double  // entire day high temperature
@@ -740,10 +731,36 @@ struct DailyForecast: Identifiable {
     var cloudCoverPercent: Int? {
         cloudCover.map { Int($0 * 100) }
     }
+
+    static func unavailable(dayOffset: Int, temperature: Double, timeZone: TimeZone) -> DailyForecast {
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        let date = calendar.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
+        return DailyForecast(
+            date: date,
+            dayOffset: dayOffset,
+            dailyLow: temperature,
+            dailyHigh: temperature,
+            symbolName: "cloud",
+            hourlyForecasts: [],
+            cloudCover: nil,
+            precipitationChance: nil,
+            windSpeed: nil,
+            uvIndex: nil,
+            sunrise: nil,
+            sunset: nil
+        )
+    }
 }
 
 struct HourlyForecast: Identifiable {
     let id = UUID()
-    let hour: Int  // 0-23
+    let date: Date
     let symbolName: String
+
+    func hour(in timeZone: TimeZone) -> Int {
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        return calendar.component(.hour, from: date)
+    }
 }

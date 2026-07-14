@@ -55,19 +55,20 @@ enum DistanceUnit: String, CaseIterable {
         }
     }
 
-    func displayWindSpeed(_ kmh: Double, locale: Locale = .autoupdatingCurrent) -> String {
+    private var speedUnit: UnitSpeed {
         switch resolved {
-        case .kilometers:
-            return "\(Int(kmh.rounded())) km/h"
-        case .miles:
-            let mph = kmh * 0.621371
-            return "\(Int(mph.rounded())) mph"
-        case .metersPerSecond:
-            let metersPerSecond = kmh / 3.6
-            return "\(Int(metersPerSecond.rounded())) m/s"
-        case .automatic:
-            return resolved.displayWindSpeed(kmh, locale: locale)
+        case .kilometers: return .kilometersPerHour
+        case .miles: return .milesPerHour
+        case .metersPerSecond: return .metersPerSecond
+        case .automatic: return resolved.speedUnit
         }
+    }
+
+    func displayWindSpeed(_ kmh: Double) -> String {
+        let speed = Measurement(value: kmh, unit: UnitSpeed.kilometersPerHour)
+            .converted(to: speedUnit)
+            .value
+        return "\(Int(speed.rounded())) \(windAbbreviation)"
     }
 
 }
@@ -112,15 +113,19 @@ enum TemperatureUnit: String, CaseIterable {
         }
     }
 
-    func display(_ celsius: Double) -> String {
+    private var measurementUnit: UnitTemperature {
         switch resolved {
-        case .celsius:
-            return "\(Int(celsius))°"
-        case .fahrenheit:
-            return "\(Int(celsius * 9.0 / 5.0 + 32))°"
-        case .automatic:
-            return resolved.display(celsius)
+        case .celsius: return .celsius
+        case .fahrenheit: return .fahrenheit
+        case .automatic: return resolved.measurementUnit
         }
+    }
+
+    func display(_ celsius: Double) -> String {
+        let temperature = Measurement(value: celsius, unit: UnitTemperature.celsius)
+            .converted(to: measurementUnit)
+            .value
+        return "\(Int(temperature))°"
     }
 
 }
@@ -133,6 +138,13 @@ enum AppTextSizeLevel: Int, CaseIterable {
     case xLarge = 4
     case xxLarge = 5
     case xxxLarge = 6
+    // Accessibility: Mirror all five system accessibility Dynamic Type categories
+    // when the user chooses an app-specific text size.
+    case accessibility1 = 7
+    case accessibility2 = 8
+    case accessibility3 = 9
+    case accessibility4 = 10
+    case accessibility5 = 11
 
     static let defaultRawValue = AppTextSizeLevel.large.rawValue
 
@@ -145,6 +157,11 @@ enum AppTextSizeLevel: Int, CaseIterable {
         case .xLarge: return .xLarge
         case .xxLarge: return .xxLarge
         case .xxxLarge: return .xxxLarge
+        case .accessibility1: return .accessibility1
+        case .accessibility2: return .accessibility2
+        case .accessibility3: return .accessibility3
+        case .accessibility4: return .accessibility4
+        case .accessibility5: return .accessibility5
         }
     }
 
@@ -157,6 +174,11 @@ enum AppTextSizeLevel: Int, CaseIterable {
         case .xLarge: return localizedString("Large", locale: locale)
         case .xxLarge: return localizedString("Extra Large", locale: locale)
         case .xxxLarge: return localizedString("Extra Extra Large", locale: locale)
+        case .accessibility1: return "\(localizedString("Extra Extra Large", locale: locale)) +"
+        case .accessibility2: return "\(localizedString("Extra Extra Large", locale: locale)) ++"
+        case .accessibility3: return "\(localizedString("Extra Extra Large", locale: locale)) +++"
+        case .accessibility4: return "\(localizedString("Extra Extra Large", locale: locale)) ++++"
+        case .accessibility5: return "\(localizedString("Extra Extra Large", locale: locale)) +++++"
         }
     }
 }
@@ -212,6 +234,7 @@ struct SettingsView: View {
     }
 
     private var resolvedDynamicTypeSize: DynamicTypeSize {
+        // Accessibility: Respect the system size by default, including accessibility sizes.
         useSystemTextSize ? systemDynamicTypeSize : selectedTextSizeLevel.dynamicTypeSize
     }
 
@@ -232,6 +255,7 @@ struct SettingsView: View {
                     Text(localizedString("Settings", locale: locale))
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(settingsTitleColor)
+                        .accessibilityAddTraits(.isHeader)
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -254,7 +278,13 @@ struct SettingsView: View {
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
         .presentationBackground(theme.colors.mapOcean)
+        // Accessibility: Apply the user's system or explicit Dynamic Type choice throughout Settings.
         .environment(\.dynamicTypeSize, resolvedDynamicTypeSize)
+        // Accessibility: The two-finger scrub first leaves a nested settings page,
+        // then dismisses Settings from its root, matching the visible Back/Done controls.
+        .accessibilityAction(.escape) {
+            dismissSettingsAccessibility()
+        }
     }
 
     // MARK: Toolbar
@@ -268,7 +298,10 @@ struct SettingsView: View {
                 .font(.system(size: 18, weight: .semibold))
                 .if(!usesLiquidGlassForm) { view in
                     view
-                        .foregroundStyle(.white)
+                        // Accessibility: The resolved background color contrasts with
+                        // both the light and dark accent fills in legacy styling.
+                        .foregroundStyle(theme.colors.background)
+                        // Accessibility: Provide the standard minimum touch target on legacy styling.
                         .frame(width: 44, height: 44)
                         .background(theme.colors.accent, in: Circle())
                         .contentShape(Circle())
@@ -280,6 +313,7 @@ struct SettingsView: View {
                 .tint(theme.colors.primaryText)
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(localizedString("Done", locale: locale))
     }
 
     private var usesLiquidGlassForm: Bool {
@@ -407,12 +441,14 @@ struct SettingsView: View {
                         Text(verbatim: "A")
                             .font(.system(size: 18, weight: .regular))
                             .foregroundStyle(theme.colors.secondaryText)
+                            .accessibilityHidden(true)
 
                         steppedTextSizeSlider
 
                         Text(verbatim: "A")
                             .font(.system(size: 34, weight: .regular))
                             .foregroundStyle(theme.colors.secondaryText)
+                            .accessibilityHidden(true)
                     }
                     .opacity(useSystemTextSize ? 0.42 : 1)
 
@@ -448,6 +484,7 @@ struct SettingsView: View {
                 }
             ),
             in: 0...Double(AppTextSizeLevel.allCases.count - 1),
+            step: 1,
             onEditingChanged: { isEditing in
                 isDraggingTextSizeSlider = isEditing
                 if !isEditing {
@@ -458,6 +495,9 @@ struct SettingsView: View {
         .disabled(useSystemTextSize)
         .tint(theme.colors.accent)
         .frame(height: 36)
+        // Accessibility: Give the otherwise visual slider a stable name and spoken size value.
+        .accessibilityLabel(localizedString("Text Size", locale: locale))
+        .accessibilityValue(textSizeSliderDescription)
     }
 
     private var textSizeSliderDescription: String {
@@ -513,6 +553,20 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: - Accessibility - Settings Navigation
+
+    private func dismissSettingsAccessibility() {
+        if showingAttributions {
+            showingAttributions = false
+        } else if showingUnits {
+            showingUnits = false
+        } else if showingTextSize {
+            showingTextSize = false
+        } else {
+            dismiss()
+        }
+    }
+
     // MARK: About and Attributions
 
     private var attributionsNavigationRow: some View {
@@ -525,9 +579,11 @@ struct SettingsView: View {
                 Image(systemName: "chevron.right")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(theme.colors.secondaryText)
+                    .accessibilityHidden(true)
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(localizedString("Attributions", locale: locale))
     }
 
     private var attributionsForm: some View {
@@ -628,6 +684,7 @@ struct SettingsView: View {
         } icon: {
             Image(systemName: systemImage)
                 .foregroundStyle(theme.colors.dotSun)
+                .accessibilityHidden(true)
         }
     }
 
@@ -635,6 +692,8 @@ struct SettingsView: View {
         Text(title)
             .font(.footnote.weight(.semibold))
             .foregroundStyle(theme.colors.primaryText)
+            // Accessibility: Form section labels participate in heading navigation.
+            .accessibilityAddTraits(.isHeader)
     }
 
     private func settingsInfoRow(_ title: String, value: String, systemImage: String) -> some View {
@@ -644,6 +703,10 @@ struct SettingsView: View {
         } label: {
             settingsLabel(title, systemImage: systemImage)
         }
+        // Accessibility: Combine the styled label and value into one concise row.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(value)
     }
 
     private func settingsNavigationRow(_ title: String, value: String, systemImage: String, action: @escaping () -> Void) -> some View {
@@ -655,12 +718,16 @@ struct SettingsView: View {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(theme.colors.secondaryText)
+                        .accessibilityHidden(true)
                 }
             } label: {
                 settingsLabel(title, systemImage: systemImage)
             }
         }
         .buttonStyle(.plain)
+        // Accessibility: State is spoken independently of the decorative checkmark.
+        .accessibilityLabel(title)
+        .accessibilityValue(value)
     }
 
     private func settingsSelectionRow(
@@ -687,11 +754,15 @@ struct SettingsView: View {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(theme.colors.secondaryText)
+                        .accessibilityHidden(true)
                 }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(title)
+        .accessibilityValue(subtitle ?? "")
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     // MARK: Support Actions
@@ -704,11 +775,14 @@ struct SettingsView: View {
             LabeledContent {
                 Image(systemName: "doc.on.doc")
                     .foregroundStyle(theme.colors.secondaryText)
+                    .accessibilityHidden(true)
             } label: {
                 settingsLabel(localizedString("Say Hello", locale: locale), systemImage: "envelope")
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(localizedString("Say Hello", locale: locale))
+        .accessibilityValue("yutao5726@gmail.com")
         .alert(localizedString("Email Copied", locale: locale), isPresented: $showingEmailCopied) {
             Button(localizedString("OK", locale: locale), role: .cancel) {}
         }
@@ -730,6 +804,7 @@ struct SettingsView: View {
                         Text(value)
                         Image(systemName: "arrow.up.forward")
                             .font(.caption.weight(.semibold))
+                            .accessibilityHidden(true)
                     }
                     .foregroundStyle(theme.colors.secondaryText)
                 } label: {
@@ -737,6 +812,10 @@ struct SettingsView: View {
                 }
             }
             .buttonStyle(.plain)
+            // Accessibility: Identify these custom buttons as external links.
+            .accessibilityLabel(title)
+            .accessibilityValue(value)
+            .accessibilityAddTraits(.isLink)
         }
     }
 }

@@ -74,13 +74,14 @@ struct AddListOptionButton: View {
     let subtitle: String?
     let systemImage: String
     var titleWeight: Font.Weight = .semibold
-    var titleColor: Color = AppTheme.shared.colors.primaryText
+    var titleColor: Color? = nil
     var showsIconBackground: Bool = true
     var iconColor: Color? = nil
     let action: () -> Void
 
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         Button(action: action) {
@@ -89,14 +90,15 @@ struct AddListOptionButton: View {
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(title)
-                        .font(.avenir(.headline, weight: titleWeight))
-                        .foregroundStyle(titleColor)
+                        .font(.headline.weight(titleWeight))
+                        .foregroundStyle(titleColor ?? theme.colors.primaryText)
 
                     if let subtitle {
                         Text(subtitle)
-                            .font(.avenir(.footnote, weight: .regular))
+                            .font(.footnote)
                             .foregroundStyle(theme.colors.secondaryText)
-                            .lineLimit(2)
+                            // Accessibility: Let explanatory copy wrap fully at large text sizes.
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -105,12 +107,18 @@ struct AddListOptionButton: View {
                     .font(.title3.weight(.medium))
                     .foregroundStyle(theme.colors.secondaryText)
                     .frame(width: 22, alignment: .trailing)
+                    .accessibilityHidden(true)
             }
             .padding(.vertical, 16)
             .frame(minHeight: subtitle == nil ? 82 : 92)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // Accessibility: Present the styled row as a single named action; its icon and
+        // chevron remain decorative, while the visible subtitle is retained as its value.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue(subtitle ?? "")
     }
 
     @ViewBuilder
@@ -121,11 +129,13 @@ struct AddListOptionButton: View {
                 .foregroundStyle(iconColor ?? theme.colors.accent)
                 .frame(width: 58, height: 58)
                 .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 14))
+                .accessibilityHidden(true)
         } else {
             Image(systemName: systemImage)
                 .font(.system(size: 33, weight: .regular))
                 .foregroundStyle(iconColor ?? theme.colors.primaryText)
                 .frame(width: 58, height: 58)
+                .accessibilityHidden(true)
         }
     }
 }

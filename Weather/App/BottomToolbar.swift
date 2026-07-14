@@ -13,8 +13,8 @@ import SwiftUI
 enum AppNavigationRoute: Hashable {
     case map
     case list
-    case cityDetail(UUID)
-    case addCityDetail
+    case cityDetail(CityWeather)
+    case addCityDetail(CityWeather)
     case listPreview
 }
 
@@ -28,6 +28,15 @@ extension ContentView {
     var isMapRoute: Bool {
         currentRoute == .map
     }
+
+    var addCityDetailCity: CityWeather? {
+        guard case .addCityDetail(let city) = currentRoute else { return nil }
+        return city
+    }
+
+    var isAddCityDetailRoute: Bool {
+        addCityDetailCity != nil
+    }
 }
 
 // MARK: - Floating Bottom Toolbar
@@ -38,7 +47,7 @@ extension ContentView {
 
     @ToolbarContentBuilder
     var nativeBottomToolbarItems: some ToolbarContent {
-        if !showingSearchSheet {
+        if !citySearchState.isPresented {
             if #available(iOS 26.0, *) {
                 ToolbarItem(placement: .bottomBar) {
                     bottomLeadingToolbarControl
@@ -77,8 +86,8 @@ extension ContentView {
     var bottomLeadingToolbarControl: some View {
         if isListPreviewActive {
             bottomCancelListPreviewButton
-        } else if let route = currentRoute {
-            bottomBackButton(route)
+        } else if currentRoute != nil {
+            bottomBackButton
         } else {
             bottomMoreButton
         }
@@ -97,7 +106,7 @@ extension ContentView {
     var bottomTrailingToolbarControl: some View {
         if isListPreviewActive {
             bottomConfirmListPreviewButton
-        } else if currentRoute == .addCityDetail || temporaryMapSearchCity != nil {
+        } else if isAddCityDetailRoute || citySearchState.temporaryMapCity != nil {
             bottomAddSearchedCityButton
         } else {
             bottomSearchButton
@@ -133,14 +142,14 @@ extension ContentView {
                 ZStack {
                     ForEach(0...9, id: \.self) { dayOffset in
                         Text(dateSwitcherText(for: dayOffset))
-                            .font(.avenir(.subheadline, weight: .medium))
+                            .font(.subheadline.weight(.medium))
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
                             .hidden()
                     }
 
                     Text(dateSwitcherText)
-                        .font(.avenir(.subheadline, weight: .medium))
+                        .font(.subheadline.weight(.medium))
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
@@ -152,6 +161,11 @@ extension ContentView {
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
+            // Accessibility: Name the date control by its current selection.
+            .accessibilityLabel(dateSwitcherText)
+            // Accessibility: Let Voice Control target the same date text that is
+            // visible in the toolbar, while retaining the native Button action.
+            .accessibilityInputLabels([Text(dateSwitcherText)])
             .popover(isPresented: $showingDatePopover) {
                 datePickerPopoverContent
             }
@@ -194,21 +208,38 @@ extension ContentView {
             .contentShape(Rectangle())
             .onTapGesture(perform: action)
             .onLongPressGesture(minimumDuration: 0.45, perform: longPressAction)
+            .disabled(!isEnabled)
+            // Accessibility: Mirror the custom tap and long-press gestures as standard actions.
             .accessibilityLabel(accessibilityLabel)
+            .accessibilityValue(dateSwitcherText)
             .accessibilityAddTraits(.isButton)
+            .accessibilityAction {
+                action()
+            }
+            .accessibilityAction(named: Text(
+                systemImage == "chevron.left"
+                    ? localizedString("Today", locale: locale)
+                    : dateSwitcherText(for: 9)
+            )) {
+                longPressAction()
+            }
     }
 
     func dateSwitcherText(for dayOffset: Int) -> String {
         if dayOffset == 0 { return localizedString("Today", locale: locale) }
-        let formatter = DateFormatter()
-        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "MMMdEEE", options: 0, locale: locale)
-        formatter.locale = locale
-        return formatter.string(from: Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date())
+        let date = Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
+        return date.formatted(
+            Date.FormatStyle.dateTime
+                .weekday(.abbreviated)
+                .month(.abbreviated)
+                .day()
+                .locale(locale)
+        )
     }
 
     var datePickerPopoverContent: some View {
         DatePicker(
-            "",
+            dateSwitcherText,
             selection: Binding(
                 get: {
                     Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
@@ -235,19 +266,13 @@ extension ContentView {
     }
 
     var bottomSearchButton: some View {
-        Button {
+        Button(localizedString("Search", locale: locale), systemImage: "magnifyingglass") {
             activateSearch()
-        } label: {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: bottomToolbarIconSize, weight: .regular))
-                .imageScale(.medium)
-                .foregroundStyle(theme.colors.primaryText)
         }
-        .accessibilityLabel(localizedString("Search", locale: locale))
     }
 
     var bottomMoreButton: some View {
-        Menu {
+        Menu(localizedString("Menu", locale: locale), systemImage: "ellipsis") {
             Button {
                 showingSettings = true
             } label: {
@@ -260,15 +285,10 @@ extension ContentView {
                 primaryMenuLabel(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"), systemImage: "arrow.clockwise")
             }
             .disabled(weatherService.isLoading)
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: bottomToolbarIconSize, weight: .regular))
-                .imageScale(.medium)
-                .foregroundStyle(theme.colors.primaryText)
         }
+        .menuIndicator(.hidden)
         .menuOrder(.fixed)
         .tint(theme.colors.accent)
-        .accessibilityLabel(localizedString("Menu", locale: locale))
     }
 
     func primaryMenuLabel(_ title: String, systemImage: String) -> some View {
@@ -280,114 +300,110 @@ extension ContentView {
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(theme.colors.accent)
                 .tint(theme.colors.accent)
+                // Accessibility: The adjacent text already names the menu action.
+                .accessibilityHidden(true)
         }
         .tint(theme.colors.accent)
     }
 
-    func bottomBackButton(_ route: AppNavigationRoute) -> some View {
-        Button {
-            if route == .map {
-                print("[MapBackDebug] back button tapped | currentRoute=\(String(describing: currentRoute)) path=\(navigationPath)")
-            }
-            popRoute(route)
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: bottomToolbarIconSize, weight: .semibold))
-                .imageScale(.medium)
-                .foregroundStyle(theme.colors.primaryText)
+    var bottomBackButton: some View {
+        Button(localizedString("Back", locale: locale), systemImage: "chevron.left") {
+            popCurrentRoute()
         }
-        .accessibilityLabel(localizedString("Back", locale: locale))
     }
 
     var bottomCancelListPreviewButton: some View {
-        Button {
+        Button(localizedString("Cancel", locale: locale), systemImage: "chevron.left") {
             cancelGeneratedListPreview()
-        } label: {
-            Image(systemName: "chevron.left")
-                .font(.system(size: bottomToolbarIconSize, weight: .semibold))
-                .imageScale(.medium)
-                .foregroundStyle(theme.colors.primaryText)
         }
-        .accessibilityLabel(localizedString("Cancel", locale: locale))
     }
 
     var bottomConfirmListPreviewButton: some View {
-        Button {
+        Button(localizedString("Add", locale: locale), systemImage: "plus") {
             confirmGeneratedListPreview()
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: bottomToolbarIconSize, weight: .semibold))
-                .imageScale(.medium)
-                .foregroundStyle(theme.colors.primaryText)
         }
         .disabled(listPreviewCities.isEmpty)
-        .accessibilityLabel(localizedString("Add", locale: locale))
     }
 
     var listPreviewCountPickerControl: some View {
         HStack(spacing: 6) {
             Button {
-                guard listPreviewCityCount > 1 else { return }
-                Haptics.lightImpact()
-                withAnimation(.smooth(duration: 0.18)) {
-                    listPreviewCityCount -= 1
-                }
+                changeListPreviewCityCount(by: -1)
             } label: {
                 Image(systemName: "minus")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(listPreviewCityCount > 1 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
+                    .foregroundStyle(listPreviewState.cityCount > 1 ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
                     .frame(minWidth: 30, minHeight: 32)
                     .contentShape(Rectangle())
             }
-            .disabled(listPreviewCityCount <= 1)
+            .disabled(listPreviewState.cityCount <= 1)
 
-            Text(cityCountText(listPreviewCityCount))
-                .font(.avenir(.subheadline, weight: .medium))
+            Text(cityCountText(listPreviewState.cityCount))
+                .font(.subheadline.weight(.medium))
                 .foregroundStyle(theme.colors.primaryText)
                 .monospacedDigit()
                 .lineLimit(1)
                 .fixedSize(horizontal: true, vertical: false)
 
             Button {
-                guard listPreviewCityCount < listPreviewMaximumCount else { return }
-                Haptics.lightImpact()
-                withAnimation(.smooth(duration: 0.18)) {
-                    listPreviewCityCount += 1
-                }
+                changeListPreviewCityCount(by: 1)
             } label: {
                 Image(systemName: "plus")
                     .font(.system(size: 12, weight: .medium))
-                    .foregroundStyle(listPreviewCityCount < listPreviewMaximumCount ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
+                    .foregroundStyle(listPreviewState.cityCount < listPreviewMaximumCount ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35))
                     .frame(minWidth: 30, minHeight: 32)
                     .contentShape(Rectangle())
             }
-            .disabled(listPreviewCityCount >= listPreviewMaximumCount)
+            .disabled(listPreviewState.cityCount >= listPreviewMaximumCount)
         }
         .padding(.horizontal, 3)
         .frame(width: bottomCenterToolbarWidth)
+        // Accessibility: Present the visual minus/count/plus cluster as one adjustable control.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(localizedString("Cities", locale: locale))
+        .accessibilityValue(cityCountText(listPreviewState.cityCount))
+        // Accessibility: Voice Control can target the adjustable element by either
+        // its visible count or its concise control name.
+        .accessibilityInputLabels([
+            Text(cityCountText(listPreviewState.cityCount)),
+            Text(localizedString("Cities", locale: locale))
+        ])
+        .accessibilityAdjustableAction { direction in
+            switch direction {
+            case .increment:
+                changeListPreviewCityCount(by: 1)
+            case .decrement:
+                changeListPreviewCityCount(by: -1)
+            @unknown default:
+                break
+            }
+        }
+    }
+
+    private func changeListPreviewCityCount(by delta: Int) {
+        let updatedCount = min(max(listPreviewState.cityCount + delta, 1), listPreviewMaximumCount)
+        guard updatedCount != listPreviewState.cityCount else { return }
+        Haptics.lightImpact()
+        withAnimation(.smooth(duration: 0.18)) {
+            listPreviewState.cityCount = updatedCount
+        }
     }
 
     var bottomAddSearchedCityButton: some View {
         let lists = managedLists
-        return Button {
+        return Button(localizedString("Add City", locale: locale), systemImage: "plus") {
             if lists.count > 1 {
-                showingAddSearchedCityListDialog = true
+                citySearchState.showsListPicker = true
             } else {
                 if let listID = lists.first {
                     addCity(to: listID)
                 }
             }
-        } label: {
-            Image(systemName: "plus")
-                .font(.system(size: bottomToolbarIconSize, weight: .semibold))
-                .imageScale(.medium)
-                .foregroundStyle(theme.colors.primaryText)
         }
         .disabled(addCityDetailCity == nil || lists.isEmpty)
-        .accessibilityLabel(localizedString("Add", locale: locale))
         .confirmationDialog(
             localizedString("Add to List", locale: locale),
-            isPresented: $showingAddSearchedCityListDialog,
+            isPresented: $citySearchState.showsListPicker,
             titleVisibility: .visible
         ) {
             ForEach(lists) { listID in
@@ -418,10 +434,21 @@ extension ContentView {
         navigationPath.append(route)
     }
 
+    func navigateToMap() {
+        guard let mapIndex = navigationPath.lastIndex(of: .map) else {
+            pushRoute(.map)
+            return
+        }
+
+        let routesAboveMap = navigationPath.count - mapIndex - 1
+        if routesAboveMap > 0 {
+            navigationPath.removeLast(routesAboveMap)
+        }
+    }
+
     func presentDetail(for city: CityWeather) {
-        tappedCity = city
         showingMapExpandedCard = false
-        pushRoute(.cityDetail(city.id))
+        pushRoute(.cityDetail(city))
     }
 
     func addCity(to listID: CityListID) {
@@ -447,55 +474,43 @@ extension ContentView {
                     return
                 }
 
-                addCityDetailCity = nil
-                tappedCity = savedCity
-                temporaryMapSearchCity = nil
-                removeRoute(.addCityDetail)
-                pushRoute(.cityDetail(savedCity.id))
+                selectedMapCity = savedCity
+                citySearchState.temporaryMapCity = nil
+                if case .addCityDetail = navigationPath.last {
+                    navigationPath.removeLast()
+                }
+                pushRoute(.cityDetail(savedCity))
                 showCityAddedConfirmation("\(localizedCityName(for: savedCity.city)) was added to \(listID.localizedDisplayName(locale: locale)).")
             }
         }
     }
 
     func popRoute(_ route: AppNavigationRoute) {
-        if route == .map {
-            print("[MapBackDebug] popRoute entered | currentRoute=\(String(describing: currentRoute)) path=\(navigationPath)")
-        }
-
+        guard navigationPath.contains(route) else { return }
         if navigationPath.last == route {
             navigationPath.removeLast()
-            cleanupAfterLeavingRoute(route)
-            if route == .map {
-                print("[MapBackDebug] back action executed: removed top map route | currentRoute=\(String(describing: currentRoute)) path=\(navigationPath)")
-            }
         } else {
-            removeRoute(route)
-            if route == .map {
-                print("[MapBackDebug] back action executed: removed map route from path | currentRoute=\(String(describing: currentRoute)) path=\(navigationPath)")
-            }
+            navigationPath.removeAll { $0 == route }
         }
-    }
-
-    func removeRoute(_ route: AppNavigationRoute) {
-        navigationPath.removeAll { $0 == route }
         cleanupAfterLeavingRoute(route)
     }
 
-    func dismissRoute(_ route: AppNavigationRoute) {
-        removeRoute(route)
+    func popCurrentRoute() {
+        guard let route = navigationPath.popLast() else { return }
+        cleanupAfterLeavingRoute(route)
     }
 
     private func cleanupAfterLeavingRoute(_ route: AppNavigationRoute) {
         switch route {
         case .map:
             showingMapExpandedCard = false
-            tappedCity = nil
+            selectedMapCity = nil
         case .list:
             listEditMode = false
         case .cityDetail:
             selectedDayOffset = 0
         case .addCityDetail:
-            addCityDetailCity = nil
+            break
         case .listPreview:
             clearGeneratedListPreview()
         }

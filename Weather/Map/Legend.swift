@@ -17,6 +17,7 @@ struct MapFloatingLegend: View {
 
     @Environment(\.locale) private var locale
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appTheme) private var theme
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
     @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
 
@@ -29,11 +30,11 @@ struct MapFloatingLegend: View {
     }
 
     private var palette: ThemeColors {
-        colorScheme == .dark ? .dark : .light
+        theme.colors
     }
 
     private var saturatedPartlySunnyColor: Color {
-        palette.dotPartlyCloudy.compatMix(with: palette.filterSunny, by: 0.18)
+        palette.dotPartlyCloudy.interpolated(with: palette.filterSunny, by: 0.18)
     }
 
     private var legendWidth: CGFloat {
@@ -41,11 +42,11 @@ struct MapFloatingLegend: View {
     }
 
     private var legendLabelFont: Font {
-        .avenir(.caption, weight: .medium)
+        .caption.weight(.medium)
     }
 
     private var legendValueFont: Font {
-        .avenir(.caption2, weight: .medium)
+        .caption2.weight(.medium)
     }
 
     private var weatherLegendItems: [(title: String, color: Color)] {
@@ -54,47 +55,69 @@ struct MapFloatingLegend: View {
             (localizedString("Partly Sunny", locale: locale), palette.dotPartlyCloudy),
             (localizedString("Rain", locale: locale), palette.dotRain),
             (localizedString("Drizzle", locale: locale), palette.dotDrizzle),
-            (localizedString("Cloudy, Windy,\nSnowy, Foggy", locale: locale), palette.dotCloudy),
-            (localizedString("Night", locale: locale), AppTheme.shared.colors.moonIconColor)
+            (wrappedCloudyConditionsTitle, palette.dotCloudy),
+            (localizedString("Night", locale: locale), theme.colors.moonIconColor)
         ]
+    }
+
+    // MARK: - Accessibility - Legend Descriptions
+
+    private var overlayAccessibilityTitle: String {
+        switch overlayMode {
+        case "temperature": return localizedString("Temperature", locale: locale)
+        case "cloudCover": return localizedString("Cloud Cover", locale: locale)
+        case "precipitation": return localizedString("Rain", locale: locale)
+        case "windSpeed": return localizedString("Wind", locale: locale)
+        case "uvIndex": return localizedString("UV Index", locale: locale)
+        default: return localizedString("Sunniness", locale: locale)
+        }
+    }
+
+    // MARK: - Localized Legend Layout
+
+    private var wrappedCloudyConditionsTitle: String {
+        let title = localizedString("Cloudy, Windy, Snowy, Foggy", locale: locale)
+        let separator = title.contains("、") ? "、" : ","
+        let conditions = title
+            .components(separatedBy: separator)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+        guard conditions.count == 4 else { return title }
+
+        let joiner = separator == "、" ? separator : "\(separator) "
+        let firstLine = conditions.prefix(2).joined(separator: joiner)
+        let secondLine = conditions.suffix(2).joined(separator: joiner)
+        return "\(firstLine)\(separator)\n\(secondLine)"
     }
 
     // MARK: - Overlay Color Scales
 
     private func temperatureColor(celsius: Double) -> Color {
         if celsius <= 0 {
-            return palette.dotRain.compatMix(with: palette.dotDrizzle, by: max(0, min(1, (celsius + 20) / 20)))
+            return palette.dotRain.interpolated(with: palette.dotDrizzle, by: max(0, min(1, (celsius + 20) / 20)))
         } else if celsius <= 10 {
-            return palette.dotDrizzle.compatMix(with: palette.dotCloudy, by: max(0, min(1, celsius / 10)))
+            return palette.dotDrizzle.interpolated(with: palette.dotCloudy, by: max(0, min(1, celsius / 10)))
         } else if celsius <= 20 {
-            return palette.dotCloudy.compatMix(with: saturatedPartlySunnyColor, by: max(0, min(1, (celsius - 10) / 10)))
+            return palette.dotCloudy.interpolated(with: saturatedPartlySunnyColor, by: max(0, min(1, (celsius - 10) / 10)))
         } else {
-            return saturatedPartlySunnyColor.compatMix(with: palette.destructive, by: max(0, min(1, (celsius - 20) / 20)))
+            return saturatedPartlySunnyColor.interpolated(with: palette.destructive, by: max(0, min(1, (celsius - 20) / 20)))
         }
     }
 
     private func cloudColor(percent: Double) -> Color {
-        palette.dotRain.compatMix(with: palette.dotCloudy, by: max(0, min(1, percent / 100.0)))
+        palette.dotRain.interpolated(with: palette.dotCloudy, by: max(0, min(1, percent / 100.0)))
     }
 
     private func precipitationColor(percent: Double) -> Color {
-        palette.dotCloudy.compatMix(with: palette.dotDrizzle, by: max(0, min(1, percent / 100.0)))
+        palette.dotCloudy.interpolated(with: palette.dotDrizzle, by: max(0, min(1, percent / 100.0)))
     }
 
     private func windColor(fraction: Double) -> Color {
-        palette.dotCloudy.compatMix(with: saturatedPartlySunnyColor, by: max(0, min(1, fraction)))
+        palette.dotCloudy.interpolated(with: saturatedPartlySunnyColor, by: max(0, min(1, fraction)))
     }
 
     private func uvColor(fraction: Double) -> Color {
-        palette.dotCloudy.compatMix(with: palette.destructive, by: max(0, min(1, fraction)))
-    }
-
-    private func humidityColor(fraction: Double) -> Color {
-        Color.white.compatMix(with: palette.dotDrizzle, by: max(0, min(1, fraction)))
-    }
-
-    private func visibilityColor(fraction: Double) -> Color {
-        Color.white.compatMix(with: palette.dotRain, by: max(0, min(1, fraction)))
+        palette.dotCloudy.interpolated(with: palette.destructive, by: max(0, min(1, fraction)))
     }
 
     // MARK: - Gradient legend
@@ -109,7 +132,7 @@ struct MapFloatingLegend: View {
                 ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
                     Text(label)
                         .font(legendValueFont)
-                        .foregroundStyle(AppTheme.shared.colors.secondaryText)
+                        .foregroundStyle(theme.colors.secondaryText)
                     if index < labels.count - 1 {
                         Spacer(minLength: 0)
                     }
@@ -118,6 +141,10 @@ struct MapFloatingLegend: View {
             .frame(height: compact ? 112 : 132)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        // Accessibility: Collapse visual scale marks into one named, ordered value.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(overlayAccessibilityTitle)
+        .accessibilityValue(labels.joined(separator: ", "))
     }
 
     // MARK: - Body
@@ -136,11 +163,18 @@ struct MapFloatingLegend: View {
                 Button(action: onClose) {
                     Image(systemName: "xmark")
                         .font(.system(size: compact ? 10 : 11, weight: .semibold))
-                        .foregroundStyle(AppTheme.shared.colors.secondaryText)
-                        .frame(width: compact ? 26 : 28, height: compact ? 26 : 28)
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // Accessibility: Keep a 44-point target while negative padding preserves
+                // the compact legend's visual dimensions.
+                .padding(compact ? -9 : -8)
+                .accessibilityLabel(localizedString("Done", locale: locale))
+                // Accessibility: State the scope because multiple icon-only close controls
+                // can otherwise sound identical under VoiceOver and Voice Control.
+                .accessibilityValue(overlayAccessibilityTitle)
                 .padding(.top, 4)
                 .padding(.trailing, 4)
             }
@@ -212,28 +246,6 @@ struct MapFloatingLegend: View {
                 ],
                 labels: ["11+", "9", "6", "3", "0"]
             )
-        case "humidity":
-            verticalGradientLegend(
-                colors: [
-                    humidityColor(fraction: 1.0),
-                    humidityColor(fraction: 0.75),
-                    humidityColor(fraction: 0.5),
-                    humidityColor(fraction: 0.25),
-                    humidityColor(fraction: 0)
-                ],
-                labels: ["100%", "75%", "50%", "25%", "0%"]
-            )
-        case "visibility":
-            verticalGradientLegend(
-                colors: [
-                    visibilityColor(fraction: 1.0),
-                    visibilityColor(fraction: 0.75),
-                    visibilityColor(fraction: 0.5),
-                    visibilityColor(fraction: 0.25),
-                    visibilityColor(fraction: 0)
-                ],
-                labels: distUnit.resolved == .miles ? ["19 mi", "14", "9", "5", "0"] : ["30 km", "23", "15", "8", "0"]
-            )
         default:
             EmptyView()
         }
@@ -270,10 +282,11 @@ struct MapFloatingLegend: View {
                 .frame(width: compact ? 6 : 8, height: compact ? 6 : 8)
                 .shadow(color: color.opacity(0.5), radius: 2)
                 .padding(.top, isWrappedCondition ? (compact ? 4 : 5) : 0)
+                .accessibilityHidden(true)
 
             Text(title)
                 .font(legendLabelFont)
-                .foregroundStyle(AppTheme.shared.colors.primaryText)
+                .foregroundStyle(theme.colors.primaryText)
                 .fixedSize(horizontal: true, vertical: true)
         }
     }
@@ -284,5 +297,11 @@ struct MapFloatingLegend: View {
                 conditionEntry(title: item.title, color: item.color)
             }
         }
+        // Accessibility: Announce the color-only weather key as one textual legend.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(localizedString("Legend", locale: locale))
+        .accessibilityValue(
+            weatherLegendItems.map { $0.title.replacingOccurrences(of: "\n", with: " ") }.joined(separator: ", ")
+        )
     }
 }

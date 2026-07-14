@@ -9,44 +9,6 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-private enum WidgetStore {
-    static let appGroupIdentifier = "group.Yutao-Wu.Weather"
-    static let catalogKey = "bestSunnyPlacesWidgetCatalog"
-
-    static func catalog() -> WidgetCatalog? {
-        guard let data = UserDefaults(suiteName: appGroupIdentifier)?.data(forKey: catalogKey) else {
-            return nil
-        }
-        return try? JSONDecoder().decode(WidgetCatalog.self, from: data)
-    }
-}
-
-private struct WidgetCity: Codable, Hashable, Identifiable {
-    let id: String
-    let cityName: String
-    let temperature: String
-    let cloudCover: String
-    let conditionIcon: String
-    let daytimeHours: [Int]
-    let sunnyHours: [Int]
-    let partlySunnyHours: [Int]
-}
-
-private struct WidgetList: Codable, Hashable, Identifiable {
-    let id: String
-    let displayName: String
-    let listName: String
-    let title: String
-    let topCityIDs: [String]
-    let cities: [WidgetCity]
-}
-
-private struct WidgetCatalog: Codable, Hashable {
-    let activeListID: String
-    let updatedAt: Date
-    let lists: [WidgetList]
-}
-
 struct WidgetListEntity: AppEntity, Identifiable {
     let id: String
     let displayName: String
@@ -61,14 +23,14 @@ struct WidgetListEntity: AppEntity, Identifiable {
 
 struct WidgetListQuery: EntityStringQuery {
     func entities(for identifiers: [String]) async throws -> [WidgetListEntity] {
-        let lists = WidgetStore.catalog()?.lists ?? []
+        let lists = WidgetDataStore.catalog()?.lists ?? []
         return identifiers.compactMap { id in
             lists.first(where: { $0.id == id }).map(WidgetListEntity.init)
         }
     }
 
     func suggestedEntities() async throws -> [WidgetListEntity] {
-        (WidgetStore.catalog()?.lists ?? []).map(WidgetListEntity.init)
+        (WidgetDataStore.catalog()?.lists ?? []).map(WidgetListEntity.init)
     }
 
     func entities(matching string: String) async throws -> [WidgetListEntity] {
@@ -79,7 +41,7 @@ struct WidgetListQuery: EntityStringQuery {
 }
 
 private extension WidgetListEntity {
-    init(_ list: WidgetList) {
+    init(_ list: WidgetDataList) {
         id = list.id
         displayName = list.displayName
     }
@@ -99,14 +61,14 @@ struct WidgetCityEntity: AppEntity, Identifiable {
 
 struct WidgetCityQuery: EntityStringQuery {
     func entities(for identifiers: [String]) async throws -> [WidgetCityEntity] {
-        let cities = WidgetStore.catalog()?.lists.flatMap(\.cities) ?? []
+        let cities = WidgetDataStore.catalog()?.lists.flatMap(\.cities) ?? []
         return identifiers.compactMap { id in
             cities.first(where: { $0.id == id }).map(WidgetCityEntity.init)
         }
     }
 
     func suggestedEntities() async throws -> [WidgetCityEntity] {
-        (WidgetStore.catalog()?.lists.flatMap(\.cities) ?? []).map(WidgetCityEntity.init)
+        (WidgetDataStore.catalog()?.lists.flatMap(\.cities) ?? []).map(WidgetCityEntity.init)
     }
 
     func entities(matching string: String) async throws -> [WidgetCityEntity] {
@@ -117,7 +79,7 @@ struct WidgetCityQuery: EntityStringQuery {
 }
 
 private extension WidgetCityEntity {
-    init(_ city: WidgetCity) {
+    init(_ city: WidgetDataCity) {
         id = city.id
         cityName = city.cityName
     }
@@ -138,7 +100,7 @@ struct WidgetCityOptionsProvider: DynamicOptionsProvider {
 
     func results() async throws -> [WidgetCityEntity] {
         guard let listID = intent?.list.id,
-              let list = WidgetStore.catalog()?.lists.first(where: { $0.id == listID }) else {
+              let list = WidgetDataStore.catalog()?.lists.first(where: { $0.id == listID }) else {
             return []
         }
         return list.cities.map(WidgetCityEntity.init)
@@ -157,12 +119,13 @@ struct BestSunnyPlacesWidget: Widget {
         }
         .configurationDisplayName("Sunny Hours")
         .description("Track sunny daytime hours for a chosen city.")
-        .supportedFamilies([.systemSmall, .systemMedium])
+        .supportedFamilies([.systemMedium])
     }
 }
 
 private struct SunnyHoursHomeWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.locale) private var locale
     let entry: SunnyHoursLockScreenEntry
 
     var body: some View {
@@ -173,49 +136,31 @@ private struct SunnyHoursHomeWidgetView: View {
         }
     }
 
-    private func content(_ city: WidgetCity) -> some View {
-        VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 12) {
-            HStack(spacing: 6) {
-                Image(systemName: "sun.max.fill")
-                    .foregroundStyle(.yellow)
-                Text(city.cityName)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-                Text("Sunny Hours")
-                    .foregroundStyle(.secondary)
-            }
-                .font(.headline.weight(.semibold))
+    private func content(_ city: WidgetDataCity) -> some View {
+        VStack(alignment: .leading, spacing: family == .systemSmall ? 7 : 9) {
+            SunnyHoursHeader(cityName: city.cityName, font: .headline.weight(.semibold), usesAccentColor: true)
 
             SunnyHoursTimeline(city: city, currentDate: entry.date)
-                .frame(height: family == .systemSmall ? 26 : 38)
+                .padding(.top, 5)
+                .frame(maxHeight: .infinity)
 
-            if family == .systemMedium {
-                Text(sunnyHoursText(for: city))
-                    .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.secondary)
-            }
+            SunnyHoursLegend()
         }
-    }
-
-    private func sunnyHoursText(for city: WidgetCity) -> String {
-        guard let first = city.sunnyHours.first, let last = city.sunnyHours.last else {
-            return "No sunny hours today"
-        }
-        return "\(hourText(first)) - \(hourText(last + 1))"
-    }
-
-    private func hourText(_ hour: Int) -> String {
-        DateFormatter.localizedString(
-            from: Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: entry.date) ?? entry.date,
-            dateStyle: .none,
-            timeStyle: .short
-        )
+        .padding(.horizontal, 7)
+        .padding(.top, 12)
+        .padding(.bottom, 5)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        // Accessibility: A widget is a single launch target, so provide its complete
+        // weather result in one focus stop instead of exposing decorative chart pieces.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(String(localized: "Sunny Hours")), \(city.cityName)")
+        .accessibilityValue(widgetSunnyHoursAccessibilitySummary(for: city, locale: locale))
     }
 }
 
 private struct SunnyHoursLockScreenEntry: TimelineEntry {
     let date: Date
-    let city: WidgetCity?
+    let city: WidgetDataCity?
 
     static let preview = SunnyHoursLockScreenEntry(date: .now, city: .preview)
 }
@@ -232,14 +177,16 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
         return Timeline(entries: [entry], policy: .after(entry.date.addingTimeInterval(15 * 60)))
     }
 
-    private func selectedCity(for configuration: SunnyHoursLockScreenConfigurationIntent) -> WidgetCity? {
-        guard let listID = configuration.list?.id,
-              let cityID = configuration.city?.id else {
-            return nil
-        }
-        return WidgetStore.catalog()?.lists
-            .first(where: { $0.id == listID })?
-            .cities.first(where: { $0.id == cityID })
+    private func selectedCity(for configuration: SunnyHoursLockScreenConfigurationIntent) -> WidgetDataCity? {
+        guard let catalog = WidgetDataStore.catalog() else { return nil }
+        let list = configuration.list.flatMap { selectedList in
+            catalog.lists.first(where: { $0.id == selectedList.id })
+        } ?? catalog.lists.first
+
+        guard let list else { return nil }
+        return configuration.city.flatMap { selectedCity in
+            list.cities.first(where: { $0.id == selectedCity.id })
+        } ?? list.cities.first
     }
 }
 
@@ -260,66 +207,358 @@ struct SunnyHoursLockScreenWidget: Widget {
 }
 
 private struct SunnyHoursLockScreenWidgetView: View {
+    @Environment(\.locale) private var locale
     let entry: SunnyHoursLockScreenEntry
 
     var body: some View {
         if let city = entry.city, !city.daytimeHours.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 5) {
-                    Image(systemName: "sun.max.fill")
-                    Text(city.cityName)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    Text("Sunny Hours")
-                        .foregroundStyle(.secondary)
-                }
-                .font(.caption.weight(.semibold))
+                SunnyHoursHeader(cityName: city.cityName, font: .caption.weight(.semibold), usesAccentColor: false)
+                    .padding(.horizontal, 10)
+                    .padding(.trailing, -4)
 
-                SunnyHoursTimeline(city: city, currentDate: entry.date)
-                    .frame(height: 16)
+                SunnyHoursTimeline(city: city, currentDate: entry.date, style: .lockScreen)
+                    .padding(.horizontal, 10)
+                    .frame(height: 38)
+                    .offset(y: 2)
             }
+            // Accessibility: Keep the compact lock-screen widget to one meaningful
+            // launch target with the same information as its visual timeline.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(String(localized: "Sunny Hours")), \(city.cityName)")
+            .accessibilityValue(widgetSunnyHoursAccessibilitySummary(for: city, locale: locale))
         } else {
             WidgetEmptyState(title: "Sunny Hours", symbol: "sun.max.fill")
         }
     }
 }
 
-private struct SunnyHoursTimeline: View {
-    let city: WidgetCity
-    let currentDate: Date
+private struct SunnyHoursHeader: View {
+    let cityName: String
+    let font: Font
+    let usesAccentColor: Bool
 
     var body: some View {
-        GeometryReader { proxy in
-            let startHour = city.daytimeHours.min() ?? 6
-            let endHour = city.daytimeHours.max() ?? 21
-            let range = max(endHour - startHour + 1, 1)
-            ZStack(alignment: .leading) {
-                Capsule().fill(.white.opacity(0.18))
-                HStack(spacing: 2) {
-                    ForEach(startHour...endHour, id: \.self) { hour in
-                        Capsule()
-                            .fill(segmentColor(for: hour))
-                    }
-                }
-                .padding(.vertical, 2)
-
-                if Calendar.current.component(.hour, from: currentDate) >= startHour,
-                   Calendar.current.component(.hour, from: currentDate) <= endHour {
-                    let currentHour = Calendar.current.component(.hour, from: currentDate)
-                    Capsule()
-                        .fill(.white)
-                        .frame(width: 1.5)
-                        .offset(x: CGFloat(currentHour - startHour) / CGFloat(range) * proxy.size.width)
-                }
-            }
+        HStack(spacing: 6) {
+            Text(cityName)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+            Spacer(minLength: 6)
+            Image(systemName: "sun.max.fill")
+                .foregroundStyle(usesAccentColor ? WidgetColors.sunny : Color.primary)
+                .accessibilityHidden(true)
         }
-        .accessibilityLabel("Sunny hours timeline")
+        .font(font)
+    }
+}
+
+private struct SunnyHoursTimeline: View {
+    enum Style {
+        case home
+        case lockScreen
     }
 
+    // Accessibility: Adds shapes as a redundant cue when colors alone are insufficient.
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    let city: WidgetDataCity
+    let currentDate: Date
+    var style: Style = .home
+
+    private let minimumCapsuleLaneHeight: CGFloat = 44
+
+    var body: some View {
+        let hours = displayedHours
+        let startHour = hours.first ?? 6
+        let endHour = hours.last ?? 21
+
+        VStack(spacing: style == .home ? 4 : 3) {
+            GeometryReader { proxy in
+                let capsuleHeight = proxy.size.height
+                ZStack(alignment: .leading) {
+                    HStack(spacing: style == .home ? 7 : 8) {
+                        ForEach(hours, id: \.self) { hour in
+                            Capsule()
+                                .fill(segmentColor(for: hour))
+                                .overlay {
+                                    segmentDifferentiator(for: hour)
+                                }
+                        }
+                    }
+
+                    if let boundaryIndex = currentTimeBoundaryIndex(in: hours) {
+                        currentTimeMarker
+                            .frame(height: capsuleHeight)
+                            .position(
+                                x: boundaryPosition(
+                                    for: boundaryIndex,
+                                    capsuleCount: hours.count,
+                                    availableWidth: proxy.size.width
+                                ),
+                                y: capsuleHeight / 2
+                            )
+                    }
+                }
+                .frame(height: capsuleHeight, alignment: .top)
+            }
+            .frame(minHeight: style == .home ? minimumCapsuleLaneHeight : 18)
+
+            if style == .lockScreen {
+                HStack {
+                    Text(formattedHour(startHour))
+                    Spacer(minLength: 0)
+                    Text(formattedHour(endHour))
+                }
+                .frame(height: 14)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .padding(.top, 2)
+            } else {
+                let axisMarkers = timelineAxisMarkers(
+                    for: hours,
+                    from: startHour,
+                    through: endHour
+                )
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        ForEach(Array(axisMarkers.enumerated()), id: \.offset) { _, marker in
+                            Text(formattedHour(marker.hour))
+                                .position(
+                                    x: capsuleCenterPosition(
+                                        for: marker.capsuleIndex,
+                                        capsuleCount: hours.count,
+                                        availableWidth: proxy.size.width
+                                    ),
+                                    y: proxy.size.height / 2
+                                )
+                        }
+                    }
+                }
+                .frame(height: 14)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+            }
+        }
+        // Accessibility: The timeline's visual segments and axis become one concise summary.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Sunny Hours")
+        .accessibilityValue(accessibilityTimelineValue)
+    }
+
+    // MARK: - Accessibility - Timeline Descriptions
+
+    @ViewBuilder
+    private func segmentDifferentiator(for hour: Int) -> some View {
+        if differentiateWithoutColor {
+            if city.sunnyHours.contains(hour) {
+                Capsule()
+                    .strokeBorder(.primary.opacity(0.9), lineWidth: 1.2)
+            } else if city.partlySunnyHours.contains(hour) {
+                Capsule()
+                    .strokeBorder(
+                        .primary.opacity(0.9),
+                        style: StrokeStyle(lineWidth: 1.2, dash: [2, 2])
+                    )
+            }
+        }
+    }
+
+    private var accessibilityTimelineValue: String {
+        var parts: [String] = []
+        let sunnyRanges = formattedHourRanges(city.sunnyHours)
+        if !sunnyRanges.isEmpty {
+            parts.append("\(String(localized: "Sunny")): \(sunnyRanges)")
+        }
+        let partlySunnyRanges = formattedHourRanges(city.partlySunnyHours)
+        if !partlySunnyRanges.isEmpty {
+            parts.append("\(String(localized: "Partly Sunny")): \(partlySunnyRanges)")
+        }
+        if parts.isEmpty {
+            let hours = displayedHours
+            return "\(formattedHour(hours.first ?? 6))–\(formattedHour(hours.last ?? 21))"
+        }
+        return parts.joined(separator: "; ")
+    }
+
+    private func formattedHourRanges(_ sourceHours: [Int]) -> String {
+        let hours = Array(Set(sourceHours)).sorted()
+        guard let firstHour = hours.first else { return "" }
+
+        var ranges: [(start: Int, end: Int)] = []
+        var rangeStart = firstHour
+        var previousHour = firstHour
+        for hour in hours.dropFirst() {
+            if hour == previousHour + 1 {
+                previousHour = hour
+            } else {
+                ranges.append((rangeStart, previousHour + 1))
+                rangeStart = hour
+                previousHour = hour
+            }
+        }
+        ranges.append((rangeStart, previousHour + 1))
+
+        return ranges
+            .map { "\(formattedHour($0.start))–\(formattedHour($0.end))" }
+            .joined(separator: ", ")
+    }
+
+    // MARK: - Timeline Rendering
+
     private func segmentColor(for hour: Int) -> Color {
-        if city.sunnyHours.contains(hour) { return .yellow }
-        if city.partlySunnyHours.contains(hour) { return .yellow.opacity(0.48) }
-        return .clear
+        if style == .lockScreen {
+            if city.sunnyHours.contains(hour) { return .primary.opacity(0.92) }
+            if city.partlySunnyHours.contains(hour) { return .primary.opacity(0.62) }
+            // Accessibility: Strengthen inactive lock-screen segments only when
+            // Increase Contrast is enabled so they remain visually meaningful.
+            return .primary.opacity(colorSchemeContrast == .increased ? 0.52 : 0.28)
+        }
+
+        if colorSchemeContrast == .increased {
+            // Accessibility: Adaptive primary fills keep every timeline state above
+            // the non-text contrast threshold on light and dark widget backgrounds.
+            if city.sunnyHours.contains(hour) { return .primary }
+            if city.partlySunnyHours.contains(hour) { return .primary.opacity(0.70) }
+            return .primary.opacity(0.52)
+        }
+
+        if city.sunnyHours.contains(hour) {
+            return WidgetColors.sunny
+        }
+        if city.partlySunnyHours.contains(hour) {
+            return WidgetColors.partlySunny
+        }
+        return .secondary.opacity(0.16)
+    }
+
+    private var currentTimeMarker: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.9))
+            .frame(width: 2)
+    }
+
+    private func currentTimeBoundaryIndex(in hours: [Int]) -> Int? {
+        var calendar = Calendar.current
+        calendar.timeZone = city.widgetTimeZone
+        let currentHour = calendar.component(.hour, from: currentDate)
+        guard hours.count > 1,
+              currentHour >= (hours.first ?? currentHour),
+              currentHour <= (hours.last ?? currentHour) else {
+            return nil
+        }
+        let currentIndex = hours.enumerated().min {
+            abs($0.element - currentHour) < abs($1.element - currentHour)
+        }?.offset ?? 0
+        return min(currentIndex + 1, hours.count - 1)
+    }
+
+    private func boundaryPosition(for boundaryIndex: Int, capsuleCount: Int, availableWidth: CGFloat) -> CGFloat {
+        let spacing: CGFloat = style == .home ? 7 : 8
+        let capsuleWidth = (availableWidth - spacing * CGFloat(capsuleCount - 1)) / CGFloat(capsuleCount)
+        return CGFloat(boundaryIndex) * capsuleWidth + (CGFloat(boundaryIndex) - 0.5) * spacing
+    }
+
+    private func capsuleCenterPosition(for index: Int, capsuleCount: Int, availableWidth: CGFloat) -> CGFloat {
+        let spacing: CGFloat = style == .home ? 7 : 8
+        let capsuleWidth = (availableWidth - spacing * CGFloat(capsuleCount - 1)) / CGFloat(capsuleCount)
+        return CGFloat(index) * (capsuleWidth + spacing) + capsuleWidth / 2
+    }
+
+    private var displayedHours: [Int] {
+        let sourceHours = city.widgetTimelineHours
+        let hours = sourceHours.last.map { sourceHours + [$0 + 1] } ?? sourceHours
+        guard style == .lockScreen, hours.count > 1 else { return hours }
+
+        var twoHourlySlots = hours.enumerated().compactMap { index, hour in
+            index.isMultiple(of: 2) ? hour : nil
+        }
+        if let finalHour = hours.last, twoHourlySlots.last != finalHour {
+            twoHourlySlots.append(finalHour)
+        }
+        return twoHourlySlots
+    }
+
+    private func timelineAxisHours(from startHour: Int, through endHour: Int) -> [Int] {
+        let span = max(endHour - startHour, 0)
+        return (0...3).map { index in
+            startHour + Int((Double(span) * Double(index) / 3).rounded())
+        }
+    }
+
+    private func timelineAxisMarkers(
+        for hours: [Int],
+        from startHour: Int,
+        through endHour: Int
+    ) -> [(hour: Int, capsuleIndex: Int)] {
+        guard !hours.isEmpty else { return [] }
+        let axisHours = timelineAxisHours(from: startHour, through: endHour)
+
+        return axisHours.enumerated().map { axisIndex, hour in
+            let capsuleIndex: Int
+            if axisIndex == 0 {
+                capsuleIndex = 0
+            } else if axisIndex == axisHours.count - 1 {
+                capsuleIndex = hours.count - 1
+            } else {
+                capsuleIndex = hours.enumerated().min {
+                    abs($0.element - hour) < abs($1.element - hour)
+                }?.offset ?? 0
+            }
+            return (hour, capsuleIndex)
+        }
+    }
+
+    private func formattedHour(_ hour: Int) -> String {
+        String(format: "%02d", hour % 24)
+    }
+
+}
+
+private struct SunnyHoursLegend: View {
+    // Accessibility: Replaces color dots with condition symbols when requested by the system.
+    @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    var body: some View {
+        HStack(spacing: 9) {
+            item(
+                color: colorSchemeContrast == .increased ? .primary : WidgetColors.sunny,
+                title: "Sunny",
+                symbol: "sun.max.fill"
+            )
+            item(
+                color: colorSchemeContrast == .increased ? .primary.opacity(0.70) : WidgetColors.partlySunny,
+                title: "Partly Sunny",
+                symbol: "cloud.sun.fill"
+            )
+        }
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.top, 9)
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(.secondary.opacity(0.18))
+                .frame(height: 1)
+        }
+    }
+
+    private func item(color: Color, title: String, symbol: String) -> some View {
+        HStack(spacing: 4) {
+            if differentiateWithoutColor {
+                Image(systemName: symbol)
+                    .accessibilityHidden(true)
+            } else {
+                Circle()
+                    .fill(color)
+                    .frame(width: 6, height: 6)
+                    .accessibilityHidden(true)
+            }
+            Text(title)
+        }
     }
 }
 
@@ -331,37 +570,113 @@ private struct WidgetEmptyState: View {
         VStack(alignment: .leading, spacing: 8) {
             Label(title, systemImage: symbol)
                 .font(.headline.weight(.semibold))
-                .foregroundStyle(WidgetColors.navy)
+                // Accessibility: A semantic foreground remains legible in both
+                // light and dark widget appearances.
+                .foregroundStyle(.primary)
             Spacer()
             Text("Open Weather Atlas to update this widget.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        // Accessibility: Treat the empty-state title and instruction as one useful element.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
+        .accessibilityValue("Open Weather Atlas to update this widget.")
     }
+}
+
+// MARK: - Accessibility - Widget Summaries
+
+private func widgetSunnyHoursAccessibilitySummary(for city: WidgetDataCity, locale: Locale) -> String {
+    var parts: [String] = []
+    let sunnyRanges = widgetFormattedHourRanges(city.sunnyHours, locale: locale)
+    if !sunnyRanges.isEmpty {
+        parts.append("\(String(localized: "Sunny")): \(sunnyRanges)")
+    }
+
+    let partlySunnyRanges = widgetFormattedHourRanges(city.partlySunnyHours, locale: locale)
+    if !partlySunnyRanges.isEmpty {
+        parts.append("\(String(localized: "Partly Sunny")): \(partlySunnyRanges)")
+    }
+
+    if parts.isEmpty {
+        return String(localized: "No Sun")
+    }
+    return parts.joined(separator: "; ")
+}
+
+private func widgetFormattedHourRanges(_ sourceHours: [Int], locale: Locale) -> String {
+    let hours = Array(Set(sourceHours)).sorted()
+    guard let firstHour = hours.first else { return "" }
+
+    var ranges: [(start: Int, end: Int)] = []
+    var rangeStart = firstHour
+    var previousHour = firstHour
+    for hour in hours.dropFirst() {
+        if hour == previousHour + 1 {
+            previousHour = hour
+        } else {
+            ranges.append((rangeStart, previousHour + 1))
+            rangeStart = hour
+            previousHour = hour
+        }
+    }
+    ranges.append((rangeStart, previousHour + 1))
+
+    // Accessibility: Respect the user's 12/24-hour convention in spoken summaries.
+    let formatter = DateFormatter()
+    formatter.locale = locale
+    formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale)
+
+    func formattedHour(_ hour: Int) -> String {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.hour = hour % 24
+        components.minute = 0
+        guard let date = components.date else { return String(format: "%02d", hour % 24) }
+        return formatter.string(from: date)
+    }
+
+    return ranges
+        .map { "\(formattedHour($0.start))–\(formattedHour($0.end))" }
+        .joined(separator: ", ")
 }
 
 private enum WidgetColors {
     static let navy = Color(red: 0.12, green: 0.28, blue: 0.55)
+    static let sunny = Color(red: 1, green: 0.72, blue: 0.30)
+    static let partlySunny = Color(red: 1, green: 0.80, blue: 0.46)
 }
 
-private extension WidgetList {
-    static let preview = WidgetList(
+private extension WidgetDataList {
+    static let preview = WidgetDataList(
         id: "europe",
         displayName: "Europe",
-        listName: "Europe",
-        title: "Best Sunny Places",
-        topCityIDs: ["barcelona", "rome", "athens"],
         cities: [
-            WidgetCity(id: "barcelona", cityName: "Barcelona", temperature: "30°", cloudCover: "8%", conditionIcon: "sun.max.fill", daytimeHours: Array(6...21), sunnyHours: Array(8...19), partlySunnyHours: [7, 20]),
-            WidgetCity(id: "rome", cityName: "Rome", temperature: "29°", cloudCover: "12%", conditionIcon: "cloud.sun", daytimeHours: Array(6...21), sunnyHours: Array(9...18), partlySunnyHours: [7, 8, 19]),
-            WidgetCity(id: "athens", cityName: "Athens", temperature: "28°", cloudCover: "16%", conditionIcon: "sun.max.fill", daytimeHours: Array(6...21), sunnyHours: Array(8...20), partlySunnyHours: [7])
+            WidgetDataCity(id: "barcelona", cityName: "Barcelona", timeZoneIdentifier: "Europe/Madrid", daytimeHours: Array(6...21), sunnyHours: Array(8...19), partlySunnyHours: [7, 20]),
+            WidgetDataCity(id: "rome", cityName: "Rome", timeZoneIdentifier: "Europe/Rome", daytimeHours: Array(6...21), sunnyHours: Array(9...18), partlySunnyHours: [7, 8, 19]),
+            WidgetDataCity(id: "athens", cityName: "Athens", timeZoneIdentifier: "Europe/Athens", daytimeHours: Array(6...21), sunnyHours: Array(8...20), partlySunnyHours: [7])
         ]
     )
 }
 
-private extension WidgetCity {
-    static let preview = WidgetList.preview.cities[0]
+private extension WidgetDataCity {
+    static let preview = WidgetDataList.preview.cities[0]
+
+    var widgetSunnyHours: [Int] {
+        Array(Set(sunnyHours + partlySunnyHours)).sorted()
+    }
+
+    var widgetTimelineHours: [Int] {
+        let daytime = daytimeHours.sorted()
+        guard !daytime.isEmpty else { return widgetSunnyHours }
+        return daytime
+    }
+
+    var widgetTimeZone: TimeZone {
+        timeZoneIdentifier.flatMap(TimeZone.init(identifier:)) ?? .autoupdatingCurrent
+    }
 }
 
 @main
@@ -370,12 +685,6 @@ struct WeatherWidgetsBundle: WidgetBundle {
         BestSunnyPlacesWidget()
         SunnyHoursLockScreenWidget()
     }
-}
-
-#Preview("Sunny Hours - Small", as: .systemSmall) {
-    BestSunnyPlacesWidget()
-} timeline: {
-    SunnyHoursLockScreenEntry.preview
 }
 
 #Preview("Sunny Hours - Medium", as: .systemMedium) {

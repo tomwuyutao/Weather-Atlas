@@ -10,6 +10,15 @@ import SwiftUI
 
 // MARK: - Full-Screen Tutorial
 
+// Accessibility: Stable focus destinations let VoiceOver follow onboarding page
+// changes instead of remaining on a footer button whose surrounding page changed.
+private enum TutorialAccessibilityFocus: Hashable {
+    case welcome
+    case steps
+    case listSelection
+    case creatingList
+}
+
 struct TutorialView: View {
     let includesContinentSelection: Bool
     let continentLists: [CityListID]
@@ -27,6 +36,8 @@ struct TutorialView: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var page = 0
     @State private var showingContinentSearch = false
     @State private var showingCountrySearch = false
@@ -34,6 +45,7 @@ struct TutorialView: View {
     @State private var isCreatingList = false
     @State private var creatingListName: String?
     @State private var didApplyInitialState = false
+    @AccessibilityFocusState private var accessibilityFocus: TutorialAccessibilityFocus?
 
     private var pageCount: Int {
         includesContinentSelection ? 3 : 2
@@ -59,11 +71,25 @@ struct TutorialView: View {
             .tabViewStyle(.page(indexDisplayMode: .never))
             .disabled(isCreatingList)
 
-            VStack {
-                Spacer()
+            // Accessibility: Keep the original overlay footer at normal sizes; large
+            // accessibility text uses the safe-area footer below to avoid content overlap.
+            if !dynamicTypeSize.isAccessibilitySize {
+                VStack {
+                    Spacer()
+                    tutorialFooter
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 28)
+                }
+            }
+        }
+        // Accessibility: Reserve real layout space for controls at accessibility text sizes.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if dynamicTypeSize.isAccessibilitySize {
                 tutorialFooter
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 28)
+                    .padding(.top, 12)
+                    .padding(.bottom, 12)
+                    .background(tutorialBackground)
             }
         }
         .sheet(isPresented: $showingContinentSearch) {
@@ -71,16 +97,50 @@ struct TutorialView: View {
                 .presentationDetents([.fraction(0.82), .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.colors.background)
+                // Accessibility: The picker has no visual Cancel button, so expose the
+                // standard modal escape action without altering its normal appearance.
+                .accessibilityAction(.escape) {
+                    showingContinentSearch = false
+                }
         }
         .sheet(isPresented: $showingCountrySearch) {
             tutorialCountrySearchSheet
                 .presentationDetents([.fraction(0.82), .large])
                 .presentationDragIndicator(.visible)
                 .presentationBackground(theme.colors.background)
+                // Accessibility: Let VoiceOver and Voice Control leave the picker
+                // without depending on a drag gesture.
+                .accessibilityAction(.escape) {
+                    showingCountrySearch = false
+                }
         }
         .interactiveDismissDisabled(isCreatingList)
+        // Accessibility: Onboarding pages can always be traversed backward with the
+        // standard escape gesture; a supplied cancel action is used from the first page.
+        .accessibilityAction(.escape) {
+            if page > 0, !isCreatingList {
+                withAnimation(.smooth(duration: 0.2)) {
+                    page -= 1
+                }
+            } else if page == 0 {
+                if let onCancel {
+                    onCancel()
+                } else if !includesContinentSelection {
+                    // Accessibility: A replay can be dismissed from its first page even
+                    // though first-launch onboarding intentionally remains mandatory.
+                    onFinish()
+                }
+            }
+        }
         .onAppear {
             applyInitialStateIfNeeded()
+            focusCurrentTutorialPage()
+        }
+        .onChange(of: page) { _, _ in
+            focusCurrentTutorialPage()
+        }
+        .onChange(of: isCreatingList) { _, _ in
+            focusCurrentTutorialPage()
         }
     }
 
@@ -109,7 +169,7 @@ struct TutorialView: View {
     }
 
     private var tutorialTitle: Font {
-        .system(size: 34, weight: .bold, design: .serif)
+        .system(.largeTitle, design: .serif, weight: .bold)
     }
 
     private var tutorialHeaderInset: some View {
@@ -128,49 +188,86 @@ struct TutorialView: View {
                     .frame(width: proxy.size.width, height: proxy.size.height)
                     .clipped()
                     .ignoresSafeArea()
+                    // Accessibility: Remove decorative artwork visually at very large text sizes
+                    // so the scrollable welcome copy receives the available space.
+                    .opacity(dynamicTypeSize.isAccessibilitySize ? 0 : 1)
+                    .accessibilityHidden(true)
 
-                VStack(spacing: 0) {
-                    Spacer()
-                        .frame(height: proxy.size.height * 0.58)
-
-                    Text(localizedString("Welcome to Weather Atlas", locale: locale))
-                        .font(.system(size: 34, weight: .bold, design: .serif))
-                        .foregroundStyle(introColors.primaryText)
-                        .multilineTextAlignment(.center)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.72)
-                        .padding(.horizontal, 28)
-
-                    VStack(spacing: 8) {
-                        Text(localizedString("Find sunny destinations and", locale: locale))
-                        Text(localizedString("plan ahead for your next holiday.", locale: locale))
+                if dynamicTypeSize.isAccessibilitySize {
+                    ScrollView {
+                        welcomePageText(topSpacing: 24)
+                            .padding(.bottom, 180)
                     }
-                    .font(.avenir(.title3, weight: .regular))
-                    .foregroundStyle(introColors.primaryText.opacity(0.64))
-                    .multilineTextAlignment(.center)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.78)
-                    .padding(.horizontal, 36)
-                    .padding(.top, 24)
-
-                    Spacer()
+                    .scrollIndicators(.hidden)
+                } else {
+                    welcomePageText(topSpacing: proxy.size.height * 0.58)
                 }
             }
         }
     }
 
+    private func welcomePageText(topSpacing: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Spacer()
+                .frame(height: topSpacing)
+
+            Text(localizedString("Welcome to Weather Atlas", locale: locale))
+                .font(tutorialTitle)
+                .foregroundStyle(introColors.primaryText)
+                .multilineTextAlignment(.center)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                .minimumScaleFactor(0.72)
+                .padding(.horizontal, 28)
+                .accessibilityAddTraits(.isHeader)
+                // Accessibility: This is the first reading destination on page one.
+                .accessibilityFocused($accessibilityFocus, equals: .welcome)
+
+            VStack(spacing: 8) {
+                Text(localizedString("Find sunny destinations and", locale: locale))
+                Text(localizedString("plan ahead for your next holiday.", locale: locale))
+            }
+            .font(.title3)
+            .foregroundStyle(introColors.primaryText.opacity(0.64))
+            .multilineTextAlignment(.center)
+            .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+            .minimumScaleFactor(0.78)
+            .padding(.horizontal, 36)
+            .padding(.top, 24)
+            .accessibilityElement(children: .combine)
+
+            Spacer()
+        }
+    }
+
     // MARK: Steps Page
 
+    @ViewBuilder
     private var stepsPage: some View {
+        // Accessibility: Long onboarding copy becomes scrollable instead of clipping.
+        if dynamicTypeSize.isAccessibilitySize {
+            ScrollView {
+                stepsPageContent
+                    .padding(.bottom, 170)
+            }
+            .scrollIndicators(.hidden)
+        } else {
+            stepsPageContent
+        }
+    }
+
+    private var stepsPageContent: some View {
         VStack(alignment: .leading, spacing: 26) {
             tutorialHeaderInset
 
             Text(localizedString("How Weather Atlas Works", locale: locale))
                 .font(tutorialTitle)
                 .foregroundStyle(introColors.primaryText)
-                .lineLimit(2)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+                // Accessibility: Continue moves VoiceOver to the newly displayed heading.
+                .accessibilityFocused($accessibilityFocus, equals: .steps)
 
             VStack(spacing: 22) {
                 tutorialStep(
@@ -200,19 +297,21 @@ struct TutorialView: View {
     private func tutorialStep(number: Int, title: String, subtitle: String) -> some View {
         HStack(alignment: .center, spacing: 16) {
             Text("\(number)")
-                .font(.avenir(.callout, weight: .bold))
-                .foregroundStyle(introColors.primaryText)
+                .font(.callout.weight(.bold))
+                // Accessibility: Keep step numbers legible on the bright button fill
+                // in both light and dark Increased Contrast appearances.
+                .foregroundStyle(primaryButtonTextColor)
                 .frame(width: 34, height: 34)
                 .background(primaryButtonColor, in: Circle())
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(title)
-                    .font(.avenir(.headline, weight: .bold))
+                    .font(.headline.weight(.bold))
                     .foregroundStyle(introColors.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(subtitle)
-                    .font(.avenir(.body, weight: .regular))
+                    .font(.body)
                     .foregroundStyle(introColors.primaryText.opacity(0.62))
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
@@ -227,27 +326,48 @@ struct TutorialView: View {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .stroke(introColors.mapBorder.opacity(0.28), lineWidth: 1)
         )
+        // Accessibility: Expose the visually grouped number, title, and explanation once.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(number). \(title)")
+        .accessibilityValue(subtitle)
     }
 
     // MARK: Continent Selection Page
 
+    @ViewBuilder
     private var continentSelectionPage: some View {
+        // Accessibility: The selection page also scrolls when Dynamic Type needs more height.
+        if dynamicTypeSize.isAccessibilitySize {
+            ScrollView {
+                continentSelectionPageContent
+                    .padding(.bottom, 170)
+            }
+            .scrollIndicators(.hidden)
+        } else {
+            continentSelectionPageContent
+        }
+    }
+
+    private var continentSelectionPageContent: some View {
         VStack(alignment: .leading, spacing: 22) {
             tutorialHeaderInset
 
             Text(localizedString("Let's add your first city list", locale: locale))
                 .font(tutorialTitle)
                 .foregroundStyle(introColors.primaryText)
-                .lineLimit(3)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
                 .minimumScaleFactor(0.78)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityAddTraits(.isHeader)
+                // Accessibility: Focus the required list-selection task when it appears.
+                .accessibilityFocused($accessibilityFocus, equals: .listSelection)
 
             (
                 Text(localizedString("Pick a place and we'll create a list of ", locale: locale))
                     + Text(localizedString("15 big cities", locale: locale)).fontWeight(.bold)
                     + Text(localizedString(" for you.", locale: locale))
             )
-            .font(.avenir(.body, weight: .regular))
+            .font(.body)
             .foregroundStyle(introColors.primaryText.opacity(0.64))
             .lineSpacing(6)
             .fixedSize(horizontal: false, vertical: true)
@@ -315,7 +435,12 @@ struct TutorialView: View {
         .background(introColors.listCardFill.opacity(0.78), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(introColors.mapBorder.opacity(0.24), lineWidth: 1)
+                // Accessibility: These cards are primary onboarding actions, so
+                // Increase Contrast gives their full boundary a 3:1+ outline.
+                .stroke(
+                    introColors.mapBorder.opacity(colorSchemeContrast == .increased ? 1 : 0.24),
+                    lineWidth: colorSchemeContrast == .increased ? 1.25 : 1
+                )
         }
     }
 
@@ -328,16 +453,24 @@ struct TutorialView: View {
 
             VStack(spacing: 18) {
                 Text(creatingListTitle)
-                    .font(.avenir(.title3, weight: .semibold))
+                    .font(.title3.weight(.semibold))
                     .foregroundStyle(introColors.primaryText)
                     .multilineTextAlignment(.center)
                     .lineSpacing(6)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .center)
+                    .accessibilityAddTraits(.isHeader)
+                    // Accessibility: Creation replaces the picker page, so announce its
+                    // status heading as the new focus destination.
+                    .accessibilityFocused($accessibilityFocus, equals: .creatingList)
 
                 ProgressView(value: min(max(creationProgress, 0), 1))
                     .tint(primaryButtonColor)
                     .frame(width: 240)
+                    .accessibilityLabel(creatingListTitle)
+                    .accessibilityValue(
+                        min(max(creationProgress, 0), 1).formatted(.percent.precision(.fractionLength(0)))
+                    )
             }
 
             Spacer()
@@ -362,6 +495,7 @@ struct TutorialView: View {
                         tutorialContinentSearchRow(listID)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(listID.localizedDisplayName(locale: locale))
 
                     if listID != continentLists.last {
                         Divider()
@@ -387,7 +521,7 @@ struct TutorialView: View {
                     let countries = filteredTutorialCountryOptions
                     if countries.isEmpty {
                         Text(localizedString("No countries found.", locale: locale))
-                            .font(.avenir(.body, weight: .regular))
+                            .font(.body)
                             .foregroundStyle(theme.colors.secondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.vertical, 18)
@@ -399,6 +533,7 @@ struct TutorialView: View {
                                 tutorialCountrySearchRow(country)
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel(country.localizedName(locale: locale))
 
                             if country.id != countries.last?.id {
                                 Divider()
@@ -425,12 +560,14 @@ struct TutorialView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(theme.colors.accent)
+                .accessibilityHidden(true)
 
             TextField(localizedString("Search for a country", locale: locale), text: $countrySearchText)
-                .font(.avenir(.body, weight: .regular))
+                .font(.body)
                 .foregroundStyle(theme.colors.primaryText)
                 .textInputAutocapitalization(.words)
                 .disableAutocorrection(true)
+                .accessibilityLabel(localizedString("Search for a country", locale: locale))
 
             if !countrySearchText.isEmpty {
                 Button {
@@ -439,16 +576,32 @@ struct TutorialView: View {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(theme.colors.accent)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                // Accessibility: The 44-point clear target preserves the compact search capsule
+                // because its extra label space is compensated by negative padding.
+                .padding(-13)
+                .accessibilityLabel(localizedString("Clear", locale: locale))
             }
         }
         .padding(.horizontal, 16)
-        .frame(height: 52)
+        .padding(.vertical, 6)
+        .frame(minHeight: 52)
         .background(theme.colors.listCardFill, in: Capsule())
         .overlay {
             Capsule()
-                .stroke(theme.colors.primaryText.opacity(colorScheme == .dark ? 0.16 : 0.12), lineWidth: 0.8)
+                // Accessibility: Make the custom search-field boundary sufficiently
+                // distinct only when Increase Contrast is enabled.
+                .stroke(
+                    theme.colors.primaryText.opacity(
+                        colorSchemeContrast == .increased
+                            ? 1
+                            : (colorScheme == .dark ? 0.16 : 0.12)
+                    ),
+                    lineWidth: colorSchemeContrast == .increased ? 1.25 : 0.8
+                )
         }
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 18, y: 8)
     }
@@ -456,15 +609,16 @@ struct TutorialView: View {
     private func tutorialContinentSearchRow(_ listID: CityListID) -> some View {
         HStack(spacing: 12) {
             Text(listID.localizedDisplayName(locale: locale))
-                .font(.avenir(.headline, weight: .semibold))
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
 
             Spacer(minLength: 8)
 
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(theme.colors.accent)
+                .accessibilityHidden(true)
         }
         .padding(.vertical, 14)
         .contentShape(Rectangle())
@@ -473,15 +627,16 @@ struct TutorialView: View {
     private func tutorialCountrySearchRow(_ country: CountryListOption) -> some View {
         HStack(spacing: 12) {
             Text(country.localizedName(locale: locale))
-                .font(.avenir(.headline, weight: .semibold))
+                .font(.headline.weight(.semibold))
                 .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
 
             Spacer(minLength: 8)
 
             Image(systemName: "chevron.right")
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(theme.colors.accent)
+                .accessibilityHidden(true)
         }
         .padding(.vertical, 12)
         .contentShape(Rectangle())
@@ -499,38 +654,71 @@ struct TutorialView: View {
                         .animation(.smooth(duration: 0.18), value: page)
                 }
             }
+            // Accessibility: Announce page position without focusing each decorative dot.
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(currentTutorialPageTitle)
+            .accessibilityValue("\(page + 1) / \(pageCount)")
 
             if !isCreatingList {
-                HStack(spacing: 12) {
-                    if let onCancel {
-                        Button(localizedString("Cancel", locale: locale)) {
-                            onCancel()
-                        }
-                        .buttonStyle(.bordered)
-                        .tint(introColors.accent)
-                        .foregroundStyle(introColors.primaryText)
-                        .controlSize(.large)
-                    }
-
-                    Button {
-                        advanceOrFinish()
-                    } label: {
-                        Text(primaryButtonTitle)
-                            .font(.avenir(.body, weight: .bold))
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .tint(primaryButtonColor)
-                    .foregroundStyle(primaryButtonTextColor)
-                    .controlSize(.large)
-                    .disabled(includesContinentSelection && page == 2)
-                }
+                tutorialFooterButtons
             }
         }
     }
 
+    private var tutorialFooterButtons: some View {
+        // Accessibility: Stack footer actions when horizontal labels no longer fit comfortably.
+        let layout: AnyLayout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 12))
+            : AnyLayout(HStackLayout(spacing: 12))
+
+        return layout {
+            if let onCancel {
+                Button(localizedString("Cancel", locale: locale)) {
+                    onCancel()
+                }
+                .buttonStyle(.bordered)
+                .tint(introColors.accent)
+                .foregroundStyle(introColors.primaryText)
+                .controlSize(.large)
+                .frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil)
+            }
+
+            Button {
+                advanceOrFinish()
+            } label: {
+                Text(primaryButtonTitle)
+                    .font(.body.weight(.bold))
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(primaryButtonColor)
+            .foregroundStyle(primaryButtonTextColor)
+            .controlSize(.large)
+            .disabled(includesContinentSelection && page == 2)
+        }
+    }
+
+    // MARK: - Accessibility - Page Descriptions
+
+    private var currentTutorialPageTitle: String {
+        switch page {
+        case 0:
+            localizedString("Welcome to Weather Atlas", locale: locale)
+        case 1:
+            localizedString("How Weather Atlas Works", locale: locale)
+        default:
+            isCreatingList
+                ? creatingListTitle
+                : localizedString("Let's add your first city list", locale: locale)
+        }
+    }
+
+    // MARK: - Footer Styling
+
     private var inactivePageDotColor: Color {
-        introColors.mapBorder.opacity(0.7)
+        // Accessibility: Full opacity clears the 3:1 non-text threshold in the
+        // increased-contrast light palette; standard mode remains unchanged.
+        introColors.mapBorder.opacity(colorSchemeContrast == .increased ? 1 : 0.7)
     }
 
     private var primaryButtonTitle: String {
@@ -587,6 +775,25 @@ struct TutorialView: View {
         page = min(max(initialPage, 0), pageCount - 1)
         isCreatingList = initialIsCreatingList
         creatingListName = initialCreatingListName
+    }
+
+    // MARK: - Accessibility - Onboarding Focus
+
+    private func focusCurrentTutorialPage() {
+        // Accessibility: Clearing first makes repeated visits to the same page announce
+        // consistently after SwiftUI finishes the page transition.
+        accessibilityFocus = nil
+        DispatchQueue.main.async {
+            if isCreatingList {
+                accessibilityFocus = .creatingList
+            } else {
+                switch page {
+                case 0: accessibilityFocus = .welcome
+                case 1: accessibilityFocus = .steps
+                default: accessibilityFocus = .listSelection
+                }
+            }
+        }
     }
 }
 
