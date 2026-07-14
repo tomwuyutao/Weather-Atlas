@@ -301,6 +301,20 @@ extension ContentView {
             )
             .frame(height: 190)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            // MapKit can absorb taps on the map surface, so place a dedicated
+            // transparent control above the preview. It always opens the map
+            // focused on the city whose detail screen is being shown.
+            .overlay {
+                Button {
+                    openDetailCityOnMap(city)
+                } label: {
+                    Color.clear
+                        .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(localizedCityName(for: city.city))
+                .accessibilityHint("Opens map")
+            }
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(.white.opacity(0.10), lineWidth: 0.6)
@@ -428,13 +442,15 @@ extension ContentView {
                 return
             }
 
+            // Clear first so the destination observes a new focus request even
+            // when the same city was previously selected on the map.
             centerOnCityTrigger = nil
             tappedCity = revealedCity
             showingMapExpandedCard = false
             pushRoute(.map)
 
             await Task.yield()
-            mapRecenterRequest = .listCoordinates
+            centerOnCityTrigger = revealedCity
             showMapMarkerCard(revealedCity)
         }
     }

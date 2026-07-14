@@ -381,20 +381,20 @@ extension ContentView {
 
     func updateBestSunnyPlacesWidget() {
         guard !isListPreviewActive else { return }
-        let lists = managedLists.map { listID -> BestSunnyPlacesWidgetList in
+        let lists = managedLists.map { listID -> WidgetDataList in
             let weatherData = weatherService.weatherData(for: listID)
             let candidates = sunnyCandidates(for: weatherData)
             let topCityIDs = candidates
                 .filter { $0.condition.isSunnyOrPartlySunny }
                 .prefix(3)
-                .map { BestSunnyPlacesWidgetStore.cityIdentifier(for: $0.cityWeather.city, in: listID) }
+                .map { WidgetDataStore.cityIdentifier(for: $0.cityWeather.city, in: listID) }
             let cities = weatherData.map { cityWeather in
                 let selectedForecast = cityWeather.forecast(for: selectedDayOffset)
                 let todayForecast = cityWeather.forecast(for: 0)
                 let daytimeHours = SunninessScoring.daytimeHours(for: todayForecast, timeZone: cityWeather.timeZone)
 
-                return BestSunnyPlacesWidgetCity(
-                    id: BestSunnyPlacesWidgetStore.cityIdentifier(for: cityWeather.city, in: listID),
+                return WidgetDataCity(
+                    id: WidgetDataStore.cityIdentifier(for: cityWeather.city, in: listID),
                     cityName: CityListID.customCityName(for: cityWeather.city)
                         ?? cityWeather.city.localizedName(locale: locale),
                     temperature: tempUnit.display(selectedForecast.dailyHigh),
@@ -410,7 +410,7 @@ extension ContentView {
                 )
             }
 
-            return BestSunnyPlacesWidgetList(
+            return WidgetDataList(
                 id: listID.rawValue,
                 displayName: listID.localizedDisplayName(locale: locale),
                 listName: listID.localizedDisplayName(locale: locale),
@@ -420,8 +420,8 @@ extension ContentView {
             )
         }
 
-        BestSunnyPlacesWidgetStore.save(
-            BestSunnyPlacesWidgetCatalog(
+        WidgetDataStore.save(
+            WidgetDataCatalog(
                 activeListID: weatherService.activeListID.rawValue,
                 updatedAt: .now,
                 lists: lists

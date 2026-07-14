@@ -286,6 +286,9 @@ extension ContentView {
 
     func bottomBackButton(_ route: AppNavigationRoute) -> some View {
         Button {
+            if route == .map {
+                print("[MapBackDebug] back button tapped | currentRoute=\(String(describing: currentRoute)) path=\(navigationPath)")
+            }
             popRoute(route)
         } label: {
             Image(systemName: "chevron.left")
@@ -455,11 +458,21 @@ extension ContentView {
     }
 
     func popRoute(_ route: AppNavigationRoute) {
+        if route == .map {
+            print("[MapBackDebug] popRoute entered | currentRoute=\(String(describing: currentRoute)) path=\(navigationPath)")
+        }
+
         if navigationPath.last == route {
             navigationPath.removeLast()
             cleanupAfterLeavingRoute(route)
+            if route == .map {
+                print("[MapBackDebug] back action executed: removed top map route | currentRoute=\(String(describing: currentRoute)) path=\(navigationPath)")
+            }
         } else {
             removeRoute(route)
+            if route == .map {
+                print("[MapBackDebug] back action executed: removed map route from path | currentRoute=\(String(describing: currentRoute)) path=\(navigationPath)")
+            }
         }
     }
 

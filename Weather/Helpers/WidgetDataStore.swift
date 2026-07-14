@@ -1,14 +1,14 @@
 //
-//  BestSunnyPlacesWidgetStore.swift
+//  WidgetDataStore.swift
 //  Weather
 //
-//  Purpose: Shares the selected list's home ranking with the WidgetKit extension.
+//  Purpose: Shares city weather data with the WidgetKit extension.
 //
 
 import Foundation
 import WidgetKit
 
-struct BestSunnyPlacesWidgetCity: Codable, Hashable, Identifiable {
+struct WidgetDataCity: Codable, Hashable, Identifiable {
     let id: String
     let cityName: String
     let temperature: String
@@ -19,22 +19,22 @@ struct BestSunnyPlacesWidgetCity: Codable, Hashable, Identifiable {
     let partlySunnyHours: [Int]
 }
 
-struct BestSunnyPlacesWidgetList: Codable, Hashable, Identifiable {
+struct WidgetDataList: Codable, Hashable, Identifiable {
     let id: String
     let displayName: String
     let listName: String
     let title: String
     let topCityIDs: [String]
-    let cities: [BestSunnyPlacesWidgetCity]
+    let cities: [WidgetDataCity]
 }
 
-struct BestSunnyPlacesWidgetCatalog: Codable, Hashable {
+struct WidgetDataCatalog: Codable, Hashable {
     let activeListID: String
     let updatedAt: Date
-    let lists: [BestSunnyPlacesWidgetList]
+    let lists: [WidgetDataList]
 }
 
-enum BestSunnyPlacesWidgetStore {
+enum WidgetDataStore {
     static let appGroupIdentifier = "group.Yutao-Wu.Weather"
     static let catalogKey = "bestSunnyPlacesWidgetCatalog"
     static let kind = "BestSunnyPlacesWidget"
@@ -45,7 +45,7 @@ enum BestSunnyPlacesWidgetStore {
         return "\(listID.rawValue)|\(city.country)|\(latitude)|\(longitude)"
     }
 
-    static func save(_ catalog: BestSunnyPlacesWidgetCatalog) {
+    static func save(_ catalog: WidgetDataCatalog) {
         guard let data = try? JSONEncoder().encode(catalog) else { return }
         UserDefaults(suiteName: appGroupIdentifier)?.set(data, forKey: catalogKey)
         WidgetCenter.shared.reloadAllTimelines()

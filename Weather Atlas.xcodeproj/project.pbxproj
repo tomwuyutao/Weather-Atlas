@@ -39,15 +39,31 @@
 		A10000000000000000000001 /* WeatherWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WeatherWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5908967530063DF500EB20E0 /* Exceptions for "Weather" folder in "Weather Atlas" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Views/Widgets.swift,
+			);
+			target = 59C2E3552F4F06B000877DA8 /* Weather Atlas */;
+		};
+		5908967630063DF500EB20E0 /* Exceptions for "Weather" folder in "WeatherWidgets" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Views/Widgets.swift,
+			);
+			target = A10000000000000000000008 /* WeatherWidgets */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		59C2E3582F4F06B000877DA8 /* Weather */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5908967530063DF500EB20E0 /* Exceptions for "Weather" folder in "Weather Atlas" target */,
+				5908967630063DF500EB20E0 /* Exceptions for "Weather" folder in "WeatherWidgets" target */,
+			);
 			path = Weather;
-			sourceTree = "<group>";
-		};
-		A10000000000000000000002 /* WeatherWidgets */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = WeatherWidgets;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -74,7 +90,6 @@
 			isa = PBXGroup;
 			children = (
 				59C2E3582F4F06B000877DA8 /* Weather */,
-				A10000000000000000000002 /* WeatherWidgets */,
 				59C2E3572F4F06B000877DA8 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -126,9 +141,6 @@
 			buildRules = (
 			);
 			dependencies = (
-			);
-			fileSystemSynchronizedGroups = (
-				A10000000000000000000002 /* WeatherWidgets */,
 			);
 			name = WeatherWidgets;
 			packageProductDependencies = (
@@ -430,7 +442,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = WeatherWidgets/WeatherWidgets.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Weather/WeatherWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = J97F79UF3N;
@@ -456,7 +468,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = WeatherWidgets/WeatherWidgets.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Weather/WeatherWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = J97F79UF3N;

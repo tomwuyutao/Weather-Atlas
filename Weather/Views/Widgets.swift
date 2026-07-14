@@ -1,5 +1,5 @@
 //
-//  BestSunnyPlacesWidget.swift
+//  Widgets.swift
 //  WeatherWidgets
 //
 //  Purpose: Displays configurable home and lock-screen weather widgets.
@@ -123,15 +123,6 @@ private extension WidgetCityEntity {
     }
 }
 
-struct BestSunnyPlacesConfigurationIntent: WidgetConfigurationIntent {
-    static var title: LocalizedStringResource = "Best Sunny Places"
-    static var description = IntentDescription("Choose the list shown in this widget.")
-
-    @Parameter(title: "List") var list: WidgetListEntity?
-
-    init() {}
-}
-
 struct SunnyHoursLockScreenConfigurationIntent: WidgetConfigurationIntent {
     static var title: LocalizedStringResource = "Sunny Hours"
     static var description = IntentDescription("Choose a city to track its sunny daytime hours.")
@@ -154,117 +145,71 @@ struct WidgetCityOptionsProvider: DynamicOptionsProvider {
     }
 }
 
-private struct BestSunnyPlacesEntry: TimelineEntry {
-    let date: Date
-    let list: WidgetList?
-
-    static let preview = BestSunnyPlacesEntry(date: .now, list: .preview)
-}
-
-private struct BestSunnyPlacesProvider: AppIntentTimelineProvider {
-    func placeholder(in context: Context) -> BestSunnyPlacesEntry { .preview }
-
-    func snapshot(for configuration: BestSunnyPlacesConfigurationIntent, in context: Context) async -> BestSunnyPlacesEntry {
-        BestSunnyPlacesEntry(date: .now, list: selectedList(for: configuration))
-    }
-
-    func timeline(for configuration: BestSunnyPlacesConfigurationIntent, in context: Context) async -> Timeline<BestSunnyPlacesEntry> {
-        let entry = BestSunnyPlacesEntry(date: .now, list: selectedList(for: configuration))
-        let refreshDate = entry.date.addingTimeInterval(60 * 60)
-        return Timeline(entries: [entry], policy: .after(refreshDate))
-    }
-
-    private func selectedList(for configuration: BestSunnyPlacesConfigurationIntent) -> WidgetList? {
-        let catalog = WidgetStore.catalog()
-        let listID = configuration.list?.id ?? catalog?.activeListID
-        return catalog?.lists.first(where: { $0.id == listID })
-    }
-}
-
 struct BestSunnyPlacesWidget: Widget {
     static let kind = "BestSunnyPlacesWidget"
 
     var body: some WidgetConfiguration {
-        AppIntentConfiguration(kind: Self.kind, intent: BestSunnyPlacesConfigurationIntent.self, provider: BestSunnyPlacesProvider()) { entry in
-            BestSunnyPlacesWidgetView(entry: entry)
+        AppIntentConfiguration(kind: Self.kind, intent: SunnyHoursLockScreenConfigurationIntent.self, provider: SunnyHoursLockScreenProvider()) { entry in
+            SunnyHoursHomeWidgetView(entry: entry)
                 .containerBackground(for: .widget) {
                     Color(uiColor: .systemBackground)
                 }
         }
-        .configurationDisplayName("Best Sunny Places")
-        .description("See the clearest cities in a chosen list.")
+        .configurationDisplayName("Sunny Hours")
+        .description("Track sunny daytime hours for a chosen city.")
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
 
-private struct BestSunnyPlacesWidgetView: View {
+private struct SunnyHoursHomeWidgetView: View {
     @Environment(\.widgetFamily) private var family
-    let entry: BestSunnyPlacesEntry
+    let entry: SunnyHoursLockScreenEntry
 
     var body: some View {
-        if let list = entry.list, !list.topCityIDs.isEmpty {
-            content(list)
+        if let city = entry.city, !city.daytimeHours.isEmpty {
+            content(city)
         } else {
-            WidgetEmptyState(title: "Best Sunny Places", symbol: "sun.max.fill")
+            WidgetEmptyState(title: "Sunny Hours", symbol: "sun.max.fill")
         }
     }
 
-    private func content(_ list: WidgetList) -> some View {
-        let places = list.topCityIDs.compactMap { id in list.cities.first(where: { $0.id == id }) }
-        return VStack(alignment: .leading, spacing: family == .systemSmall ? 7 : 8) {
-            Label(list.title, systemImage: "sun.max.fill")
+    private func content(_ city: WidgetCity) -> some View {
+        VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "sun.max.fill")
+                    .foregroundStyle(.yellow)
+                Text(city.cityName)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                Text("Sunny Hours")
+                    .foregroundStyle(.secondary)
+            }
                 .font(.headline.weight(.semibold))
-                .foregroundStyle(WidgetColors.navy)
-                .lineLimit(1)
 
-            ForEach(Array(places.enumerated()), id: \.element.id) { index, place in
-                family == .systemSmall
-                    ? AnyView(compactRow(place, rank: index + 1))
-                    : AnyView(fullRow(place, rank: index + 1))
+            SunnyHoursTimeline(city: city, currentDate: entry.date)
+                .frame(height: family == .systemSmall ? 26 : 38)
+
+            if family == .systemMedium {
+                Text(sunnyHoursText(for: city))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(.secondary)
             }
         }
     }
 
-    private func compactRow(_ place: WidgetCity, rank: Int) -> some View {
-        HStack(spacing: 7) {
-            rankLabel(rank)
-            Text(place.cityName)
-                .font(.subheadline.weight(.medium))
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            Image(systemName: place.conditionIcon)
-                .font(.subheadline.weight(.medium))
-                .symbolRenderingMode(.multicolor)
+    private func sunnyHoursText(for city: WidgetCity) -> String {
+        guard let first = city.sunnyHours.first, let last = city.sunnyHours.last else {
+            return "No sunny hours today"
         }
+        return "\(hourText(first)) - \(hourText(last + 1))"
     }
 
-    private func fullRow(_ place: WidgetCity, rank: Int) -> some View {
-        HStack(spacing: 7) {
-            rankLabel(rank)
-            Text(place.cityName)
-                .font(.subheadline.weight(.medium))
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            Text(place.temperature)
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.orange)
-                .monospacedDigit()
-            Label(place.cloudCover, systemImage: "cloud")
-                .font(.caption.weight(.medium))
-                .foregroundStyle(.secondary)
-                .labelStyle(.titleAndIcon)
-                .monospacedDigit()
-            Image(systemName: place.conditionIcon)
-                .font(.subheadline.weight(.medium))
-                .symbolRenderingMode(.multicolor)
-        }
-    }
-
-    private func rankLabel(_ rank: Int) -> some View {
-        Text("\(rank)")
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(.secondary)
-            .frame(width: 10, alignment: .leading)
+    private func hourText(_ hour: Int) -> String {
+        DateFormatter.localizedString(
+            from: Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: entry.date) ?? entry.date,
+            dateStyle: .none,
+            timeStyle: .short
+        )
     }
 }
 
@@ -427,19 +372,19 @@ struct WeatherWidgetsBundle: WidgetBundle {
     }
 }
 
-#Preview(as: .systemSmall) {
+#Preview("Sunny Hours - Small", as: .systemSmall) {
     BestSunnyPlacesWidget()
 } timeline: {
-    BestSunnyPlacesEntry.preview
+    SunnyHoursLockScreenEntry.preview
 }
 
-#Preview(as: .systemMedium) {
+#Preview("Sunny Hours - Medium", as: .systemMedium) {
     BestSunnyPlacesWidget()
 } timeline: {
-    BestSunnyPlacesEntry.preview
+    SunnyHoursLockScreenEntry.preview
 }
 
-#Preview(as: .accessoryRectangular) {
+#Preview("Sunny Hours - Lock Screen", as: .accessoryRectangular) {
     SunnyHoursLockScreenWidget()
 } timeline: {
     SunnyHoursLockScreenEntry.preview
