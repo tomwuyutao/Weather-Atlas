@@ -289,6 +289,11 @@ extension ContentView {
                 if isMapRoute {
                     centerMapOnDots(useListCoordinates: true)
                 }
+                guard !tutorialState.showsFirstLaunch, !tutorialState.showsReplay else { return }
+                Task {
+                    await weatherService.fetchWeatherForAllCities()
+                    await refreshCitiesMissingDaytimeSunninessData()
+                }
             }
     }
 

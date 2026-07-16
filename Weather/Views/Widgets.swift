@@ -6,7 +6,9 @@
 //
 
 import AppIntents
+import CoreLocation
 import SwiftUI
+import WeatherKit
 import WidgetKit
 
 struct WidgetListEntity: AppEntity, Identifiable {
@@ -173,8 +175,9 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
     }
 
     func timeline(for configuration: SunnyHoursLockScreenConfigurationIntent, in context: Context) async -> Timeline<SunnyHoursLockScreenEntry> {
-        let entry = SunnyHoursLockScreenEntry(date: .now, city: selectedCity(for: configuration))
-        return Timeline(entries: [entry], policy: .after(entry.date.addingTimeInterval(15 * 60)))
+        let entry = SunnyHoursLockScreenEntry(date: .now, city: await refreshedCity(for: configuration))
+        // WidgetKit treats this as a preferred refresh time, rather than a precise schedule.
+        return Timeline(entries: [entry], policy: .after(entry.date.addingTimeInterval(30 * 60)))
     }
 
     private func selectedCity(for configuration: SunnyHoursLockScreenConfigurationIntent) -> WidgetDataCity? {
@@ -188,6 +191,78 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
             list.cities.first(where: { $0.id == selectedCity.id })
         } ?? list.cities.first
     }
+
+    private func refreshedCity(for configuration: SunnyHoursLockScreenConfigurationIntent) async -> WidgetDataCity? {
+        guard let city = selectedCity(for: configuration),
+              let latitude = city.latitude,
+              let longitude = city.longitude else {
+            return selectedCity(for: configuration)
+        }
+
+        if let snapshot = WidgetDataStore.weatherSnapshot(for: city.id) {
+            return city.applying(snapshot)
+        }
+
+        do {
+            let weather = try await WeatherService.shared.weather(
+                for: CLLocation(latitude: latitude, longitude: longitude)
+            )
+            let snapshot = makeWeatherSnapshot(weather: weather, city: city)
+            WidgetDataStore.saveWeatherSnapshot(snapshot, for: city.id)
+            return city.applying(snapshot)
+        } catch {
+            // Preserve the app's last forecast if the widget refresh is offline or throttled.
+            return city
+        }
+    }
+
+    private func makeWeatherSnapshot(weather: Weather, city: WidgetDataCity) -> WidgetWeatherSnapshot {
+        let timeZone = city.timeZoneIdentifier.flatMap(TimeZone.init(identifier:)) ?? .autoupdatingCurrent
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        let now = Date()
+        let today = weather.dailyForecast.forecast.first { calendar.isDate($0.date, inSameDayAs: now) }
+        let sunrise = today?.sun.sunrise
+        let sunset = today?.sun.sunset
+
+        let hours = weather.hourlyForecast.forecast.filter { hour in
+            guard calendar.isDate(hour.date, inSameDayAs: now) else { return false }
+            guard let sunrise, let sunset else {
+                let hourNumber = calendar.component(.hour, from: hour.date)
+                return (6...21).contains(hourNumber)
+            }
+            return hour.date >= sunrise && hour.date < sunset
+        }
+
+        let daytimeHours = hours.map { calendar.component(.hour, from: $0.date) }
+        let sunnyHours = hours
+            .filter { widgetCondition(for: $0.symbolName) == .sunny }
+            .map { calendar.component(.hour, from: $0.date) }
+        let partlySunnyHours = hours
+            .filter { widgetCondition(for: $0.symbolName) == .partlySunny }
+            .map { calendar.component(.hour, from: $0.date) }
+
+        return WidgetWeatherSnapshot(
+            fetchedAt: now,
+            timeZoneIdentifier: timeZone.identifier,
+            daytimeHours: daytimeHours,
+            sunnyHours: sunnyHours,
+            partlySunnyHours: partlySunnyHours
+        )
+    }
+
+    private func widgetCondition(for symbolName: String) -> WidgetCondition {
+        let symbol = symbolName.lowercased()
+        if symbol.contains("cloud") && symbol.contains("sun") { return .partlySunny }
+        if symbol.contains("sun.max") || symbol == "sun" || symbol == "sun.fill" { return .sunny }
+        return .other
+    }
+}
+
+private enum WidgetCondition {
+    case sunny
+    case partlySunny
+    case other
 }
 
 struct SunnyHoursLockScreenWidget: Widget {
@@ -654,9 +729,9 @@ private extension WidgetDataList {
         id: "europe",
         displayName: "Europe",
         cities: [
-            WidgetDataCity(id: "barcelona", cityName: "Barcelona", timeZoneIdentifier: "Europe/Madrid", daytimeHours: Array(6...21), sunnyHours: Array(8...19), partlySunnyHours: [7, 20]),
-            WidgetDataCity(id: "rome", cityName: "Rome", timeZoneIdentifier: "Europe/Rome", daytimeHours: Array(6...21), sunnyHours: Array(9...18), partlySunnyHours: [7, 8, 19]),
-            WidgetDataCity(id: "athens", cityName: "Athens", timeZoneIdentifier: "Europe/Athens", daytimeHours: Array(6...21), sunnyHours: Array(8...20), partlySunnyHours: [7])
+            WidgetDataCity(id: "barcelona", cityName: "Barcelona", timeZoneIdentifier: "Europe/Madrid", latitude: 41.3874, longitude: 2.1686, daytimeHours: Array(6...21), sunnyHours: Array(8...19), partlySunnyHours: [7, 20]),
+            WidgetDataCity(id: "rome", cityName: "Rome", timeZoneIdentifier: "Europe/Rome", latitude: 41.9028, longitude: 12.4964, daytimeHours: Array(6...21), sunnyHours: Array(9...18), partlySunnyHours: [7, 8, 19]),
+            WidgetDataCity(id: "athens", cityName: "Athens", timeZoneIdentifier: "Europe/Athens", latitude: 37.9838, longitude: 23.7275, daytimeHours: Array(6...21), sunnyHours: Array(8...20), partlySunnyHours: [7])
         ]
     )
 }
@@ -676,6 +751,19 @@ private extension WidgetDataCity {
 
     var widgetTimeZone: TimeZone {
         timeZoneIdentifier.flatMap(TimeZone.init(identifier:)) ?? .autoupdatingCurrent
+    }
+
+    func applying(_ snapshot: WidgetWeatherSnapshot) -> WidgetDataCity {
+        WidgetDataCity(
+            id: id,
+            cityName: cityName,
+            timeZoneIdentifier: snapshot.timeZoneIdentifier ?? timeZoneIdentifier,
+            latitude: latitude,
+            longitude: longitude,
+            daytimeHours: snapshot.daytimeHours,
+            sunnyHours: snapshot.sunnyHours,
+            partlySunnyHours: snapshot.partlySunnyHours
+        )
     }
 }
 

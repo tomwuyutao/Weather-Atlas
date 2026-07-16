@@ -514,6 +514,8 @@ extension ContentView {
                     cityName: CityListID.customCityName(for: cityWeather.city)
                         ?? cityWeather.city.localizedName(locale: locale),
                     timeZoneIdentifier: cityWeather.timeZone.identifier,
+                    latitude: cityWeather.city.latitude,
+                    longitude: cityWeather.city.longitude,
                     daytimeHours: daytimeHours.map { $0.hour(in: cityWeather.timeZone) },
                     sunnyHours: daytimeHours
                         .filter { SunninessScoring.condition(for: $0.symbolName) == .clear }

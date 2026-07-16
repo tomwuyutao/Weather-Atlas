@@ -193,7 +193,7 @@ class WeatherService {
     var weatherAttribution: WeatherAttribution?
     var activeListID: CityListID = .europe
     @ObservationIgnored private var activeFetchTask: Task<Void, Never>?
-    let weatherCacheDuration: TimeInterval = 2 * 60 * 60
+    let weatherCacheDuration: TimeInterval = 30 * 60
     var listFetchDates: [String: Date] = [:]
     var resolvedTimeZones: [String: TimeZone] = [:]
     var resolvedPlaces: [String: ResolvedPlace] = [:]

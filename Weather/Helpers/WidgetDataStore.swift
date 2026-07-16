@@ -12,6 +12,16 @@ struct WidgetDataCity: Codable, Hashable, Identifiable {
     let id: String
     let cityName: String
     let timeZoneIdentifier: String?
+    let latitude: Double?
+    let longitude: Double?
+    let daytimeHours: [Int]
+    let sunnyHours: [Int]
+    let partlySunnyHours: [Int]
+}
+
+struct WidgetWeatherSnapshot: Codable, Hashable {
+    let fetchedAt: Date
+    let timeZoneIdentifier: String?
     let daytimeHours: [Int]
     let sunnyHours: [Int]
     let partlySunnyHours: [Int]
@@ -31,6 +41,8 @@ enum WidgetDataStore {
     static let appGroupIdentifier = "group.Yutao-Wu.Weather"
     static let catalogKey = "bestSunnyPlacesWidgetCatalog"
     static let kind = "BestSunnyPlacesWidget"
+    static let weatherCacheKeyPrefix = "widgetWeatherSnapshot."
+    static let weatherCacheDuration: TimeInterval = 30 * 60
 
     static func cityIdentifier(country: String, latitude: Double, longitude: Double, listID: String) -> String {
         let latitude = String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), latitude)
@@ -49,5 +61,23 @@ enum WidgetDataStore {
         guard let data = try? JSONEncoder().encode(catalog) else { return }
         UserDefaults(suiteName: appGroupIdentifier)?.set(data, forKey: catalogKey)
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    static func weatherSnapshot(for cityID: String, now: Date = .now) -> WidgetWeatherSnapshot? {
+        guard let data = UserDefaults(suiteName: appGroupIdentifier)?.data(forKey: weatherCacheKey(for: cityID)),
+              let snapshot = try? JSONDecoder().decode(WidgetWeatherSnapshot.self, from: data),
+              now.timeIntervalSince(snapshot.fetchedAt) < weatherCacheDuration else {
+            return nil
+        }
+        return snapshot
+    }
+
+    static func saveWeatherSnapshot(_ snapshot: WidgetWeatherSnapshot, for cityID: String) {
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        UserDefaults(suiteName: appGroupIdentifier)?.set(data, forKey: weatherCacheKey(for: cityID))
+    }
+
+    private static func weatherCacheKey(for cityID: String) -> String {
+        "\(weatherCacheKeyPrefix)\(cityID)"
     }
 }
