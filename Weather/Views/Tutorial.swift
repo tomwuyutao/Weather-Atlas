@@ -36,6 +36,7 @@ struct TutorialView: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @State private var page = 0
@@ -78,6 +79,7 @@ struct TutorialView: View {
                     Spacer()
                     tutorialFooter
                         .padding(.horizontal, 24)
+                        .frame(maxWidth: tutorialContentMaxWidth)
                         .padding(.bottom, 28)
                 }
             }
@@ -89,13 +91,23 @@ struct TutorialView: View {
                     .padding(.horizontal, 24)
                     .padding(.top, 12)
                     .padding(.bottom, 12)
+                    .frame(maxWidth: tutorialContentMaxWidth)
+                    .frame(maxWidth: .infinity)
                     .background(tutorialBackground)
             }
         }
         .sheet(isPresented: $showingContinentSearch) {
             tutorialContinentSearchSheet
-                .presentationDetents([.fraction(0.82), .large])
-                .presentationDragIndicator(.visible)
+                // iPad: Use the system form size for these short list pickers in
+                // regular-width windows, while compact windows keep phone detents.
+                .if(horizontalSizeClass == .regular) { view in
+                    view.presentationSizing(.form)
+                }
+                .if(horizontalSizeClass != .regular) { view in
+                    view
+                        .presentationDetents([.fraction(0.82), .large])
+                        .presentationDragIndicator(.visible)
+                }
                 .presentationBackground(theme.colors.background)
                 // Accessibility: The picker has no visual Cancel button, so expose the
                 // standard modal escape action without altering its normal appearance.
@@ -105,8 +117,14 @@ struct TutorialView: View {
         }
         .sheet(isPresented: $showingCountrySearch) {
             tutorialCountrySearchSheet
-                .presentationDetents([.fraction(0.82), .large])
-                .presentationDragIndicator(.visible)
+                .if(horizontalSizeClass == .regular) { view in
+                    view.presentationSizing(.form)
+                }
+                .if(horizontalSizeClass != .regular) { view in
+                    view
+                        .presentationDetents([.fraction(0.82), .large])
+                        .presentationDragIndicator(.visible)
+                }
                 .presentationBackground(theme.colors.background)
                 // Accessibility: Let VoiceOver and Voice Control leave the picker
                 // without depending on a drag gesture.
@@ -164,6 +182,19 @@ struct TutorialView: View {
         28
     }
 
+    // iPad: Keep onboarding copy and controls comfortably readable without
+    // shrinking the full-screen artwork behind them.
+    private var tutorialContentMaxWidth: CGFloat {
+        680
+    }
+
+    // The normal footer overlays the pages, so scrollable page content reserves
+    // enough space beneath its last meaningful element. Accessibility sizes use
+    // a safe-area footer and therefore need only a small breathing space.
+    private var tutorialFooterClearance: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 24 : 128
+    }
+
     private var tutorialTopSpacer: CGFloat {
         62
     }
@@ -193,15 +224,19 @@ struct TutorialView: View {
                     .opacity(dynamicTypeSize.isAccessibilitySize ? 0 : 1)
                     .accessibilityHidden(true)
 
-                if dynamicTypeSize.isAccessibilitySize {
-                    ScrollView {
-                        welcomePageText(topSpacing: 24)
-                            .padding(.bottom, 180)
-                    }
-                    .scrollIndicators(.hidden)
-                } else {
-                    welcomePageText(topSpacing: proxy.size.height * 0.58)
+                // iPad: Keep the standard artwork composition, but make the copy
+                // scrollable when a landscape or resized window is too short.
+                ScrollView {
+                    welcomePageText(
+                        topSpacing: dynamicTypeSize.isAccessibilitySize
+                            ? 24
+                            : proxy.size.height * 0.58
+                    )
+                    .frame(minHeight: proxy.size.height, alignment: .top)
+                    .frame(maxWidth: tutorialContentMaxWidth)
+                    .frame(maxWidth: .infinity)
                 }
+                .scrollIndicators(.hidden)
             }
         }
     }
@@ -235,23 +270,23 @@ struct TutorialView: View {
             .padding(.top, 24)
             .accessibilityElement(children: .combine)
 
-            Spacer()
+            Spacer(minLength: tutorialFooterClearance)
         }
     }
 
     // MARK: Steps Page
 
-    @ViewBuilder
     private var stepsPage: some View {
-        // Accessibility: Long onboarding copy becomes scrollable instead of clipping.
-        if dynamicTypeSize.isAccessibilitySize {
+        GeometryReader { proxy in
+            // iPad and Accessibility: The page retains its portrait composition
+            // whenever it fits and becomes vertically scrollable in short windows.
             ScrollView {
                 stepsPageContent
-                    .padding(.bottom, 170)
+                    .frame(minHeight: proxy.size.height, alignment: .top)
+                    .frame(maxWidth: tutorialContentMaxWidth)
+                    .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
-        } else {
-            stepsPageContent
         }
     }
 
@@ -289,7 +324,7 @@ struct TutorialView: View {
             .padding(.top, 12)
 
             Spacer()
-            Spacer(minLength: 72)
+            Spacer(minLength: tutorialFooterClearance)
         }
         .padding(.horizontal, tutorialHorizontalPadding)
     }
@@ -334,17 +369,17 @@ struct TutorialView: View {
 
     // MARK: Continent Selection Page
 
-    @ViewBuilder
     private var continentSelectionPage: some View {
-        // Accessibility: The selection page also scrolls when Dynamic Type needs more height.
-        if dynamicTypeSize.isAccessibilitySize {
+        GeometryReader { proxy in
+            // iPad and Accessibility: Selection remains usable in landscape,
+            // Split View, and large text without changing the normal hierarchy.
             ScrollView {
                 continentSelectionPageContent
-                    .padding(.bottom, 170)
+                    .frame(minHeight: proxy.size.height, alignment: .top)
+                    .frame(maxWidth: tutorialContentMaxWidth)
+                    .frame(maxWidth: .infinity)
             }
             .scrollIndicators(.hidden)
-        } else {
-            continentSelectionPageContent
         }
     }
 
@@ -390,7 +425,7 @@ struct TutorialView: View {
                 }
             }
 
-            Spacer(minLength: 0)
+            Spacer(minLength: tutorialFooterClearance)
         }
         .padding(.horizontal, tutorialHorizontalPadding)
     }
@@ -447,35 +482,45 @@ struct TutorialView: View {
     // MARK: Creating Page
 
     private var creatingListPage: some View {
-        VStack(spacing: 22) {
-            Spacer()
-                .frame(height: 260)
+        GeometryReader { proxy in
+            ScrollView {
+                VStack(spacing: 22) {
+                    // iPad: Flexible spacers replace the former fixed 260-point
+                    // offset, keeping progress centred across portrait, landscape,
+                    // Split View, and accessibility text sizes.
+                    Spacer(minLength: 40)
 
-            VStack(spacing: 18) {
-                Text(creatingListTitle)
-                    .font(.title3.weight(.semibold))
-                    .foregroundStyle(introColors.primaryText)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(6)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .accessibilityAddTraits(.isHeader)
-                    // Accessibility: Creation replaces the picker page, so announce its
-                    // status heading as the new focus destination.
-                    .accessibilityFocused($accessibilityFocus, equals: .creatingList)
+                    VStack(spacing: 18) {
+                        Text(creatingListTitle)
+                            .font(.title3.weight(.semibold))
+                            .foregroundStyle(introColors.primaryText)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(6)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .accessibilityAddTraits(.isHeader)
+                            // Accessibility: Creation replaces the picker page, so announce its
+                            // status heading as the new focus destination.
+                            .accessibilityFocused($accessibilityFocus, equals: .creatingList)
 
-                ProgressView(value: min(max(creationProgress, 0), 1))
-                    .tint(primaryButtonColor)
-                    .frame(width: 240)
-                    .accessibilityLabel(creatingListTitle)
-                    .accessibilityValue(
-                        min(max(creationProgress, 0), 1).formatted(.percent.precision(.fractionLength(0)))
-                    )
+                        ProgressView(value: min(max(creationProgress, 0), 1))
+                            .tint(primaryButtonColor)
+                            .frame(width: 240)
+                            .accessibilityLabel(creatingListTitle)
+                            .accessibilityValue(
+                                min(max(creationProgress, 0), 1).formatted(.percent.precision(.fractionLength(0)))
+                            )
+                    }
+
+                    Spacer(minLength: 80)
+                }
+                .padding(.horizontal, tutorialHorizontalPadding)
+                .frame(minHeight: proxy.size.height)
+                .frame(maxWidth: tutorialContentMaxWidth)
+                .frame(maxWidth: .infinity)
             }
-
-            Spacer()
+            .scrollIndicators(.hidden)
         }
-        .padding(.horizontal, tutorialHorizontalPadding)
     }
 
     private var creatingListTitle: String {

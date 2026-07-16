@@ -718,22 +718,63 @@ extension ContentView {
 
     func homeContent(previewActive: Bool) -> some View {
         GeometryReader { geometry in
-            let snapshotHeight = min(max(geometry.size.height * 0.32, 190), 310)
+            let availableContentWidth = min(max(geometry.size.width - 32, 0), 1_160)
+            // The app's text-size setting currently caps at xxLarge, so treat that
+            // maximum as the readable single-column breakpoint as well as the
+            // system accessibility categories.
+            let usesReadableSingleColumn = dynamicTypeSize >= .xxLarge
+            let usesWideLayout = availableContentWidth >= 900 && !usesReadableSingleColumn
+            let columnSpacing: CGFloat = 20
+            let primaryColumnWidth = (availableContentWidth - columnSpacing) * 0.58
+            // Preserve the existing height calculation in narrow windows. On a
+            // wide window, derive the map height from its column so it retains a
+            // useful landscape proportion instead of stretching with the screen.
+            let snapshotHeight = usesWideLayout
+                ? min(max(primaryColumnWidth * 0.48, 240), 310)
+                : min(max(geometry.size.height * 0.32, 190), 310)
+
             ScrollView {
                 VStack(spacing: 20) {
                     homePageHeader(previewActive: previewActive)
-                    homeCard(contentPadding: 6) {
-                        homeMapSnapshot(height: snapshotHeight, previewActive: previewActive)
-                    }
-                    if !previewActive {
-                        homeCard {
-                            homeSunnyDaysSection(previewActive: previewActive)
+
+                    if usesWideLayout {
+                        HStack(alignment: .top, spacing: columnSpacing) {
+                            VStack(spacing: 20) {
+                                homeCard(contentPadding: 6) {
+                                    homeMapSnapshot(height: snapshotHeight, previewActive: previewActive)
+                                }
+
+                                if !previewActive {
+                                    homeCard {
+                                        homeSunnyDaysSection(previewActive: previewActive)
+                                    }
+                                }
+                            }
+                            .frame(width: primaryColumnWidth, alignment: .top)
+
+                            homeCard(contentPadding: 12) {
+                                homeSunnySection(previewActive: previewActive)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .top)
+                        }
+                    } else {
+                        homeCard(contentPadding: 6) {
+                            homeMapSnapshot(height: snapshotHeight, previewActive: previewActive)
+                        }
+                        if !previewActive {
+                            homeCard {
+                                homeSunnyDaysSection(previewActive: previewActive)
+                            }
+                        }
+                        homeCard(contentPadding: 12) {
+                            homeSunnySection(previewActive: previewActive)
                         }
                     }
-                    homeCard(contentPadding: 12) {
-                        homeSunnySection(previewActive: previewActive)
-                    }
                 }
+                // Keep the page comfortably readable in full-screen and large
+                // Stage Manager windows while leaving compact layouts unchanged.
+                .frame(maxWidth: usesReadableSingleColumn ? 760 : 1_160)
+                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
                 .padding(.bottom, 16)

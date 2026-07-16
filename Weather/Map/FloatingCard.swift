@@ -514,6 +514,11 @@ extension ContentView {
                 mapExpandedCard(for: city, hideCityName: false)
                     .id(city.city.id)
                     .padding(.horizontal, floatingMapCardHorizontalPadding)
+                    // iPad: Keep the selected-city card readable and bottom-centred
+                    // instead of allowing it to span a regular-width map window.
+                    // This cap is wider than every supported iPhone window, so the
+                    // compact layout remains unchanged.
+                    .frame(maxWidth: 580)
                     .padding(.bottom, floatingMapCardBottomPadding)
                     .transition(
                         .asymmetric(

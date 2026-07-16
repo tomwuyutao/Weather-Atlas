@@ -591,7 +591,9 @@ extension ContentView {
     }
 
     private var detailViewMaxWidth: CGFloat? {
-        nil
+        // A city report remains a single readable column on iPad and in wide
+        // Stage Manager windows; compact-window sizing is unaffected.
+        760
     }
 
 }

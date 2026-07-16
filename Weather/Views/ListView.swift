@@ -58,6 +58,10 @@ extension ContentView {
         .contentMargins(.top, 76, for: .scrollContent)
         .contentMargins(.bottom, 16, for: .scrollContent)
         .environment(\.editMode, .constant(listEditMode ? .active : .inactive))
+        // Keep the ranked sequence as one readable column on wide windows.
+        // The outer flexible frame centers it without changing iPhone sizing.
+        .frame(maxWidth: cityListContentMaxWidth)
+        .frame(maxWidth: .infinity)
     }
 
     private var listHeader: some View {
@@ -66,8 +70,14 @@ extension ContentView {
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
+        .frame(maxWidth: cityListContentMaxWidth)
+        .frame(maxWidth: .infinity)
         // Accessibility: Announce the persistent list controls before scrolling rows.
         .accessibilitySortPriority(1)
+    }
+
+    private var cityListContentMaxWidth: CGFloat {
+        760
     }
 
     private var sunninessGroupedCandidateRows: some View {

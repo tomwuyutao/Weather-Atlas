@@ -63,12 +63,17 @@ struct GeneratedListPreviewState {
 // MARK: - Shared State
 
 struct ContentView: View {
-    @State var weatherService = WeatherService()
+    @State var weatherService: WeatherService
     @Environment(\.appTheme) var theme
 
     // MARK: Startup Setup
 
-    init(initialRoute: AppNavigationRoute? = nil) {
+    @MainActor
+    init(
+        weatherService: WeatherService? = nil,
+        initialRoute: AppNavigationRoute? = nil
+    ) {
+        _weatherService = State(initialValue: weatherService ?? WeatherService())
         if let initialRoute {
             _navigationPath = State(initialValue: [initialRoute])
         }
@@ -112,6 +117,7 @@ struct ContentView: View {
 
     @Environment(\.locale) var locale
     @Environment(\.colorScheme) var colorScheme
+    @Environment(\.horizontalSizeClass) var horizontalSizeClass
     // Accessibility: Drives large-text layouts and additional non-color cues in feature views.
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(\.accessibilityDifferentiateWithoutColor) var differentiateWithoutColor
@@ -328,6 +334,11 @@ extension ContentView {
                         tutorialState.showsReplay = true
                     }
                 )
+                // iPad: Use the native centred form presentation in regular-width
+                // windows. Compact Split View keeps the existing phone-style sheet.
+                .if(horizontalSizeClass == .regular) { view in
+                    view.presentationSizing(.form)
+                }
             }
             .fullScreenCover(isPresented: $tutorialState.showsFirstLaunch) {
                 TutorialView(
@@ -364,14 +375,30 @@ extension ContentView {
                 }
             )) {
                 searchSheet
-                    .presentationDetents([.fraction(0.82), .large])
-                    .presentationDragIndicator(.visible)
+                    // iPad: A regular-width search is a native form sheet rather than
+                    // an unnecessarily wide bottom sheet.
+                    .if(horizontalSizeClass == .regular) { view in
+                        view.presentationSizing(.form)
+                    }
+                    .if(horizontalSizeClass != .regular) { view in
+                        view
+                            .presentationDetents([.fraction(0.82), .large])
+                            .presentationDragIndicator(.visible)
+                    }
                     .presentationBackground(theme.colors.background)
             }
             .sheet(isPresented: $listManagementState.isPresented, onDismiss: performListManagementDismissAction) {
                 listManagementSheet
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+                    // iPad: Keep this short navigation hierarchy in the system form
+                    // size; narrow windows retain the existing draggable detents.
+                    .if(horizontalSizeClass == .regular) { view in
+                        view.presentationSizing(.form)
+                    }
+                    .if(horizontalSizeClass != .regular) { view in
+                        view
+                            .presentationDetents([.medium, .large])
+                            .presentationDragIndicator(.visible)
+                    }
                     .presentationBackground(theme.colors.mapOcean)
             }
             .overlay {

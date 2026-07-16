@@ -50,10 +50,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     private static let pendingListShortcutKey = "pendingListShortcutID"
     private static let listShortcutTypePrefix = "openList."
 
-    func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
-        .portrait
-    }
-
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -119,6 +115,9 @@ struct WeatherApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     @State private var theme = AppTheme.shared
+    // iPad: Share the observable model across WindowGroup scenes so list and
+    // weather mutations remain consistent when multiple app windows are open.
+    @State private var weatherService: WeatherService
 
     private var appLocale: Locale {
         Locale(identifier: appLanguage)
@@ -162,12 +161,19 @@ struct WeatherApp: App {
             }
             UserDefaults.standard.set(true, forKey: weatherCacheMigrationKey)
         }
-        
+
+        // Construct the shared model only after persistence migrations finish,
+        // so every iPad scene starts from the migrated source of truth.
+        _weatherService = State(initialValue: WeatherService())
     }
 
     var body: some Scene {
         WindowGroup {
-            ThemeRoot(theme: theme, appLocale: appLocale)
+            ThemeRoot(
+                theme: theme,
+                appLocale: appLocale,
+                weatherService: weatherService
+            )
         }
     }
 }
@@ -184,10 +190,15 @@ extension Notification.Name {
 private struct ThemeRoot: View {
     let theme: AppTheme
     let appLocale: Locale
+    let weatherService: WeatherService
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        ThemeContent(theme: theme, appLocale: appLocale)
+        ThemeContent(
+            theme: theme,
+            appLocale: appLocale,
+            weatherService: weatherService
+        )
             .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
     }
 }
@@ -198,6 +209,7 @@ private struct ThemeRoot: View {
 private struct ThemeContent: View {
     let theme: AppTheme
     let appLocale: Locale
+    let weatherService: WeatherService
     @Environment(\.colorScheme) private var colorScheme
     // Accessibility: Propagate Increase Contrast into the app's custom color palettes.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
@@ -223,7 +235,7 @@ private struct ThemeContent: View {
 
     var body: some View {
         let resolvedColors = theme.colors(for: colorScheme, contrast: colorSchemeContrast)
-        ContentView()
+        ContentView(weatherService: weatherService)
             .environment(\.locale, appLocale)
             .environment(\.dynamicTypeSize, resolvedDynamicTypeSize)
             .environment(\.appTheme, theme)
