@@ -212,7 +212,13 @@ private struct ThemeContent: View {
     }
 
     private var resolvedDynamicTypeSize: DynamicTypeSize {
-        useSystemTextSize ? systemDynamicTypeSize : preferredDynamicTypeSize
+        min(
+            max(
+                useSystemTextSize ? systemDynamicTypeSize : preferredDynamicTypeSize,
+                AppTextSizeLevel.minimumDynamicTypeSize
+            ),
+            AppTextSizeLevel.maximumDynamicTypeSize
+        )
     }
 
     var body: some View {

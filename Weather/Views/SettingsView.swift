@@ -138,8 +138,8 @@ enum AppTextSizeLevel: Int, CaseIterable {
     case xLarge = 4
     case xxLarge = 5
     case xxxLarge = 6
-    // Accessibility: Mirror all five system accessibility Dynamic Type categories
-    // when the user chooses an app-specific text size.
+    // Retained to interpret previously saved preferences. The app caps its
+    // rendered text and the settings control at Extra Large (.xxLarge).
     case accessibility1 = 7
     case accessibility2 = 8
     case accessibility3 = 9
@@ -147,6 +147,10 @@ enum AppTextSizeLevel: Int, CaseIterable {
     case accessibility5 = 11
 
     static let defaultRawValue = AppTextSizeLevel.large.rawValue
+    static let minimumDynamicTypeSize: DynamicTypeSize = .small
+    static let maximumDynamicTypeSize: DynamicTypeSize = .xxLarge
+    static let minimumSelectableRawValue = AppTextSizeLevel.small.rawValue
+    static let maximumSelectableRawValue = AppTextSizeLevel.xxLarge.rawValue
 
     var dynamicTypeSize: DynamicTypeSize {
         switch self {
@@ -234,8 +238,13 @@ struct SettingsView: View {
     }
 
     private var resolvedDynamicTypeSize: DynamicTypeSize {
-        // Accessibility: Respect the system size by default, including accessibility sizes.
-        useSystemTextSize ? systemDynamicTypeSize : selectedTextSizeLevel.dynamicTypeSize
+        min(
+            max(
+                useSystemTextSize ? systemDynamicTypeSize : selectedTextSizeLevel.dynamicTypeSize,
+                AppTextSizeLevel.minimumDynamicTypeSize
+            ),
+            AppTextSizeLevel.maximumDynamicTypeSize
+        )
     }
 
     private var textSizeSummary: String {
@@ -275,6 +284,10 @@ struct SettingsView: View {
                     .navigationTitle(localizedString("Text Size", locale: locale))
             }
         }
+        // Keep the back-swipe recognizer disabled for the entire lifetime of the
+        // text-size destination. The slider changes Dynamic Type live, which can
+        // otherwise briefly rebuild its own view and re-enable the gesture mid-drag.
+        .background(NavigationPopGestureDisabler(isDisabled: showingTextSize))
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
         .presentationBackground(theme.colors.mapOcean)
@@ -437,10 +450,11 @@ struct SettingsView: View {
                 .tint(.green)
 
                 VStack(spacing: 18) {
-                    HStack(spacing: 18) {
+                    HStack(spacing: 8) {
                         Text(verbatim: "A")
                             .font(.system(size: 18, weight: .regular))
                             .foregroundStyle(theme.colors.secondaryText)
+                            .frame(width: 44)
                             .accessibilityHidden(true)
 
                         steppedTextSizeSlider
@@ -448,6 +462,7 @@ struct SettingsView: View {
                         Text(verbatim: "A")
                             .font(.system(size: 34, weight: .regular))
                             .foregroundStyle(theme.colors.secondaryText)
+                            .frame(width: 44)
                             .accessibilityHidden(true)
                     }
                     .opacity(useSystemTextSize ? 0.42 : 1)
@@ -463,7 +478,6 @@ struct SettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(settingsFormBackground)
-        .background(NavigationPopGestureDisabler())
         .onAppear {
             textSizeSliderValue = Double(appTextSizeLevel)
         }
@@ -478,12 +492,15 @@ struct SettingsView: View {
             value: Binding(
                 get: { textSizeSliderValue },
                 set: { newValue in
-                    let clampedValue = min(max(newValue, 0), Double(AppTextSizeLevel.allCases.count - 1))
+                    let clampedValue = min(
+                        max(newValue, Double(AppTextSizeLevel.minimumSelectableRawValue)),
+                        Double(AppTextSizeLevel.maximumSelectableRawValue)
+                    )
                     textSizeSliderValue = clampedValue
                     appTextSizeLevel = Int(clampedValue.rounded())
                 }
             ),
-            in: 0...Double(AppTextSizeLevel.allCases.count - 1),
+            in: Double(AppTextSizeLevel.minimumSelectableRawValue)...Double(AppTextSizeLevel.maximumSelectableRawValue),
             step: 1,
             onEditingChanged: { isEditing in
                 isDraggingTextSizeSlider = isEditing
@@ -821,18 +838,44 @@ struct SettingsView: View {
 }
 
 private struct NavigationPopGestureDisabler: UIViewControllerRepresentable {
+    let isDisabled: Bool
+
+    final class Coordinator {
+        weak var gestureRecognizer: UIGestureRecognizer?
+        var originalIsEnabled: Bool?
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
     func makeUIViewController(context: Context) -> UIViewController {
         UIViewController()
     }
 
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
         DispatchQueue.main.async {
-            uiViewController.navigationController?.interactivePopGestureRecognizer?.isEnabled = false
+            guard let gestureRecognizer = uiViewController.navigationController?.interactivePopGestureRecognizer else {
+                return
+            }
+            context.coordinator.gestureRecognizer = gestureRecognizer
+
+            if isDisabled {
+                if context.coordinator.originalIsEnabled == nil {
+                    context.coordinator.originalIsEnabled = gestureRecognizer.isEnabled
+                }
+                gestureRecognizer.isEnabled = false
+            } else if let originalIsEnabled = context.coordinator.originalIsEnabled {
+                gestureRecognizer.isEnabled = originalIsEnabled
+                context.coordinator.originalIsEnabled = nil
+            }
         }
     }
 
-    static func dismantleUIViewController(_ uiViewController: UIViewController, coordinator: ()) {
-        uiViewController.navigationController?.interactivePopGestureRecognizer?.isEnabled = true
+    static func dismantleUIViewController(_ uiViewController: UIViewController, coordinator: Coordinator) {
+        if let originalIsEnabled = coordinator.originalIsEnabled {
+            coordinator.gestureRecognizer?.isEnabled = originalIsEnabled
+        }
     }
 }
 
