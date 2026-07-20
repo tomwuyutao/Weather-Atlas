@@ -1004,7 +1004,7 @@ private struct CityAddedConfirmationView: View {
         .padding(.vertical, 24)
         .frame(maxWidth: 300)
         .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .shadow(color: .black.opacity(0.16), radius: 18, y: 8)
+        .shadow(color: theme.colors.shadow.opacity(0.16), radius: 18, y: 8)
     }
 }
 

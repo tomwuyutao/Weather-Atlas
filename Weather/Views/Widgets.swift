@@ -136,7 +136,7 @@ struct BestSunnyPlacesWidget: Widget {
             SunnyHoursHomeWidgetView(entry: entry)
                 .environment(\.locale, WidgetDataStore.appLocale)
                 .containerBackground(for: .widget) {
-                    Color(uiColor: .systemBackground)
+                    WidgetPaletteBackground()
                 }
         }
         .configurationDisplayName("Sunny Hours (Daily)")
@@ -156,7 +156,7 @@ struct SunnyWindowWidget: Widget {
             SunnyWindowLargeWidgetView(entry: entry)
                 .environment(\.locale, WidgetDataStore.appLocale)
                 .containerBackground(for: .widget) {
-                    Color(uiColor: .systemBackground)
+                    WidgetPaletteBackground()
                 }
         }
         .configurationDisplayName("Sunny Hours (10 Days)")
@@ -167,6 +167,7 @@ struct SunnyWindowWidget: Widget {
 
 private struct SunnyWindowLargeWidgetView: View {
     @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
     let entry: SunnyHoursLockScreenEntry
 
     var body: some View {
@@ -176,7 +177,7 @@ private struct SunnyWindowLargeWidgetView: View {
                     cityName: city.cityName,
                     conditionSymbolName: city.currentConditionSymbolName,
                     font: .headline.weight(.semibold),
-                    usesMulticolorCondition: true
+                    usesWeatherColors: true
                 )
 
                 if let issue = city.widgetSunnyWindowIssue {
@@ -201,6 +202,7 @@ private struct SunnyWindowLargeWidgetView: View {
             .padding(.top, 4)
             .padding(.bottom, 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .foregroundStyle(AppPalette.values(for: colorScheme).titleText)
             .widgetURL(widgetListURL(for: city, issue: city.widgetSunnyWindowIssue))
         } else {
             EmptyView()
@@ -220,6 +222,7 @@ private struct SunnyWindowLargeChart: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.widgetRenderingMode) private var widgetRenderingMode
+    @Environment(\.colorScheme) private var colorScheme
 
     private let labelWidth: CGFloat = 52
     private let axisHeight: CGFloat = 18
@@ -266,7 +269,7 @@ private struct SunnyWindowLargeChart: View {
                 ForEach(axisHours, id: \.self) { hour in
                     Text(SunnyHoursFormatting.chartHourLabel(hour))
                         .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(renderedSecondary)
                         .position(
                             x: chartBounds.xPosition(for: Double(hour), width: timelineWidth),
                             y: axisHeight / 2
@@ -283,7 +286,7 @@ private struct SunnyWindowLargeChart: View {
                 HStack(spacing: 0) {
                     Text(dayLabel(for: day.date))
                         .font(.caption2.weight(isToday(day.date) ? .bold : .medium))
-                        .foregroundStyle(isToday(day.date) ? .primary : .secondary)
+                        .foregroundStyle(isToday(day.date) ? renderedPrimary : renderedSecondary)
                         .lineLimit(1)
                         .frame(width: labelWidth, alignment: .leading)
 
@@ -320,7 +323,7 @@ private struct SunnyWindowLargeChart: View {
                                             if differentiateWithoutColor {
                                                 Rectangle()
                                                     .stroke(
-                                                        Color.primary.opacity(0.82),
+                                                        renderedPrimary.opacity(0.82),
                                                         style: StrokeStyle(
                                                             lineWidth: 1,
                                                             dash: segment.isPartlySunny ? [2, 2] : []
@@ -389,7 +392,7 @@ private struct SunnyWindowLargeChart: View {
                 Color.clear.frame(width: labelWidth)
                 ZStack(alignment: .leading) {
                     Rectangle()
-                        .fill(Color.primary.opacity(0.82))
+                        .fill(renderedPrimary.opacity(0.82))
                         .frame(width: 2, height: rowsHeight)
                         .offset(x: markerX - 1)
                 }
@@ -400,28 +403,45 @@ private struct SunnyWindowLargeChart: View {
     }
 
     private func segmentColor(isPartlySunny: Bool) -> Color {
-        if widgetRenderingMode == .accented {
+        if usesSystemRenderingColors {
             return .primary.opacity(isPartlySunny ? 0.48 : 1)
         }
         if colorSchemeContrast == .increased {
+            let colors = AppPalette.increasedContrastValues(for: colorScheme)
             return isPartlySunny
-                ? WidgetColors.increasedContrastPartlySunny
-                : WidgetColors.increasedContrastSunny
+                ? colors.dotPartlyCloudy
+                : colors.dotSun
         }
-        return isPartlySunny ? WidgetColors.partlySunny : WidgetColors.sunny
+        return isPartlySunny ? palette.dotPartlyCloudy : palette.dotSun
     }
 
     private var trackColor: Color {
-        if widgetRenderingMode == .accented {
+        if usesSystemRenderingColors {
             return .primary.opacity(colorSchemeContrast == .increased ? 0.24 : 0.14)
         }
         return colorSchemeContrast == .increased
-            ? .primary.opacity(0.52)
-            : .secondary.opacity(0.16)
+            ? renderedPrimary.opacity(0.52)
+            : renderedSecondary.opacity(0.16)
     }
 
     private var gridColor: Color {
-        .secondary.opacity(colorSchemeContrast == .increased ? 0.18 : 0.08)
+        renderedSecondary.opacity(colorSchemeContrast == .increased ? 0.18 : 0.08)
+    }
+
+    private var palette: AppPalette.Values {
+        AppPalette.values(for: colorScheme)
+    }
+
+    private var usesSystemRenderingColors: Bool {
+        widgetRenderingMode != .fullColor
+    }
+
+    private var renderedPrimary: Color {
+        usesSystemRenderingColors ? .primary : palette.titleText
+    }
+
+    private var renderedSecondary: Color {
+        usesSystemRenderingColors ? .secondary : palette.secondaryText
     }
 
     private func dayLabel(for date: Date) -> String {
@@ -444,6 +464,7 @@ private struct SunnyWindowLargeChart: View {
 private struct SunnyHoursHomeWidgetView: View {
     @Environment(\.widgetFamily) private var family
     @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
     let entry: SunnyHoursLockScreenEntry
 
     var body: some View {
@@ -461,7 +482,7 @@ private struct SunnyHoursHomeWidgetView: View {
                 cityName: city.cityName,
                 conditionSymbolName: city.currentConditionSymbolName,
                 font: .headline.weight(.semibold),
-                usesMulticolorCondition: true
+                usesWeatherColors: true
             )
 
             if let issue = city.widgetCurrentIssue {
@@ -480,6 +501,15 @@ private struct SunnyHoursHomeWidgetView: View {
         .padding(.top, 12)
         .padding(.bottom, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .foregroundStyle(AppPalette.values(for: colorScheme).titleText)
+    }
+}
+
+private struct WidgetPaletteBackground: View {
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        AppPalette.values(for: colorScheme).background
     }
 }
 
@@ -883,7 +913,7 @@ private struct SunnyHoursLockScreenWidgetView: View {
                     cityName: city.cityName,
                     conditionSymbolName: city.currentConditionSymbolName,
                     font: .caption.weight(.semibold),
-                    usesMulticolorCondition: false
+                    usesWeatherColors: false
                 )
                     .padding(.horizontal, 10)
                     .padding(.trailing, -4)
@@ -909,10 +939,12 @@ private struct SunnyHoursLockScreenWidgetView: View {
 }
 
 private struct SunnyHoursHeader: View {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetRenderingMode) private var widgetRenderingMode
     let cityName: String
     let conditionSymbolName: String?
     let font: Font
-    let usesMulticolorCondition: Bool
+    let usesWeatherColors: Bool
 
     var body: some View {
         HStack(spacing: 6) {
@@ -921,11 +953,17 @@ private struct SunnyHoursHeader: View {
                 .minimumScaleFactor(0.72)
             Spacer(minLength: 6)
             if let conditionSymbolName {
-                if usesMulticolorCondition {
-                    Image(systemName: conditionSymbolName)
-                        .symbolRenderingMode(.multicolor)
+                let displaySymbolName = widgetConditionDisplaySymbolName(for: conditionSymbolName)
+                if usesWeatherColors && widgetRenderingMode == .fullColor {
+                    let palette = widgetConditionIconPalette(
+                        for: conditionSymbolName,
+                        colors: AppPalette.values(for: colorScheme)
+                    )
+                    Image(systemName: displaySymbolName)
+                        .symbolRenderingMode(.palette)
+                        .foregroundStyle(palette.primary, palette.secondary)
                 } else {
-                    Image(systemName: conditionSymbolName)
+                    Image(systemName: displaySymbolName)
                         .symbolRenderingMode(.monochrome)
                         .foregroundStyle(Color.primary)
                 }
@@ -946,6 +984,7 @@ private struct SunnyHoursTimeline: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.widgetRenderingMode) private var widgetRenderingMode
     @Environment(\.locale) private var locale
+    @Environment(\.colorScheme) private var colorScheme
     let city: WidgetDataCity
     let currentDate: Date
     var style: Style = .home
@@ -994,7 +1033,7 @@ private struct SunnyHoursTimeline: View {
                     }
                     .frame(height: 14)
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(renderedSecondary)
                     .lineLimit(1)
                     .padding(.top, 2)
                 } else {
@@ -1020,7 +1059,7 @@ private struct SunnyHoursTimeline: View {
                     }
                     .frame(height: 14)
                     .font(.caption2.weight(.medium))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(renderedSecondary)
                     .lineLimit(1)
                 }
             }
@@ -1037,11 +1076,11 @@ private struct SunnyHoursTimeline: View {
         if differentiateWithoutColor {
             if city.sunnyHours.contains(hour) {
                 Capsule()
-                    .strokeBorder(.primary.opacity(0.9), lineWidth: 1.2)
+                    .strokeBorder(renderedPrimary.opacity(0.9), lineWidth: 1.2)
             } else if city.partlySunnyHours.contains(hour) {
                 Capsule()
                     .strokeBorder(
-                        .primary.opacity(0.9),
+                        renderedPrimary.opacity(0.9),
                         style: StrokeStyle(lineWidth: 1.2, dash: [2, 2])
                     )
             }
@@ -1051,7 +1090,7 @@ private struct SunnyHoursTimeline: View {
     // MARK: - Timeline Rendering
 
     private func segmentColor(for hour: Int) -> Color {
-        if style == .lockScreen || widgetRenderingMode == .accented {
+        if usesSystemRenderingColors {
             // Lock-screen widgets sit on a translucent system surface. Keep a wide
             // luminance separation over any wallpaper. iOS also uses accented mode
             // for clear and tinted Home Screen widgets, preserving these opacities
@@ -1062,24 +1101,41 @@ private struct SunnyHoursTimeline: View {
         }
 
         if colorSchemeContrast == .increased {
-            if city.sunnyHours.contains(hour) { return WidgetColors.increasedContrastSunny }
-            if city.partlySunnyHours.contains(hour) { return WidgetColors.increasedContrastPartlySunny }
-            return .primary.opacity(0.52)
+            let colors = AppPalette.increasedContrastValues(for: colorScheme)
+            if city.sunnyHours.contains(hour) { return colors.dotSun }
+            if city.partlySunnyHours.contains(hour) { return colors.dotPartlyCloudy }
+            return colors.titleText.opacity(0.52)
         }
 
         if city.sunnyHours.contains(hour) {
-            return WidgetColors.sunny
+            return palette.dotSun
         }
         if city.partlySunnyHours.contains(hour) {
-            return WidgetColors.partlySunny
+            return palette.dotPartlyCloudy
         }
-        return .secondary.opacity(0.16)
+        return palette.secondaryText.opacity(0.16)
     }
 
     private var currentTimeMarker: some View {
         Rectangle()
-            .fill(Color.primary.opacity(0.9))
+            .fill(renderedPrimary.opacity(0.9))
             .frame(width: 2)
+    }
+
+    private var palette: AppPalette.Values {
+        AppPalette.values(for: colorScheme)
+    }
+
+    private var usesSystemRenderingColors: Bool {
+        style == .lockScreen || widgetRenderingMode != .fullColor
+    }
+
+    private var renderedPrimary: Color {
+        usesSystemRenderingColors ? .primary : palette.titleText
+    }
+
+    private var renderedSecondary: Color {
+        usesSystemRenderingColors ? .secondary : palette.secondaryText
     }
 
     private func currentTimeBoundaryIndex(in hours: [Int]) -> Int? {
@@ -1170,6 +1226,7 @@ private struct SunnyHoursLegend: View {
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.widgetRenderingMode) private var widgetRenderingMode
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         HStack(spacing: 9) {
@@ -1185,35 +1242,38 @@ private struct SunnyHoursLegend: View {
             )
         }
         .font(.caption2.weight(.medium))
-        .foregroundStyle(.secondary)
+        .foregroundStyle(renderedSecondary)
         .lineLimit(1)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.top, 9)
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(.secondary.opacity(0.18))
+                .fill(renderedSecondary.opacity(0.18))
                 .frame(height: 1)
         }
     }
 
     private var sunnyLegendColor: Color {
-        if widgetRenderingMode == .accented { return .primary.opacity(1) }
+        if usesSystemRenderingColors { return .primary.opacity(1) }
         return colorSchemeContrast == .increased
-            ? WidgetColors.increasedContrastSunny
-            : WidgetColors.sunny
+            ? increasedContrastPalette.dotSun
+            : palette.dotSun
     }
 
     private var partlySunnyLegendColor: Color {
-        if widgetRenderingMode == .accented { return .primary.opacity(0.48) }
+        if usesSystemRenderingColors { return .primary.opacity(0.48) }
         return colorSchemeContrast == .increased
-            ? WidgetColors.increasedContrastPartlySunny
-            : WidgetColors.partlySunny
+            ? increasedContrastPalette.dotPartlyCloudy
+            : palette.dotPartlyCloudy
     }
 
     private func item(color: Color, title: String, symbol: String) -> some View {
         HStack(spacing: 4) {
             if differentiateWithoutColor {
-                Image(systemName: symbol)
+                let iconPalette = widgetConditionIconPalette(for: symbol, colors: palette)
+                Image(systemName: widgetConditionDisplaySymbolName(for: symbol))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(iconPalette.primary, iconPalette.secondary)
             } else {
                 Circle()
                     .fill(color)
@@ -1221,6 +1281,22 @@ private struct SunnyHoursLegend: View {
             }
             Text(title)
         }
+    }
+
+    private var palette: AppPalette.Values {
+        AppPalette.values(for: colorScheme)
+    }
+
+    private var increasedContrastPalette: AppPalette.Values {
+        AppPalette.increasedContrastValues(for: colorScheme)
+    }
+
+    private var usesSystemRenderingColors: Bool {
+        widgetRenderingMode != .fullColor
+    }
+
+    private var renderedSecondary: Color {
+        usesSystemRenderingColors ? .secondary : palette.secondaryText
     }
 }
 
@@ -1288,13 +1364,45 @@ private func widgetDataIssueMessage(
     }
 }
 
-private enum WidgetColors {
-    static let navy = Color(red: 0.12, green: 0.28, blue: 0.55)
-    // Match ThemeColors.dotSun and ThemeColors.dotPartlyCloudy, used by map markers.
-    static let sunny = Color(red: 1, green: 0.72, blue: 0.30)
-    static let partlySunny = Color(red: 1, green: 0.8745, blue: 0.5686)
-    static let increasedContrastSunny = Color(red: 0.7843, green: 0.5020, blue: 0)
-    static let increasedContrastPartlySunny = Color(red: 0.6510, green: 0.4157, blue: 0)
+private func widgetConditionDisplaySymbolName(for symbolName: String) -> String {
+    switch WeatherSymbolClassification.resolve(symbolName) {
+    case .clear:
+        return WeatherIconSymbol.clear
+    case .partlySunny, .partlyCloudy:
+        return WeatherIconSymbol.partlyCloudy
+    case .cloudy:
+        return WeatherIconSymbol.cloudy
+    case .rain:
+        return WeatherIconSymbol.rain
+    case .drizzle:
+        return WeatherIconSymbol.drizzle
+    case .snow:
+        return WeatherIconSymbol.snow
+    case .fog:
+        return WeatherIconSymbol.fog
+    case .wind:
+        return WeatherIconSymbol.wind
+    case .night:
+        return WeatherIconSymbol.night
+    case nil:
+        return symbolName
+    }
+}
+
+private func widgetConditionIconPalette(
+    for symbolName: String,
+    colors: AppPalette.Values
+) -> (primary: Color, secondary: Color) {
+    switch WeatherSymbolClassification.resolve(symbolName) {
+    case .clear:
+        return (colors.dotSun, colors.dotSun)
+    case .partlySunny, .partlyCloudy:
+        return (colors.titleText, colors.dotSun)
+    case .rain, .drizzle:
+        return (colors.titleText, colors.dotRain)
+    case .cloudy, .snow, .fog, .wind, .night, nil:
+        return (colors.titleText, colors.titleText)
+    }
 }
 
 private func widgetListURL(for city: WidgetDataCity, issue: WeatherDataIssue?) -> URL? {

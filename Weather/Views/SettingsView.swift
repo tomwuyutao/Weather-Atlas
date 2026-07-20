@@ -339,7 +339,7 @@ struct SettingsView: View {
                     Text(localizedString("Use System Text Size", locale: locale))
                         .foregroundStyle(theme.colors.primaryText)
                 }
-                .tint(.green)
+                .tint(theme.colors.accent)
 
                 VStack(spacing: 18) {
                     HStack(spacing: 8) {

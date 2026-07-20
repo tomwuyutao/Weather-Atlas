@@ -459,7 +459,7 @@ private enum MapRegionFitting {
 // MARK: - Weather Marker
 
 private struct SelectedPulseRing: View {
-    var color: Color = .white
+    let color: Color
     @State private var isPulsing = false
     // Stop the repeating selection pulse when Reduce Motion is on.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -539,7 +539,7 @@ private struct WeatherMapMarker: View {
                             .padding(5)
                     }
                 }
-                .foregroundStyle(.primary)
+                .foregroundStyle(theme.colors.primaryText)
                 .frame(minWidth: 26, maxWidth: 40, minHeight: 24)
                 .background {
                     if colorSchemeContrast == .increased {

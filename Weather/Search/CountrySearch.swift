@@ -166,7 +166,7 @@ struct CountrySearchField: View {
             Capsule()
                 .stroke(searchFieldBorderColor, lineWidth: colorSchemeContrast == .increased ? 1.25 : 0.8)
         }
-        .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 18, y: 8)
+        .shadow(color: theme.colors.shadow.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 18, y: 8)
         .onAppear {
             if automaticallyFocus {
                 isFocused = true

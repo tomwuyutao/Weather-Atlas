@@ -51,7 +51,7 @@ struct AddSheet: View {
 
     private var addSheetDivider: some View {
         Divider()
-            .background(Color.secondary.opacity(0.16))
+            .background(theme.colors.secondaryText.opacity(0.16))
     }
 
     private func addListOptionButton(

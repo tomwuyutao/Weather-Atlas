@@ -233,12 +233,11 @@ struct SunnyCandidateRow: View {
             HStack(spacing: 3) {
                 Image(systemName: "cloud")
                     .font(.caption.weight(.medium))
-                    .foregroundStyle(theme.colors.primaryText)
                 Text(cloudText)
                     .font(.caption.weight(.medium))
                     .monospacedDigit()
             }
-            .foregroundStyle(theme.colors.primaryText)
+            .foregroundStyle(theme.colors.secondaryText)
             .frame(width: usesFixedColumns ? cloudMetricWidth : nil, alignment: .leading)
             .padding(.trailing, usesFixedColumns ? 5 : 0)
 
@@ -932,7 +931,7 @@ extension ContentView {
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(.white.opacity(0.12), lineWidth: 0.8)
+                .stroke(theme.colors.primaryText.opacity(0.12), lineWidth: 0.8)
         }
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
@@ -1175,7 +1174,7 @@ extension ContentView {
                 .stroke(
                     isSelected
                         ? theme.colors.accent
-                        : (colorSchemeContrast == .increased ? theme.colors.primaryText : .white.opacity(0.16)),
+                        : theme.colors.primaryText.opacity(colorSchemeContrast == .increased ? 1 : 0.16),
                     lineWidth: isSelected ? 1.65 : (colorSchemeContrast == .increased ? 1.25 : 0.7)
                 )
         }

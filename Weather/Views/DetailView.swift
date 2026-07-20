@@ -451,7 +451,7 @@ extension ContentView {
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(.white.opacity(0.10), lineWidth: 0.6)
+                    .stroke(theme.colors.primaryText.opacity(0.10), lineWidth: 0.6)
                     .allowsHitTesting(false)
             }
 
@@ -1126,7 +1126,7 @@ private struct DetailMapContextView: View {
                     Capsule().stroke(theme.colors.primaryText, lineWidth: 1.5)
                 }
             }
-            .shadow(color: .black.opacity(0.10), radius: 6, y: 2)
+            .shadow(color: theme.colors.shadow.opacity(0.10), radius: 6, y: 2)
             .saturation(markerSaturationCompensation)
         } else {
             missingSymbolMarker()
