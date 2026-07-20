@@ -103,19 +103,20 @@ extension WeatherService {
     }
 
     func cachedWeatherDataLooksCurrent(_ data: [CityWeather], for listID: CityListID, now: Date = Date()) -> Bool {
-        guard fetchDate(for: listID) != nil else { return false }
+        guard !data.isEmpty, fetchDate(for: listID) != nil else { return false }
         return data.allSatisfy { cityWeather in
             guard hasResolvedTimeZone(cityWeather) else {
                 return false
             }
 
-            guard let todayForecast = cityWeather.dailyForecasts.first(where: { $0.dayOffset == 0 }) else {
+            guard let todayForecast = cityWeather.forecastForLocalDate(containing: now) else {
                 return false
             }
             guard !todayForecast.hourlyForecasts.isEmpty else { return false }
-            guard SunninessScoring.hasDaytimeHourlyScoreData(for: todayForecast, timeZone: cityWeather.timeZone) else {
-                return false
-            }
+
+            // Polar day and polar night legitimately omit sunrise or sunset.
+            // Cache freshness is about date/hour coverage, not whether every
+            // optional solar input needed by the sunny-hours feature exists.
 
             var calendar = Calendar.current
             calendar.timeZone = cityWeather.timeZone
@@ -182,6 +183,12 @@ extension WeatherService {
         }
     }
 
+    /// Successful cities remain in memory for the current session, but a
+    /// partial list is never persisted or labeled as a fresh snapshot.
+    func invalidateIncompleteCache(for listID: CityListID) {
+        removeCache(for: listID)
+    }
+
     func clearCache() {
         removeCache(for: activeListID)
     }
@@ -219,8 +226,8 @@ struct CachedCity: Codable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
-        country = try container.decodeIfPresent(String.self, forKey: .country) ?? ""
+        name = try container.decode(String.self, forKey: .name)
+        country = try container.decode(String.self, forKey: .country)
         latitude = try container.decode(Double.self, forKey: .latitude)
         longitude = try container.decode(Double.self, forKey: .longitude)
         timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
@@ -235,6 +242,7 @@ struct CachedCityWeather: Codable {
     let id: UUID
     let city: CachedCity
     let temperature: Double
+    let currentSymbolName: String?
     let dailyForecasts: [CachedDailyForecast]
     let timeZoneIdentifier: String
 
@@ -242,6 +250,7 @@ struct CachedCityWeather: Codable {
         id = cityWeather.id
         city = CachedCity(from: cityWeather.city)
         temperature = cityWeather.temperature
+        currentSymbolName = cityWeather.currentSymbolName
         dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
         timeZoneIdentifier = cityWeather.timeZone.identifier
     }
@@ -249,13 +258,14 @@ struct CachedCityWeather: Codable {
     func toCityWeather() -> CityWeather? {
         let decodedCity = city.toCity()
         guard let timeZone = TimeZone(identifier: timeZoneIdentifier) else { return nil }
-        let forecasts = dailyForecasts.map { $0.toDailyForecast(timeZone: timeZone) }
-        guard !forecasts.isEmpty else { return nil }
+        let forecasts = dailyForecasts.compactMap { $0.toDailyForecast(timeZone: timeZone) }
+        guard !forecasts.isEmpty, forecasts.count == dailyForecasts.count else { return nil }
 
         return CityWeather(
             id: id,
             city: decodedCity,
             temperature: temperature,
+            currentSymbolName: currentSymbolName,
             dailyForecasts: forecasts,
             timeZone: timeZone
         )
@@ -271,7 +281,6 @@ struct CachedDailyForecast: Codable {
     let hourlyForecasts: [CachedHourlyForecast]
     let cloudCover: Double?
     let precipitationChance: Double?
-    let windSpeed: Double?
     let uvIndex: Int?
     let sunrise: Date?
     let sunset: Date?
@@ -285,30 +294,28 @@ struct CachedDailyForecast: Codable {
         hourlyForecasts = forecast.hourlyForecasts.map { CachedHourlyForecast(from: $0) }
         cloudCover = forecast.cloudCover
         precipitationChance = forecast.precipitationChance
-        windSpeed = forecast.windSpeed
         uvIndex = forecast.uvIndex
         sunrise = forecast.sunrise
         sunset = forecast.sunset
     }
 
-    func toDailyForecast(timeZone: TimeZone) -> DailyForecast {
-        var calendar = Calendar.current
-        calendar.timeZone = timeZone
-        let restoredDate = date
-            ?? sunrise
-            ?? sunset
-            ?? calendar.date(byAdding: .day, value: dayOffset, to: Date())
-            ?? Date()
+    func toDailyForecast(timeZone: TimeZone) -> DailyForecast? {
+        // Exact calendar-date matching requires the original WeatherKit date.
+        // Legacy cache entries without it are rejected so the app refetches.
+        guard let restoredDate = date else { return nil }
+        let restoredHours = hourlyForecasts.compactMap {
+            $0.toHourlyForecast(on: restoredDate, timeZone: timeZone)
+        }
+        guard restoredHours.count == hourlyForecasts.count else { return nil }
         return DailyForecast(
             date: restoredDate,
             dayOffset: dayOffset,
             dailyLow: dailyLow,
             dailyHigh: dailyHigh,
             symbolName: symbolName,
-            hourlyForecasts: hourlyForecasts.map { $0.toHourlyForecast(on: restoredDate, timeZone: timeZone) },
+            hourlyForecasts: restoredHours,
             cloudCover: cloudCover,
             precipitationChance: precipitationChance,
-            windSpeed: windSpeed,
             uvIndex: uvIndex,
             sunrise: sunrise,
             sunset: sunset
@@ -327,12 +334,13 @@ struct CachedHourlyForecast: Codable {
         symbolName = forecast.symbolName
     }
 
-    func toHourlyForecast(on day: Date, timeZone: TimeZone) -> HourlyForecast {
+    func toHourlyForecast(on day: Date, timeZone: TimeZone) -> HourlyForecast? {
         var calendar = Calendar.current
         calendar.timeZone = timeZone
-        let restoredDate = date
-            ?? hour.flatMap { calendar.date(bySettingHour: $0, minute: 0, second: 0, of: day) }
-            ?? day
+        guard let restoredDate = date
+            ?? hour.flatMap({ calendar.date(bySettingHour: $0, minute: 0, second: 0, of: day) }) else {
+            return nil
+        }
         return HourlyForecast(
             date: restoredDate,
             symbolName: symbolName

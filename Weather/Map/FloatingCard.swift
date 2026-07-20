@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 private struct MapFloatingCardMetric {
     let value: String
@@ -25,157 +26,185 @@ extension ContentView {
         hideCityName: Bool = false,
         plainBackground: Bool = false
     ) -> some View {
-        let forecast = cityWeather.forecast(for: selectedDayOffset)
-        let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
-        let distanceUnit = DistanceUnit(rawValue: distanceUnitRaw) ?? .automatic
-        let metric = mapFloatingCardMetric(
-            for: cityWeather,
-            forecast: forecast,
-            tempUnit: tempUnit,
-            distanceUnit: distanceUnit
-        )
-
-        if forceExpandedStyle {
-            expandedFloatingWeatherCard(
-                for: cityWeather,
-                metric: metric,
-                tempUnit: tempUnit,
-                hideCityName: hideCityName,
-                plainBackground: plainBackground
+        let cardForecastDate = selectedForecastDate
+        if let forecast = cityWeather.forecastIfAvailable(on: cardForecastDate) {
+            let tempUnit = TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
+            let issue = mapWeatherDataIssue(
+                forecast: forecast,
+                cityWeather: cityWeather,
+                overlayMode: mapOverlayMode
             )
-        } else {
-            let phoneCardSpacing: CGFloat = 16
-            let phoneCardTemperatureSize: CGFloat = 32
-            let phoneCardIconSize: CGFloat = 40
-            let phoneCardIconFrame = CGSize(width: 56, height: 48)
-            let phoneCardMetricFont = Font.caption.weight(.medium)
-            let phoneCardTitleFont = Font.headline.weight(.semibold)
+            let metric = mapFloatingCardMetric(
+                for: cityWeather,
+                forecast: forecast,
+                tempUnit: tempUnit
+            )
 
-            // Accessibility: A semantic Button makes the entire compact card available to
-            // VoiceOver, Voice Control, and switch input without changing its appearance.
-            Button {
-                presentDetail(for: cityWeather)
-            } label: {
-                HStack(alignment: .center, spacing: phoneCardSpacing) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(metric.value)
-                            .font(.system(size: phoneCardTemperatureSize, weight: .semibold, design: .default))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.74)
-
-                        Text(metric.label)
-                            .font(phoneCardMetricFont)
-                            .foregroundStyle(theme.colors.primaryText)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                            .padding(.top, 4)
-
-                        if !hideCityName {
-                            Text(localizedCityName(for: cityWeather.city))
-                                .font(phoneCardTitleFont)
-                                .foregroundStyle(theme.colors.primaryText)
-                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                                .padding(.top, 5)
-                        }
-                    }
-                    .frame(maxHeight: .infinity, alignment: .center)
-
-                    Spacer(minLength: 8)
-
-                    floatingCardMetricIcon(metric, size: phoneCardIconSize)
-                        .frame(width: phoneCardIconFrame.width, height: phoneCardIconFrame.height, alignment: .center)
-                        .frame(maxHeight: .infinity, alignment: .center)
-                }
-                .padding(.horizontal, 22)
-                .padding(.vertical, 16)
+            if let issue {
+                WeatherDataUnavailableNotice(
+                    message: weatherDataIssueMessage(
+                        issue,
+                        cityName: localizedCityName(for: cityWeather.city),
+                        locale: locale
+                    )
+                )
+                .padding(16)
                 .frame(maxWidth: .infinity)
-                .frame(height: floatingMapCardHeight)
+                .frame(minHeight: floatingMapCardHeight)
                 .themedGlass(in: .rect(cornerRadius: 24))
-                .contentShape(RoundedRectangle(cornerRadius: 24))
+            } else if let metric, forceExpandedStyle {
+                expandedFloatingWeatherCard(
+                    for: cityWeather,
+                    metric: metric,
+                    tempUnit: tempUnit,
+                    selectedDate: cardForecastDate,
+                    hideCityName: hideCityName,
+                    plainBackground: plainBackground
+                )
+            } else if let metric {
+                let phoneCardSpacing: CGFloat = 16
+                let phoneCardTemperatureSize: CGFloat = 32
+                let phoneCardIconSize: CGFloat = 40
+                let phoneCardIconFrame = CGSize(width: 56, height: 48)
+                let phoneCardMetricFont = Font.caption.weight(.medium)
+                let phoneCardTitleFont = Font.headline.weight(.semibold)
+
+                Button {
+                    presentDetail(for: cityWeather)
+                } label: {
+                    HStack(alignment: .center, spacing: phoneCardSpacing) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(metric.value)
+                                .font(.system(size: phoneCardTemperatureSize, weight: .semibold, design: .default))
+                                .foregroundStyle(theme.colors.primaryText)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.74)
+
+                            Text(metric.label)
+                                .font(phoneCardMetricFont)
+                                .foregroundStyle(theme.colors.primaryText)
+                                .lineLimit(1)
+                                .padding(.top, 4)
+
+                            if !hideCityName {
+                                Text(localizedCityName(for: cityWeather.city))
+                                    .font(phoneCardTitleFont)
+                                    .foregroundStyle(theme.colors.primaryText)
+                                    .lineLimit(1)
+                                    .padding(.top, 5)
+                            }
+                        }
+                        .frame(maxHeight: .infinity, alignment: .center)
+
+                        Spacer(minLength: 8)
+
+                        floatingCardMetricIcon(metric, size: phoneCardIconSize)
+                            .frame(width: phoneCardIconFrame.width, height: phoneCardIconFrame.height, alignment: .center)
+                            .frame(maxHeight: .infinity, alignment: .center)
+                    }
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 16)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: floatingMapCardHeight)
+                    .themedGlass(in: .rect(cornerRadius: 24))
+                    .contentShape(RoundedRectangle(cornerRadius: 24))
+                }
+                .buttonStyle(.plain)
             }
-            .buttonStyle(.plain)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(localizedCityName(for: cityWeather.city))
-            .accessibilityValue("\(metric.label), \(metric.value)")
-            // Accessibility: Search and marker selection can insert this card away from
-            // the current reading position, so ContentView explicitly moves focus here.
-            .accessibilityFocused($mapCardAccessibilityFocused)
+        } else {
+            if isExpectedForecastBoundaryOmission(
+                for: cityWeather,
+                among: mapCities,
+                on: cardForecastDate
+            ) {
+                // ForecastOmissionNotice owns the shared Liquid Glass surface;
+                // avoid wrapping it in a second glass card on the map.
+                ForecastOmissionNotice(droppedCityCount: 1)
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: floatingMapCardHeight)
+            } else {
+                WeatherDataUnavailableNotice(
+                    message: weatherDataIssueMessage(
+                        .missingForecastData,
+                        cityName: localizedCityName(for: cityWeather.city),
+                        locale: locale
+                    )
+                )
+                .padding(16)
+                .frame(maxWidth: .infinity)
+                .frame(minHeight: floatingMapCardHeight)
+                .themedGlass(in: .rect(cornerRadius: 24))
+            }
         }
     }
 
     var floatingMapCardHeight: CGFloat {
-        // Accessibility: Reserve extra vertical space only at accessibility Dynamic Type sizes.
-        if dynamicTypeSize.isAccessibilitySize {
-            return 178
-        }
-
         switch dynamicTypeSize {
         case .xSmall, .small, .medium, .large:
             return 128
         case .xLarge:
             return 138
-        case .xxLarge:
-            return 150
-        case .xxxLarge:
-            return 162
         default:
-            return 178
+            return 150
         }
     }
 
     private func mapFloatingCardMetric(
         for cityWeather: CityWeather,
         forecast: DailyForecast,
-        tempUnit: TemperatureUnit,
-        distanceUnit: DistanceUnit
-    ) -> MapFloatingCardMetric {
+        tempUnit: TemperatureUnit
+    ) -> MapFloatingCardMetric? {
+        guard let condition = SunninessScoring.condition(for: forecast.symbolName) else {
+            return nil
+        }
+        let icon = condition.displayIcon
         switch mapOverlayMode {
         case "temperature":
-            let temperature = selectedDayOffset == 0 ? cityWeather.temperature : forecast.dailyHigh
             return MapFloatingCardMetric(
-                value: tempUnit.display(temperature),
-                label: localizedString("Temperature", locale: locale),
-                iconName: forecast.weatherIcon
+                value: tempUnit.display(forecast.dailyHigh),
+                label: localizedString("Max Temperature", locale: locale),
+                iconName: icon
             )
         case "cloudCover":
+            guard let cloudCover = forecast.cloudCover else { return nil }
             return MapFloatingCardMetric(
-                value: percentageText(forecast.cloudCover),
+                value: percentageText(cloudCover),
                 label: localizedString("Cloud Cover", locale: locale),
-                iconName: forecast.weatherIcon
+                iconName: icon
             )
         case "precipitation":
+            guard let precipitationChance = forecast.precipitationChance else { return nil }
             return MapFloatingCardMetric(
-                value: percentageText(forecast.precipitationChance),
-                label: localizedString("Rain", locale: locale),
-                iconName: forecast.weatherIcon
-            )
-        case "windSpeed":
-            let value = forecast.windSpeed.map { distanceUnit.displayWindSpeed($0) } ?? "-"
-            return MapFloatingCardMetric(
-                value: value,
-                label: localizedString("Wind", locale: locale),
-                iconName: forecast.weatherIcon
+                value: percentageText(precipitationChance),
+                label: localizedString("Rain Chance", locale: locale),
+                iconName: icon
             )
         case "uvIndex":
+            guard let uvIndex = forecast.uvIndex else { return nil }
             return MapFloatingCardMetric(
-                value: forecast.uvIndex.map(String.init) ?? "-",
+                value: String(uvIndex),
                 label: localizedString("UV Index", locale: locale),
-                iconName: forecast.weatherIcon
+                iconName: icon
             )
         default:
-            let icon = forecast.weatherIcon
+            guard case .success(let data) = SunninessScoring.sunnyHoursData(
+                for: forecast,
+                timeZone: cityWeather.timeZone
+            ) else {
+                return nil
+            }
             return MapFloatingCardMetric(
-                value: mapSunnyHoursSummary(for: cityWeather, forecast: forecast),
+                value: mapSunnyHoursSummary(for: cityWeather, data: data),
                 label: localizedString("Sunny Hours", locale: locale),
                 iconName: icon
             )
         }
     }
 
-    private func percentageText(_ value: Double?) -> String {
-        guard let value else { return "-" }
+    private func percentageText(_ value: Double) -> String {
         return "\(Int((value * 100).rounded()))%"
     }
+
 }
 
 
@@ -184,28 +213,7 @@ extension ContentView {
 private func floatingCardMetricIcon(_ metric: MapFloatingCardMetric, size: CGFloat) -> some View {
     Image(systemName: metric.iconName)
         .font(.system(size: size, weight: .medium))
-        .modifier(FloatingCardWeatherIconStyle(iconName: metric.iconName))
-        .accessibilityHidden(true)
-}
-
-private struct FloatingCardWeatherIconStyle: ViewModifier {
-    @Environment(\.appTheme) private var theme
-    let iconName: String
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if iconName == "cloud" {
-            content
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(theme.colors.dotCloudy)
-        } else if iconName == "cloud.sun" {
-            content
-                .symbolRenderingMode(.palette)
-                .foregroundStyle(theme.colors.dotCloudy, theme.colors.sunIconColor)
-        } else {
-            content.weatherIconStyle(for: iconName)
-        }
-    }
+        .weatherIconStyle(for: metric.iconName)
 }
 
 
@@ -216,10 +224,16 @@ extension ContentView {
         for cityWeather: CityWeather,
         metric: MapFloatingCardMetric,
         tempUnit: TemperatureUnit,
+        selectedDate: Date,
         hideCityName: Bool = false,
         plainBackground: Bool = false
     ) -> some View {
-        let forecasts = Array(cityWeather.dailyForecasts.prefix(10))
+        let forecasts = cityWeather.dailyForecasts.compactMap { forecast -> (forecast: DailyForecast, selectionDate: Date)? in
+            guard let selectionDate = cityWeather.selectionDate(for: forecast) else {
+                return nil
+            }
+            return (forecast, selectionDate)
+        }
         let cornerRadius: CGFloat = 28
 
         return ScrollView(.vertical, showsIndicators: false) {
@@ -229,7 +243,7 @@ extension ContentView {
                         Text(localizedCityName(for: cityWeather.city))
                             .font(.title.weight(.semibold))
                             .foregroundStyle(theme.colors.primaryText)
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                            .lineLimit(1)
                     }
 
                     Text(metric.label)
@@ -239,11 +253,6 @@ extension ContentView {
                 .frame(maxWidth: .infinity)
                 .multilineTextAlignment(.center)
                 .padding(.bottom, 10)
-                // Accessibility: Expose one concise city heading instead of its styled children.
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(localizedCityName(for: cityWeather.city))
-                .accessibilityAddTraits(.isHeader)
-                .accessibilityHidden(hideCityName)
 
                 HStack(alignment: .center, spacing: 2) {
                     Spacer(minLength: 0)
@@ -253,56 +262,34 @@ extension ContentView {
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
                         .minimumScaleFactor(0.48)
-                        .id("primary-\(mapOverlayMode)-\(selectedDayOffset)-\(metric.value)")
+                        .id("primary-\(mapOverlayMode)-\(selectedDate.timeIntervalSinceReferenceDate)-\(metric.value)")
                         .transition(.scale(scale: 0.82).combined(with: .opacity))
 
                     floatingCardMetricIcon(metric, size: 44)
                         .symbolReplaceTransition()
-                        .id("icon-\(mapOverlayMode)-\(selectedDayOffset)-\(metric.iconName)")
+                        .id("icon-\(mapOverlayMode)-\(selectedDate.timeIntervalSinceReferenceDate)-\(metric.iconName)")
                         .transition(.scale(scale: 0.82).combined(with: .opacity))
                         .frame(width: 60, height: 52)
 
                     Spacer(minLength: 0)
                 }
                 .padding(.bottom, 18)
-                .animation(.snappy(duration: 0.28), value: selectedDayOffset)
-                // Accessibility: Read the metric name and value as one meaningful element.
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel(metric.label)
-                .accessibilityValue(metric.value)
+                .animation(.snappy(duration: 0.28), value: selectedDate)
 
-                // Accessibility: Replace the dense ten-column forecast with a roomy grid at
-                // accessibility Dynamic Type sizes; the normal card layout is unchanged.
-                Group {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        LazyVGrid(
-                            columns: [GridItem(.flexible()), GridItem(.flexible())],
-                            spacing: 10
-                        ) {
-                            ForEach(forecasts.indices, id: \.self) { index in
-                                expandedFloatingWeatherCardDayButton(
-                                    index: index,
-                                    forecast: forecasts[index],
-                                    cityWeather: cityWeather,
-                                    tempUnit: tempUnit
-                                )
-                            }
-                        }
-                    } else {
-                        VStack(spacing: 10) {
-                            ForEach(0..<2, id: \.self) { row in
-                                HStack(alignment: .top, spacing: 12) {
-                                    ForEach(0..<5, id: \.self) { column in
-                                        let index = row * 5 + column
-                                        if index < forecasts.count {
-                                            expandedFloatingWeatherCardDayButton(
-                                                index: index,
-                                                forecast: forecasts[index],
-                                                cityWeather: cityWeather,
-                                                tempUnit: tempUnit
-                                            )
-                                        }
-                                    }
+                VStack(spacing: 10) {
+                    let rowCount = Int(ceil(Double(forecasts.count) / 5.0))
+                    ForEach(0..<rowCount, id: \.self) { row in
+                        HStack(alignment: .top, spacing: 12) {
+                            ForEach(0..<5, id: \.self) { column in
+                                let index = row * 5 + column
+                                if index < forecasts.count {
+                                    expandedFloatingWeatherCardDayButton(
+                                        forecast: forecasts[index].forecast,
+                                        selectionDate: forecasts[index].selectionDate,
+                                        selectedDate: selectedDate,
+                                        cityWeather: cityWeather,
+                                        tempUnit: tempUnit
+                                    )
                                 }
                             }
                         }
@@ -310,7 +297,7 @@ extension ContentView {
                 }
                 .padding(.horizontal, 18)
                 .padding(.vertical, 16)
-                .animation(.snappy(duration: 0.24), value: selectedDayOffset)
+                .animation(.snappy(duration: 0.24), value: selectedDate)
                 .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: cornerRadius))
             }
             .padding(.horizontal, 16)
@@ -321,87 +308,94 @@ extension ContentView {
         }
     }
 
-    private func mapSunnyHoursSummary(for city: CityWeather, forecast: DailyForecast) -> String {
-        let daytimeHours = SunninessScoring.daytimeHours(for: forecast, timeZone: city.timeZone)
-        guard let range = SunninessScoring.longestSunnyHourRange(in: daytimeHours, timeZone: city.timeZone) else {
+    private func mapSunnyHoursSummary(
+        for city: CityWeather,
+        data: SunninessScoring.SunnyHoursData
+    ) -> String {
+        guard let range = SunninessScoring.longestSunnyHourRange(
+            in: data.hours,
+            timeZone: city.timeZone
+        ) else {
             return localizedString("No Sun", locale: locale)
         }
 
-        let start = SunninessScoring.formattedHour(range.lowerBound, timeZone: city.timeZone, locale: locale)
-        let end = SunninessScoring.formattedHour(range.upperBound + 1, timeZone: city.timeZone, locale: locale)
+        let start = SunninessScoring.compactHourLabel(range.lowerBound, locale: locale)
+        let end = SunninessScoring.compactHourLabel(range.upperBound + 1, locale: locale)
         return "\(start) - \(end)"
     }
 
+    @ViewBuilder
     private func expandedFloatingWeatherCardDayButton(
-        index: Int,
         forecast: DailyForecast,
+        selectionDate: Date,
+        selectedDate: Date,
         cityWeather: CityWeather,
         tempUnit: TemperatureUnit
     ) -> some View {
-        let daySelectionOffset = index
-        let isSelectedDay = selectedDayOffset == daySelectionOffset
-        let condition = SunninessScoring.condition(for: forecast.symbolName)
-        let dotColor = condition.dotColor(for: theme.colors)
-        let temperature = forecast.dailyHigh
+        let isSelectedDay = Calendar.current.isDate(selectionDate, inSameDayAs: selectedDate)
+        if let condition = SunninessScoring.condition(for: forecast.symbolName) {
+            let dotColor = condition.dotColor(for: theme.colors)
+            let temperature = forecast.dailyHigh
 
-        return Button {
-            withAnimation(.snappy(duration: 0.24)) {
-                selectedDayOffset = daySelectionOffset
-            }
-        } label: {
-            VStack(spacing: 6) {
-                Text(floatingCardDayLabel(for: daySelectionOffset))
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .lineLimit(1)
+            Button {
+                withAnimation(.snappy(duration: 0.24)) {
+                    selectedForecastDate = selectionDate
+                }
+            } label: {
+                VStack(spacing: 6) {
+                    Text(floatingCardDayLabel(for: selectionDate))
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .lineLimit(1)
 
-                // Accessibility: Symbols supplement color when Differentiate Without Color is on.
-                Group {
-                    if differentiateWithoutColor {
-                        Image(systemName: condition.displayIcon)
-                            .font(.caption.weight(.semibold))
-                            .weatherIconStyle(for: condition.displayIcon)
-                    } else {
-                        Circle()
-                            .fill(dotColor)
-                            .frame(width: isSelectedDay ? 11 : 10, height: isSelectedDay ? 11 : 10)
-                            .shadow(color: dotColor.opacity(0.45), radius: 2)
+                    // Symbols supplement color when Differentiate Without Color is on.
+                    Group {
+                        if differentiateWithoutColor {
+                            Image(systemName: condition.displayIcon)
+                                .font(.caption.weight(.semibold))
+                                .weatherIconStyle(for: condition.displayIcon)
+                        } else {
+                            Circle()
+                                .fill(dotColor)
+                                .frame(width: isSelectedDay ? 11 : 10, height: isSelectedDay ? 11 : 10)
+                                .shadow(color: dotColor.opacity(0.45), radius: 2)
+                        }
+                    }
+                    .frame(height: 12)
+
+                    Text(tempUnit.display(temperature))
+                        .font(.headline.weight(.semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .lineLimit(1)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 6)
+                .padding(.vertical, 10)
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .background {
+                    if isSelectedDay {
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(theme.colors.primaryText.opacity(0.09))
+                            .matchedGeometryEffect(id: "detail-day-selection", in: detailDaySelectionNamespace)
                     }
                 }
-                .frame(height: 12)
-                .accessibilityHidden(true)
-
-                Text(tempUnit.display(temperature))
-                    .font(.headline.weight(.semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .lineLimit(1)
             }
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 10)
-            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .background {
-                if isSelectedDay {
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(theme.colors.primaryText.opacity(0.09))
-                        .matchedGeometryEffect(id: "detail-day-selection", in: detailDaySelectionNamespace)
-                }
-            }
+            .buttonStyle(.plain)
+        } else {
+            WeatherDataUnavailableNotice(
+                message: weatherDataIssueMessage(
+                    .unknownWeatherSymbol(forecast.symbolName),
+                    cityName: localizedCityName(for: cityWeather.city),
+                    locale: locale
+                )
+            )
         }
-        .buttonStyle(.plain)
-        // Accessibility: Each forecast choice announces its day, condition, value, and selection.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(floatingCardDayLabel(for: daySelectionOffset))
-        .accessibilityValue(
-            "\(condition.localizedDisplayName(locale: locale)), \(tempUnit.display(temperature))"
-        )
-        .accessibilityAddTraits(isSelectedDay ? [.isSelected] : [])
     }
 
-    private func floatingCardDayLabel(for offset: Int) -> String {
-        if offset == 0 { return localizedString("Today", locale: locale).uppercased() }
-
-        let date = Calendar.current.date(byAdding: .day, value: offset, to: Date()) ?? Date()
+    private func floatingCardDayLabel(for date: Date) -> String {
+        if Calendar.current.isDate(date, inSameDayAs: forecastDateToday) {
+            return localizedString("Today", locale: locale).uppercased()
+        }
         return date.formatted(
             Date.FormatStyle.dateTime
                 .weekday(.abbreviated)
@@ -434,7 +428,7 @@ struct MapGlassCardContainer: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        // Accessibility: Reduce Transparency and Increase Contrast substitute an
+        // Reduce Transparency and Increase Contrast substitute an
         // opaque themed fill for material without changing the standard card.
         if reduceTransparency || colorSchemeContrast == .increased {
             styledContainer(
@@ -488,16 +482,19 @@ extension ContentView {
         }
     }
 
+    private var floatingMapCardMaxWidth: CGFloat {
+        // Keep iPad's selected-city card at the same visual width as the phone
+        // presentation; iPhone still expands naturally to its available width.
+        UIDevice.current.userInterfaceIdiom == .pad ? 390 : 580
+    }
+
     private var floatingMapCardOverlay: some View {
         Group {
             if isMapRoute, showingMapExpandedCard {
-                // Accessibility: The visual dismissal backdrop stays out of the focus order;
-                // assistive technologies dismiss the modal with the escape action below.
                 VStack(spacing: 0) {
                     Color.clear
                         .frame(height: 120)
                         .allowsHitTesting(false)
-                        .accessibilityHidden(true)
 
                     Color.clear
                         .contentShape(Rectangle())
@@ -505,38 +502,40 @@ extension ContentView {
                             dismissMapExpandedCard()
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .accessibilityHidden(true)
                 }
                     .zIndex(10)
             }
 
             if isMapRoute, showingMapExpandedCard, let city = selectedMapCity {
-                mapExpandedCard(for: city, hideCityName: false)
-                    .id(city.city.id)
-                    .padding(.horizontal, floatingMapCardHorizontalPadding)
-                    // iPad: Keep the selected-city card readable and bottom-centred
-                    // instead of allowing it to span a regular-width map window.
-                    // This cap is wider than every supported iPhone window, so the
-                    // compact layout remains unchanged.
-                    .frame(maxWidth: 580)
-                    .padding(.bottom, floatingMapCardBottomPadding)
-                    .transition(
-                        .asymmetric(
-                            insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),
-                            removal: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20))
-                        )
+                ZStack(alignment: .topTrailing) {
+                    mapExpandedCard(for: city, hideCityName: false)
+
+                    Button {
+                        dismissMapExpandedCard()
+                    } label: {
+                        Color.clear
+                            .frame(width: 44, height: 44)
+                            .overlay(alignment: .topTrailing) {
+                                Image(systemName: "xmark")
+                                    .font(.system(size: 10, weight: .medium))
+                                    .foregroundStyle(theme.colors.secondaryText.opacity(0.65))
+                                    .padding(7)
+                            }
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                .id(city.city.id)
+                .padding(.horizontal, floatingMapCardHorizontalPadding)
+                .frame(maxWidth: floatingMapCardMaxWidth)
+                .padding(.bottom, floatingMapCardBottomPadding)
+                .transition(
+                    .asymmetric(
+                        insertion: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20)),
+                        removal: .scale(scale: 0.4, anchor: .bottom).combined(with: .opacity).combined(with: .offset(y: 20))
                     )
-                    // Accessibility: Present the expanded card as a modal and support escape.
-                    .accessibilityAddTraits(.isModal)
-                    .accessibilityAction(.escape) {
-                        dismissMapExpandedCard()
-                    }
-                    // Accessibility: Also expose dismissal in the actions rotor and to
-                    // Voice Control users who invoke the selected control's actions.
-                    .accessibilityAction(named: Text(localizedString("Cancel", locale: locale))) {
-                        dismissMapExpandedCard()
-                    }
-                    .zIndex(12)
+                )
+                .zIndex(12)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showingMapExpandedCard)

@@ -38,6 +38,8 @@ struct CitySearchResolvedPlace {
 @Observable
 class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     var searchResults: [CitySearchResult] = []
+    var isSearching = false
+    var searchErrorMessage: String?
     private let completer: MKLocalSearchCompleter
 
     override init() {
@@ -54,8 +56,12 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     func search(query: String) {
         if query.isEmpty {
             searchResults = []
+            isSearching = false
+            searchErrorMessage = nil
             return
         }
+        isSearching = true
+        searchErrorMessage = nil
         completer.queryFragment = query
     }
 
@@ -119,6 +125,8 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     }
 
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
+        isSearching = false
+        searchErrorMessage = nil
         searchResults = completer.results.map { completion in
             CitySearchResult(
                 title: completion.title,
@@ -129,6 +137,9 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     }
 
     func completer(_ completer: MKLocalSearchCompleter, didFailWithError error: Error) {
+        isSearching = false
+        searchResults = []
+        searchErrorMessage = error.localizedDescription
     }
 }
 
@@ -154,17 +165,10 @@ extension ContentView {
                     .buttonStyle(.plain)
                     .disabled(citySearchState.isLoading)
                     .listRowBackground(theme.colors.background)
-                    // Accessibility: Treat each styled result as one control and announce its
-                    // location, saved-list status, and loading state together.
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(result.title)
-                    .accessibilityValue(
-                        citySearchAccessibilityValue(
-                            for: result,
-                            isLoading: citySearchState.loadingResultID == result.id
-                        )
-                    )
                 }
+            }
+            .overlay {
+                citySearchStatusOverlay
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -180,7 +184,6 @@ extension ContentView {
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(theme.colors.primaryText)
                     }
-                    .accessibilityLabel(localizedString("Cancel", locale: locale))
                 }
             }
             .searchable(
@@ -194,11 +197,6 @@ extension ContentView {
             }
         }
         .background(theme.colors.background.ignoresSafeArea())
-        // Accessibility: Make the standard escape gesture a reliable way out of the
-        // modal search flow even while the keyboard or results list has focus.
-        .accessibilityAction(.escape) {
-            dismissNativeCitySearchAndRecenter()
-        }
         .onAppear {
             searchFieldFocused = true
         }
@@ -206,65 +204,61 @@ extension ContentView {
 
     private var searchResultLimit: Int { 8 }
 
+    @ViewBuilder
+    private var citySearchStatusOverlay: some View {
+        let trimmedQuery = citySearchState.query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmedQuery.isEmpty, displayedSearchResults.isEmpty {
+            if citySearchState.manager.isSearching || !citySearchState.isSettled {
+                ProgressView()
+                    .controlSize(.large)
+            } else if citySearchState.manager.searchErrorMessage != nil {
+                ContentUnavailableView(
+                    localizedString("Search Unavailable", locale: locale),
+                    systemImage: "wifi.exclamationmark",
+                    description: Text(localizedString("Check your connection and try again.", locale: locale))
+                )
+            } else {
+                ContentUnavailableView.search(text: trimmedQuery)
+            }
+        }
+    }
+
     // MARK: - Search Styling
 
     private var searchSuggestionTitleColor: Color {
-        colorScheme == .dark ? .white.opacity(0.92) : .black
+        theme.colors.primaryText
     }
 
     private var searchSuggestionSubtitleColor: Color {
-        colorScheme == .dark ? .white.opacity(0.68) : .black
+        theme.colors.secondaryText
     }
 
     // MARK: - Search Result Rows
 
     private func citySearchSuggestionRow(for result: CitySearchResult, isLoading: Bool) -> some View {
-        let existingListName = citySearchState.isSettled ? existingCityListName(for: result) : nil
         let titleColor = isLoading ? searchSuggestionTitleColor.opacity(0.45) : searchSuggestionTitleColor
         let subtitleColor = isLoading ? searchSuggestionSubtitleColor.opacity(0.45) : searchSuggestionSubtitleColor
         let rowSpacing: CGFloat = 10
         let titleFont: Font = .body.weight(.medium)
         let subtitleFont: Font = .caption
-        let statusFont: Font = .caption2.weight(.medium)
-        let statusBoldFont: Font = .caption2.weight(.bold)
         let rowVerticalPadding: CGFloat = 8
         let rowHorizontalPadding: CGFloat = 2
-        // Accessibility: Stack result metadata when accessibility Dynamic Type would crowd it.
-        let rowLayout: AnyLayout = dynamicTypeSize.isAccessibilitySize
-            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 8))
-            : AnyLayout(HStackLayout(spacing: rowSpacing))
-
-        return rowLayout {
+        return HStack(spacing: rowSpacing) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(result.title)
                     .font(titleFont)
                     .foregroundStyle(titleColor)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .lineLimit(1)
 
                 Text(result.subtitle)
                     .font(subtitleFont)
                     .foregroundStyle(subtitleColor)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .lineLimit(1)
             }
 
-            if !dynamicTypeSize.isAccessibilitySize {
-                Spacer(minLength: 8)
-            }
+            Spacer(minLength: 8)
 
-            if let existingListName {
-                HStack(spacing: 6) {
-                    (Text(localizedString("In list", locale: locale) + " ")
-                        .font(statusFont)
-                    + Text(existingListName)
-                        .font(statusBoldFont))
-                        .foregroundStyle(subtitleColor)
-                        .lineLimit(1)
-
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(subtitleColor)
-                        .accessibilityHidden(true)
-                }
-            } else if isLoading {
+            if isLoading {
                 ProgressView()
                     .controlSize(.small)
             }
@@ -276,54 +270,8 @@ extension ContentView {
         .contentShape(Rectangle())
     }
 
-    // MARK: - Accessibility - Result Descriptions
-
-    private func citySearchAccessibilityValue(for result: CitySearchResult, isLoading: Bool) -> String {
-        var parts = [result.subtitle].filter { !$0.isEmpty }
-        if let existingListName = citySearchState.isSettled ? existingCityListName(for: result) : nil {
-            parts.append("\(localizedString("In list", locale: locale)) \(existingListName)")
-        }
-        if isLoading {
-            parts.append(localizedString("Loading Weather", locale: locale))
-        }
-        return parts.joined(separator: ", ")
-    }
-
-    // MARK: - Result Identity and Sorting
-
-    private func searchCityDisplayHint(for result: CitySearchResult) -> (name: String, country: String) {
-        let name = result.title.components(separatedBy: ",").first?.trimmingCharacters(in: .whitespaces) ?? result.title
-        let country = result.subtitle.components(separatedBy: ",").last?.trimmingCharacters(in: .whitespaces) ?? result.subtitle
-        return (name, country)
-    }
-
-    func existingCityListName(for result: CitySearchResult) -> String? {
-        // Completion strings are only a display hint. Selection resolves a
-        // structured MapKit placemark and uses coordinates for identity.
-        let identity = searchCityDisplayHint(for: result)
-        if let targetListID = citySearchState.targetListID {
-            let cities = weatherService.cityListCoordinates(for: targetListID)
-            if cities.contains(where: { $0.name == identity.name && $0.country == identity.country }) {
-                return targetListID.localizedDisplayName(locale: locale)
-            }
-            return nil
-        }
-
-        return weatherService.listContainingCity(named: identity.name, country: identity.country)?.localizedDisplayName(locale: locale)
-    }
-
-    func isExistingSearchCity(_ result: CitySearchResult) -> Bool {
-        existingCityListName(for: result) != nil
-    }
-
     var sortedSearchResults: [CitySearchResult] {
         citySearchState.manager.searchResults
-            .sorted { a, b in
-                let aExists = isExistingSearchCity(a)
-                let bExists = isExistingSearchCity(b)
-                if aExists != bExists { return aExists }
-                return false
-            }
     }
 
     var displayedSearchResults: [CitySearchResult] {
@@ -414,9 +362,24 @@ extension ContentView {
         )
 
         let targetListID = citySearchState.targetListID
+        let targetList = targetListID ?? weatherService.activeListID
         let targetData = targetListID.map { weatherService.weatherData(for: $0) } ?? weatherService.cityWeatherData
 
-        if let existingCity = targetData.first(where: { weatherService.citiesMatch($0.city, tempCity) }) {
+        if let savedCity = weatherService.cityListCoordinates(for: targetList)
+            .first(where: { weatherService.citiesMatch($0, tempCity) }) {
+            let existingCity: CityWeather?
+            if let loadedCity = targetData.first(where: {
+                weatherService.citiesMatch($0.city, savedCity)
+            }) {
+                existingCity = loadedCity
+            } else {
+                existingCity = await weatherService.switchList(
+                    to: targetList,
+                    prioritizing: savedCity
+                )
+            }
+            guard let existingCity else { return }
+
             if let targetListID {
                 citySearchState.targetListID = nil
                 withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
@@ -435,14 +398,21 @@ extension ContentView {
         }
 
         if let targetListID {
-            await weatherService.addCityToList(tempCityWeather.city, listID: targetListID)
+            let didAdd = weatherService.addCityToList(tempCityWeather, listID: targetListID)
             citySearchState.targetListID = nil
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 citySearchState.isPresented = false
                 citySearchState.query = ""
             }
             revealCityOnMap(tempCityWeather, in: targetListID)
-            showCityAddedConfirmation("\(localizedCityName(for: tempCityWeather.city)) was added to \(targetListID.localizedDisplayName(locale: locale)).")
+            if didAdd {
+                showCityAddedConfirmation(
+                    cityAddedConfirmationMessage(
+                        cityName: localizedCityName(for: tempCityWeather.city),
+                        listName: targetListID.localizedDisplayName(locale: locale)
+                    )
+                )
+            }
         } else {
             handleSearchCitySelected(tempCityWeather, canAdd: true)
         }
@@ -464,4 +434,5 @@ extension ContentView {
             presentDetail(for: cityWeather)
         }
     }
+
 }

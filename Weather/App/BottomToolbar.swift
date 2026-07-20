@@ -29,6 +29,17 @@ extension ContentView {
         currentRoute == .map
     }
 
+    /// Detail routes use the displayed city's own forecast range in the shared
+    /// date switcher. Other routes continue to use the active list's date union.
+    var detailDateSwitcherCity: CityWeather? {
+        switch currentRoute {
+        case .cityDetail(let city), .addCityDetail(let city):
+            return city
+        default:
+            return nil
+        }
+    }
+
     var addCityDetailCity: CityWeather? {
         guard case .addCityDetail(let city) = currentRoute else { return nil }
         return city
@@ -37,9 +48,15 @@ extension ContentView {
     var isAddCityDetailRoute: Bool {
         addCityDetailCity != nil
     }
+
+    /// The searched city currently eligible to be added, whether it is shown in
+    /// the dedicated add-detail route or as a temporary card on the full map.
+    var cityPendingAddition: CityWeather? {
+        addCityDetailCity ?? citySearchState.temporaryMapCity
+    }
 }
 
-// MARK: - Floating Bottom Toolbar
+// MARK: - Native Bottom Toolbar
 
 extension ContentView {
     var bottomToolbarIconSize: CGFloat { 21 }
@@ -97,9 +114,44 @@ extension ContentView {
     var bottomCenterToolbarControl: some View {
         if isListPreviewActive {
             listPreviewCountPickerControl
+        } else if !dateSwitcherHasSelectedDate {
+            missingForecastDateControl
         } else {
             dateSwitcherControl
         }
+    }
+
+    private var dateSwitcherHasSelectedDate: Bool {
+        dateSwitcherAvailableForecastDates.contains {
+            Calendar.current.isDate($0, inSameDayAs: dateSwitcherSelectedForecastDate)
+        }
+    }
+
+    private var missingForecastDateControl: some View {
+        Button {
+            DeveloperWarningCenter.showMissingData(
+                message: missingForecastDateMessage,
+                locale: locale
+            )
+        } label: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(theme.colors.destructive)
+                .frame(width: bottomCenterToolbarWidth, height: 44)
+                .contentShape(Capsule())
+        }
+    }
+
+    private var missingForecastDateMessage: String {
+        if let explanation = missingForecastExplanation(for: dateSwitcherForecastSourceCities) {
+            return explanation
+        }
+        let subject = detailDateSwitcherCity.map { localizedCityName(for: $0.city) } ?? toolbarTitle
+        return String(
+            format: localizedString("Missing forecast data for the selected date in %@.", locale: locale),
+            locale: locale,
+            subject
+        )
     }
 
     @ViewBuilder
@@ -117,21 +169,13 @@ extension ContentView {
         HStack(spacing: 6) {
             dateStepperButton(
                 systemImage: "chevron.left",
-                isEnabled: selectedDayOffset > 0,
-                accessibilityLabel: localizedString("Previous Day", locale: locale)
+                isEnabled: dateSwitcherPreviousForecastDate != nil
             ) {
-                guard selectedDayOffset > 0 else { return }
+                guard let previousForecastDate = dateSwitcherPreviousForecastDate else { return }
                 Haptics.lightImpact()
                 dateSwitcherForward = false
                 withAnimation(.smooth(duration: 0.2)) {
-                    selectedDayOffset -= 1
-                }
-            } longPressAction: {
-                guard selectedDayOffset > 0 else { return }
-                Haptics.lightImpact()
-                dateSwitcherForward = false
-                withAnimation(.smooth(duration: 0.2)) {
-                    selectedDayOffset = 0
+                    dateSwitcherSelectedForecastDate = previousForecastDate
                 }
             }
 
@@ -140,8 +184,8 @@ extension ContentView {
                 showingDatePopover = true
             } label: {
                 ZStack {
-                    ForEach(0...9, id: \.self) { dayOffset in
-                        Text(dateSwitcherText(for: dayOffset))
+                    ForEach(dateSwitcherAvailableForecastDates, id: \.self) { date in
+                        Text(dateSwitcherText(for: date))
                             .font(.subheadline.weight(.medium))
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
@@ -153,7 +197,7 @@ extension ContentView {
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
-                        .id("date-\(selectedDayOffset)")
+                        .id("date-\(dateSwitcherSelectedForecastDate.timeIntervalSinceReferenceDate)")
                         .transition(.push(from: dateSwitcherForward ? .trailing : .leading))
                         .clipped()
                 }
@@ -161,32 +205,19 @@ extension ContentView {
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            // Accessibility: Name the date control by its current selection.
-            .accessibilityLabel(dateSwitcherText)
-            // Accessibility: Let Voice Control target the same date text that is
-            // visible in the toolbar, while retaining the native Button action.
-            .accessibilityInputLabels([Text(dateSwitcherText)])
             .popover(isPresented: $showingDatePopover) {
                 datePickerPopoverContent
             }
 
             dateStepperButton(
                 systemImage: "chevron.right",
-                isEnabled: selectedDayOffset < 9,
-                accessibilityLabel: localizedString("Next Day", locale: locale)
+                isEnabled: dateSwitcherNextForecastDate != nil
             ) {
-                guard selectedDayOffset < 9 else { return }
+                guard let nextForecastDate = dateSwitcherNextForecastDate else { return }
                 Haptics.lightImpact()
                 dateSwitcherForward = true
                 withAnimation(.smooth(duration: 0.2)) {
-                    selectedDayOffset += 1
-                }
-            } longPressAction: {
-                guard selectedDayOffset < 9 else { return }
-                Haptics.lightImpact()
-                dateSwitcherForward = true
-                withAnimation(.smooth(duration: 0.2)) {
-                    selectedDayOffset = 9
+                    dateSwitcherSelectedForecastDate = nextForecastDate
                 }
             }
         }
@@ -197,9 +228,7 @@ extension ContentView {
     func dateStepperButton(
         systemImage: String,
         isEnabled: Bool,
-        accessibilityLabel: String,
-        action: @escaping () -> Void,
-        longPressAction: @escaping () -> Void
+        action: @escaping () -> Void
     ) -> some View {
         Image(systemName: systemImage)
             .font(.system(size: 12, weight: .medium))
@@ -207,27 +236,13 @@ extension ContentView {
             .frame(minWidth: 30, minHeight: 32)
             .contentShape(Rectangle())
             .onTapGesture(perform: action)
-            .onLongPressGesture(minimumDuration: 0.45, perform: longPressAction)
             .disabled(!isEnabled)
-            // Accessibility: Mirror the custom tap and long-press gestures as standard actions.
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityValue(dateSwitcherText)
-            .accessibilityAddTraits(.isButton)
-            .accessibilityAction {
-                action()
-            }
-            .accessibilityAction(named: Text(
-                systemImage == "chevron.left"
-                    ? localizedString("Today", locale: locale)
-                    : dateSwitcherText(for: 9)
-            )) {
-                longPressAction()
-            }
     }
 
-    func dateSwitcherText(for dayOffset: Int) -> String {
-        if dayOffset == 0 { return localizedString("Today", locale: locale) }
-        let date = Calendar.current.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
+    func dateSwitcherText(for date: Date) -> String {
+        if Calendar.current.isDate(date, inSameDayAs: forecastDateToday) {
+            return localizedString("Today", locale: locale)
+        }
         return date.formatted(
             Date.FormatStyle.dateTime
                 .weekday(.abbreviated)
@@ -237,32 +252,42 @@ extension ContentView {
         )
     }
 
+    @ViewBuilder
     var datePickerPopoverContent: some View {
-        DatePicker(
-            dateSwitcherText,
-            selection: Binding(
-                get: {
-                    Calendar.current.date(byAdding: .day, value: selectedDayOffset, to: Date()) ?? Date()
-                },
-                set: { newDate in
-                    let calendar = Calendar.current
-                    let components = calendar.dateComponents([.day], from: calendar.startOfDay(for: Date()), to: calendar.startOfDay(for: newDate))
-                    if let days = components.day {
+        if let dateRange = dateSwitcherForecastDateRange {
+            DatePicker(
+                dateSwitcherText,
+                selection: Binding(
+                    get: {
+                        dateSwitcherSelectedForecastDate
+                    },
+                    set: { newDate in
+                        let normalizedDate = Calendar.current.startOfDay(for: newDate)
+                        guard dateSwitcherAvailableForecastDates.contains(where: {
+                            Calendar.current.isDate($0, inSameDayAs: normalizedDate)
+                        }) else {
+                            return
+                        }
                         withAnimation(.smooth(duration: 0.2)) {
-                            selectedDayOffset = max(0, min(9, days))
+                            dateSwitcherSelectedForecastDate = normalizedDate
                         }
                     }
-                }
-            ),
-            in: Date()...(Calendar.current.date(byAdding: .day, value: 9, to: Date()) ?? Date()),
-            displayedComponents: .date
-        )
-        .datePickerStyle(.graphical)
-        .labelsHidden()
-        .frame(width: 280, height: 300)
-        .padding(8)
-        .presentationCompactAdaptation(.popover)
-        .themedPopoverBackground()
+                ),
+                in: dateRange,
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+            .frame(width: 280, height: 300)
+            .padding(8)
+            .presentationCompactAdaptation(.popover)
+            .themedPopoverBackground()
+        } else {
+            WeatherDataUnavailableNotice(
+                message: missingForecastDateMessage
+            )
+            .padding(16)
+        }
     }
 
     var bottomSearchButton: some View {
@@ -300,8 +325,6 @@ extension ContentView {
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(theme.colors.accent)
                 .tint(theme.colors.accent)
-                // Accessibility: The adjacent text already names the menu action.
-                .accessibilityHidden(true)
         }
         .tint(theme.colors.accent)
     }
@@ -313,7 +336,7 @@ extension ContentView {
     }
 
     var bottomCancelListPreviewButton: some View {
-        Button(localizedString("Cancel", locale: locale), systemImage: "chevron.left") {
+        Button(localizedString("Cancel", locale: locale), systemImage: "xmark") {
             cancelGeneratedListPreview()
         }
     }
@@ -358,26 +381,6 @@ extension ContentView {
         }
         .padding(.horizontal, 3)
         .frame(width: bottomCenterToolbarWidth)
-        // Accessibility: Present the visual minus/count/plus cluster as one adjustable control.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(localizedString("Cities", locale: locale))
-        .accessibilityValue(cityCountText(listPreviewState.cityCount))
-        // Accessibility: Voice Control can target the adjustable element by either
-        // its visible count or its concise control name.
-        .accessibilityInputLabels([
-            Text(cityCountText(listPreviewState.cityCount)),
-            Text(localizedString("Cities", locale: locale))
-        ])
-        .accessibilityAdjustableAction { direction in
-            switch direction {
-            case .increment:
-                changeListPreviewCityCount(by: 1)
-            case .decrement:
-                changeListPreviewCityCount(by: -1)
-            @unknown default:
-                break
-            }
-        }
     }
 
     private func changeListPreviewCityCount(by delta: Int) {
@@ -400,7 +403,7 @@ extension ContentView {
                 }
             }
         }
-        .disabled(addCityDetailCity == nil || lists.isEmpty)
+        .disabled(cityPendingAddition == nil || lists.isEmpty)
         .confirmationDialog(
             localizedString("Add to List", locale: locale),
             isPresented: $citySearchState.showsListPicker,
@@ -452,20 +455,24 @@ extension ContentView {
     }
 
     func addCity(to listID: CityListID) {
-        guard let city = addCityDetailCity else { return }
+        guard let city = cityPendingAddition else { return }
+        let originatedFromTemporaryMapCity = addCityDetailCity == nil
 
         Task {
+            let didAdd: Bool
             if listID == weatherService.activeListID {
-                await addCityToActiveList(city)
+                didAdd = addCityToActiveList(city)
             } else {
-                await weatherService.addCityToList(city.city, listID: listID)
-                Haptics.lightImpact()
+                didAdd = weatherService.addCityToList(city, listID: listID)
+                if didAdd {
+                    Haptics.lightImpact()
+                }
                 await switchToList(listID)
             }
 
             await MainActor.run {
                 guard let savedCity = weatherService.cityWeatherData.first(where: {
-                    $0.city.name == city.city.name && $0.city.country == city.city.country
+                    weatherService.citiesMatch($0.city, city.city)
                 }) else {
                     weatherService.reportDeveloperWarning(
                         title: "Added City Missing",
@@ -476,11 +483,24 @@ extension ContentView {
 
                 selectedMapCity = savedCity
                 citySearchState.temporaryMapCity = nil
-                if case .addCityDetail = navigationPath.last {
-                    navigationPath.removeLast()
+                if originatedFromTemporaryMapCity {
+                    // A map search should remain on the map after saving; the
+                    // temporary card simply becomes the saved city's card.
+                    showingMapExpandedCard = true
+                } else {
+                    if case .addCityDetail = navigationPath.last {
+                        navigationPath.removeLast()
+                    }
+                    pushRoute(.cityDetail(savedCity))
                 }
-                pushRoute(.cityDetail(savedCity))
-                showCityAddedConfirmation("\(localizedCityName(for: savedCity.city)) was added to \(listID.localizedDisplayName(locale: locale)).")
+                if didAdd {
+                    showCityAddedConfirmation(
+                        cityAddedConfirmationMessage(
+                            cityName: localizedCityName(for: savedCity.city),
+                            listName: listID.localizedDisplayName(locale: locale)
+                        )
+                    )
+                }
             }
         }
     }
@@ -507,12 +527,11 @@ extension ContentView {
             selectedMapCity = nil
         case .list:
             listEditMode = false
-        case .cityDetail:
-            selectedDayOffset = 0
-        case .addCityDetail:
+        case .cityDetail, .addCityDetail:
             break
         case .listPreview:
             clearGeneratedListPreview()
         }
     }
+
 }

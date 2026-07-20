@@ -20,6 +20,12 @@ enum Haptics {
     }
 }
 
+/// Identifies a genuinely landscape iPad window, including resized Stage Manager
+/// scenes, instead of relying on a size class that can remain regular.
+func usesIPadLandscapeLayout(for size: CGSize) -> Bool {
+    UIDevice.current.userInterfaceIdiom == .pad && size.width > size.height
+}
+
 struct CitySearchPresentationState {
     var isPresented = false
     var query = ""
@@ -74,6 +80,21 @@ struct ContentView: View {
         initialRoute: AppNavigationRoute? = nil
     ) {
         _weatherService = State(initialValue: weatherService ?? WeatherService())
+
+        // MARK: First-Frame Presentation
+
+        // Prime onboarding before SwiftUI renders the empty home screen. Waiting
+        // for `.task` allowed missing-data notices and the full-screen cover to
+        // compete during the first frame, which could leave a new install stuck
+        // on an unfetched default list with no tutorial.
+        let isRunningInXcodePreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
+        let shouldPrimeFirstLaunchTutorial = !UserDefaults.standard.bool(forKey: "hasLaunchedBefore")
+            && !AppDelegate.hasPendingHomeScreenShortcut()
+            && !isRunningInXcodePreview
+        _tutorialState = State(initialValue: TutorialPresentationState(
+            showsFirstLaunch: shouldPrimeFirstLaunchTutorial
+        ))
+
         if let initialRoute {
             _navigationPath = State(initialValue: [initialRoute])
         }
@@ -81,7 +102,9 @@ struct ContentView: View {
 
     // MARK: Selection and Navigation State
 
-    @State var selectedDayOffset: Int = 0
+    /// The literal calendar day selected by the user in the device calendar.
+    /// Cities whose local forecast range does not include it are omitted.
+    @State var selectedForecastDate: Date = Calendar.current.startOfDay(for: Date())
     @Namespace var detailDaySelectionNamespace
     @State var selectedMapCityID: UUID?
     @AppStorage("weatherListSortMode") var listSortMode: String = WeatherListSortMode.sunny.rawValue
@@ -96,45 +119,39 @@ struct ContentView: View {
 
     @State var mapCameraPosition: MapCameraPosition = .automatic
     @AppStorage("temperatureUnit") var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
-    @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.defaultRawValue
     @State var showingSettings: Bool = false
     @State var tutorialState = TutorialPresentationState()
     @State var listManagementState = ListManagementState()
     @FocusState var inlineListNameFocused: Bool
     @State var listPreviewState = GeneratedListPreviewState()
     @State var daytimeScoreRefetchKeys: Set<String> = []
+    @State var hasCompletedInitialWeatherLoad = false
     @AppStorage("showLegend") var showLegend: Bool = true
     @AppStorage("mapOverlayMode") var mapOverlayMode: String = "weather"
-    @State var allListsWeatherData: [CityWeather] = []
-    @State var allListsSourceListIDs: [String: CityListID] = [:]
-    @State var isShowingAllLists = false
-
-    // Accessibility: Moves VoiceOver directly to the map card that appears after a
-    // marker or search result is selected, without changing visual focus or navigation.
-    @AccessibilityFocusState var mapCardAccessibilityFocused: Bool
 
     // MARK: Environment
 
     @Environment(\.locale) var locale
     @Environment(\.colorScheme) var colorScheme
     @Environment(\.horizontalSizeClass) var horizontalSizeClass
-    // Accessibility: Drives large-text layouts and additional non-color cues in feature views.
+    // Drives text layouts and additional non-color cues in feature views.
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(\.accessibilityDifferentiateWithoutColor) var differentiateWithoutColor
-    // Accessibility: Drives high-contrast palette details that cannot be expressed
+    // Drives high-contrast palette details that cannot be expressed
     // through the shared theme alone, such as chart labels and map-safe outlines.
     @Environment(\.colorSchemeContrast) var colorSchemeContrast
     @Environment(\.scenePhase) var scenePhase
 
     // MARK: Active City Collections
 
-    /// Cities to display on the map: the active list or aggregate list plus any temporary searched city.
+    /// Cities to display on the map: the active list plus any temporary searched city.
     var mapCities: [CityWeather] {
         if isListPreviewActive {
             return []
         }
-        var result = isShowingAllLists ? allListsWeatherData : weatherService.cityWeatherData
-        if let preview = citySearchState.temporaryMapCity, !result.contains(where: { $0.city.name == preview.city.name }) {
+        var result = weatherService.cityWeatherData
+        if let preview = citySearchState.temporaryMapCity,
+           !result.contains(where: { weatherService.citiesMatch($0.city, preview.city) }) {
             result.append(preview)
         }
         return result
@@ -144,9 +161,6 @@ struct ContentView: View {
         if isListPreviewActive {
             return listPreviewCities
         }
-        if isShowingAllLists {
-            return allListsWeatherData.map(\.city)
-        }
         return weatherService.cityListCoordinates()
     }
 
@@ -154,7 +168,6 @@ struct ContentView: View {
         get {
             guard let selectedMapCityID else { return nil }
             return mapCities.first(where: { $0.id == selectedMapCityID })
-                ?? allListsWeatherData.first(where: { $0.id == selectedMapCityID })
         }
         nonmutating set {
             selectedMapCityID = newValue?.id
@@ -190,8 +203,7 @@ struct ContentView: View {
     }
 
     func localizedCityName(for city: City) -> String {
-        CityNameLocalizationCatalog.localizedName(for: city, locale: locale)
-            ?? city.localizedName(locale: locale)
+        localizedCityDisplayName(for: city, locale: locale)
     }
 
     var tempUnit: TemperatureUnit {
@@ -235,18 +247,163 @@ struct ContentView: View {
     @State var showingAddListAlert: Bool = false
     @State var navigationPath: [AppNavigationRoute] = []
     @State var developerWarning: DeveloperWarning?
+    @State var pendingDeveloperWarnings: [DeveloperWarning] = []
+    @State var isDismissingDeveloperWarning: Bool = false
 
     var toolbarTitle: String {
-        if isShowingAllLists {
-            return localizedString("All Cities", locale: locale)
-        }
-        return weatherService.activeListID.localizedDisplayName(locale: locale)
+        weatherService.activeListID.localizedDisplayName(locale: locale)
     }
 
     // Map controls are in MapView.swift.
     // Floating and expanded card content is in FloatingCard.swift.
     var dateSwitcherText: String {
-        dateSwitcherText(for: selectedDayOffset)
+        dateSwitcherText(for: dateSwitcherSelectedForecastDate)
+    }
+
+    var forecastDateToday: Date {
+        Calendar.current.startOfDay(for: Date())
+    }
+
+    var dateSwitcherSelectedForecastDate: Date {
+        get { selectedForecastDate }
+        nonmutating set { selectedForecastDate = newValue }
+    }
+
+    /// The toolbar follows one city's real forecast range while its detail is
+    /// open. Home, List, and Map retain the union across the active list.
+    var dateSwitcherForecastSourceCities: [CityWeather] {
+        detailDateSwitcherCity.map { [$0] } ?? forecastDateSourceCities
+    }
+
+    var dateSwitcherAvailableForecastDates: [Date] {
+        availableForecastDates(for: dateSwitcherForecastSourceCities)
+    }
+
+    var dateSwitcherPreviousForecastDate: Date? {
+        dateSwitcherAvailableForecastDates.last { $0 < dateSwitcherSelectedForecastDate }
+    }
+
+    var dateSwitcherNextForecastDate: Date? {
+        dateSwitcherAvailableForecastDates.first { $0 > dateSwitcherSelectedForecastDate }
+    }
+
+    var dateSwitcherForecastDateRange: ClosedRange<Date>? {
+        guard let firstDate = dateSwitcherAvailableForecastDates.first,
+              let lastDate = dateSwitcherAvailableForecastDates.last else {
+            return nil
+        }
+        return firstDate...lastDate
+    }
+
+    /// Cities that define the app-wide date switcher. A temporary search result
+    /// does not expand or contract the active list's forecast range.
+    var forecastDateSourceCities: [CityWeather] {
+        weatherService.cityWeatherData
+    }
+
+    var availableForecastDates: [Date] {
+        availableForecastDates(for: forecastDateSourceCities)
+    }
+
+    func availableForecastDates(for cities: [CityWeather]) -> [Date] {
+        Array(Set(cities.flatMap { cityWeather in
+            cityWeather.dailyForecasts.compactMap { forecast in
+                cityWeather.selectionDate(for: forecast)
+            }
+        })).sorted()
+    }
+
+    var previousForecastDate: Date? {
+        availableForecastDates.last { $0 < selectedForecastDate }
+    }
+
+    var nextForecastDate: Date? {
+        availableForecastDates.first { $0 > selectedForecastDate }
+    }
+
+    func normalizeSelectedForecastDate() {
+        selectedForecastDate = Calendar.current.startOfDay(for: selectedForecastDate)
+    }
+
+    func resetSelectedForecastDateToToday() {
+        selectedForecastDate = forecastDateToday
+    }
+
+    /// Expected list-boundary omissions are summarized by a compact notice and
+    /// deliberately excluded from the native missing-data alert.
+    func expectedForecastBoundaryOmissionCount(in cities: [CityWeather]) -> Int {
+        cities.filter {
+            isExpectedForecastBoundaryOmission(
+                for: $0,
+                among: cities,
+                on: selectedForecastDate
+            )
+        }.count
+    }
+
+    func missingForecastExplanation(for cities: [CityWeather]) -> String? {
+        var messages = cities.compactMap { cityWeather -> String? in
+            guard !isExpectedForecastBoundaryOmission(
+                for: cityWeather,
+                among: cities,
+                on: selectedForecastDate
+            ) else {
+                return nil
+            }
+            guard let issue = rankingDataIssue(for: cityWeather, on: selectedForecastDate) else {
+                return nil
+            }
+            return weatherDataIssueMessage(
+                issue,
+                cityName: localizedCityName(for: cityWeather.city),
+                locale: locale
+            )
+        }
+        messages.append(contentsOf: missingConfiguredCityMessages(comparedTo: cities))
+        return messages.isEmpty ? nil : messages.joined(separator: "\n")
+    }
+
+    /// A city that failed before producing `CityWeather` still belongs to the
+    /// configured list, so surface it instead of letting it disappear silently.
+    func missingConfiguredCityMessages(comparedTo loadedCities: [CityWeather]) -> [String] {
+        // Onboarding intentionally delays the first fetch until the user chooses
+        // a list. Do not misreport that expected empty state as missing weather.
+        guard !weatherService.isLoading,
+              hasCompletedInitialWeatherLoad,
+              !tutorialState.showsFirstLaunch,
+              !tutorialState.showsReplay else { return [] }
+        return weatherService.cityListCoordinates(for: weatherService.activeListID)
+            .filter { configuredCity in
+                !loadedCities.contains { loadedCity in
+                    weatherService.citiesMatch(loadedCity.city, configuredCity)
+                }
+            }
+            .map { configuredCity in
+                let issue: WeatherDataIssue = configuredCity.timeZoneIdentifier
+                    .flatMap(TimeZone.init(identifier:)) == nil
+                    ? .missingTimeZone
+                    : .missingForecastData
+                return weatherDataIssueMessage(
+                    issue,
+                    cityName: localizedCityName(for: configuredCity),
+                    locale: locale
+                )
+            }
+    }
+
+    /// Ranking and list rows require all three inputs. A city with incomplete
+    /// source data is omitted from the ranking and named in the visible notice.
+    func rankingDataIssue(for cityWeather: CityWeather, on date: Date) -> WeatherDataIssue? {
+        guard let forecast = cityWeather.forecastIfAvailable(on: date) else {
+            return .missingForecastData
+        }
+        guard SunninessScoring.condition(for: forecast.symbolName) != nil else {
+            return .unknownWeatherSymbol(forecast.symbolName)
+        }
+        guard forecast.cloudCover != nil else {
+            return .missingCloudCoverData
+        }
+        return nil
     }
 
 
@@ -264,13 +421,16 @@ extension ContentView {
             .background {
                 homeScreenShortcutReceiver
             }
+            .onOpenURL(perform: handleWidgetURL)
             .onChange(of: weatherService.activeListID) { _, _ in
-                AppDelegate.updateHomeScreenListShortcuts()
                 scheduleDaytimeSunninessRefetch()
                 updateBestSunnyPlacesWidget()
             }
-            .onChange(of: selectedDayOffset) { _, _ in
+            .onChange(of: selectedForecastDate) { _, _ in
                 scheduleDaytimeSunninessRefetch()
+            }
+            .onChange(of: availableForecastDates) { _, _ in
+                normalizeSelectedForecastDate()
             }
             .onChange(of: weatherService.weatherDataByListID) { _, _ in
                 updateBestSunnyPlacesWidget()
@@ -279,19 +439,20 @@ extension ContentView {
                 updateBestSunnyPlacesWidget()
             }
             .onChange(of: locale.identifier) { _, _ in
+                AppDelegate.updateHomeScreenShortcuts()
                 updateBestSunnyPlacesWidget()
             }
             .onChange(of: citySearchState.query) { _, newValue in
                 scheduleCitySearch(for: newValue)
             }
             .onChange(of: weatherService.errorMessage) { _, message in
-                // Accessibility: Announce asynchronous errors that may not receive VoiceOver focus.
                 if let message {
-                    UIAccessibility.post(notification: .announcement, argument: message)
+                    DeveloperWarningCenter.showMissingData(message: message, locale: locale)
                 }
             }
             .onChange(of: scenePhase) { _, phase in
                 guard phase == .active else { return }
+                normalizeSelectedForecastDate()
                 if isMapRoute {
                     centerMapOnDots(useListCoordinates: true)
                 }
@@ -311,15 +472,13 @@ extension ContentView {
                     centerMapOnDots(useListCoordinates: true)
                 }
             }
-            .onChange(of: selectedMapCityID) { _, selectedID in
-                // Accessibility: Wait until the newly identified conditional card has
-                // entered the hierarchy before assigning VoiceOver focus to it.
-                if selectedID != nil {
-                    DispatchQueue.main.async {
-                        mapCardAccessibilityFocused = true
-                    }
-                } else {
-                    mapCardAccessibilityFocused = false
+            .onChange(of: filterSunny) { _, isEnabled in
+                guard isEnabled, let selectedCity = selectedMapCity else { return }
+                let remainsVisible = selectedCity.forecastIfAvailable(on: selectedForecastDate)
+                    .flatMap { SunninessScoring.condition(for: $0.symbolName)?.isSunny }
+                    ?? false
+                if !remainsVisible {
+                    dismissMapExpandedCard()
                 }
             }
     }
@@ -420,6 +579,7 @@ extension ContentView {
                     }
                     cityToRename = nil
                 }
+                .disabled(cityRenameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .alert(localizedString("New List", locale: locale), isPresented: $showingAddListAlert) {
                 TextField(localizedString("Name", locale: locale), text: $newListName)
@@ -429,23 +589,25 @@ extension ContentView {
                 Button(localizedString("Add", locale: locale)) {
                     commitListManagerNewList()
                 }
+                .disabled(newListName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .alert(developerWarning?.title ?? "Unexpected App Issue", isPresented: Binding(
                 get: { developerWarning != nil },
                 set: { isPresented in
                     if !isPresented {
-                        developerWarning = nil
+                        dismissDeveloperWarning()
                     }
                 }
             )) {
-                Button(localizedString("OK", locale: locale), role: .cancel) {
-                    developerWarning = nil
-                }
+                // SwiftUI updates the alert binding when this native cancel
+                // button is tapped; the binding is the single queue owner.
+                Button(localizedString("OK", locale: locale), role: .cancel) { }
             } message: {
                 Text(developerWarning?.message ?? "")
             }
             .onReceive(NotificationCenter.default.publisher(for: DeveloperWarningCenter.notification)) { notification in
-                developerWarning = notification.object as? DeveloperWarning
+                guard let warning = notification.object as? DeveloperWarning else { return }
+                enqueueDeveloperWarning(warning)
             }
             .alert(localizedString("Delete List", locale: locale), isPresented: $showingDeleteListConfirmation) {
                 Button(localizedString("Cancel", locale: locale), role: .cancel) {
@@ -479,9 +641,39 @@ extension ContentView {
         }
     }
 
+    private func enqueueDeveloperWarning(_ warning: DeveloperWarning) {
+        let isAlreadyPresented = developerWarning.map {
+            $0.title == warning.title && $0.message == warning.message
+        } ?? false
+        let isAlreadyQueued = pendingDeveloperWarnings.contains {
+            $0.title == warning.title && $0.message == warning.message
+        }
+        guard !isAlreadyPresented, !isAlreadyQueued else { return }
+
+        if developerWarning == nil, !isDismissingDeveloperWarning {
+            developerWarning = warning
+        } else {
+            pendingDeveloperWarnings.append(warning)
+        }
+    }
+
+    private func dismissDeveloperWarning() {
+        guard developerWarning != nil else { return }
+        developerWarning = nil
+        isDismissingDeveloperWarning = true
+        Task { @MainActor in
+            // Native alerts animate out after their binding becomes false. Wait
+            // for that transition before assigning the next queued warning;
+            // assigning it in the same run-loop turn can leave the state set
+            // without presenting another alert.
+            try? await Task.sleep(for: .milliseconds(350))
+            isDismissingDeveloperWarning = false
+            guard developerWarning == nil, !pendingDeveloperWarnings.isEmpty else { return }
+            developerWarning = pendingDeveloperWarnings.removeFirst()
+        }
+    }
+
     func showCityAddedConfirmation(_ message: String) {
-        // Accessibility: Speak the transient confirmation before its visual overlay disappears.
-        UIAccessibility.post(notification: .announcement, argument: message)
         withAnimation(.spring(response: 0.32, dampingFraction: 0.72)) {
             citySearchState.confirmation = message
         }
@@ -495,13 +687,23 @@ extension ContentView {
         }
     }
 
+    func cityAddedConfirmationMessage(cityName: String, listName: String) -> String {
+        String(
+            format: localizedString("%1$@ was added to %2$@.", locale: locale),
+            locale: locale,
+            cityName,
+            listName
+        )
+    }
+
     var homeScreenShortcutReceiver: some View {
         Color.clear
             .frame(width: 0, height: 0)
-            .onReceive(NotificationCenter.default.publisher(for: .weatherOpenListShortcut)) { notification in
-                let notifiedListID = notification.object as? String
-                guard let rawValue = AppDelegate.takePendingListShortcutID() ?? notifiedListID else { return }
-                handleOpenListShortcut(rawValue: rawValue)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherOpenMainViewShortcut)) { notification in
+                let notifiedDestination = (notification.object as? String)
+                    .flatMap(HomeScreenShortcutDestination.init(rawValue:))
+                guard let destination = AppDelegate.takePendingHomeScreenShortcut() ?? notifiedDestination else { return }
+                handleHomeScreenShortcut(destination)
             }
     }
 
@@ -522,10 +724,6 @@ extension ContentView {
                         listPreviewDestination
                     }
                 }
-        }
-        // Accessibility: Match the system two-finger scrub with the app's Back action.
-        .accessibilityAction(.escape) {
-            popCurrentRoute()
         }
     }
 
@@ -618,11 +816,23 @@ extension ContentView {
     // MARK: Startup and External Entry Points
 
     func onAppearLoad() async {
-        AppDelegate.updateHomeScreenListShortcuts()
+        AppDelegate.updateHomeScreenShortcuts()
+        // Publish list and city identities before WeatherKit finishes so the
+        // widget gallery can immediately resolve the first city in the first list.
+        updateBestSunnyPlacesWidget()
+        // A cold-launch quick action is supplied while the scene connects. Apply
+        // it before tutorial checks or WeatherKit loading so its destination is
+        // the first screen the user sees.
+        let launchShortcut = AppDelegate.takePendingHomeScreenShortcut()
+        if let launchShortcut {
+            handleHomeScreenShortcut(launchShortcut)
+        }
         // Previews should show the requested screen immediately. TutorialView's
         // dedicated previews instantiate it directly, so they remain unaffected.
         let isRunningInXcodePreview = ProcessInfo.processInfo.environment["XCODE_RUNNING_FOR_PREVIEWS"] == "1"
-        let shouldShowFirstLaunchTutorial = !isRunningInXcodePreview && !hasLaunchedBefore
+        let shouldShowFirstLaunchTutorial = launchShortcut == nil
+            && !isRunningInXcodePreview
+            && !hasLaunchedBefore
         if shouldShowFirstLaunchTutorial {
             showLegend = true
             prepareContinentListTutorialSelection()
@@ -632,12 +842,10 @@ extension ContentView {
         if !shouldShowFirstLaunchTutorial {
             await weatherService.fetchWeatherForAllCities()
             await refreshCitiesMissingDaytimeSunninessData()
+            hasCompletedInitialWeatherLoad = true
         }
         if !mapCities.isEmpty {
             centerMapOnDots(useListCoordinates: true)
-        }
-        if let pendingShortcutID = AppDelegate.takePendingListShortcutID() {
-            handleOpenListShortcut(rawValue: pendingShortcutID)
         }
     }
 
@@ -708,19 +916,19 @@ extension ContentView {
 
         refreshListOrder()
         centerMapOnDots(useListCoordinates: true)
-        AppDelegate.updateHomeScreenListShortcuts()
 
         if !mapCities.isEmpty {
             await refreshCitiesMissingDaytimeSunninessData()
         }
 
+        hasCompletedInitialWeatherLoad = true
         hasLaunchedBefore = true
         tutorialState.showsFirstLaunch = false
     }
 
     func handleOpenListShortcut(rawValue: String) {
         guard let listID = CityListID.allLists.first(where: { $0.rawValue == rawValue }) else { return }
-        selectedDayOffset = 0
+        resetSelectedForecastDateToToday()
         showingSettings = false
         citySearchState.isPresented = false
         showingMapExpandedCard = false
@@ -731,10 +939,47 @@ extension ContentView {
 
         Task {
             await switchToList(listID)
-            await MainActor.run {
-                AppDelegate.updateHomeScreenListShortcuts()
-            }
         }
+    }
+
+    func handleHomeScreenShortcut(_ destination: HomeScreenShortcutDestination) {
+        resetSelectedForecastDateToToday()
+        showingSettings = false
+        citySearchState.isPresented = false
+        showingMapExpandedCard = false
+        selectedMapCity = nil
+        citySearchState.temporaryMapCity = nil
+        clearGeneratedListPreview(playsHaptic: false)
+
+        switch destination {
+        case .home:
+            navigationPath = []
+        case .map:
+            navigationPath = [.map]
+        case .list:
+            navigationPath = [.list]
+        }
+    }
+
+    func handleWidgetURL(_ url: URL) {
+        guard url.scheme == "weatheratlas",
+              url.host == "list",
+              let rawValue = url.pathComponents.dropFirst().first,
+              !rawValue.isEmpty else {
+            return
+        }
+        handleOpenListShortcut(rawValue: rawValue)
+
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let kindValue = components.queryItems?.first(where: { $0.name == "missingKind" })?.value,
+              let kind = WeatherDataIssue.Kind(rawValue: kindValue),
+              let cityName = components.queryItems?.first(where: { $0.name == "city" })?.value else {
+            return
+        }
+        let detail = components.queryItems?.first(where: { $0.name == "missingDetail" })?.value
+        let issue = WeatherDataIssue(kind: kind, detail: detail)
+        let message = weatherDataIssueMessage(issue, cityName: cityName, locale: locale)
+        DeveloperWarningCenter.showMissingData(message: message, locale: locale)
     }
 }
 
@@ -749,7 +994,6 @@ private struct CityAddedConfirmationView: View {
                 .font(.system(size: 27, weight: .bold))
                 .foregroundStyle(theme.colors.accent)
                 .symbolEffect(.bounce, value: message)
-                .accessibilityHidden(true)
 
             Text(message)
                 .font(.body.weight(.semibold))
@@ -761,9 +1005,6 @@ private struct CityAddedConfirmationView: View {
         .frame(maxWidth: 300)
         .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: .black.opacity(0.16), radius: 18, y: 8)
-        // Accessibility: Read the transient card once instead of exposing its decorative icon.
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(message)
     }
 }
 
@@ -785,14 +1026,18 @@ extension ContentView {
     }
 
     func refreshCitiesMissingDaytimeSunninessData() async {
-        let dayOffset = selectedDayOffset
+        let selectedDate = selectedForecastDate
         let citiesToRefresh = mapCities.filter { cityWeather in
-            let forecast = cityWeather.forecast(for: dayOffset)
+            // A shorter per-city WeatherKit forecast horizon is expected and
+            // cannot be repaired by repeatedly fetching the same city.
+            guard let forecast = cityWeather.forecastIfAvailable(on: selectedDate) else {
+                return false
+            }
             return !SunninessScoring.hasDaytimeHourlyScoreData(for: forecast, timeZone: cityWeather.timeZone)
         }
 
         for cityWeather in citiesToRefresh {
-            let refetchKey = "\(cityWeather.id.uuidString)-\(dayOffset)"
+            let refetchKey = "\(cityWeather.id.uuidString)-\(selectedDate.timeIntervalSinceReferenceDate)"
             guard !daytimeScoreRefetchKeys.contains(refetchKey) else { continue }
             daytimeScoreRefetchKeys.insert(refetchKey)
             _ = await weatherService.refreshWeatherForCity(cityWeather)
@@ -874,11 +1119,11 @@ extension ContentView {
         cancelGeneratedListPreview()
 
         Task {
-            _ = await weatherService.createCustomList(name: uniqueName, cities: cities, nameSource: nameSource)
+            let listID = await weatherService.createCustomList(name: uniqueName, cities: cities, nameSource: nameSource)
+            await switchToList(listID)
             await MainActor.run {
                 refreshListOrder()
                 centerMapOnDots(useListCoordinates: true)
-                AppDelegate.updateHomeScreenListShortcuts()
             }
         }
     }
@@ -916,9 +1161,5 @@ private struct LoadingWeatherOverlay: View {
                 Capsule().stroke(theme.colors.primaryText, lineWidth: 1)
             }
         }
-        // Accessibility: Expose determinate progress as one concise status element.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(localizedString("Loading Weather", locale: locale))
-        .accessibilityValue("\(Int((min(max(progress, 0), 1) * 100).rounded()))%")
     }
 }

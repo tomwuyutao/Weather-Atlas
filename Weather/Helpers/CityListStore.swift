@@ -194,7 +194,9 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
     }
 
     static func customCityName(for city: City) -> String? {
-        loadCustomCityNames()[cityDisplayNameKey(for: city)]
+        let names = loadCustomCityNames()
+        return names[cityDisplayNameKey(for: city)]
+            ?? names[legacyCityDisplayNameKey(for: city)]
     }
 
     static func saveCustomCityName(_ name: String, for city: City) {
@@ -214,7 +216,18 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
     }
 
     private static func cityDisplayNameKey(for city: City) -> String {
-        "\(city.country)|\(String(format: "%.4f", city.latitude))|\(String(format: "%.4f", city.longitude))"
+        let stableLocale = Locale(identifier: "en_US_POSIX")
+        let latitude = String(format: "%.4f", locale: stableLocale, city.latitude)
+        let longitude = String(format: "%.4f", locale: stableLocale, city.longitude)
+        return "\(city.name)|\(city.country)|\(latitude)|\(longitude)"
+    }
+
+    /// Preserves custom names saved by versions whose key omitted the city name.
+    private static func legacyCityDisplayNameKey(for city: City) -> String {
+        let stableLocale = Locale(identifier: "en_US_POSIX")
+        let latitude = String(format: "%.4f", locale: stableLocale, city.latitude)
+        let longitude = String(format: "%.4f", locale: stableLocale, city.longitude)
+        return "\(city.country)|\(latitude)|\(longitude)"
     }
     
     static func loadUserLists() -> [CityListID] {
@@ -319,21 +332,12 @@ extension WeatherService {
         return loadSavedCities(for: targetListID) ?? targetListID.defaultCities
     }
 
-    func listContainingCity(named name: String, country: String) -> CityListID? {
-        availableLists.first { listID in
-            cityListCoordinates(for: listID).contains { city in
-                city.name == name && city.country == country
-            }
-        }
-    }
-
     func listContainingCity(_ city: City) -> CityListID? {
         availableLists.first { listID in
-            cityListCoordinates(for: listID).contains { savedCity in
-                abs(savedCity.latitude - city.latitude) < 0.001
-                    && abs(savedCity.longitude - city.longitude) < 0.001
+            cityListCoordinates(for: listID).contains {
+                citiesMatch($0, city)
             }
-        } ?? listContainingCity(named: city.name, country: city.country)
+        }
     }
 
     // MARK: - Cities List Persistence
@@ -400,12 +404,15 @@ extension WeatherService {
             }
             return cities
         } catch {
-            DeveloperWarningCenter.show(
+            DeveloperWarningCenter.showOnce(
+                key: "saved-city-list-corrupt-\(listID.rawValue)",
                 title: "Saved City List Corrupt",
-                message: "The saved city list for \(listID.rawValue) could not be decoded and was removed."
+                message: "The saved city list for \(listID.rawValue) could not be decoded. Its cities will remain hidden until the list is replaced or edited."
             )
-            UserDefaults.standard.removeObject(forKey: key)
-            return nil
+            // Keep the corrupt payload distinguishable from an absent payload.
+            // Returning an explicit empty list prevents bundled defaults from
+            // silently replacing the user's missing persisted data.
+            return []
         }
     }
 
@@ -508,7 +515,7 @@ extension WeatherService {
     // MARK: - City Mutations
 
     func removeCity(_ cityWeather: CityWeather) {
-        cityWeatherData.removeAll { $0.id == cityWeather.id }
+        cityWeatherData.removeAll { citiesMatch($0.city, cityWeather.city) }
         // Update cache after removing city
         cacheData(cityWeatherData)
         // Save the updated cities list
@@ -520,11 +527,22 @@ extension WeatherService {
             removeCity(cityWeather)
             return
         }
-        var listData = weatherDataByListID[listID.rawValue] ?? []
-        listData.removeAll { $0.id == cityWeather.id }
-        weatherDataByListID[listID.rawValue] = listData
-        saveCities(listData.map(\.city), for: listID)
-        cacheData(listData, for: listID)
+
+        let savedCities = cityListCoordinates(for: listID)
+        let updatedCities = savedCities.filter {
+            !citiesMatch($0, cityWeather.city)
+        }
+        saveCities(updatedCities, for: listID)
+
+        if var listData = weatherDataByListID[listID.rawValue] {
+            listData.removeAll { citiesMatch($0.city, cityWeather.city) }
+            weatherDataByListID[listID.rawValue] = listData
+            cacheData(listData, for: listID)
+        } else {
+            // The persisted coordinate list is authoritative when this list has
+            // not been loaded in the current process.
+            removeCache(for: listID)
+        }
     }
 
     func moveCity(_ cityWeather: CityWeather, from sourceListID: CityListID, to destinationListID: CityListID) {
@@ -543,71 +561,48 @@ extension WeatherService {
                 cityWeatherData.insert(cityWeather, at: 0)
                 cacheData(cityWeatherData)
             } else if var destinationData = weatherDataByListID[destinationListID.rawValue] {
-                destinationData.insert(cityWeather, at: 0)
+                if !destinationData.contains(where: { citiesMatch($0.city, cityWeather.city) }) {
+                    destinationData.insert(cityWeather, at: 0)
+                }
                 weatherDataByListID[destinationListID.rawValue] = destinationData
                 cacheData(destinationData, for: destinationListID)
+            } else {
+                // The saved city list is authoritative. An unloaded destination may
+                // still have a fresh snapshot that does not contain the moved city.
+                removeCache(for: destinationListID)
             }
         }
 
         removeCity(cityWeather, from: sourceListID)
     }
     
-    func addCity(_ city: City) async {
-        do {
-            // Fetch weather for the new city
-            errorMessage = nil
-            let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
-            let weather = try await weatherService.weather(for: location)
-            
-            // Convert to our model
-            let cityWeather = try await convertWeatherKitData(weather: weather, for: city)
-            
-            // Add to the beginning of the list
-            cityWeatherData.insert(cityWeather, at: 0)
-            
-            // Update cache with the new city included
-            cacheData(cityWeatherData)
-            
-            // Save the updated cities list
-            saveCitiesList()
-            
-        } catch {
-            report(error)
+    @discardableResult
+    func addCityToList(_ cityWeather: CityWeather, listID: CityListID) -> Bool {
+        let city = cityWeather.city
+        let existingCities = cityListCoordinates(for: listID)
+        guard !existingCities.contains(where: { citiesMatch($0, city) }) else {
+            return false
         }
-    }
-    
-    func addCityToList(_ city: City, listID: CityListID) async {
-        let listKey = "savedCitiesList_\(listID.rawValue)"
-        
-        do {
-            errorMessage = nil
-            let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
-            let weather = try await weatherService.weather(for: location)
-            let cityWeather = try await convertWeatherKitData(weather: weather, for: city)
-            
-            // Load existing cities for the target list
-            var existingCities: [City] = []
-            if let data = UserDefaults.standard.data(forKey: listKey),
-               let cached = try? JSONDecoder().decode([CachedCity].self, from: data) {
-                existingCities = cached.map { $0.toCity() }
-            }
-            existingCities.insert(city, at: 0)
-            
-            // Save updated cities list
-            let encoded = try JSONEncoder().encode(existingCities.map { CachedCity(from: $0) })
-            UserDefaults.standard.set(encoded, forKey: listKey)
-            
-            // If this is the active list, also update in-memory data
-            if listID == activeListID {
+
+        saveCities([city] + existingCities, for: listID)
+
+        if listID.rawValue == activeListID.rawValue {
+            if !cityWeatherData.contains(where: { citiesMatch($0.city, city) }) {
                 cityWeatherData.insert(cityWeather, at: 0)
-            } else {
-                // Update weatherDataByListID if loaded
-                weatherDataByListID[listID.rawValue]?.insert(cityWeather, at: 0)
             }
-            
-        } catch {
-            report(error)
+            cacheData(cityWeatherData)
+        } else if var listData = weatherDataByListID[listID.rawValue] {
+            if !listData.contains(where: { citiesMatch($0.city, city) }) {
+                listData.insert(cityWeather, at: 0)
+            }
+            weatherDataByListID[listID.rawValue] = listData
+            cacheData(listData, for: listID)
+        } else {
+            // Prevent a fresh, unloaded snapshot from hiding the newly saved city.
+            removeCache(for: listID)
         }
+
+        return true
     }
 
     func createCustomList(name: String, cities: [City], nameSource: CityListNameSource? = nil) async -> CityListID {
@@ -631,7 +626,6 @@ extension ContentView {
 
     func refreshListOrder() {
         weatherService.reloadAvailableLists()
-        AppDelegate.updateHomeScreenListShortcuts()
     }
 
     @ViewBuilder
@@ -666,7 +660,7 @@ extension ContentView {
         }
 
         Button {
-            removeDisplayedCity(city, from: listID)
+            weatherService.removeCity(city, from: listID)
         } label: {
             Label {
                 Text(localizedString("Delete", locale: locale))
@@ -689,7 +683,7 @@ extension ContentView {
         Task {
             await switchToList(listID)
             guard let revealedCity = weatherService.cityWeatherData.first(where: {
-                $0.city.latitude == city.city.latitude && $0.city.longitude == city.city.longitude
+                weatherService.citiesMatch($0.city, city.city)
             }) else {
                 weatherService.reportDeveloperWarning(
                     title: "Map Reveal Failed",
@@ -712,66 +706,21 @@ extension ContentView {
     func commitListManagerNewList() {
         let trimmed = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
-        _ = CityListID.createList(name: trimmed)
-        refreshListOrder()
         newListName = ""
-    }
 
-    func switchToList(_ listID: CityListID) async {
-        isShowingAllLists = false
-        guard listID.rawValue != weatherService.activeListID.rawValue else { return }
-        await weatherService.switchList(to: listID)
-        centerMapOnDots(useListCoordinates: true)
-    }
-
-    func showAllLists() {
-        listEditMode = false
-        isShowingAllLists = true
         Task {
-            await loadAllListsWeatherData()
+            let listID = await weatherService.createCustomList(name: trimmed, cities: [])
+            await switchToList(listID)
+            refreshListOrder()
+            listManagementState.isPresented = false
             centerMapOnDots(useListCoordinates: true)
         }
     }
 
-    func loadAllListsWeatherData() async {
-        for listID in managedLists {
-            await weatherService.fetchWeatherForList(listID)
-        }
-
-        var cities: [CityWeather] = []
-        var sourceListIDs: [String: CityListID] = [:]
-
-        for listID in managedLists {
-            for cityWeather in weatherService.weatherData(for: listID) {
-                let key = allListsCityKey(for: cityWeather.city)
-                guard sourceListIDs[key] == nil else { continue }
-                sourceListIDs[key] = listID
-                cities.append(cityWeather)
-            }
-        }
-
-        allListsWeatherData = cities
-        allListsSourceListIDs = sourceListIDs
-    }
-
-    func sourceListID(for cityWeather: CityWeather) -> CityListID? {
-        if isShowingAllLists {
-            return allListsSourceListIDs[allListsCityKey(for: cityWeather.city)]
-        }
-        return weatherService.activeListID
-    }
-
-    func removeDisplayedCity(_ cityWeather: CityWeather, from listID: CityListID) {
-        weatherService.removeCity(cityWeather, from: listID)
-        guard isShowingAllLists else { return }
-
-        let key = allListsCityKey(for: cityWeather.city)
-        allListsWeatherData.removeAll { allListsCityKey(for: $0.city) == key }
-        allListsSourceListIDs[key] = nil
-    }
-
-    private func allListsCityKey(for city: City) -> String {
-        "\(city.country)|\(city.latitude)|\(city.longitude)"
+    func switchToList(_ listID: CityListID) async {
+        guard listID.rawValue != weatherService.activeListID.rawValue else { return }
+        await weatherService.switchList(to: listID)
+        centerMapOnDots(useListCoordinates: true)
     }
 
 }
@@ -779,14 +728,21 @@ extension ContentView {
 // MARK: - City List Actions
 
 extension ContentView {
-    func addCityToActiveList(_ cityWeather: CityWeather) async {
-        await weatherService.addCity(cityWeather.city)
-        Haptics.lightImpact()
+    @discardableResult
+    func addCityToActiveList(_ cityWeather: CityWeather) -> Bool {
+        let didAdd = weatherService.addCityToList(
+            cityWeather,
+            listID: weatherService.activeListID
+        )
+        if didAdd {
+            Haptics.lightImpact()
+        }
         if let addedCity = weatherService.cityWeatherData.first(where: {
-            $0.city.name == cityWeather.city.name && $0.city.country == cityWeather.city.country
+            weatherService.citiesMatch($0.city, cityWeather.city)
         }) {
             selectedMapCity = addedCity
         }
+        return didAdd
     }
 
 }

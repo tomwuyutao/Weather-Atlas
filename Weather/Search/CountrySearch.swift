@@ -7,23 +7,54 @@
 
 import SwiftUI
 
-// MARK: - Continent List Search
+// MARK: - Shared Picker Row
 
-extension ContentView {
-    func continentListSearchContent(onSelect: @escaping (CityListID) -> Void) -> some View {
+struct ListPickerNavigationRow: View {
+    let title: String
+    let verticalPadding: CGFloat
+
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Text(title)
+                .font(.headline.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.colors.accent)
+        }
+        .padding(.vertical, verticalPadding)
+        .contentShape(Rectangle())
+    }
+}
+
+struct ContinentListPickerContent: View {
+    let lists: [CityListID]
+    let onSelect: (CityListID) -> Void
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.locale) private var locale
+
+    var body: some View {
         ScrollView {
             VStack(spacing: 0) {
-                ForEach(CityListID.builtInLists) { listID in
+                ForEach(lists) { listID in
                     Button {
                         onSelect(listID)
                     } label: {
-                        continentListSearchResultRow(listID)
+                        ListPickerNavigationRow(
+                            title: listID.localizedDisplayName(locale: locale),
+                            verticalPadding: 14
+                        )
                     }
                     .buttonStyle(.plain)
-                    // Accessibility: Name the full-row control and leave its chevron decorative.
-                    .accessibilityLabel(listID.localizedDisplayName(locale: locale))
 
-                    if listID != CityListID.builtInLists.last {
+                    if listID != lists.last {
                         Divider()
                             .background(theme.colors.secondaryText.opacity(0.20))
                     }
@@ -37,37 +68,22 @@ extension ContentView {
         .padding(.bottom, 28)
         .background(theme.colors.background.ignoresSafeArea())
     }
-
-    func continentListSearchResultRow(_ listID: CityListID) -> some View {
-        HStack(spacing: 12) {
-            Text(listID.localizedDisplayName(locale: locale))
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-
-            Spacer(minLength: 8)
-
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.colors.accent)
-                .accessibilityHidden(true)
-        }
-        .padding(.vertical, 14)
-        .contentShape(Rectangle())
-    }
-
 }
 
-// MARK: - Country List Search
+struct CountryListPickerContent<SearchBar: View>: View {
+    let countries: [CountryListOption]
+    let searchBar: SearchBar
+    let onSelect: (CountryListOption) -> Void
 
-extension ContentView {
-    func countryListSearchContent(onSelect: @escaping (CountryListOption) -> Void) -> some View {
+    @Environment(\.appTheme) private var theme
+    @Environment(\.locale) private var locale
+
+    var body: some View {
         VStack(spacing: 18) {
-            countryListSearchBar
+            searchBar
 
             ScrollView {
                 VStack(spacing: 0) {
-                    let countries = filteredCountryListOptions
                     if countries.isEmpty {
                         Text(localizedString("No countries found.", locale: locale))
                             .font(.body)
@@ -79,11 +95,12 @@ extension ContentView {
                             Button {
                                 onSelect(country)
                             } label: {
-                                countryListSearchResultRow(country)
+                                ListPickerNavigationRow(
+                                    title: country.localizedName(locale: locale),
+                                    verticalPadding: 12
+                                )
                             }
                             .buttonStyle(.plain)
-                            // Accessibility: Name the full-row control and leave its chevron decorative.
-                            .accessibilityLabel(country.localizedName(locale: locale))
 
                             if country.id != countries.last?.id {
                                 Divider()
@@ -100,31 +117,36 @@ extension ContentView {
         .padding(.top, 18)
         .padding(.bottom, 28)
         .background(theme.colors.background.ignoresSafeArea())
-        .onAppear {
-            listManagementState.countryQuery = ""
-            searchFieldFocused = true
-        }
     }
+}
 
-    var countryListSearchBar: some View {
+struct CountrySearchField: View {
+    @Binding var text: String
+    var automaticallyFocus = false
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.locale) private var locale
+    @FocusState private var isFocused: Bool
+
+    var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(theme.colors.accent)
-                .accessibilityHidden(true)
 
-            TextField(localizedString("Search for a country", locale: locale), text: $listManagementState.countryQuery)
+            TextField(localizedString("Search for a country", locale: locale), text: $text)
                 .font(.body)
                 .foregroundStyle(theme.colors.primaryText)
-                .focused($searchFieldFocused)
-                .defaultFocus($searchFieldFocused, true)
+                .focused($isFocused)
+                .defaultFocus($isFocused, automaticallyFocus)
                 .textInputAutocapitalization(.words)
                 .disableAutocorrection(true)
-                .accessibilityLabel(localizedString("Search for a country", locale: locale))
 
-            if !listManagementState.countryQuery.isEmpty {
+            if !text.isEmpty {
                 Button {
-                    listManagementState.countryQuery = ""
+                    text = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 18, weight: .semibold))
@@ -133,10 +155,7 @@ extension ContentView {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                // Accessibility: Expand only the clear action's hit region; negative padding
-                // keeps the capsule's normal visual spacing unchanged.
                 .padding(-13)
-                .accessibilityLabel(localizedString("Clear", locale: locale))
             }
         }
         .padding(.horizontal, 16)
@@ -145,16 +164,48 @@ extension ContentView {
         .background(theme.colors.listCardFill, in: Capsule())
         .overlay {
             Capsule()
-                // Accessibility: Increase Contrast gives the search-field boundary
-                // a measured, opaque outline while preserving its normal appearance.
-                .stroke(
-                    colorSchemeContrast == .increased
-                        ? theme.colors.primaryText
-                        : .white.opacity(colorScheme == .dark ? 0.16 : 0.38),
-                    lineWidth: colorSchemeContrast == .increased ? 1.25 : 0.8
-                )
+                .stroke(searchFieldBorderColor, lineWidth: colorSchemeContrast == .increased ? 1.25 : 0.8)
         }
         .shadow(color: .black.opacity(colorScheme == .dark ? 0.24 : 0.12), radius: 18, y: 8)
+        .onAppear {
+            if automaticallyFocus {
+                isFocused = true
+            }
+        }
+    }
+
+    private var searchFieldBorderColor: Color {
+        if colorSchemeContrast == .increased {
+            return theme.colors.primaryText
+        }
+        return theme.colors.primaryText.opacity(colorScheme == .dark ? 0.16 : 0.12)
+    }
+}
+
+// MARK: - Continent List Search
+
+extension ContentView {
+    func continentListSearchContent(onSelect: @escaping (CityListID) -> Void) -> some View {
+        ContinentListPickerContent(lists: CityListID.builtInLists, onSelect: onSelect)
+    }
+
+}
+
+// MARK: - Country List Search
+
+extension ContentView {
+    func countryListSearchContent(onSelect: @escaping (CountryListOption) -> Void) -> some View {
+        CountryListPickerContent(
+            countries: filteredCountryListOptions,
+            searchBar: CountrySearchField(
+                text: $listManagementState.countryQuery,
+                automaticallyFocus: true
+            ),
+            onSelect: onSelect
+        )
+        .onAppear {
+            listManagementState.countryQuery = ""
+        }
     }
 
     var filteredCountryListOptions: [CountryListOption] {
@@ -166,25 +217,6 @@ extension ContentView {
                 || country.englishName.localizedCaseInsensitiveContains(query)
                 || country.iso2.localizedCaseInsensitiveContains(query)
         }
-    }
-
-    func countryListSearchResultRow(_ country: CountryListOption) -> some View {
-        HStack(spacing: 12) {
-            Text(country.localizedName(locale: locale))
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                // Accessibility: Permit country names to wrap at accessibility text sizes.
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-
-            Spacer(minLength: 8)
-
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.colors.accent)
-                .accessibilityHidden(true)
-        }
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
     }
 
 }

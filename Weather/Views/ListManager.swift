@@ -41,18 +41,14 @@ extension ContentView {
                             Text(localizedString("New List", locale: locale))
                                 .font(.headline.weight(.semibold))
                                 .foregroundStyle(theme.colors.primaryText)
-                                // Accessibility: Custom toolbar titles need an explicit heading trait.
-                                .accessibilityAddTraits(.isHeader)
                         }
                     }
             }
             .toolbar {
                 ToolbarItem(placement: .principal) {
-                    Text(localizedString("Manage Lists", locale: locale))
+                    Text(localizedString("Lists", locale: locale))
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(theme.colors.primaryText)
-                        // Accessibility: Custom toolbar titles need an explicit heading trait.
-                        .accessibilityAddTraits(.isHeader)
                 }
 
                 if listManagementState.editMode != .active {
@@ -68,14 +64,12 @@ extension ContentView {
                         } label: {
                             Image(systemName: "pencil")
                         }
-                        .accessibilityLabel(localizedString("Edit", locale: locale))
 
                         Button {
                             listManagementState.showsAddOptions = true
                         } label: {
                             Image(systemName: "plus")
                         }
-                        .accessibilityLabel(localizedString("New List", locale: locale))
                     }
                 } else {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -86,13 +80,15 @@ extension ContentView {
         }
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .presentationBackground(theme.colors.mapOcean)
-        // Accessibility: Mirror the sheet's visible hierarchy with the standard
-        // escape action so no drag gesture is required to leave a nested picker.
-        .accessibilityAction(.escape) {
-            dismissListManagementAccessibility()
-        }
+        // Keep the automatic back control in the nested add-list flow on the
+        // app's navy accent instead of the system sheet tint.
+        .tint(theme.colors.accent)
         .onDisappear {
-            commitInlineListRename()
+            if isInlineListRenameValid {
+                commitInlineListRename()
+            } else {
+                cancelInlineListRename()
+            }
             listManagementState.editMode = .inactive
             listManagementState.showsAddOptions = false
             listManagementState.showsContinentPicker = false
@@ -116,6 +112,24 @@ extension ContentView {
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .toolbarBackground(theme.colors.mapOcean, for: .navigationBar)
         .toolbarBackground(.visible, for: .navigationBar)
+        // The system Liquid Glass back symbol is always rendered in the system
+        // foreground color. Use the same native toolbar position with an explicit
+        // label so this app control keeps the theme's navy icon color.
+        .navigationBarBackButtonHidden()
+        .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    listManagementState.showsAddOptions = false
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+            }
+        }
         .navigationDestination(isPresented: $listManagementState.showsContinentPicker) {
             listManagementContinentPicker
                 .navigationTitle(localizedString("Add Continent", locale: locale))
@@ -153,9 +167,9 @@ extension ContentView {
                         .foregroundStyle(theme.colors.primaryText)
                         .submitLabel(.done)
                         .onSubmit {
+                            guard isInlineListRenameValid else { return }
                             commitInlineListRename()
                         }
-                        .accessibilityLabel(localizedString("Name", locale: locale))
                 } else {
                     Button {
                         beginInlineListRename(listID)
@@ -163,8 +177,6 @@ extension ContentView {
                         listManagementRowLabel(for: listID, showsSelection: false)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(listID.localizedDisplayName(locale: locale))
-                    .accessibilityHint(localizedString("Rename List", locale: locale))
                 }
             } else {
                 Button {
@@ -175,56 +187,26 @@ extension ContentView {
                     listManagementRowLabel(for: listID, showsSelection: true)
                 }
                 .buttonStyle(.plain)
-                // Accessibility: Announce which list is active; the visual checkmark is decorative.
-                .accessibilityLabel(listID.localizedDisplayName(locale: locale))
-                .accessibilityAddTraits(
-                    listID.rawValue == weatherService.activeListID.rawValue ? .isSelected : []
-                )
             }
         }
         .contextMenu {
             Button {
-                withAnimation(.smooth(duration: 0.2)) {
-                    listManagementState.editMode = .active
-                    beginInlineListRename(listID)
-                }
+                activateInlineListRename(listID)
             } label: {
                 primaryMenuLabel(localizedString("Rename List", locale: locale), systemImage: "pencil")
             }
 
-            Button(role: .destructive) {
-                listToDeleteID = listID
-                showingDeleteListConfirmation = true
+            Button {
+                confirmListDeletion(listID)
             } label: {
-                Label(localizedString("Delete List", locale: locale), systemImage: "trash")
-            }
-        }
-        // Accessibility: Context-menu operations are duplicated as named actions so
-        // VoiceOver and Voice Control do not need a long-press gesture to discover them.
-        .accessibilityAction(named: Text(localizedString("Rename List", locale: locale))) {
-            withAnimation(.smooth(duration: 0.2)) {
-                listManagementState.editMode = .active
-                beginInlineListRename(listID)
-            }
-        }
-        .accessibilityAction(named: Text(localizedString("Delete List", locale: locale))) {
-            listToDeleteID = listID
-            showingDeleteListConfirmation = true
-        }
-        // Accessibility: Native edit-mode drag handles remain unchanged visually; these
-        // actions provide the same reordering workflow without a drag gesture.
-        .accessibilityActions {
-            if let index = managedLists.firstIndex(where: { $0.rawValue == listID.rawValue }), index > 0 {
-                Button(localizedString("Move Up", locale: locale)) {
-                    moveListAccessibility(listID, direction: -1)
+                Label {
+                    Text(localizedString("Delete List", locale: locale))
+                } icon: {
+                    Image(systemName: "trash")
+                        .foregroundStyle(theme.colors.destructive)
                 }
             }
-
-            if let index = managedLists.firstIndex(where: { $0.rawValue == listID.rawValue }), index < managedLists.count - 1 {
-                Button(localizedString("Move Down", locale: locale)) {
-                    moveListAccessibility(listID, direction: 1)
-                }
-            }
+            .tint(theme.colors.destructive)
         }
     }
 
@@ -237,47 +219,63 @@ extension ContentView {
                 Image(systemName: "checkmark")
                     .fontWeight(.semibold)
                     .foregroundStyle(theme.colors.accent)
-                    .accessibilityHidden(true)
             }
         }
         .contentShape(Rectangle())
     }
 
+    // MARK: List Manager Toolbar
+
     private var listManagementCloseButton: some View {
-        // Accessibility: The explicit 44-point label makes the whole circular control tappable.
-        Button {
+        listManagementToolbarButton(
+            systemImage: "xmark"
+        ) {
             listManagementState.isPresented = false
-        } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(localizedString("Cancel", locale: locale))
     }
 
     private var listManagementDoneButton: some View {
-        // Accessibility: Match the close control's 44-point hit target.
-        Button {
+        listManagementToolbarButton(
+            systemImage: "checkmark"
+        ) {
             commitInlineListRename()
             listManagementState.editMode = .inactive
-        } label: {
-            Image(systemName: "checkmark")
+        }
+        .disabled(!isInlineListRenameValid)
+        .opacity(isInlineListRenameValid ? 1 : 0.35)
+    }
+
+    private func listManagementToolbarButton(
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundStyle(theme.colors.primaryText)
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(localizedString("Done", locale: locale))
     }
+
+    // MARK: List Manager Actions
 
     private func requestListDeletion(at offsets: IndexSet) {
         guard let index = offsets.first, managedLists.indices.contains(index) else { return }
-        listToDeleteID = managedLists[index]
+        confirmListDeletion(managedLists[index])
+    }
+
+    private func confirmListDeletion(_ listID: CityListID) {
+        listToDeleteID = listID
         showingDeleteListConfirmation = true
+    }
+
+    private func activateInlineListRename(_ listID: CityListID) {
+        withAnimation(.smooth(duration: 0.2)) {
+            listManagementState.editMode = .active
+            beginInlineListRename(listID)
+        }
     }
 
     private func beginInlineListRename(_ listID: CityListID) {
@@ -300,41 +298,25 @@ extension ContentView {
     private func commitInlineListRename() {
         guard let listID = listManagementState.renamingListID else { return }
         let trimmedName = listManagementState.renameText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !trimmedName.isEmpty {
-            weatherService.renameList(listID, to: trimmedName)
-            refreshListOrder()
-        }
+        guard !trimmedName.isEmpty else { return }
+        weatherService.renameList(listID, to: trimmedName)
+        refreshListOrder()
         listManagementState.renamingListID = nil
         listManagementState.renameText = ""
         inlineListNameFocused = false
     }
 
-    private func moveListAccessibility(_ listID: CityListID, direction: Int) {
-        guard let sourceIndex = managedLists.firstIndex(where: { $0.rawValue == listID.rawValue }) else { return }
-        let targetIndex = sourceIndex + direction
-        guard managedLists.indices.contains(targetIndex) else { return }
-
-        // Accessibility: Collection move destinations are insertion offsets; moving down
-        // one row therefore inserts after the target's original position.
-        let destination = direction < 0 ? targetIndex : targetIndex + 1
-        weatherService.moveLists(from: IndexSet(integer: sourceIndex), to: destination)
-        refreshListOrder()
+    private var isInlineListRenameValid: Bool {
+        guard listManagementState.renamingListID != nil else { return true }
+        return !listManagementState.renameText
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .isEmpty
     }
 
-    // MARK: - Accessibility - List Manager Navigation
-
-    private func dismissListManagementAccessibility() {
-        if listManagementState.showsCountryPicker {
-            listManagementState.showsCountryPicker = false
-        } else if listManagementState.showsContinentPicker {
-            listManagementState.showsContinentPicker = false
-        } else if listManagementState.showsAddOptions {
-            listManagementState.showsAddOptions = false
-        } else if listManagementState.editMode == .active {
-            commitInlineListRename()
-            listManagementState.editMode = .inactive
-        } else {
-            listManagementState.isPresented = false
-        }
+    private func cancelInlineListRename() {
+        listManagementState.renamingListID = nil
+        listManagementState.renameText = ""
+        inlineListNameFocused = false
     }
+
 }

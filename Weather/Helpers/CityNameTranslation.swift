@@ -37,8 +37,9 @@ enum CityNameLocalizationCatalog {
     }
 
     static func key(for city: City) -> String {
-        let latitude = String(format: "%.4f", city.latitude)
-        let longitude = String(format: "%.4f", city.longitude)
+        let stableLocale = Locale(identifier: "en_US_POSIX")
+        let latitude = String(format: "%.4f", locale: stableLocale, city.latitude)
+        let longitude = String(format: "%.4f", locale: stableLocale, city.longitude)
         return "\(city.name)|\(city.country)|\(latitude)|\(longitude)"
     }
 
@@ -48,4 +49,11 @@ enum CityNameLocalizationCatalog {
         if identifier.hasPrefix("zh-Hans") { return "zh-Hans" }
         return identifier.components(separatedBy: CharacterSet(charactersIn: "_-@")).first ?? "en"
     }
+}
+
+/// Single source of truth for every user-visible city name in the app.
+func localizedCityDisplayName(for city: City, locale: Locale) -> String {
+    CityListID.customCityName(for: city)
+        ?? CityNameLocalizationCatalog.localizedName(for: city, locale: locale)
+        ?? city.localizedName(locale: locale)
 }

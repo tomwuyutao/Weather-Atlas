@@ -253,14 +253,15 @@ class AppTheme {
         }
     }
 
-    /// The current system color scheme, kept in sync by ThemeContent.
-    /// Allows non-view code (e.g. view modifiers) to reactively read the correct colors.
+    /// The effective app color scheme, kept in sync by ThemeContent after the app's
+    /// appearance preference has been applied. This lets non-view code and view
+    /// modifiers use the exact same palette as the current SwiftUI environment.
     var systemScheme: ColorScheme = .light
 
     /// The current system contrast preference, kept in sync by ThemeContent.
     var systemContrast: ColorSchemeContrast = .standard
 
-    /// Resolved colors using the stored system scheme — reactive, used everywhere.
+    /// Resolved colors using the stored effective scheme — reactive, used everywhere.
     var colors: ThemeColors {
         resolvedColors(for: systemScheme, contrast: systemContrast)
     }
@@ -274,7 +275,7 @@ class AppTheme {
     }
 
     /// The ColorScheme to apply to the window (nil = follow system).
-    func preferredColorScheme(for systemScheme: ColorScheme) -> ColorScheme? {
+    func preferredColorScheme(for _: ColorScheme) -> ColorScheme? {
         switch style {
         case .light: return .light
         case .dark: return .dark
@@ -288,19 +289,9 @@ class AppTheme {
     }
 
     private func resolvedColors(
-        for systemScheme: ColorScheme,
+        for resolvedScheme: ColorScheme,
         contrast: ColorSchemeContrast
     ) -> ThemeColors {
-        let resolvedScheme: ColorScheme
-        switch style {
-        case .light:
-            resolvedScheme = .light
-        case .dark:
-            resolvedScheme = .dark
-        case .automatic:
-            resolvedScheme = systemScheme
-        }
-
         if contrast == .increased {
             return resolvedScheme == .dark ? .increasedContrastDark : .increasedContrastLight
         }
@@ -380,6 +371,22 @@ private struct WeatherIconStyleModifier: ViewModifier {
 
 // Accessibility: These surface modifiers replace translucency with opaque, outlined surfaces
 // when Reduce Transparency or Increase Contrast is enabled.
+private extension View {
+    func highLegibilityGlass<Shape: InsettableShape>(
+        theme: ThemeColors,
+        contrast: ColorSchemeContrast,
+        in shape: Shape
+    ) -> some View {
+        background(theme.glassFill, in: shape)
+            .overlay(
+                shape.stroke(
+                    theme.primaryText.opacity(contrast == .increased ? 0.90 : 0.18),
+                    lineWidth: contrast == .increased ? 1 : 0.8
+                )
+            )
+    }
+}
+
 private struct ThemedPopoverBackgroundModifier: ViewModifier {
     @Environment(\.appTheme) private var theme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
@@ -415,14 +422,11 @@ private struct ThemedGlassModifier<Shape: InsettableShape>: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if reduceTransparency || colorSchemeContrast == .increased {
-            content
-                .background(theme.colors.glassFill, in: shape)
-                .overlay(
-                    shape.stroke(
-                        theme.colors.primaryText.opacity(colorSchemeContrast == .increased ? 0.90 : 0.18),
-                        lineWidth: colorSchemeContrast == .increased ? 1 : 0.8
-                    )
-                )
+            content.highLegibilityGlass(
+                theme: theme.colors,
+                contrast: colorSchemeContrast,
+                in: shape
+            )
         } else if #available(iOS 26.0, *) {
             content.glassEffect(.regular.interactive(), in: shape)
         } else {
@@ -443,14 +447,11 @@ private struct DetailTranslucentCardModifier<Shape: InsettableShape>: ViewModifi
     @ViewBuilder
     func body(content: Content) -> some View {
         if reduceTransparency || colorSchemeContrast == .increased {
-            content
-                .background(theme.colors.glassFill, in: shape)
-                .overlay(
-                    shape.stroke(
-                        theme.colors.primaryText.opacity(colorSchemeContrast == .increased ? 0.90 : 0.18),
-                        lineWidth: colorSchemeContrast == .increased ? 1 : 0.8
-                    )
-                )
+            content.highLegibilityGlass(
+                theme: theme.colors,
+                contrast: colorSchemeContrast,
+                in: shape
+            )
         } else if #available(iOS 26.0, *) {
             content
                 .background(

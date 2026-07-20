@@ -137,42 +137,45 @@ enum AppWeatherCondition: String, Codable {
         self == .clear || self == .partlySunny
     }
 
-    static func fromWeatherSymbol(_ symbolName: String) -> AppWeatherCondition {
-        let symbol = symbolName.lowercased()
+    static func fromWeatherSymbol(_ symbolName: String) -> AppWeatherCondition? {
+        guard let classification = WeatherSymbolClassification.resolve(symbolName) else {
+            return nil
+        }
 
-        if symbol.contains("moon") { return .night }
-        if symbol.contains("drizzle") { return .drizzle }
-        if symbol.contains("rain") || symbol.contains("thunderstorm") || symbol.contains("storm") { return .rain }
-        if symbol.contains("snow") || symbol.contains("sleet") || symbol.contains("flurr") { return .snow }
-        if symbol.contains("wind") || symbol.contains("hurricane") || symbol.contains("tropicalstorm") { return .wind }
-        if symbol.contains("fog") || symbol.contains("haze") || symbol.contains("smoke") { return .fog }
-        if symbol.contains("cloud") && symbol.contains("sun") { return .partlySunny }
-        if symbol.contains("sun.max") || symbol == "sun" || symbol == "sun.fill" { return .clear }
-        if symbol.contains("partly") && symbol.contains("cloud") { return .partlyCloudy }
-        if symbol.contains("cloud") { return .cloudy }
-        return .cloudy
+        switch classification {
+        case .clear: return .clear
+        case .partlySunny: return .partlySunny
+        case .partlyCloudy: return .partlyCloudy
+        case .cloudy: return .cloudy
+        case .rain: return .rain
+        case .drizzle: return .drizzle
+        case .snow: return .snow
+        case .fog: return .fog
+        case .wind: return .wind
+        case .night: return .night
+        }
     }
 
     var displayIcon: String {
         switch self {
         case .clear:
-            return "sun.max.fill"
-        case .partlySunny:
-            return "cloud.sun"
-        case .partlyCloudy, .cloudy:
-            return "cloud"
+            return WeatherIconSymbol.clear
+        case .partlySunny, .partlyCloudy:
+            return WeatherIconSymbol.partlyCloudy
+        case .cloudy:
+            return WeatherIconSymbol.cloudy
         case .rain:
-            return "cloud.rain"
+            return WeatherIconSymbol.rain
         case .drizzle:
-            return "cloud.drizzle"
+            return WeatherIconSymbol.drizzle
         case .snow:
-            return "cloud.snow"
+            return WeatherIconSymbol.snow
         case .fog:
-            return "cloud.fog"
+            return WeatherIconSymbol.fog
         case .wind:
-            return "wind"
+            return WeatherIconSymbol.wind
         case .night:
-            return "moon.fill"
+            return WeatherIconSymbol.night
         }
     }
 }
@@ -315,7 +318,11 @@ class WeatherService {
             return
         }
         
-        cacheData(weatherData, for: targetListID, updateFetchDate: true)
+        if weatherData.count == citiesToFetch.count {
+            cacheData(weatherData, for: targetListID, updateFetchDate: true)
+        } else {
+            invalidateIncompleteCache(for: targetListID)
+        }
     }
     
     func refreshWeather() async {
@@ -354,6 +361,7 @@ class WeatherService {
 
         activeFetchTask?.cancel()
         activeListID = listID
+        errorMessage = nil
         UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
         lastFetchDate = nil
         loadingProgress = 0
@@ -411,14 +419,21 @@ class WeatherService {
     }
 
     func citiesMatch(_ lhs: City, _ rhs: City) -> Bool {
-        if lhs.name.caseInsensitiveCompare(rhs.name) == .orderedSame,
-           lhs.country.caseInsensitiveCompare(rhs.country) == .orderedSame {
-            return true
+        guard cityIdentityName(lhs.name) == cityIdentityName(rhs.name) else {
+            return false
         }
-
         let lhsLocation = CLLocation(latitude: lhs.latitude, longitude: lhs.longitude)
         let rhsLocation = CLLocation(latitude: rhs.latitude, longitude: rhs.longitude)
-        return lhsLocation.distance(from: rhsLocation) <= 5_000
+        return lhsLocation.distance(from: rhsLocation) < 5_000
+    }
+
+    /// City identity keeps spelling, letter case, and diacritics significant.
+    /// Trimming and canonical composition prevent invisible whitespace and
+    /// equivalent Unicode encodings from producing accidental mismatches.
+    private func cityIdentityName(_ name: String) -> String {
+        name
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .precomposedStringWithCanonicalMapping
     }
 
     private func finishPrioritizedListFetch(
@@ -442,53 +457,46 @@ class WeatherService {
         guard !Task.isCancelled, activeListID == listID else { return }
         isLoading = false
         loadingProgress = 1
-        lastFetchDate = Date()
         weatherDataByListID[listID.rawValue] = weatherData
-        cacheData(weatherData, for: listID, updateFetchDate: true)
+        if weatherData.count == totalCount {
+            cacheData(weatherData, for: listID, updateFetchDate: true)
+        } else {
+            invalidateIncompleteCache(for: listID)
+        }
     }
     
     func weatherData(for listID: CityListID) -> [CityWeather] {
         return weatherDataByListID[listID.rawValue] ?? []
     }
 
-    func fetchWeatherForList(_ listID: CityListID) async {
-        errorMessage = nil
-        if let existingData = weatherDataByListID[listID.rawValue],
-           !existingData.isEmpty,
-           isWeatherDataFresh(for: listID),
-           cachedWeatherDataLooksCurrent(existingData, for: listID) {
-            return
-        }
-        if let cachedData = loadCachedWeatherData(for: listID), isWeatherDataFresh(for: listID) {
-            weatherDataByListID[listID.rawValue] = cachedData
-            return
-        }
-        let citiesToFetch = loadSavedCities(for: listID) ?? listID.defaultCities
-        guard !citiesToFetch.isEmpty else { return }
-        
-        var weatherData: [CityWeather] = []
-        for city in citiesToFetch {
-            do {
-                let resolvedCity = try await resolvedCity(for: city)
-                let location = CLLocation(latitude: resolvedCity.latitude, longitude: resolvedCity.longitude)
-                let weather = try await weatherService.weather(for: location)
-                let cityWeather = try await convertWeatherKitData(weather: weather, for: resolvedCity)
-                weatherData.append(cityWeather)
-            } catch {
-                report(error)
-            }
-        }
-        weatherDataByListID[listID.rawValue] = weatherData
-        cacheData(weatherData, for: listID, updateFetchDate: true)
-    }
-    
     func report(_ error: Error) {
         #if DEBUG
         print("[WeatherService] \(error.localizedDescription)")
         #endif
 
         let locale = Locale(identifier: UserDefaults.standard.string(forKey: "appLanguage") ?? Locale.autoupdatingCurrent.identifier)
-        errorMessage = localizedString("We couldn't load weather. Please try again.", locale: locale)
+        if let serviceError = error as? WeatherServiceError {
+            switch serviceError {
+            case .undefinedTimeZone(let city):
+                errorMessage = weatherDataIssueMessage(
+                    .missingTimeZone,
+                    cityName: city,
+                    locale: locale
+                )
+            case .unresolvedPlace(let city):
+                errorMessage = String(
+                    format: localizedString("Missing place data for %@.", locale: locale),
+                    locale: locale,
+                    city
+                )
+            }
+        } else {
+            errorMessage = String(
+                format: localizedString("Weather data could not be loaded: %@", locale: locale),
+                locale: locale,
+                error.localizedDescription
+            )
+        }
     }
 
     func reportDeveloperWarning(title: String, message: String) {
@@ -502,8 +510,9 @@ class WeatherService {
     
     func convertWeatherKitData(weather: Weather, for city: City, timeZone: TimeZone) -> CityWeather {
         let currentTemp = weather.currentWeather.temperature.value
+        let currentSymbolName = weather.currentWeather.symbolName
         
-        let dailyForecasts = weather.dailyForecast.forecast.prefix(10).enumerated().map { (index, day) -> DailyForecast in
+        let dailyForecasts = weather.dailyForecast.forecast.enumerated().map { (index, day) -> DailyForecast in
             let daySymbol = day.symbolName
             let daytimeForecast = day.daytimeForecast
             let hourlyForecasts = generateHourlyFromDaily(
@@ -521,7 +530,6 @@ class WeatherService {
                 hourlyForecasts: hourlyForecasts,
                 cloudCover: daytimeForecast.cloudCover,
                 precipitationChance: daytimeForecast.precipitationChance,
-                windSpeed: daytimeForecast.wind.speed.converted(to: .kilometersPerHour).value,
                 uvIndex: day.uvIndex.value,
                 sunrise: day.sun.sunrise,
                 sunset: day.sun.sunset
@@ -531,6 +539,7 @@ class WeatherService {
         return CityWeather(
             city: city,
             temperature: currentTemp,
+            currentSymbolName: currentSymbolName,
             dailyForecasts: Array(dailyForecasts),
             timeZone: timeZone
         )
@@ -558,7 +567,6 @@ class WeatherService {
     func fetchWeatherForCity(_ city: City) async -> CityWeather? {
         do {
             // Fetch weather for the city
-            errorMessage = nil
             let resolvedCity = try await resolvedCity(for: city)
             let location = CLLocation(latitude: resolvedCity.latitude, longitude: resolvedCity.longitude)
             let weather = try await weatherService.weather(for: location)
@@ -574,6 +582,7 @@ class WeatherService {
     }
 
     func refreshWeatherForCity(_ cityWeather: CityWeather) async -> CityWeather? {
+        errorMessage = nil
         guard let fetchedWeather = await fetchWeatherForCity(cityWeather.city) else {
             return nil
         }
@@ -632,7 +641,7 @@ struct City: Identifiable, Hashable, Codable {
     
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
+        id = try container.decode(UUID.self, forKey: .id)
         name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
         country = try container.decodeIfPresent(String.self, forKey: .country) ?? ""
         latitude = try container.decode(Double.self, forKey: .latitude)
@@ -654,6 +663,9 @@ struct CityWeather: Identifiable, Hashable {
     let id: UUID
     var city: City
     let temperature: Double
+    /// WeatherKit's actual current-condition symbol. This remains optional so
+    /// older caches decode without inventing a replacement condition.
+    let currentSymbolName: String?
     let dailyForecasts: [DailyForecast]
     let timeZone: TimeZone
 
@@ -661,12 +673,14 @@ struct CityWeather: Identifiable, Hashable {
         id: UUID = UUID(),
         city: City,
         temperature: Double,
+        currentSymbolName: String? = nil,
         dailyForecasts: [DailyForecast],
         timeZone: TimeZone
     ) {
         self.id = id
         self.city = city
         self.temperature = temperature
+        self.currentSymbolName = currentSymbolName
         self.dailyForecasts = dailyForecasts
         self.timeZone = timeZone
     }
@@ -676,6 +690,7 @@ struct CityWeather: Identifiable, Hashable {
             id: id,
             city: city,
             temperature: temperature,
+            currentSymbolName: currentSymbolName,
             dailyForecasts: dailyForecasts,
             timeZone: timeZone
         )
@@ -689,24 +704,113 @@ struct CityWeather: Identifiable, Hashable {
         hasher.combine(id)
     }
     
-    func forecast(for dayOffset: Int) -> DailyForecast {
-        if let forecast = dailyForecasts.first(where: { $0.dayOffset == dayOffset }) {
-            return forecast
+    /// Finds the forecast whose city-local calendar date matches the date shown
+    /// by the app-wide selector. This keeps a label such as "July 19" literal
+    /// across every city instead of silently substituting a neighboring date.
+    func forecastIfAvailable(
+        on selectedDate: Date,
+        selectionCalendar: Calendar = .current
+    ) -> DailyForecast? {
+        let selectedComponents = selectionCalendar.dateComponents(
+            [.year, .month, .day],
+            from: selectedDate
+        )
+        var cityCalendar = selectionCalendar
+        cityCalendar.timeZone = timeZone
+
+        return dailyForecasts.first { forecast in
+            let forecastComponents = cityCalendar.dateComponents(
+                [.year, .month, .day],
+                from: forecast.date
+            )
+            return forecastComponents.year == selectedComponents.year
+                && forecastComponents.month == selectedComponents.month
+                && forecastComponents.day == selectedComponents.day
+        }
+    }
+
+    /// A boundary omission occurs when the literal selected date lies outside
+    /// the real forecast range returned for this city. WeatherKit can return
+    /// different range lengths for different cities, so no fixed day count is
+    /// required here. A gap inside the returned range is still an error.
+    func isForecastBoundaryOmission(
+        on selectedDate: Date,
+        selectionCalendar: Calendar = .current
+    ) -> Bool {
+        guard forecastIfAvailable(on: selectedDate, selectionCalendar: selectionCalendar) == nil else {
+            return false
         }
 
-        DeveloperWarningCenter.showOnce(
-            key: "missing-forecast-day-\(id.uuidString)-\(dayOffset)",
-            title: "Forecast Day Missing",
-            message: "\(city.localizedName()) has no forecast data for day \(dayOffset). The app is showing its first available forecast instead."
-        )
-        return dailyForecasts.first ?? .unavailable(
-            dayOffset: dayOffset,
-            temperature: temperature,
-            timeZone: timeZone
-        )
+        let selectedDay = selectionCalendar.startOfDay(for: selectedDate)
+        let forecastDates = dailyForecasts.compactMap {
+            selectionDate(for: $0, selectionCalendar: selectionCalendar)
+        }
+        guard let firstDate = forecastDates.min(), let lastDate = forecastDates.max() else {
+            return false
+        }
+        return selectedDay < firstDate || selectedDay > lastDate
     }
-    
+
+    /// Finds the forecast for the city's local calendar day containing an
+    /// absolute instant, used for city-specific current-day data such as widgets.
+    func forecastForLocalDate(containing instant: Date) -> DailyForecast? {
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        return dailyForecasts.first { calendar.isDate($0.date, inSameDayAs: instant) }
+    }
+
+    /// Converts the forecast's city-local year, month, and day into the device
+    /// calendar used by the app-wide selector. The resulting union can be wider
+    /// than one city's range when a list crosses several time zones.
+    func selectionDate(
+        for forecast: DailyForecast,
+        selectionCalendar: Calendar = .current
+    ) -> Date? {
+        var cityCalendar = selectionCalendar
+        cityCalendar.timeZone = timeZone
+        let components = cityCalendar.dateComponents(
+            [.year, .month, .day],
+            from: forecast.date
+        )
+        guard let year = components.year,
+              let month = components.month,
+              let day = components.day,
+              let date = selectionCalendar.date(
+                from: DateComponents(year: year, month: month, day: day)
+              ) else {
+            return nil
+        }
+        return selectionCalendar.startOfDay(for: date)
+    }
+
 }
+
+/// A city may have a shorter real WeatherKit range than its peers, or its local
+/// range may shift at a time-zone boundary. Both are expected omissions when a
+/// peer supplies the selected date. Empty forecasts and internal gaps remain
+/// genuine missing-data errors.
+func isExpectedForecastBoundaryOmission(
+    for cityWeather: CityWeather,
+    among cities: [CityWeather],
+    on selectedDate: Date,
+    selectionCalendar: Calendar = .current
+) -> Bool {
+    guard cities.contains(where: {
+        $0.id != cityWeather.id
+            && $0.forecastIfAvailable(
+                on: selectedDate,
+                selectionCalendar: selectionCalendar
+            ) != nil
+    }) else {
+        return false
+    }
+
+    return cityWeather.isForecastBoundaryOmission(
+        on: selectedDate,
+        selectionCalendar: selectionCalendar
+    )
+}
+
 // MARK: - Forecast Models
 
 struct DailyForecast: Identifiable {
@@ -719,38 +823,18 @@ struct DailyForecast: Identifiable {
     let hourlyForecasts: [HourlyForecast]
     let cloudCover: Double?  // 0.0 to 1.0, nil if unavailable
     let precipitationChance: Double?  // 0.0 to 1.0, nil if unavailable
-    let windSpeed: Double?      // km/h, full-day wind speed
     let uvIndex: Int?           // 0–11+
     let sunrise: Date?
     let sunset: Date?
     
-    var weatherIcon: String {
-        AppWeatherCondition.fromWeatherSymbol(symbolName).displayIcon
+    var weatherIcon: String? {
+        AppWeatherCondition.fromWeatherSymbol(symbolName)?.displayIcon
     }
     
     var cloudCoverPercent: Int? {
-        cloudCover.map { Int($0 * 100) }
+        cloudCover.map { Int(($0 * 100).rounded()) }
     }
 
-    static func unavailable(dayOffset: Int, temperature: Double, timeZone: TimeZone) -> DailyForecast {
-        var calendar = Calendar.current
-        calendar.timeZone = timeZone
-        let date = calendar.date(byAdding: .day, value: dayOffset, to: Date()) ?? Date()
-        return DailyForecast(
-            date: date,
-            dayOffset: dayOffset,
-            dailyLow: temperature,
-            dailyHigh: temperature,
-            symbolName: "cloud",
-            hourlyForecasts: [],
-            cloudCover: nil,
-            precipitationChance: nil,
-            windSpeed: nil,
-            uvIndex: nil,
-            sunrise: nil,
-            sunset: nil
-        )
-    }
 }
 
 struct HourlyForecast: Identifiable {

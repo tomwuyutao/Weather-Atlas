@@ -8,24 +8,80 @@
 import Foundation
 
 enum SunninessScoring {
-    static func condition(for symbolName: String) -> AppWeatherCondition {
+    struct SunnyHoursData {
+        let hours: [HourlyForecast]
+        let bounds: SunnyHoursChartBounds
+    }
+
+    static func condition(for symbolName: String) -> AppWeatherCondition? {
         AppWeatherCondition.fromWeatherSymbol(symbolName)
     }
 
-    static func daytimeHours(for forecast: DailyForecast, timeZone: TimeZone) -> [HourlyForecast] {
-        daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
+    static func sunnyHoursData(
+        for forecast: DailyForecast,
+        timeZone: TimeZone
+    ) -> Result<SunnyHoursData, WeatherDataIssue> {
+        if let issue = WeatherDataIssue.missingSunEvent(
+            sunrise: forecast.sunrise,
+            sunset: forecast.sunset
+        ) {
+            return .failure(issue)
+        }
+        guard let sunrise = forecast.sunrise,
+              let sunset = forecast.sunset,
+              let bounds = SunnyHoursChartBounds.daylight(
+                sunrise: sunrise,
+                sunset: sunset,
+                timeZone: timeZone
+              ) else {
+            return .failure(.missingSunriseOrSunset)
+        }
+        guard !forecast.hourlyForecasts.isEmpty else {
+            return .failure(.missingHourlyData)
+        }
+        let daylightHours = forecast.hourlyForecasts
+            .filter { hourlyForecast in
+                SunnyHoursChartBounds.hourlyIntervalOverlapsDaylight(
+                    at: hourlyForecast.date,
+                    sunrise: sunrise,
+                    sunset: sunset,
+                    timeZone: timeZone
+                )
+            }
+            .sorted { $0.date < $1.date }
+
+        guard !daylightHours.isEmpty else {
+            return .failure(.missingHourlyData)
+        }
+        if let unknownHour = daylightHours.first(where: {
+            condition(for: $0.symbolName) == nil
+        }) {
+            return .failure(.unknownWeatherSymbol(unknownHour.symbolName))
+        }
+        return .success(SunnyHoursData(hours: daylightHours, bounds: bounds))
+    }
+
+    static func daytimeHours(for forecast: DailyForecast, timeZone: TimeZone) -> [HourlyForecast]? {
+        guard case .success(let data) = sunnyHoursData(for: forecast, timeZone: timeZone) else {
+            return nil
+        }
+        return data.hours
     }
 
     static func hasDaytimeHourlyScoreData(for forecast: DailyForecast, timeZone: TimeZone) -> Bool {
-        let daylightHours = daytimeHourlyForecasts(for: forecast, timeZone: timeZone)
-        return !daylightHours.isEmpty
+        guard case .success = sunnyHoursData(for: forecast, timeZone: timeZone) else {
+            return false
+        }
+        return true
     }
 
     static func longestSunnyHourRange(in forecasts: [HourlyForecast], timeZone: TimeZone) -> ClosedRange<Int>? {
         let sunnyHours = forecasts.compactMap { forecast in
-            condition(for: forecast.symbolName).isSunnyOrPartlySunny ? forecast.hour(in: timeZone) : nil
+            condition(for: forecast.symbolName)?.isSunnyOrPartlySunny == true
+                ? forecast.hour(in: timeZone)
+                : nil
         }
-        return contiguousHourRanges(sunnyHours).reduce(nil) { longest, range in
+        return SunnyHoursFormatting.contiguousRanges(in: sunnyHours).reduce(nil) { longest, range in
             guard let longest else { return range }
             return range.upperBound - range.lowerBound > longest.upperBound - longest.lowerBound
                 ? range
@@ -33,62 +89,21 @@ enum SunninessScoring {
         }
     }
 
-    static func contiguousHourRanges(_ hours: [Int]) -> [ClosedRange<Int>] {
-        let sortedHours = hours.sorted()
-        guard let firstHour = sortedHours.first else { return [] }
+    /// Locale-aware compact hour used by summary cards. This follows the app's
+    /// selected locale, including its 12-hour/24-hour convention and day periods.
+    static func compactHourLabel(_ hour: Int, locale: Locale) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: "j", options: 0, locale: locale)
 
-        var ranges: [ClosedRange<Int>] = []
-        var start = firstHour
-        var end = firstHour
-
-        for hour in sortedHours.dropFirst() {
-            if hour == end + 1 {
-                end = hour
-            } else {
-                ranges.append(start...end)
-                start = hour
-                end = hour
-            }
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.hour = ((hour % 24) + 24) % 24
+        components.minute = 0
+        guard let date = components.date else {
+            return SunnyHoursFormatting.chartHourLabel(hour)
         }
-
-        ranges.append(start...end)
-        return ranges
+        return formatter.string(from: date)
     }
 
-    static func formattedHour(_ hour: Int, timeZone _: TimeZone, locale _: Locale) -> String {
-        String(format: "%02d", hour % 24)
-    }
-
-    private static func daytimeHourlyForecasts(for forecast: DailyForecast, timeZone: TimeZone) -> [HourlyForecast] {
-        guard !forecast.hourlyForecasts.isEmpty else { return [] }
-        guard let sunrise = forecast.sunrise,
-              let sunset = forecast.sunset else {
-            DeveloperWarningCenter.showOnce(
-                key: "daytime-hours-fallback-\(timeZone.identifier)-\(forecast.dayOffset)",
-                title: "Sunrise or Sunset Missing",
-                message: "Forecast day \(forecast.dayOffset) has no sunrise or sunset data. The app is using 6 AM to 9 PM as its daytime range."
-            )
-            return forecast.hourlyForecasts
-                .filter { (6...21).contains($0.hour(in: timeZone)) }
-                .sorted { $0.date < $1.date }
-        }
-
-        let sunriseHour = fractionalHour(for: sunrise, timeZone: timeZone)
-        let sunsetHour = fractionalHour(for: sunset, timeZone: timeZone)
-
-        return forecast.hourlyForecasts
-            .filter { hourlyForecast in
-                let hourStart = Double(hourlyForecast.hour(in: timeZone))
-                let hourEnd = hourStart + 1
-                return hourEnd > sunriseHour && hourStart < sunsetHour
-            }
-            .sorted { $0.date < $1.date }
-    }
-
-    private static func fractionalHour(for date: Date, timeZone: TimeZone) -> Double {
-        var calendar = Calendar.current
-        calendar.timeZone = timeZone
-        let components = calendar.dateComponents([.hour, .minute], from: date)
-        return Double(components.hour ?? 0) + Double(components.minute ?? 0) / 60
-    }
 }

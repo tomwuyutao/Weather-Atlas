@@ -12,21 +12,25 @@ import SwiftUI
 
 extension ContentView {
     var listView: some View {
-        ZStack(alignment: .top) {
-            nativeCityList
+        GeometryReader { geometry in
+            let maxContentWidth = cityListContentMaxWidth(for: geometry.size)
 
-            listHeader
+            ZStack(alignment: .top) {
+                nativeCityList(maxContentWidth: maxContentWidth)
+
+                listHeader(maxContentWidth: maxContentWidth)
+            }
+            .environment(\.defaultMinListRowHeight, 0)
+            .background(theme.colors.background.ignoresSafeArea())
+            .navigationTitle(toolbarTitle)
+            .navigationBarBackButtonHidden(true)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .animation(.smooth(duration: 0.24), value: listEditMode)
         }
-        .environment(\.defaultMinListRowHeight, 0)
-        .background(theme.colors.background.ignoresSafeArea())
-        .navigationTitle(toolbarTitle)
-        .navigationBarBackButtonHidden(true)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(.hidden, for: .navigationBar)
-        .animation(.smooth(duration: 0.24), value: listEditMode)
     }
 
-    private var nativeCityList: some View {
+    private func nativeCityList(maxContentWidth: CGFloat) -> some View {
         List {
             if listEditMode {
                 ForEach(sortedListCandidates) { candidate in
@@ -48,9 +52,24 @@ extension ContentView {
                     selectionAction: { candidate in
                         presentDetail(for: candidate.cityWeather)
                     },
-                    contextMenuListID: isShowingAllLists ? nil : weatherService.activeListID,
-                    usesAggregateSources: isShowingAllLists
+                    contextMenuListID: weatherService.activeListID
                 )
+            }
+
+            let droppedCityCount = expectedForecastBoundaryOmissionCount(
+                in: forecastDateSourceCities
+            )
+            if droppedCityCount > 0 {
+                forecastAvailabilityNote(droppedCityCount: droppedCityCount)
+                    .padding(.leading, 5)
+                    .padding(.top, 16)
+                    .padding(.bottom, 8)
+                    .cityListNativeRowStyle(background: theme.colors.background)
+            }
+
+            if let explanation = missingForecastExplanation(for: forecastDateSourceCities) {
+                WeatherDataUnavailableNotice(message: explanation)
+                    .cityListNativeRowStyle(background: theme.colors.background)
             }
         }
         .listStyle(.plain)
@@ -60,55 +79,49 @@ extension ContentView {
         .environment(\.editMode, .constant(listEditMode ? .active : .inactive))
         // Keep the ranked sequence as one readable column on wide windows.
         // The outer flexible frame centers it without changing iPhone sizing.
-        .frame(maxWidth: cityListContentMaxWidth)
+        .frame(maxWidth: maxContentWidth)
         .frame(maxWidth: .infinity)
     }
 
-    private var listHeader: some View {
+    private func listHeader(maxContentWidth: CGFloat) -> some View {
         topToolbar {
             listTopToolbarActions
         }
         .padding(.horizontal, 16)
         .padding(.top, 12)
-        .frame(maxWidth: cityListContentMaxWidth)
+        .frame(maxWidth: maxContentWidth)
         .frame(maxWidth: .infinity)
-        // Accessibility: Announce the persistent list controls before scrolling rows.
-        .accessibilitySortPriority(1)
     }
 
-    private var cityListContentMaxWidth: CGFloat {
-        760
+    private func cityListContentMaxWidth(for size: CGSize) -> CGFloat {
+        // A narrower landscape iPad column keeps a long ranked list easy to scan.
+        usesIPadLandscapeLayout(for: size) ? 680 : 760
     }
 
     private var sunninessGroupedCandidateRows: some View {
         sunninessGroupedCandidateRows(
             sunninessCandidateGroups,
-            contextMenuListID: isShowingAllLists ? nil : weatherService.activeListID,
-            usesAggregateSources: isShowingAllLists
+            contextMenuListID: weatherService.activeListID
         )
     }
 
     @ViewBuilder
     private func sunninessGroupedCandidateRows(
         _ groups: [SunninessCandidateGroup],
-        contextMenuListID: CityListID?,
-        usesAggregateSources: Bool = false
+        contextMenuListID: CityListID?
     ) -> some View {
         ForEach(Array(groups.enumerated()), id: \.element.id) { groupIndex, group in
             HStack(spacing: CityListLayout.columnSpacing) {
-                // Accessibility: The weather symbol is decorative because the
-                // localized group title is exposed as a heading below.
                 Image(systemName: group.icon)
                     .font(.body.weight(.semibold))
                     .weatherIconStyle(for: group.icon)
                     .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
-                    .accessibilityHidden(true)
 
                 Text(group.title.replacingOccurrences(of: "\n", with: " "))
                     .font(.body.weight(.bold))
                     .foregroundStyle(theme.colors.secondaryText)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.72)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
 
                 Spacer(minLength: 0)
             }
@@ -117,9 +130,6 @@ extension ContentView {
             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             .listRowSeparator(.hidden)
             .listRowBackground(theme.colors.background)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(group.title.replacingOccurrences(of: "\n", with: " "))
-            .accessibilityAddTraits(.isHeader)
 
             Rectangle()
                 .fill(theme.colors.secondaryText.opacity(0.16))
@@ -129,9 +139,6 @@ extension ContentView {
                 .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
                 .listRowSeparator(.hidden)
                 .listRowBackground(theme.colors.background)
-                // Accessibility: The separator conveys no information beyond the
-                // heading and must not interrupt row-by-row VoiceOver navigation.
-                .accessibilityHidden(true)
 
             let rankOffset = groups
                 .prefix(groupIndex)
@@ -145,8 +152,7 @@ extension ContentView {
                 selectionAction: { candidate in
                     presentDetail(for: candidate.cityWeather)
                 },
-                contextMenuListID: contextMenuListID,
-                usesAggregateSources: usesAggregateSources
+                contextMenuListID: contextMenuListID
             )
         }
     }
@@ -159,7 +165,7 @@ extension ContentView {
                         listEditMode = false
                     }
                 } label: {
-                    listToolbarActionIcon("checkmark", accessibilityLabel: localizedString("Done", locale: locale))
+                    listToolbarActionIcon("checkmark")
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, -6)
@@ -172,7 +178,7 @@ extension ContentView {
                         listEditMode = true
                     }
                 } label: {
-                    listToolbarActionIcon("pencil", accessibilityLabel: localizedString("Edit", locale: locale))
+                    listToolbarActionIcon("pencil")
                 }
                 .buttonStyle(.plain)
                 .padding(.horizontal, -6)
@@ -190,33 +196,23 @@ extension ContentView {
                 } label: {
                     primaryMenuLabel(mode.title(locale: locale), systemImage: selectedListSortMode == mode ? "checkmark" : mode.icon)
                 }
-                // Accessibility: Communicate the active sort independently of
-                // the visual checkmark shown in the menu label.
-                .accessibilityAddTraits(selectedListSortMode == mode ? .isSelected : [])
             }
         } label: {
-            listToolbarActionIcon("arrow.up.arrow.down", accessibilityLabel: localizedString("Sort", locale: locale))
+            listToolbarActionIcon("arrow.up.arrow.down")
         }
         .menuOrder(.fixed)
         .tint(theme.colors.accent)
         .buttonStyle(.plain)
         .padding(.horizontal, -6)
         .padding(.vertical, -4)
-        .accessibilityLabel(localizedString("Sort", locale: locale))
-        .accessibilityValue(selectedListSortMode.title(locale: locale))
     }
 
-    // MARK: - Accessibility - Toolbar Hit Targets
-
-    private func listToolbarActionIcon(_ systemImage: String, accessibilityLabel: String) -> some View {
+    private func listToolbarActionIcon(_ systemImage: String) -> some View {
         Image(systemName: systemImage)
             .font(.system(size: 21, weight: .regular))
             .foregroundStyle(theme.colors.primaryText)
-            // Accessibility: Provide the recommended control target without
-            // changing the visible SF Symbol or the surrounding glass capsule.
             .frame(width: 44, height: 44)
             .contentShape(Rectangle())
-            .accessibilityLabel(accessibilityLabel)
     }
 
     // MARK: - List Rows
@@ -226,6 +222,7 @@ extension ContentView {
         rank: Int?,
         showsConditionIcon: Bool = true,
         showsWeatherMetrics: Bool = true,
+        showsTemperature: Bool = true,
         cityRenameAction: (() -> Void)? = nil
     ) -> some View {
         sunnyCandidateRow(
@@ -234,6 +231,7 @@ extension ContentView {
             compact: true,
             showsConditionIcon: showsConditionIcon,
             showsWeatherMetrics: showsWeatherMetrics,
+            showsTemperature: showsTemperature,
             cityNameOverride: CityListID.customCityName(for: candidate.cityWeather.city)
                 ?? localizedCityName(for: candidate.cityWeather.city),
             cityRenameAction: cityRenameAction
@@ -246,20 +244,24 @@ extension ContentView {
         rankOffset: Int = 0,
         showsDividers: Bool,
         showsConditionIcon: Bool = true,
+        showsTemperature: Bool = true,
         selectionAction: ((SunnyCandidate) -> Void)?,
-        contextMenuListID: CityListID? = nil,
-        usesAggregateSources: Bool = false
+        contextMenuListID: CityListID? = nil
     ) -> some View {
         ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
             let rank = rankOffset + index + 1
             let menuListID = contextMenuListID
-                ?? (usesAggregateSources ? sourceListID(for: candidate.cityWeather) : nil)
 
             if let selectionAction, let menuListID {
                 Button {
                     selectionAction(candidate)
                 } label: {
-                    listRow(candidate, rank: rank, showsConditionIcon: showsConditionIcon)
+                    listRow(
+                        candidate,
+                        rank: rank,
+                        showsConditionIcon: showsConditionIcon,
+                        showsTemperature: showsTemperature
+                    )
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
@@ -267,17 +269,17 @@ extension ContentView {
                 } preview: {
                     listContextPreviewRow(candidate, rank: rank, showsConditionIcon: showsConditionIcon)
                 }
-                // Accessibility: Mirror long-press-only context-menu operations as
-                // standard VoiceOver/Voice Control actions on the city row.
-                .accessibilityActions {
-                    listRowAccessibilityActions(for: candidate.cityWeather, in: menuListID)
-                }
                 .cityListNativeRowStyle(background: theme.colors.background)
             } else if let selectionAction {
                 Button {
                     selectionAction(candidate)
                 } label: {
-                    listRow(candidate, rank: rank, showsConditionIcon: showsConditionIcon)
+                    listRow(
+                        candidate,
+                        rank: rank,
+                        showsConditionIcon: showsConditionIcon,
+                        showsTemperature: showsTemperature
+                    )
                 }
                 .buttonStyle(.plain)
                 .cityListNativeRowStyle(background: theme.colors.background)
@@ -307,40 +309,9 @@ extension ContentView {
             .frame(width: 360)
     }
 
-    // MARK: - Accessibility - City Context Actions
-
-    @ViewBuilder
-    private func listRowAccessibilityActions(for city: CityWeather, in listID: CityListID) -> some View {
-        ForEach(managedLists.filter { $0.rawValue != listID.rawValue }) { destinationListID in
-            Button {
-                weatherService.moveCity(city, from: listID, to: destinationListID)
-                Haptics.lightImpact()
-            } label: {
-                Text("\(localizedString("Move", locale: locale)), \(destinationListID.localizedDisplayName(locale: locale))")
-            }
-        }
-
-        Button {
-            beginCityRename(city.city)
-        } label: {
-            Text(localizedString("Rename", locale: locale))
-        }
-
-        Button(role: .destructive) {
-            removeDisplayedCity(city, from: listID)
-        } label: {
-            Text(localizedString("Delete", locale: locale))
-        }
-    }
-
     private func deleteListCandidates(at offsets: IndexSet) {
-        let sourceCities = offsets.compactMap { index -> (CityWeather, CityListID)? in
-            let city = sortedListCandidates[index].cityWeather
-            guard let sourceListID = sourceListID(for: city) else { return nil }
-            return (city, sourceListID)
-        }
-        for (city, sourceListID) in sourceCities {
-            removeDisplayedCity(city, from: sourceListID)
+        for index in offsets where sortedListCandidates.indices.contains(index) {
+            weatherService.removeCity(sortedListCandidates[index].cityWeather)
         }
         Haptics.lightImpact()
     }

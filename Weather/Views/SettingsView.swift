@@ -11,68 +11,6 @@ import UIKit
 
 // MARK: - Unit Preferences
 
-enum DistanceUnit: String, CaseIterable {
-    case automatic = "automatic"
-    case kilometers = "kilometers"
-    case miles = "miles"
-    case metersPerSecond = "metersPerSecond"
-
-    static var systemDefault: DistanceUnit {
-        let measurementSystem = Locale.autoupdatingCurrent.measurementSystem
-        return (measurementSystem == .us || measurementSystem == .uk) ? .miles : .kilometers
-    }
-
-    static let defaultRawValue = DistanceUnit.systemDefault.rawValue
-
-    static var settingsCases: [DistanceUnit] {
-        [.miles, .kilometers, .metersPerSecond]
-    }
-
-    var resolved: DistanceUnit {
-        switch self {
-        case .automatic:
-            return Self.systemDefault
-        case .kilometers, .miles, .metersPerSecond:
-            return self
-        }
-    }
-
-    func windDisplayName(locale: Locale = .current) -> String {
-        switch resolved {
-        case .miles: return localizedString("Miles / Hour", locale: locale)
-        case .kilometers: return localizedString("Kilometers / Hour", locale: locale)
-        case .metersPerSecond: return localizedString("Meters / Second", locale: locale)
-        case .automatic: return resolved.windDisplayName(locale: locale)
-        }
-    }
-
-    var windAbbreviation: String {
-        switch resolved {
-        case .miles: return "mph"
-        case .kilometers: return "km/h"
-        case .metersPerSecond: return "m/s"
-        case .automatic: return resolved.windAbbreviation
-        }
-    }
-
-    private var speedUnit: UnitSpeed {
-        switch resolved {
-        case .kilometers: return .kilometersPerHour
-        case .miles: return .milesPerHour
-        case .metersPerSecond: return .metersPerSecond
-        case .automatic: return resolved.speedUnit
-        }
-    }
-
-    func displayWindSpeed(_ kmh: Double) -> String {
-        let speed = Measurement(value: kmh, unit: UnitSpeed.kilometersPerHour)
-            .converted(to: speedUnit)
-            .value
-        return "\(Int(speed.rounded())) \(windAbbreviation)"
-    }
-
-}
-
 enum TemperatureUnit: String, CaseIterable {
     case automatic = "automatic"
     case celsius = "celsius"
@@ -125,26 +63,17 @@ enum TemperatureUnit: String, CaseIterable {
         let temperature = Measurement(value: celsius, unit: UnitTemperature.celsius)
             .converted(to: measurementUnit)
             .value
-        return "\(Int(temperature))°"
+        return "\(Int(temperature.rounded()))°"
     }
 
 }
 
 enum AppTextSizeLevel: Int, CaseIterable {
-    case xSmall = 0
     case small = 1
     case medium = 2
     case large = 3
     case xLarge = 4
     case xxLarge = 5
-    case xxxLarge = 6
-    // Retained to interpret previously saved preferences. The app caps its
-    // rendered text and the settings control at Extra Large (.xxLarge).
-    case accessibility1 = 7
-    case accessibility2 = 8
-    case accessibility3 = 9
-    case accessibility4 = 10
-    case accessibility5 = 11
 
     static let defaultRawValue = AppTextSizeLevel.large.rawValue
     static let minimumDynamicTypeSize: DynamicTypeSize = .small
@@ -152,37 +81,31 @@ enum AppTextSizeLevel: Int, CaseIterable {
     static let minimumSelectableRawValue = AppTextSizeLevel.small.rawValue
     static let maximumSelectableRawValue = AppTextSizeLevel.xxLarge.rawValue
 
+    static func level(clamping rawValue: Int) -> AppTextSizeLevel {
+        let clampedRawValue = min(
+            max(rawValue, minimumSelectableRawValue),
+            maximumSelectableRawValue
+        )
+        return AppTextSizeLevel(rawValue: clampedRawValue) ?? .large
+    }
+
     var dynamicTypeSize: DynamicTypeSize {
         switch self {
-        case .xSmall: return .xSmall
         case .small: return .small
         case .medium: return .medium
         case .large: return .large
         case .xLarge: return .xLarge
         case .xxLarge: return .xxLarge
-        case .xxxLarge: return .xxxLarge
-        case .accessibility1: return .accessibility1
-        case .accessibility2: return .accessibility2
-        case .accessibility3: return .accessibility3
-        case .accessibility4: return .accessibility4
-        case .accessibility5: return .accessibility5
         }
     }
 
     func displayName(locale: Locale) -> String {
         switch self {
-        case .xSmall: return localizedString("Extra Small", locale: locale)
         case .small: return localizedString("Small", locale: locale)
         case .medium: return localizedString("Medium", locale: locale)
         case .large: return localizedString("Default", locale: locale)
         case .xLarge: return localizedString("Large", locale: locale)
         case .xxLarge: return localizedString("Extra Large", locale: locale)
-        case .xxxLarge: return localizedString("Extra Extra Large", locale: locale)
-        case .accessibility1: return "\(localizedString("Extra Extra Large", locale: locale)) +"
-        case .accessibility2: return "\(localizedString("Extra Extra Large", locale: locale)) ++"
-        case .accessibility3: return "\(localizedString("Extra Extra Large", locale: locale)) +++"
-        case .accessibility4: return "\(localizedString("Extra Extra Large", locale: locale)) ++++"
-        case .accessibility5: return "\(localizedString("Extra Extra Large", locale: locale)) +++++"
         }
     }
 }
@@ -193,7 +116,6 @@ struct SettingsView: View {
     // MARK: Stored Preferences
 
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.defaultRawValue
-    @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.defaultRawValue
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     @AppStorage("useSystemTextSize") private var useSystemTextSize: Bool = true
     @AppStorage("appTextSizeLevel") private var appTextSizeLevel: Int = AppTextSizeLevel.defaultRawValue
@@ -219,22 +141,12 @@ struct SettingsView: View {
         TemperatureUnit(rawValue: temperatureUnit) ?? .automatic
     }
 
-    private var selectedDistanceUnit: DistanceUnit {
-        DistanceUnit(rawValue: distanceUnit) ?? .automatic
-    }
-
     private var unitsSummary: String {
-        let windUnit: String
-        if locale.language.languageCode?.identifier == "en" {
-            windUnit = selectedDistanceUnit.resolved.windAbbreviation
-        } else {
-            windUnit = selectedDistanceUnit.resolved.windDisplayName(locale: locale)
-        }
-        return "\(selectedUnit.resolved.displayName(locale: locale)), \(windUnit)"
+        selectedUnit.resolved.displayName(locale: locale)
     }
 
     private var selectedTextSizeLevel: AppTextSizeLevel {
-        AppTextSizeLevel(rawValue: appTextSizeLevel) ?? .large
+        AppTextSizeLevel.level(clamping: appTextSizeLevel)
     }
 
     private var resolvedDynamicTypeSize: DynamicTypeSize {
@@ -264,11 +176,10 @@ struct SettingsView: View {
                     Text(localizedString("Settings", locale: locale))
                         .font(.headline.weight(.semibold))
                         .foregroundStyle(settingsTitleColor)
-                        .accessibilityAddTraits(.isHeader)
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
-                    settingsDoneButton
+                ToolbarItem(placement: .topBarLeading) {
+                    settingsCloseButton
                 }
             }
             .navigationDestination(isPresented: $showingAttributions) {
@@ -291,50 +202,24 @@ struct SettingsView: View {
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
         .presentationBackground(theme.colors.mapOcean)
-        // Accessibility: Apply the user's system or explicit Dynamic Type choice throughout Settings.
+        // Apply the user's system or explicit text-size choice throughout Settings.
         .environment(\.dynamicTypeSize, resolvedDynamicTypeSize)
-        // Accessibility: The two-finger scrub first leaves a nested settings page,
-        // then dismisses Settings from its root, matching the visible Back/Done controls.
-        .accessibilityAction(.escape) {
-            dismissSettingsAccessibility()
-        }
     }
 
     // MARK: Toolbar
 
     @ViewBuilder
-    private var settingsDoneButton: some View {
+    private var settingsCloseButton: some View {
         Button {
             dismiss()
         } label: {
-            Image(systemName: "checkmark")
+            Image(systemName: "xmark")
                 .font(.system(size: 18, weight: .semibold))
-                .if(!usesLiquidGlassForm) { view in
-                    view
-                        // Accessibility: The resolved background color contrasts with
-                        // both the light and dark accent fills in legacy styling.
-                        .foregroundStyle(theme.colors.background)
-                        // Accessibility: Provide the standard minimum touch target on legacy styling.
-                        .frame(width: 44, height: 44)
-                        .background(theme.colors.accent, in: Circle())
-                        .contentShape(Circle())
-                }
-        }
-        .if(usesLiquidGlassForm) { view in
-            view
-                .buttonStyle(.borderedProminent)
-                .tint(theme.colors.primaryText)
+                .foregroundStyle(settingsTitleColor)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(localizedString("Done", locale: locale))
-    }
-
-    private var usesLiquidGlassForm: Bool {
-        if #available(iOS 26.0, *) {
-            true
-        } else {
-            false
-        }
     }
 
     private var settingsRowBackground: Color {
@@ -408,11 +293,18 @@ struct SettingsView: View {
             .listRowBackground(settingsRowBackground)
 
             Section {
-                settingsInfoRow(
-                    localizedString("Version", locale: locale),
-                    value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.1",
-                    systemImage: "info.circle"
-                )
+                if let appVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String,
+                   !appVersion.isEmpty {
+                    settingsInfoRow(
+                        localizedString("Version", locale: locale),
+                        value: appVersion,
+                        systemImage: "info.circle"
+                    )
+                } else {
+                    WeatherDataUnavailableNotice(
+                        message: localizedString("Missing app version data.", locale: locale)
+                    )
+                }
                 settingsLinkRow(
                     localizedString("Website", locale: locale),
                     value: localizedString("View", locale: locale),
@@ -455,7 +347,6 @@ struct SettingsView: View {
                             .font(.system(size: 18, weight: .regular))
                             .foregroundStyle(theme.colors.secondaryText)
                             .frame(width: 44)
-                            .accessibilityHidden(true)
 
                         steppedTextSizeSlider
 
@@ -463,7 +354,6 @@ struct SettingsView: View {
                             .font(.system(size: 34, weight: .regular))
                             .foregroundStyle(theme.colors.secondaryText)
                             .frame(width: 44)
-                            .accessibilityHidden(true)
                     }
                     .opacity(useSystemTextSize ? 0.42 : 1)
 
@@ -479,11 +369,17 @@ struct SettingsView: View {
         .scrollContentBackground(.hidden)
         .background(settingsFormBackground)
         .onAppear {
-            textSizeSliderValue = Double(appTextSizeLevel)
+            let level = selectedTextSizeLevel
+            appTextSizeLevel = level.rawValue
+            textSizeSliderValue = Double(level.rawValue)
         }
         .onChange(of: appTextSizeLevel) { _, newValue in
             guard !isDraggingTextSizeSlider else { return }
-            textSizeSliderValue = Double(newValue)
+            let level = AppTextSizeLevel.level(clamping: newValue)
+            if newValue != level.rawValue {
+                appTextSizeLevel = level.rawValue
+            }
+            textSizeSliderValue = Double(level.rawValue)
         }
     }
 
@@ -512,9 +408,6 @@ struct SettingsView: View {
         .disabled(useSystemTextSize)
         .tint(theme.colors.accent)
         .frame(height: 36)
-        // Accessibility: Give the otherwise visual slider a stable name and spoken size value.
-        .accessibilityLabel(localizedString("Text Size", locale: locale))
-        .accessibilityValue(textSizeSliderDescription)
     }
 
     private var textSizeSliderDescription: String {
@@ -540,19 +433,6 @@ struct SettingsView: View {
             }
             .listRowBackground(settingsRowBackground)
 
-            Section {
-                ForEach(DistanceUnit.settingsCases, id: \.rawValue) { unit in
-                    settingsSelectionRow(
-                        title: unit.windDisplayName(locale: locale),
-                        subtitle: unit.windAbbreviation,
-                        isSelected: selectedDistanceUnit.resolved == unit,
-                        action: { distanceUnit = unit.rawValue }
-                    )
-                }
-            } header: {
-                settingsSectionHeader(localizedString("Wind Speed", locale: locale))
-            }
-            .listRowBackground(settingsRowBackground)
         }
         .scrollContentBackground(.hidden)
         .background(settingsFormBackground)
@@ -564,23 +444,6 @@ struct SettingsView: View {
     private func normalizeLegacyAutomaticUnits() {
         if TemperatureUnit(rawValue: temperatureUnit) == .automatic {
             temperatureUnit = TemperatureUnit.systemDefault.rawValue
-        }
-        if DistanceUnit(rawValue: distanceUnit) == .automatic {
-            distanceUnit = DistanceUnit.systemDefault.rawValue
-        }
-    }
-
-    // MARK: - Accessibility - Settings Navigation
-
-    private func dismissSettingsAccessibility() {
-        if showingAttributions {
-            showingAttributions = false
-        } else if showingUnits {
-            showingUnits = false
-        } else if showingTextSize {
-            showingTextSize = false
-        } else {
-            dismiss()
         }
     }
 
@@ -596,11 +459,9 @@ struct SettingsView: View {
                 Image(systemName: "chevron.right")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(theme.colors.secondaryText)
-                    .accessibilityHidden(true)
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(localizedString("Attributions", locale: locale))
     }
 
     private var attributionsForm: some View {
@@ -701,7 +562,6 @@ struct SettingsView: View {
         } icon: {
             Image(systemName: systemImage)
                 .foregroundStyle(theme.colors.dotSun)
-                .accessibilityHidden(true)
         }
     }
 
@@ -709,8 +569,6 @@ struct SettingsView: View {
         Text(title)
             .font(.footnote.weight(.semibold))
             .foregroundStyle(theme.colors.primaryText)
-            // Accessibility: Form section labels participate in heading navigation.
-            .accessibilityAddTraits(.isHeader)
     }
 
     private func settingsInfoRow(_ title: String, value: String, systemImage: String) -> some View {
@@ -720,10 +578,6 @@ struct SettingsView: View {
         } label: {
             settingsLabel(title, systemImage: systemImage)
         }
-        // Accessibility: Combine the styled label and value into one concise row.
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(title)
-        .accessibilityValue(value)
     }
 
     private func settingsNavigationRow(_ title: String, value: String, systemImage: String, action: @escaping () -> Void) -> some View {
@@ -735,16 +589,12 @@ struct SettingsView: View {
                     Image(systemName: "chevron.right")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(theme.colors.secondaryText)
-                        .accessibilityHidden(true)
                 }
             } label: {
                 settingsLabel(title, systemImage: systemImage)
             }
         }
         .buttonStyle(.plain)
-        // Accessibility: State is spoken independently of the decorative checkmark.
-        .accessibilityLabel(title)
-        .accessibilityValue(value)
     }
 
     private func settingsSelectionRow(
@@ -771,15 +621,11 @@ struct SettingsView: View {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(theme.colors.secondaryText)
-                        .accessibilityHidden(true)
                 }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityValue(subtitle ?? "")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     // MARK: Support Actions
@@ -792,14 +638,11 @@ struct SettingsView: View {
             LabeledContent {
                 Image(systemName: "doc.on.doc")
                     .foregroundStyle(theme.colors.secondaryText)
-                    .accessibilityHidden(true)
             } label: {
                 settingsLabel(localizedString("Say Hello", locale: locale), systemImage: "envelope")
             }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(localizedString("Say Hello", locale: locale))
-        .accessibilityValue("yutao5726@gmail.com")
         .alert(localizedString("Email Copied", locale: locale), isPresented: $showingEmailCopied) {
             Button(localizedString("OK", locale: locale), role: .cancel) {}
         }
@@ -821,7 +664,6 @@ struct SettingsView: View {
                         Text(value)
                         Image(systemName: "arrow.up.forward")
                             .font(.caption.weight(.semibold))
-                            .accessibilityHidden(true)
                     }
                     .foregroundStyle(theme.colors.secondaryText)
                 } label: {
@@ -829,10 +671,6 @@ struct SettingsView: View {
                 }
             }
             .buttonStyle(.plain)
-            // Accessibility: Identify these custom buttons as external links.
-            .accessibilityLabel(title)
-            .accessibilityValue(value)
-            .accessibilityAddTraits(.isLink)
         }
     }
 }

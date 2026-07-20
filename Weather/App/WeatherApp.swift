@@ -46,15 +46,38 @@ enum AppLanguageDefaults {
 
 // MARK: - App Delegate
 
+enum HomeScreenShortcutDestination: String, CaseIterable {
+    case home
+    case map
+    case list
+
+    var iconName: String {
+        switch self {
+        case .home: return "house"
+        case .map: return "map"
+        case .list: return "list.bullet"
+        }
+    }
+
+    func localizedTitle(locale: Locale) -> String {
+        switch self {
+        case .home: return localizedString("Home", locale: locale)
+        case .map: return localizedString("Map", locale: locale)
+        case .list: return localizedString("List", locale: locale)
+        }
+    }
+}
+
 class AppDelegate: NSObject, UIApplicationDelegate {
-    private static let pendingListShortcutKey = "pendingListShortcutID"
-    private static let listShortcutTypePrefix = "openList."
+    nonisolated private static let pendingShortcutDestinationKey = "pendingShortcutDestination"
+    nonisolated private static let shortcutTypePrefix = "openView."
+    nonisolated private static let legacyListShortcutTypePrefix = "openList."
 
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
-        Self.updateHomeScreenListShortcuts()
+        Self.updateHomeScreenShortcuts()
         if let shortcutItem = launchOptions?[.shortcutItem] as? UIApplicationShortcutItem {
             return !Self.handleShortcutItem(shortcutItem)
         }
@@ -69,42 +92,100 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         completionHandler(Self.handleShortcutItem(shortcutItem))
     }
 
-    static func updateHomeScreenListShortcuts() {
-        UIApplication.shared.shortcutItems = CityListID.allLists.prefix(3).map { listID in
+    func application(
+        _ application: UIApplication,
+        configurationForConnecting connectingSceneSession: UISceneSession,
+        options: UIScene.ConnectionOptions
+    ) -> UISceneConfiguration {
+        let configuration = UISceneConfiguration(
+            name: nil,
+            sessionRole: connectingSceneSession.role
+        )
+        if connectingSceneSession.role == .windowApplication {
+            configuration.delegateClass = AppSceneDelegate.self
+        }
+        return configuration
+    }
+
+    static func updateHomeScreenShortcuts() {
+        let locale = Locale(
+            identifier: UserDefaults.standard.string(forKey: AppLanguageDefaults.storageKey)
+                ?? Locale.autoupdatingCurrent.identifier
+        )
+        UIApplication.shared.shortcutItems = HomeScreenShortcutDestination.allCases.map { destination in
             UIApplicationShortcutItem(
-                type: shortcutType(for: listID),
-                localizedTitle: listID.localizedDisplayName(),
+                type: shortcutType(for: destination),
+                localizedTitle: destination.localizedTitle(locale: locale),
                 localizedSubtitle: nil,
-                icon: UIApplicationShortcutIcon(systemImageName: "list.bullet"),
-                userInfo: ["listID": listID.rawValue as NSString]
+                icon: UIApplicationShortcutIcon(systemImageName: destination.iconName),
+                userInfo: ["destination": destination.rawValue as NSString]
             )
         }
     }
 
-    static func takePendingListShortcutID() -> String? {
-        guard let rawValue = UserDefaults.standard.string(forKey: pendingListShortcutKey) else { return nil }
-        UserDefaults.standard.removeObject(forKey: pendingListShortcutKey)
-        return rawValue
+    static func takePendingHomeScreenShortcut() -> HomeScreenShortcutDestination? {
+        guard let rawValue = UserDefaults.standard.string(forKey: pendingShortcutDestinationKey) else { return nil }
+        UserDefaults.standard.removeObject(forKey: pendingShortcutDestinationKey)
+        return HomeScreenShortcutDestination(rawValue: rawValue)
     }
 
-    private static func handleShortcutItem(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
-        guard let rawValue = listID(from: shortcutItem) else { return false }
-        UserDefaults.standard.set(rawValue, forKey: pendingListShortcutKey)
-        NotificationCenter.default.post(name: .weatherOpenListShortcut, object: rawValue)
+    /// Lets the first rendered frame respect a cold-launch shortcut without
+    /// consuming it before `ContentView` performs the actual navigation.
+    static func hasPendingHomeScreenShortcut() -> Bool {
+        UserDefaults.standard.string(forKey: pendingShortcutDestinationKey) != nil
+    }
+
+    nonisolated fileprivate static func handleShortcutItem(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
+        guard let destination = destination(from: shortcutItem) else { return false }
+        UserDefaults.standard.set(destination.rawValue, forKey: pendingShortcutDestinationKey)
+        NotificationCenter.default.post(name: .weatherOpenMainViewShortcut, object: destination.rawValue)
         return true
     }
 
-    private static func shortcutType(for listID: CityListID) -> String {
-        "\(Bundle.main.bundleIdentifier ?? "Weather").\(listShortcutTypePrefix)\(listID.rawValue)"
+    private static func shortcutType(for destination: HomeScreenShortcutDestination) -> String {
+        "\(Bundle.main.bundleIdentifier ?? "Weather").\(shortcutTypePrefix)\(destination.rawValue)"
     }
 
-    private static func listID(from shortcutItem: UIApplicationShortcutItem) -> String? {
-        if let rawValue = shortcutItem.userInfo?["listID"] as? String {
-            return rawValue
+    nonisolated private static func destination(
+        from shortcutItem: UIApplicationShortcutItem
+    ) -> HomeScreenShortcutDestination? {
+        if let rawValue = shortcutItem.userInfo?["destination"] as? String,
+           let destination = HomeScreenShortcutDestination(rawValue: rawValue) {
+            return destination
         }
-        let marker = ".\(listShortcutTypePrefix)"
-        guard let range = shortcutItem.type.range(of: marker) else { return nil }
-        return String(shortcutItem.type[range.upperBound...])
+
+        let marker = ".\(shortcutTypePrefix)"
+        if let range = shortcutItem.type.range(of: marker) {
+            return HomeScreenShortcutDestination(rawValue: String(shortcutItem.type[range.upperBound...]))
+        }
+
+        // An app update can leave an old dynamic list shortcut visible until the
+        // new shortcut set is installed. Route that legacy action to the List view.
+        if shortcutItem.userInfo?["listID"] != nil
+            || shortcutItem.type.contains(".\(legacyListShortcutTypePrefix)") {
+            return .list
+        }
+        return nil
+    }
+}
+
+/// SwiftUI apps use the scene lifecycle, so Home Screen quick actions arrive
+/// here rather than through UIApplicationDelegate on current iOS versions.
+final class AppSceneDelegate: NSObject, UIWindowSceneDelegate {
+    func scene(
+        _ scene: UIScene,
+        willConnectTo session: UISceneSession,
+        options connectionOptions: UIScene.ConnectionOptions
+    ) {
+        guard let shortcutItem = connectionOptions.shortcutItem else { return }
+        _ = AppDelegate.handleShortcutItem(shortcutItem)
+    }
+
+    nonisolated func windowScene(
+        _ windowScene: UIWindowScene,
+        performActionFor shortcutItem: UIApplicationShortcutItem
+    ) async -> Bool {
+        AppDelegate.handleShortcutItem(shortcutItem)
     }
 }
 
@@ -181,7 +262,7 @@ struct WeatherApp: App {
 // MARK: - App Notifications
 
 extension Notification.Name {
-    static let weatherOpenListShortcut = Notification.Name("weatherOpenListShortcut")
+    nonisolated static let weatherOpenMainViewShortcut = Notification.Name("weatherOpenMainViewShortcut")
 }
 
 // MARK: - Theme Root Views
@@ -211,16 +292,16 @@ private struct ThemeContent: View {
     let appLocale: Locale
     let weatherService: WeatherService
     @Environment(\.colorScheme) private var colorScheme
-    // Accessibility: Propagate Increase Contrast into the app's custom color palettes.
+    // Propagate Increase Contrast into the app's custom color palettes.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.dynamicTypeSize) private var systemDynamicTypeSize
-    // Accessibility: Read Reduce Motion once at the app root so every screen follows it.
+    // Read Reduce Motion once at the app root so every screen follows it.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @AppStorage("useSystemTextSize") private var useSystemTextSize: Bool = true
     @AppStorage("appTextSizeLevel") private var appTextSizeLevel: Int = AppTextSizeLevel.defaultRawValue
 
     private var preferredDynamicTypeSize: DynamicTypeSize {
-        (AppTextSizeLevel(rawValue: appTextSizeLevel) ?? .large).dynamicTypeSize
+        AppTextSizeLevel.level(clamping: appTextSizeLevel).dynamicTypeSize
     }
 
     private var resolvedDynamicTypeSize: DynamicTypeSize {
@@ -240,7 +321,7 @@ private struct ThemeContent: View {
             .environment(\.dynamicTypeSize, resolvedDynamicTypeSize)
             .environment(\.appTheme, theme)
             .tint(resolvedColors.accent)
-            // Accessibility: Disable app-supplied animation without altering state transitions.
+            // Disable app-supplied animation without altering state transitions.
             .transaction { transaction in
                 if reduceMotion {
                     transaction.animation = nil
