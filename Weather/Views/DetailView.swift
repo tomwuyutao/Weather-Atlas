@@ -2,8 +2,8 @@
 //  DetailView.swift
 //  Weather
 //
-//  Purpose: Builds the city detail screen around sunniness: verdict, factors,
-//  sunny hours, nearby comparisons, and the expanded weather card.
+//  Purpose: Builds the city detail screen around its title, condition, sunny
+//  factors, sunny-hour chart, and nearby-city context.
 //
 
 import SwiftUI
@@ -54,20 +54,18 @@ extension ContentView {
         usesLandscapeIPadLayout: Bool
     ) -> some View {
         let detailForecastDate = selectedForecastDate
-        if let forecast = city.forecastIfAvailable(on: detailForecastDate),
-           let candidate = sunnyCandidate(for: city, on: detailForecastDate) {
-            let icon = sunnyCandidateIcon(for: candidate)
+        if let forecast = city.forecastIfAvailable(on: detailForecastDate) {
+            let condition = SunninessScoring.condition(for: forecast.symbolName)
+            let rankingCandidate = sunnyCandidate(for: city, on: detailForecastDate)
 
             VStack(alignment: .leading, spacing: 14) {
                 detailCityNameHeader(
                     city: city,
-                    icon: icon,
-                    condition: candidate.condition
+                    condition: condition
                 )
 
                 detailSunnyFactorGrid(
                     city: city,
-                    candidate: candidate,
                     forecast: forecast,
                     usesLandscapeIPadLayout: usesLandscapeIPadLayout
                 )
@@ -76,28 +74,12 @@ extension ContentView {
 
                 // Unsaved search results are not part of a list-backed map data
                 // source, so their Nearby Cities card is intentionally omitted.
-                if weatherService.listContainingCity(city.city) != nil {
+                if condition != nil,
+                   rankingCandidate != nil,
+                   weatherService.listContainingCity(city.city) != nil {
                     detailNearbyCities(city: city, selectedForecast: forecast)
                 }
             }
-        } else if let forecast = city.forecastIfAvailable(on: detailForecastDate) {
-            let issue = SunninessScoring.condition(for: forecast.symbolName) == nil
-                ? WeatherDataIssue.unknownWeatherSymbol(forecast.symbolName)
-                : .missingCloudCoverData
-            VStack(spacing: 16) {
-                Text(localizedCityName(for: city.city))
-                    .font(.system(.largeTitle, design: .serif).weight(.bold))
-                    .foregroundStyle(theme.colors.titleText)
-
-                WeatherDataUnavailableNotice(
-                    message: weatherDataIssueMessage(
-                        issue,
-                        cityName: localizedCityName(for: city.city),
-                        locale: locale
-                    )
-                )
-            }
-            .frame(maxWidth: .infinity)
         } else {
             VStack(spacing: 16) {
                 Text(localizedCityName(for: city.city))
@@ -110,14 +92,6 @@ extension ContentView {
                     on: detailForecastDate
                 ) {
                     ForecastOmissionNotice(droppedCityCount: 1)
-                } else {
-                    WeatherDataUnavailableNotice(
-                        message: weatherDataIssueMessage(
-                            .missingForecastData,
-                            cityName: localizedCityName(for: city.city),
-                            locale: locale
-                        )
-                    )
                 }
             }
             .frame(maxWidth: .infinity)
@@ -126,11 +100,9 @@ extension ContentView {
 
     private func detailCityNameHeader(
         city: CityWeather,
-        icon: String,
-        condition: AppWeatherCondition
+        condition: AppWeatherCondition?
     ) -> some View {
         let cityName = localizedCityName(for: city.city)
-        let conditionName = condition.localizedDisplayName(locale: locale)
 
         return VStack(spacing: 9) {
             Text(cityName)
@@ -140,16 +112,19 @@ extension ContentView {
                 .minimumScaleFactor(0.72)
                 .multilineTextAlignment(.center)
 
-            Image(systemName: icon)
-                .weatherIconStyle(for: icon)
-                .font(.system(size: 52, weight: .semibold))
-                .frame(width: 62, height: 58)
-                .padding(.vertical, 8)
+            if let condition {
+                let icon = condition.displayIcon
+                Image(systemName: icon)
+                    .weatherIconStyle(for: icon)
+                    .font(.system(size: 52, weight: .semibold))
+                    .frame(width: 62, height: 58)
+                    .padding(.vertical, 8)
 
-            Text(conditionName)
-                .font(.callout)
-                .foregroundStyle(theme.colors.primaryText)
-                .multilineTextAlignment(.center)
+                Text(condition.localizedDisplayName(locale: locale))
+                    .font(.callout)
+                    .foregroundStyle(theme.colors.primaryText)
+                    .multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 2)
@@ -158,17 +133,15 @@ extension ContentView {
 
     private func detailSunnyFactorGrid(
         city: CityWeather,
-        candidate: SunnyCandidate,
         forecast: DailyForecast,
         usesLandscapeIPadLayout: Bool
     ) -> some View {
-        let rainChance = candidate.precipitationChance
+        let rainChance = forecast.precipitationChance
         let uvIndex = forecast.uvIndex
         let sunnyHoursResult = SunninessScoring.sunnyHoursData(
             for: forecast,
             timeZone: city.timeZone
         )
-        let cityName = localizedCityName(for: city.city)
 
         let columns: [GridItem]
         if usesLandscapeIPadLayout {
@@ -188,11 +161,12 @@ extension ContentView {
                     systemImage: "sun.max.fill",
                     tint: theme.colors.dotSun
                 )
-            case .failure(let issue):
-                detailSunnyFactorIssueTile(
+            case .failure:
+                detailSunnyFactorTile(
                     title: localizedString("Sunny Hours", locale: locale),
-                    issue: issue,
-                    cityName: cityName
+                    value: "",
+                    systemImage: "sun.max.fill",
+                    tint: theme.colors.dotSun
                 )
             }
 
@@ -204,10 +178,11 @@ extension ContentView {
                     tint: theme.colors.accent
                 )
             } else {
-                detailSunnyFactorIssueTile(
+                detailSunnyFactorTile(
                     title: localizedString("Rain Chance", locale: locale),
-                    issue: .missingPrecipitationData,
-                    cityName: cityName
+                    value: "",
+                    systemImage: "drop.fill",
+                    tint: theme.colors.accent
                 )
             }
 
@@ -233,10 +208,11 @@ extension ContentView {
                     tint: theme.colors.dotSun
                 )
             } else {
-                detailSunnyFactorIssueTile(
+                detailSunnyFactorTile(
                     title: localizedString("UV Index", locale: locale),
-                    issue: .missingUVIndexData,
-                    cityName: cityName
+                    value: "",
+                    systemImage: "sun.max.trianglebadge.exclamationmark",
+                    tint: theme.colors.dotSun
                 )
             }
 
@@ -248,10 +224,11 @@ extension ContentView {
                     tint: theme.colors.accent
                 )
             } else {
-                detailSunnyFactorIssueTile(
+                detailSunnyFactorTile(
                     title: localizedString("Cloud Cover", locale: locale),
-                    issue: .missingCloudCoverData,
-                    cityName: cityName
+                    value: "",
+                    systemImage: "cloud",
+                    tint: theme.colors.accent
                 )
             }
         }
@@ -279,6 +256,7 @@ extension ContentView {
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
+                    .frame(minHeight: 20, alignment: .leading)
             }
 
             Spacer(minLength: 0)
@@ -289,58 +267,24 @@ extension ContentView {
             .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 18))
     }
 
-    private func detailSunnyFactorIssueTile(
-        title: String,
-        issue: WeatherDataIssue,
-        cityName: String
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(title)
-                .font(.caption.weight(.semibold))
-                .foregroundStyle(theme.colors.secondaryText)
-
-            WeatherDataUnavailableNotice(
-                message: weatherDataIssueMessage(issue, cityName: cityName, locale: locale)
-            )
-        }
-        .padding(12)
-        .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 18))
-    }
-
     // MARK: Sunny Hours Overview
 
+    @ViewBuilder
     private func detailSunnyWindowOverview(city: CityWeather) -> some View {
         let forecasts = Array(city.dailyForecasts.prefix(10))
         let resolvedData = detailSunnyWindowData(for: city, forecasts: forecasts)
 
-        return VStack(alignment: .leading, spacing: 10) {
-            detailSectionHeader(
-                title: localizedString("Sunny Hours", locale: locale),
-                systemImage: "sun.max.fill"
-            )
+        if case .success(let days) = resolvedData {
+            let windows = detailSunnyWindowRows(for: city, days: days)
+            let chartBounds = SunnyHoursChartBounds.merged(days.map(\.sunnyHours.bounds))
 
-            switch resolvedData {
-            case .failure(let issue):
-                WeatherDataUnavailableNotice(
-                    message: weatherDataIssueMessage(
-                        issue,
-                        cityName: localizedCityName(for: city.city),
-                        locale: locale
+            if !windows.isEmpty, let chartBounds {
+                VStack(alignment: .leading, spacing: 10) {
+                    detailSectionHeader(
+                        title: localizedString("Sunny Hours", locale: locale),
+                        systemImage: "sun.max.fill"
                     )
-                )
-            case .success(let days):
-                let windows = detailSunnyWindowRows(for: city, days: days)
-                let chartBounds = SunnyHoursChartBounds.merged(days.map(\.sunnyHours.bounds))
 
-                if windows.isEmpty {
-                    WeatherDataUnavailableNotice(
-                        message: weatherDataIssueMessage(
-                            .missingForecastData,
-                            cityName: localizedCityName(for: city.city),
-                            locale: locale
-                        )
-                    )
-                } else if let chartBounds {
                     DetailSunnyWindowOverviewChart(
                         rows: windows,
                         selectedForecastDate: selectedForecastDate,
@@ -361,19 +305,11 @@ extension ContentView {
                     )
 
                     sunnyWindowLegend
-                } else {
-                    WeatherDataUnavailableNotice(
-                        message: weatherDataIssueMessage(
-                            .missingSunriseOrSunset,
-                            cityName: localizedCityName(for: city.city),
-                            locale: locale
-                        )
-                    )
                 }
+                .padding(14)
+                .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
             }
         }
-        .padding(14)
-        .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
     }
 
     private var sunnyWindowLegend: some View {
@@ -469,7 +405,8 @@ extension ContentView {
             }
         }
         .padding(14)
-        .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
+        // Keep MapKit's warm tile colors out of Liquid Glass's foreground pass.
+        .detailTranslucentMediaCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
     }
 
     private func detailSectionHeader(title: String, systemImage: String) -> some View {
@@ -510,7 +447,7 @@ extension ContentView {
                         .foregroundStyle(theme.colors.primaryText)
                         .padding(.horizontal, 8)
                         .frame(height: 28)
-                        .background(theme.colors.dotSun.opacity(0.12), in: Capsule())
+                        .background(theme.colors.dotSun, in: Capsule())
                 }
 
                 Image(systemName: "chevron.right")
@@ -521,14 +458,6 @@ extension ContentView {
             .padding(.horizontal, 10)
             .frame(height: 50)
             .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 14))
-        } else {
-            WeatherDataUnavailableNotice(
-                message: weatherDataIssueMessage(
-                    .unknownWeatherSymbol(nearbyCity.forecast.symbolName),
-                    cityName: localizedCityName(for: nearbyCity.cityWeather.city),
-                    locale: locale
-                )
-            )
         }
     }
 
@@ -682,7 +611,7 @@ extension ContentView {
             return 2
         case .partlySunny:
             return 1
-        case .partlyCloudy, .cloudy, .rain, .drizzle, .snow, .fog, .wind, .night:
+        case .partlyCloudy, .cloudy, .rain, .drizzle, .snow, .fog, .wind:
             return 0
         case nil:
             return nil
@@ -836,7 +765,7 @@ private struct DetailSunnyWindowOverviewChart: View {
         timelineWidth: CGFloat
     ) -> some View {
         let rowsHeight = CGFloat(rows.count) * rowHeight
-        if containsCurrentLocalDay(at: currentDate),
+        if let todayRowIndex = currentLocalRowIndex(at: currentDate),
            let markerX = chartBounds.currentTimeXPosition(
                at: currentDate,
                timeZone: timeZone,
@@ -844,19 +773,31 @@ private struct DetailSunnyWindowOverviewChart: View {
            ) {
             HStack(spacing: 0) {
                 Color.clear.frame(width: labelWidth)
-                ZStack(alignment: .leading) {
-                    Rectangle()
-                        .fill(primaryText.opacity(0.78))
-                        .frame(width: 2, height: rowsHeight)
-                        .offset(x: markerX - 1)
+                ZStack(alignment: .topLeading) {
+                    ZStack(alignment: .leading) {
+                        Rectangle()
+                            .fill(primaryText.opacity(0.78))
+                            .frame(width: 2, height: capsuleHeight)
+                            .offset(x: markerX - 1)
+                    }
+                    .frame(
+                        width: timelineWidth,
+                        height: capsuleHeight,
+                        alignment: .leading
+                    )
+                    .clipShape(Capsule())
+                    .offset(
+                        y: CGFloat(todayRowIndex) * rowHeight
+                            + (rowHeight - capsuleHeight) / 2
+                    )
                 }
-                .frame(width: timelineWidth, height: rowsHeight, alignment: .leading)
+                .frame(width: timelineWidth, height: rowsHeight, alignment: .topLeading)
             }
             .frame(height: rowsHeight)
         }
     }
 
-    private func containsCurrentLocalDay(at currentDate: Date) -> Bool {
+    private func currentLocalRowIndex(at currentDate: Date) -> Int? {
         var cityCalendar = Calendar.current
         cityCalendar.timeZone = timeZone
         let localComponents = cityCalendar.dateComponents(
@@ -864,9 +805,9 @@ private struct DetailSunnyWindowOverviewChart: View {
             from: currentDate
         )
         guard let selectionDate = Calendar.current.date(from: localComponents) else {
-            return false
+            return nil
         }
-        return rows.contains {
+        return rows.firstIndex {
             Calendar.current.isDate($0.id, inSameDayAs: selectionDate)
         }
     }
@@ -965,7 +906,7 @@ private struct DetailSunnyWindowOverviewChart: View {
 
 }
 
-// MARK: - Nearby Map Context Models
+// MARK: - Nearby Map Context
 
 private struct DetailNearbyCityContext: Identifiable {
     let cityWeather: CityWeather
@@ -1089,8 +1030,6 @@ private struct DetailMapContextView: View {
             }
             .shadow(color: accent.opacity(0.20), radius: 8, y: 2)
             .saturation(markerSaturationCompensation)
-        } else {
-            missingSymbolMarker()
         }
     }
 
@@ -1128,21 +1067,7 @@ private struct DetailMapContextView: View {
             }
             .shadow(color: theme.colors.shadow.opacity(0.10), radius: 6, y: 2)
             .saturation(markerSaturationCompensation)
-        } else {
-            missingSymbolMarker()
         }
-    }
-
-    private func missingSymbolMarker() -> some View {
-        Image(systemName: "exclamationmark.triangle.fill")
-            .font(.system(size: 12, weight: .bold))
-            .foregroundStyle(theme.colors.destructive)
-            .padding(9)
-            .background(.thinMaterial, in: Circle())
-            .overlay {
-                Circle().stroke(theme.colors.destructive.opacity(0.7), lineWidth: 1.5)
-            }
-            .saturation(markerSaturationCompensation)
     }
 
     private func fitCities() {
@@ -1208,11 +1133,11 @@ private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
         let cloud = pairedClouds[nearestAxisHour] ?? 0.4
         let symbol: String
         if hour < 6 || hour > 21 {
-            symbol = cloud > 0.55 ? "cloud.moon" : "moon.fill"
+            symbol = cloud > 0.55 ? WeatherIconSymbol.cloudy : WeatherIconSymbol.clear
         } else if cloud < 0.28 {
             symbol = "sun.max.fill"
         } else if cloud < 0.62 {
-            symbol = "cloud.sun"
+            symbol = WeatherIconSymbol.partlyCloudy
         } else {
             symbol = "cloud"
         }
@@ -1225,7 +1150,7 @@ private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
 
     let averageCloud = selectedPattern.reduce(0, +) / Double(selectedPattern.count)
     let sunnyDay = averageCloud < 0.42
-    let symbol = sunnyDay ? "sun.max.fill" : averageCloud < 0.65 ? "cloud.sun" : "cloud"
+    let symbol = sunnyDay ? "sun.max.fill" : averageCloud < 0.65 ? WeatherIconSymbol.partlyCloudy : "cloud"
 
     return DailyForecast(
         date: date,

@@ -43,7 +43,7 @@
 		5908967530063DF500EB20E0 /* Exceptions for "Weather" folder in "Weather Atlas" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Views/Widgets.swift,
+				Widgets/WeatherWidgets.swift,
 			);
 			target = 59C2E3552F4F06B000877DA8 /* Weather Atlas */;
 		};
@@ -52,7 +52,12 @@
 			membershipExceptions = (
 				Helpers/AppPalette.swift,
 				Helpers/WidgetDataStore.swift,
-				Views/Widgets.swift,
+				Helpers/WidgetLocalization.swift,
+				Models/SunnyHoursTimeline.swift,
+				Models/WeatherDataIssue.swift,
+				Models/WeatherSymbols.swift,
+				Models/WidgetDataModels.swift,
+				Widgets/WeatherWidgets.swift,
 			);
 			target = A10000000000000000000008 /* WeatherWidgets */;
 		};

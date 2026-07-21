@@ -9,107 +9,6 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Unit Preferences
-
-enum TemperatureUnit: String, CaseIterable {
-    case automatic = "automatic"
-    case celsius = "celsius"
-    case fahrenheit = "fahrenheit"
-
-    static var systemDefault: TemperatureUnit {
-        let sample = Measurement(value: 0, unit: UnitTemperature.celsius)
-            .formatted(.measurement(width: .abbreviated, usage: .weather).locale(.autoupdatingCurrent))
-        if sample.localizedCaseInsensitiveContains("F") {
-            return .fahrenheit
-        }
-        if sample.localizedCaseInsensitiveContains("C") {
-            return .celsius
-        }
-        return .celsius
-    }
-
-    static let defaultRawValue = TemperatureUnit.systemDefault.rawValue
-
-    static var settingsCases: [TemperatureUnit] {
-        [.celsius, .fahrenheit]
-    }
-
-    var resolved: TemperatureUnit {
-        switch self {
-        case .automatic:
-            return Self.systemDefault
-        case .celsius, .fahrenheit:
-            return self
-        }
-    }
-
-    func displayName(locale: Locale = .current) -> String {
-        switch resolved {
-        case .celsius: return localizedString("Celsius (°C)", locale: locale)
-        case .fahrenheit: return localizedString("Fahrenheit (°F)", locale: locale)
-        case .automatic: return resolved.displayName(locale: locale)
-        }
-    }
-
-    private var measurementUnit: UnitTemperature {
-        switch resolved {
-        case .celsius: return .celsius
-        case .fahrenheit: return .fahrenheit
-        case .automatic: return resolved.measurementUnit
-        }
-    }
-
-    func display(_ celsius: Double) -> String {
-        let temperature = Measurement(value: celsius, unit: UnitTemperature.celsius)
-            .converted(to: measurementUnit)
-            .value
-        return "\(Int(temperature.rounded()))°"
-    }
-
-}
-
-enum AppTextSizeLevel: Int, CaseIterable {
-    case small = 1
-    case medium = 2
-    case large = 3
-    case xLarge = 4
-    case xxLarge = 5
-
-    static let defaultRawValue = AppTextSizeLevel.large.rawValue
-    static let minimumDynamicTypeSize: DynamicTypeSize = .small
-    static let maximumDynamicTypeSize: DynamicTypeSize = .xxLarge
-    static let minimumSelectableRawValue = AppTextSizeLevel.small.rawValue
-    static let maximumSelectableRawValue = AppTextSizeLevel.xxLarge.rawValue
-
-    static func level(clamping rawValue: Int) -> AppTextSizeLevel {
-        let clampedRawValue = min(
-            max(rawValue, minimumSelectableRawValue),
-            maximumSelectableRawValue
-        )
-        return AppTextSizeLevel(rawValue: clampedRawValue) ?? .large
-    }
-
-    var dynamicTypeSize: DynamicTypeSize {
-        switch self {
-        case .small: return .small
-        case .medium: return .medium
-        case .large: return .large
-        case .xLarge: return .xLarge
-        case .xxLarge: return .xxLarge
-        }
-    }
-
-    func displayName(locale: Locale) -> String {
-        switch self {
-        case .small: return localizedString("Small", locale: locale)
-        case .medium: return localizedString("Medium", locale: locale)
-        case .large: return localizedString("Default", locale: locale)
-        case .xLarge: return localizedString("Large", locale: locale)
-        case .xxLarge: return localizedString("Extra Large", locale: locale)
-        }
-    }
-}
-
 // MARK: - Settings Screen
 
 struct SettingsView: View {
@@ -132,6 +31,7 @@ struct SettingsView: View {
     @State private var showingAttributions = false
     @State private var showingUnits = false
     @State private var showingTextSize = false
+    @State private var showingTheme = false
     @State private var textSizeSliderValue = Double(AppTextSizeLevel.defaultRawValue)
     @State private var isDraggingTextSizeSlider = false
 
@@ -178,7 +78,7 @@ struct SettingsView: View {
                         .foregroundStyle(settingsTitleColor)
                 }
 
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarTrailing) {
                     settingsCloseButton
                 }
             }
@@ -193,6 +93,10 @@ struct SettingsView: View {
             .navigationDestination(isPresented: $showingTextSize) {
                 textSizeForm
                     .navigationTitle(localizedString("Text Size", locale: locale))
+            }
+            .navigationDestination(isPresented: $showingTheme) {
+                themeForm
+                    .navigationTitle(localizedString("Theme", locale: locale))
             }
         }
         // Keep the back-swipe recognizer disabled for the entire lifetime of the
@@ -221,6 +125,8 @@ struct SettingsView: View {
         }
         .buttonStyle(.plain)
     }
+
+    // MARK: Adaptive Appearance
 
     private var settingsRowBackground: Color {
         theme.colors.settingsRowFill
@@ -270,14 +176,12 @@ struct SettingsView: View {
                     action: { showingTextSize = true }
                 )
 
-                Picker(selection: Binding(get: { theme.style }, set: { theme.style = $0 })) {
-                    Text(localizedString("Light", locale: locale)).tag(AppThemeStyle.light)
-                    Text(localizedString("Dark", locale: locale)).tag(AppThemeStyle.dark)
-                    Text(localizedString("Auto", locale: locale)).tag(AppThemeStyle.automatic)
-                } label: {
-                    settingsLabel(localizedString("Theme", locale: locale), systemImage: "circle.lefthalf.filled")
-                }
-                .tint(theme.colors.secondaryText)
+                settingsNavigationRow(
+                    localizedString("Theme", locale: locale),
+                    value: theme.style.displayName(locale: locale),
+                    systemImage: "circle.lefthalf.filled",
+                    action: { showingTheme = true }
+                )
             } header: {
                 settingsSectionHeader(localizedString("General", locale: locale))
             }
@@ -289,6 +193,8 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(localizedString("Replay Tutorial", locale: locale), systemImage: "play.circle")
                 }
+            } header: {
+                settingsSectionHeader(localizedString("Help", locale: locale))
             }
             .listRowBackground(settingsRowBackground)
 
@@ -299,10 +205,6 @@ struct SettingsView: View {
                         localizedString("Version", locale: locale),
                         value: appVersion,
                         systemImage: "info.circle"
-                    )
-                } else {
-                    WeatherDataUnavailableNotice(
-                        message: localizedString("Missing app version data.", locale: locale)
                     )
                 }
                 settingsLinkRow(
@@ -330,6 +232,25 @@ struct SettingsView: View {
             normalizeLegacyAutomaticUnits()
             await weatherService.loadWeatherAttributionIfNeeded()
         }
+    }
+
+    // MARK: Theme Preferences
+
+    private var themeForm: some View {
+        Form {
+            Section {
+                ForEach(AppThemeStyle.allCases, id: \.rawValue) { style in
+                    settingsSelectionRow(
+                        title: style.displayName(locale: locale),
+                        isSelected: theme.style == style,
+                        action: { theme.style = style }
+                    )
+                }
+            }
+            .listRowBackground(settingsRowBackground)
+        }
+        .scrollContentBackground(.hidden)
+        .background(settingsFormBackground)
     }
 
     private var textSizeForm: some View {
@@ -418,6 +339,8 @@ struct SettingsView: View {
         return sliderLevel.displayName(locale: locale)
     }
 
+    // MARK: Temperature Units
+
     private var unitsForm: some View {
         Form {
             Section {
@@ -485,7 +408,7 @@ struct SettingsView: View {
         .background(settingsFormBackground)
     }
 
-    // MARK: Row Builders
+    // MARK: Attribution Rows
 
     @ViewBuilder
     private var weatherAttributionRows: some View {
@@ -554,6 +477,8 @@ struct SettingsView: View {
             url: URL(string: "https://www.geonames.org/about.html")
         )
     }
+
+    // MARK: Reusable Rows
 
     private func settingsLabel(_ title: String, systemImage: String) -> some View {
         Label {
@@ -674,6 +599,8 @@ struct SettingsView: View {
         }
     }
 }
+
+// MARK: - Navigation Gesture Bridge
 
 private struct NavigationPopGestureDisabler: UIViewControllerRepresentable {
     let isDisabled: Bool

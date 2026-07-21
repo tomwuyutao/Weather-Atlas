@@ -48,7 +48,7 @@ struct ContinentListPickerContent: View {
                         onSelect(listID)
                     } label: {
                         ListPickerNavigationRow(
-                            title: listID.localizedDisplayName(locale: locale),
+                            title: listID.canonicalLocalizedDisplayName(locale: locale),
                             verticalPadding: 14
                         )
                     }

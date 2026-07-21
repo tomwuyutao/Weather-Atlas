@@ -2,13 +2,27 @@
 //  HomeView.swift
 //  Weather
 //
-//  Purpose: Defines the Home-first experience, including the static map
-//  preview, sunniness ranking, list switching, and ranked city list surface.
+//  Purpose: Defines the Home dashboard: static map preview, sunny-date
+//  calendar, and ranked sunny-city list.
 //
 
 import SwiftUI
 import MapKit
 import UIKit
+
+// MARK: - Home Destination
+
+extension ContentView {
+    var homeView: some View {
+        homeContent(previewActive: false)
+            .navigationTitle(toolbarTitle)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.hidden, for: .navigationBar)
+            .onAppear {
+                showingMapExpandedCard = false
+            }
+    }
+}
 
 // MARK: - Static Home Map
 
@@ -128,9 +142,7 @@ struct HomeStaticMapPreview: View {
             citiesForFitting = fitCities.isEmpty ? previewCities : fitCities
         } else {
             citiesForFitting = cities.compactMap { cityWeather in
-                cityWeather.forecastIfAvailable(on: selectedForecastDate) == nil
-                    ? nil
-                    : cityWeather.city
+                markerColor(for: cityWeather) == nil ? nil : cityWeather.city
             }
         }
         guard !citiesForFitting.isEmpty else { return }
@@ -164,162 +176,7 @@ struct HomeStaticMapPreview: View {
 
 }
 
-struct SunnyCandidateRow: View {
-    let candidate: SunnyCandidate
-    var rank: Int? = nil
-    var compact: Bool = false
-    var showsConditionIcon: Bool = true
-    var showsWeatherMetrics: Bool = true
-    var showsTemperature: Bool = true
-    let tempUnit: TemperatureUnit
-    var cityNameOverride: String? = nil
-    var cityRenameAction: (() -> Void)? = nil
-
-    @Environment(\.appTheme) private var theme
-    @Environment(\.locale) private var locale
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    @ViewBuilder
-    var body: some View {
-        rowContent
-    }
-
-    private var rowContent: some View {
-        HStack(spacing: CityListLayout.columnSpacing) {
-            if let rank {
-                CityRankLabel(rank: rank)
-            }
-
-            cityNameLabel(lineLimit: 1)
-
-            Spacer(minLength: 8)
-
-            if showsWeatherMetrics {
-                weatherMetrics(usesFixedColumns: true)
-            }
-
-            renameButton
-        }
-        .padding(.horizontal, 0)
-        .padding(.vertical, verticalPadding)
-        .contentShape(Rectangle())
-    }
-
-    private func cityNameLabel(lineLimit: Int) -> some View {
-        Text(cityName)
-            .font(.body.weight(.medium))
-            .foregroundStyle(theme.colors.primaryText)
-            .lineLimit(lineLimit)
-    }
-
-    private func weatherMetrics(usesFixedColumns: Bool) -> some View {
-        let icon = candidate.condition.displayIcon
-        let cloudText = "\(Int((candidate.cloudCover * 100).rounded()))%"
-
-        return HStack(spacing: usesFixedColumns ? 0 : 10) {
-            if showsTemperature {
-                HStack(spacing: 3) {
-                    Image(systemName: "thermometer.medium")
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(theme.colors.primaryText)
-                    Text(tempUnit.display(candidate.temperature))
-                        .font(.caption.weight(.medium))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .monospacedDigit()
-                }
-                .frame(width: usesFixedColumns ? temperatureMetricWidth : nil, alignment: .leading)
-            }
-
-            HStack(spacing: 3) {
-                Image(systemName: "cloud")
-                    .font(.caption.weight(.medium))
-                Text(cloudText)
-                    .font(.caption.weight(.medium))
-                    .monospacedDigit()
-            }
-            .foregroundStyle(theme.colors.secondaryText)
-            .frame(width: usesFixedColumns ? cloudMetricWidth : nil, alignment: .leading)
-            .padding(.trailing, usesFixedColumns ? 5 : 0)
-
-            if showsConditionIcon {
-                Image(systemName: icon)
-                    .font(.caption.weight(.medium))
-                    .weatherIconStyle(for: icon)
-                    .frame(width: usesFixedColumns ? conditionMetricWidth : nil, alignment: .trailing)
-            }
-        }
-        .foregroundStyle(theme.colors.secondaryText)
-        .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    @ViewBuilder
-    private var renameButton: some View {
-        if let cityRenameAction {
-            Button(action: cityRenameAction) {
-                Image(systemName: "pencil")
-                    .font(.system(size: 19, weight: .regular))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, -6)
-            .padding(.vertical, -4)
-        }
-    }
-
-    private var cityName: String {
-        cityNameOverride
-            ?? localizedCityDisplayName(for: candidate.cityWeather.city, locale: locale)
-    }
-
-    // MARK: - Layout
-
-    private var verticalPadding: CGFloat {
-        compact ? 8 : 9
-    }
-
-    private var temperatureMetricWidth: CGFloat {
-        dynamicTypeSize > .large ? 72 : 58
-    }
-
-    private var cloudMetricWidth: CGFloat {
-        dynamicTypeSize > .large ? 72 : 58
-    }
-
-    private var conditionMetricWidth: CGFloat {
-        dynamicTypeSize > .large ? 26 : 22
-    }
-}
-
-struct CityRankLabel: View {
-    let rank: Int
-
-    @Environment(\.appTheme) private var theme
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    var body: some View {
-        Text(verbatim: String(rank))
-            .font(.system(size: rankFontSize, weight: .semibold, design: .default))
-            .foregroundStyle(theme.colors.secondaryText)
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .padding(.leading, 5)
-            .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
-    }
-
-    private var rankFontSize: CGFloat {
-        switch dynamicTypeSize {
-        case .xSmall: return 13
-        case .small: return 14
-        case .medium: return 15
-        case .large: return 16
-        case .xLarge: return 18
-        default: return 20
-        }
-    }
-}
+// MARK: - Home Card Components
 
 struct SunnyPlacesSectionHeader: View {
     let icon: String
@@ -363,61 +220,7 @@ struct CityNameListRow: View {
     }
 }
 
-enum CityListLayout {
-    static let rankColumnWidth: CGFloat = 32
-    static let columnSpacing: CGFloat = 5
-    static let cityNameLeadingInset = rankColumnWidth + columnSpacing
-}
-
-#Preview("Home View") {
-    ContentView()
-}
-
-// MARK: - List Sorting
-
-enum WeatherListSortMode: String, CaseIterable, Identifiable {
-    case sunny
-    case temperature
-    case cloud
-
-    var id: String { rawValue }
-
-    var icon: String {
-        switch self {
-        case .temperature: return "thermometer.medium"
-        case .cloud: return "cloud"
-        case .sunny: return "sun.max.fill"
-        }
-    }
-
-    func title(locale: Locale) -> String {
-        switch self {
-        case .temperature: return localizedString("Temperature", locale: locale)
-        case .cloud: return localizedString("Cloud Cover", locale: locale)
-        case .sunny: return localizedString("Sunniness", locale: locale)
-        }
-    }
-}
-
-// MARK: - Sunniness Ranking Model
-
-struct SunnyCandidate: Identifiable {
-    let cityWeather: CityWeather
-    let condition: AppWeatherCondition
-    let cloudCover: Double
-    let precipitationChance: Double?
-    let temperature: Double
-
-    var id: UUID { cityWeather.id }
-}
-
-struct SunninessCandidateGroup: Identifiable {
-    let title: String
-    let icon: String
-    let candidates: [SunnyCandidate]
-
-    var id: String { title }
-}
+// MARK: - Home Sunny-Day Models
 
 struct HomeSunnyDayRecommendation: Identifiable {
     let id: Date
@@ -435,273 +238,10 @@ private struct HomeSunnyCalendarDate: Identifiable {
     }
 }
 
-private struct WidgetSunnyHourBreakdown {
-    let daytimeHours: [Int]
-    let sunnyHours: [Int]
-    let partlySunnyHours: [Int]
-    let daylightBounds: SunnyHoursChartBounds?
-    let dataIssue: WeatherDataIssue?
-
-    init(data: SunninessScoring.SunnyHoursData, timeZone: TimeZone) {
-        var daytimeHours: [Int] = []
-        var sunnyHours: [Int] = []
-        var partlySunnyHours: [Int] = []
-        var symbolIssue: WeatherDataIssue?
-
-        for forecast in data.hours {
-            let hour = forecast.hour(in: timeZone)
-            daytimeHours.append(hour)
-
-            switch SunninessScoring.condition(for: forecast.symbolName) {
-            case .clear:
-                sunnyHours.append(hour)
-            case .partlySunny:
-                partlySunnyHours.append(hour)
-            case .partlyCloudy, .cloudy, .rain, .drizzle, .snow, .fog, .wind, .night:
-                break
-            case nil:
-                symbolIssue = .unknownWeatherSymbol(forecast.symbolName)
-            }
-        }
-
-        if let symbolIssue {
-            self.daytimeHours = []
-            self.sunnyHours = []
-            self.partlySunnyHours = []
-            self.daylightBounds = nil
-            self.dataIssue = symbolIssue
-        } else {
-            self.daytimeHours = daytimeHours
-            self.sunnyHours = sunnyHours
-            self.partlySunnyHours = partlySunnyHours
-            self.daylightBounds = data.bounds
-            self.dataIssue = nil
-        }
-    }
-
-    init(issue: WeatherDataIssue) {
-        daytimeHours = []
-        sunnyHours = []
-        partlySunnyHours = []
-        daylightBounds = nil
-        dataIssue = issue
-    }
-}
-
-// MARK: - Home and List Logic
+// MARK: - Home Screen
 
 extension ContentView {
-    // MARK: Widget Catalog Synchronization
-
-    func updateBestSunnyPlacesWidget() {
-        guard !isListPreviewActive else { return }
-        WidgetDataStore.save(
-            WidgetDataCatalog(
-                lists: managedLists.map(widgetDataList),
-                appLanguageIdentifier: locale.identifier
-            )
-        )
-    }
-
-    private func widgetDataList(for listID: CityListID) -> WidgetDataList {
-        let weatherData = weatherService.weatherData(for: listID)
-        let cities = weatherService.cityListCoordinates(for: listID).map { sourceCity in
-            widgetDataCity(for: sourceCity, weatherData: weatherData, listID: listID)
-        }
-        return WidgetDataList(
-            id: listID.rawValue,
-            displayName: listID.localizedDisplayName(locale: locale),
-            cities: cities
-        )
-    }
-
-    private func widgetDataCity(
-        for sourceCity: City,
-        weatherData: [CityWeather],
-        listID: CityListID
-    ) -> WidgetDataCity {
-        let cityWeather = weatherData.first { weatherService.citiesMatch($0.city, sourceCity) }
-        let displayCity = cityWeather?.city ?? sourceCity
-        let cityID = WidgetDataStore.cityIdentifier(
-            country: displayCity.country,
-            latitude: displayCity.latitude,
-            longitude: displayCity.longitude,
-            listID: listID.rawValue
-        )
-        let currentForecast = cityWeather?.forecastForLocalDate(containing: Date())
-        let currentHours: WidgetSunnyHourBreakdown?
-        if let cityWeather, let currentForecast {
-            currentHours = widgetSunnyHours(for: currentForecast, cityWeather: cityWeather)
-        } else {
-            currentHours = nil
-        }
-        let timeZoneIdentifier = cityWeather?.timeZone.identifier ?? displayCity.timeZoneIdentifier
-        let dataIssue: WeatherDataIssue? = {
-            guard timeZoneIdentifier.flatMap(TimeZone.init(identifier:)) != nil else {
-                return .missingTimeZone
-            }
-            guard cityWeather != nil, currentForecast != nil else {
-                return .missingForecastData
-            }
-            return currentHours?.dataIssue
-        }()
-        let widgetCity = WidgetDataCity(
-            id: cityID,
-            cityName: localizedCityDisplayName(for: displayCity, locale: locale),
-            timeZoneIdentifier: timeZoneIdentifier,
-            latitude: displayCity.latitude,
-            longitude: displayCity.longitude,
-            daytimeHours: currentHours?.daytimeHours ?? [],
-            sunnyHours: currentHours?.sunnyHours ?? [],
-            partlySunnyHours: currentHours?.partlySunnyHours ?? [],
-            currentConditionSymbolName: cityWeather?.currentSymbolName,
-            daylightBounds: currentHours?.daylightBounds,
-            sunnyWindowDays: cityWeather.map(widgetSunnyWindowDays) ?? [],
-            dataIssue: dataIssue
-        )
-
-        if currentForecast != nil,
-           let fetchedAt = weatherService.fetchDate(for: listID) {
-            WidgetDataStore.saveWeatherSnapshot(
-                WidgetWeatherSnapshot(fetchedAt: fetchedAt, city: widgetCity),
-                for: cityID
-            )
-        }
-        return widgetCity
-    }
-
-    private func widgetSunnyWindowDays(for cityWeather: CityWeather) -> [WidgetSunnyWindowDay] {
-        cityWeather.dailyForecasts.compactMap { forecast in
-            guard let selectionDate = cityWeather.selectionDate(for: forecast) else { return nil }
-            let hours = widgetSunnyHours(for: forecast, cityWeather: cityWeather)
-            return WidgetSunnyWindowDay(
-                date: selectionDate,
-                sunnyHours: hours.sunnyHours,
-                partlySunnyHours: hours.partlySunnyHours,
-                daylightBounds: hours.daylightBounds,
-                dataIssue: hours.dataIssue
-            )
-        }
-    }
-
-    private func widgetSunnyHours(
-        for forecast: DailyForecast,
-        cityWeather: CityWeather
-    ) -> WidgetSunnyHourBreakdown {
-        switch SunninessScoring.sunnyHoursData(for: forecast, timeZone: cityWeather.timeZone) {
-        case .success(let data):
-            return WidgetSunnyHourBreakdown(data: data, timeZone: cityWeather.timeZone)
-        case .failure(let issue):
-            return WidgetSunnyHourBreakdown(issue: issue)
-        }
-    }
-
-    // MARK: Sunniness Ranking
-
-    var selectedListSortMode: WeatherListSortMode {
-        WeatherListSortMode(rawValue: listSortMode) ?? .sunny
-    }
-
-    func sunnyCandidate(for cityWeather: CityWeather) -> SunnyCandidate? {
-        sunnyCandidate(for: cityWeather, on: selectedForecastDate)
-    }
-
-    func sunnyCandidate(for cityWeather: CityWeather, on forecastDate: Date) -> SunnyCandidate? {
-        guard let forecast = cityWeather.forecastIfAvailable(on: forecastDate) else {
-            return nil
-        }
-        guard let condition = SunninessScoring.condition(for: forecast.symbolName),
-              let cloudCover = forecast.cloudCover else {
-            return nil
-        }
-
-        return SunnyCandidate(
-            cityWeather: cityWeather,
-            condition: condition,
-            cloudCover: cloudCover,
-            precipitationChance: forecast.precipitationChance,
-            temperature: forecast.dailyHigh
-        )
-    }
-
-    func sunnyCandidateIcon(for candidate: SunnyCandidate) -> String {
-        candidate.condition.displayIcon
-    }
-
-    var sunnyCandidates: [SunnyCandidate] {
-        sunnyCandidates(for: mapCities)
-    }
-
-    func sunnyCandidates(for cities: [CityWeather]) -> [SunnyCandidate] {
-        cities
-            .compactMap(sunnyCandidate(for:))
-            .sorted(by: isBetterSunnyCandidate)
-    }
-
-    var sortedListCandidates: [SunnyCandidate] {
-        sortedCandidates(for: mapCities)
-    }
-
-    func sortedCandidates(for cities: [CityWeather]) -> [SunnyCandidate] {
-        let candidates = cities.compactMap(sunnyCandidate(for:))
-        switch selectedListSortMode {
-        case .temperature:
-            return candidates.sorted { $0.temperature > $1.temperature }
-        case .cloud:
-            return candidates.sorted { lhs, rhs in
-                if lhs.cloudCover != rhs.cloudCover {
-                    return lhs.cloudCover < rhs.cloudCover
-                }
-                return localizedCityName(for: lhs.cityWeather.city)
-                    .localizedStandardCompare(localizedCityName(for: rhs.cityWeather.city)) == .orderedAscending
-            }
-        case .sunny:
-            return sunninessCandidateGroups(from: candidates).flatMap(\.candidates)
-        }
-    }
-
-    /// Keeps the ranking rule visible in the UI: clear-sky cities come first,
-    /// and each displayed weather group is ordered by lower cloud cover.
-    var sunninessCandidateGroups: [SunninessCandidateGroup] {
-        sunninessCandidateGroups(from: mapCities.compactMap(sunnyCandidate(for:)))
-    }
-
-    func sunninessCandidateGroups(from candidates: [SunnyCandidate]) -> [SunninessCandidateGroup] {
-        let sunny = candidates.filter { $0.condition == .clear }.sorted(by: isLowerCloudCover)
-        let partlySunny = candidates.filter { $0.condition == .partlySunny }.sorted(by: isLowerCloudCover)
-        let remaining = candidates.filter {
-            $0.condition != .clear
-                && $0.condition != .partlySunny
-                && $0.condition != .drizzle
-                && $0.condition != .rain
-        }
-        .sorted(by: isLowerCloudCover)
-        let rainy = candidates.filter { $0.condition == .drizzle || $0.condition == .rain }
-            .sorted(by: isLowerCloudCover)
-
-        return [
-            SunninessCandidateGroup(
-                title: localizedString("Sunny", locale: locale),
-                icon: "sun.max.fill",
-                candidates: sunny
-            ),
-            SunninessCandidateGroup(
-                title: localizedString("Partly Sunny", locale: locale),
-                icon: "cloud.sun",
-                candidates: partlySunny
-            ),
-            SunninessCandidateGroup(
-                title: localizedString("Cloudy, Windy, Snowy, Foggy", locale: locale),
-                icon: "cloud",
-                candidates: remaining
-            ),
-            SunninessCandidateGroup(
-                title: localizedString("Drizzle, Rain", locale: locale),
-                icon: "cloud.rain",
-                candidates: rainy
-            )
-        ].filter { !$0.candidates.isEmpty }
-    }
+    // MARK: - Sunny-Day Recommendations
 
     var homeSunnyDayRecommendations: [HomeSunnyDayRecommendation] {
         homeSunnyDayRecommendations(for: mapCities)
@@ -739,40 +279,7 @@ extension ContentView {
         }
     }
 
-    private func isBetterSunnyCandidate(_ lhs: SunnyCandidate, than rhs: SunnyCandidate) -> Bool {
-        if lhs.condition.sunninessRank != rhs.condition.sunninessRank {
-            return lhs.condition.sunninessRank < rhs.condition.sunninessRank
-        }
-
-        if lhs.cloudCover != rhs.cloudCover {
-            return lhs.cloudCover < rhs.cloudCover
-        }
-        return localizedCityName(for: lhs.cityWeather.city)
-            .localizedStandardCompare(localizedCityName(for: rhs.cityWeather.city)) == .orderedAscending
-    }
-
-    private func isLowerCloudCover(_ lhs: SunnyCandidate, _ rhs: SunnyCandidate) -> Bool {
-        if lhs.cloudCover != rhs.cloudCover {
-            return lhs.cloudCover < rhs.cloudCover
-        }
-        return localizedCityName(for: lhs.cityWeather.city)
-            .localizedStandardCompare(localizedCityName(for: rhs.cityWeather.city)) == .orderedAscending
-    }
-
-    // MARK: Candidate Selection
-
-    func selectCandidate(_ candidate: SunnyCandidate, focusMap: Bool = true) {
-        let city = candidate.cityWeather
-        if focusMap {
-            pushRoute(.map)
-            centerMap(on: city)
-            showMapMarkerCard(city)
-        } else {
-            presentDetail(for: city)
-        }
-    }
-
-    // MARK: Home Page
+    // MARK: - Screen Composition
 
     var homeContent: some View {
         homeContent(previewActive: isListPreviewActive)
@@ -783,7 +290,7 @@ extension ContentView {
             let availableContentWidth = min(max(geometry.size.width - 32, 0), 1_160)
             // The app's text-size setting currently caps at xxLarge, so treat that
             // maximum as the readable single-column breakpoint as well as the
-            // the largest system categories.
+            // largest system categories.
             let usesReadableSingleColumn = dynamicTypeSize >= .xxLarge
             let usesWideLayout = availableContentWidth >= 900 && !usesReadableSingleColumn
             let isIPad = UIDevice.current.userInterfaceIdiom == .pad
@@ -795,7 +302,9 @@ extension ContentView {
             )
             let droppedCityCount = previewActive
                 ? 0
-                : expectedForecastBoundaryOmissionCount(in: weatherService.cityWeatherData)
+                : rankingOmissionCount(in: weatherService.cityWeatherData)
+            let showsSunnyDaysCard = !previewActive
+                && !homeSunnyCalendarDates(for: weatherService.cityWeatherData).isEmpty
             // Preserve the existing height calculation in narrow windows. On a
             // wide window, derive the map height from its column so it retains a
             // useful landscape proportion instead of stretching with the screen.
@@ -823,7 +332,7 @@ extension ContentView {
                                     homeMapSnapshot(height: snapshotHeight, previewActive: previewActive)
                                 }
 
-                                if !previewActive {
+                                if showsSunnyDaysCard {
                                     homeCard {
                                         homeSunnyDaysSection(
                                             previewActive: previewActive,
@@ -843,7 +352,7 @@ extension ContentView {
                         homeCard(contentPadding: 6) {
                             homeMapSnapshot(height: snapshotHeight, previewActive: previewActive)
                         }
-                        if !previewActive {
+                        if showsSunnyDaysCard {
                             homeCard {
                                 homeSunnyDaysSection(
                                     previewActive: previewActive,
@@ -965,11 +474,6 @@ extension ContentView {
                 .buttonStyle(.plain)
             }
 
-            if !previewActive {
-                if let explanation = missingForecastExplanation(for: weatherService.cityWeatherData) {
-                    WeatherDataUnavailableNotice(message: explanation)
-                }
-            }
         }
     }
 
@@ -1063,10 +567,6 @@ extension ContentView {
         return days.map { day in
             symbols[calendar.component(.weekday, from: day.date) - 1]
         }
-    }
-
-    private var homeSunnyCalendarDates: [HomeSunnyCalendarDate] {
-        homeSunnyCalendarDates(for: mapCities)
     }
 
     private func homeSunnyCalendarDates(for cities: [CityWeather]) -> [HomeSunnyCalendarDate] {
@@ -1238,14 +738,13 @@ extension ContentView {
 
     // MARK: - Candidate List
 
-    private func homeCandidateList(limit: Int? = nil, previewActive: Bool) -> some View {
+    private func homeCandidateList(previewActive: Bool) -> some View {
         if previewActive {
             return AnyView(homePreviewCityList())
         }
 
-        let normalCandidates = sunnyCandidates(for: weatherService.cityWeatherData)
+        let rankedCandidates = sunnyCandidates(for: weatherService.cityWeatherData)
             .filter { $0.condition.isSunnyOrPartlySunny }
-        let rankedCandidates = limit.map { Array(normalCandidates.prefix($0)) } ?? normalCandidates
         return AnyView(VStack(spacing: 0) {
             if rankedCandidates.isEmpty {
                 Text(localizedString("No sunny places for this date.", locale: locale))
@@ -1259,7 +758,7 @@ extension ContentView {
                 listCandidateRows(
                     rankedCandidates,
                     showsDividers: true,
-                    showsTemperature: false,
+                    showsTemperature: true,
                     selectionAction: { candidate in
                         selectCandidate(candidate, focusMap: false)
                     }
@@ -1285,100 +784,10 @@ extension ContentView {
         }
     }
 
-    func sunnyCandidateRow(
-        _ candidate: SunnyCandidate,
-        rank: Int? = nil,
-        compact: Bool = false,
-        showsConditionIcon: Bool = true,
-        showsWeatherMetrics: Bool = true,
-        showsTemperature: Bool = true,
-        cityNameOverride: String? = nil,
-        cityRenameAction: (() -> Void)? = nil
-    ) -> some View {
-        SunnyCandidateRow(
-            candidate: candidate,
-            rank: rank,
-            compact: compact,
-            showsConditionIcon: showsConditionIcon,
-            showsWeatherMetrics: showsWeatherMetrics,
-            showsTemperature: showsTemperature,
-            tempUnit: tempUnit,
-            cityNameOverride: cityNameOverride ?? localizedCityName(for: candidate.cityWeather.city),
-            cityRenameAction: cityRenameAction
-        )
-    }
+}
 
-    func topToolbar<Accessory: View>(
-        titleOverride: String? = nil,
-        @ViewBuilder accessory: () -> Accessory
-    ) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-            listSwitcher(titleOverride: titleOverride)
-            Spacer(minLength: 12)
-            accessory()
-        }
-        .frame(maxWidth: .infinity)
-    }
+// MARK: - Previews
 
-    func topToolbarActionCapsule<Content: View>(
-        spacing: CGFloat = 12,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        HStack(spacing: spacing) {
-            content()
-        }
-        .padding(.horizontal, 12)
-        .frame(height: 44)
-        .themedGlass(in: .capsule)
-    }
-
-    func listSwitcher(titleOverride: String?) -> some View {
-        Group {
-            Menu {
-                    ForEach(managedLists) { listID in
-                        Button {
-                            listEditMode = false
-                            Task {
-                                await switchToList(listID)
-                            }
-                        } label: {
-                            HStack {
-                                Text(listID.localizedDisplayName(locale: locale))
-                                    .foregroundStyle(theme.colors.primaryText)
-
-                                Spacer()
-
-                                if listID.rawValue == weatherService.activeListID.rawValue {
-                                    Image(systemName: "checkmark")
-                                        .foregroundStyle(theme.colors.primaryText)
-                                }
-                            }
-                        }
-                    }
-
-                    Divider()
-
-                    Button {
-                        listEditMode = false
-                        listManagementState.isPresented = true
-                    } label: {
-                        primaryMenuLabel(localizedString("Manage Lists", locale: locale), systemImage: "slider.horizontal.3")
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(titleOverride ?? toolbarTitle)
-                            .font(.system(size: 32, weight: .semibold, design: .serif))
-                            .foregroundStyle(theme.colors.primaryText)
-                            .lineLimit(1)
-                        if titleOverride == nil {
-                            Image(systemName: "chevron.down")
-                                .font(.system(size: 14, weight: .semibold))
-                                .foregroundStyle(theme.colors.accent)
-                        }
-                    }
-                }
-            .menuOrder(.fixed)
-        }
-    }
-
+#Preview("Home View") {
+    ContentView()
 }

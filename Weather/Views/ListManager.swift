@@ -8,24 +8,72 @@
 
 import SwiftUI
 
+// MARK: - Presentation State
+
+/// Navigation and inline-edit state for the Lists management sheet.
+struct ListManagementState {
+    var isPresented = false
+    var showsAddOptions = false
+    var showsContinentPicker = false
+    var showsCountryPicker = false
+    var dismissAction: ListManagementDismissAction?
+    var editMode: EditMode = .inactive
+    var renamingListID: CityListID?
+    var renameText = ""
+    var countryQuery = ""
+}
+
 enum ListManagementDismissAction {
     case previewContinent(CityListID)
     case previewCountry(CountryListOption)
 }
 
+// MARK: - List Creation Actions
+
 extension ContentView {
+    func beginCreatingCustomList() {
+        newListName = ""
+        showingAddListAlert = true
+    }
+
+    func commitListManagerNewList() {
+        let trimmed = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        newListName = ""
+
+        Task {
+            let listID = await weatherService.createCustomList(name: trimmed, cities: [])
+            await switchToList(listID)
+            refreshListOrder()
+            listManagementState.isPresented = false
+            centerMapOnDots(useListCoordinates: true)
+        }
+    }
+}
+
+extension ContentView {
+    // MARK: Sheet Composition
+
     var listManagementSheet: some View {
         NavigationStack {
             List {
-                ForEach(managedLists) { listID in
-                    listManagementRow(for: listID)
-                    .listRowBackground(theme.colors.settingsRowFill)
+                Section {
+                    ForEach(managedLists) { listID in
+                        listManagementRow(for: listID)
+                            .listRowBackground(theme.colors.settingsRowFill)
+                    }
+                    .onMove { source, destination in
+                        weatherService.moveLists(from: source, to: destination)
+                        refreshListOrder()
+                    }
+                    .onDelete(perform: requestListDeletion)
                 }
-                .onMove { source, destination in
-                    weatherService.moveLists(from: source, to: destination)
-                    refreshListOrder()
+
+                if listManagementState.editMode != .active {
+                    Section {
+                        listManagementNewListRow
+                    }
                 }
-                .onDelete(perform: requestListDeletion)
             }
             .environment(\.editMode, $listManagementState.editMode)
             .scrollContentBackground(.hidden)
@@ -53,10 +101,6 @@ extension ContentView {
 
                 if listManagementState.editMode != .active {
                     ToolbarItem(placement: .topBarLeading) {
-                        listManagementCloseButton
-                    }
-
-                    ToolbarItemGroup(placement: .topBarTrailing) {
                         Button {
                             withAnimation(.smooth(duration: 0.2)) {
                                 listManagementState.editMode = .active
@@ -64,12 +108,10 @@ extension ContentView {
                         } label: {
                             Image(systemName: "pencil")
                         }
+                    }
 
-                        Button {
-                            listManagementState.showsAddOptions = true
-                        } label: {
-                            Image(systemName: "plus")
-                        }
+                    ToolbarItem(placement: .topBarTrailing) {
+                        listManagementCloseButton
                     }
                 } else {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -95,6 +137,8 @@ extension ContentView {
             listManagementState.showsCountryPicker = false
         }
     }
+
+    // MARK: Add-List Options
 
     private var listManagementAddOptions: some View {
         AddSheet(
@@ -155,6 +199,8 @@ extension ContentView {
             listManagementState.isPresented = false
         }
     }
+
+    // MARK: List Rows
 
     @ViewBuilder
     private func listManagementRow(for listID: CityListID) -> some View {
@@ -222,6 +268,24 @@ extension ContentView {
             }
         }
         .contentShape(Rectangle())
+    }
+
+    private var listManagementNewListRow: some View {
+        Button {
+            listManagementState.showsAddOptions = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "plus")
+                    .fontWeight(.semibold)
+                Text(localizedString("New List", locale: locale))
+                    .fontWeight(.semibold)
+                Spacer()
+            }
+            .foregroundStyle(theme.colors.primaryText)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowBackground(theme.colors.dotSun)
     }
 
     // MARK: List Manager Toolbar

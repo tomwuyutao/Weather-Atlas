@@ -1,5 +1,5 @@
 //
-//  CountryCityCatalog.swift
+//  CountryCatalog.swift
 //  Weather
 //
 //  Purpose: Loads the bundled country city catalog used to create

@@ -6,8 +6,6 @@
 //
 
 import SwiftUI
-import CoreLocation
-import WeatherKit
 
 // MARK: - List Identity
 
@@ -119,6 +117,15 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         }
         if displayName == "New List" {
             return localizedString("New List", locale: locale)
+        }
+        return Self.localizedBuiltInDisplayName(for: rawValue, locale: locale) ?? displayName
+    }
+
+    /// The canonical place name used by list-creation catalogs. Unlike
+    /// `localizedDisplayName`, this intentionally ignores a saved list rename.
+    func canonicalLocalizedDisplayName(locale: Locale = .current) -> String {
+        if let nameSource {
+            return nameSource.localizedDisplayName(locale: locale)
         }
         return Self.localizedBuiltInDisplayName(for: rawValue, locale: locale) ?? displayName
     }
@@ -612,137 +619,6 @@ extension WeatherService {
         weatherDataByListID[listID.rawValue] = []
         await switchList(to: listID)
         return listID
-    }
-
-}
-
-// MARK: - List Manager State and Actions
-
-extension ContentView {
-
-    var managedLists: [CityListID] {
-        weatherService.availableLists
-    }
-
-    func refreshListOrder() {
-        weatherService.reloadAvailableLists()
-    }
-
-    @ViewBuilder
-    func cityActions(for city: CityWeather, in listID: CityListID) -> some View {
-        let destinationLists = managedLists.filter { $0.rawValue != listID.rawValue }
-
-        if !destinationLists.isEmpty {
-            Menu {
-                ForEach(destinationLists) { destinationListID in
-                    Button {
-                        weatherService.moveCity(city, from: listID, to: destinationListID)
-                        Haptics.lightImpact()
-                    } label: {
-                        primaryMenuLabel(
-                            destinationListID.localizedDisplayName(locale: locale),
-                            systemImage: "list.bullet"
-                        )
-                    }
-                }
-            } label: {
-                primaryMenuLabel(localizedString("Move", locale: locale), systemImage: "arrow.right")
-            }
-        }
-
-        Button {
-            cityToRename = city.city
-            cityRenameText = CityListID.customCityName(for: city.city)
-                ?? localizedCityName(for: city.city)
-            showingCityRenameAlert = true
-        } label: {
-            primaryMenuLabel(localizedString("Rename", locale: locale), systemImage: "pencil")
-        }
-
-        Button {
-            weatherService.removeCity(city, from: listID)
-        } label: {
-            Label {
-                Text(localizedString("Delete", locale: locale))
-            } icon: {
-                Image(systemName: "trash")
-                    .foregroundStyle(theme.colors.destructive)
-            }
-        }
-        .tint(theme.colors.destructive)
-    }
-
-    func beginCreatingCustomList() {
-        newListName = ""
-        showingAddListAlert = true
-    }
-
-    // MARK: Map Reveal Actions
-
-    func revealCityOnMap(_ city: CityWeather, in listID: CityListID) {
-        Task {
-            await switchToList(listID)
-            guard let revealedCity = weatherService.cityWeatherData.first(where: {
-                weatherService.citiesMatch($0.city, city.city)
-            }) else {
-                weatherService.reportDeveloperWarning(
-                    title: "Map Reveal Failed",
-                    message: "After switching to \(listID.rawValue), the requested city \(city.city.localizedName()) was not found in fetched weather data."
-                )
-                return
-            }
-            pushRoute(.map)
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
-                showingMapExpandedCard = false
-                selectedMapCity = nil
-            }
-            centerMap(on: revealedCity)
-            showMapMarkerCard(revealedCity)
-        }
-    }
-
-    // MARK: Rename and Add Entry Points
-
-    func commitListManagerNewList() {
-        let trimmed = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        newListName = ""
-
-        Task {
-            let listID = await weatherService.createCustomList(name: trimmed, cities: [])
-            await switchToList(listID)
-            refreshListOrder()
-            listManagementState.isPresented = false
-            centerMapOnDots(useListCoordinates: true)
-        }
-    }
-
-    func switchToList(_ listID: CityListID) async {
-        guard listID.rawValue != weatherService.activeListID.rawValue else { return }
-        await weatherService.switchList(to: listID)
-        centerMapOnDots(useListCoordinates: true)
-    }
-
-}
-
-// MARK: - City List Actions
-
-extension ContentView {
-    @discardableResult
-    func addCityToActiveList(_ cityWeather: CityWeather) -> Bool {
-        let didAdd = weatherService.addCityToList(
-            cityWeather,
-            listID: weatherService.activeListID
-        )
-        if didAdd {
-            Haptics.lightImpact()
-        }
-        if let addedCity = weatherService.cityWeatherData.first(where: {
-            weatherService.citiesMatch($0.city, cityWeather.city)
-        }) {
-            selectedMapCity = addedCity
-        }
-        return didAdd
     }
 
 }

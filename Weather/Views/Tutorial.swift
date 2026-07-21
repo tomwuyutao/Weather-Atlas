@@ -3,7 +3,7 @@
 //  Weather
 //
 //  Purpose: Presents first-launch onboarding, replayable app guidance, and the
-//  final continent-list selection step used when the app is opened fresh.
+//  continent-or-country list selection used when the app is opened fresh.
 //
 
 import SwiftUI
@@ -12,10 +12,8 @@ import UIKit
 // MARK: - Full-Screen Tutorial
 
 struct TutorialView: View {
-    let includesContinentSelection: Bool
+    let includesListSelection: Bool
     let continentLists: [CityListID]
-    @Binding var selectedContinentListIDs: Set<String>
-    @Binding var selectedCountryListIDs: Set<String>
     let creationProgress: Double
     let onSelectContinentList: (CityListID) async -> Void
     let onSelectCountryList: (CountryListOption) async -> Void
@@ -39,8 +37,10 @@ struct TutorialView: View {
     @State private var creatingListName: String?
     @State private var didApplyInitialState = false
 
+    // MARK: Page State
+
     private var pageCount: Int {
-        includesContinentSelection ? 3 : 2
+        includesListSelection ? 3 : 2
     }
 
     var body: some View {
@@ -97,6 +97,8 @@ struct TutorialView: View {
         dynamicTypeSize > .large
     }
 
+    // MARK: Page Routing
+
     @ViewBuilder
     private var tutorialPages: some View {
         if dynamicTypeSize > .large {
@@ -114,7 +116,7 @@ struct TutorialView: View {
                 stepsPage
                     .tag(1)
 
-                if includesContinentSelection {
+                if includesListSelection {
                     tutorialListSelectionPage
                         .tag(2)
                 }
@@ -131,13 +133,15 @@ struct TutorialView: View {
         case 1:
             stepsPage
         default:
-            if includesContinentSelection {
+            if includesListSelection {
                 tutorialListSelectionPage
             } else {
                 stepsPage
             }
         }
     }
+
+    // MARK: Adaptive Layout
 
     private var isIPad: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
@@ -428,14 +432,14 @@ struct TutorialView: View {
         )
     }
 
-    // MARK: Continent Selection Page
+    // MARK: List Selection Pages
 
-    private var continentSelectionPage: some View {
+    private var listSelectionPage: some View {
         GeometryReader { proxy in
             // The selection remains usable in iPad landscape,
             // Split View, and large text without changing the normal hierarchy.
             ScrollView {
-                continentSelectionPageContent
+                listSelectionPageContent
                     .frame(minHeight: proxy.size.height, alignment: .top)
                     .frame(maxWidth: tutorialContentMaxWidth)
                     .frame(maxWidth: .infinity)
@@ -444,7 +448,7 @@ struct TutorialView: View {
         }
     }
 
-    private var continentSelectionPageContent: some View {
+    private var listSelectionPageContent: some View {
         VStack(alignment: .leading, spacing: 22) {
             tutorialHeaderInset
 
@@ -457,7 +461,9 @@ struct TutorialView: View {
 
             (
                 Text(localizedString("Pick a place and we'll create a list of ", locale: locale))
-                    + Text(localizedString("15 big cities", locale: locale)).fontWeight(.bold)
+                    + Text(localizedString("15 largest cities", locale: locale))
+                        .fontWeight(.bold)
+                        .underline(color: introColors.dotSun)
                     + Text(localizedString(" for you.", locale: locale))
             )
             .font(.body)
@@ -493,7 +499,7 @@ struct TutorialView: View {
         if isCreatingList {
             creatingListPage
         } else {
-            continentSelectionPage
+            listSelectionPage
         }
     }
 
@@ -518,14 +524,14 @@ struct TutorialView: View {
             subtitle: nil,
             systemImage: systemImage,
             titleWeight: .medium,
-            titleColor: introColors.primaryText,
+            titleColor: primaryButtonTextColor,
             showsIconBackground: false,
-            iconColor: introColors.accent,
+            iconColor: primaryButtonTextColor,
             action: action
         )
         .padding(.horizontal, 18)
         .padding(.vertical, 10)
-        .background(introColors.listCardFill.opacity(0.78), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .background(introColors.dotSun, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 // Increase Contrast gives these primary actions a stronger outline.
@@ -536,7 +542,7 @@ struct TutorialView: View {
         }
     }
 
-    // MARK: Creating Page
+    // MARK: List Creation Progress
 
     private var creatingListPage: some View {
         GeometryReader { proxy in
@@ -578,6 +584,8 @@ struct TutorialView: View {
         }
         return "\(localizedString("Creating a list of 15 cities in", locale: locale)) \(creatingListName)"
     }
+
+    // MARK: Picker Sheets
 
     private var tutorialContinentSearchSheet: some View {
         ContinentListPickerContent(
@@ -630,7 +638,7 @@ struct TutorialView: View {
                 .controlSize(.large)
             }
 
-            if !(includesContinentSelection && page == pageCount - 1) {
+            if !(includesListSelection && page == pageCount - 1) {
                 Button {
                     advanceOrFinish()
                 } label: {
@@ -658,8 +666,10 @@ struct TutorialView: View {
         if page < pageCount - 1 {
             return localizedString("Continue", locale: locale)
         }
-        return includesContinentSelection ? localizedString("Start", locale: locale) : localizedString("Done", locale: locale)
+        return localizedString("Done", locale: locale)
     }
+
+    // MARK: Tutorial Actions
 
     private func advanceOrFinish() {
         if page < pageCount - 1 {
@@ -673,7 +683,7 @@ struct TutorialView: View {
 
     private func beginCreatingContinentList(_ listID: CityListID) {
         showingContinentSearch = false
-        creatingListName = listID.localizedDisplayName(locale: locale)
+        creatingListName = listID.canonicalLocalizedDisplayName(locale: locale)
         startCreatingList {
             await onSelectContinentList(listID)
         }
@@ -716,21 +726,15 @@ struct TutorialView: View {
 
 private struct TutorialPreviewContent: View {
     let startsCreatingList: Bool
-    @State private var selectedIDs: Set<String>
 
     init(startsCreatingList: Bool = false) {
         self.startsCreatingList = startsCreatingList
-        _selectedIDs = State(
-            initialValue: startsCreatingList ? [CityListID.europe.rawValue] : []
-        )
     }
 
     var body: some View {
         TutorialView(
-            includesContinentSelection: true,
+            includesListSelection: true,
             continentLists: CityListID.builtInLists,
-            selectedContinentListIDs: $selectedIDs,
-            selectedCountryListIDs: .constant([]),
             creationProgress: 0.42,
             onSelectContinentList: { _ in },
             onSelectCountryList: { _ in },

@@ -2,15 +2,147 @@
 //  MapView.swift
 //  Weather
 //
-//  Purpose: Composes the weather map screen: map controls, marker selection,
-//  camera fitting, and marker selection.
+//  Purpose: Composes the weather map screen: destinations, overlays, controls,
+//  marker selection, camera fitting, and map-specific presentation state.
 //
 
 import SwiftUI
 import CoreLocation
 import MapKit
 
+// MARK: - Map Selection State
+
+extension ContentView {
+    /// Cities to display on the map: the active list plus any temporary searched city.
+    var mapCities: [CityWeather] {
+        if isListPreviewActive {
+            return []
+        }
+        var result = weatherService.cityWeatherData
+        if let preview = citySearchState.temporaryMapCity,
+           !result.contains(where: { weatherService.citiesMatch($0.city, preview.city) }) {
+            result.append(preview)
+        }
+        return result
+    }
+
+    var mapFitCities: [City] {
+        if isListPreviewActive {
+            return listPreviewCities
+        }
+        return weatherService.cityListCoordinates()
+    }
+
+    var selectedMapCity: CityWeather? {
+        get {
+            guard let selectedMapCityID else { return nil }
+            return mapCities.first(where: { $0.id == selectedMapCityID })
+        }
+        nonmutating set {
+            selectedMapCityID = newValue?.id
+        }
+    }
+
+    var showingMapExpandedCard: Bool {
+        get { selectedMapCityID != nil }
+        nonmutating set {
+            if !newValue {
+                selectedMapCityID = nil
+            }
+        }
+    }
+}
+
+// MARK: - Map Destination
+
+extension ContentView {
+    var fullMapDestination: some View {
+        mapTabContent
+            .navigationTitle(localizedString("Weather", locale: locale))
+            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarBackButtonHidden(false)
+            .toolbar(.hidden, for: .navigationBar)
+            .onAppear {
+                centerMapOnDots(useListCoordinates: true)
+            }
+    }
+
+    var mapTabContent: some View {
+        ZStack(alignment: .bottom) {
+            mapView
+                .overlay(alignment: .topLeading) {
+                    if isMapRoute, !citySearchState.isPresented {
+                        VStack(alignment: .leading, spacing: 8) {
+                            if weatherService.isLoading {
+                                LoadingWeatherOverlay(
+                                    progress: weatherService.loadingProgress,
+                                    locale: locale
+                                )
+                                .allowsHitTesting(false)
+                                .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+                            }
+
+                            if showLegend {
+                                MapFloatingLegend(overlayMode: mapOverlayMode) {
+                                    withAnimation(.smooth(duration: 0.2)) {
+                                        showLegend = false
+                                    }
+                                }
+                                .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+                            }
+                        }
+                        .padding(.leading, 16)
+                        .padding(.top, 72)
+                    }
+                }
+                .animation(.smooth(duration: 0.22), value: showLegend)
+                .animation(.smooth(duration: 0.22), value: weatherService.isLoading)
+                .overlay(alignment: .topLeading) {
+                    if !citySearchState.isPresented {
+                        topToolbar {
+                            mapControls
+                        }
+                        .padding(.horizontal, 16)
+                        .safeAreaPadding(.top, 12)
+                        .contentShape(Rectangle())
+                        .background(Color.clear)
+                        .zIndex(120)
+                    }
+                }
+                .allowsHitTesting(!citySearchState.isPresented)
+
+            if !citySearchState.isPresented {
+                mainOverlays
+            }
+        }
+        .tint(theme.colors.accent)
+    }
+}
+
 // MARK: - Map Weather Validation
+
+extension ContentView {
+    /// Dismisses a selected marker whenever the active date, overlay, filter,
+    /// or refreshed data can no longer produce the card the user is seeing.
+    func dismissSelectedMapCardIfUnavailable() {
+        guard showingMapExpandedCard else { return }
+        guard let selectedCity = selectedMapCity,
+              let forecast = selectedCity.forecastIfAvailable(on: selectedForecastDate),
+              mapWeatherDataIssue(
+                forecast: forecast,
+                cityWeather: selectedCity,
+                overlayMode: mapOverlayMode
+              ) == nil else {
+            dismissMapExpandedCard()
+            return
+        }
+
+        if filterSunny,
+           SunninessScoring.condition(for: forecast.symbolName)?.isSunny != true {
+            dismissMapExpandedCard()
+        }
+    }
+}
 
 /// Resolves the exact source-data requirement for the active map layer. The
 /// marker and floating card share this check so neither can display a fallback.
@@ -19,9 +151,6 @@ func mapWeatherDataIssue(
     cityWeather: CityWeather,
     overlayMode: String
 ) -> WeatherDataIssue? {
-    guard SunninessScoring.condition(for: forecast.symbolName) != nil else {
-        return .unknownWeatherSymbol(forecast.symbolName)
-    }
     switch overlayMode {
     case "cloudCover":
         return forecast.cloudCover == nil ? .missingCloudCoverData : nil
@@ -32,6 +161,9 @@ func mapWeatherDataIssue(
     case "temperature":
         return nil
     default:
+        guard SunninessScoring.condition(for: forecast.symbolName) != nil else {
+            return .unknownWeatherSymbol(forecast.symbolName)
+        }
         guard case .failure(let issue) = SunninessScoring.sunnyHoursData(
             for: forecast,
             timeZone: cityWeather.timeZone
@@ -39,6 +171,41 @@ func mapWeatherDataIssue(
             return nil
         }
         return issue
+    }
+}
+
+// MARK: - Loading Overlay
+
+private struct LoadingWeatherOverlay: View {
+    let progress: Double
+    let locale: Locale
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ProgressView(value: progress)
+                .progressViewStyle(.circular)
+
+            Text(localizedString("Loading Weather", locale: locale))
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background {
+            if colorSchemeContrast == .increased {
+                Capsule().fill(theme.colors.glassFill)
+            } else {
+                Capsule().fill(.regularMaterial)
+            }
+        }
+        .overlay {
+            if colorSchemeContrast == .increased {
+                Capsule().stroke(theme.colors.primaryText, lineWidth: 1)
+            }
+        }
     }
 }
 
@@ -69,7 +236,7 @@ extension ContentView {
             }
         } label: {
             Image(systemName: "square.3.layers.3d")
-                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
                 .imageScale(.medium)
                 .symbolRenderingMode(.monochrome)
                 .foregroundStyle(theme.colors.primaryText)
@@ -114,7 +281,7 @@ extension ContentView {
             mapMoreMenuItems
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
                 .imageScale(.medium)
                 .foregroundStyle(theme.colors.primaryText)
                 .frame(width: 44, height: 44)
@@ -132,7 +299,7 @@ extension ContentView {
                 centerMapOnDots(useListCoordinates: true)
             } label: {
                 Image(systemName: "arrow.up.left.and.down.right.and.arrow.up.right.and.down.left")
-                    .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                    .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
                     .imageScale(.medium)
                     .foregroundStyle(theme.colors.primaryText)
                     .frame(width: 44, height: 44)
@@ -144,11 +311,11 @@ extension ContentView {
             .tint(theme.colors.primaryText)
 
             mapOverlayMenu
-                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
                 .imageScale(.medium)
 
             mapMoreMenu
-                .font(.system(size: bottomToolbarIconSize, weight: .regular))
+                .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
                 .imageScale(.medium)
         }
     }
@@ -189,27 +356,28 @@ struct AppleWeatherMapView: View {
     private var mapContent: some View {
         Map(position: $cameraPosition) {
             ForEach(visibleCities) { cityWeather in
-                Annotation(
-                    "",
-                    coordinate: CLLocationCoordinate2D(
-                        latitude: cityWeather.city.latitude,
-                        longitude: cityWeather.city.longitude
-                    ),
-                    anchor: .center
-                ) {
-                    Button {
-                        selectedCityID = cityWeather.id
-                    } label: {
-                        WeatherMapMarker(
-                            color: markerColor(for: cityWeather),
-                            isSelected: selectedCityID == cityWeather.id,
-                            isUnavailable: markerDataIssue(for: cityWeather) != nil,
-                            differentiatingText: markerDifferentiatingText(for: cityWeather),
-                            differentiatingSymbol: markerDifferentiatingSymbol(for: cityWeather)
-                        )
-                        .saturation(markerSaturationCompensation)
+                if let color = markerColor(for: cityWeather) {
+                    Annotation(
+                        "",
+                        coordinate: CLLocationCoordinate2D(
+                            latitude: cityWeather.city.latitude,
+                            longitude: cityWeather.city.longitude
+                        ),
+                        anchor: .center
+                    ) {
+                        Button {
+                            selectedCityID = cityWeather.id
+                        } label: {
+                            WeatherMapMarker(
+                                color: color,
+                                isSelected: selectedCityID == cityWeather.id,
+                                differentiatingText: markerDifferentiatingText(for: cityWeather),
+                                differentiatingSymbol: markerDifferentiatingSymbol(for: cityWeather)
+                            )
+                            .saturation(markerSaturationCompensation)
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }
@@ -217,6 +385,12 @@ struct AppleWeatherMapView: View {
         .saturation(mapSaturation)
         .safeAreaPadding(.leading, 16)
         .safeAreaPadding(.bottom, 10)
+        .onMapCameraChange(frequency: .onEnd) { context in
+            // Persist the complete user-positioned camera. A region stores only
+            // center and span, so reusing it after a gesture would reset the
+            // map's heading and pitch when the user's fingers leave the screen.
+            cameraPosition = .camera(context.camera)
+        }
         .onAppear {
             fitVisibleContent()
         }
@@ -237,13 +411,18 @@ struct AppleWeatherMapView: View {
             ) else {
                 return false
             }
-            guard filterSunny else { return true }
             guard let forecast = cityWeather.forecastIfAvailable(on: selectedForecastDate) else {
-                return true
+                return false
             }
-            guard let condition = SunninessScoring.condition(for: forecast.symbolName) else {
-                return true
+            guard mapWeatherDataIssue(
+                forecast: forecast,
+                cityWeather: cityWeather,
+                overlayMode: overlayMode
+            ) == nil else {
+                return false
             }
+            guard filterSunny else { return true }
+            guard let condition = SunninessScoring.condition(for: forecast.symbolName) else { return false }
             return condition.isSunny
         }
     }
@@ -291,49 +470,32 @@ struct AppleWeatherMapView: View {
         return forecast.weatherIcon
     }
 
-    private func markerDataIssue(for cityWeather: CityWeather) -> WeatherDataIssue? {
-        guard let forecast = cityWeather.forecastIfAvailable(on: selectedForecastDate) else {
-            return .missingForecastData
-        }
-        return mapWeatherDataIssue(
-            forecast: forecast,
-            cityWeather: cityWeather,
-            overlayMode: overlayMode
-        )
-    }
-
     // MARK: Marker Coloring
 
-    private func markerColor(for cityWeather: CityWeather) -> Color {
+    private func markerColor(for cityWeather: CityWeather) -> Color? {
         let colors = theme.colors
-        guard let forecast = cityWeather.forecastIfAvailable(on: selectedForecastDate) else {
-            return unavailableOverlayColor(colors: colors)
-        }
+        guard let forecast = cityWeather.forecastIfAvailable(on: selectedForecastDate) else { return nil }
         guard mapWeatherDataIssue(
             forecast: forecast,
             cityWeather: cityWeather,
             overlayMode: overlayMode
-        ) == nil else {
-            return unavailableOverlayColor(colors: colors)
-        }
+        ) == nil else { return nil }
 
         switch overlayMode {
         case "temperature":
             let celsius = forecast.dailyHigh
             return temperatureColor(celsius: celsius, colors: colors)
         case "cloudCover":
-            guard let cloudCover = forecast.cloudCover else { return unavailableOverlayColor(colors: colors) }
+            guard let cloudCover = forecast.cloudCover else { return nil }
             return cloudCoverColor(cloudCover, colors: colors)
         case "precipitation":
-            guard let precipitationChance = forecast.precipitationChance else { return unavailableOverlayColor(colors: colors) }
+            guard let precipitationChance = forecast.precipitationChance else { return nil }
             return precipitationColor(precipitationChance, colors: colors)
         case "uvIndex":
-            guard let uvIndex = forecast.uvIndex else { return unavailableOverlayColor(colors: colors) }
+            guard let uvIndex = forecast.uvIndex else { return nil }
             return uvColor(index: uvIndex, colors: colors)
         default:
-            guard let condition = SunninessScoring.condition(for: forecast.symbolName) else {
-                return unavailableOverlayColor(colors: colors)
-            }
+            guard let condition = SunninessScoring.condition(for: forecast.symbolName) else { return nil }
             return condition.dotColor(for: colors)
         }
     }
@@ -361,12 +523,6 @@ struct AppleWeatherMapView: View {
 
     private func uvColor(index: Int, colors: ThemeColors) -> Color {
         colors.dotCloudy.interpolated(with: colors.destructive, by: clamped(Double(index) / 11))
-    }
-
-    private func unavailableOverlayColor(colors: ThemeColors) -> Color {
-        // Preserve the no-data marker at full contrast when requested;
-        // its reduced standard opacity remains unchanged.
-        colorSchemeContrast == .increased ? colors.secondaryText : colors.secondaryText.opacity(0.45)
     }
 
     private func clamped(_ value: Double) -> Double {
@@ -483,7 +639,6 @@ private struct SelectedPulseRing: View {
 private struct WeatherMapMarker: View {
     let color: Color
     let isSelected: Bool
-    let isUnavailable: Bool
     let differentiatingText: String?
     let differentiatingSymbol: String?
     @State private var glowPulse = false
@@ -506,24 +661,13 @@ private struct WeatherMapMarker: View {
                     value: glowPulse
                 )
 
-            if isUnavailable {
-                Circle()
-                    .fill(.regularMaterial)
-                    .frame(width: isSelected ? 28 : 24, height: isSelected ? 28 : 24)
-                    .overlay {
-                        Circle().stroke(theme.colors.destructive, lineWidth: isSelected ? 3 : 2)
-                    }
-
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(theme.colors.destructive)
-            } else if isSelected && !differentiateWithoutColor {
+            if isSelected && !differentiateWithoutColor {
                 SelectedPulseRing(color: color)
                     .frame(width: 10, height: 10)
                     .transition(.scale.combined(with: .opacity))
             }
 
-            if !isUnavailable && differentiateWithoutColor {
+            if differentiateWithoutColor {
                 // Show a symbol or metric value so marker meaning
                 // is not conveyed by color alone.
                 Group {
@@ -555,7 +699,7 @@ private struct WeatherMapMarker: View {
                             lineWidth: isSelected ? 3 : 2
                         )
                 }
-            } else if !isUnavailable && colorSchemeContrast == .increased {
+            } else if colorSchemeContrast == .increased {
                 // Place the metric color on an opaque, outlined disk so
                 // it retains sufficient contrast over every possible MapKit background.
                 Circle()
@@ -569,7 +713,7 @@ private struct WeatherMapMarker: View {
                 Circle()
                     .fill(color)
                     .frame(width: 10, height: 10)
-            } else if !isUnavailable {
+            } else {
                 Circle()
                     .fill(color)
                     .frame(width: 9, height: 9)
@@ -607,13 +751,18 @@ extension ContentView {
             ) else {
                 return nil
             }
-            guard filterSunny else { return cityWeather.city }
             guard let forecast = cityWeather.forecastIfAvailable(on: selectedForecastDate) else {
-                return cityWeather.city
+                return nil
             }
-            guard let condition = SunninessScoring.condition(for: forecast.symbolName) else {
-                return cityWeather.city
+            guard mapWeatherDataIssue(
+                forecast: forecast,
+                cityWeather: cityWeather,
+                overlayMode: mapOverlayMode
+            ) == nil else {
+                return nil
             }
+            guard filterSunny else { return cityWeather.city }
+            guard let condition = SunninessScoring.condition(for: forecast.symbolName) else { return nil }
             return condition.isSunny ? cityWeather.city : nil
         }
         guard !cities.isEmpty else { return }
@@ -625,27 +774,6 @@ extension ContentView {
     func centerMap(on city: CityWeather) {
         withAnimation(.smooth(duration: 0.35)) {
             mapCameraPosition = .region(MapRegionFitting.region(centeredOn: city.city, span: 0.35))
-        }
-    }
-
-    func refreshWeather() {
-        dismissMapSelectionForRefresh()
-        daytimeScoreRefetchKeys.removeAll()
-        Task {
-            await weatherService.refreshWeather()
-            if !mapCities.isEmpty {
-                centerMapOnDots(useListCoordinates: true)
-            }
-        }
-    }
-
-    private func dismissMapSelectionForRefresh() {
-        guard showingMapExpandedCard || selectedMapCity != nil else { return }
-
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            showingMapExpandedCard = false
-            selectedMapCity = nil
-            citySearchState.temporaryMapCity = nil
         }
     }
 
@@ -697,19 +825,9 @@ extension ContentView {
                     .zIndex(70)
             }
 
-            if !citySearchState.isPresented,
-               !showingMapExpandedCard,
-               let explanation = mapWeatherDataIssueExplanation(for: forecastDateSourceCities) {
-                WeatherDataUnavailableNotice(message: explanation)
-            }
-
         }
         .background(theme.colors.mapOcean.ignoresSafeArea())
         .ignoresSafeArea()
-        .animation(
-            .smooth(duration: 0.2),
-            value: mapWeatherDataIssueExplanation(for: forecastDateSourceCities)
-        )
         .animation(.smooth(duration: 0.2), value: droppedCityCount)
         .onChange(of: selectedMapCityID) { previousID, selectedID in
             if selectedID != nil, selectedID != previousID {
@@ -724,37 +842,4 @@ extension ContentView {
 
 
     }
-
-    private func mapWeatherDataIssueExplanation(for cities: [CityWeather]) -> String? {
-        var messages = cities.compactMap { cityWeather -> String? in
-            let issue: WeatherDataIssue
-            if let forecast = cityWeather.forecastIfAvailable(on: selectedForecastDate) {
-                guard let resolvedIssue = mapWeatherDataIssue(
-                    forecast: forecast,
-                    cityWeather: cityWeather,
-                    overlayMode: mapOverlayMode
-                ) else {
-                    return nil
-                }
-                issue = resolvedIssue
-            } else {
-                guard !isExpectedForecastBoundaryOmission(
-                    for: cityWeather,
-                    among: cities,
-                    on: selectedForecastDate
-                ) else {
-                    return nil
-                }
-                issue = .missingForecastData
-            }
-            return weatherDataIssueMessage(
-                issue,
-                cityName: localizedCityName(for: cityWeather.city),
-                locale: locale
-            )
-        }
-        messages.append(contentsOf: missingConfiguredCityMessages(comparedTo: cities))
-        return messages.isEmpty ? nil : messages.joined(separator: "\n")
-    }
-
 }

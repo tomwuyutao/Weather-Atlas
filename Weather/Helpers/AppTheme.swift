@@ -11,17 +11,21 @@ import SwiftUI
 // MARK: - Theme Style
 
 enum AppThemeStyle: String, CaseIterable {
+    case automatic = "automatic"
+    case automaticBlack = "automaticBlack"
     case light = "light"
     case dark = "dark"
-    case automatic = "automatic"
+    case black = "black"
 
     static let defaultRawValue = AppThemeStyle.automatic.rawValue
 
-    var displayName: String {
+    func displayName(locale: Locale) -> String {
         switch self {
-        case .light: return "Light"
-        case .dark: return "Dark"
-        case .automatic: return "Auto"
+        case .automatic: return localizedString("Automatic", locale: locale)
+        case .automaticBlack: return localizedString("Automatic (Black)", locale: locale)
+        case .light: return localizedString("Light", locale: locale)
+        case .dark: return localizedString("Dark", locale: locale)
+        case .black: return localizedString("Black", locale: locale)
         }
     }
 }
@@ -39,10 +43,7 @@ struct ThemeColors {
     let dotCloudy: Color
     let dotRain: Color
     let dotDrizzle: Color
-    let cloudIconColor: Color
-    let moonIconColor: Color
     let settingsRowFill: Color
-    let shadow: Color
     let tutorialBackground: Color
 
     // Semantic aliases intentionally reuse the compact palette above.
@@ -57,12 +58,12 @@ struct ThemeColors {
     var dotWind: Color { dotCloudy }
 
     var sunIconColor: Color { dotSun }
-    var snowIconColor: Color { cloudIconColor }
 
     var listCardFill: Color { background }
     var chartPanelFill: Color { settingsRowFill }
     var glassFill: Color { background }
     var filterSunny: Color { dotSun }
+    var shadow: Color { AppPalette.light.titleText }
 
     /// Returns palette foreground styles for a weather SF Symbol icon name.
     func weatherIconPalette(for iconName: String) -> (primary: Color, secondary: Color) {
@@ -73,7 +74,7 @@ struct ThemeColors {
             return (primaryText, sunIconColor)
         case .rain, .drizzle:
             return (primaryText, dotRain)
-        case .cloudy, .snow, .fog, .wind, .night, nil:
+        case .cloudy, .snow, .fog, .wind, nil:
             return (primaryText, primaryText)
         }
     }
@@ -85,10 +86,12 @@ extension ThemeColors {
     static let light = ThemeColors(palette: AppPalette.light)
 }
 
-// MARK: - Dark Theme
+// MARK: - Dark Themes
 
 extension ThemeColors {
     static let dark = ThemeColors(palette: AppPalette.dark)
+
+    static let black = ThemeColors(palette: AppPalette.black)
 }
 
 // MARK: - Accessibility - Increased Contrast Palettes
@@ -104,6 +107,10 @@ extension ThemeColors {
     static let increasedContrastDark = ThemeColors(
         palette: AppPalette.increasedContrastValues(for: .dark)
     )
+
+    static let increasedContrastBlack = ThemeColors(
+        palette: AppPalette.increasedContrastBlack
+    )
 }
 
 private extension ThemeColors {
@@ -118,10 +125,7 @@ private extension ThemeColors {
             dotCloudy: palette.dotCloudy,
             dotRain: palette.dotRain,
             dotDrizzle: palette.dotDrizzle,
-            cloudIconColor: palette.cloudIcon,
-            moonIconColor: palette.moonIcon,
             settingsRowFill: palette.settingsRow,
-            shadow: palette.shadow,
             tutorialBackground: palette.tutorialBackground
         )
     }
@@ -164,8 +168,8 @@ class AppTheme {
     func preferredColorScheme(for _: ColorScheme) -> ColorScheme? {
         switch style {
         case .light: return .light
-        case .dark: return .dark
-        case .automatic: return nil
+        case .dark, .black: return .dark
+        case .automatic, .automaticBlack: return nil
         }
     }
 
@@ -178,10 +182,18 @@ class AppTheme {
         for resolvedScheme: ColorScheme,
         contrast: ColorSchemeContrast
     ) -> ThemeColors {
+        if usesBlackPalette(for: resolvedScheme) {
+            return contrast == .increased ? .increasedContrastBlack : .black
+        }
         if contrast == .increased {
             return resolvedScheme == .dark ? .increasedContrastDark : .increasedContrastLight
         }
         return resolvedScheme == .dark ? .dark : .light
+    }
+
+    private func usesBlackPalette(for resolvedScheme: ColorScheme) -> Bool {
+        guard resolvedScheme == .dark else { return false }
+        return style == .black || style == .automaticBlack
     }
 }
 
@@ -306,7 +318,7 @@ private struct DetailTranslucentCardModifier<Shape: InsettableShape>: ViewModifi
                 .glassEffect(.regular.interactive(), in: shape)
                 .overlay(
                     shape.stroke(
-                        theme.colors.primaryText.opacity(colorScheme == .dark ? 0.16 : 0.36),
+                        theme.colors.primaryText.opacity(0.16),
                         lineWidth: 0.6
                     )
                 )
@@ -319,7 +331,56 @@ private struct DetailTranslucentCardModifier<Shape: InsettableShape>: ViewModifi
                 )
                 .overlay(
                     shape.stroke(
-                        theme.colors.primaryText.opacity(colorScheme == .dark ? 0.14 : 0.32),
+                        theme.colors.primaryText.opacity(0.16),
+                        lineWidth: 0.6
+                    )
+                )
+        }
+    }
+}
+
+// MARK: - Translucent Cards with Embedded Media
+
+/// Places Liquid Glass behind live media so its foreground treatment cannot
+/// pick up colors from an embedded map or video layer.
+private struct DetailTranslucentMediaCardModifier<Shape: InsettableShape>: ViewModifier {
+    @Environment(\.appTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    let colorScheme: ColorScheme
+    let shape: Shape
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if reduceTransparency || colorSchemeContrast == .increased {
+            content.highLegibilityGlass(
+                theme: theme.colors,
+                contrast: colorSchemeContrast,
+                in: shape
+            )
+        } else if #available(iOS 26.0, *) {
+            content
+                .background {
+                    shape
+                        .fill(theme.colors.glassFill.opacity(colorScheme == .dark ? 0.18 : 0.22))
+                        .glassEffect(.regular.interactive(), in: shape)
+                }
+                .overlay(
+                    shape.stroke(
+                        theme.colors.primaryText.opacity(0.16),
+                        lineWidth: 0.6
+                    )
+                )
+        } else {
+            content
+                .background(.ultraThinMaterial, in: shape)
+                .background(
+                    theme.colors.glassFill.opacity(colorScheme == .dark ? 0.30 : 0.38),
+                    in: shape
+                )
+                .overlay(
+                    shape.stroke(
+                        theme.colors.primaryText.opacity(0.16),
                         lineWidth: 0.6
                     )
                 )
@@ -349,16 +410,9 @@ extension View {
     func detailTranslucentCard<Shape: InsettableShape>(colorScheme: ColorScheme, in shape: Shape) -> some View {
         modifier(DetailTranslucentCardModifier(colorScheme: colorScheme, shape: shape))
     }
-}
 
-extension View {
-    /// Conditionally applies a transform to a view.
-    @ViewBuilder
-    func `if`(_ condition: Bool, transform: (Self) -> some View) -> some View {
-        if condition {
-            transform(self)
-        } else {
-            self
-        }
+    func detailTranslucentMediaCard<Shape: InsettableShape>(colorScheme: ColorScheme, in shape: Shape) -> some View {
+        modifier(DetailTranslucentMediaCardModifier(colorScheme: colorScheme, shape: shape))
     }
+
 }

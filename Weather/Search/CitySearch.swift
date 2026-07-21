@@ -10,6 +10,23 @@ import SwiftUI
 import CoreLocation
 import MapKit
 
+// MARK: - Presentation State
+
+/// Transient state for the city-search sheet and temporary map result.
+struct CitySearchPresentationState {
+    var isPresented = false
+    var query = ""
+    var manager = CitySearchManager()
+    var isLoading = false
+    var loadingResultID: String?
+    var confirmation: String?
+    var debounceTask: Task<Void, Never>?
+    var isSettled = true
+    var targetListID: CityListID?
+    var temporaryMapCity: CityWeather?
+    var showsListPicker = false
+}
+
 // MARK: - Search Result
 struct CitySearchResult: Identifiable {
     let id: String

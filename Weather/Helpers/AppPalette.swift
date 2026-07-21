@@ -9,6 +9,8 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Shared App Palette
+
 enum AppPalette {
     struct Values {
         let titleText: Color
@@ -20,10 +22,7 @@ enum AppPalette {
         let dotCloudy: Color
         let dotRain: Color
         let dotDrizzle: Color
-        let cloudIcon: Color
-        let moonIcon: Color
         let settingsRow: Color
-        let shadow: Color
         let tutorialBackground: Color
     }
 
@@ -31,16 +30,13 @@ enum AppPalette {
         titleText: Color(hex: 0x262626),
         secondaryText: Color(hex: 0x6D6D6D),
         background: Color(hex: 0xFAF8F2),
-        destructive: Color(hex: 0xD03D3B),
+        destructive: Color(hex: 0xD14D30),
         dotSun: Color(hex: 0xFBC056),
-        dotPartlyCloudy: Color(hex: 0xFAD85F),
-        dotCloudy: Color(hex: 0xF4EFE4),
-        dotRain: Color(hex: 0x4D70D4),
-        dotDrizzle: Color(hex: 0x62B9D2),
-        cloudIcon: Color(hex: 0x0F4A9C),
-        moonIcon: Color(hex: 0xD05FF8),
+        dotPartlyCloudy: Color(hex: 0xFAE38E),
+        dotCloudy: Color(hex: 0xC8C8C8),
+        dotRain: Color(hex: 0x5AA4F3),
+        dotDrizzle: Color(hex: 0x67D1F0),
         settingsRow: Color(hex: 0xF4EFE4),
-        shadow: Color(hex: 0x000000),
         tutorialBackground: Color(hex: 0x244F9C)
     )
 
@@ -48,17 +44,30 @@ enum AppPalette {
         titleText: Color(hex: 0xFEFEFE),
         secondaryText: Color(hex: 0x929292),
         background: Color(hex: 0x262626),
-        destructive: Color(hex: 0xD03D3B),
+        destructive: Color(hex: 0xD14D30),
         dotSun: Color(hex: 0xFBC056),
-        dotPartlyCloudy: Color(hex: 0xFAD85F),
-        dotCloudy: Color(hex: 0xF4EFE4),
-        dotRain: Color(hex: 0x8FA8E8),
-        dotDrizzle: Color(hex: 0x62B9D2),
-        cloudIcon: Color(hex: 0x0F4A9C),
-        moonIcon: Color(hex: 0xD05FF8),
-        settingsRow: Color(hex: 0x302F2C),
-        shadow: Color(hex: 0x000000),
+        dotPartlyCloudy: Color(hex: 0xFAE38E),
+        dotCloudy: Color(hex: 0xC8C8C8),
+        dotRain: Color(hex: 0x5AA4F3),
+        dotDrizzle: Color(hex: 0x67D1F0),
+        settingsRow: Color(hex: 0x303030),
         tutorialBackground: Color(hex: 0x244F9C)
+    )
+
+    // Black keeps the dark palette's content colors while replacing its main
+    // canvas with true black for OLED displays and a stronger dark appearance.
+    static let black = Values(
+        titleText: dark.titleText,
+        secondaryText: dark.secondaryText,
+        background: Color(hex: 0x000000),
+        destructive: dark.destructive,
+        dotSun: dark.dotSun,
+        dotPartlyCloudy: dark.dotPartlyCloudy,
+        dotCloudy: dark.dotCloudy,
+        dotRain: dark.dotRain,
+        dotDrizzle: dark.dotDrizzle,
+        settingsRow: Color(hex: 0x181818),
+        tutorialBackground: dark.tutorialBackground
     )
 
     static func values(for colorScheme: ColorScheme) -> Values {
@@ -66,7 +75,20 @@ enum AppPalette {
     }
 
     static func increasedContrastValues(for colorScheme: ColorScheme) -> Values {
-        let palette = values(for: colorScheme)
+        increasedContrastValues(
+            for: values(for: colorScheme),
+            colorScheme: colorScheme
+        )
+    }
+
+    static var increasedContrastBlack: Values {
+        increasedContrastValues(for: black, colorScheme: .dark)
+    }
+
+    private static func increasedContrastValues(
+        for palette: Values,
+        colorScheme: ColorScheme
+    ) -> Values {
         if colorScheme == .dark {
             return Values(
                 titleText: palette.titleText,
@@ -78,10 +100,7 @@ enum AppPalette {
                 dotCloudy: palette.dotCloudy,
                 dotRain: palette.dotRain,
                 dotDrizzle: palette.dotDrizzle,
-                cloudIcon: palette.cloudIcon.interpolated(with: palette.titleText, by: 0.55),
-                moonIcon: palette.moonIcon,
                 settingsRow: palette.settingsRow,
-                shadow: palette.shadow,
                 tutorialBackground: palette.tutorialBackground
             )
         }
@@ -96,14 +115,13 @@ enum AppPalette {
             dotCloudy: palette.dotCloudy.interpolated(with: palette.titleText, by: 0.66),
             dotRain: palette.dotRain.interpolated(with: palette.titleText, by: 0.10),
             dotDrizzle: palette.dotDrizzle.interpolated(with: palette.titleText, by: 0.35),
-            cloudIcon: palette.cloudIcon,
-            moonIcon: palette.moonIcon.interpolated(with: palette.titleText, by: 0.15),
             settingsRow: palette.settingsRow,
-            shadow: palette.shadow,
             tutorialBackground: palette.tutorialBackground
         )
     }
 }
+
+// MARK: - Color Construction and Interpolation
 
 extension Color {
     init(hex: UInt32) {

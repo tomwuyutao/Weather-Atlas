@@ -11,6 +11,16 @@ import SwiftUI
 // MARK: - List View
 
 extension ContentView {
+    var fullListDestination: some View {
+        listView
+            .navigationTitle(toolbarTitle)
+            .toolbar(.hidden, for: .navigationBar)
+            .onAppear {
+                showingMapExpandedCard = false
+                listEditMode = false
+            }
+    }
+
     var listView: some View {
         GeometryReader { geometry in
             let maxContentWidth = cityListContentMaxWidth(for: geometry.size)
@@ -56,7 +66,7 @@ extension ContentView {
                 )
             }
 
-            let droppedCityCount = expectedForecastBoundaryOmissionCount(
+            let droppedCityCount = rankingOmissionCount(
                 in: forecastDateSourceCities
             )
             if droppedCityCount > 0 {
@@ -64,11 +74,6 @@ extension ContentView {
                     .padding(.leading, 5)
                     .padding(.top, 16)
                     .padding(.bottom, 8)
-                    .cityListNativeRowStyle(background: theme.colors.background)
-            }
-
-            if let explanation = missingForecastExplanation(for: forecastDateSourceCities) {
-                WeatherDataUnavailableNotice(message: explanation)
                     .cityListNativeRowStyle(background: theme.colors.background)
             }
         }
@@ -125,7 +130,7 @@ extension ContentView {
 
                 Spacer(minLength: 0)
             }
-            .padding(.top, groupIndex == 0 ? 0 : 22)
+            .padding(.top, groupIndex == 0 ? 8 : 30)
             .padding(.bottom, 5)
             .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             .listRowSeparator(.hidden)
@@ -215,100 +220,6 @@ extension ContentView {
             .contentShape(Rectangle())
     }
 
-    // MARK: - List Rows
-
-    func listRow(
-        _ candidate: SunnyCandidate,
-        rank: Int?,
-        showsConditionIcon: Bool = true,
-        showsWeatherMetrics: Bool = true,
-        showsTemperature: Bool = true,
-        cityRenameAction: (() -> Void)? = nil
-    ) -> some View {
-        sunnyCandidateRow(
-            candidate,
-            rank: rank,
-            compact: true,
-            showsConditionIcon: showsConditionIcon,
-            showsWeatherMetrics: showsWeatherMetrics,
-            showsTemperature: showsTemperature,
-            cityNameOverride: CityListID.customCityName(for: candidate.cityWeather.city)
-                ?? localizedCityName(for: candidate.cityWeather.city),
-            cityRenameAction: cityRenameAction
-        )
-    }
-
-    @ViewBuilder
-    func listCandidateRows(
-        _ candidates: [SunnyCandidate],
-        rankOffset: Int = 0,
-        showsDividers: Bool,
-        showsConditionIcon: Bool = true,
-        showsTemperature: Bool = true,
-        selectionAction: ((SunnyCandidate) -> Void)?,
-        contextMenuListID: CityListID? = nil
-    ) -> some View {
-        ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
-            let rank = rankOffset + index + 1
-            let menuListID = contextMenuListID
-
-            if let selectionAction, let menuListID {
-                Button {
-                    selectionAction(candidate)
-                } label: {
-                    listRow(
-                        candidate,
-                        rank: rank,
-                        showsConditionIcon: showsConditionIcon,
-                        showsTemperature: showsTemperature
-                    )
-                }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    cityActions(for: candidate.cityWeather, in: menuListID)
-                } preview: {
-                    listContextPreviewRow(candidate, rank: rank, showsConditionIcon: showsConditionIcon)
-                }
-                .cityListNativeRowStyle(background: theme.colors.background)
-            } else if let selectionAction {
-                Button {
-                    selectionAction(candidate)
-                } label: {
-                    listRow(
-                        candidate,
-                        rank: rank,
-                        showsConditionIcon: showsConditionIcon,
-                        showsTemperature: showsTemperature
-                    )
-                }
-                .buttonStyle(.plain)
-                .cityListNativeRowStyle(background: theme.colors.background)
-            }
-
-            if showsDividers && index < candidates.count - 1 {
-                Divider()
-                    .background(theme.colors.secondaryText.opacity(0.16))
-                    .padding(.leading, CityListLayout.cityNameLeadingInset)
-                    .cityListNativeRowStyle(background: theme.colors.background)
-            }
-        }
-    }
-
-    private func listContextPreviewRow(
-        _ candidate: SunnyCandidate,
-        rank: Int,
-        showsConditionIcon: Bool
-    ) -> some View {
-        sunnyCandidateRow(candidate, rank: rank, compact: true, showsConditionIcon: showsConditionIcon)
-            .padding(.vertical, 2)
-            .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(theme.colors.accent.opacity(0.35), lineWidth: 1)
-            }
-            .frame(width: 360)
-    }
-
     private func deleteListCandidates(at offsets: IndexSet) {
         for index in offsets where sortedListCandidates.indices.contains(index) {
             weatherService.removeCity(sortedListCandidates[index].cityWeather)
@@ -320,14 +231,6 @@ extension ContentView {
         cityToRename = city
         cityRenameText = CityListID.customCityName(for: city) ?? localizedCityName(for: city)
         showingCityRenameAlert = true
-    }
-}
-
-private extension View {
-    func cityListNativeRowStyle(background: Color) -> some View {
-        listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
-            .listRowSeparator(.hidden)
-            .listRowBackground(background)
     }
 }
 

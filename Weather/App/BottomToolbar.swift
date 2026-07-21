@@ -2,64 +2,15 @@
 //  BottomToolbar.swift
 //  Weather
 //
-//  Purpose: Defines app navigation routes and the floating bottom toolbar
-//  used by Home, List, Detail, and Map.
+//  Purpose: Defines the native floating bottom toolbar used by Home, List,
+//  Detail, Map, search results, and generated-list previews.
 //
 
 import SwiftUI
 
-// MARK: - Navigation Routes
-
-enum AppNavigationRoute: Hashable {
-    case map
-    case list
-    case cityDetail(CityWeather)
-    case addCityDetail(CityWeather)
-    case listPreview
-}
-
-// MARK: - Current Route Helpers
-
-extension ContentView {
-    var currentRoute: AppNavigationRoute? {
-        navigationPath.last
-    }
-
-    var isMapRoute: Bool {
-        currentRoute == .map
-    }
-
-    /// Detail routes use the displayed city's own forecast range in the shared
-    /// date switcher. Other routes continue to use the active list's date union.
-    var detailDateSwitcherCity: CityWeather? {
-        switch currentRoute {
-        case .cityDetail(let city), .addCityDetail(let city):
-            return city
-        default:
-            return nil
-        }
-    }
-
-    var addCityDetailCity: CityWeather? {
-        guard case .addCityDetail(let city) = currentRoute else { return nil }
-        return city
-    }
-
-    var isAddCityDetailRoute: Bool {
-        addCityDetailCity != nil
-    }
-
-    /// The searched city currently eligible to be added, whether it is shown in
-    /// the dedicated add-detail route or as a temporary card on the full map.
-    var cityPendingAddition: CityWeather? {
-        addCityDetailCity ?? citySearchState.temporaryMapCity
-    }
-}
-
 // MARK: - Native Bottom Toolbar
 
 extension ContentView {
-    var bottomToolbarIconSize: CGFloat { 21 }
     var bottomCenterToolbarWidth: CGFloat { 165 }
 
     @ToolbarContentBuilder
@@ -115,7 +66,9 @@ extension ContentView {
         if isListPreviewActive {
             listPreviewCountPickerControl
         } else if !dateSwitcherHasSelectedDate {
-            missingForecastDateControl
+            Color.clear
+                .frame(width: bottomCenterToolbarWidth, height: 44)
+                .accessibilityHidden(true)
         } else {
             dateSwitcherControl
         }
@@ -125,33 +78,6 @@ extension ContentView {
         dateSwitcherAvailableForecastDates.contains {
             Calendar.current.isDate($0, inSameDayAs: dateSwitcherSelectedForecastDate)
         }
-    }
-
-    private var missingForecastDateControl: some View {
-        Button {
-            DeveloperWarningCenter.showMissingData(
-                message: missingForecastDateMessage,
-                locale: locale
-            )
-        } label: {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(theme.colors.destructive)
-                .frame(width: bottomCenterToolbarWidth, height: 44)
-                .contentShape(Capsule())
-        }
-    }
-
-    private var missingForecastDateMessage: String {
-        if let explanation = missingForecastExplanation(for: dateSwitcherForecastSourceCities) {
-            return explanation
-        }
-        let subject = detailDateSwitcherCity.map { localizedCityName(for: $0.city) } ?? toolbarTitle
-        return String(
-            format: localizedString("Missing forecast data for the selected date in %@.", locale: locale),
-            locale: locale,
-            subject
-        )
     }
 
     @ViewBuilder
@@ -283,10 +209,7 @@ extension ContentView {
             .presentationCompactAdaptation(.popover)
             .themedPopoverBackground()
         } else {
-            WeatherDataUnavailableNotice(
-                message: missingForecastDateMessage
-            )
-            .padding(16)
+            EmptyView()
         }
     }
 
@@ -313,19 +236,6 @@ extension ContentView {
         }
         .menuIndicator(.hidden)
         .menuOrder(.fixed)
-        .tint(theme.colors.accent)
-    }
-
-    func primaryMenuLabel(_ title: String, systemImage: String) -> some View {
-        Label {
-            Text(title)
-                .foregroundStyle(theme.colors.primaryText)
-        } icon: {
-            Image(systemName: systemImage)
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(theme.colors.accent)
-                .tint(theme.colors.accent)
-        }
         .tint(theme.colors.accent)
     }
 
@@ -417,121 +327,4 @@ extension ContentView {
             Button(localizedString("Cancel", locale: locale), role: .cancel) {}
         }
     }
-}
-
-
-// MARK: - Navigation Helpers
-
-extension ContentView {
-    func pushRoute(_ route: AppNavigationRoute) {
-        if route == .list {
-            showingMapExpandedCard = false
-        } else if route == .listPreview {
-            showingMapExpandedCard = false
-        }
-        if case .cityDetail = route {
-            navigationPath.append(route)
-            return
-        }
-        guard !navigationPath.contains(route) else { return }
-        navigationPath.append(route)
-    }
-
-    func navigateToMap() {
-        guard let mapIndex = navigationPath.lastIndex(of: .map) else {
-            pushRoute(.map)
-            return
-        }
-
-        let routesAboveMap = navigationPath.count - mapIndex - 1
-        if routesAboveMap > 0 {
-            navigationPath.removeLast(routesAboveMap)
-        }
-    }
-
-    func presentDetail(for city: CityWeather) {
-        showingMapExpandedCard = false
-        pushRoute(.cityDetail(city))
-    }
-
-    func addCity(to listID: CityListID) {
-        guard let city = cityPendingAddition else { return }
-        let originatedFromTemporaryMapCity = addCityDetailCity == nil
-
-        Task {
-            let didAdd: Bool
-            if listID == weatherService.activeListID {
-                didAdd = addCityToActiveList(city)
-            } else {
-                didAdd = weatherService.addCityToList(city, listID: listID)
-                if didAdd {
-                    Haptics.lightImpact()
-                }
-                await switchToList(listID)
-            }
-
-            await MainActor.run {
-                guard let savedCity = weatherService.cityWeatherData.first(where: {
-                    weatherService.citiesMatch($0.city, city.city)
-                }) else {
-                    weatherService.reportDeveloperWarning(
-                        title: "Added City Missing",
-                        message: "After adding \(city.city.localizedName()) to \(listID.rawValue), the saved city could not be found in fetched weather data."
-                    )
-                    return
-                }
-
-                selectedMapCity = savedCity
-                citySearchState.temporaryMapCity = nil
-                if originatedFromTemporaryMapCity {
-                    // A map search should remain on the map after saving; the
-                    // temporary card simply becomes the saved city's card.
-                    showingMapExpandedCard = true
-                } else {
-                    if case .addCityDetail = navigationPath.last {
-                        navigationPath.removeLast()
-                    }
-                    pushRoute(.cityDetail(savedCity))
-                }
-                if didAdd {
-                    showCityAddedConfirmation(
-                        cityAddedConfirmationMessage(
-                            cityName: localizedCityName(for: savedCity.city),
-                            listName: listID.localizedDisplayName(locale: locale)
-                        )
-                    )
-                }
-            }
-        }
-    }
-
-    func popRoute(_ route: AppNavigationRoute) {
-        guard navigationPath.contains(route) else { return }
-        if navigationPath.last == route {
-            navigationPath.removeLast()
-        } else {
-            navigationPath.removeAll { $0 == route }
-        }
-        cleanupAfterLeavingRoute(route)
-    }
-
-    func popCurrentRoute() {
-        guard let route = navigationPath.popLast() else { return }
-        cleanupAfterLeavingRoute(route)
-    }
-
-    private func cleanupAfterLeavingRoute(_ route: AppNavigationRoute) {
-        switch route {
-        case .map:
-            showingMapExpandedCard = false
-            selectedMapCity = nil
-        case .list:
-            listEditMode = false
-        case .cityDetail, .addCityDetail:
-            break
-        case .listPreview:
-            clearGeneratedListPreview()
-        }
-    }
-
 }

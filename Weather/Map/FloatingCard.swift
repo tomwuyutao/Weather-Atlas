@@ -12,12 +12,12 @@ import UIKit
 private struct MapFloatingCardMetric {
     let value: String
     let label: String
-    let iconName: String
+    let iconName: String?
 }
 
 extension ContentView {
 
-    // MARK: - Expanded Card Content
+    // MARK: - Floating Card Content
 
     @ViewBuilder
     func mapExpandedCard(
@@ -40,19 +40,7 @@ extension ContentView {
                 tempUnit: tempUnit
             )
 
-            if let issue {
-                WeatherDataUnavailableNotice(
-                    message: weatherDataIssueMessage(
-                        issue,
-                        cityName: localizedCityName(for: cityWeather.city),
-                        locale: locale
-                    )
-                )
-                .padding(16)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: floatingMapCardHeight)
-                .themedGlass(in: .rect(cornerRadius: 24))
-            } else if let metric, forceExpandedStyle {
+            if issue == nil, let metric, forceExpandedStyle {
                 expandedFloatingWeatherCard(
                     for: cityWeather,
                     metric: metric,
@@ -61,7 +49,7 @@ extension ContentView {
                     hideCityName: hideCityName,
                     plainBackground: plainBackground
                 )
-            } else if let metric {
+            } else if issue == nil, let metric {
                 let phoneCardSpacing: CGFloat = 16
                 let phoneCardTemperatureSize: CGFloat = 32
                 let phoneCardIconSize: CGFloat = 40
@@ -98,9 +86,11 @@ extension ContentView {
 
                         Spacer(minLength: 8)
 
-                        floatingCardMetricIcon(metric, size: phoneCardIconSize)
-                            .frame(width: phoneCardIconFrame.width, height: phoneCardIconFrame.height, alignment: .center)
-                            .frame(maxHeight: .infinity, alignment: .center)
+                        if let iconName = metric.iconName {
+                            floatingCardMetricIcon(iconName, size: phoneCardIconSize)
+                                .frame(width: phoneCardIconFrame.width, height: phoneCardIconFrame.height, alignment: .center)
+                                .frame(maxHeight: .infinity, alignment: .center)
+                        }
                     }
                     .padding(.horizontal, 22)
                     .padding(.vertical, 16)
@@ -123,17 +113,7 @@ extension ContentView {
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: floatingMapCardHeight)
             } else {
-                WeatherDataUnavailableNotice(
-                    message: weatherDataIssueMessage(
-                        .missingForecastData,
-                        cityName: localizedCityName(for: cityWeather.city),
-                        locale: locale
-                    )
-                )
-                .padding(16)
-                .frame(maxWidth: .infinity)
-                .frame(minHeight: floatingMapCardHeight)
-                .themedGlass(in: .rect(cornerRadius: 24))
+                EmptyView()
             }
         }
     }
@@ -154,10 +134,7 @@ extension ContentView {
         forecast: DailyForecast,
         tempUnit: TemperatureUnit
     ) -> MapFloatingCardMetric? {
-        guard let condition = SunninessScoring.condition(for: forecast.symbolName) else {
-            return nil
-        }
-        let icon = condition.displayIcon
+        let icon = SunninessScoring.condition(for: forecast.symbolName)?.displayIcon
         switch mapOverlayMode {
         case "temperature":
             return MapFloatingCardMetric(
@@ -210,10 +187,10 @@ extension ContentView {
 
 // MARK: - Floating Card Icon Style
 
-private func floatingCardMetricIcon(_ metric: MapFloatingCardMetric, size: CGFloat) -> some View {
-    Image(systemName: metric.iconName)
+private func floatingCardMetricIcon(_ iconName: String, size: CGFloat) -> some View {
+    Image(systemName: iconName)
         .font(.system(size: size, weight: .medium))
-        .weatherIconStyle(for: metric.iconName)
+        .weatherIconStyle(for: iconName)
 }
 
 
@@ -265,11 +242,13 @@ extension ContentView {
                         .id("primary-\(mapOverlayMode)-\(selectedDate.timeIntervalSinceReferenceDate)-\(metric.value)")
                         .transition(.scale(scale: 0.82).combined(with: .opacity))
 
-                    floatingCardMetricIcon(metric, size: 44)
-                        .symbolReplaceTransition()
-                        .id("icon-\(mapOverlayMode)-\(selectedDate.timeIntervalSinceReferenceDate)-\(metric.iconName)")
-                        .transition(.scale(scale: 0.82).combined(with: .opacity))
-                        .frame(width: 60, height: 52)
+                    if let iconName = metric.iconName {
+                        floatingCardMetricIcon(iconName, size: 44)
+                            .symbolReplaceTransition()
+                            .id("icon-\(mapOverlayMode)-\(selectedDate.timeIntervalSinceReferenceDate)-\(iconName)")
+                            .transition(.scale(scale: 0.82).combined(with: .opacity))
+                            .frame(width: 60, height: 52)
+                    }
 
                     Spacer(minLength: 0)
                 }
@@ -381,14 +360,6 @@ extension ContentView {
                 }
             }
             .buttonStyle(.plain)
-        } else {
-            WeatherDataUnavailableNotice(
-                message: weatherDataIssueMessage(
-                    .unknownWeatherSymbol(forecast.symbolName),
-                    cityName: localizedCityName(for: cityWeather.city),
-                    locale: locale
-                )
-            )
         }
     }
 
@@ -519,7 +490,7 @@ extension ContentView {
                                 Image(systemName: "xmark")
                                     .font(.system(size: 10, weight: .medium))
                                     .foregroundStyle(theme.colors.secondaryText.opacity(0.65))
-                                    .padding(7)
+                                    .padding(11)
                             }
                             .contentShape(Circle())
                     }
