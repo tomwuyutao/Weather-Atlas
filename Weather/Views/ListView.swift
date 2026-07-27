@@ -15,9 +15,30 @@ extension ContentView {
     var fullListDestination: some View {
         listView
             .navigationTitle(toolbarTitle)
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    listSwitcher(titleOverride: nil, navigationBarStyle: true)
+                }
+
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    listSortControl
+
+                    Button {
+                        withAnimation(.smooth(duration: 0.2)) {
+                            listEditMode.toggle()
+                        }
+                    } label: {
+                        Image(systemName: listEditMode ? "checkmark" : "pencil")
+                    }
+                }
+            }
             .onAppear {
                 isMapCardPresented = false
+                listEditMode = false
+            }
+            .onDisappear {
                 listEditMode = false
             }
     }
@@ -28,25 +49,10 @@ extension ContentView {
             // A narrower landscape iPad column keeps a long ranked list scannable.
             let maxContentWidth = usesIPadLandscapeLayout(for: geometry.size) ? 680.0 : 760.0
 
-            ZStack(alignment: .top) {
-                nativeCityList(maxContentWidth: maxContentWidth)
-
-                // Align the list title and actions with the row content.
-                topToolbar {
-                    listTopToolbarActions
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .frame(maxWidth: maxContentWidth)
-                .frame(maxWidth: .infinity)
-            }
-            .environment(\.defaultMinListRowHeight, 0)
-            .background(theme.colors.background.ignoresSafeArea())
-            .navigationTitle(toolbarTitle)
-            .navigationBarBackButtonHidden(true)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.hidden, for: .navigationBar)
-            .animation(.smooth(duration: 0.24), value: listEditMode)
+            nativeCityList(maxContentWidth: maxContentWidth)
+                .environment(\.defaultMinListRowHeight, 0)
+                .background(theme.colors.background.ignoresSafeArea())
+                .animation(.smooth(duration: 0.24), value: listEditMode)
         }
     }
 
@@ -56,7 +62,7 @@ extension ContentView {
         if weatherService.cityListCoordinates().isEmpty {
             emptyListContent
                 .padding(.horizontal, 24)
-                .padding(.top, 104)
+                .padding(.top, 24)
                 .frame(maxWidth: maxContentWidth)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         } else {
@@ -112,7 +118,7 @@ extension ContentView {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
-            .contentMargins(.top, 76, for: .scrollContent)
+            .contentMargins(.top, 12, for: .scrollContent)
             .contentMargins(.bottom, 16, for: .scrollContent)
             .environment(\.editMode, .constant(listEditMode ? .active : .inactive))
             // Keep the ranked sequence as one readable column on wide windows.
@@ -208,40 +214,8 @@ extension ContentView {
         }
     }
 
-    /// Edit and sort actions shown beside the list switcher.
-    private var listTopToolbarActions: some View {
-        topToolbarActionCapsule {
-            if listEditMode {
-                Button {
-                    withAnimation(.smooth(duration: 0.2)) {
-                        listEditMode = false
-                    }
-                } label: {
-                    listToolbarActionIcon("checkmark")
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, -6)
-                .padding(.vertical, -4)
-            } else {
-                listSortControl
-
-                Button {
-                    withAnimation(.smooth(duration: 0.2)) {
-                        listEditMode = true
-                    }
-                } label: {
-                    listToolbarActionIcon("pencil")
-                }
-                .buttonStyle(.plain)
-                .padding(.horizontal, -6)
-                .padding(.vertical, -4)
-
-            }
-        }
-    }
-
     /// Menu for selecting the persisted city ordering rule.
-    private var listSortControl: some View {
+    var listSortControl: some View {
         Menu {
             ForEach(WeatherListSortMode.allCases) { mode in
                 Button {
@@ -251,22 +225,10 @@ extension ContentView {
                 }
             }
         } label: {
-            listToolbarActionIcon("arrow.up.arrow.down")
+            Image(systemName: "arrow.up.arrow.down")
         }
         .menuOrder(.fixed)
         .tint(theme.colors.accent)
-        .buttonStyle(.plain)
-        .padding(.horizontal, -6)
-        .padding(.vertical, -4)
-    }
-
-    /// Builds a consistently sized top-toolbar symbol.
-    private func listToolbarActionIcon(_ systemImage: String) -> some View {
-        Image(systemName: systemImage)
-            .font(.system(size: 21, weight: .regular))
-            .foregroundStyle(theme.colors.primaryText)
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
     }
 
 }

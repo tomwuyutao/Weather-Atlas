@@ -20,21 +20,24 @@ extension ContentView {
                 theme.colors.background
                     .ignoresSafeArea()
             }
-            .overlay(alignment: .topTrailing) {
-                if let sourceListID = detailSourceListID(for: city) {
-                    detailCityMoreMenu(for: city, sourceListID: sourceListID)
-                        .padding(.top, 12)
-                        .padding(.trailing, 16)
-                }
-            }
-            .navigationTitle(localizedCityName(for: city.city))
-            .navigationBarBackButtonHidden(true)
-            .toolbar(.hidden, for: .navigationBar)
+            // Keep the compact native title absent while the large report title
+            // is visible, then let the navigation bar take over as it scrolls away.
+            .navigationTitle(
+                isDetailLargeTitleVisible ? "" : localizedCityName(for: city.city)
+            )
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(.visible, for: .navigationBar)
             .tint(theme.colors.primaryText)
+            .onAppear {
+                isDetailLargeTitleVisible = true
+            }
+            .onChange(of: city.id) { _, _ in
+                isDetailLargeTitleVisible = true
+            }
     }
 
     /// Resolves the list that owns this detail route, preferring the active list.
-    private func detailSourceListID(for city: CityWeather) -> CityListID? {
+    func detailSourceListID(for city: CityWeather) -> CityListID? {
         if weatherService.cityListCoordinates().contains(where: {
             weatherService.citiesMatch($0, city.city)
         }) {
@@ -44,7 +47,7 @@ extension ContentView {
     }
 
     /// Supplies Move to List and named Delete actions for a saved city.
-    private func detailCityMoreMenu(
+    func detailCityMoreMenu(
         for city: CityWeather,
         sourceListID: CityListID
     ) -> some View {
@@ -93,15 +96,13 @@ extension ContentView {
                 }
             }
             .tint(theme.colors.destructive)
+
+            globalMoreMenuFooter
         } label: {
-            topToolbarActionCapsule {
-                Image(systemName: "ellipsis")
-                    .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 24, height: 44)
-                    .contentShape(Rectangle())
-            }
+            Label(localizedString("Menu", locale: locale), systemImage: "ellipsis")
+                .labelStyle(.iconOnly)
         }
+        .menuIndicator(.hidden)
         .menuOrder(.fixed)
         .tint(theme.colors.accent)
     }
@@ -216,6 +217,9 @@ extension ContentView {
                     .foregroundStyle(theme.colors.titleText)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 52)
+                    .onScrollVisibilityChange(threshold: 0.01) { isVisible in
+                        isDetailLargeTitleVisible = isVisible
+                    }
 
                 if isExpectedForecastBoundaryOmission(
                     for: city,
@@ -244,6 +248,9 @@ extension ContentView {
                 .minimumScaleFactor(0.72)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 52)
+                .onScrollVisibilityChange(threshold: 0.01) { isVisible in
+                    isDetailLargeTitleVisible = isVisible
+                }
 
             if let condition {
                 let icon = condition.displayIcon
@@ -1041,7 +1048,12 @@ private struct DetailSunnyWindowOverviewChart: View {
                             if Calendar.current.isDate(row.id, inSameDayAs: selectedForecastDate) {
                                 Capsule()
                                     .stroke(secondaryText.opacity(0.55), lineWidth: 1)
-                                    .frame(height: capsuleHeight + 4)
+                                    // Match the existing two-point vertical gap with
+                                    // four points of breathing room at each horizontal edge.
+                                    .frame(
+                                        width: timelineWidth + 8,
+                                        height: capsuleHeight + 4
+                                    )
                             }
                         }
                     }

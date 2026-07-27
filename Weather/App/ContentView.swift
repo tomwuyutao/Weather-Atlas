@@ -64,6 +64,8 @@ struct ContentView: View {
     @AppStorage("hasLaunchedBefore") var hasLaunchedBefore: Bool = false
     /// Search query, sheet, result, and temporary-map presentation state.
     @State var citySearchState = CitySearchPresentationState()
+    /// Whether the large in-content city title remains visible in Detail View.
+    @State var isDetailLargeTitleVisible = true
 
     // MARK: Map Overlay State
 

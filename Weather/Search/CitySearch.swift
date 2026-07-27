@@ -203,45 +203,6 @@ extension ContentView {
     var searchSheet: some View {
         NavigationStack {
             List {
-                Section {
-                    Menu {
-                        ForEach(managedLists) { listID in
-                            Button {
-                                citySearchState.targetListID = listID
-                            } label: {
-                                HStack {
-                                    Text(listID.localizedDisplayName(locale: locale))
-                                    if listID.rawValue == citySearchDestinationListID.rawValue {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "list.bullet")
-                                .foregroundStyle(theme.colors.accent)
-
-                            Text(localizedString("Add to List", locale: locale))
-                                .foregroundStyle(theme.colors.primaryText)
-
-                            Spacer(minLength: 12)
-
-                            Text(citySearchDestinationListID.localizedDisplayName(locale: locale))
-                                .foregroundStyle(theme.colors.secondaryText)
-                                .lineLimit(1)
-
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(theme.colors.secondaryText)
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .menuOrder(.fixed)
-                    .tint(theme.colors.accent)
-                }
-                .listRowBackground(theme.colors.settingsRowFill)
-
                 // Keep a broad but bounded, naturally scrollable suggestion list.
                 Section {
                     ForEach(Array(displayedSearchResults.prefix(20)), id: \.id) { result in
@@ -302,7 +263,7 @@ extension ContentView {
         }
     }
 
-    /// Destination selected by the search context row, defaulting to the active list.
+    /// Destination selected before search opens, defaulting to the active list for direct entry points.
     var citySearchDestinationListID: CityListID {
         guard let targetListID = citySearchState.targetListID,
               managedLists.contains(where: { $0.rawValue == targetListID.rawValue }) else {

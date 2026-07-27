@@ -9,14 +9,6 @@
 import Foundation
 import SwiftUI
 
-// MARK: - Shared Toolbar Metrics
-
-/// Shared dimensions keeping all floating toolbar controls aligned.
-enum AppToolbarMetrics {
-    /// Keeps SF Symbols visually consistent across top, bottom, and map controls.
-    static let iconSize: CGFloat = 21
-}
-
 // MARK: - List and Date Selection
 
 extension ContentView {
@@ -104,7 +96,10 @@ extension ContentView {
     }
 
     /// Builds the active-list menu with creation and management actions.
-    func listSwitcher(titleOverride: String?) -> some View {
+    func listSwitcher(
+        titleOverride: String?,
+        navigationBarStyle: Bool = false
+    ) -> some View {
         Group {
             Menu {
                 ForEach(managedLists) { listID in
@@ -142,12 +137,16 @@ extension ContentView {
             } label: {
                 HStack(spacing: 6) {
                     Text(titleOverride ?? toolbarTitle)
-                        .font(.system(size: 32, weight: .semibold, design: .serif))
+                        .font(
+                            navigationBarStyle
+                                ? .headline.weight(.semibold)
+                                : .system(size: 32, weight: .semibold, design: .serif)
+                        )
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(1)
                     if titleOverride == nil {
                         Image(systemName: "chevron.down")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: navigationBarStyle ? 10 : 14, weight: .semibold))
                             .foregroundStyle(theme.colors.accent)
                     }
                 }
@@ -216,21 +215,33 @@ extension ContentView {
     }
 
     @ViewBuilder
-    /// Selects Menu, Back, or Cancel for the leading workflow action.
+    /// Selects the screen-specific leading action for the native bottom bar.
     var bottomLeadingToolbarControl: some View {
         if isListPreviewActive {
             // Cancel a generated-list preview without persisting it.
             Button(localizedString("Cancel", locale: locale), systemImage: "xmark") {
                 cancelGeneratedListPreview()
             }
-        } else if currentRoute != nil {
-            // Pop the active application route and restore its owned state.
-            Button(localizedString("Back", locale: locale), systemImage: "chevron.left") {
-                guard let route = navigationPath.popLast() else { return }
-                cleanupAfterLeavingRoute(route)
-            }
         } else {
-            bottomMoreButton
+            switch currentRoute {
+            case .some(.list):
+                bottomMoreButton
+            case .some(.map):
+                mapMoreMenu
+            case .some(.cityDetail(let city)):
+                if let sourceListID = detailSourceListID(for: city) {
+                    detailCityMoreMenu(for: city, sourceListID: sourceListID)
+                } else {
+                    bottomMoreButton
+                }
+            case .some(.listPreview):
+                // A preview without initialized draft state still cancels natively.
+                Button(localizedString("Cancel", locale: locale), systemImage: "xmark") {
+                    cancelGeneratedListPreview()
+                }
+            case nil:
+                bottomMoreButton
+            }
         }
     }
 
@@ -261,11 +272,20 @@ extension ContentView {
             .disabled(listPreviewCities.isEmpty)
         } else {
             Menu(localizedString("Add", locale: locale), systemImage: "plus") {
-                Button {
-                    presentAddCitySearch()
+                Menu {
+                    ForEach(managedLists) { listID in
+                        Button {
+                            presentAddCitySearch(to: listID)
+                        } label: {
+                            primaryMenuLabel(
+                                listID.localizedDisplayName(locale: locale),
+                                systemImage: "list.bullet"
+                            )
+                        }
+                    }
                 } label: {
                     primaryMenuLabel(
-                        localizedString("Add City", locale: locale),
+                        localizedString("Add City to List", locale: locale),
                         systemImage: "building.2"
                     )
                 }
@@ -420,21 +440,33 @@ extension ContentView {
         }
     }
 
-    /// Hosts Settings and manual refresh in the root-screen overflow menu.
+    /// Keeps the shared refresh and Settings actions at the bottom of every More menu.
+    @ViewBuilder
+    var globalMoreMenuFooter: some View {
+        Divider()
+
+        Button {
+            refreshWeather()
+        } label: {
+            primaryMenuLabel(
+                localizedString("Refresh", locale: locale)
+                    + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"),
+                systemImage: "arrow.clockwise"
+            )
+        }
+        .disabled(weatherService.isLoading)
+
+        Button {
+            showingSettings = true
+        } label: {
+            primaryMenuLabel(localizedString("Settings", locale: locale), systemImage: "gearshape")
+        }
+    }
+
+    /// Hosts the shared More-menu footer on screens with no additional actions.
     var bottomMoreButton: some View {
         Menu(localizedString("Menu", locale: locale), systemImage: "ellipsis") {
-            Button {
-                showingSettings = true
-            } label: {
-                primaryMenuLabel(localizedString("Settings", locale: locale), systemImage: "gearshape")
-            }
-
-            Button {
-                refreshWeather()
-            } label: {
-                primaryMenuLabel(localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"), systemImage: "arrow.clockwise")
-            }
-            .disabled(weatherService.isLoading)
+            globalMoreMenuFooter
         }
         .menuIndicator(.hidden)
         .menuOrder(.fixed)

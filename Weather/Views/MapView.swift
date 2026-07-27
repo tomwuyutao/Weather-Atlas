@@ -81,8 +81,22 @@ extension ContentView {
         mapTabContent
             .navigationTitle(localizedString("Weather", locale: locale))
             .navigationBarTitleDisplayMode(.inline)
-            .navigationBarBackButtonHidden(false)
-            .toolbar(.hidden, for: .navigationBar)
+            .toolbar(.visible, for: .navigationBar)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    listSwitcher(titleOverride: nil, navigationBarStyle: true)
+                }
+
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    Button {
+                        centerMapOnDots()
+                    } label: {
+                        Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
+                    }
+
+                    mapOverlayMenu
+                }
+            }
             .onAppear {
                 centerMapOnDots()
             }
@@ -90,6 +104,8 @@ extension ContentView {
                 // A fresh map visit starts from the fitted overview, while date
                 // changes during the current visit retain the user's camera.
                 mapCameraPosition = .automatic
+                isMapCardPresented = false
+                selectedMapCity = nil
             }
     }
 
@@ -124,18 +140,6 @@ extension ContentView {
                 }
                 .animation(.smooth(duration: 0.22), value: showLegend)
                 .animation(.smooth(duration: 0.22), value: weatherService.isLoading)
-                .overlay(alignment: .topLeading) {
-                    if !citySearchState.isPresented {
-                        topToolbar {
-                            mapControls
-                        }
-                        .padding(.horizontal, 16)
-                        .safeAreaPadding(.top, 12)
-                        .contentShape(Rectangle())
-                        .background(Color.clear)
-                        .zIndex(120)
-                    }
-                }
                 .allowsHitTesting(!citySearchState.isPresented)
 
             if !citySearchState.isPresented {
@@ -281,21 +285,13 @@ extension ContentView {
             }
         } label: {
             Image(systemName: "square.3.layers.3d")
-                .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
-                .imageScale(.medium)
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
         }
-        .padding(.horizontal, -6)
-        .padding(.vertical, -4)
         .tint(theme.colors.accent)
         .menuOrder(.fixed)
     }
 
     @ViewBuilder
-    /// Legend, sunny filter, and refresh actions shown in the overflow menu.
+    /// Map-specific actions shown above the shared More-menu footer.
     private var mapMoreMenuItems: some View {
         Toggle(isOn: Binding(
             get: { showLegend },
@@ -311,61 +307,17 @@ extension ContentView {
             primaryMenuLabel(localizedString("Filter Sunny", locale: locale), systemImage: "sun.max")
         }
 
-        Button {
-            refreshWeather()
-        } label: {
-            primaryMenuLabel(
-                localizedString("Refresh", locale: locale) + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"),
-                systemImage: "arrow.clockwise"
-            )
-        }
-        .disabled(weatherService.isLoading)
     }
 
     /// Overflow menu button for secondary map controls.
     var mapMoreMenu: some View {
-        Menu {
+        Menu(localizedString("Menu", locale: locale), systemImage: "ellipsis") {
             mapMoreMenuItems
-        } label: {
-            Image(systemName: "ellipsis")
-                .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
-                .imageScale(.medium)
-                .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 44, height: 44)
-                .contentShape(Rectangle())
+            globalMoreMenuFooter
         }
-        .padding(.horizontal, -6)
-        .padding(.vertical, -4)
+        .menuIndicator(.hidden)
         .menuOrder(.fixed)
         .tint(theme.colors.accent)
-    }
-
-    /// Floating top control capsule for fit, overlay, and more actions.
-    var mapControls: some View {
-        topToolbarActionCapsule(spacing: 18) {
-            Button {
-                centerMapOnDots()
-            } label: {
-                Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
-                    .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
-                    .imageScale(.medium)
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, -6)
-            .padding(.vertical, -4)
-            .tint(theme.colors.primaryText)
-
-            mapOverlayMenu
-                .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
-                .imageScale(.medium)
-
-            mapMoreMenu
-                .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
-                .imageScale(.medium)
-        }
     }
 }
 

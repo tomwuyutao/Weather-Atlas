@@ -374,6 +374,15 @@ extension ContentView {
                         EmptyView()
                     }
 
+                    if !previewActive,
+                       weatherService.isLoading,
+                       !hasCompletedInitialWeatherLoad {
+                        InitialWeatherLoadingNotice(
+                            progress: weatherService.loadingProgress
+                        )
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+
                     if showsEmptyList {
                         homeCard {
                             emptyListContent
@@ -829,6 +838,47 @@ extension ContentView {
         }
     }
 
+}
+
+// MARK: - Initial Weather Loading
+
+/// Compact launch-only progress notice matching the forecast-omission helper.
+private struct InitialWeatherLoadingNotice: View {
+    /// Fraction of configured city fetch attempts completed.
+    let progress: Double
+
+    /// Active semantic palette.
+    @Environment(\.appTheme) private var theme
+    /// App-selected locale used by the status copy.
+    @Environment(\.locale) private var locale
+
+    /// Builds a spinner and real per-city completion percentage.
+    var body: some View {
+        let percentage = Int((min(max(progress, 0), 1) * 100).rounded())
+
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+
+            Text(localizedString("Loading Weather", locale: locale))
+
+            Text(
+                String(
+                    format: localizedString("(%lld%% completed)", locale: locale),
+                    locale: locale,
+                    percentage
+                )
+            )
+            .monospacedDigit()
+        }
+        .font(.footnote.weight(.medium))
+        .foregroundStyle(theme.colors.secondaryText)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .themedGlass(in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .combine)
+    }
 }
 
 // MARK: - Previews
