@@ -525,9 +525,9 @@ extension ContentView {
 
     // MARK: - Search Lifecycle
 
-    /// Opens Add City search with an explicit list destination.
-    func presentAddCitySearch(to listID: CityListID? = nil) {
-        citySearchState.targetListID = listID ?? weatherService.activeListID
+    /// Opens Add City search targeting the currently active list.
+    func presentAddCitySearch() {
+        citySearchState.targetListID = weatherService.activeListID
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             isMapCardPresented = false
             selectedMapCity = nil

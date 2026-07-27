@@ -71,6 +71,102 @@
         }
       }
     },
+    "Search and add a city to %@." : {
+      "comment" : "Description below Add City naming the active destination list.",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Suche eine Stadt und füge sie zu %@ hinzu." } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Search and add a city to %@." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Busca una ciudad y añádela a %@." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Recherchez une ville et ajoutez-la à %@." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Cerca una città e aggiungila a %@." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "都市を検索して%@に追加します。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "도시를 검색하여 %@에 추가합니다." } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Busque uma cidade e adicione-a a %@." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Найдите город и добавьте его в «%@»." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "搜索城市并添加到“%@”。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "搜尋城市並加入「%@」。" } }
+      }
+    },
+    "Create a list to organize cities for a trip or region." : {
+      "comment" : "Description explaining why a user may create a city list.",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Erstelle eine Liste, um Städte nach Reise oder Region zu organisieren." } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Create a list to organize cities for a trip or region." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Crea una lista para organizar ciudades por viaje o región." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Créez une liste pour organiser les villes par voyage ou région." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Crea un elenco per organizzare le città per viaggio o area." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "旅行や地域ごとに都市を整理するリストを作成します。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "여행이나 지역별로 도시를 정리할 목록을 만듭니다." } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Crie uma lista para organizar cidades por viagem ou região." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Создайте список, чтобы сгруппировать города по поездкам или регионам." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "创建列表，按行程或地区整理城市。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "建立清單，按行程或地區整理城市。" } }
+      }
+    },
+    "10 Days" : {
+      "comment" : "Segmented control option showing every available forecast day, up to ten.",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "10 Tage" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "10 Days" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "10 días" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "10 jours" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "10 giorni" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "10日間" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "10일" } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "10 dias" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "10 дней" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "10 天" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "10 天" } }
+      }
+    },
+    "Chart Range" : {
+      "comment" : "Accessibility label for the chart's day-versus-forecast segmented control.",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Diagrammbereich" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chart Range" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Intervalo del gráfico" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Plage du graphique" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Intervallo del grafico" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "グラフ範囲" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "차트 범위" } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Intervalo do gráfico" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Диапазон графика" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "图表范围" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "圖表範圍" } }
+      }
+    },
+    "Day" : {
+      "comment" : "Segmented control option showing the selected day's hourly forecast.",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Tag" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Day" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Día" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Jour" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Giorno" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "1日" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "일간" } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Dia" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "День" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "单日" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "單日" } }
+      }
+    },
+    "Feels Like" : {
+      "comment" : "Title for the apparent-temperature metric in Detail and Chart View.",
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Gefühlt" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Feels Like" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sensación" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Ressenti" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Percepita" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "体感温度" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "체감 온도" } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Sensação" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Ощущается как" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "体感温度" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "體感溫度" } }
+      }
+    },
     " for you." : {
       "comment" : "Part of a sentence describing how many cities will be included in a newly created city list.",
       "isCommentAutoGenerated" : true,

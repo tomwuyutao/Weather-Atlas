@@ -277,148 +277,12 @@ extension ContentView {
         forecast: DailyForecast,
         usesLandscapeIPadLayout: Bool
     ) -> some View {
-        let rainChance = forecast.precipitationChance
-        let uvIndex = forecast.uvIndex
-        let sunnyHoursResult = SunninessScoring.sunnyHoursData(
-            for: forecast,
-            timeZone: city.timeZone
+        DetailMetricGrid(
+            city: city,
+            forecast: forecast,
+            temperatureUnit: tempUnit,
+            usesLandscapeIPadLayout: usesLandscapeIPadLayout
         )
-
-        let columns: [GridItem]
-        if usesLandscapeIPadLayout {
-            // Adaptive sizing adds a third factor tile only when it can retain
-            // a 200-point minimum width; narrower Stage Manager windows use two.
-            columns = [GridItem(.adaptive(minimum: 200), spacing: 10)]
-        } else {
-            columns = [GridItem(.flexible()), GridItem(.flexible())]
-        }
-
-        return LazyVGrid(columns: columns, spacing: 10) {
-            switch sunnyHoursResult {
-            case .success(let sunnyHoursData):
-                // Summarize the longest favorable run for the selected day.
-                let sunnyWindowSummary = {
-                    guard let range = SunninessScoring.longestSunnyHourRange(
-                        in: sunnyHoursData.hours,
-                        timeZone: city.timeZone
-                    ) else {
-                        return localizedString("No Sun", locale: locale)
-                    }
-                    let start = SunninessScoring.compactHourLabel(range.lowerBound, locale: locale)
-                    let end = SunninessScoring.compactHourLabel(range.upperBound + 1, locale: locale)
-                    return "\(start) - \(end)"
-                }()
-                detailSunnyFactorTile(
-                    title: localizedString("Sunny Hours", locale: locale),
-                    value: sunnyWindowSummary,
-                    systemImage: "sun.max.fill",
-                    tint: theme.colors.dotSun
-                )
-            case .failure:
-                detailSunnyFactorTile(
-                    title: localizedString("Sunny Hours", locale: locale),
-                    value: "",
-                    systemImage: "sun.max.fill",
-                    tint: theme.colors.dotSun
-                )
-            }
-
-            if let rainChance {
-                detailSunnyFactorTile(
-                    title: localizedString("Rain Chance", locale: locale),
-                    value: "\(Int((rainChance * 100).rounded()))%",
-                    systemImage: "drop.fill",
-                    tint: theme.colors.accent
-                )
-            } else {
-                detailSunnyFactorTile(
-                    title: localizedString("Rain Chance", locale: locale),
-                    value: "",
-                    systemImage: "drop.fill",
-                    tint: theme.colors.accent
-                )
-            }
-
-            detailSunnyFactorTile(
-                title: localizedString("Min Temp", locale: locale),
-                value: tempUnit.display(forecast.dailyLow),
-                systemImage: "thermometer.low",
-                tint: theme.colors.accent
-            )
-
-            detailSunnyFactorTile(
-                title: localizedString("Max Temp", locale: locale),
-                value: tempUnit.display(forecast.dailyHigh),
-                systemImage: "thermometer.high",
-                tint: theme.colors.dotSun
-            )
-
-            if let uvIndex {
-                detailSunnyFactorTile(
-                    title: localizedString("UV Index", locale: locale),
-                    value: String(uvIndex),
-                    systemImage: "sun.max.trianglebadge.exclamationmark",
-                    tint: theme.colors.dotSun
-                )
-            } else {
-                detailSunnyFactorTile(
-                    title: localizedString("UV Index", locale: locale),
-                    value: "",
-                    systemImage: "sun.max.trianglebadge.exclamationmark",
-                    tint: theme.colors.dotSun
-                )
-            }
-
-            if let cloudCoverPercent = forecast.cloudCoverPercent {
-                detailSunnyFactorTile(
-                    title: localizedString("Cloud Cover", locale: locale),
-                    value: "\(cloudCoverPercent)%",
-                    systemImage: "cloud",
-                    tint: theme.colors.accent
-                )
-            } else {
-                detailSunnyFactorTile(
-                    title: localizedString("Cloud Cover", locale: locale),
-                    value: "",
-                    systemImage: "cloud",
-                    tint: theme.colors.accent
-                )
-            }
-        }
-    }
-
-    @ViewBuilder
-    /// Builds one metric tile or its explicit missing-data explanation.
-    private func detailSunnyFactorTile(
-        title: String,
-        value: String,
-        systemImage: String,
-        tint: Color
-    ) -> some View {
-        let tile = HStack(spacing: CityListLayout.columnSpacing) {
-            Image(systemName: systemImage)
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 24)
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(theme.colors.secondaryText)
-                Text(value)
-                    .font(.callout.weight(.semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .frame(minHeight: 20, alignment: .leading)
-            }
-
-            Spacer(minLength: 0)
-        }
-
-        tile
-            .padding(12)
-            .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 18))
     }
 
     // MARK: Sunny Hours Overview
@@ -1323,7 +1187,12 @@ private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
 
         return HourlyForecast(
             date: Calendar.current.date(bySettingHour: hour, minute: 0, second: 0, of: date) ?? date,
-            symbolName: symbol
+            symbolName: symbol,
+            temperature: 20 + Double(dayOffset % 3) + Double(max(0, 12 - abs(14 - hour))) * 0.65,
+            apparentTemperature: 21 + Double(dayOffset % 3) + Double(max(0, 12 - abs(14 - hour))) * 0.72,
+            cloudCover: cloud,
+            precipitationChance: cloud > 0.72 ? 0.35 : 0.04,
+            uvIndex: hour < 7 || hour > 19 ? 0 : max(0, 9 - abs(13 - hour))
         )
     }
 

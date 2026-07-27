@@ -137,6 +137,8 @@ struct ContentView: View {
     @State var dateSwitcherForward: Bool = true
     /// Controls the graphical date-picker popover.
     @State var showingDatePopover: Bool = false
+    /// Controls the descriptive global Add-actions popover.
+    @State var showingAddActionsPopover: Bool = false
 
     /// Controls the destructive list-removal confirmation.
     @State var showingDeleteListConfirmation: Bool = false

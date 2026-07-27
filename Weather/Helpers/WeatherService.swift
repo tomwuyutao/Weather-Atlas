@@ -444,7 +444,15 @@ class WeatherService {
         if dayHourlyData.isEmpty { return [] }
         
         return dayHourlyData.map { hourWeather in
-            HourlyForecast(date: hourWeather.date, symbolName: hourWeather.symbolName)
+            HourlyForecast(
+                date: hourWeather.date,
+                symbolName: hourWeather.symbolName,
+                temperature: hourWeather.temperature.value,
+                apparentTemperature: hourWeather.apparentTemperature.value,
+                cloudCover: hourWeather.cloudCover,
+                precipitationChance: hourWeather.precipitationChance,
+                uvIndex: hourWeather.uvIndex.value
+            )
         }
     }
     // MARK: Per-City Fetching and Replacement

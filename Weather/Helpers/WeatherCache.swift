@@ -374,12 +374,27 @@ struct CachedHourlyForecast: Codable {
     let hour: Int?
     /// Raw WeatherKit condition symbol.
     let symbolName: String
+    /// Optional hourly air temperature in Celsius.
+    let temperature: Double?
+    /// Optional hourly apparent temperature in Celsius.
+    let apparentTemperature: Double?
+    /// Optional hourly cloud-cover fraction.
+    let cloudCover: Double?
+    /// Optional hourly precipitation probability.
+    let precipitationChance: Double?
+    /// Optional hourly UV index.
+    let uvIndex: Int?
 
     /// Copies a domain hourly forecast into its cache representation.
     init(from forecast: HourlyForecast) {
         date = forecast.date
         hour = nil
         symbolName = forecast.symbolName
+        temperature = forecast.temperature
+        apparentTemperature = forecast.apparentTemperature
+        cloudCover = forecast.cloudCover
+        precipitationChance = forecast.precipitationChance
+        uvIndex = forecast.uvIndex
     }
 
     /// Restores an absolute hour using a supplied local day for legacy payloads.
@@ -387,12 +402,25 @@ struct CachedHourlyForecast: Codable {
         var calendar = Calendar.current
         calendar.timeZone = timeZone
         guard let restoredDate = date
-            ?? hour.flatMap({ calendar.date(bySettingHour: $0, minute: 0, second: 0, of: day) }) else {
+            ?? hour.flatMap({ calendar.date(bySettingHour: $0, minute: 0, second: 0, of: day) }),
+              // Chart View requires the complete hourly metric payload. Reject
+              // older symbol-only snapshots so WeatherService performs one
+              // fresh fetch instead of presenting misleading empty charts.
+              let temperature,
+              let apparentTemperature,
+              let cloudCover,
+              let precipitationChance,
+              let uvIndex else {
             return nil
         }
         return HourlyForecast(
             date: restoredDate,
-            symbolName: symbolName
+            symbolName: symbolName,
+            temperature: temperature,
+            apparentTemperature: apparentTemperature,
+            cloudCover: cloudCover,
+            precipitationChance: precipitationChance,
+            uvIndex: uvIndex
         )
     }
 }

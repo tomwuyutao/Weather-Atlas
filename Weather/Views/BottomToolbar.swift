@@ -271,37 +271,98 @@ extension ContentView {
             }
             .disabled(listPreviewCities.isEmpty)
         } else {
-            Menu(localizedString("Add", locale: locale), systemImage: "plus") {
-                Menu {
-                    ForEach(managedLists) { listID in
-                        Button {
-                            presentAddCitySearch(to: listID)
-                        } label: {
-                            primaryMenuLabel(
-                                listID.localizedDisplayName(locale: locale),
-                                systemImage: "list.bullet"
-                            )
-                        }
-                    }
-                } label: {
-                    primaryMenuLabel(
-                        localizedString("Add City to List", locale: locale),
-                        systemImage: "building.2"
-                    )
-                }
-
-                Button {
-                    addListState.isPresented = true
-                } label: {
-                    primaryMenuLabel(
-                        localizedString("Add List", locale: locale),
-                        systemImage: "list.bullet"
-                    )
-                }
+            Button(localizedString("Add", locale: locale), systemImage: "plus") {
+                showingAddActionsPopover = true
             }
-            .menuOrder(.fixed)
+            .popover(isPresented: $showingAddActionsPopover) {
+                addActionsPopoverContent
+            }
             .tint(theme.colors.accent)
         }
+    }
+
+    /// Presents two native, descriptive actions without an extra list-selection step.
+    var addActionsPopoverContent: some View {
+        VStack(spacing: 0) {
+            Button {
+                showingAddActionsPopover = false
+                Task { @MainActor in
+                    // Let the native popover finish dismissing before presenting Search.
+                    try? await Task.sleep(for: .milliseconds(150))
+                    presentAddCitySearch()
+                }
+            } label: {
+                addActionPopoverRow(
+                    title: localizedString("Add City", locale: locale),
+                    description: String(
+                        format: localizedString("Search and add a city to %@.", locale: locale),
+                        locale: locale,
+                        weatherService.activeListID.localizedDisplayName(locale: locale)
+                    ),
+                    systemImage: "building.2"
+                )
+            }
+            .buttonStyle(.plain)
+
+            Divider()
+                .padding(.leading, 56)
+
+            Button {
+                showingAddActionsPopover = false
+                Task { @MainActor in
+                    // Avoid overlapping native popover and list-flow presentations.
+                    try? await Task.sleep(for: .milliseconds(150))
+                    addListState.isPresented = true
+                }
+            } label: {
+                addActionPopoverRow(
+                    title: localizedString("New List", locale: locale),
+                    description: localizedString(
+                        "Create a list to organize cities for a trip or region.",
+                        locale: locale
+                    ),
+                    systemImage: "list.bullet"
+                )
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(10)
+        .frame(width: 350)
+        .presentationCompactAdaptation(.popover)
+        .themedPopoverBackground()
+    }
+
+    /// Builds one large icon, title, and explanatory subtitle inside the Add popover.
+    private func addActionPopoverRow(
+        title: String,
+        description: String,
+        systemImage: String
+    ) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .semibold))
+                .symbolRenderingMode(.monochrome)
+                .foregroundStyle(theme.colors.accent)
+                .frame(width: 32, height: 32)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .multilineTextAlignment(.leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 12)
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
     }
 
     /// Renders previous, calendar, and next controls for the selected date source.

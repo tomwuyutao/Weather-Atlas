@@ -265,7 +265,7 @@ struct DailyForecast: Identifiable {
     }
 }
 
-/// Minimal hourly source record used to derive sunny-hour intervals.
+/// Hourly WeatherKit source record used by sunny-window and detail charts.
 struct HourlyForecast: Identifiable {
     /// Snapshot-local identity used by timeline transformations.
     let id = UUID()
@@ -273,6 +273,35 @@ struct HourlyForecast: Identifiable {
     let date: Date
     /// Raw WeatherKit symbol requiring explicit classification.
     let symbolName: String
+    /// Optional hourly air temperature in Celsius.
+    let temperature: Double?
+    /// Optional hourly apparent temperature in Celsius.
+    let apparentTemperature: Double?
+    /// Optional hourly cloud-cover fraction.
+    let cloudCover: Double?
+    /// Optional hourly precipitation probability.
+    let precipitationChance: Double?
+    /// Optional hourly UV index.
+    let uvIndex: Int?
+
+    /// Creates an hourly record while keeping legacy symbol-only fixtures valid.
+    init(
+        date: Date,
+        symbolName: String,
+        temperature: Double? = nil,
+        apparentTemperature: Double? = nil,
+        cloudCover: Double? = nil,
+        precipitationChance: Double? = nil,
+        uvIndex: Int? = nil
+    ) {
+        self.date = date
+        self.symbolName = symbolName
+        self.temperature = temperature
+        self.apparentTemperature = apparentTemperature
+        self.cloudCover = cloudCover
+        self.precipitationChance = precipitationChance
+        self.uvIndex = uvIndex
+    }
 
     /// Returns this instant's integer clock hour in a supplied city timezone.
     func hour(in timeZone: TimeZone) -> Int {
