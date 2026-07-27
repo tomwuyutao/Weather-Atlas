@@ -7,16 +7,24 @@
 
 import Foundation
 
+// MARK: - Sunny-Hour Validation and Scoring
+
+/// Pure source-data validation and sunny-hour classification operations.
 enum SunninessScoring {
+    /// Validated daylight bounds and hourly forecasts used by timelines.
     struct SunnyHoursData {
+        /// Source hours whose one-hour intervals intersect daylight.
         let hours: [HourlyForecast]
+        /// Sunrise/sunset-derived chart domain shared by those hours.
         let bounds: SunnyHoursChartBounds
     }
 
+    /// Classifies a source symbol, preserving unknown values as `nil`.
     static func condition(for symbolName: String) -> AppWeatherCondition? {
         AppWeatherCondition.fromWeatherSymbol(symbolName)
     }
 
+    /// Validates solar/hourly inputs and returns only hours overlapping daylight.
     static func sunnyHoursData(
         for forecast: DailyForecast,
         timeZone: TimeZone
@@ -61,6 +69,7 @@ enum SunninessScoring {
         return .success(SunnyHoursData(hours: daylightHours, bounds: bounds))
     }
 
+    /// Convenience accessor for validated daylight hours, or `nil` on any issue.
     static func daytimeHours(for forecast: DailyForecast, timeZone: TimeZone) -> [HourlyForecast]? {
         guard case .success(let data) = sunnyHoursData(for: forecast, timeZone: timeZone) else {
             return nil
@@ -68,6 +77,7 @@ enum SunninessScoring {
         return data.hours
     }
 
+    /// Whether a forecast has all solar, hourly, and symbol inputs needed to score.
     static func hasDaytimeHourlyScoreData(for forecast: DailyForecast, timeZone: TimeZone) -> Bool {
         guard case .success = sunnyHoursData(for: forecast, timeZone: timeZone) else {
             return false
@@ -75,6 +85,7 @@ enum SunninessScoring {
         return true
     }
 
+    /// Returns the longest contiguous run of fully or partly sunny local hours.
     static func longestSunnyHourRange(in forecasts: [HourlyForecast], timeZone: TimeZone) -> ClosedRange<Int>? {
         let sunnyHours = forecasts.compactMap { forecast in
             condition(for: forecast.symbolName)?.isSunnyOrPartlySunny == true

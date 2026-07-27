@@ -10,27 +10,42 @@ import Foundation
 
 // MARK: - Country List Models
 
+/// Country selection plus its population-ranked bundled city entries.
 struct CountryListOption: Identifiable, Hashable {
+    /// ISO 3166-1 alpha-2 country code.
     let iso2: String
+    /// Stable English source name retained for fallback diagnostics.
     let englishName: String
+    /// Available catalog cities ordered by population.
     let cities: [CountryCityCatalogEntry]
 
+    /// Uses the ISO code as stable picker identity.
     var id: String { iso2 }
 
+    /// Returns the localized country name or its stable English source name.
     func localizedName(locale: Locale) -> String {
         locale.localizedString(forRegionCode: iso2) ?? englishName
     }
 }
 
+/// One validated row from the bundled country-city CSV catalog.
 struct CountryCityCatalogEntry: Hashable {
+    /// Canonical city name.
     let city: String
+    /// Canonical country name.
     let country: String
+    /// ISO 3166-1 alpha-2 country code.
     let iso2: String
+    /// Geographic latitude.
     let latitude: Double
+    /// Geographic longitude.
     let longitude: Double
+    /// IANA timezone identifier.
     let timeZoneIdentifier: String
+    /// Population used for deterministic city ranking.
     let population: Int
 
+    /// Converts the catalog row into the app's persistable city model.
     var appCity: City {
         City(
             name: city,
@@ -44,10 +59,14 @@ struct CountryCityCatalogEntry: Hashable {
 
 // MARK: - Country City Catalog
 
+/// Loads and queries the bundled population-ranked country-city resource.
 enum CountryCityCatalog {
+    /// Default number of cities offered by generated lists.
     static let defaultCountryCityCount = 15
+    /// Maximum number allowed by the generated-list preview control.
     static let maxCountryCityCount = 25
 
+    /// Returns localized country options sorted for the requested locale.
     static func countries(locale: Locale) -> [CountryListOption] {
         countriesByCode.values.sorted {
             let leftCityCount = worldCityCountsByCountryCode[$0.iso2] ?? 0
@@ -59,11 +78,13 @@ enum CountryCityCatalog {
         }
     }
 
+    /// Returns up to the requested number of highest-population cities.
     static func topCities(for country: CountryListOption, limit: Int = defaultCountryCityCount) -> [City] {
         let cappedLimit = min(max(1, limit), maxCountryCityCount)
         return Array(country.cities.prefix(cappedLimit)).map(\.appCity)
     }
 
+    /// Returns top catalog cities across the countries mapped to a continent.
     static func topCities(forContinentRawValue rawValue: String, limit: Int = defaultCountryCityCount) -> [City] {
         let cappedLimit = min(max(1, limit), maxCountryCityCount)
         guard let countryCodes = continentCountryCodes[rawValue] else { return [] }
@@ -79,6 +100,7 @@ enum CountryCityCatalog {
         return Array(cities.prefix(cappedLimit)).map(\.appCity)
     }
 
+    /// Built-in continent raw values mapped to included ISO country codes.
     private static let continentCountryCodes: [String: Set<String>] = [
         "europe": [
             "AL", "AD", "AT", "BY", "BE", "BA", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
@@ -113,6 +135,7 @@ enum CountryCityCatalog {
         ]
     ]
 
+    /// Lazily parsed and validated catalog indexed by ISO country code.
     private static let countriesByCode: [String: CountryListOption] = {
         guard let url = Bundle.main.url(forResource: "country_city_coordinates", withExtension: "csv")
                 ?? Bundle.main.url(forResource: "country_city_coordinates", withExtension: "csv", subdirectory: "Assets"),
@@ -129,10 +152,14 @@ enum CountryCityCatalog {
 
         for (rowIndex, line) in csv.split(whereSeparator: \.isNewline).dropFirst().enumerated() {
             let fields = parseCSVLine(String(line))
+            // Accept population values stored as either integers or integer-like decimals.
+            let populationValue = fields.count == 7 ? fields[6] : ""
+            let population = Int(populationValue)
+                ?? Double(populationValue).flatMap { $0.isFinite ? Int($0.rounded()) : nil }
             guard fields.count == 7,
                   let latitude = Double(fields[3]),
                   let longitude = Double(fields[4]),
-                  let population = parsePopulation(fields[6]) else {
+                  let population else {
                 DeveloperWarningCenter.show(
                     title: "Country City Catalog Invalid",
                     message: "The bundled country_city_coordinates.csv row \(rowIndex + 2) is malformed and cannot be loaded."
@@ -200,6 +227,7 @@ enum CountryCityCatalog {
         return counts
     }()
 
+    /// Splits one CSV row while respecting quoted commas and escaped quotes.
     private static func parseCSVLine(_ line: String) -> [String] {
         var fields: [String] = []
         var current = ""
@@ -229,15 +257,5 @@ enum CountryCityCatalog {
 
         fields.append(current)
         return fields
-    }
-
-    private static func parsePopulation(_ value: String) -> Int? {
-        if let population = Int(value) {
-            return population
-        }
-        guard let population = Double(value), population.isFinite else {
-            return nil
-        }
-        return Int(population.rounded())
     }
 }

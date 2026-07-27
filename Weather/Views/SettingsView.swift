@@ -8,64 +8,65 @@
 
 import SwiftUI
 import UIKit
+import WeatherKit
 
 // MARK: - Settings Screen
 
+/// Native form-based preferences, help, attribution, and support screen.
 struct SettingsView: View {
     // MARK: Stored Preferences
 
+    /// Persisted raw temperature preference.
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.defaultRawValue
+    /// Persisted in-app language identifier.
     @AppStorage("appLanguage") private var appLanguage: String = "en"
+    /// Whether typography follows the system Dynamic Type category.
     @AppStorage("useSystemTextSize") private var useSystemTextSize: Bool = true
+    /// Persisted custom text-size step when system sizing is disabled.
     @AppStorage("appTextSizeLevel") private var appTextSizeLevel: Int = AppTextSizeLevel.defaultRawValue
+    /// Shared weather service supplying attribution metadata.
     let weatherService: WeatherService
+    /// Callback that dismisses Settings and starts tutorial replay.
     let onReplayTutorial: () -> Void
+    /// Native sheet dismissal action.
     @Environment(\.dismiss) private var dismiss
+    /// Active semantic palette and theme manager.
     @Environment(\.appTheme) private var theme
+    /// App-selected locale used by Settings copy.
     @Environment(\.locale) private var locale
+    /// Resolved appearance used by form surfaces.
     @Environment(\.colorScheme) private var colorScheme
+    /// System text category shown when automatic sizing is enabled.
     @Environment(\.dynamicTypeSize) private var systemDynamicTypeSize
+    /// Native URL opener for legal and support links.
     @Environment(\.openURL) private var openURL
 
+    /// Controls the temporary copied-email confirmation.
     @State private var showingEmailCopied = false
+    /// Whether the Attributions navigation destination is active.
     @State private var showingAttributions = false
+    /// Whether the Units navigation destination is active.
     @State private var showingUnits = false
+    /// Whether the Text Size navigation destination is active.
     @State private var showingTextSize = false
+    /// Whether the Theme navigation destination is active.
     @State private var showingTheme = false
+    /// Continuous slider value mapped back to discrete text-size steps.
     @State private var textSizeSliderValue = Double(AppTextSizeLevel.defaultRawValue)
+    /// Whether a text-size drag is currently suppressing navigation pop gestures.
     @State private var isDraggingTextSizeSlider = false
 
     // MARK: Resolved Preferences
 
-    private var selectedUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnit) ?? .automatic
-    }
-
-    private var unitsSummary: String {
-        selectedUnit.resolved.displayName(locale: locale)
-    }
-
+    /// Clamped custom text-size step represented by persisted state.
     private var selectedTextSizeLevel: AppTextSizeLevel {
         AppTextSizeLevel.level(clamping: appTextSizeLevel)
-    }
-
-    private var resolvedDynamicTypeSize: DynamicTypeSize {
-        min(
-            max(
-                useSystemTextSize ? systemDynamicTypeSize : selectedTextSizeLevel.dynamicTypeSize,
-                AppTextSizeLevel.minimumDynamicTypeSize
-            ),
-            AppTextSizeLevel.maximumDynamicTypeSize
-        )
-    }
-
-    private var textSizeSummary: String {
-        useSystemTextSize ? localizedString("System", locale: locale) : selectedTextSizeLevel.displayName(locale: locale)
     }
 
     // MARK: View Body
 
     @ViewBuilder
+    /// Builds the Settings navigation stack and all preference destinations.
     var body: some View {
         NavigationStack {
             settingsForm
@@ -75,11 +76,21 @@ struct SettingsView: View {
                 ToolbarItem(placement: .principal) {
                     Text(localizedString("Settings", locale: locale))
                         .font(.headline.weight(.semibold))
-                        .foregroundStyle(settingsTitleColor)
+                        .foregroundStyle(theme.colors.primaryText)
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    settingsCloseButton
+                    // Dismiss Settings from its root toolbar.
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .navigationDestination(isPresented: $showingAttributions) {
@@ -103,51 +114,46 @@ struct SettingsView: View {
         // text-size destination. The slider changes Dynamic Type live, which can
         // otherwise briefly rebuild its own view and re-enable the gesture mid-drag.
         .background(NavigationPopGestureDisabler(isDisabled: showingTextSize))
-        .background(theme.colors.mapOcean.ignoresSafeArea())
+        .background(theme.colors.background.ignoresSafeArea())
         .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
-        .presentationBackground(theme.colors.mapOcean)
+        .presentationBackground(theme.colors.background)
         // Apply the user's system or explicit text-size choice throughout Settings.
-        .environment(\.dynamicTypeSize, resolvedDynamicTypeSize)
-    }
-
-    // MARK: Toolbar
-
-    @ViewBuilder
-    private var settingsCloseButton: some View {
-        Button {
-            dismiss()
-        } label: {
-            Image(systemName: "xmark")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(settingsTitleColor)
-                .frame(width: 44, height: 44)
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
+        .environment(
+            \.dynamicTypeSize,
+            min(
+                max(
+                    useSystemTextSize ? systemDynamicTypeSize : selectedTextSizeLevel.dynamicTypeSize,
+                    AppTextSizeLevel.minimumDynamicTypeSize
+                ),
+                AppTextSizeLevel.maximumDynamicTypeSize
+            )
+        )
     }
 
     // MARK: Adaptive Appearance
 
+    /// Semantic background used by native form rows.
     private var settingsRowBackground: Color {
         theme.colors.settingsRowFill
     }
 
+    /// Semantic canvas used behind native form sections.
     private var settingsFormBackground: Color {
-        theme.colors.mapOcean
-    }
-
-    private var settingsTitleColor: Color {
-        theme.colors.primaryText
+        theme.colors.background
     }
 
     // MARK: Main Settings Form
 
+    /// Builds root preference, Help, attribution, and support sections.
     private var settingsForm: some View {
         Form {
             Section {
                 settingsNavigationRow(
                     localizedString("Units", locale: locale),
-                    value: unitsSummary,
+                    // Show the validated, resolved temperature preference.
+                    value: (TemperatureUnit(rawValue: temperatureUnit) ?? .automatic)
+                        .resolved
+                        .displayName(locale: locale),
                     systemImage: "ruler",
                     action: { showingUnits = true }
                 )
@@ -171,7 +177,10 @@ struct SettingsView: View {
 
                 settingsNavigationRow(
                     localizedString("Text Size", locale: locale),
-                    value: textSizeSummary,
+                    // Summarize whether text follows the system or the custom step.
+                    value: useSystemTextSize
+                        ? localizedString("System", locale: locale)
+                        : selectedTextSizeLevel.displayName(locale: locale),
                     systemImage: "textformat.size",
                     action: { showingTextSize = true }
                 )
@@ -219,7 +228,22 @@ struct SettingsView: View {
                     systemImage: "hand.raised",
                     url: URL(string: "https://tomwuyutao.github.io/Weather-Atlas-Site/privacy/")
                 )
-                attributionsNavigationRow
+                // Open the full list of WeatherKit, MapKit, and city-data sources.
+                Button {
+                    showingAttributions = true
+                } label: {
+                    HStack {
+                        settingsLabel(
+                            localizedString("Attributions", locale: locale),
+                            systemImage: "text.badge.checkmark"
+                        )
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(theme.colors.secondaryText)
+                    }
+                }
+                .buttonStyle(.plain)
                 sayHelloRow
             } header: {
                 settingsSectionHeader(localizedString("About", locale: locale))
@@ -227,24 +251,48 @@ struct SettingsView: View {
             .listRowBackground(settingsRowBackground)
         }
         .scrollContentBackground(.hidden)
-            .background(settingsFormBackground)
+        .background(settingsFormBackground)
         .task {
-            normalizeLegacyAutomaticUnits()
-            await weatherService.loadWeatherAttributionIfNeeded()
+            // Migrate the obsolete automatic-unit raw value to the current contract.
+            if TemperatureUnit(rawValue: temperatureUnit) == .automatic {
+                temperatureUnit = TemperatureUnit.systemDefault.rawValue
+            }
+            // Load Apple Weather attribution once for the legal-source row.
+            if weatherService.weatherAttribution == nil {
+                do {
+                    weatherService.weatherAttribution = try await weatherService.weatherKitService.attribution
+                } catch { }
+            }
         }
     }
 
     // MARK: Theme Preferences
 
+    /// Builds five full-width theme selection rows.
     private var themeForm: some View {
         Form {
             Section {
                 ForEach(AppThemeStyle.allCases, id: \.rawValue) { style in
-                    settingsSelectionRow(
-                        title: style.displayName(locale: locale),
-                        isSelected: theme.style == style,
-                        action: { theme.style = style }
-                    )
+                    Button {
+                        theme.style = style
+                    } label: {
+                        HStack(spacing: 12) {
+                            themeIndicator(for: style)
+
+                            Text(style.displayName(locale: locale))
+                                .foregroundStyle(theme.colors.primaryText)
+
+                            Spacer(minLength: 8)
+
+                            if theme.style == style {
+                                Image(systemName: "checkmark")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(theme.colors.secondaryText)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
             .listRowBackground(settingsRowBackground)
@@ -253,6 +301,45 @@ struct SettingsView: View {
         .background(settingsFormBackground)
     }
 
+    /// Previews the light, charcoal, and black canvases used by each theme mode.
+    private func themeIndicator(for style: AppThemeStyle) -> some View {
+        let fills: (topLeading: Color, bottomTrailing: Color)
+        switch style {
+        case .automatic:
+            fills = (AppPalette.light.background, AppPalette.dark.background)
+        case .automaticBlack:
+            fills = (AppPalette.light.background, AppPalette.black.background)
+        case .light:
+            fills = (AppPalette.light.background, AppPalette.light.background)
+        case .dark:
+            fills = (AppPalette.dark.background, AppPalette.dark.background)
+        case .black:
+            fills = (AppPalette.black.background, AppPalette.black.background)
+        }
+
+        return Canvas { context, size in
+            context.fill(
+                Path(CGRect(origin: .zero, size: size)),
+                with: .color(fills.bottomTrailing)
+            )
+
+            // Automatic modes divide their two possible canvases diagonally.
+            var topLeadingHalf = Path()
+            topLeadingHalf.move(to: .zero)
+            topLeadingHalf.addLine(to: CGPoint(x: size.width, y: 0))
+            topLeadingHalf.addLine(to: CGPoint(x: 0, y: size.height))
+            topLeadingHalf.closeSubpath()
+            context.fill(topLeadingHalf, with: .color(fills.topLeading))
+        }
+        .frame(width: 32, height: 32)
+        .clipShape(.rect(cornerRadius: 8))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(theme.colors.secondaryText.opacity(0.28), lineWidth: 0.75)
+        }
+    }
+
+    /// Builds automatic sizing toggle, preview, and custom slider controls.
     private var textSizeForm: some View {
         Form {
             Section {
@@ -278,7 +365,13 @@ struct SettingsView: View {
                     }
                     .opacity(useSystemTextSize ? 0.42 : 1)
 
-                    Text(textSizeSliderDescription)
+                    // Name the custom slider step, or System while it is disabled.
+                    Text(
+                        useSystemTextSize
+                            ? localizedString("System", locale: locale)
+                            : (AppTextSizeLevel(rawValue: Int(textSizeSliderValue.rounded()))
+                                ?? selectedTextSizeLevel).displayName(locale: locale)
+                    )
                         .font(.callout.weight(.medium))
                         .foregroundStyle(theme.colors.secondaryText)
                         .frame(maxWidth: .infinity)
@@ -304,6 +397,7 @@ struct SettingsView: View {
         }
     }
 
+    /// Bridges a continuous native slider to supported discrete size steps.
     private var steppedTextSizeSlider: some View {
         Slider(
             value: Binding(
@@ -331,23 +425,18 @@ struct SettingsView: View {
         .frame(height: 36)
     }
 
-    private var textSizeSliderDescription: String {
-        guard !useSystemTextSize else {
-            return localizedString("System", locale: locale)
-        }
-        let sliderLevel = AppTextSizeLevel(rawValue: Int(textSizeSliderValue.rounded())) ?? selectedTextSizeLevel
-        return sliderLevel.displayName(locale: locale)
-    }
-
     // MARK: Temperature Units
 
+    /// Builds selectable Celsius and Fahrenheit rows.
     private var unitsForm: some View {
         Form {
             Section {
-                ForEach(TemperatureUnit.settingsCases, id: \.rawValue) { unit in
+                // Automatic is migrated above, so Settings exposes explicit units.
+                ForEach([TemperatureUnit.celsius, .fahrenheit], id: \.rawValue) { unit in
                     settingsSelectionRow(
                         title: unit.displayName(locale: locale),
-                        isSelected: selectedUnit.resolved == unit,
+                        // Compare against the validated, resolved stored unit.
+                        isSelected: (TemperatureUnit(rawValue: temperatureUnit) ?? .automatic).resolved == unit,
                         action: { temperatureUnit = unit.rawValue }
                     )
                 }
@@ -360,33 +449,16 @@ struct SettingsView: View {
         .scrollContentBackground(.hidden)
         .background(settingsFormBackground)
         .onAppear {
-            normalizeLegacyAutomaticUnits()
-        }
-    }
-
-    private func normalizeLegacyAutomaticUnits() {
-        if TemperatureUnit(rawValue: temperatureUnit) == .automatic {
-            temperatureUnit = TemperatureUnit.systemDefault.rawValue
+            // Migrate the obsolete automatic-unit raw value to the current contract.
+            if TemperatureUnit(rawValue: temperatureUnit) == .automatic {
+                temperatureUnit = TemperatureUnit.systemDefault.rawValue
+            }
         }
     }
 
     // MARK: About and Attributions
 
-    private var attributionsNavigationRow: some View {
-        Button {
-            showingAttributions = true
-        } label: {
-            HStack {
-                settingsLabel(localizedString("Attributions", locale: locale), systemImage: "text.badge.checkmark")
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(theme.colors.secondaryText)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
+    /// Builds WeatherKit, MapKit, and city-catalog attribution sections.
     private var attributionsForm: some View {
         Form {
             Section(localizedString("Weather", locale: locale)) {
@@ -411,17 +483,20 @@ struct SettingsView: View {
     // MARK: Attribution Rows
 
     @ViewBuilder
+    /// Apple Weather mark and legal link rows.
     private var weatherAttributionRows: some View {
         settingsInfoRow(
             localizedString("Weather Data", locale: locale),
-            value: weatherService.weatherAttributionMarkText,
+            // Apple Weather's attribution mark is fixed by the provider.
+            value: " Weather",
             systemImage: "cloud.sun"
         )
         settingsLinkRow(
             localizedString("Weather Legal Sources", locale: locale),
             value: localizedString("View", locale: locale),
             systemImage: "doc.text",
-            url: weatherService.weatherLegalPageURL
+            // The legal URL is unavailable until WeatherKit attribution loads.
+            url: weatherService.weatherAttribution?.legalPageURL
         )
         settingsLinkRow(
             localizedString("About WeatherKit", locale: locale),
@@ -432,6 +507,7 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
+    /// Apple Maps attribution and legal link rows.
     private var mapAttributionRows: some View {
         settingsInfoRow(
             localizedString("Map Data", locale: locale),
@@ -453,6 +529,7 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
+    /// Bundled city-catalog source and license rows.
     private var citiesAttributionRows: some View {
         settingsInfoRow(
             localizedString("Cities Data", locale: locale),
@@ -480,6 +557,7 @@ struct SettingsView: View {
 
     // MARK: Reusable Rows
 
+    /// Builds a standard icon-and-title Settings label.
     private func settingsLabel(_ title: String, systemImage: String) -> some View {
         Label {
             Text(title)
@@ -490,12 +568,14 @@ struct SettingsView: View {
         }
     }
 
+    /// Builds a consistent native form section header.
     private func settingsSectionHeader(_ title: String) -> some View {
         Text(title)
             .font(.footnote.weight(.semibold))
             .foregroundStyle(theme.colors.primaryText)
     }
 
+    /// Builds a read-only labeled Settings value row.
     private func settingsInfoRow(_ title: String, value: String, systemImage: String) -> some View {
         LabeledContent {
             Text(value)
@@ -505,6 +585,7 @@ struct SettingsView: View {
         }
     }
 
+    /// Builds a value-summary row that opens a nested destination.
     private func settingsNavigationRow(_ title: String, value: String, systemImage: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             LabeledContent {
@@ -522,6 +603,7 @@ struct SettingsView: View {
         .buttonStyle(.plain)
     }
 
+    /// Builds a full-width selectable row with trailing checkmark state.
     private func settingsSelectionRow(
         title: String,
         subtitle: String? = nil,
@@ -555,9 +637,11 @@ struct SettingsView: View {
 
     // MARK: Support Actions
 
+    /// Support-email row with a temporary copied confirmation.
     private var sayHelloRow: some View {
         Button {
-            copySupportEmail()
+            // Copy the support address before presenting native confirmation.
+            UIPasteboard.general.string = "yutao5726@gmail.com"
             showingEmailCopied = true
         } label: {
             LabeledContent {
@@ -573,12 +657,8 @@ struct SettingsView: View {
         }
     }
 
-    private func copySupportEmail() {
-        let email = "yutao5726@gmail.com"
-        UIPasteboard.general.string = email
-    }
-
     @ViewBuilder
+    /// Builds a native external-link row disabled when its URL is unavailable.
     private func settingsLinkRow(_ title: String, value: String, systemImage: String, url: URL?) -> some View {
         if let url {
             Button {
@@ -602,22 +682,30 @@ struct SettingsView: View {
 
 // MARK: - Navigation Gesture Bridge
 
+/// Temporarily disables interactive navigation pop while dragging the slider.
 private struct NavigationPopGestureDisabler: UIViewControllerRepresentable {
+    /// Whether the enclosing navigation controller's pop gesture is disabled.
     let isDisabled: Bool
 
+    /// Retains the gesture's previous enabled state for restoration.
     final class Coordinator {
+        /// Weak reference avoids extending UIKit gesture lifetime.
         weak var gestureRecognizer: UIGestureRecognizer?
+        /// Original enabled state captured before the first disable.
         var originalIsEnabled: Bool?
     }
 
+    /// Creates storage for the prior gesture state.
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
 
+    /// Creates an invisible controller used to locate its navigation controller.
     func makeUIViewController(context: Context) -> UIViewController {
         UIViewController()
     }
 
+    /// Applies the desired gesture state after the controller joins navigation.
     func updateUIViewController(_ uiViewController: UIViewController, context: Context) {
         DispatchQueue.main.async {
             guard let gestureRecognizer = uiViewController.navigationController?.interactivePopGestureRecognizer else {
@@ -637,6 +725,7 @@ private struct NavigationPopGestureDisabler: UIViewControllerRepresentable {
         }
     }
 
+    /// Restores the gesture state captured before this representable intervened.
     static func dismantleUIViewController(_ uiViewController: UIViewController, coordinator: Coordinator) {
         if let originalIsEnabled = coordinator.originalIsEnabled {
             coordinator.gestureRecognizer?.isEnabled = originalIsEnabled

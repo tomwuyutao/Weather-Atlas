@@ -10,14 +10,23 @@ import Foundation
 // MARK: - Shared Weather Symbols
 
 /// Canonical SF Symbols for weather conditions, shared by the app and widgets.
+/// Canonical SF Symbols used after successful WeatherKit classification.
 enum WeatherIconSymbol {
+    /// Icon for clear conditions.
     static let clear = "sun.max.fill"
+    /// Icon for partly cloudy or partly sunny conditions.
     static let partlyCloudy = "cloud.sun"
+    /// Icon for overcast conditions.
     static let cloudy = "cloud"
+    /// Icon for rain conditions.
     static let rain = "cloud.rain"
+    /// Icon for drizzle conditions.
     static let drizzle = "cloud.drizzle"
+    /// Icon for snow conditions.
     static let snow = "cloud.snow"
+    /// Icon for fog or haze conditions.
     static let fog = "cloud.fog"
+    /// Icon for windy conditions.
     static let wind = "wind"
 }
 
@@ -25,6 +34,7 @@ enum WeatherIconSymbol {
 
 /// Recognizes every condition family used by the app and widget. An unknown
 /// symbol stays unknown so callers can stop rendering dependent content.
+/// Normalized weather categories produced from recognized WeatherKit symbols.
 enum WeatherSymbolClassification {
     case clear
     case partlySunny
@@ -36,6 +46,7 @@ enum WeatherSymbolClassification {
     case fog
     case wind
 
+    /// Classifies a source symbol, returning `nil` when its meaning is unknown.
     static func resolve(_ symbolName: String) -> WeatherSymbolClassification? {
         let symbol = symbolName.lowercased()
 

@@ -13,20 +13,31 @@ import MapKit
 
 // MARK: - Models
 
+/// One list identifier and natural-language Apple Maps seed query.
 private struct SeedQuery {
+    /// Stable built-in list raw value receiving the resolved city.
     let listID: String
+    /// Human-authored query submitted to Apple Maps.
     let query: String
 }
 
+/// Complete CSV row produced only from resolved Apple place metadata.
 private struct ResolvedCity {
+    /// Stable built-in list raw value.
     let listID: String
+    /// Apple-resolved locality name.
     let city: String
+    /// Apple-resolved country name.
     let country: String
+    /// Apple-resolved latitude.
     let latitude: Double
+    /// Apple-resolved longitude.
     let longitude: Double
+    /// Apple-resolved timezone identifier.
     let timeZoneIdentifier: String
 }
 
+/// Explicit failures that prevent emitting a trustworthy catalog row.
 private enum RefreshError: LocalizedError {
     case missingSeedFile(URL)
     case invalidSeedRow(Int)
@@ -37,6 +48,7 @@ private enum RefreshError: LocalizedError {
     case missingAppleTimeZone(String)
     case appleTimeZoneLookupFailed(String, String)
 
+    /// Developer-facing failure description including the affected query/row.
     var errorDescription: String? {
         switch self {
         case .missingSeedFile(let url):
@@ -61,8 +73,10 @@ private enum RefreshError: LocalizedError {
 
 // MARK: - Entry Point
 
+/// Command-line entry point for regenerating the bundled coordinate catalog.
 @main
 private struct RefreshDefaultCityCoordinates {
+    /// Loads seeds, resolves them politely in sequence, and writes validated CSV.
     static func main() async throws {
         let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
         let seedURL = root
@@ -98,6 +112,7 @@ private struct RefreshDefaultCityCoordinates {
 
 // MARK: - Apple Maps Resolution
 
+/// Resolves one seed into canonical place, coordinate, and timezone metadata.
 private func resolve(_ seed: SeedQuery) async throws -> ResolvedCity {
     let request = MKLocalSearch.Request()
     request.naturalLanguageQuery = seed.query
@@ -139,6 +154,7 @@ private func resolve(_ seed: SeedQuery) async throws -> ResolvedCity {
     )
 }
 
+/// Retries a MapKit search with linear backoff before surfacing failure.
 private func startSearch(_ request: MKLocalSearch.Request, query: String) async throws -> MKLocalSearch.Response {
     var lastError: Error?
     for attempt in 1...4 {
@@ -153,6 +169,7 @@ private func startSearch(_ request: MKLocalSearch.Request, query: String) async 
     throw RefreshError.appleSearchFailed(query, lastError?.localizedDescription ?? "unknown error")
 }
 
+/// Uses MapKit timezone metadata or bounded reverse-geocoding retries.
 private func resolveTimeZoneIdentifier(
     mapKitTimeZone: TimeZone?,
     coordinate: CLLocationCoordinate2D,
@@ -193,6 +210,7 @@ private func resolveTimeZoneIdentifier(
     throw RefreshError.missingAppleTimeZone(query)
 }
 
+/// Trims an Apple string and rejects absent or empty results.
 private func clean(_ value: String?) -> String? {
     guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
           !trimmed.isEmpty else { return nil }
@@ -201,6 +219,7 @@ private func clean(_ value: String?) -> String? {
 
 // MARK: - CSV Loading
 
+/// Decodes two-column seed CSV while reporting invalid source row numbers.
 private func loadSeeds(from url: URL) throws -> [SeedQuery] {
     let lines = try String(contentsOf: url, encoding: .utf8)
         .split(whereSeparator: \.isNewline)
@@ -218,6 +237,7 @@ private func loadSeeds(from url: URL) throws -> [SeedQuery] {
     }
 }
 
+/// Splits one CSV line while handling quoted commas and escaped quotes.
 private func parseCSVLine(_ line: String) -> [String] {
     var fields: [String] = []
     var current = ""
@@ -259,6 +279,7 @@ private func parseCSVLine(_ line: String) -> [String] {
 
 // MARK: - CSV Writing
 
+/// Atomically writes resolved cities in the bundled catalog schema.
 private func write(_ cities: [ResolvedCity], to url: URL) throws {
     var output = "list_id,city,country,latitude,longitude,time_zone\n"
     for city in cities {
@@ -277,6 +298,7 @@ private func write(_ cities: [ResolvedCity], to url: URL) throws {
     try output.write(to: url, atomically: true, encoding: .utf8)
 }
 
+/// Quotes and escapes a value only when required by CSV syntax.
 private func escapeCSVField(_ value: String) -> String {
     guard value.contains(",") || value.contains("\"") || value.contains("\n") else {
         return value

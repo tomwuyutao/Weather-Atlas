@@ -9,24 +9,31 @@ import Foundation
 import CoreLocation
 import MapKit
 
+/// Canonical place metadata assembled from geocoding services.
 struct ResolvedPlace {
+    /// Resolved locality or administrative name.
     let name: String
+    /// Resolved country name.
     let country: String
+    /// Optional timezone because some geocoders omit it.
     let timeZone: TimeZone?
 }
 
 // MARK: - Place Resolution
 
 extension WeatherService {
+    /// Builds a rounded coordinate key for in-process place and timezone caches.
     private func coordinateKey(for city: City) -> String {
         String(format: "%.3f,%.3f", city.latitude, city.longitude)
     }
 
+    /// Uses the in-app language when requesting localized geocoder results.
     private func preferredGeocodingLocale() -> Locale {
         let identifier = UserDefaults.standard.string(forKey: "appLanguage") ?? Locale.autoupdatingCurrent.identifier
         return Locale(identifier: identifier)
     }
 
+    /// Resolves place metadata through cached results, MapKit, then CLGeocoder.
     private func resolvedPlace(for city: City) async -> ResolvedPlace? {
         let key = coordinateKey(for: city)
         if let cachedPlace = resolvedPlaces[key] {
@@ -87,6 +94,7 @@ extension WeatherService {
     }
 
     @available(iOS 26.0, *)
+    /// Queries MapKit for the nearest usable locality and timezone metadata.
     private func resolvedPlaceWithMapKit(for city: City, location: CLLocation) async -> ResolvedPlace? {
         let request = MKReverseGeocodingRequest(location: location)
         request?.preferredLocale = preferredGeocodingLocale()
@@ -128,6 +136,7 @@ extension WeatherService {
         }
     }
 
+    /// Selects the most specific meaningful locality name from a placemark.
     private func resolvedCityName(from placemark: CLPlacemark, originalCity city: City) -> String? {
         if let locality = cleanGeocodedCityName(placemark.locality) {
             return locality
@@ -140,12 +149,14 @@ extension WeatherService {
         return nil
     }
 
+    /// Trims a geocoder string and rejects empty results.
     private func cleanGeocodedCityName(_ value: String?) -> String? {
         guard let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines),
               !trimmed.isEmpty else { return nil }
         return trimmed
     }
 
+    /// Returns a canonically named city while preserving stable identity and coordinates.
     func resolvedCity(for city: City) async throws -> City {
         if !city.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            !city.country.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -165,6 +176,7 @@ extension WeatherService {
         )
     }
 
+    /// Resolves a timezone from saved metadata, cache, or reverse geocoding.
     private func resolvedTimeZone(for city: City) async -> TimeZone? {
         let key = coordinateKey(for: city)
         if let identifier = city.timeZoneIdentifier {
@@ -187,6 +199,7 @@ extension WeatherService {
         return nil
     }
 
+    /// Returns a real resolved timezone or throws instead of substituting GMT.
     func resolvedTimeZoneOrThrow(for city: City) async throws -> TimeZone {
         if let timeZone = await resolvedTimeZone(for: city) {
             return timeZone

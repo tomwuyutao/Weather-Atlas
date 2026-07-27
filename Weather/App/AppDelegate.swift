@@ -10,11 +10,13 @@ import UIKit
 
 // MARK: - Shortcut Destinations
 
+/// Stable destinations exposed through the app's dynamic Home Screen shortcuts.
 enum HomeScreenShortcutDestination: String, CaseIterable {
     case home
     case map
     case list
 
+    /// The SF Symbol paired with this destination in the system shortcut menu.
     var iconName: String {
         switch self {
         case .home: return "house"
@@ -23,6 +25,7 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
         }
     }
 
+    /// Returns the user-facing destination name in the app-selected locale.
     func localizedTitle(locale: Locale) -> String {
         switch self {
         case .home: return localizedString("Home", locale: locale)
@@ -34,11 +37,12 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
 
 // MARK: - Application Delegate
 
+/// Connects UIKit launch and shortcut callbacks to the SwiftUI navigation layer.
 class AppDelegate: NSObject, UIApplicationDelegate {
+    /// User-defaults key holding a shortcut until `ContentView` can consume it.
     nonisolated private static let pendingShortcutDestinationKey = "pendingShortcutDestination"
-    nonisolated private static let shortcutTypePrefix = "openView."
-    nonisolated private static let legacyListShortcutTypePrefix = "openList."
 
+    /// Installs current shortcuts and captures a shortcut supplied at cold launch.
     func application(
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
@@ -50,6 +54,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
+    /// Routes a shortcut selected while the application process is already alive.
     func application(
         _ application: UIApplication,
         performActionFor shortcutItem: UIApplicationShortcutItem,
@@ -58,6 +63,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         completionHandler(Self.handleShortcutItem(shortcutItem))
     }
 
+    /// Installs the scene delegate needed for modern quick-action delivery.
     func application(
         _ application: UIApplication,
         configurationForConnecting connectingSceneSession: UISceneSession,
@@ -73,14 +79,16 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return configuration
     }
 
+    /// Rebuilds the dynamic shortcut set using the app's selected language.
     static func updateHomeScreenShortcuts() {
         let locale = Locale(
             identifier: UserDefaults.standard.string(forKey: AppLanguageDefaults.storageKey)
                 ?? Locale.autoupdatingCurrent.identifier
         )
         UIApplication.shared.shortcutItems = HomeScreenShortcutDestination.allCases.map { destination in
+            // SpringBoard requires a bundle-qualified shortcut identifier.
             UIApplicationShortcutItem(
-                type: shortcutType(for: destination),
+                type: "\(Bundle.main.bundleIdentifier ?? "Weather").openView.\(destination.rawValue)",
                 localizedTitle: destination.localizedTitle(locale: locale),
                 localizedSubtitle: nil,
                 icon: UIApplicationShortcutIcon(systemImageName: destination.iconName),
@@ -89,18 +97,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
     }
 
+    /// Atomically consumes the destination saved by a UIKit shortcut callback.
     static func takePendingHomeScreenShortcut() -> HomeScreenShortcutDestination? {
         guard let rawValue = UserDefaults.standard.string(forKey: pendingShortcutDestinationKey) else { return nil }
         UserDefaults.standard.removeObject(forKey: pendingShortcutDestinationKey)
         return HomeScreenShortcutDestination(rawValue: rawValue)
     }
 
-    /// Lets the first rendered frame respect a cold-launch shortcut without
-    /// consuming it before `ContentView` performs the actual navigation.
-    static func hasPendingHomeScreenShortcut() -> Bool {
-        UserDefaults.standard.string(forKey: pendingShortcutDestinationKey) != nil
-    }
-
+    /// Decodes, stores, and broadcasts a shortcut received outside the main actor.
     nonisolated fileprivate static func handleShortcutItem(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
         guard let destination = destination(from: shortcutItem) else { return false }
         UserDefaults.standard.set(destination.rawValue, forKey: pendingShortcutDestinationKey)
@@ -108,10 +112,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
-    private static func shortcutType(for destination: HomeScreenShortcutDestination) -> String {
-        "\(Bundle.main.bundleIdentifier ?? "Weather").\(shortcutTypePrefix)\(destination.rawValue)"
-    }
-
+    /// Resolves current and legacy shortcut payloads into a supported destination.
     nonisolated private static func destination(
         from shortcutItem: UIApplicationShortcutItem
     ) -> HomeScreenShortcutDestination? {
@@ -120,7 +121,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             return destination
         }
 
-        let marker = ".\(shortcutTypePrefix)"
+        // Current destination shortcuts follow the bundle-qualified openView marker.
+        let marker = ".openView."
         if let range = shortcutItem.type.range(of: marker) {
             return HomeScreenShortcutDestination(rawValue: String(shortcutItem.type[range.upperBound...]))
         }
@@ -128,7 +130,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // An app update can leave an old dynamic list shortcut visible until the
         // new shortcut set is installed. Route that legacy action to the List view.
         if shortcutItem.userInfo?["listID"] != nil
-            || shortcutItem.type.contains(".\(legacyListShortcutTypePrefix)") {
+            || shortcutItem.type.contains(".openList.") {
             return .list
         }
         return nil
@@ -140,6 +142,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 /// SwiftUI apps use the scene lifecycle, so Home Screen quick actions arrive
 /// here rather than through UIApplicationDelegate on current iOS versions.
 final class AppSceneDelegate: NSObject, UIWindowSceneDelegate {
+    /// Captures a shortcut that accompanied creation of a new window scene.
     func scene(
         _ scene: UIScene,
         willConnectTo session: UISceneSession,
@@ -149,6 +152,7 @@ final class AppSceneDelegate: NSObject, UIWindowSceneDelegate {
         _ = AppDelegate.handleShortcutItem(shortcutItem)
     }
 
+    /// Handles a shortcut delivered to an existing window scene.
     nonisolated func windowScene(
         _ windowScene: UIWindowScene,
         performActionFor shortcutItem: UIApplicationShortcutItem
@@ -160,5 +164,6 @@ final class AppSceneDelegate: NSObject, UIWindowSceneDelegate {
 // MARK: - Notifications
 
 extension Notification.Name {
+    /// Broadcast emitted after UIKit has persisted a main-view shortcut request.
     nonisolated static let weatherOpenMainViewShortcut = Notification.Name("weatherOpenMainViewShortcut")
 }

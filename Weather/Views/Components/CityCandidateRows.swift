@@ -10,41 +10,67 @@ import SwiftUI
 
 // MARK: - Shared Column Layout
 
+/// Shared column geometry keeping ranked rows aligned across screens.
 enum CityListLayout {
+    /// Width reserved for the optional rank number.
     static let rankColumnWidth: CGFloat = 32
+    /// Horizontal spacing between rank, name, and metric columns.
     static let columnSpacing: CGFloat = 5
+    /// Leading inset matching a row whose rank column is present.
     static let cityNameLeadingInset = rankColumnWidth + columnSpacing
 }
 
 // MARK: - Candidate Row
 
+/// Configurable ranked-city row shared by Home, List, and detail contexts.
 struct SunnyCandidateRow: View {
+    /// Complete ranking inputs for the displayed city.
     let candidate: SunnyCandidate
+    /// Optional one-based rank column.
     var rank: Int? = nil
+    /// Whether the row uses reduced vertical padding.
     var compact: Bool = false
+    /// Whether to show the normalized condition symbol.
     var showsConditionIcon: Bool = true
+    /// Whether to show the entire trailing metrics group.
     var showsWeatherMetrics: Bool = true
+    /// Whether temperature participates in the metrics group.
     var showsTemperature: Bool = true
+    /// Resolved temperature unit used to format the daily high.
     let tempUnit: TemperatureUnit
+    /// Optional externally supplied city label.
     var cityNameOverride: String? = nil
+    /// Optional rename action shown as a trailing pencil button.
     var cityRenameAction: (() -> Void)? = nil
 
+    /// Active semantic palette.
     @Environment(\.appTheme) private var theme
+    /// App-selected locale used for default city naming.
     @Environment(\.locale) private var locale
+    /// Text category used to widen fixed metric columns.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @ViewBuilder
+    /// Exposes the configured row content.
     var body: some View {
         rowContent
     }
 
+    /// Composes rank, city name, metrics, and optional rename action.
     private var rowContent: some View {
         HStack(spacing: CityListLayout.columnSpacing) {
             if let rank {
                 CityRankLabel(rank: rank)
             }
 
-            cityNameLabel(lineLimit: 1)
+            // Apply an override before falling back to the localized catalog name.
+            Text(
+                cityNameOverride
+                    ?? localizedCityDisplayName(for: candidate.cityWeather.city, locale: locale)
+            )
+            .font(.body.weight(.medium))
+            .foregroundStyle(theme.colors.primaryText)
+            .lineLimit(1)
 
             Spacer(minLength: 8)
 
@@ -52,23 +78,31 @@ struct SunnyCandidateRow: View {
                 weatherMetrics(usesFixedColumns: true)
             }
 
-            renameButton
+            // Supply a rename affordance only when the parent owns that workflow.
+            if let cityRenameAction {
+                Button(action: cityRenameAction) {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 19, weight: .regular))
+                        .foregroundStyle(theme.colors.primaryText)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .padding(.horizontal, -6)
+                .padding(.vertical, -4)
+            }
         }
         .padding(.horizontal, 0)
-        .padding(.vertical, verticalPadding)
+        .padding(.vertical, compact ? 8 : 9)
         .contentShape(Rectangle())
     }
 
-    private func cityNameLabel(lineLimit: Int) -> some View {
-        Text(cityName)
-            .font(.body.weight(.medium))
-            .foregroundStyle(theme.colors.primaryText)
-            .lineLimit(lineLimit)
-    }
-
+    /// Builds temperature, cloud-cover, and condition metric columns.
     private func weatherMetrics(usesFixedColumns: Bool) -> some View {
         let icon = candidate.condition.displayIcon
         let cloudText = "\(Int((candidate.cloudCover * 100).rounded()))%"
+        // Temperature and cloud cover share one Dynamic Type-aware column width.
+        let metricWidth: CGFloat = dynamicTypeSize > .large ? 72 : 58
 
         return HStack(spacing: usesFixedColumns ? 0 : 10) {
             if showsTemperature {
@@ -80,7 +114,7 @@ struct SunnyCandidateRow: View {
                         .monospacedDigit()
                 }
                 .foregroundStyle(theme.colors.secondaryText)
-                .frame(width: usesFixedColumns ? temperatureMetricWidth : nil, alignment: .leading)
+                .frame(width: usesFixedColumns ? metricWidth : nil, alignment: .leading)
             }
 
             HStack(spacing: 3) {
@@ -91,14 +125,17 @@ struct SunnyCandidateRow: View {
                     .monospacedDigit()
             }
             .foregroundStyle(theme.colors.secondaryText)
-            .frame(width: usesFixedColumns ? cloudMetricWidth : nil, alignment: .leading)
+            .frame(width: usesFixedColumns ? metricWidth : nil, alignment: .leading)
             .padding(.trailing, usesFixedColumns ? 5 : 0)
 
             if showsConditionIcon {
                 Image(systemName: icon)
                     .font(.caption.weight(.medium))
                     .weatherIconStyle(for: icon)
-                    .frame(width: usesFixedColumns ? conditionMetricWidth : nil, alignment: .trailing)
+                    .frame(
+                        width: usesFixedColumns ? (dynamicTypeSize > .large ? 26 : 22) : nil,
+                        alignment: .trailing
+                    )
             }
         }
         .foregroundStyle(theme.colors.secondaryText)
@@ -106,55 +143,36 @@ struct SunnyCandidateRow: View {
         .fixedSize(horizontal: true, vertical: false)
     }
 
-    @ViewBuilder
-    private var renameButton: some View {
-        if let cityRenameAction {
-            Button(action: cityRenameAction) {
-                Image(systemName: "pencil")
-                    .font(.system(size: 19, weight: .regular))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal, -6)
-            .padding(.vertical, -4)
-        }
-    }
-
-    private var cityName: String {
-        cityNameOverride
-            ?? localizedCityDisplayName(for: candidate.cityWeather.city, locale: locale)
-    }
-
-    // MARK: Layout
-
-    private var verticalPadding: CGFloat {
-        compact ? 8 : 9
-    }
-
-    private var temperatureMetricWidth: CGFloat {
-        dynamicTypeSize > .large ? 72 : 58
-    }
-
-    private var cloudMetricWidth: CGFloat {
-        dynamicTypeSize > .large ? 72 : 58
-    }
-
-    private var conditionMetricWidth: CGFloat {
-        dynamicTypeSize > .large ? 26 : 22
-    }
 }
 
+/// Fixed-width one-based rank label aligned across candidate rows.
 struct CityRankLabel: View {
+    /// One-based position displayed by the row.
     let rank: Int
 
+    /// Active semantic palette.
     @Environment(\.appTheme) private var theme
+    /// Text category used to scale the numeric rank.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
+    /// Builds the monoline rank label.
     var body: some View {
         Text(verbatim: String(rank))
-            .font(.system(size: rankFontSize, weight: .semibold, design: .default))
+            // Map the numeric rank to the supported text categories in place.
+            .font(.system(
+                size: {
+                    switch dynamicTypeSize {
+                    case .xSmall: return 13
+                    case .small: return 14
+                    case .medium: return 15
+                    case .large: return 16
+                    case .xLarge: return 18
+                    default: return 20
+                    }
+                }(),
+                weight: .semibold,
+                design: .default
+            ))
             .foregroundStyle(theme.colors.secondaryText)
             .lineLimit(1)
             .minimumScaleFactor(0.6)
@@ -162,21 +180,12 @@ struct CityRankLabel: View {
             .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
     }
 
-    private var rankFontSize: CGFloat {
-        switch dynamicTypeSize {
-        case .xSmall: return 13
-        case .small: return 14
-        case .medium: return 15
-        case .large: return 16
-        case .xLarge: return 18
-        default: return 20
-        }
-    }
 }
 
 // MARK: - ContentView Row Builders
 
 extension ContentView {
+    /// Creates a shared candidate row using root locale, theme, and temperature state.
     func sunnyCandidateRow(
         _ candidate: SunnyCandidate,
         rank: Int? = nil,
@@ -200,6 +209,7 @@ extension ContentView {
         )
     }
 
+    /// Creates the compact list variant with persisted city renames applied.
     func listRow(
         _ candidate: SunnyCandidate,
         rank: Int?,
@@ -222,6 +232,7 @@ extension ContentView {
     }
 
     @ViewBuilder
+    /// Builds selectable ranked rows, optional context menus, and aligned dividers.
     func listCandidateRows(
         _ candidates: [SunnyCandidate],
         rankOffset: Int = 0,
@@ -250,7 +261,23 @@ extension ContentView {
                 .contextMenu {
                     cityActions(for: candidate.cityWeather, in: menuListID)
                 } preview: {
-                    listContextPreviewRow(candidate, rank: rank, showsConditionIcon: showsConditionIcon)
+                    // Keep the context preview fixed-width and visually separated.
+                    sunnyCandidateRow(
+                        candidate,
+                        rank: rank,
+                        compact: true,
+                        showsConditionIcon: showsConditionIcon
+                    )
+                    .padding(.vertical, 2)
+                    .background(
+                        theme.colors.listCardFill,
+                        in: RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(theme.colors.accent.opacity(0.35), lineWidth: 1)
+                    }
+                    .frame(width: 360)
                 }
                 .cityListNativeRowStyle(background: theme.colors.background)
             } else if let selectionAction {
@@ -277,23 +304,65 @@ extension ContentView {
         }
     }
 
-    private func listContextPreviewRow(
-        _ candidate: SunnyCandidate,
-        rank: Int,
-        showsConditionIcon: Bool
-    ) -> some View {
-        sunnyCandidateRow(candidate, rank: rank, compact: true, showsConditionIcon: showsConditionIcon)
-            .padding(.vertical, 2)
-            .background(theme.colors.listCardFill, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 14, style: .continuous)
-                    .stroke(theme.colors.accent.opacity(0.35), lineWidth: 1)
+}
+
+// MARK: - Saved-City Context Menu
+
+extension ContentView {
+    @ViewBuilder
+    /// Supplies rename, move, and delete actions for a city in a known list.
+    func cityActions(for city: CityWeather, in listID: CityListID) -> some View {
+        let destinationLists = managedLists.filter { $0.rawValue != listID.rawValue }
+
+        if !destinationLists.isEmpty {
+            Menu {
+                ForEach(destinationLists) { destinationListID in
+                    Button {
+                        weatherService.moveCity(city, from: listID, to: destinationListID)
+                        Haptics.lightImpact()
+                    } label: {
+                        primaryMenuLabel(
+                            destinationListID.localizedDisplayName(locale: locale),
+                            systemImage: "list.bullet"
+                        )
+                    }
+                }
+            } label: {
+                primaryMenuLabel(
+                    localizedString("Move", locale: locale),
+                    systemImage: "arrow.right"
+                )
             }
-            .frame(width: 360)
+        }
+
+        Button {
+            cityToRename = city.city
+            cityRenameText = CityListID.customCityName(for: city.city)
+                ?? localizedCityName(for: city.city)
+            showingCityRenameAlert = true
+        } label: {
+            primaryMenuLabel(
+                localizedString("Rename", locale: locale),
+                systemImage: "pencil"
+            )
+        }
+
+        Button {
+            weatherService.removeCity(city, from: listID)
+        } label: {
+            Label {
+                Text(localizedString("Delete", locale: locale))
+            } icon: {
+                Image(systemName: "trash")
+                    .foregroundStyle(theme.colors.destructive)
+            }
+        }
+        .tint(theme.colors.destructive)
     }
 }
 
 extension View {
+    /// Applies the native list-row insets and background shared by city lists.
     func cityListNativeRowStyle(background: Color) -> some View {
         listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
             .listRowSeparator(.hidden)

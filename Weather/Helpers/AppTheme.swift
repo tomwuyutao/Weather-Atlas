@@ -2,14 +2,198 @@
 //  AppTheme.swift
 //  Weather
 //
-//  Purpose: Centralizes theme colors, glass styling, appearance resolution,
-//  and small color/view helpers used across the app.
+//  Purpose: Centralizes palette values, localization lookup, theme resolution,
+//  responsive layout, interaction feedback, and shared SwiftUI modifiers.
 //
 
+import Foundation
 import SwiftUI
+import UIKit
+
+// MARK: - App Locale Lookup
+
+/// Looks up a localized string for a specific locale supplied by SwiftUI.
+func localizedString(_ key: String.LocalizationValue, locale: Locale) -> String {
+    // Resolve the resource against the explicit in-app locale.
+    var resource = LocalizedStringResource(key)
+    resource.locale = locale
+    return String(localized: resource)
+}
+
+// MARK: - Shared App Palette
+
+/// Primitive semantic colors shared by the app and widget extension.
+enum AppPalette {
+    /// Complete palette values before they are adapted into app theme aliases.
+    struct Values {
+        /// Primary foreground color.
+        let titleText: Color
+        /// Secondary foreground color.
+        let secondaryText: Color
+        /// Main canvas color.
+        let background: Color
+        /// Destructive-action color.
+        let destructive: Color
+        /// Fully sunny semantic color.
+        let dotSun: Color
+        /// Partly sunny semantic color.
+        let dotPartlyCloudy: Color
+        /// Cloudy semantic color.
+        let dotCloudy: Color
+        /// Rain semantic color.
+        let dotRain: Color
+        /// Drizzle semantic color.
+        let dotDrizzle: Color
+        /// Subdued row and panel fill.
+        let settingsRow: Color
+        /// Branded tutorial canvas color.
+        let tutorialBackground: Color
+    }
+
+    /// Standard light-appearance palette.
+    static let light = Values(
+        titleText: Color(hex: 0x262626),
+        secondaryText: Color(hex: 0x6D6D6D),
+        background: Color(hex: 0xFAF8F2),
+        destructive: Color(hex: 0xD14D30),
+        dotSun: Color(hex: 0xFBC056),
+        dotPartlyCloudy: Color(hex: 0xFAE38E),
+        dotCloudy: Color(hex: 0xC8C8C8),
+        dotRain: Color(hex: 0x5AA4F3),
+        dotDrizzle: Color(hex: 0x67D1F0),
+        settingsRow: Color(hex: 0xF4EFE4),
+        tutorialBackground: Color(hex: 0x244F9C)
+    )
+
+    /// Standard charcoal dark-appearance palette.
+    static let dark = Values(
+        titleText: Color(hex: 0xFEFEFE),
+        secondaryText: Color(hex: 0x929292),
+        background: Color(hex: 0x262626),
+        destructive: Color(hex: 0xD14D30),
+        dotSun: Color(hex: 0xFBC056),
+        dotPartlyCloudy: Color(hex: 0xFAE38E),
+        dotCloudy: Color(hex: 0xC8C8C8),
+        dotRain: Color(hex: 0x5AA4F3),
+        dotDrizzle: Color(hex: 0x67D1F0),
+        settingsRow: Color(hex: 0x303030),
+        tutorialBackground: Color(hex: 0x244F9C)
+    )
+
+    // Black keeps the dark palette's content colors while replacing its main
+    // canvas with true black for OLED displays and a stronger dark appearance.
+    /// True-black dark palette used by Black theme modes.
+    static let black = Values(
+        titleText: dark.titleText,
+        secondaryText: dark.secondaryText,
+        background: Color(hex: 0x000000),
+        destructive: dark.destructive,
+        dotSun: dark.dotSun,
+        dotPartlyCloudy: dark.dotPartlyCloudy,
+        dotCloudy: dark.dotCloudy,
+        dotRain: dark.dotRain,
+        dotDrizzle: dark.dotDrizzle,
+        settingsRow: Color(hex: 0x181818),
+        tutorialBackground: dark.tutorialBackground
+    )
+
+    /// Returns the standard palette matching a resolved color scheme.
+    static func values(for colorScheme: ColorScheme) -> Values {
+        colorScheme == .dark ? dark : light
+    }
+
+    /// Returns a WCAG-stronger variant for the system contrast preference.
+    static func increasedContrastValues(for colorScheme: ColorScheme) -> Values {
+        increasedContrastValues(
+            for: values(for: colorScheme),
+            colorScheme: colorScheme
+        )
+    }
+
+    /// Increased-contrast variant that retains a true-black canvas.
+    static var increasedContrastBlack: Values {
+        increasedContrastValues(for: black, colorScheme: .dark)
+    }
+
+    /// Strengthens text, border, and fill separation for one base palette.
+    private static func increasedContrastValues(
+        for palette: Values,
+        colorScheme: ColorScheme
+    ) -> Values {
+        if colorScheme == .dark {
+            return Values(
+                titleText: palette.titleText,
+                secondaryText: palette.secondaryText,
+                background: palette.background,
+                destructive: palette.destructive.interpolated(with: palette.titleText, by: 0.12),
+                dotSun: palette.dotSun,
+                dotPartlyCloudy: palette.dotPartlyCloudy,
+                dotCloudy: palette.dotCloudy,
+                dotRain: palette.dotRain,
+                dotDrizzle: palette.dotDrizzle,
+                settingsRow: palette.settingsRow,
+                tutorialBackground: palette.tutorialBackground
+            )
+        }
+
+        return Values(
+            titleText: palette.titleText,
+            secondaryText: palette.secondaryText,
+            background: palette.background,
+            destructive: palette.destructive.interpolated(with: palette.titleText, by: 0.12),
+            dotSun: palette.dotSun.interpolated(with: palette.titleText, by: 0.48),
+            dotPartlyCloudy: palette.dotPartlyCloudy.interpolated(with: palette.titleText, by: 0.55),
+            dotCloudy: palette.dotCloudy.interpolated(with: palette.titleText, by: 0.66),
+            dotRain: palette.dotRain.interpolated(with: palette.titleText, by: 0.10),
+            dotDrizzle: palette.dotDrizzle.interpolated(with: palette.titleText, by: 0.35),
+            settingsRow: palette.settingsRow,
+            tutorialBackground: palette.tutorialBackground
+        )
+    }
+}
+
+// MARK: - Color Construction and Interpolation
+
+extension Color {
+    /// Creates an opaque sRGB color from a six-digit RGB hexadecimal value.
+    init(hex: UInt32) {
+        let red = Double((hex >> 16) & 0xFF) / 255.0
+        let green = Double((hex >> 8) & 0xFF) / 255.0
+        let blue = Double(hex & 0xFF) / 255.0
+        self.init(red: red, green: green, blue: blue)
+    }
+
+    /// Blends two resolved sRGB colors by a clamped interpolation fraction.
+    func interpolated(with other: Color, by amount: Double) -> Color {
+        let fraction = max(0, min(1, amount))
+        let first = UIColor(self)
+        let second = UIColor(other)
+        var red1: CGFloat = 0
+        var green1: CGFloat = 0
+        var blue1: CGFloat = 0
+        var alpha1: CGFloat = 0
+        var red2: CGFloat = 0
+        var green2: CGFloat = 0
+        var blue2: CGFloat = 0
+        var alpha2: CGFloat = 0
+
+        guard first.getRed(&red1, green: &green1, blue: &blue1, alpha: &alpha1),
+              second.getRed(&red2, green: &green2, blue: &blue2, alpha: &alpha2) else {
+            return fraction < 0.5 ? self : other
+        }
+
+        return Color(
+            red: Double(red1 + (red2 - red1) * fraction),
+            green: Double(green1 + (green2 - green1) * fraction),
+            blue: Double(blue1 + (blue2 - blue1) * fraction),
+            opacity: Double(alpha1 + (alpha2 - alpha1) * fraction)
+        )
+    }
+}
 
 // MARK: - Theme Style
 
+/// Persisted appearance modes offered by the Theme settings screen.
 enum AppThemeStyle: String, CaseIterable {
     case automatic = "automatic"
     case automaticBlack = "automaticBlack"
@@ -17,8 +201,10 @@ enum AppThemeStyle: String, CaseIterable {
     case dark = "dark"
     case black = "black"
 
+    /// Initial theme preference for new installations.
     static let defaultRawValue = AppThemeStyle.automatic.rawValue
 
+    /// Localized row title for this theme mode.
     func displayName(locale: Locale) -> String {
         switch self {
         case .automatic: return localizedString("Automatic", locale: locale)
@@ -32,37 +218,48 @@ enum AppThemeStyle: String, CaseIterable {
 
 // MARK: - Theme Colors
 
+/// Semantic colors consumed by app views after appearance resolution.
 struct ThemeColors {
     // Palette values
+    /// Primary heading and content foreground.
     let titleText: Color
+    /// De-emphasized labels and outlines.
     let secondaryText: Color
+    /// Main app background.
     let background: Color
+    /// Destructive control foreground.
     let destructive: Color
+    /// Fully sunny weather mark.
     let dotSun: Color
+    /// Partly sunny weather mark.
     let dotPartlyCloudy: Color
+    /// Cloudy weather mark.
     let dotCloudy: Color
+    /// Rain weather mark.
     let dotRain: Color
+    /// Drizzle weather mark.
     let dotDrizzle: Color
+    /// Subdued settings row and chart panel fill.
     let settingsRowFill: Color
+    /// Branded onboarding background.
     let tutorialBackground: Color
 
     // Semantic aliases intentionally reuse the compact palette above.
+    /// Standard primary foreground alias.
     var primaryText: Color { titleText }
-    var popoverBackground: Color { background }
-    var mapOcean: Color { background }
-    var mapBorder: Color { secondaryText }
+    /// Global control tint.
     var accent: Color { primaryText }
 
-    var dotSnow: Color { dotCloudy }
-    var dotFog: Color { dotCloudy }
-    var dotWind: Color { dotCloudy }
-
+    /// Foreground used for standalone sun symbols.
     var sunIconColor: Color { dotSun }
 
+    /// Background used by list cards.
     var listCardFill: Color { background }
-    var chartPanelFill: Color { settingsRowFill }
+    /// Tint participating in translucent glass surfaces.
     var glassFill: Color { background }
+    /// Highlight used by the sunny-only filter.
     var filterSunny: Color { dotSun }
+    /// Stable dark shadow independent of current appearance.
     var shadow: Color { AppPalette.light.titleText }
 
     /// Returns palette foreground styles for a weather SF Symbol icon name.
@@ -83,14 +280,17 @@ struct ThemeColors {
 // MARK: - Light Theme
 
 extension ThemeColors {
+    /// Standard light semantic theme.
     static let light = ThemeColors(palette: AppPalette.light)
 }
 
 // MARK: - Dark Themes
 
 extension ThemeColors {
+    /// Standard charcoal dark semantic theme.
     static let dark = ThemeColors(palette: AppPalette.dark)
 
+    /// True-black dark semantic theme.
     static let black = ThemeColors(palette: AppPalette.black)
 }
 
@@ -100,20 +300,24 @@ extension ThemeColors {
 // Text colors meet a 4.5:1 minimum and meaningful palette colors meet a 3:1 minimum
 // against their corresponding base backgrounds.
 extension ThemeColors {
+    /// Increased-contrast light semantic theme.
     static let increasedContrastLight = ThemeColors(
         palette: AppPalette.increasedContrastValues(for: .light)
     )
 
+    /// Increased-contrast charcoal dark semantic theme.
     static let increasedContrastDark = ThemeColors(
         palette: AppPalette.increasedContrastValues(for: .dark)
     )
 
+    /// Increased-contrast true-black semantic theme.
     static let increasedContrastBlack = ThemeColors(
         palette: AppPalette.increasedContrastBlack
     )
 }
 
 private extension ThemeColors {
+    /// Maps primitive shared palette values into app semantic aliases.
     init(palette: AppPalette.Values) {
         self.init(
             titleText: palette.titleText,
@@ -134,9 +338,12 @@ private extension ThemeColors {
 // MARK: - Theme Manager
 
 @Observable
+/// Observable theme manager shared across every app window.
 class AppTheme {
+    /// Process-wide theme manager instance.
     static let shared = AppTheme()
 
+    /// Persisted appearance selection; updates storage whenever it changes.
     var style: AppThemeStyle {
         didSet {
             UserDefaults.standard.set(style.rawValue, forKey: "appThemeStyle")
@@ -173,16 +380,19 @@ class AppTheme {
         }
     }
 
+    /// Restores the persisted style while normalizing unsupported old values.
     private init() {
         let raw = UserDefaults.standard.string(forKey: "appThemeStyle") ?? AppThemeStyle.defaultRawValue
         self.style = AppThemeStyle(rawValue: raw) ?? .automatic
     }
 
+    /// Chooses the exact semantic palette for scheme, contrast, and theme style.
     private func resolvedColors(
         for resolvedScheme: ColorScheme,
         contrast: ColorSchemeContrast
     ) -> ThemeColors {
-        if usesBlackPalette(for: resolvedScheme) {
+        // True-black themes only replace the regular dark palette.
+        if resolvedScheme == .dark && (style == .black || style == .automaticBlack) {
             return contrast == .increased ? .increasedContrastBlack : .black
         }
         if contrast == .increased {
@@ -190,20 +400,18 @@ class AppTheme {
         }
         return resolvedScheme == .dark ? .dark : .light
     }
-
-    private func usesBlackPalette(for resolvedScheme: ColorScheme) -> Bool {
-        guard resolvedScheme == .dark else { return false }
-        return style == .black || style == .automaticBlack
-    }
 }
 
 // MARK: - Environment Key
 
+/// SwiftUI environment key exposing the process-wide theme manager.
 private struct AppThemeKey: EnvironmentKey {
+    /// Default value used before `ThemeRoot` injects its instance.
     static let defaultValue = AppTheme.shared
 }
 
 extension EnvironmentValues {
+    /// Observable Weather Atlas theme manager.
     var appTheme: AppTheme {
         get { self[AppThemeKey.self] }
         set { self[AppThemeKey.self] = newValue }
@@ -212,10 +420,14 @@ extension EnvironmentValues {
 
 // MARK: - View Modifiers
 
+/// Applies semantic two-color rendering to recognized weather symbols.
 private struct WeatherIconStyleModifier: ViewModifier {
+    /// Active theme palette.
     @Environment(\.appTheme) private var theme
+    /// Weather symbol whose classification selects the palette.
     let iconName: String
 
+    /// Applies hierarchical palette rendering to the source image.
     func body(content: Content) -> some View {
         let palette = theme.colors.weatherIconPalette(for: iconName)
         content
@@ -229,6 +441,7 @@ private struct WeatherIconStyleModifier: ViewModifier {
 // Accessibility: These surface modifiers replace translucency with opaque, outlined surfaces
 // when Reduce Transparency or Increase Contrast is enabled.
 private extension View {
+    /// Replaces translucency with an opaque outlined surface when required.
     func highLegibilityGlass<Shape: InsettableShape>(
         theme: ThemeColors,
         contrast: ColorSchemeContrast,
@@ -244,21 +457,22 @@ private extension View {
     }
 }
 
+/// Chooses native glass or an accessibility-safe opaque popover background.
 private struct ThemedPopoverBackgroundModifier: ViewModifier {
+    /// Active theme palette.
     @Environment(\.appTheme) private var theme
+    /// System preference that forbids translucent surfaces.
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    /// System preference requiring stronger surface boundaries.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     @ViewBuilder
+    /// Applies the appropriate popover background for OS and accessibility state.
     func body(content: Content) -> some View {
         if reduceTransparency || colorSchemeContrast == .increased {
             // Accessibility: `background` is fully opaque in every palette, unlike
             // the standard popover color's intentional translucency.
-            content.presentationBackground(
-                colorSchemeContrast == .increased
-                    ? theme.colors.popoverBackground
-                    : theme.colors.background
-            )
+            content.presentationBackground(theme.colors.background)
         } else if #available(iOS 26.0, *) {
             content.presentationBackground {
                 Color.clear
@@ -270,13 +484,19 @@ private struct ThemedPopoverBackgroundModifier: ViewModifier {
     }
 }
 
+/// Shared interactive glass treatment for floating app controls.
 private struct ThemedGlassModifier<Shape: InsettableShape>: ViewModifier {
+    /// Active theme palette.
     @Environment(\.appTheme) private var theme
+    /// System preference that replaces glass with an opaque surface.
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    /// System preference requiring a stronger outline.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    /// Insettable boundary receiving the surface treatment.
     let shape: Shape
 
     @ViewBuilder
+    /// Applies native glass, a pre-iOS-26 material, or a high-legibility surface.
     func body(content: Content) -> some View {
         if reduceTransparency || colorSchemeContrast == .increased {
             content.highLegibilityGlass(
@@ -294,14 +514,21 @@ private struct ThemedGlassModifier<Shape: InsettableShape>: ViewModifier {
     }
 }
 
+/// Translucent card surface shared by Detail View's report sections.
 private struct DetailTranslucentCardModifier<Shape: InsettableShape>: ViewModifier {
+    /// Active theme palette.
     @Environment(\.appTheme) private var theme
+    /// System preference that replaces translucency with an opaque surface.
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    /// System preference requiring a stronger card outline.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    /// Resolved scheme used to tune translucent fill opacity.
     let colorScheme: ColorScheme
+    /// Insettable card boundary.
     let shape: Shape
 
     @ViewBuilder
+    /// Applies the detail-card surface appropriate to OS and accessibility state.
     func body(content: Content) -> some View {
         if reduceTransparency || colorSchemeContrast == .increased {
             content.highLegibilityGlass(
@@ -339,80 +566,59 @@ private struct DetailTranslucentCardModifier<Shape: InsettableShape>: ViewModifi
     }
 }
 
-// MARK: - Translucent Cards with Embedded Media
-
-/// Places Liquid Glass behind live media so its foreground treatment cannot
-/// pick up colors from an embedded map or video layer.
-private struct DetailTranslucentMediaCardModifier<Shape: InsettableShape>: ViewModifier {
-    @Environment(\.appTheme) private var theme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    let colorScheme: ColorScheme
-    let shape: Shape
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if reduceTransparency || colorSchemeContrast == .increased {
-            content.highLegibilityGlass(
-                theme: theme.colors,
-                contrast: colorSchemeContrast,
-                in: shape
-            )
-        } else if #available(iOS 26.0, *) {
-            content
-                .background {
-                    shape
-                        .fill(theme.colors.glassFill.opacity(colorScheme == .dark ? 0.18 : 0.22))
-                        .glassEffect(.regular.interactive(), in: shape)
-                }
-                .overlay(
-                    shape.stroke(
-                        theme.colors.primaryText.opacity(0.16),
-                        lineWidth: 0.6
-                    )
-                )
-        } else {
-            content
-                .background(.ultraThinMaterial, in: shape)
-                .background(
-                    theme.colors.glassFill.opacity(colorScheme == .dark ? 0.30 : 0.38),
-                    in: shape
-                )
-                .overlay(
-                    shape.stroke(
-                        theme.colors.primaryText.opacity(0.16),
-                        lineWidth: 0.6
-                    )
-                )
-        }
-    }
-}
-
 // MARK: - View Modifier APIs
 
 extension View {
+    /// Applies semantic palette rendering to a weather SF Symbol.
     func weatherIconStyle(for iconName: String) -> some View {
         modifier(WeatherIconStyleModifier(iconName: iconName))
     }
 
+    /// Applies the app's adaptive native popover surface.
     func themedPopoverBackground() -> some View {
         modifier(ThemedPopoverBackgroundModifier())
     }
 
-    func symbolReplaceTransition() -> some View {
-        contentTransition(.symbolEffect(.replace.magic(fallback: .replace)))
-    }
-
+    /// Wraps content in the shared interactive glass treatment.
     func themedGlass<Shape: InsettableShape>(in shape: Shape) -> some View {
         modifier(ThemedGlassModifier(shape: shape))
     }
 
+    /// Wraps Detail content in its shared translucent card treatment.
     func detailTranslucentCard<Shape: InsettableShape>(colorScheme: ColorScheme, in shape: Shape) -> some View {
         modifier(DetailTranslucentCardModifier(colorScheme: colorScheme, shape: shape))
     }
 
-    func detailTranslucentMediaCard<Shape: InsettableShape>(colorScheme: ColorScheme, in shape: Shape) -> some View {
-        modifier(DetailTranslucentMediaCardModifier(colorScheme: colorScheme, shape: shape))
-    }
+}
 
+// MARK: - Conditional Transformation
+
+extension View {
+    /// Applies a view transformation only when a runtime condition is true.
+    @ViewBuilder
+    func `if`(_ condition: Bool, transform: (Self) -> some View) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
+}
+
+// MARK: - Interaction Feedback
+
+/// Centralized UIKit feedback used by lightweight app interactions.
+enum Haptics {
+    /// Emits a prepared light impact on the main actor.
+    static func lightImpact() {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+}
+
+// MARK: - Responsive Layout
+
+/// Identifies a genuinely landscape iPad window, including resized Stage Manager
+/// scenes, instead of relying on a size class that can remain regular.
+func usesIPadLandscapeLayout(for size: CGSize) -> Bool {
+    UIDevice.current.userInterfaceIdiom == .pad && size.width > size.height
 }

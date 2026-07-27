@@ -7,15 +7,16 @@
 
 import Foundation
 
+/// File-backed storage for potentially large encoded weather snapshots.
 private enum WeatherSnapshotStorage {
-    private static let directoryName = "WeatherSnapshots"
-
+    /// Reads one list snapshot, migrating from no file as `nil`.
     static func read(for listID: CityListID) throws -> Data? {
         let url = try fileURL(for: listID)
         guard FileManager.default.fileExists(atPath: url.path) else { return nil }
         return try Data(contentsOf: url)
     }
 
+    /// Atomically writes one encoded list snapshot to Application Support.
     static func write(_ data: Data, for listID: CityListID) throws {
         let url = try fileURL(for: listID)
         try FileManager.default.createDirectory(
@@ -25,11 +26,13 @@ private enum WeatherSnapshotStorage {
         try data.write(to: url, options: .atomic)
     }
 
+    /// Removes one list's snapshot file when it exists.
     static func remove(for listID: CityListID) {
         guard let url = try? fileURL(for: listID) else { return }
         try? FileManager.default.removeItem(at: url)
     }
 
+    /// Returns a filesystem-safe URL derived from the list's stable identifier.
     private static func fileURL(for listID: CityListID) throws -> URL {
         let caches = try FileManager.default.url(
             for: .cachesDirectory,
@@ -41,7 +44,8 @@ private enum WeatherSnapshotStorage {
             character.isLetter || character.isNumber || character == "-" ? character : "_"
         }
         return caches
-            .appending(path: directoryName, directoryHint: .isDirectory)
+            // Store each list below the app's dedicated snapshot subdirectory.
+            .appending(path: "WeatherSnapshots", directoryHint: .isDirectory)
             .appending(path: String(safeID) + ".json")
     }
 }
@@ -49,6 +53,7 @@ private enum WeatherSnapshotStorage {
 // MARK: - Weather Cache
 
 extension WeatherService {
+    /// Encodes and writes a complete WeatherKit-derived snapshot for one list.
     func saveCachedWeatherData(_ data: [CityWeather], for listID: CityListID) {
         do {
             let cached = data.map { CachedCityWeather(from: $0) }
@@ -60,6 +65,7 @@ extension WeatherService {
         }
     }
 
+    /// Decodes, validates, and identity-reconciles one list's cached weather.
     func loadCachedWeatherData(for listID: CityListID) -> [CityWeather]? {
         let key = "cachedWeatherData_\(listID.rawValue)"
         do {
@@ -102,10 +108,20 @@ extension WeatherService {
         }
     }
 
+    /// Checks city coverage, forecast dates, and timezones before accepting a cache.
     func cachedWeatherDataLooksCurrent(_ data: [CityWeather], for listID: CityListID, now: Date = Date()) -> Bool {
         guard !data.isEmpty, fetchDate(for: listID) != nil else { return false }
         return data.allSatisfy { cityWeather in
-            guard hasResolvedTimeZone(cityWeather) else {
+            let timeZoneIdentifier = cityWeather.timeZone.identifier
+            let hasRawGMTTimeZone = timeZoneIdentifier == "UTC"
+                || timeZoneIdentifier == "GMT"
+                || timeZoneIdentifier.hasPrefix("GMT+")
+                || timeZoneIdentifier.hasPrefix("GMT-")
+            // A named city should use Core Location's civil timezone. A raw GMT
+            // value here identifies an older cache entry or a failed lookup.
+            guard !hasRawGMTTimeZone
+                    || cityWeather.city.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            else {
                 return false
             }
 
@@ -130,17 +146,7 @@ extension WeatherService {
         }
     }
 
-    func hasResolvedTimeZone(_ cityWeather: CityWeather) -> Bool {
-        let identifier = cityWeather.timeZone.identifier
-        guard identifier == "UTC" || identifier == "GMT" || identifier.hasPrefix("GMT+") || identifier.hasPrefix("GMT-") else {
-            return true
-        }
-
-        // A named city should use the civil timezone returned by Core Location.
-        // Raw GMT zones here mean an older cache entry or failed lookup would draw local-time charts incorrectly.
-        return cityWeather.city.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-    }
-
+    /// Returns the in-memory or persisted fetch timestamp for one list.
     func fetchDate(for listID: CityListID) -> Date? {
         if let fetchDate = listFetchDates[listID.rawValue] {
             return fetchDate
@@ -154,6 +160,7 @@ extension WeatherService {
         return fetchDate
     }
 
+    /// Whether a list's fetch timestamp is within the configured cache duration.
     func isWeatherDataFresh(for listID: CityListID, now: Date = Date()) -> Bool {
         guard let fetchDate = fetchDate(for: listID) else {
             return false
@@ -161,16 +168,22 @@ extension WeatherService {
         return now.timeIntervalSince(fetchDate) < weatherCacheDuration
     }
 
+    /// Caches weather for the active list.
     func cacheData(_ data: [CityWeather], updateFetchDate: Bool = false) {
         saveCachedWeatherData(data, for: activeListID)
         guard updateFetchDate else { return }
 
         let fetchDate = Date()
         listFetchDates[activeListID.rawValue] = fetchDate
-        UserDefaults.standard.set(fetchDate, forKey: cacheTimestampKey)
+        // Preserve the legacy active-list timestamp key used by existing installs.
+        UserDefaults.standard.set(
+            fetchDate,
+            forKey: "weatherCacheTimestamp_\(activeListID.rawValue)"
+        )
         lastFetchDate = fetchDate
     }
 
+    /// Caches weather for a specified list and optionally advances freshness time.
     func cacheData(_ data: [CityWeather], for listID: CityListID, updateFetchDate: Bool = false) {
         saveCachedWeatherData(data, for: listID)
         guard updateFetchDate else { return }
@@ -189,10 +202,7 @@ extension WeatherService {
         removeCache(for: listID)
     }
 
-    func clearCache() {
-        removeCache(for: activeListID)
-    }
-
+    /// Removes one list's file-backed snapshot and all timestamp state.
     func removeCache(for listID: CityListID) {
         WeatherSnapshotStorage.remove(for: listID)
         UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(listID.rawValue)")
@@ -206,14 +216,22 @@ extension WeatherService {
 
 // MARK: - Cache Models
 
+/// Codable representation of a persisted source city.
 struct CachedCity: Codable {
+    /// Stable city identity.
     let id: UUID
+    /// Canonical city name.
     let name: String
+    /// Canonical country name.
     let country: String
+    /// Geographic latitude.
     let latitude: Double
+    /// Geographic longitude.
     let longitude: Double
+    /// Optional resolved timezone identifier.
     let timeZoneIdentifier: String?
 
+    /// Copies a domain city into its cache representation.
     init(from city: City) {
         self.id = city.id
         self.name = city.name
@@ -223,6 +241,7 @@ struct CachedCity: Codable {
         self.timeZoneIdentifier = city.timeZoneIdentifier
     }
 
+    /// Decodes current and legacy city payloads.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decode(UUID.self, forKey: .id)
@@ -233,19 +252,28 @@ struct CachedCity: Codable {
         timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
     }
 
+    /// Restores the domain city without inventing missing metadata.
     func toCity() -> City {
         City(id: id, name: name, country: country, latitude: latitude, longitude: longitude, timeZoneIdentifier: timeZoneIdentifier)
     }
 }
 
+/// Codable representation of a complete city weather snapshot.
 struct CachedCityWeather: Codable {
+    /// Stable city-weather identity.
     let id: UUID
+    /// Cached source city metadata.
     let city: CachedCity
+    /// Current temperature in Celsius.
     let temperature: Double
+    /// Optional raw current-condition symbol.
     let currentSymbolName: String?
+    /// Available encoded daily forecasts.
     let dailyForecasts: [CachedDailyForecast]
+    /// Required resolved timezone identifier for forecast interpretation.
     let timeZoneIdentifier: String
 
+    /// Copies a domain weather aggregate into its cache representation.
     init(from cityWeather: CityWeather) {
         id = cityWeather.id
         city = CachedCity(from: cityWeather.city)
@@ -255,6 +283,7 @@ struct CachedCityWeather: Codable {
         timeZoneIdentifier = cityWeather.timeZone.identifier
     }
 
+    /// Restores a domain aggregate only when timezone and every day are valid.
     func toCityWeather() -> CityWeather? {
         let decodedCity = city.toCity()
         guard let timeZone = TimeZone(identifier: timeZoneIdentifier) else { return nil }
@@ -272,19 +301,32 @@ struct CachedCityWeather: Codable {
     }
 }
 
+/// Codable daily forecast supporting current and legacy cache formats.
 struct CachedDailyForecast: Codable {
+    /// Absolute forecast date in current cache versions.
     let date: Date?
+    /// Legacy and current position in the forecast sequence.
     let dayOffset: Int
+    /// Daily low in Celsius.
     let dailyLow: Double
+    /// Daily high in Celsius.
     let dailyHigh: Double
+    /// Raw WeatherKit condition symbol.
     let symbolName: String
+    /// Encoded hourly source forecasts.
     let hourlyForecasts: [CachedHourlyForecast]
+    /// Optional cloud-cover fraction.
     let cloudCover: Double?
+    /// Optional precipitation probability.
     let precipitationChance: Double?
+    /// Optional UV index.
     let uvIndex: Int?
+    /// Optional sunrise instant.
     let sunrise: Date?
+    /// Optional sunset instant.
     let sunset: Date?
 
+    /// Copies a domain daily forecast into its cache representation.
     init(from forecast: DailyForecast) {
         date = forecast.date
         dayOffset = forecast.dayOffset
@@ -299,6 +341,7 @@ struct CachedDailyForecast: Codable {
         sunset = forecast.sunset
     }
 
+    /// Restores a daily forecast, reconstructing only supported legacy dates.
     func toDailyForecast(timeZone: TimeZone) -> DailyForecast? {
         // Exact calendar-date matching requires the original WeatherKit date.
         // Legacy cache entries without it are rejected so the app refetches.
@@ -323,17 +366,23 @@ struct CachedDailyForecast: Codable {
     }
 }
 
+/// Codable hourly forecast supporting old integer-hour snapshots.
 struct CachedHourlyForecast: Codable {
+    /// Absolute forecast instant in current cache versions.
     let date: Date?
+    /// Legacy local integer hour when no absolute date was stored.
     let hour: Int?
+    /// Raw WeatherKit condition symbol.
     let symbolName: String
 
+    /// Copies a domain hourly forecast into its cache representation.
     init(from forecast: HourlyForecast) {
         date = forecast.date
         hour = nil
         symbolName = forecast.symbolName
     }
 
+    /// Restores an absolute hour using a supplied local day for legacy payloads.
     func toHourlyForecast(on day: Date, timeZone: TimeZone) -> HourlyForecast? {
         var calendar = Calendar.current
         calendar.timeZone = timeZone

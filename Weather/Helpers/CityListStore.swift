@@ -9,21 +9,25 @@ import SwiftUI
 
 // MARK: - List Identity
 
+/// Canonical geographic origin retained separately from a list's editable name.
 enum CityListNameSource: Equatable, Hashable, Codable {
     case country(iso2: String, duplicateIndex: Int?)
     case continent(rawValue: String, duplicateIndex: Int?)
 
+    /// Stable encoded fields for the associated-value enum.
     enum CodingKeys: String, CodingKey {
         case kind
         case value
         case duplicateIndex
     }
 
+    /// Discriminator persisted alongside the source value.
     enum Kind: String, Codable {
         case country
         case continent
     }
 
+    /// Restores a country or continent source from its stable tagged payload.
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let kind = try container.decode(Kind.self, forKey: .kind)
@@ -38,6 +42,7 @@ enum CityListNameSource: Equatable, Hashable, Codable {
         }
     }
 
+    /// Persists the source kind, canonical value, and optional duplicate suffix.
     func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
@@ -52,6 +57,7 @@ enum CityListNameSource: Equatable, Hashable, Codable {
         }
     }
 
+    /// Resolves the canonical geographic label and optional duplicate number.
     func localizedDisplayName(locale: Locale) -> String {
         let baseName: String
         let duplicateIndex: Int?
@@ -69,6 +75,7 @@ enum CityListNameSource: Equatable, Hashable, Codable {
         return "\(baseName) \(duplicateIndex)"
     }
 
+    /// Copies the geographic source while replacing only its duplicate suffix.
     func withDuplicateIndex(_ index: Int?) -> CityListNameSource {
         switch self {
         case let .country(iso2, _):
@@ -79,34 +86,49 @@ enum CityListNameSource: Equatable, Hashable, Codable {
     }
 }
 
+/// Stable list identity plus editable and canonical naming metadata.
 struct CityListID: Identifiable, Equatable, Hashable, Codable {
+    /// Persistence key; equality and hashing intentionally use only this value.
     let rawValue: String
+    /// Stored display name used for custom lists and migration compatibility.
     let displayName: String
+    /// Optional canonical country/continent origin for generated lists.
     let nameSource: CityListNameSource?
 
+    /// Creates a list identity from stable and user-facing naming values.
     init(rawValue: String, displayName: String, nameSource: CityListNameSource? = nil) {
         self.rawValue = rawValue
         self.displayName = displayName
         self.nameSource = nameSource
     }
     
+    /// SwiftUI identity matching the persisted raw value.
     var id: String { rawValue }
 
+    /// Compares stable list identity rather than an editable name.
     static func == (lhs: CityListID, rhs: CityListID) -> Bool {
         lhs.rawValue == rhs.rawValue
     }
 
+    /// Hashes stable list identity to match equality semantics.
     func hash(into hasher: inout Hasher) {
         hasher.combine(rawValue)
     }
     
+    /// Built-in Europe list identity.
     static let europe = CityListID(rawValue: "europe", displayName: "Europe")
+    /// Built-in Asia list identity.
     static let asia = CityListID(rawValue: "asia", displayName: "Asia")
+    /// Built-in North America list identity.
     static let northAmerica = CityListID(rawValue: "northAmerica", displayName: "North America")
+    /// Built-in South America list identity.
     static let southAmerica = CityListID(rawValue: "southAmerica", displayName: "South America")
+    /// Built-in Africa list identity.
     static let africa = CityListID(rawValue: "africa", displayName: "Africa")
+    /// Built-in Australia list identity.
     static let australia = CityListID(rawValue: "australia", displayName: "Australia")
-    
+
+    /// Resolves custom rename, canonical source, localization, then stored name.
     func localizedDisplayName(locale: Locale = .current) -> String {
         if let customName = Self.customDisplayName(for: rawValue),
            !(Self.isBuiltInRawValue(rawValue) && customName == displayName) {
@@ -130,6 +152,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         return Self.localizedBuiltInDisplayName(for: rawValue, locale: locale) ?? displayName
     }
 
+    /// Returns the localized canonical label for a known built-in raw value.
     static func localizedBuiltInDisplayName(for rawValue: String, locale: Locale = .current) -> String? {
         switch rawValue {
         case "europe": return localizedString("Europe", locale: locale)
@@ -142,14 +165,21 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         }
     }
 
+    /// Complete built-in list catalog in its default order.
     static let builtInLists: [CityListID] = [.europe, .asia, .northAmerica, .southAmerica, .africa, .australia]
-    
+
+    /// Preference key containing encoded user-created list identities.
     private static let userListsKey = "userCreatedLists"
+    /// Preference key containing hidden built-in raw values.
     private static let deletedBuiltInListsKey = "deletedBuiltInLists"
+    /// Preference key containing the user's cross-list order.
     private static let listOrderKey = "listOrder"
+    /// Preference key mapping list raw values to user renames.
     private static let customListNamesKey = "customListNames"
+    /// Preference key mapping stable city keys to user renames.
     private static let customCityNamesKey = "customCityNames"
-    
+
+    /// Available built-in and custom lists, reconciled with the saved order.
     static var allLists: [CityListID] {
         let deletedIDs = loadDeletedBuiltInIDs()
         // Build the unordered pool of available lists
@@ -173,6 +203,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         return allAvailable
     }
     
+    /// Persists only stable raw values for the current cross-list order.
     static func saveListOrder(_ lists: [CityListID]) {
         let ids = lists.map(\.rawValue)
         if let data = try? JSONEncoder().encode(ids) {
@@ -180,6 +211,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         }
     }
 
+    /// Decodes the custom list-name lookup, returning empty on absent storage.
     private static func loadCustomListNames() -> [String: String] {
         guard let data = UserDefaults.standard.data(forKey: customListNamesKey),
               let names = try? JSONDecoder().decode([String: String].self, from: data) else {
@@ -188,10 +220,12 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         return names
     }
 
+    /// Looks up a user rename for one stable list raw value.
     static func customDisplayName(for rawValue: String) -> String? {
         loadCustomListNames()[rawValue]
     }
 
+    /// Persists a user rename without mutating the list's canonical source.
     static func saveCustomDisplayName(_ name: String, for rawValue: String) {
         var names = loadCustomListNames()
         names[rawValue] = name
@@ -200,12 +234,18 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         }
     }
 
+    /// Looks up a city rename using current and legacy stable keys.
     static func customCityName(for city: City) -> String? {
         let names = loadCustomCityNames()
+        let stableLocale = Locale(identifier: "en_US_POSIX")
+        let latitude = String(format: "%.4f", locale: stableLocale, city.latitude)
+        let longitude = String(format: "%.4f", locale: stableLocale, city.longitude)
         return names[cityDisplayNameKey(for: city)]
-            ?? names[legacyCityDisplayNameKey(for: city)]
+            // Preserve names saved by versions whose key omitted the city name.
+            ?? names["\(city.country)|\(latitude)|\(longitude)"]
     }
 
+    /// Persists a user-facing city rename under the current stable key format.
     static func saveCustomCityName(_ name: String, for city: City) {
         var names = loadCustomCityNames()
         names[cityDisplayNameKey(for: city)] = name
@@ -214,6 +254,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         }
     }
 
+    /// Decodes the custom city-name lookup, returning empty on absent storage.
     private static func loadCustomCityNames() -> [String: String] {
         guard let data = UserDefaults.standard.data(forKey: customCityNamesKey),
               let names = try? JSONDecoder().decode([String: String].self, from: data) else {
@@ -222,6 +263,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         return names
     }
 
+    /// Builds a locale-stable city key from name, country, and rounded coordinates.
     private static func cityDisplayNameKey(for city: City) -> String {
         let stableLocale = Locale(identifier: "en_US_POSIX")
         let latitude = String(format: "%.4f", locale: stableLocale, city.latitude)
@@ -229,14 +271,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         return "\(city.name)|\(city.country)|\(latitude)|\(longitude)"
     }
 
-    /// Preserves custom names saved by versions whose key omitted the city name.
-    private static func legacyCityDisplayNameKey(for city: City) -> String {
-        let stableLocale = Locale(identifier: "en_US_POSIX")
-        let latitude = String(format: "%.4f", locale: stableLocale, city.latitude)
-        let longitude = String(format: "%.4f", locale: stableLocale, city.longitude)
-        return "\(city.country)|\(latitude)|\(longitude)"
-    }
-    
+    /// Decodes and validates user-created list identities from preferences.
     static func loadUserLists() -> [CityListID] {
         guard let data = UserDefaults.standard.data(forKey: userListsKey) else {
             return []
@@ -259,23 +294,27 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         return validLists
     }
     
+    /// Encodes all user-created list identities into preferences.
     static func saveUserLists(_ lists: [CityListID]) {
         if let data = try? JSONEncoder().encode(lists) {
             UserDefaults.standard.set(data, forKey: userListsKey)
         }
     }
     
+    /// Returns built-in raw values the user has chosen to hide.
     private static func loadDeletedBuiltInIDs() -> Set<String> {
         let ids = UserDefaults.standard.stringArray(forKey: deletedBuiltInListsKey) ?? []
         return Set(ids)
     }
     
+    /// Marks a built-in identity hidden without deleting its catalog definition.
     static func deleteBuiltInList(_ listID: CityListID) {
         var deleted = loadDeletedBuiltInIDs()
         deleted.insert(listID.rawValue)
         UserDefaults.standard.set(Array(deleted), forKey: deletedBuiltInListsKey)
     }
     
+    /// Replaces the visible built-in set during first-list tutorial selection.
     static func keepBuiltInLists(withRawValues selectedIDs: Set<String>) {
         let deleted = builtInLists
             .map(\.rawValue)
@@ -285,10 +324,12 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         UserDefaults.standard.removeObject(forKey: customListNamesKey)
     }
 
+    /// Whether a raw value belongs to the immutable built-in catalog.
     static func isBuiltInRawValue(_ rawValue: String) -> Bool {
         builtInLists.contains { $0.rawValue == rawValue }
     }
     
+    /// Creates and persists a new user list with a UUID-backed identity.
     static func createList(name: String, nameSource: CityListNameSource? = nil) -> CityListID {
         let id = CityListID(rawValue: UUID().uuidString, displayName: name, nameSource: nameSource)
         var userLists = loadUserLists()
@@ -297,6 +338,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         return id
     }
 
+    /// Appends the first available numeric suffix to a duplicate list name.
     static func availableListName(for baseName: String) -> String {
         let existingNames = Set(allLists.map(\.displayName))
         guard existingNames.contains(baseName) else { return baseName }
@@ -308,6 +350,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         return "\(baseName) \(suffix)"
     }
 
+    /// Finds an unused localized name while preserving canonical source metadata.
     static func availableGeneratedListIdentity(
         for source: CityListNameSource,
         locale: Locale
@@ -326,6 +369,7 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
         return ("\(baseName) \(suffix)", sourceWithoutSuffix.withDuplicateIndex(suffix))
     }
     
+    /// Population-ranked bundled cities for this built-in continent identity.
     var defaultCities: [City] {
         CountryCityCatalog.topCities(forContinentRawValue: rawValue)
     }
@@ -334,11 +378,13 @@ struct CityListID: Identifiable, Equatable, Hashable, Codable {
 // MARK: - Weather Service List Access
 
 extension WeatherService {
+    /// Returns a saved coordinate list or the built-in list's catalog defaults.
     func cityListCoordinates(for listID: CityListID? = nil) -> [City] {
         let targetListID = listID ?? activeListID
         return loadSavedCities(for: targetListID) ?? targetListID.defaultCities
     }
 
+    /// Finds the first available list containing a coordinate-equivalent city.
     func listContainingCity(_ city: City) -> CityListID? {
         availableLists.first { listID in
             cityListCoordinates(for: listID).contains {
@@ -356,7 +402,11 @@ extension WeatherService {
         do {
             let encoder = JSONEncoder()
             let encoded = try encoder.encode(cities.map { CachedCity(from: $0) })
-            UserDefaults.standard.set(encoded, forKey: citiesListKey)
+            // Preserve the active list's legacy saved-coordinate key.
+            UserDefaults.standard.set(
+                encoded,
+                forKey: "savedCitiesList_\(activeListID.rawValue)"
+            )
         } catch {
             DeveloperWarningCenter.show(
                 title: "City List Save Failed",
@@ -365,6 +415,7 @@ extension WeatherService {
         }
     }
 
+    /// Persists source city coordinates for a specific list identity.
     func saveCities(_ cities: [City], for listID: CityListID) {
         let key = "savedCitiesList_\(listID.rawValue)"
         do {
@@ -378,6 +429,7 @@ extension WeatherService {
         }
     }
     
+    /// Rejects impossible coordinates, excessive names, and unsafe characters.
     func isValidPersistedCity(_ city: City) -> Bool {
         let name = city.name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard city.latitude.isFinite, city.longitude.isFinite,
@@ -425,6 +477,7 @@ extension WeatherService {
 
     // MARK: - List Mutations
 
+    /// Deletes the active list, its cache, and selects or creates a replacement.
     func deleteCurrentList() {
         let listToDelete = activeListID
         // Remove stored data for this list
@@ -466,6 +519,7 @@ extension WeatherService {
         }
     }
 
+    /// Persists a trimmed rename while preserving stable and canonical identity.
     func renameList(_ listID: CityListID, to newName: String) {
         let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -490,6 +544,7 @@ extension WeatherService {
         reloadAvailableLists()
     }
 
+    /// Deletes any list, delegating active-list replacement when necessary.
     func deleteList(_ listID: CityListID) {
         if listID.rawValue == activeListID.rawValue {
             deleteCurrentList()
@@ -512,6 +567,7 @@ extension WeatherService {
         reloadAvailableLists()
     }
 
+    /// Applies and persists a user drag-reorder across all available lists.
     func moveLists(from source: IndexSet, to destination: Int) {
         var lists = availableLists
         lists.move(fromOffsets: source, toOffset: destination)
@@ -521,6 +577,7 @@ extension WeatherService {
 
     // MARK: - City Mutations
 
+    /// Removes a city from the active list, weather cache, and coordinate store.
     func removeCity(_ cityWeather: CityWeather) {
         cityWeatherData.removeAll { citiesMatch($0.city, cityWeather.city) }
         // Update cache after removing city
@@ -529,6 +586,7 @@ extension WeatherService {
         saveCitiesList()
     }
 
+    /// Removes a city from an arbitrary loaded or unloaded list.
     func removeCity(_ cityWeather: CityWeather, from listID: CityListID) {
         if listID.rawValue == activeListID.rawValue {
             removeCity(cityWeather)
@@ -552,6 +610,7 @@ extension WeatherService {
         }
     }
 
+    /// Adds a city to its destination before removing it from the source list.
     func moveCity(_ cityWeather: CityWeather, from sourceListID: CityListID, to destinationListID: CityListID) {
         guard sourceListID.rawValue != destinationListID.rawValue else { return }
 
@@ -583,6 +642,7 @@ extension WeatherService {
         removeCity(cityWeather, from: sourceListID)
     }
     
+    /// Inserts a unique city and reconciles loaded weather and persisted caches.
     @discardableResult
     func addCityToList(_ cityWeather: CityWeather, listID: CityListID) -> Bool {
         let city = cityWeather.city
@@ -612,6 +672,7 @@ extension WeatherService {
         return true
     }
 
+    /// Creates, seeds, activates, and fetches a custom city collection.
     func createCustomList(name: String, cities: [City], nameSource: CityListNameSource? = nil) async -> CityListID {
         let listID = CityListID.createList(name: name, nameSource: nameSource)
         reloadAvailableLists()

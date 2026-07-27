@@ -11,24 +11,34 @@ import SwiftUI
 // MARK: - List View
 
 extension ContentView {
+    /// Wraps the full city list in its navigation and toolbar destination.
     var fullListDestination: some View {
         listView
             .navigationTitle(toolbarTitle)
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
-                showingMapExpandedCard = false
+                isMapCardPresented = false
                 listEditMode = false
             }
     }
 
+    /// Builds the responsive list screen and its top controls.
     var listView: some View {
         GeometryReader { geometry in
-            let maxContentWidth = cityListContentMaxWidth(for: geometry.size)
+            // A narrower landscape iPad column keeps a long ranked list scannable.
+            let maxContentWidth = usesIPadLandscapeLayout(for: geometry.size) ? 680.0 : 760.0
 
             ZStack(alignment: .top) {
                 nativeCityList(maxContentWidth: maxContentWidth)
 
-                listHeader(maxContentWidth: maxContentWidth)
+                // Align the list title and actions with the row content.
+                topToolbar {
+                    listTopToolbarActions
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
+                .frame(maxWidth: maxContentWidth)
+                .frame(maxWidth: .infinity)
             }
             .environment(\.defaultMinListRowHeight, 0)
             .background(theme.colors.background.ignoresSafeArea())
@@ -40,77 +50,113 @@ extension ContentView {
         }
     }
 
+    @ViewBuilder
+    /// Builds the empty-list action or native editable city rows.
     private func nativeCityList(maxContentWidth: CGFloat) -> some View {
-        List {
-            if listEditMode {
-                ForEach(sortedListCandidates) { candidate in
-                    listRow(
-                        candidate,
-                        rank: nil,
-                        showsWeatherMetrics: false,
-                        cityRenameAction: { beginCityRename(candidate.cityWeather.city) }
+        if weatherService.cityListCoordinates().isEmpty {
+            emptyListContent
+                .padding(.horizontal, 24)
+                .padding(.top, 104)
+                .frame(maxWidth: maxContentWidth)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        } else {
+            List {
+                if listEditMode {
+                    ForEach(sortedListCandidates) { candidate in
+                        listRow(
+                            candidate,
+                            rank: nil,
+                            showsWeatherMetrics: false,
+                            cityRenameAction: {
+                                // Seed and present the native city-rename alert.
+                                let city = candidate.cityWeather.city
+                                cityToRename = city
+                                cityRenameText = CityListID.customCityName(for: city) ?? localizedCityName(for: city)
+                                showingCityRenameAlert = true
+                            }
+                        )
+                        .cityListNativeRowStyle(background: theme.colors.background)
+                    }
+                    .onDelete { offsets in
+                        // Remove candidate rows selected through native list editing.
+                        for index in offsets where sortedListCandidates.indices.contains(index) {
+                            weatherService.removeCity(sortedListCandidates[index].cityWeather)
+                        }
+                        Haptics.lightImpact()
+                    }
+                } else if selectedListSortMode == .sunny {
+                    sunninessGroupedCandidateRows(
+                        sunninessCandidateGroups,
+                        contextMenuListID: weatherService.activeListID
                     )
-                    .cityListNativeRowStyle(background: theme.colors.background)
+                } else {
+                    listCandidateRows(
+                        sortedListCandidates,
+                        showsDividers: false,
+                        selectionAction: { candidate in
+                            presentDetail(for: candidate.cityWeather)
+                        },
+                        contextMenuListID: weatherService.activeListID
+                    )
                 }
-                .onDelete(perform: deleteListCandidates)
-            } else if selectedListSortMode == .sunny {
-                sunninessGroupedCandidateRows
-            } else {
-                listCandidateRows(
-                    sortedListCandidates,
-                    showsDividers: false,
-                    selectionAction: { candidate in
-                        presentDetail(for: candidate.cityWeather)
-                    },
-                    contextMenuListID: weatherService.activeListID
+
+                // Rank omissions against the active list, excluding temporary search results.
+                let droppedCityCount = rankingOmissionCount(in: weatherService.cityWeatherData)
+                if droppedCityCount > 0 {
+                    forecastAvailabilityNote(droppedCityCount: droppedCityCount)
+                        .padding(.leading, 5)
+                        .padding(.top, 16)
+                        .padding(.bottom, 8)
+                        .cityListNativeRowStyle(background: theme.colors.background)
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .contentMargins(.top, 76, for: .scrollContent)
+            .contentMargins(.bottom, 16, for: .scrollContent)
+            .environment(\.editMode, .constant(listEditMode ? .active : .inactive))
+            // Keep the ranked sequence as one readable column on wide windows.
+            // The outer flexible frame centers it without changing iPhone sizing.
+            .frame(maxWidth: maxContentWidth)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// Empty-list explanation and direct Add City action shared with Home.
+    var emptyListContent: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "building.2")
+                .font(.system(size: 36, weight: .medium))
+                .foregroundStyle(theme.colors.accent)
+
+            Text(
+                String(
+                    format: localizedString("No cities in %@ yet", locale: locale),
+                    locale: locale,
+                    toolbarTitle
                 )
-            }
-
-            let droppedCityCount = rankingOmissionCount(
-                in: forecastDateSourceCities
             )
-            if droppedCityCount > 0 {
-                forecastAvailabilityNote(droppedCityCount: droppedCityCount)
-                    .padding(.leading, 5)
-                    .padding(.top, 16)
-                    .padding(.bottom, 8)
-                    .cityListNativeRowStyle(background: theme.colors.background)
+            .font(.headline)
+            .foregroundStyle(theme.colors.primaryText)
+            .multilineTextAlignment(.center)
+
+            Button {
+                presentAddCitySearch()
+            } label: {
+                Label(localizedString("Add City", locale: locale), systemImage: "plus")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .padding(.horizontal, 18)
+                    .frame(minHeight: 44)
             }
+            .buttonStyle(.plain)
+            .background(theme.colors.dotSun, in: Capsule())
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .contentMargins(.top, 76, for: .scrollContent)
-        .contentMargins(.bottom, 16, for: .scrollContent)
-        .environment(\.editMode, .constant(listEditMode ? .active : .inactive))
-        // Keep the ranked sequence as one readable column on wide windows.
-        // The outer flexible frame centers it without changing iPhone sizing.
-        .frame(maxWidth: maxContentWidth)
         .frame(maxWidth: .infinity)
-    }
-
-    private func listHeader(maxContentWidth: CGFloat) -> some View {
-        topToolbar {
-            listTopToolbarActions
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 12)
-        .frame(maxWidth: maxContentWidth)
-        .frame(maxWidth: .infinity)
-    }
-
-    private func cityListContentMaxWidth(for size: CGSize) -> CGFloat {
-        // A narrower landscape iPad column keeps a long ranked list easy to scan.
-        usesIPadLandscapeLayout(for: size) ? 680 : 760
-    }
-
-    private var sunninessGroupedCandidateRows: some View {
-        sunninessGroupedCandidateRows(
-            sunninessCandidateGroups,
-            contextMenuListID: weatherService.activeListID
-        )
     }
 
     @ViewBuilder
+    /// Builds grouped candidate sections with continuous one-based ranks.
     private func sunninessGroupedCandidateRows(
         _ groups: [SunninessCandidateGroup],
         contextMenuListID: CityListID?
@@ -162,6 +208,7 @@ extension ContentView {
         }
     }
 
+    /// Edit and sort actions shown beside the list switcher.
     private var listTopToolbarActions: some View {
         topToolbarActionCapsule {
             if listEditMode {
@@ -193,6 +240,7 @@ extension ContentView {
         }
     }
 
+    /// Menu for selecting the persisted city ordering rule.
     private var listSortControl: some View {
         Menu {
             ForEach(WeatherListSortMode.allCases) { mode in
@@ -212,6 +260,7 @@ extension ContentView {
         .padding(.vertical, -4)
     }
 
+    /// Builds a consistently sized top-toolbar symbol.
     private func listToolbarActionIcon(_ systemImage: String) -> some View {
         Image(systemName: systemImage)
             .font(.system(size: 21, weight: .regular))
@@ -220,18 +269,6 @@ extension ContentView {
             .contentShape(Rectangle())
     }
 
-    private func deleteListCandidates(at offsets: IndexSet) {
-        for index in offsets where sortedListCandidates.indices.contains(index) {
-            weatherService.removeCity(sortedListCandidates[index].cityWeather)
-        }
-        Haptics.lightImpact()
-    }
-
-    private func beginCityRename(_ city: City) {
-        cityToRename = city
-        cityRenameText = CityListID.customCityName(for: city) ?? localizedCityName(for: city)
-        showingCityRenameAlert = true
-    }
 }
 
 #Preview("List View") {

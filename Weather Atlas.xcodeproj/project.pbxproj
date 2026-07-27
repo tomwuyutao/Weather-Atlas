@@ -43,21 +43,22 @@
 		5908967530063DF500EB20E0 /* Exceptions for "Weather" folder in "Weather Atlas" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Widgets/WeatherWidgets.swift,
+				Widgets/WeatherWidgets-Info.plist,
+				Widgets/WeatherWidgets.entitlements,
+				Widgets/Widgets.swift,
 			);
 			target = 59C2E3552F4F06B000877DA8 /* Weather Atlas */;
 		};
 		5908967630063DF500EB20E0 /* Exceptions for "Weather" folder in "WeatherWidgets" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Helpers/AppPalette.swift,
-				Helpers/WidgetDataStore.swift,
-				Helpers/WidgetLocalization.swift,
+				Helpers/AppTheme.swift,
 				Models/SunnyHoursTimeline.swift,
 				Models/WeatherDataIssue.swift,
 				Models/WeatherSymbols.swift,
-				Models/WidgetDataModels.swift,
-				Widgets/WeatherWidgets.swift,
+				Widgets/WidgetDataModels.swift,
+				Widgets/WidgetDataStore.swift,
+				Widgets/Widgets.swift,
 			);
 			target = A10000000000000000000008 /* WeatherWidgets */;
 		};
@@ -453,12 +454,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = Weather/WeatherWidgets.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Weather/Widgets/WeatherWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = J97F79UF3N;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "WeatherWidgets-Info.plist";
+				INFOPLIST_FILE = "Weather/Widgets/WeatherWidgets-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				MARKETING_VERSION = 1.1;
@@ -479,12 +480,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_ENTITLEMENTS = Weather/WeatherWidgets.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Weather/Widgets/WeatherWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = J97F79UF3N;
 				GENERATE_INFOPLIST_FILE = NO;
-				INFOPLIST_FILE = "WeatherWidgets-Info.plist";
+				INFOPLIST_FILE = "Weather/Widgets/WeatherWidgets-Info.plist";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				LD_RUNPATH_SEARCH_PATHS = "@executable_path/Frameworks";
 				MARKETING_VERSION = 1.1;

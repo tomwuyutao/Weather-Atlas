@@ -13,49 +13,59 @@ import UIKit
 // MARK: - Home Destination
 
 extension ContentView {
+    /// Builds the root dashboard with native bottom toolbar and route overlays.
     var homeView: some View {
         homeContent(previewActive: false)
             .navigationTitle(toolbarTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
-                showingMapExpandedCard = false
+                isMapCardPresented = false
             }
     }
 }
 
 // MARK: - Static Home Map
 
+/// Noninteractive map snapshot summarizing cities on the Home dashboard.
 struct HomeStaticMapPreview: View {
+    /// Loaded city weather used to color available markers.
     let cities: [CityWeather]
+    /// Source coordinates used by generated-list previews before weather exists.
     let previewCities: [City]
+    /// Coordinates used to fit the initial map region.
     let fitCities: [City]
+    /// Literal date determining each loaded city's marker condition.
     let selectedForecastDate: Date
+    /// Neutral marker color for unfetched generated-list cities.
     let previewDot: Color
-    let water: Color
+    /// Theme color revealed while MapKit has no drawable content.
+    let fallbackBackground: Color
+    /// Saturation applied to MapKit tiles.
     let mapSaturation: Double
+    /// Active palette used by high-contrast marker alternatives.
     @Environment(\.appTheme) private var theme
+    /// Contrast preference used to outline markers over map tiles.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    /// Internal camera fitted whenever source city/date inputs change.
     @State private var cameraPosition: MapCameraPosition = .region(MKCoordinateRegion(
         center: CLLocationCoordinate2D(latitude: 48, longitude: 12),
         span: MKCoordinateSpan(latitudeDelta: 28, longitudeDelta: 38)
     ))
 
-    private var markerSaturationCompensation: Double {
-        mapSaturation == 0 ? 1 : 1 / mapSaturation
-    }
-
+    /// Builds the clipped, noninteractive map preview.
     var body: some View {
         GeometryReader { proxy in
             if proxy.size.width > 1, proxy.size.height > 1 {
                 appleMapPreview
             } else {
-                water
+                fallbackBackground
             }
         }
-        .background(water)
+        .background(fallbackBackground)
     }
 
+    /// Renders loaded and preview annotations in MapKit.
     private var appleMapPreview: some View {
         Map(position: $cameraPosition, interactionModes: []) {
             ForEach(cities) { cityWeather in
@@ -89,7 +99,7 @@ struct HomeStaticMapPreview: View {
         .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
         .saturation(mapSaturation)
         .allowsHitTesting(false)
-        .background(water)
+        .background(fallbackBackground)
         .onAppear {
             fitAllCities()
         }
@@ -101,6 +111,7 @@ struct HomeStaticMapPreview: View {
         }
     }
 
+    /// Returns the selected date's semantic condition color when data is valid.
     private func markerColor(for cityWeather: CityWeather) -> Color? {
         cityWeather.forecastIfAvailable(on: selectedForecastDate).flatMap {
             SunninessScoring.condition(for: $0.symbolName)?.dotColor(for: theme.colors)
@@ -108,6 +119,7 @@ struct HomeStaticMapPreview: View {
     }
 
     @ViewBuilder
+    /// Builds a noninteractive dot with an increased-contrast alternative.
     private func staticMapMarker(color: Color) -> some View {
         if colorSchemeContrast == .increased {
             // An opaque backing and high-contrast outline keep the
@@ -124,16 +136,19 @@ struct HomeStaticMapPreview: View {
                     .fill(color)
                     .frame(width: 8, height: 8)
             }
-            .saturation(markerSaturationCompensation)
+            // Counteract tile desaturation so semantic marker colors remain unchanged.
+            .saturation(mapSaturation == 0 ? 1 : 1 / mapSaturation)
         } else {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
                 .shadow(color: color.opacity(0.42), radius: 5, y: 1)
-                .saturation(markerSaturationCompensation)
+                // Counteract tile desaturation so semantic marker colors remain unchanged.
+                .saturation(mapSaturation == 0 ? 1 : 1 / mapSaturation)
         }
     }
 
+    /// Fits loaded or preview coordinates without responding to user gestures.
     private func fitAllCities() {
         let citiesForFitting: [City]
         if cities.isEmpty {
@@ -178,11 +193,16 @@ struct HomeStaticMapPreview: View {
 
 // MARK: - Home Card Components
 
+/// Shared icon-and-title heading for Home dashboard cards.
 struct SunnyPlacesSectionHeader: View {
+    /// SF Symbol displayed before the heading.
     let icon: String
+    /// Localized section title.
     let title: String
 
+    /// Active semantic palette.
     @Environment(\.appTheme) private var theme
+    /// Builds the aligned icon and title row.
     var body: some View {
         HStack(spacing: CityListLayout.columnSpacing) {
             Image(systemName: icon)
@@ -199,11 +219,16 @@ struct SunnyPlacesSectionHeader: View {
     }
 }
 
+/// Minimal ranked city-name row used by generated-list previews.
 struct CityNameListRow: View {
+    /// One-based position.
     let rank: Int
+    /// Canonical city name supplied by the preview source.
     let cityName: String
 
+    /// Active semantic palette.
     @Environment(\.appTheme) private var theme
+    /// Builds rank and city-name columns matching weather candidate rows.
     var body: some View {
         HStack(spacing: CityListLayout.columnSpacing) {
             CityRankLabel(rank: rank)
@@ -222,17 +247,26 @@ struct CityNameListRow: View {
 
 // MARK: - Home Sunny-Day Models
 
+/// Per-date city availability and sunny-count inputs for Home's heatmap.
 struct HomeSunnyDayRecommendation: Identifiable {
+    /// Literal selection date and SwiftUI identity.
     let id: Date
+    /// Number of available cities classified as sunny.
     let sunnyCityCount: Double
+    /// Number of cities with valid condition inputs on this date.
     let availableCityCount: Int
 }
 
+/// One calendar cell, including inactive dates between returned forecasts.
 private struct HomeSunnyCalendarDate: Identifiable {
+    /// Stable literal date identity.
     let id: Date
+    /// Date rendered by the cell.
     let date: Date
+    /// Recommendation when the API returned this date.
     let recommendation: HomeSunnyDayRecommendation?
 
+    /// Whether the cell represents selectable forecast data.
     var isForecastDate: Bool {
         recommendation != nil
     }
@@ -243,10 +277,12 @@ private struct HomeSunnyCalendarDate: Identifiable {
 extension ContentView {
     // MARK: - Sunny-Day Recommendations
 
+    /// Sunny-date recommendations for the active map city collection.
     var homeSunnyDayRecommendations: [HomeSunnyDayRecommendation] {
         homeSunnyDayRecommendations(for: mapCities)
     }
 
+    /// Counts valid and sunny cities for every returned literal date.
     func homeSunnyDayRecommendations(for cities: [CityWeather]) -> [HomeSunnyDayRecommendation] {
         guard !cities.isEmpty else { return [] }
 
@@ -281,10 +317,12 @@ extension ContentView {
 
     // MARK: - Screen Composition
 
+    /// Normal dashboard content using current generated-preview state.
     var homeContent: some View {
         homeContent(previewActive: isListPreviewActive)
     }
 
+    /// Builds responsive dashboard cards for loaded or generated-preview state.
     func homeContent(previewActive: Bool) -> some View {
         GeometryReader { geometry in
             let availableContentWidth = min(max(geometry.size.width - 32, 0), 1_160)
@@ -303,6 +341,8 @@ extension ContentView {
             let droppedCityCount = previewActive
                 ? 0
                 : rankingOmissionCount(in: weatherService.cityWeatherData)
+            let showsEmptyList = !previewActive
+                && weatherService.cityListCoordinates().isEmpty
             let showsSunnyDaysCard = !previewActive
                 && !homeSunnyCalendarDates(for: weatherService.cityWeatherData).isEmpty
             // Preserve the existing height calculation in narrow windows. On a
@@ -323,9 +363,23 @@ extension ContentView {
 
             ScrollView {
                 VStack(spacing: 20) {
-                    homePageHeader(previewActive: previewActive)
+                    // Preview the staged generated-list name without changing the active list.
+                    topToolbar(
+                        titleOverride: previewActive
+                            ? listPreviewState.name.map {
+                                "\($0) - \(localizedString("Preview", locale: locale))"
+                            }
+                            : nil
+                    ) {
+                        EmptyView()
+                    }
 
-                    if usesWideLayout {
+                    if showsEmptyList {
+                        homeCard {
+                            emptyListContent
+                                .padding(.vertical, 24)
+                        }
+                    } else if usesWideLayout {
                         HStack(alignment: .top, spacing: columnSpacing) {
                             VStack(spacing: 20) {
                                 homeCard(contentPadding: 6) {
@@ -388,6 +442,7 @@ extension ContentView {
         }
     }
 
+    /// Wraps dashboard content in the shared rounded translucent card.
     private func homeCard<Content: View>(
         contentPadding: CGFloat = 18,
         @ViewBuilder content: () -> Content
@@ -398,25 +453,15 @@ extension ContentView {
             .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 24))
     }
 
-    private func homePageHeader(previewActive: Bool) -> some View {
-        topToolbar(titleOverride: homeTitleOverride(previewActive: previewActive)) {
-            EmptyView()
-        }
-    }
-
-    private func homeTitleOverride(previewActive: Bool) -> String? {
-        guard previewActive, let previewName = listPreviewState.name else { return nil }
-        return "\(previewName) - \(localizedString("Preview", locale: locale))"
-    }
-
     @ViewBuilder
+    /// Makes the map tappable only when it represents loaded app data.
     private func homeMapSnapshot(height: CGFloat, previewActive: Bool) -> some View {
         if previewActive {
             homeMapSnapshotVisual(height: height, previewActive: true)
         } else {
             Button {
                 selectedMapCity = nil
-                showingMapExpandedCard = false
+                isMapCardPresented = false
                 citySearchState.temporaryMapCity = nil
                 pushRoute(.map)
             } label: {
@@ -426,14 +471,16 @@ extension ContentView {
         }
     }
 
+    /// Builds the static map from loaded or generated-list coordinates.
     private func homeMapSnapshotVisual(height: CGFloat, previewActive: Bool) -> some View {
         HomeStaticMapPreview(
             cities: previewActive ? [] : mapCities,
             previewCities: previewActive ? listPreviewCities : [],
-            fitCities: previewActive ? listPreviewCities : mapFitCities,
+            // Fit generated previews to staged cities and Home to the saved list.
+            fitCities: previewActive ? listPreviewCities : weatherService.cityListCoordinates(),
             selectedForecastDate: selectedForecastDate,
             previewDot: theme.colors.primaryText,
-            water: theme.colors.mapOcean,
+            fallbackBackground: theme.colors.background,
             mapSaturation: 0.72
         )
         .frame(height: height)
@@ -445,8 +492,9 @@ extension ContentView {
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
     }
 
+    /// Builds ranked sunny places or the generated preview's city names.
     func homeSunnySection(previewActive: Bool) -> some View {
-        let sectionIcon = previewActive ? "list.bullet" : "sun.max.fill"
+        let sectionIcon = previewActive ? "list.bullet" : "mappin.and.ellipse"
         let sectionTitle = previewActive
             ? localizedString("List of Cities", locale: locale)
             : localizedString("Best Sunny Places", locale: locale)
@@ -477,10 +525,12 @@ extension ContentView {
         }
     }
 
+    /// Creates the compact notice for expected forecast-boundary omissions.
     func forecastAvailabilityNote(droppedCityCount: Int) -> some View {
         ForecastOmissionNotice(droppedCityCount: droppedCityCount)
     }
 
+    /// Builds the selectable multiweek sunny-date heatmap card.
     private func homeSunnyDaysSection(
         previewActive: Bool,
         calendarContentWidth: CGFloat
@@ -502,7 +552,7 @@ extension ContentView {
 
         return VStack(alignment: .leading, spacing: 14) {
             SunnyPlacesSectionHeader(
-                icon: "sparkles",
+                icon: "calendar",
                 title: localizedString("Best Sunny Dates", locale: locale)
             )
 
@@ -515,9 +565,10 @@ extension ContentView {
             } else {
                 VStack(spacing: 7) {
                     LazyVGrid(
-                        columns: homeSunnyCalendarColumns(
-                            count: calendarColumnCount,
-                            spacing: calendarColumnSpacing
+                        // Keep weekday labels on the same equal-width grid as dates.
+                        columns: Array(
+                            repeating: GridItem(.flexible(), spacing: calendarColumnSpacing),
+                            count: calendarColumnCount
                         ),
                         spacing: 0
                     ) {
@@ -532,9 +583,9 @@ extension ContentView {
                     }
 
                     LazyVGrid(
-                        columns: homeSunnyCalendarColumns(
-                            count: calendarColumnCount,
-                            spacing: calendarColumnSpacing
+                        columns: Array(
+                            repeating: GridItem(.flexible(), spacing: calendarColumnSpacing),
+                            count: calendarColumnCount
                         ),
                         spacing: 7
                     ) {
@@ -547,10 +598,7 @@ extension ContentView {
         }
     }
 
-    private func homeSunnyCalendarColumns(count: Int, spacing: CGFloat) -> [GridItem] {
-        Array(repeating: GridItem(.flexible(), spacing: spacing), count: count)
-    }
-
+    /// Builds localized weekday headings aligned with heatmap columns.
     private func homeSunnyCalendarWeekdayLabels(
         for days: [HomeSunnyCalendarDate],
         includesEveryDate: Bool
@@ -569,6 +617,7 @@ extension ContentView {
         }
     }
 
+    /// Expands returned forecast dates into complete calendar rows with gaps.
     private func homeSunnyCalendarDates(for cities: [CityWeather]) -> [HomeSunnyCalendarDate] {
         let recommendations = homeSunnyDayRecommendations(for: cities)
         guard let firstForecastDate = recommendations.first?.id,
@@ -576,7 +625,9 @@ extension ContentView {
             return []
         }
         let recommendationsByDate = Dictionary(uniqueKeysWithValues: recommendations.map { ($0.id, $0) })
-        let leadingCount = homeSunnyCalendarLeadingInactiveCount(firstForecastDate: firstForecastDate)
+        // Count Monday-aligned placeholders before the first forecast date.
+        let sundayBasedWeekday = Calendar.current.component(.weekday, from: firstForecastDate) - 1
+        let leadingCount = (sundayBasedWeekday - 1 + 7) % 7
         let totalBeforeTrailing = leadingCount + recommendations.count
         let trailingCount = (7 - (totalBeforeTrailing % 7)) % 7
         let leadingDates = (0..<leadingCount).compactMap { index in
@@ -596,13 +647,8 @@ extension ContentView {
         }
     }
 
-    private func homeSunnyCalendarLeadingInactiveCount(firstForecastDate: Date) -> Int {
-        let sundayBasedWeekday = Calendar.current.component(.weekday, from: firstForecastDate) - 1
-        let mondayIndex = 1
-        return (sundayBasedWeekday - mondayIndex + 7) % 7
-    }
-
     @ViewBuilder
+    /// Makes returned dates selectable and leaves gap dates inert.
     private func homeSunnyHeatmapDayView(_ day: HomeSunnyCalendarDate, maxSunnyCityCount: Int) -> some View {
         if let recommendation = day.recommendation {
             let isSelected = Calendar.current.isDate(recommendation.id, inSameDayAs: selectedForecastDate)
@@ -629,6 +675,7 @@ extension ContentView {
 
     // MARK: - Sunny Calendar Rendering
 
+    /// Builds one date cell with selection, intensity, and legible text treatment.
     private func homeSunnyHeatmapDayCell(
         _ day: HomeSunnyCalendarDate,
         maxSunnyCityCount: Int,
@@ -646,8 +693,13 @@ extension ContentView {
                 .fill(fill)
 
             VStack(spacing: 0) {
-                Text(homeSunnyCalendarDayNumber(date: day.date))
-                    .font(.system(size: 16, weight: homeSunnyCalendarDayWeight(day, isSelected: isSelected), design: .default).monospacedDigit())
+                // Use localized calendar numbering and strengthen only the selected date.
+                Text("\(Calendar.current.component(.day, from: day.date))")
+                    .font(.system(
+                        size: 16,
+                        weight: !day.isForecastDate ? .medium : (isSelected ? .semibold : .medium),
+                        design: .default
+                    ).monospacedDigit())
 
                 if (differentiateWithoutColor || colorSchemeContrast == .increased),
                    let recommendation = day.recommendation,
@@ -683,6 +735,7 @@ extension ContentView {
         .contentShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 
+    /// Maps relative sunny-city count into the calendar cell fill.
     private func homeSunnyHeatmapFill(sunnyCityCount: Double, maxSunnyCityCount: Int, isForecastDate: Bool) -> Color {
         guard isForecastDate else {
             return theme.colors.secondaryText.opacity(colorScheme == .dark ? 0.18 : 0.10)
@@ -706,13 +759,7 @@ extension ContentView {
         return theme.colors.dotSun.opacity(0.16 + 0.79 * curvedFraction)
     }
 
-    private func homeSunnyCalendarDayWeight(_ day: HomeSunnyCalendarDate, isSelected: Bool) -> Font.Weight {
-        if !day.isForecastDate {
-            return .medium
-        }
-        return isSelected ? .semibold : .medium
-    }
-
+    /// Chooses readable number color for the cell's fill and contrast mode.
     private func homeSunnyHeatmapTextColor(
         sunnyCityCount: Double,
         isForecastDate: Bool,
@@ -732,12 +779,9 @@ extension ContentView {
         return isSelected ? theme.colors.accent : theme.colors.primaryText
     }
 
-    private func homeSunnyCalendarDayNumber(date: Date) -> String {
-        return "\(Calendar.current.component(.day, from: date))"
-    }
-
     // MARK: - Candidate List
 
+    /// Selects loaded ranked rows or generated-preview city-name rows.
     private func homeCandidateList(previewActive: Bool) -> some View {
         if previewActive {
             return AnyView(homePreviewCityList())
@@ -767,6 +811,7 @@ extension ContentView {
         })
     }
 
+    /// Builds the leading generated-list city names before weather is fetched.
     private func homePreviewCityList() -> some View {
         VStack(spacing: 0) {
             ForEach(Array(listPreviewCities.enumerated()), id: \.element.id) { index, city in

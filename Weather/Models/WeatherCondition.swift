@@ -8,6 +8,9 @@
 
 import SwiftUI
 
+// MARK: - Normalized Weather Conditions
+
+/// Finite condition vocabulary recognized by scoring and presentation code.
 enum AppWeatherCondition: String, Codable {
     case clear
     case partlySunny
@@ -19,6 +22,7 @@ enum AppWeatherCondition: String, Codable {
     case fog
     case wind
 
+    /// Returns the condition's user-facing name in the requested locale.
     func localizedDisplayName(locale: Locale = .current) -> String {
         switch self {
         case .clear: return localizedString("Clear", locale: locale)
@@ -33,6 +37,7 @@ enum AppWeatherCondition: String, Codable {
         }
     }
 
+    /// Selects the semantic map/list dot color from an active theme palette.
     func dotColor(for theme: ThemeColors) -> Color {
         switch self {
         case .clear: return theme.dotSun
@@ -41,12 +46,12 @@ enum AppWeatherCondition: String, Codable {
         case .cloudy: return theme.dotCloudy
         case .rain: return theme.dotRain
         case .drizzle: return theme.dotDrizzle
-        case .snow: return theme.dotSnow
-        case .fog: return theme.dotFog
-        case .wind: return theme.dotWind
+        // Snow, fog, and wind share the neutral cloudy mark.
+        case .snow, .fog, .wind: return theme.dotCloudy
         }
     }
 
+    /// Ascending condition rank used before cloud-cover tie-breaking.
     var sunninessRank: Int {
         switch self {
         case .clear: return 0
@@ -61,14 +66,17 @@ enum AppWeatherCondition: String, Codable {
         }
     }
 
+    /// Whether this condition belongs to the strict sunny-only filter.
     var isSunny: Bool {
         self == .clear
     }
 
+    /// Whether this condition contributes to a favorable sunny window.
     var isSunnyOrPartlySunny: Bool {
         self == .clear || self == .partlySunny
     }
 
+    /// Resolves a WeatherKit symbol without inventing a default classification.
     static func fromWeatherSymbol(_ symbolName: String) -> AppWeatherCondition? {
         guard let classification = WeatherSymbolClassification.resolve(symbolName) else {
             return nil
@@ -87,6 +95,7 @@ enum AppWeatherCondition: String, Codable {
         }
     }
 
+    /// Canonical SF Symbol used to display the normalized condition.
     var displayIcon: String {
         switch self {
         case .clear: return WeatherIconSymbol.clear

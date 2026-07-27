@@ -11,6 +11,7 @@ import SwiftUI
 // MARK: - Shortcut Receiver
 
 extension ContentView {
+    /// Receives quick-action notifications after the SwiftUI hierarchy exists.
     var homeScreenShortcutReceiver: some View {
         Color.clear
             .frame(width: 0, height: 0)
@@ -25,12 +26,14 @@ extension ContentView {
 
     // MARK: External Destinations
 
+    /// Activates a persisted list identifier received from a legacy deep link.
     func handleOpenListShortcut(rawValue: String) {
         guard let listID = CityListID.allLists.first(where: { $0.rawValue == rawValue }) else { return }
-        resetSelectedForecastDateToToday()
+        // External destinations always return the shared selection to today.
+        selectedForecastDate = forecastDateToday
         showingSettings = false
         citySearchState.isPresented = false
-        showingMapExpandedCard = false
+        isMapCardPresented = false
         selectedMapCity = nil
         citySearchState.temporaryMapCity = nil
         clearGeneratedListPreview(playsHaptic: false)
@@ -41,11 +44,13 @@ extension ContentView {
         }
     }
 
+    /// Rewrites the route stack for a Home Screen shortcut destination.
     func handleHomeScreenShortcut(_ destination: HomeScreenShortcutDestination) {
-        resetSelectedForecastDateToToday()
+        // Home Screen shortcuts always return the shared selection to today.
+        selectedForecastDate = forecastDateToday
         showingSettings = false
         citySearchState.isPresented = false
-        showingMapExpandedCard = false
+        isMapCardPresented = false
         selectedMapCity = nil
         citySearchState.temporaryMapCity = nil
         clearGeneratedListPreview(playsHaptic: false)
@@ -60,6 +65,7 @@ extension ContentView {
         }
     }
 
+    /// Parses widget deep links and opens the represented list or city.
     func handleWidgetURL(_ url: URL) {
         guard url.scheme == "weatheratlas",
               url.host == "list",

@@ -1,5 +1,5 @@
 //
-//  Legend.swift
+//  MapLegend.swift
 //  Weather
 //
 //  Purpose: Draws the floating map legend for weather dots and metric
@@ -10,52 +10,32 @@ import SwiftUI
 
 // MARK: - Floating Map Legend
 
+/// Floating explanation of the active map marker metric and color scale.
 struct MapFloatingLegend: View {
+    /// Raw overlay-mode identifier shared with map controls.
     let overlayMode: String
+    /// Whether to use the reduced detail-map presentation.
     var compact: Bool = false
+    /// Optional close action for the full-map floating legend.
     var onClose: (() -> Void)? = nil
 
+    /// App-selected locale used for labels and number formatting.
     @Environment(\.locale) private var locale
+    /// Resolved appearance used for shadow tuning.
     @Environment(\.colorScheme) private var colorScheme
+    /// Active semantic palette.
     @Environment(\.appTheme) private var theme
+    /// Persisted raw temperature preference.
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
 
-    private var tempUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
-    }
-
+    /// Convenience access to the resolved semantic colors.
     private var palette: ThemeColors {
         theme.colors
     }
 
-    private var saturatedPartlySunnyColor: Color {
-        palette.dotPartlyCloudy.interpolated(with: palette.filterSunny, by: 0.18)
-    }
-
-    private var legendWidth: CGFloat {
-        overlayMode == "weather" ? (compact ? 168 : 162) : (compact ? 112 : 108)
-    }
-
-    private var legendLabelFont: Font {
-        .caption.weight(.medium)
-    }
-
-    private var legendValueFont: Font {
-        .caption2.weight(.medium)
-    }
-
-    private var weatherLegendItems: [(title: String, color: Color)] {
-        [
-            (localizedString("Clear", locale: locale), palette.dotSun),
-            (localizedString("Partly Sunny", locale: locale), palette.dotPartlyCloudy),
-            (localizedString("Rain", locale: locale), palette.dotRain),
-            (localizedString("Drizzle", locale: locale), palette.dotDrizzle),
-            (wrappedCloudyConditionsTitle, palette.dotCloudy)
-        ]
-    }
-
     // MARK: - Localized Legend Layout
 
+    /// Cloudy-category label with an optional deliberate compact line break.
     private var wrappedCloudyConditionsTitle: String {
         let title = localizedString("Cloudy, Windy, Snowy, Foggy", locale: locale)
         let separator = title.contains("、") ? "、" : ","
@@ -73,32 +53,46 @@ struct MapFloatingLegend: View {
 
     // MARK: - Overlay Color Scales
 
+    /// Maps Celsius into the same continuous color ramp used by annotations.
     private func temperatureColor(celsius: Double) -> Color {
         if celsius <= 0 {
             return palette.dotRain.interpolated(with: palette.dotDrizzle, by: max(0, min(1, (celsius + 20) / 20)))
         } else if celsius <= 10 {
             return palette.dotDrizzle.interpolated(with: palette.dotCloudy, by: max(0, min(1, celsius / 10)))
         } else if celsius <= 20 {
-            return palette.dotCloudy.interpolated(with: saturatedPartlySunnyColor, by: max(0, min(1, (celsius - 10) / 10)))
+            // Compensate partly-sunny yellow for MapKit's muted saturation.
+            return palette.dotCloudy.interpolated(
+                with: palette.dotPartlyCloudy.interpolated(with: palette.filterSunny, by: 0.18),
+                by: max(0, min(1, (celsius - 10) / 10))
+            )
         } else {
-            return saturatedPartlySunnyColor.interpolated(with: palette.destructive, by: max(0, min(1, (celsius - 20) / 20)))
+            return palette.dotPartlyCloudy
+                .interpolated(with: palette.filterSunny, by: 0.18)
+                .interpolated(
+                    with: palette.destructive,
+                    by: max(0, min(1, (celsius - 20) / 20))
+                )
         }
     }
 
+    /// Maps cloud percentage into its marker gradient.
     private func cloudColor(percent: Double) -> Color {
         palette.dotRain.interpolated(with: palette.dotCloudy, by: max(0, min(1, percent / 100.0)))
     }
 
+    /// Maps precipitation percentage into its marker gradient.
     private func precipitationColor(percent: Double) -> Color {
         palette.dotCloudy.interpolated(with: palette.dotDrizzle, by: max(0, min(1, percent / 100.0)))
     }
 
+    /// Maps a normalized UV value into its marker gradient.
     private func uvColor(fraction: Double) -> Color {
         palette.dotCloudy.interpolated(with: palette.destructive, by: max(0, min(1, fraction)))
     }
 
     // MARK: - Gradient legend
 
+    /// Builds a vertical continuous scale with localized endpoint labels.
     private func verticalGradientLegend(colors gradColors: [Color], labels: [String]) -> some View {
         HStack(alignment: .center, spacing: 10) {
             LinearGradient(colors: gradColors, startPoint: .top, endPoint: .bottom)
@@ -108,7 +102,7 @@ struct MapFloatingLegend: View {
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(labels.enumerated()), id: \.offset) { index, label in
                     Text(label)
-                        .font(legendValueFont)
+                        .font(.caption2.weight(.medium))
                         .foregroundStyle(theme.colors.secondaryText)
                     if index < labels.count - 1 {
                         Spacer(minLength: 0)
@@ -122,6 +116,7 @@ struct MapFloatingLegend: View {
 
     // MARK: - Body
 
+    /// Builds the adaptive floating legend card.
     var body: some View {
         VStack(alignment: .leading, spacing: compact ? 8 : 10) {
             legendContent
@@ -129,7 +124,11 @@ struct MapFloatingLegend: View {
         .padding(.horizontal, compact ? 12 : 14)
         .padding(.vertical, compact ? 10 : 12)
         .padding(.trailing, onClose == nil ? 0 : 20)
-        .frame(width: overlayMode == "weather" ? nil : legendWidth, alignment: .leading)
+        // Continuous scales are narrower than the categorical weather legend.
+        .frame(
+            width: overlayMode == "weather" ? nil : (compact ? 112 : 108),
+            alignment: .leading
+        )
         .themedGlass(in: .rect(cornerRadius: 24))
         .overlay(alignment: .topTrailing) {
             if let onClose {
@@ -154,10 +153,22 @@ struct MapFloatingLegend: View {
     }
 
     @ViewBuilder
+    /// Selects categorical or continuous legend content for the overlay mode.
     private var legendContent: some View {
         switch overlayMode {
         case "weather":
-            weatherDotLegend
+            // Show every recognized condition category and semantic dot color.
+            VStack(alignment: .leading, spacing: compact ? 9 : 11) {
+                ForEach(Array([
+                    (localizedString("Clear", locale: locale), palette.dotSun),
+                    (localizedString("Partly Sunny", locale: locale), palette.dotPartlyCloudy),
+                    (localizedString("Rain", locale: locale), palette.dotRain),
+                    (localizedString("Drizzle", locale: locale), palette.dotDrizzle),
+                    (wrappedCloudyConditionsTitle, palette.dotCloudy)
+                ].enumerated()), id: \.offset) { _, item in
+                    conditionEntry(title: item.0, color: item.1)
+                }
+            }
         case "temperature":
             verticalGradientLegend(
                 colors: [
@@ -167,7 +178,8 @@ struct MapFloatingLegend: View {
                     temperatureColor(celsius: 0),
                     temperatureColor(celsius: -20)
                 ],
-                labels: tempUnit.resolved == .fahrenheit
+                // Resolve obsolete automatic values before choosing endpoints.
+                labels: (TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic).resolved == .fahrenheit
                     ? ["104°F", "68°F", "50°F", "32°F", "-4°F"]
                     : ["40°C", "20°C", "10°C", "0°C", "-20°C"]
             )
@@ -209,6 +221,7 @@ struct MapFloatingLegend: View {
 
     // MARK: - Weather dot legend
 
+    /// Builds one condition name and marker sample row.
     private func conditionEntry(title: String, color: Color) -> some View {
         let isWrappedCondition = title.contains("\n")
         let rowAlignment: VerticalAlignment = isWrappedCondition ? .top : .center
@@ -221,17 +234,10 @@ struct MapFloatingLegend: View {
                 .padding(.top, isWrappedCondition ? (compact ? 4 : 5) : 0)
 
             Text(title)
-                .font(legendLabelFont)
+                .font(.caption.weight(.medium))
                 .foregroundStyle(theme.colors.primaryText)
                 .fixedSize(horizontal: true, vertical: true)
         }
     }
 
-    private var weatherDotLegend: some View {
-        VStack(alignment: .leading, spacing: compact ? 9 : 11) {
-            ForEach(Array(weatherLegendItems.enumerated()), id: \.offset) { _, item in
-                conditionEntry(title: item.title, color: item.color)
-            }
-        }
-    }
 }

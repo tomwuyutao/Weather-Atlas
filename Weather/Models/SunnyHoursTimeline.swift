@@ -9,15 +9,20 @@ import Foundation
 
 // MARK: - Sunny-Hour Chart Models
 
+/// Integer-hour chart domain derived exclusively from real solar-event times.
 struct SunnyHoursChartBounds: Codable, Hashable {
+    /// Inclusive first hour represented by the chart.
     let startHour: Int
+    /// Exclusive upper hour boundary represented by the chart.
     let endHour: Int
 
+    /// Creates a valid nonempty domain, clamping the end after the start.
     init(startHour: Int, endHour: Int) {
         self.startHour = max(0, min(startHour, 23))
         self.endHour = max(self.startHour + 1, min(endHour, 24))
     }
 
+    /// Derives chart bounds from sunrise and sunset in the city's timezone.
     static func daylight(
         sunrise: Date?,
         sunset: Date?,
@@ -46,6 +51,7 @@ struct SunnyHoursChartBounds: Codable, Hashable {
 
     /// Returns whether the local hourly cell intersects the actual daylight
     /// interval, including daylight that wraps across local midnight.
+    /// Tests whether a forecast's one-hour interval intersects actual daylight.
     static func hourlyIntervalOverlapsDaylight(
         at hourStart: Date,
         sunrise: Date,
@@ -65,6 +71,7 @@ struct SunnyHoursChartBounds: Codable, Hashable {
         return hourEnd > sunriseHour && hour < sunsetHour
     }
 
+    /// Converts an instant into a decimal clock hour in the requested timezone.
     private static func fractionalHour(for date: Date, timeZone: TimeZone) -> Double? {
         var calendar = Calendar.current
         calendar.timeZone = timeZone
@@ -77,6 +84,7 @@ struct SunnyHoursChartBounds: Codable, Hashable {
         return Double(hour) + Double(minute) / 60 + Double(second) / 3_600
     }
 
+    /// Returns the smallest domain containing every supplied nonempty bound.
     static func merged(_ bounds: [SunnyHoursChartBounds]) -> SunnyHoursChartBounds? {
         guard let earliestStart = bounds.map(\.startHour).min(),
               let latestEnd = bounds.map(\.endHour).max() else {
@@ -85,6 +93,7 @@ struct SunnyHoursChartBounds: Codable, Hashable {
         return SunnyHoursChartBounds(startHour: earliestStart, endHour: latestEnd)
     }
 
+    /// Chooses evenly spaced integer tick hours within the real domain.
     func axisHours(maximumTickCount: Int = 9) -> [Int] {
         let span = endHour - startHour
         guard span > 0 else { return [startHour] }
@@ -104,10 +113,12 @@ struct SunnyHoursChartBounds: Codable, Hashable {
         return result
     }
 
+    /// Whether an integer clock hour begins inside this chart domain.
     func contains(_ hour: Int) -> Bool {
         hour >= startHour && hour < endHour
     }
 
+    /// Maps a decimal clock hour into a clamped horizontal chart coordinate.
     func xPosition(for hour: Double, width: CGFloat) -> CGFloat {
         let clampedHour = min(max(hour, Double(startHour)), Double(endHour))
         let fraction = (clampedHour - Double(startHour)) / Double(endHour - startHour)
@@ -116,6 +127,7 @@ struct SunnyHoursChartBounds: Codable, Hashable {
 
     /// Positions an absolute instant using the selected city's real local time.
     /// Returning nil outside the chart bounds prevents a misleading edge marker.
+    /// Maps current city-local time to the chart, or hides it outside daylight.
     func currentTimeXPosition(
         at date: Date,
         timeZone: TimeZone,
@@ -129,6 +141,7 @@ struct SunnyHoursChartBounds: Codable, Hashable {
         return xPosition(for: localHour, width: width)
     }
 
+    /// Returns the rendered width of an inclusive integer-hour range.
     func width(
         for range: ClosedRange<Int>,
         timelineWidth: CGFloat,
@@ -140,35 +153,54 @@ struct SunnyHoursChartBounds: Codable, Hashable {
     }
 }
 
+/// Visual classification for a favorable hourly forecast segment.
 enum SunnyHourKind: String, Hashable {
     case sunny
     case partlySunny = "partly"
 }
 
+/// Contiguous run of sunny or partly sunny integer hours.
 struct SunnyHoursTimelineSegment: Identifiable, Hashable {
+    /// Deterministic range-and-kind identity for SwiftUI diffing.
     let id: String
+    /// Inclusive clock-hour range covered by the segment.
     let range: ClosedRange<Int>
+    /// Condition treatment used to render the segment.
     let kind: SunnyHourKind
 
+    /// Convenience flag used by chart fill and accessibility styling.
     var isPartlySunny: Bool { kind == .partlySunny }
 }
 
+/// Outer contiguous capsule containing one or more condition segments.
 struct SunnyHoursTimelineSpan: Identifiable, Hashable {
+    /// Deterministic range identity for SwiftUI diffing.
     let id: String
+    /// Inclusive hours covered without an unfavorable gap.
     let range: ClosedRange<Int>
+    /// Ordered sunny/partly-sunny runs clipped into this capsule.
     let segments: [SunnyHoursTimelineSegment]
 }
 
+/// Pure transformations from classified hours into renderable chart spans.
 enum SunnyHoursTimelineLayout {
+    /// Builds spans from separate sunny and partly-sunny hour collections.
     static func spans(
         sunnyRanges: [ClosedRange<Int>],
         partlySunnyRanges: [ClosedRange<Int>]
     ) -> [SunnyHoursTimelineSpan] {
         let segments = makeSegments(ranges: partlySunnyRanges, kind: .partlySunny)
             + makeSegments(ranges: sunnyRanges, kind: .sunny)
-        return mergeContiguousSegments(segments.sorted(by: segmentSort))
+        // Order by start hour, giving the shorter segment precedence on ties.
+        return mergeContiguousSegments(segments.sorted {
+            if $0.range.lowerBound == $1.range.lowerBound {
+                return $0.range.upperBound < $1.range.upperBound
+            }
+            return $0.range.lowerBound < $1.range.lowerBound
+        })
     }
 
+    /// Builds spans from precomputed segments after sorting and merging them.
     static func spans(
         sunnyHours: [Int],
         partlySunnyHours: [Int],
@@ -180,6 +212,7 @@ enum SunnyHoursTimelineLayout {
         )
     }
 
+    /// Converts integer hours of one kind into normalized contiguous segments.
     private static func makeSegments(
         ranges: [ClosedRange<Int>],
         kind: SunnyHourKind
@@ -193,16 +226,7 @@ enum SunnyHoursTimelineLayout {
         }
     }
 
-    nonisolated private static func segmentSort(
-        _ lhs: SunnyHoursTimelineSegment,
-        _ rhs: SunnyHoursTimelineSegment
-    ) -> Bool {
-        if lhs.range.lowerBound == rhs.range.lowerBound {
-            return lhs.range.upperBound < rhs.range.upperBound
-        }
-        return lhs.range.lowerBound < rhs.range.lowerBound
-    }
-
+    /// Coalesces touching equal-kind segments without bridging real gaps.
     private static func mergeContiguousSegments(
         _ segments: [SunnyHoursTimelineSegment]
     ) -> [SunnyHoursTimelineSpan] {
@@ -243,6 +267,7 @@ enum SunnyHoursTimelineLayout {
         return spans
     }
 
+    /// Wraps a connected segment collection in its enclosing capsule range.
     private static func makeSpan(
         index: Int,
         start: Int,
@@ -259,7 +284,9 @@ enum SunnyHoursTimelineLayout {
 
 // MARK: - Sunny-Hour Formatting
 
+/// Shared deterministic formatting for chart ranges and axis labels.
 enum SunnyHoursFormatting {
+    /// Converts integer hours into maximal contiguous inclusive ranges.
     static func contiguousRanges(
         in sourceHours: [Int],
         boundedBy bounds: SunnyHoursChartBounds? = nil
@@ -286,6 +313,7 @@ enum SunnyHoursFormatting {
     }
 
     /// Fixed-width 24-hour label used on compact chart axes.
+    /// Formats a 24-hour integer as a compact fixed English chart tick.
     nonisolated static func chartHourLabel(_ hour: Int) -> String {
         // Keep the right edge of a full local-day chart distinct from its 00
         // start. This is a boundary label, not another midnight forecast cell.

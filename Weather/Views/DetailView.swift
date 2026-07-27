@@ -13,11 +13,19 @@ import UIKit
 // MARK: - City Detail Routing
 
 extension ContentView {
+    /// Builds a city report route with city-specific date switching and toolbar.
     func cityDetailView(for city: CityWeather) -> some View {
         cityDetailScrollContent(for: city)
             .background {
                 theme.colors.background
                     .ignoresSafeArea()
+            }
+            .overlay(alignment: .topTrailing) {
+                if let sourceListID = detailSourceListID(for: city) {
+                    detailCityMoreMenu(for: city, sourceListID: sourceListID)
+                        .padding(.top, 12)
+                        .padding(.trailing, 16)
+                }
             }
             .navigationTitle(localizedCityName(for: city.city))
             .navigationBarBackButtonHidden(true)
@@ -25,6 +33,126 @@ extension ContentView {
             .tint(theme.colors.primaryText)
     }
 
+    /// Resolves the list that owns this detail route, preferring the active list.
+    private func detailSourceListID(for city: CityWeather) -> CityListID? {
+        if weatherService.cityListCoordinates().contains(where: {
+            weatherService.citiesMatch($0, city.city)
+        }) {
+            return weatherService.activeListID
+        }
+        return weatherService.listContainingCity(city.city)
+    }
+
+    /// Supplies Move to List and named Delete actions for a saved city.
+    private func detailCityMoreMenu(
+        for city: CityWeather,
+        sourceListID: CityListID
+    ) -> some View {
+        let destinationLists = managedLists.filter {
+            $0.rawValue != sourceListID.rawValue
+        }
+
+        return Menu {
+            Menu {
+                ForEach(destinationLists) { destinationListID in
+                    Button {
+                        moveDetailCity(
+                            city,
+                            from: sourceListID,
+                            to: destinationListID
+                        )
+                    } label: {
+                        primaryMenuLabel(
+                            destinationListID.localizedDisplayName(locale: locale),
+                            systemImage: "list.bullet"
+                        )
+                    }
+                }
+            } label: {
+                primaryMenuLabel(
+                    localizedString("Move to List", locale: locale),
+                    systemImage: "arrow.right"
+                )
+            }
+            .disabled(destinationLists.isEmpty)
+
+            Button {
+                deleteDetailCity(city, from: sourceListID)
+            } label: {
+                Label {
+                    Text(
+                        String(
+                            format: localizedString("Delete from %@", locale: locale),
+                            locale: locale,
+                            sourceListID.localizedDisplayName(locale: locale)
+                        )
+                    )
+                } icon: {
+                    Image(systemName: "trash")
+                        .foregroundStyle(theme.colors.destructive)
+                }
+            }
+            .tint(theme.colors.destructive)
+        } label: {
+            topToolbarActionCapsule {
+                Image(systemName: "ellipsis")
+                    .font(.system(size: AppToolbarMetrics.iconSize, weight: .regular))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .frame(width: 24, height: 44)
+                    .contentShape(Rectangle())
+            }
+        }
+        .menuOrder(.fixed)
+        .tint(theme.colors.accent)
+    }
+
+    /// Moves the represented city, switches lists, and keeps Detail valid.
+    private func moveDetailCity(
+        _ city: CityWeather,
+        from sourceListID: CityListID,
+        to destinationListID: CityListID
+    ) {
+        weatherService.moveCity(
+            city,
+            from: sourceListID,
+            to: destinationListID
+        )
+        Haptics.lightImpact()
+
+        Task {
+            await switchToList(destinationListID)
+            let movedCity = weatherService.cityWeatherData.first {
+                weatherService.citiesMatch($0.city, city.city)
+            } ?? city
+
+            guard let routeIndex = navigationPath.indices.last,
+                  case .cityDetail = navigationPath[routeIndex] else {
+                return
+            }
+            navigationPath[routeIndex] = .cityDetail(movedCity)
+            publishWidgetCatalog()
+        }
+    }
+
+    /// Deletes the represented city from its list and closes Detail.
+    private func deleteDetailCity(
+        _ city: CityWeather,
+        from sourceListID: CityListID
+    ) {
+        weatherService.removeCity(city, from: sourceListID)
+        selectedMapCity = nil
+        Haptics.lightImpact()
+        publishWidgetCatalog()
+
+        guard let route = navigationPath.last,
+              case .cityDetail(let displayedCity) = route,
+              weatherService.citiesMatch(displayedCity.city, city.city) else {
+            return
+        }
+        navigationPath.removeLast()
+    }
+
+    /// Builds responsive scroll content and resolves the selected daily forecast.
     private func cityDetailScrollContent(for city: CityWeather) -> some View {
         GeometryReader { geometry in
             let usesLandscapeIPadLayout = usesIPadLandscapeLayout(for: geometry.size)
@@ -33,10 +161,12 @@ extension ContentView {
                 VStack(spacing: 14) {
                     detailSunninessReport(for: city, usesLandscapeIPadLayout: usesLandscapeIPadLayout)
                 }
-                .padding(.horizontal, detailViewHorizontalPadding)
-                .padding(.top, detailViewTopPadding)
-                .padding(.bottom, detailViewBottomPadding)
-                .frame(maxWidth: detailViewMaxWidth(usesLandscapeIPadLayout: usesLandscapeIPadLayout))
+                // Keep report insets stable across phone and iPad.
+                .padding(.horizontal, 16)
+                .padding(.top, 20)
+                .padding(.bottom, 16)
+                // Give landscape iPad reports wider outer margins.
+                .frame(maxWidth: usesLandscapeIPadLayout ? 680 : 760)
                 .frame(maxWidth: .infinity)
             }
         }
@@ -49,6 +179,7 @@ extension ContentView {
     // MARK: Sunniness Report
 
     @ViewBuilder
+    /// Composes header, factors, timeline, and nearby-city context for one day.
     private func detailSunninessReport(
         for city: CityWeather,
         usesLandscapeIPadLayout: Bool
@@ -72,8 +203,6 @@ extension ContentView {
 
                 detailSunnyWindowOverview(city: city)
 
-                // Unsaved search results are not part of a list-backed map data
-                // source, so their Nearby Cities card is intentionally omitted.
                 if condition != nil,
                    rankingCandidate != nil,
                    weatherService.listContainingCity(city.city) != nil {
@@ -85,6 +214,8 @@ extension ContentView {
                 Text(localizedCityName(for: city.city))
                     .font(.system(.largeTitle, design: .serif).weight(.bold))
                     .foregroundStyle(theme.colors.titleText)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 52)
 
                 if isExpectedForecastBoundaryOmission(
                     for: city,
@@ -98,6 +229,7 @@ extension ContentView {
         }
     }
 
+    /// Builds city, date, and primary weather summary at the top of the report.
     private func detailCityNameHeader(
         city: CityWeather,
         condition: AppWeatherCondition?
@@ -111,6 +243,7 @@ extension ContentView {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
                 .multilineTextAlignment(.center)
+                .padding(.horizontal, 52)
 
             if let condition {
                 let icon = condition.displayIcon
@@ -131,6 +264,7 @@ extension ContentView {
         .padding(.bottom, 4)
     }
 
+    /// Builds the six source-backed daily metric tiles.
     private func detailSunnyFactorGrid(
         city: CityWeather,
         forecast: DailyForecast,
@@ -155,9 +289,21 @@ extension ContentView {
         return LazyVGrid(columns: columns, spacing: 10) {
             switch sunnyHoursResult {
             case .success(let sunnyHoursData):
+                // Summarize the longest favorable run for the selected day.
+                let sunnyWindowSummary = {
+                    guard let range = SunninessScoring.longestSunnyHourRange(
+                        in: sunnyHoursData.hours,
+                        timeZone: city.timeZone
+                    ) else {
+                        return localizedString("No Sun", locale: locale)
+                    }
+                    let start = SunninessScoring.compactHourLabel(range.lowerBound, locale: locale)
+                    let end = SunninessScoring.compactHourLabel(range.upperBound + 1, locale: locale)
+                    return "\(start) - \(end)"
+                }()
                 detailSunnyFactorTile(
                     title: localizedString("Sunny Hours", locale: locale),
-                    value: detailSunnyWindowSummary(for: city, hours: sunnyHoursData.hours),
+                    value: sunnyWindowSummary,
                     systemImage: "sun.max.fill",
                     tint: theme.colors.dotSun
                 )
@@ -235,6 +381,7 @@ extension ContentView {
     }
 
     @ViewBuilder
+    /// Builds one metric tile or its explicit missing-data explanation.
     private func detailSunnyFactorTile(
         title: String,
         value: String,
@@ -270,6 +417,7 @@ extension ContentView {
     // MARK: Sunny Hours Overview
 
     @ViewBuilder
+    /// Builds the selectable ten-day sunny-hours timeline from valid day rows.
     private func detailSunnyWindowOverview(city: CityWeather) -> some View {
         let forecasts = Array(city.dailyForecasts.prefix(10))
         let resolvedData = detailSunnyWindowData(for: city, forecasts: forecasts)
@@ -282,7 +430,7 @@ extension ContentView {
                 VStack(alignment: .leading, spacing: 10) {
                     detailSectionHeader(
                         title: localizedString("Sunny Hours", locale: locale),
-                        systemImage: "sun.max.fill"
+                        systemImage: "calendar.day.timeline.left"
                     )
 
                     DetailSunnyWindowOverviewChart(
@@ -293,7 +441,8 @@ extension ContentView {
                         chartBounds: chartBounds,
                         sunnyColor: theme.colors.dotSun,
                         partlySunnyColor: theme.colors.dotPartlyCloudy,
-                        trackColor: theme.colors.chartPanelFill,
+                        // Chart tracks use the same subdued fill as settings rows.
+                        trackColor: theme.colors.settingsRowFill,
                         gridColor: theme.colors.secondaryText.opacity(0.06),
                         primaryText: theme.colors.primaryText,
                         secondaryText: theme.colors.secondaryText,
@@ -304,7 +453,19 @@ extension ContentView {
                         }
                     )
 
-                    sunnyWindowLegend
+                    // Distinguish sunny and partly-sunny timeline segments.
+                    HStack(spacing: 14) {
+                        sunnyWindowLegendItem(
+                            title: localizedString("Sunny", locale: locale),
+                            color: theme.colors.dotSun
+                        )
+                        sunnyWindowLegendItem(
+                            title: localizedString("Partly Sunny", locale: locale),
+                            color: theme.colors.dotPartlyCloudy
+                        )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 4)
                 }
                 .padding(14)
                 .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
@@ -312,21 +473,7 @@ extension ContentView {
         }
     }
 
-    private var sunnyWindowLegend: some View {
-        HStack(spacing: 14) {
-            sunnyWindowLegendItem(
-                title: localizedString("Sunny", locale: locale),
-                color: theme.colors.dotSun
-            )
-            sunnyWindowLegendItem(
-                title: localizedString("Partly Sunny", locale: locale),
-                color: theme.colors.dotPartlyCloudy
-            )
-        }
-        .frame(maxWidth: .infinity, alignment: .center)
-        .padding(.top, 4)
-    }
-
+    /// Builds one timeline legend swatch and localized label.
     private func sunnyWindowLegendItem(title: String, color: Color) -> some View {
         HStack(spacing: 6) {
             Group {
@@ -350,6 +497,7 @@ extension ContentView {
 
     // MARK: Nearby Cities
 
+    /// Builds the nearby comparison map and ranked nearby-city rows.
     private func detailNearbyCities(city: CityWeather, selectedForecast: DailyForecast) -> some View {
         let nearbyCities = detailNearbyCityContexts(for: city)
 
@@ -370,7 +518,7 @@ extension ContentView {
                     }),
                     locale: locale,
                     accent: theme.colors.accent,
-                    water: theme.colors.mapOcean
+                    fallbackBackground: theme.colors.background
                 )
                 .allowsHitTesting(false)
 
@@ -383,7 +531,8 @@ extension ContentView {
                 }
                 .buttonStyle(.plain)
             }
-            .frame(height: detailNearbyMapHeight)
+            // iPad can show more nearby-city context than the phone excerpt.
+            .frame(height: UIDevice.current.userInterfaceIdiom == .pad ? 260 : 190)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -395,7 +544,8 @@ extension ContentView {
                 VStack(spacing: 6) {
                     ForEach(nearbyCities) { nearbyCity in
                         Button {
-                            selectDetailNearbyCity(nearbyCity.cityWeather)
+                            // Replace the current detail with the selected nearby city.
+                            pushRoute(.cityDetail(nearbyCity.cityWeather))
                         } label: {
                             detailNearbyCityRow(nearbyCity)
                         }
@@ -405,10 +555,10 @@ extension ContentView {
             }
         }
         .padding(14)
-        // Keep MapKit's warm tile colors out of Liquid Glass's foreground pass.
-        .detailTranslucentMediaCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
+        .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
     }
 
+    /// Builds a consistent icon-and-title heading for report cards.
     private func detailSectionHeader(title: String, systemImage: String) -> some View {
         HStack(spacing: CityListLayout.columnSpacing) {
             Image(systemName: systemImage)
@@ -423,6 +573,7 @@ extension ContentView {
     }
 
     @ViewBuilder
+    /// Builds one nearby city comparison row and navigation action.
     private func detailNearbyCityRow(_ nearbyCity: DetailNearbyCityContext) -> some View {
         if let condition = SunninessScoring.condition(for: nearbyCity.forecast.symbolName) {
             let icon = condition.displayIcon
@@ -463,12 +614,18 @@ extension ContentView {
 
     // MARK: - Nearby City Data
 
+    /// Selects nearby valid cities and records whether each is sunnier.
     private func detailNearbyCityContexts(for city: CityWeather) -> [DetailNearbyCityContext] {
         let detailForecastDate = selectedForecastDate
         guard let selectedCandidate = sunnyCandidate(for: city, on: detailForecastDate) else { return [] }
+        let selectedLocation = CLLocation(latitude: city.city.latitude, longitude: city.city.longitude)
         return mapCities
             .filter { $0.id != city.id }
-            .sorted { detailDistance(from: city, to: $0) < detailDistance(from: city, to: $1) }
+            // Order by geodesic distance from the selected city.
+            .sorted {
+                selectedLocation.distance(from: CLLocation(latitude: $0.city.latitude, longitude: $0.city.longitude))
+                    < selectedLocation.distance(from: CLLocation(latitude: $1.city.latitude, longitude: $1.city.longitude))
+            }
             .prefix(3)
             .compactMap { nearbyCity in
                 guard let candidate = sunnyCandidate(for: nearbyCity, on: detailForecastDate),
@@ -478,34 +635,22 @@ extension ContentView {
                 return DetailNearbyCityContext(
                     cityWeather: nearbyCity,
                     forecast: forecast,
-                    isSunnier: isNearbyCandidate(candidate, sunnierThan: selectedCandidate)
+                    // Compare condition rank, then sunny-condition cloud cover.
+                    isSunnier: {
+                        if candidate.condition.sunninessRank != selectedCandidate.condition.sunninessRank {
+                            return candidate.condition.sunninessRank < selectedCandidate.condition.sunninessRank
+                        }
+                        guard candidate.condition.isSunnyOrPartlySunny,
+                              selectedCandidate.condition.isSunnyOrPartlySunny else {
+                            return false
+                        }
+                        return candidate.cloudCover < selectedCandidate.cloudCover
+                    }()
                 )
             }
     }
 
-    private func isNearbyCandidate(_ nearby: SunnyCandidate, sunnierThan selected: SunnyCandidate) -> Bool {
-        if nearby.condition.sunninessRank != selected.condition.sunninessRank {
-            return nearby.condition.sunninessRank < selected.condition.sunninessRank
-        }
-
-        guard nearby.condition.isSunnyOrPartlySunny,
-              selected.condition.isSunnyOrPartlySunny else {
-            return false
-        }
-
-        return nearby.cloudCover < selected.cloudCover
-    }
-
-    private func detailDistance(from first: CityWeather, to second: CityWeather) -> CLLocationDistance {
-        let firstLocation = CLLocation(latitude: first.city.latitude, longitude: first.city.longitude)
-        let secondLocation = CLLocation(latitude: second.city.latitude, longitude: second.city.longitude)
-        return firstLocation.distance(from: secondLocation)
-    }
-
-    private func selectDetailNearbyCity(_ city: CityWeather) {
-        pushRoute(.cityDetail(city))
-    }
-
+    /// Returns to Map View centered on the detail city's marker.
     private func openDetailCityOnMap(_ city: CityWeather) {
         Task { @MainActor in
             if let listID = weatherService.listContainingCity(city.city) {
@@ -523,7 +668,7 @@ extension ContentView {
             }
 
             selectedMapCity = revealedCity
-            showingMapExpandedCard = false
+            isMapCardPresented = false
             navigateToMap()
             centerMap(on: revealedCity)
             showMapMarkerCard(revealedCity)
@@ -532,18 +677,30 @@ extension ContentView {
 
     // MARK: Sunny Hours Computation
 
+    /// One forecast paired with fully validated daylight-hour source data.
     private struct DetailSunnyWindowDayData {
+        /// Source daily forecast.
         let forecast: DailyForecast
+        /// Validated daylight bounds and classified hourly records.
         let sunnyHours: SunninessScoring.SunnyHoursData
     }
 
+    /// Render-ready row consumed by the in-app ten-day timeline.
     fileprivate struct DetailSunnyWindowRow: Identifiable {
+        /// Literal selection date and stable row identity.
         let id: Date
+        /// Localized compact date label.
         let dayLabel: String
+        /// Contiguous fully sunny hour ranges.
         let sunnyRanges: [ClosedRange<Int>]
+        /// Contiguous partly sunny hour ranges.
         let partlySunnyRanges: [ClosedRange<Int>]
     }
 
+    /// Validates the chart as a continuous prefix of eight to ten days.
+    /// WeatherKit may omit hourly data at the end of its forecast horizon, so
+    /// one or two trailing days may be dropped. A gap inside the valid prefix,
+    /// or any other source-data problem, still hides the complete chart.
     private func detailSunnyWindowData(
         for city: CityWeather,
         forecasts: [DailyForecast]
@@ -553,17 +710,33 @@ extension ContentView {
         }
 
         var days: [DetailSunnyWindowDayData] = []
+        var trailingHourlyDataIssue: WeatherDataIssue?
         for forecast in forecasts {
             switch SunninessScoring.sunnyHoursData(for: forecast, timeZone: city.timeZone) {
             case .success(let sunnyHours):
+                // A valid day after a missing day would create an interior gap,
+                // which is not an allowed forecast-horizon omission.
+                if let trailingHourlyDataIssue {
+                    return .failure(trailingHourlyDataIssue)
+                }
                 days.append(DetailSunnyWindowDayData(forecast: forecast, sunnyHours: sunnyHours))
             case .failure(let issue):
-                return .failure(issue)
+                guard issue.kind == .missingHourlyData else {
+                    return .failure(issue)
+                }
+                trailingHourlyDataIssue = issue
             }
+        }
+
+        // Only the ninth and tenth rows may be absent. Earlier omissions still
+        // invalidate the chart, even when every later day is also unavailable.
+        guard days.count >= 8 else {
+            return .failure(trailingHourlyDataIssue ?? .missingForecastData)
         }
         return .success(days)
     }
 
+    /// Converts validated days into labels and contiguous render ranges.
     private func detailSunnyWindowRows(
         for city: CityWeather,
         days: [DetailSunnyWindowDayData]
@@ -581,30 +754,22 @@ extension ContentView {
             }
             return DetailSunnyWindowRow(
                 id: selectionDate,
-                dayLabel: detailSunnyDayLabel(
-                    forecast: forecast,
-                    selectionDate: selectionDate,
-                    timeZone: city.timeZone
-                ),
+                // Format Today or a city-local abbreviated date for this row.
+                dayLabel: {
+                    if Calendar.current.isDate(selectionDate, inSameDayAs: forecastDateToday) {
+                        return localizedString("Today", locale: locale)
+                    }
+                    var format = Date.FormatStyle.dateTime.day().month(.abbreviated).locale(locale)
+                    format.timeZone = city.timeZone
+                    return forecast.date.formatted(format)
+                }(),
                 sunnyRanges: SunnyHoursFormatting.contiguousRanges(in: sunnyHours),
                 partlySunnyRanges: SunnyHoursFormatting.contiguousRanges(in: partlySunnyHours)
             )
         }
     }
 
-    private func detailSunnyDayLabel(
-        forecast: DailyForecast,
-        selectionDate: Date,
-        timeZone: TimeZone
-    ) -> String {
-        if Calendar.current.isDate(selectionDate, inSameDayAs: forecastDateToday) {
-            return localizedString("Today", locale: locale)
-        }
-        var format = Date.FormatStyle.dateTime.day().month(.abbreviated).locale(locale)
-        format.timeZone = timeZone
-        return forecast.date.formatted(format)
-    }
-
+    /// Maps a recognized hourly symbol to sunny, partly sunny, or unfavorable.
     private func detailHourlySunnyLevel(_ hour: HourlyForecast) -> Int? {
         switch SunninessScoring.condition(for: hour.symbolName) {
         case .clear:
@@ -618,83 +783,63 @@ extension ContentView {
         }
     }
 
-    private func detailSunnyWindowSummary(for city: CityWeather, hours: [HourlyForecast]) -> String {
-        guard let range = SunninessScoring.longestSunnyHourRange(in: hours, timeZone: city.timeZone) else {
-            return localizedString("No Sun", locale: locale)
-        }
-
-        let start = SunninessScoring.compactHourLabel(range.lowerBound, locale: locale)
-        let end = SunninessScoring.compactHourLabel(range.upperBound + 1, locale: locale)
-        return "\(start) - \(end)"
-    }
-
-    // MARK: Detail Layout Metrics
-
-    private var detailViewHorizontalPadding: CGFloat {
-        16
-    }
-
-    // iPad: The larger screen can show meaningful nearby-city context instead of
-    // the phone-height map excerpt. This applies in both portrait and landscape.
-    private var detailNearbyMapHeight: CGFloat {
-        UIDevice.current.userInterfaceIdiom == .pad ? 260 : 190
-    }
-
-    private var detailViewTopPadding: CGFloat {
-        20
-    }
-
-    private var detailViewBottomPadding: CGFloat {
-        16
-    }
-
-    private func detailViewMaxWidth(usesLandscapeIPadLayout: Bool) -> CGFloat {
-        // Give iPad landscape reports wider outer margins. Portrait and iPhone
-        // windows retain the existing content width.
-        usesLandscapeIPadLayout ? 680 : 760
-    }
-
 }
 
 // MARK: - Sunny Hours Overview Chart
 
+/// In-app selectable multi-day daylight timeline; widgets use separate views.
 private struct DetailSunnyWindowOverviewChart: View {
+    /// Render-ready rows for every valid forecast day.
     let rows: [ContentView.DetailSunnyWindowRow]
+    /// Literal date whose label and capsule receive selection emphasis.
     let selectedForecastDate: Date
+    /// App-selected locale retained for chart formatting context.
     let locale: Locale
+    /// City timezone used by the current-local-time marker.
     let timeZone: TimeZone
+    /// Merged real daylight domain shared by all rows.
     let chartBounds: SunnyHoursChartBounds
+    /// Fully sunny segment color.
     let sunnyColor: Color
+    /// Partly sunny segment color.
     let partlySunnyColor: Color
+    /// Empty daylight track color.
     let trackColor: Color
+    /// Vertical hour-grid color.
     let gridColor: Color
+    /// Primary label and current-time marker color.
     let primaryText: Color
+    /// Secondary label and selected-outline color.
     let secondaryText: Color
+    /// Callback selecting a row's literal date.
     let onSelectDay: (Date) -> Void
-    // Replace color-only chart distinctions with line patterns
-    // when the system's Differentiate Without Color setting is enabled.
+    /// Replaces color-only chart distinctions with line patterns when enabled.
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
 
+    /// Whether layout metrics should use iPad density.
     private var isIPad: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
     }
 
+    /// Integer tick hours selected for the real daylight domain.
     private var axisHours: [Int] { chartBounds.axisHours() }
+    /// Height allocated to each forecast row.
     private var rowHeight: CGFloat { isIPad ? 32 : 26 }
-    private var axisHeight: CGFloat { isIPad ? 24 : 20 }
+    /// Visible timeline capsule thickness.
     private var capsuleHeight: CGFloat { isIPad ? 14 : 12 }
-    private var timelineLaneHeight: CGFloat { isIPad ? 22 : 18 }
 
+    /// Refreshes the local-time marker once per minute.
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             chart(currentDate: context.date)
         }
     }
 
+    /// Composes axis, rows, grid, selection, and current-time marker.
     private func chart(currentDate: Date) -> some View {
         VStack(spacing: 4) {
             GeometryReader { geometry in
-                let labelWidth: CGFloat = 72
+                let labelWidth: CGFloat = 64
                 let timelineWidth = max(geometry.size.width - labelWidth, 1)
                 let rowsHeight = CGFloat(rows.count) * rowHeight
 
@@ -715,10 +860,12 @@ private struct DetailSunnyWindowOverviewChart: View {
                     .clipped()
                 }
             }
-            .frame(height: axisHeight + CGFloat(rows.count) * rowHeight)
+            // Include the iPad- or phone-sized hour-label lane above the rows.
+            .frame(height: (isIPad ? 24 : 20) + CGFloat(rows.count) * rowHeight)
         }
     }
 
+    /// Positions hour tick labels along the shared timeline width.
     private func axisRow(labelWidth: CGFloat, timelineWidth: CGFloat) -> some View {
         HStack(spacing: 0) {
             Color.clear.frame(width: labelWidth)
@@ -733,13 +880,16 @@ private struct DetailSunnyWindowOverviewChart: View {
                         )
                 }
             }
-            .frame(width: timelineWidth, height: axisHeight)
+            // Allocate the hour-label lane according to device density.
+            .frame(width: timelineWidth, height: isIPad ? 24 : 20)
         }
     }
 
+    /// Draws vertical guides spanning only the visible capsule region.
     private func gridLines(labelWidth: CGFloat, timelineWidth: CGFloat) -> some View {
         let rowsHeight = CGFloat(rows.count) * rowHeight
-        let verticalInset = (timelineLaneHeight - capsuleHeight) / 2
+        // Center guides within the iPad- or phone-sized hit lane.
+        let verticalInset = ((isIPad ? 22 : 18) - capsuleHeight) / 2
         let gridHeight = max(rowsHeight - verticalInset * 2, 0)
 
         return HStack(spacing: 0) {
@@ -759,6 +909,7 @@ private struct DetailSunnyWindowOverviewChart: View {
     }
 
     @ViewBuilder
+    /// Draws city-local current time only on today's row and inside daylight.
     private func currentTimeMarker(
         at currentDate: Date,
         labelWidth: CGFloat,
@@ -797,6 +948,7 @@ private struct DetailSunnyWindowOverviewChart: View {
         }
     }
 
+    /// Finds the row representing the city's local day at an absolute instant.
     private func currentLocalRowIndex(at currentDate: Date) -> Int? {
         var cityCalendar = Calendar.current
         cityCalendar.timeZone = timeZone
@@ -812,6 +964,7 @@ private struct DetailSunnyWindowOverviewChart: View {
         }
     }
 
+    /// Builds selectable date labels, tracks, segments, and selected outlines.
     private func rowsView(labelWidth: CGFloat, timelineWidth: CGFloat) -> some View {
         VStack(spacing: 0) {
             ForEach(rows) { row in
@@ -883,7 +1036,14 @@ private struct DetailSunnyWindowOverviewChart: View {
                                 .offset(x: spanStartX)
                             }
                         }
-                        .frame(width: timelineWidth, height: timelineLaneHeight)
+                        .frame(width: timelineWidth, height: isIPad ? 22 : 18)
+                        .overlay {
+                            if Calendar.current.isDate(row.id, inSameDayAs: selectedForecastDate) {
+                                Capsule()
+                                    .stroke(secondaryText.opacity(0.55), lineWidth: 1)
+                                    .frame(height: capsuleHeight + 4)
+                            }
+                        }
                     }
                     .frame(height: rowHeight)
                     .contentShape(Rectangle())
@@ -895,12 +1055,13 @@ private struct DetailSunnyWindowOverviewChart: View {
 
     // MARK: - Chart Labels and Formatting
 
+    /// Builds a date label with selected-state emphasis.
     private func dayLabel(_ row: ContentView.DetailSunnyWindowRow) -> some View {
-        let isSelected = Calendar.current.isDate(row.id, inSameDayAs: selectedForecastDate)
+        let selected = Calendar.current.isDate(row.id, inSameDayAs: selectedForecastDate)
 
         return Text(row.dayLabel)
-            .font(.caption.weight(isSelected ? .bold : .medium))
-            .foregroundStyle(isSelected ? primaryText : secondaryText)
+            .font(.caption.weight(selected ? .bold : .medium))
+            .foregroundStyle(selected ? primaryText : secondaryText)
             .lineLimit(1)
     }
 
@@ -908,64 +1069,60 @@ private struct DetailSunnyWindowOverviewChart: View {
 
 // MARK: - Nearby Map Context
 
+/// Nearby city plus selected-date forecast and relative sunniness result.
 private struct DetailNearbyCityContext: Identifiable {
+    /// Nearby city weather aggregate.
     let cityWeather: CityWeather
+    /// Forecast matching the detail's literal selected date.
     let forecast: DailyForecast
+    /// Whether this city ranks better than the selected detail city.
     let isSunnier: Bool
 
+    /// Reuses stable city identity for map and row diffing.
     var id: UUID { cityWeather.id }
 }
 
+/// Noninteractive nearby-city map embedded in the Detail report card.
 private struct DetailMapContextView: View {
+    /// City owning the current detail report.
     let selectedCity: CityWeather
+    /// Selected city's forecast for the literal date.
     let selectedForecast: DailyForecast
+    /// Nearby valid city comparisons.
     let nearbyCities: [DetailNearbyCityContext]
+    /// Localized selected-city marker label.
     let selectedCityName: String
+    /// Localized nearby marker labels keyed by stable identity.
     let nearbyCityNames: [UUID: String]
+    /// App-selected locale used by marker labels.
     let locale: Locale
+    /// Accent color used for selected emphasis.
     let accent: Color
-    let water: Color
+    /// Theme color revealed while MapKit has no drawable content.
+    let fallbackBackground: Color
 
+    /// Text category controlling expanded marker labels.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Active semantic palette.
     @Environment(\.appTheme) private var theme
+    /// Contrast preference controlling opaque marker alternatives.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    /// Internal fitted camera for this noninteractive map.
     @State private var cameraPosition: MapCameraPosition = .automatic
+    /// Tile saturation used by the embedded map.
     private let mapSaturation: Double = 0.72
 
-    // Allow map labels and their padding to grow with Dynamic Type
-    // while keeping the compact marker treatment at the default text size.
+    /// Whether larger text requires fully expanded marker padding.
     private var usesExpandedMarkers: Bool {
         dynamicTypeSize > .large
     }
 
-    private var selectedMarkerHorizontalPadding: CGFloat {
-        usesExpandedMarkers ? 12 : 9
-    }
-
-    private var selectedMarkerVerticalPadding: CGFloat {
-        usesExpandedMarkers ? 8 : 6
-    }
-
-    private var nearbyMarkerHorizontalPadding: CGFloat {
-        usesExpandedMarkers ? 10 : 7
-    }
-
-    private var nearbyMarkerVerticalPadding: CGFloat {
-        usesExpandedMarkers ? 7 : 5
-    }
-
-    private var markerSpacing: CGFloat {
-        usesExpandedMarkers ? 7 : 5
-    }
-
-    private var markerSaturationCompensation: Double {
-        mapSaturation == 0 ? 1 : 1 / mapSaturation
-    }
-
+    /// Selected and nearby cities used for camera fitting.
     private var displayedCities: [CityWeather] {
         [selectedCity] + nearbyCities.map(\.cityWeather)
     }
 
+    /// Builds the noninteractive MapKit context and its annotations.
     var body: some View {
         Map(position: $cameraPosition, interactionModes: []) {
             Annotation(
@@ -988,7 +1145,7 @@ private struct DetailMapContextView: View {
         }
         .mapStyle(.standard(elevation: .flat, emphasis: .muted, pointsOfInterest: .excludingAll, showsTraffic: false))
         .saturation(mapSaturation)
-        .background(water)
+        .background(fallbackBackground)
         .onAppear {
             fitCities()
         }
@@ -998,10 +1155,11 @@ private struct DetailMapContextView: View {
     }
 
     @ViewBuilder
+    /// Builds the visually dominant marker for the detail city.
     private var selectedCityMarker: some View {
         if let condition = SunninessScoring.condition(for: selectedForecast.symbolName) {
             let icon = condition.displayIcon
-            HStack(spacing: markerSpacing) {
+            HStack(spacing: usesExpandedMarkers ? 7 : 5) {
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .semibold))
                     .nearbyCityIconStyle(for: icon)
@@ -1012,8 +1170,9 @@ private struct DetailMapContextView: View {
                     .lineLimit(1)
             }
             .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, selectedMarkerHorizontalPadding)
-            .padding(.vertical, selectedMarkerVerticalPadding)
+            // Expanded Dynamic Type gets roomier selected-marker insets.
+            .padding(.horizontal, usesExpandedMarkers ? 12 : 9)
+            .padding(.vertical, usesExpandedMarkers ? 8 : 6)
             .background {
                 if colorSchemeContrast == .increased {
                     Capsule().fill(theme.colors.glassFill)
@@ -1029,17 +1188,19 @@ private struct DetailMapContextView: View {
                     )
             }
             .shadow(color: accent.opacity(0.20), radius: 8, y: 2)
-            .saturation(markerSaturationCompensation)
+            // Counteract tile desaturation so semantic marker colors stay stable.
+            .saturation(mapSaturation == 0 ? 1 : 1 / mapSaturation)
         }
     }
 
     @ViewBuilder
+    /// Builds a nearby marker styled by relative condition context.
     private func nearbyWeatherMarker(for nearbyCity: DetailNearbyCityContext) -> some View {
         let cityName = nearbyCityNames[nearbyCity.cityWeather.id]
             ?? localizedCityDisplayName(for: nearbyCity.cityWeather.city, locale: locale)
         if let condition = SunninessScoring.condition(for: nearbyCity.forecast.symbolName) {
             let icon = condition.displayIcon
-            HStack(spacing: markerSpacing) {
+            HStack(spacing: usesExpandedMarkers ? 7 : 5) {
                 Image(systemName: icon)
                     .font(.system(size: 10, weight: .semibold))
                     .nearbyCityIconStyle(for: icon)
@@ -1051,8 +1212,9 @@ private struct DetailMapContextView: View {
 
             }
             .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, nearbyMarkerHorizontalPadding)
-            .padding(.vertical, nearbyMarkerVerticalPadding)
+            // Nearby markers stay compact while respecting larger text.
+            .padding(.horizontal, usesExpandedMarkers ? 10 : 7)
+            .padding(.vertical, usesExpandedMarkers ? 7 : 5)
             .background {
                 if colorSchemeContrast == .increased {
                     Capsule().fill(theme.colors.glassFill)
@@ -1066,10 +1228,12 @@ private struct DetailMapContextView: View {
                 }
             }
             .shadow(color: theme.colors.shadow.opacity(0.10), radius: 6, y: 2)
-            .saturation(markerSaturationCompensation)
+            // Counteract tile desaturation so semantic marker colors stay stable.
+            .saturation(mapSaturation == 0 ? 1 : 1 / mapSaturation)
         }
     }
 
+    /// Fits the map to every displayed city coordinate.
     private func fitCities() {
         let sourceCities = displayedCities.isEmpty ? [selectedCity] : displayedCities
         let points = sourceCities.map {
@@ -1087,11 +1251,13 @@ private struct DetailMapContextView: View {
 
 private extension View {
     @ViewBuilder
+    /// Applies semantic palette rendering to a nearby weather symbol.
     func nearbyCityIconStyle(for iconName: String) -> some View {
         self.weatherIconStyle(for: iconName)
     }
 }
 
+/// Deterministic multi-day city fixture used only by Xcode previews.
 private let detailPreviewCity: CityWeather = {
     let city = City(
         name: "Barcelona",
@@ -1110,6 +1276,7 @@ private let detailPreviewCity: CityWeather = {
     )
 }()
 
+/// Builds one visually varied deterministic Xcode preview forecast.
 private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
     let cloudPattern: [[Double]] = [
         [0.18, 0.28, 0.41, 0.72, 0.86, 0.90, 0.95, 0.83],

@@ -2,50 +2,91 @@
 //  Tutorial.swift
 //  Weather
 //
-//  Purpose: Presents first-launch onboarding, replayable app guidance, and the
-//  continent-or-country list selection used when the app is opened fresh.
+//  Purpose: Presents onboarding and owns the selection state and app actions
+//  that turn first-run continent or country choices into persisted lists.
 //
 
 import SwiftUI
 import UIKit
 
+// MARK: - Presentation State
+
+/// First-launch and replay selections owned by the tutorial flow.
+struct TutorialPresentationState {
+    /// Whether first-install onboarding covers the app.
+    var showsFirstLaunch = false
+    /// Whether the user explicitly replayed onboarding from Settings.
+    var showsReplay = false
+    /// Built-in continent sources selected during first-run setup.
+    var selectedContinentIDs: Set<String> = []
+    /// Reserved country selections for future multi-list onboarding.
+    var selectedCountryIDs: Set<String> = []
+}
+
 // MARK: - Full-Screen Tutorial
 
+/// Full-screen onboarding and replay flow with optional first-list creation.
 struct TutorialView: View {
+    /// Whether this run includes the first-list selection page.
     let includesListSelection: Bool
+    /// Canonical continent sources offered during first-run setup.
     let continentLists: [CityListID]
+    /// Fraction of initial list weather creation completed.
     let creationProgress: Double
+    /// Async callback creating and selecting a continent list.
     let onSelectContinentList: (CityListID) async -> Void
+    /// Async callback creating and selecting a country list.
     let onSelectCountryList: (CountryListOption) async -> Void
+    /// Callback completing or dismissing the tutorial.
     let onFinish: () -> Void
+    /// Optional replay-only cancel callback.
     var onCancel: (() -> Void)?
+    /// Page seeded by previews and specialized presentations.
     var initialPage: Int = 0
+    /// Whether previews should begin in creation-progress state.
     var initialIsCreatingList: Bool = false
+    /// Optional list name shown by an initial creation state.
     var initialCreatingListName: String? = nil
 
+    /// Active theme manager and semantic palette.
     @Environment(\.appTheme) private var theme
+    /// Resolved appearance used by tutorial contrast choices.
     @Environment(\.colorScheme) private var colorScheme
+    /// App-selected locale used throughout onboarding.
     @Environment(\.locale) private var locale
+    /// Width class controlling phone/iPad layout.
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    /// Text category controlling reserved footer layout.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    /// Contrast preference controlling page dots and surfaces.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    /// Zero-based active tutorial page.
     @State private var page = 0
+    /// Whether the continent picker is presented.
     @State private var showingContinentSearch = false
+    /// Whether the country picker is presented.
     @State private var showingCountrySearch = false
+    /// Query filtering countries inside the tutorial picker.
     @State private var countrySearchText = ""
+    /// Whether list creation progress has replaced selection content.
     @State private var isCreatingList = false
+    /// Name shown while the selected list is being created.
     @State private var creatingListName: String?
+    /// Guards one-time application of preview/initial state.
     @State private var didApplyInitialState = false
 
     // MARK: Page State
 
+    /// Total page count for onboarding or tutorial replay.
     private var pageCount: Int {
         includesListSelection ? 3 : 2
     }
 
+    /// Builds paged content, modal pickers, and the persistent tutorial footer.
     var body: some View {
         ZStack {
-            tutorialBackground
+            // Use the branded palette background on every tutorial page.
+            introColors.background
                 .ignoresSafeArea()
 
             tutorialPages
@@ -74,25 +115,63 @@ struct TutorialView: View {
                     .padding(.bottom, 12)
                     .frame(maxWidth: tutorialContentMaxWidth)
                     .frame(maxWidth: .infinity)
-                    .background(tutorialBackground)
+                    .background(introColors.background)
             }
         }
         .sheet(isPresented: $showingContinentSearch) {
-            tutorialPickerPresentation(tutorialContinentSearchSheet)
+            tutorialPickerPresentation(
+                ContinentListPickerContent(
+                    lists: continentLists,
+                    onSelect: { listID in
+                        // Dismiss the picker and begin continent-list creation.
+                        showingContinentSearch = false
+                        creatingListName = listID.canonicalLocalizedDisplayName(locale: locale)
+                        startCreatingList {
+                            await onSelectContinentList(listID)
+                        }
+                    }
+                )
+            )
         }
         .sheet(isPresented: $showingCountrySearch) {
-            tutorialPickerPresentation(tutorialCountrySearchSheet)
+            let countries = CountryCityCatalog.countries(locale: locale)
+            let query = countrySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            // Match localized and English names as well as ISO codes.
+            let filteredCountries = query.isEmpty ? countries : countries.filter {
+                $0.localizedName(locale: locale).localizedCaseInsensitiveContains(query)
+                    || $0.englishName.localizedCaseInsensitiveContains(query)
+                    || $0.iso2.localizedCaseInsensitiveContains(query)
+            }
+            tutorialPickerPresentation(
+                CountryListPickerContent(
+                    countries: filteredCountries,
+                    searchBar: CountrySearchField(text: $countrySearchText),
+                    onSelect: { country in
+                        // Dismiss the picker and begin country-list creation.
+                        showingCountrySearch = false
+                        creatingListName = country.localizedName(locale: locale)
+                        startCreatingList {
+                            await onSelectCountryList(country)
+                        }
+                    }
+                )
+                .onAppear {
+                    countrySearchText = ""
+                }
+            )
         }
         .interactiveDismissDisabled(isCreatingList)
         .onAppear {
-            applyInitialStateIfNeeded()
+            // Apply preview/test seed values only once.
+            guard !didApplyInitialState else { return }
+            didApplyInitialState = true
+            page = min(max(initialPage, 0), pageCount - 1)
+            isCreatingList = initialIsCreatingList
+            creatingListName = initialCreatingListName
         }
     }
 
-    private var tutorialBackground: Color {
-        introColors.background
-    }
-
+    /// Whether larger text requires content space reserved above the footer.
     private var usesReservedFooterLayout: Bool {
         dynamicTypeSize > .large
     }
@@ -100,6 +179,7 @@ struct TutorialView: View {
     // MARK: Page Routing
 
     @ViewBuilder
+    /// Builds the non-scrollable horizontal page container.
     private var tutorialPages: some View {
         if dynamicTypeSize > .large {
             // UIPageViewController's horizontal pan gesture can prevent the nested
@@ -117,7 +197,7 @@ struct TutorialView: View {
                     .tag(1)
 
                 if includesListSelection {
-                    tutorialListSelectionPage
+                    listSelectionPage
                         .tag(2)
                 }
             }
@@ -126,6 +206,7 @@ struct TutorialView: View {
     }
 
     @ViewBuilder
+    /// Selects welcome, feature steps, or first-list setup for the active index.
     private var currentTutorialPage: some View {
         switch page {
         case 0:
@@ -134,7 +215,7 @@ struct TutorialView: View {
             stepsPage
         default:
             if includesListSelection {
-                tutorialListSelectionPage
+                listSelectionPage
             } else {
                 stepsPage
             }
@@ -143,20 +224,24 @@ struct TutorialView: View {
 
     // MARK: Adaptive Layout
 
+    /// Whether device-specific tutorial spacing should use iPad values.
     private var isIPad: Bool {
         UIDevice.current.userInterfaceIdiom == .pad
     }
 
+    /// Main action fill selected for the active tutorial page.
     private var primaryButtonColor: Color {
         introColors.sunIconColor
     }
 
+    /// Foreground guaranteed legible on the primary button fill.
     private var primaryButtonTextColor: Color {
         colorScheme == .dark ? introColors.background : introColors.primaryText
     }
 
     // MARK: Picker Presentation
 
+    /// Presents a picker as an adaptive sheet with tutorial theme treatment.
     private func tutorialPickerPresentation<Content: View>(
         _ content: Content
     ) -> some View {
@@ -173,16 +258,19 @@ struct TutorialView: View {
             .presentationBackground(theme.colors.background)
     }
 
+    /// Semantic palette used over the branded intro background.
     private var introColors: ThemeColors {
         theme.colors
     }
 
+    /// Page horizontal inset adapted to device width.
     private var tutorialHorizontalPadding: CGFloat {
         28
     }
 
     // iPad: Keep onboarding copy and controls comfortably readable without
     // shrinking the full-screen artwork behind them.
+    /// Maximum readable width for tutorial copy and controls.
     private var tutorialContentMaxWidth: CGFloat {
         680
     }
@@ -190,23 +278,20 @@ struct TutorialView: View {
     // The normal footer overlays the pages, so scrollable page content reserves
     // enough space beneath its last meaningful element. Larger text uses a
     // safe-area footer and therefore needs only a small breathing space.
+    /// Reserved vertical space preventing content from entering the footer.
     private var tutorialFooterClearance: CGFloat {
         usesReservedFooterLayout ? 24 : 128
     }
 
-    private var tutorialTopSpacer: CGFloat {
-        62
-    }
-
+    /// Display font selected for current device and text category.
     private var tutorialTitle: Font {
         .system(.largeTitle, design: .serif, weight: .bold)
     }
 
-    private let introGraphicsAspectRatio: CGFloat = 1_179.0 / 2_556.0
-
     // The page footer is an overlay at normal Dynamic Type sizes. Limit the
     // iPad scene's downward shift in shorter windows so the subtitle always
     // clears the page indicator instead of scrolling beneath it.
+    /// Positions the welcome illustration within varying safe-area heights.
     private func welcomeSceneOffset(for size: CGSize) -> CGFloat {
         guard isIPad else { return 0 }
 
@@ -219,13 +304,9 @@ struct TutorialView: View {
         return min(preferredOffset, max(0, availableOffset))
     }
 
-    private var tutorialHeaderInset: some View {
-        Color.clear
-            .frame(height: tutorialTopSpacer)
-    }
-
     // MARK: Welcome Page
 
+    /// Builds branded illustration and introductory copy.
     private var welcomePage: some View {
         GeometryReader { proxy in
             let usesCompactIPadArtworkPosition = isIPad
@@ -248,7 +329,8 @@ struct TutorialView: View {
                                     .resizable()
                                     .frame(
                                         width: proxy.size.width,
-                                        height: proxy.size.width / introGraphicsAspectRatio
+                                        // Preserve the welcome illustration's native ratio.
+                                        height: proxy.size.width / (1_179.0 / 2_556.0)
                                     )
                                     .offset(y: artworkVerticalOffset)
                             }
@@ -284,6 +366,7 @@ struct TutorialView: View {
         }
     }
 
+    /// Builds the welcome title and subtitle with supplied scene clearance.
     private func welcomePageText(topSpacing: CGFloat) -> some View {
         VStack(spacing: 0) {
             Spacer()
@@ -315,6 +398,7 @@ struct TutorialView: View {
 
     // MARK: Steps Page
 
+    /// Builds the feature explanation page in narrow or wide layout.
     private var stepsPage: some View {
         GeometryReader { proxy in
             // On iPad, the page retains its portrait composition
@@ -340,9 +424,12 @@ struct TutorialView: View {
         }
     }
 
+    /// Composes tutorial feature steps for stacked or side-by-side presentation.
     private func stepsPageContent(usesWideStepLayout: Bool) -> some View {
         VStack(alignment: .leading, spacing: 26) {
-            tutorialHeaderInset
+            // Preserve room above the page for the optional cancel control.
+            Color.clear
+                .frame(height: 62)
 
             Text(localizedString("How Weather Atlas Works", locale: locale))
                 .font(tutorialTitle)
@@ -398,6 +485,7 @@ struct TutorialView: View {
         .padding(.horizontal, tutorialHorizontalPadding)
     }
 
+    /// Builds one numbered feature explanation row/card.
     private func tutorialStep(number: Int, title: String, subtitle: String) -> some View {
         HStack(alignment: .center, spacing: 16) {
             Text("\(number)")
@@ -428,29 +516,38 @@ struct TutorialView: View {
         .background(introColors.listCardFill.opacity(0.78), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(introColors.mapBorder.opacity(0.28), lineWidth: 1)
+                .stroke(introColors.secondaryText.opacity(0.28), lineWidth: 1)
         )
     }
 
     // MARK: List Selection Pages
 
+    @ViewBuilder
+    /// Selects list-creation progress or the first-list source picker.
     private var listSelectionPage: some View {
-        GeometryReader { proxy in
-            // The selection remains usable in iPad landscape,
-            // Split View, and large text without changing the normal hierarchy.
-            ScrollView {
-                listSelectionPageContent
-                    .frame(minHeight: proxy.size.height, alignment: .top)
-                    .frame(maxWidth: tutorialContentMaxWidth)
-                    .frame(maxWidth: .infinity)
+        if isCreatingList {
+            creatingListPage
+        } else {
+            GeometryReader { proxy in
+                // The selection remains usable in iPad landscape,
+                // Split View, and large text without changing the normal hierarchy.
+                ScrollView {
+                    listSelectionPageContent
+                        .frame(minHeight: proxy.size.height, alignment: .top)
+                        .frame(maxWidth: tutorialContentMaxWidth)
+                        .frame(maxWidth: .infinity)
+                }
+                .scrollIndicators(.hidden)
             }
-            .scrollIndicators(.hidden)
         }
     }
 
+    /// Composes introductory copy and continent/country source cards.
     private var listSelectionPageContent: some View {
         VStack(alignment: .leading, spacing: 22) {
-            tutorialHeaderInset
+            // Preserve room above the page for the optional cancel control.
+            Color.clear
+                .frame(height: 62)
 
             Text(localizedString("Let's add your first city list", locale: locale))
                 .font(tutorialTitle)
@@ -494,26 +591,7 @@ struct TutorialView: View {
         .padding(.horizontal, tutorialHorizontalPadding)
     }
 
-    @ViewBuilder
-    private var tutorialListSelectionPage: some View {
-        if isCreatingList {
-            creatingListPage
-        } else {
-            listSelectionPage
-        }
-    }
-
-    private var filteredTutorialCountryOptions: [CountryListOption] {
-        let countries = CountryCityCatalog.countries(locale: locale)
-        let query = countrySearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return countries }
-        return countries.filter {
-            $0.localizedName(locale: locale).localizedCaseInsensitiveContains(query)
-                || $0.englishName.localizedCaseInsensitiveContains(query)
-                || $0.iso2.localizedCaseInsensitiveContains(query)
-        }
-    }
-
+    /// Builds a sunny-colored first-list source card.
     private func tutorialAddListOptionCard(
         title: String,
         systemImage: String,
@@ -536,7 +614,7 @@ struct TutorialView: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 // Increase Contrast gives these primary actions a stronger outline.
                 .stroke(
-                    introColors.mapBorder.opacity(colorSchemeContrast == .increased ? 1 : 0.24),
+                    introColors.secondaryText.opacity(colorSchemeContrast == .increased ? 1 : 0.24),
                     lineWidth: colorSchemeContrast == .increased ? 1.25 : 1
                 )
         }
@@ -544,6 +622,7 @@ struct TutorialView: View {
 
     // MARK: List Creation Progress
 
+    /// Builds progress feedback while the initial list and weather are created.
     private var creatingListPage: some View {
         GeometryReader { proxy in
             ScrollView {
@@ -554,7 +633,12 @@ struct TutorialView: View {
                     Spacer(minLength: 40)
 
                     VStack(spacing: 18) {
-                        Text(creatingListTitle)
+                        // Incorporate the selected list name when one is available.
+                        Text(
+                            creatingListName.map {
+                                "\(localizedString("Creating a list of 15 cities in", locale: locale)) \($0)"
+                            } ?? localizedString("Creating a list of 15 cities", locale: locale)
+                        )
                             .font(.title3.weight(.semibold))
                             .foregroundStyle(introColors.primaryText)
                             .multilineTextAlignment(.center)
@@ -578,43 +662,20 @@ struct TutorialView: View {
         }
     }
 
-    private var creatingListTitle: String {
-        guard let creatingListName else {
-            return localizedString("Creating a list of 15 cities", locale: locale)
-        }
-        return "\(localizedString("Creating a list of 15 cities in", locale: locale)) \(creatingListName)"
-    }
-
-    // MARK: Picker Sheets
-
-    private var tutorialContinentSearchSheet: some View {
-        ContinentListPickerContent(
-            lists: continentLists,
-            onSelect: beginCreatingContinentList
-        )
-    }
-
-    private var tutorialCountrySearchSheet: some View {
-        CountryListPickerContent(
-            countries: filteredTutorialCountryOptions,
-            searchBar: CountrySearchField(
-                text: $countrySearchText
-            ),
-            onSelect: beginCreatingCountryList
-        )
-        .onAppear {
-            countrySearchText = ""
-        }
-    }
-
     // MARK: Footer
 
+    /// Builds the pinned page dots and primary/cancel controls.
     private var tutorialFooter: some View {
         VStack(spacing: 18) {
             HStack(spacing: 8) {
                 ForEach(0..<pageCount, id: \.self) { index in
                     Circle()
-                        .fill(index == page ? primaryButtonColor : inactivePageDotColor)
+                        // Full opacity meets the increased-contrast non-text threshold.
+                        .fill(
+                            index == page
+                                ? primaryButtonColor
+                                : introColors.secondaryText.opacity(colorSchemeContrast == .increased ? 1 : 0.7)
+                        )
                         .frame(width: index == page ? 9 : 7, height: index == page ? 9 : 7)
                         .animation(.smooth(duration: 0.18), value: page)
                 }
@@ -626,6 +687,7 @@ struct TutorialView: View {
         }
     }
 
+    /// Builds the context-sensitive tutorial action buttons.
     private var tutorialFooterButtons: some View {
         HStack(spacing: 12) {
             if let onCancel {
@@ -640,9 +702,20 @@ struct TutorialView: View {
 
             if !(includesListSelection && page == pageCount - 1) {
                 Button {
-                    advanceOrFinish()
+                    // Advance one page or complete the final tutorial page.
+                    if page < pageCount - 1 {
+                        withAnimation(.smooth(duration: 0.2)) {
+                            page += 1
+                        }
+                    } else {
+                        onFinish()
+                    }
                 } label: {
-                    Text(primaryButtonTitle)
+                    Text(
+                        page < pageCount - 1
+                            ? localizedString("Continue", locale: locale)
+                            : localizedString("Done", locale: locale)
+                    )
                         .font(.body.weight(.bold))
                         .frame(maxWidth: .infinity)
                 }
@@ -654,49 +727,9 @@ struct TutorialView: View {
         }
     }
 
-    // MARK: - Footer Styling
-
-    private var inactivePageDotColor: Color {
-        // Full opacity clears the 3:1 non-text threshold in the
-        // increased-contrast light palette; standard mode remains unchanged.
-        introColors.mapBorder.opacity(colorSchemeContrast == .increased ? 1 : 0.7)
-    }
-
-    private var primaryButtonTitle: String {
-        if page < pageCount - 1 {
-            return localizedString("Continue", locale: locale)
-        }
-        return localizedString("Done", locale: locale)
-    }
-
     // MARK: Tutorial Actions
 
-    private func advanceOrFinish() {
-        if page < pageCount - 1 {
-            withAnimation(.smooth(duration: 0.2)) {
-                page += 1
-            }
-        } else {
-            onFinish()
-        }
-    }
-
-    private func beginCreatingContinentList(_ listID: CityListID) {
-        showingContinentSearch = false
-        creatingListName = listID.canonicalLocalizedDisplayName(locale: locale)
-        startCreatingList {
-            await onSelectContinentList(listID)
-        }
-    }
-
-    private func beginCreatingCountryList(_ country: CountryListOption) {
-        showingCountrySearch = false
-        creatingListName = country.localizedName(locale: locale)
-        startCreatingList {
-            await onSelectCountryList(country)
-        }
-    }
-
+    /// Enters progress state, runs creation, then completes onboarding.
     private func startCreatingList(_ action: @escaping () async -> Void) {
         guard !isCreatingList else { return }
         isCreatingList = true
@@ -712,25 +745,77 @@ struct TutorialView: View {
         }
     }
 
-    private func applyInitialStateIfNeeded() {
-        guard !didApplyInitialState else { return }
-        didApplyInitialState = true
-        page = min(max(initialPage, 0), pageCount - 1)
-        isCreatingList = initialIsCreatingList
-        creatingListName = initialCreatingListName
-    }
+}
 
+// MARK: - Tutorial List Selection
+
+extension ContentView {
+    /// Replaces the built-in list selection, creates any selected country
+    /// lists, and performs the first weather load before dismissing onboarding.
+    func applyTutorialListSelectionAndLoad() async {
+        let selectedContinentIDs = tutorialState.selectedContinentIDs
+        let selectedCountryIDs = tutorialState.selectedCountryIDs
+        guard !selectedContinentIDs.isEmpty || !selectedCountryIDs.isEmpty else { return }
+        let selectedLists = CityListID.builtInLists.filter { selectedContinentIDs.contains($0.rawValue) }
+
+        CityListID.keepBuiltInLists(withRawValues: selectedContinentIDs)
+        refreshListOrder()
+        navigationPath = []
+
+        var firstList = selectedLists.first
+        let selectedCountries = CountryCityCatalog.countries(locale: locale).filter {
+            selectedCountryIDs.contains($0.id)
+        }
+
+        for country in selectedCountries {
+            let identity = CityListID.availableGeneratedListIdentity(
+                for: .country(iso2: country.iso2, duplicateIndex: nil),
+                locale: locale
+            )
+            let listID = await weatherService.createCustomList(
+                name: identity.displayName,
+                cities: CountryCityCatalog.topCities(for: country),
+                nameSource: identity.nameSource
+            )
+            if firstList == nil {
+                firstList = listID
+            }
+        }
+
+        if let firstList {
+            if firstList.rawValue == weatherService.activeListID.rawValue {
+                await weatherService.fetchWeatherForAllCities()
+            } else {
+                await switchToList(firstList)
+            }
+        }
+
+        refreshListOrder()
+        centerMapOnDots()
+
+        if !mapCities.isEmpty {
+            await refreshCitiesMissingDaytimeSunninessData()
+        }
+
+        hasCompletedInitialWeatherLoad = true
+        hasLaunchedBefore = true
+        tutorialState.showsFirstLaunch = false
+    }
 }
 
 // MARK: - Preview Support
 
+/// Lightweight wrapper configuring tutorial-only Xcode previews.
 private struct TutorialPreviewContent: View {
+    /// Whether the preview starts on list-creation progress.
     let startsCreatingList: Bool
 
+    /// Creates a normal or progress-state tutorial preview.
     init(startsCreatingList: Bool = false) {
         self.startsCreatingList = startsCreatingList
     }
 
+    /// Builds a self-contained tutorial preview.
     var body: some View {
         TutorialView(
             includesListSelection: true,

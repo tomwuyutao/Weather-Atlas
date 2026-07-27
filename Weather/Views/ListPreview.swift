@@ -12,36 +12,37 @@ import SwiftUI
 
 /// Draft data shown before a generated country or continent list is committed.
 struct GeneratedListPreviewState {
+    /// Proposed localized list name.
     var name: String?
+    /// Canonical geographic source retained after save.
     var nameSource: CityListNameSource?
+    /// Complete population-ranked source city collection.
     var allCities: [City] = []
+    /// Number of leading cities currently included in the preview.
     var cityCount = CountryCityCatalog.defaultCountryCityCount
 }
 
 // MARK: - Preview Selection
 
 extension ContentView {
+    /// Leading source cities included at the preview's selected count.
     var listPreviewCities: [City] {
         Array(listPreviewState.allCities.prefix(listPreviewState.cityCount))
     }
 
+    /// Maximum count supported by both source data and product limit.
     var listPreviewMaximumCount: Int {
         min(CountryCityCatalog.maxCountryCityCount, listPreviewState.allCities.count)
     }
 
+    /// Whether a generated list has a name and source cities ready to preview.
     var isListPreviewActive: Bool {
         currentRoute == .listPreview && listPreviewState.name != nil
     }
 
-    func cityCountText(_ count: Int) -> String {
-        if count == 1 {
-            return "\(count) \(localizedString("City", locale: locale))"
-        }
-        return "\(count) \(localizedString("Cities", locale: locale))"
-    }
-
     // MARK: Destination
 
+    /// Reuses Home's visual hierarchy to preview an unfetched generated list.
     var listPreviewDestination: some View {
         homeContent(previewActive: true)
             .navigationTitle(listPreviewState.name ?? localizedString("List of Cities", locale: locale))
@@ -49,13 +50,14 @@ extension ContentView {
             .navigationBarBackButtonHidden(true)
             .toolbar(.hidden, for: .navigationBar)
             .onAppear {
-                showingMapExpandedCard = false
-                centerMapOnDots(useListCoordinates: true)
+                isMapCardPresented = false
+                centerMapOnDots()
             }
     }
 
     // MARK: Preview Creation
 
+    /// Seeds preview state and navigates to its destination.
     func previewGeneratedList(name: String, cities: [City], nameSource: CityListNameSource? = nil) {
         listPreviewState.name = name
         listPreviewState.nameSource = nameSource
@@ -65,7 +67,7 @@ extension ContentView {
             min(CountryCityCatalog.maxCountryCityCount, cities.count)
         )
         citySearchState.isPresented = false
-        showingMapExpandedCard = false
+        isMapCardPresented = false
         selectedMapCity = nil
         citySearchState.temporaryMapCity = nil
         navigationPath.removeAll { $0 == .listPreview }
@@ -73,32 +75,14 @@ extension ContentView {
         pushRoute(.listPreview)
     }
 
-    func previewContinentList(_ listID: CityListID) {
-        let populationSortedCities = CountryCityCatalog.topCities(
-            forContinentRawValue: listID.rawValue,
-            limit: CountryCityCatalog.maxCountryCityCount
-        )
-        previewGeneratedList(
-            name: listID.canonicalLocalizedDisplayName(locale: locale),
-            cities: populationSortedCities.isEmpty ? listID.defaultCities : populationSortedCities,
-            nameSource: .continent(rawValue: listID.rawValue, duplicateIndex: nil)
-        )
-    }
-
-    func previewCountryList(_ country: CountryListOption) {
-        previewGeneratedList(
-            name: country.localizedName(locale: locale),
-            cities: CountryCityCatalog.topCities(for: country, limit: CountryCityCatalog.maxCountryCityCount),
-            nameSource: .country(iso2: country.iso2, duplicateIndex: nil)
-        )
-    }
-
     // MARK: Cancel and Commit
 
+    /// Cancels preview with feedback and clears all staged values.
     func cancelGeneratedListPreview() {
         popRoute(.listPreview)
     }
 
+    /// Removes preview route and resets staged generated-list state.
     func clearGeneratedListPreview(playsHaptic: Bool = true) {
         listPreviewState.name = nil
         listPreviewState.nameSource = nil
@@ -109,6 +93,7 @@ extension ContentView {
         }
     }
 
+    /// Persists and activates the staged generated list.
     func confirmGeneratedListPreview() {
         guard let previewName = listPreviewState.name,
               !listPreviewCities.isEmpty else { return }
@@ -125,7 +110,7 @@ extension ContentView {
             await switchToList(listID)
             await MainActor.run {
                 refreshListOrder()
-                centerMapOnDots(useListCoordinates: true)
+                centerMapOnDots()
             }
         }
     }
