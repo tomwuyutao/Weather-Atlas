@@ -116,15 +116,6 @@ extension ContentView {
                 .overlay(alignment: .topLeading) {
                     if isMapRoute, !citySearchState.isPresented {
                         VStack(alignment: .leading, spacing: 8) {
-                            if weatherService.isLoading {
-                                LoadingWeatherOverlay(
-                                    progress: weatherService.loadingProgress,
-                                    locale: locale
-                                )
-                                .allowsHitTesting(false)
-                                .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
-                            }
-
                             if showLegend {
                                 MapFloatingLegend(overlayMode: mapOverlayMode) {
                                     withAnimation(.smooth(duration: 0.2)) {
@@ -139,7 +130,6 @@ extension ContentView {
                     }
                 }
                 .animation(.smooth(duration: 0.22), value: showLegend)
-                .animation(.smooth(duration: 0.22), value: weatherService.isLoading)
                 .allowsHitTesting(!citySearchState.isPresented)
 
             if !citySearchState.isPresented {
@@ -214,47 +204,6 @@ private struct MapMarkerModel: Identifiable {
 
     /// Reuses stable city identity for map annotation diffing.
     var id: UUID { cityWeather.id }
-}
-
-// MARK: - Loading Overlay
-
-/// Compact progress capsule shown while Map weather is loading.
-private struct LoadingWeatherOverlay: View {
-    /// Completed fraction of configured city fetches.
-    let progress: Double
-    /// App-selected locale used by the progress label.
-    let locale: Locale
-
-    /// Active semantic palette.
-    @Environment(\.appTheme) private var theme
-    /// Contrast preference used to replace material with an opaque capsule.
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-
-    /// Builds the progress indicator and localized status label.
-    var body: some View {
-        HStack(spacing: 10) {
-            ProgressView(value: progress)
-                .progressViewStyle(.circular)
-
-            Text(localizedString("Loading Weather", locale: locale))
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background {
-            if colorSchemeContrast == .increased {
-                Capsule().fill(theme.colors.glassFill)
-            } else {
-                Capsule().fill(.regularMaterial)
-            }
-        }
-        .overlay {
-            if colorSchemeContrast == .increased {
-                Capsule().stroke(theme.colors.primaryText, lineWidth: 1)
-            }
-        }
-    }
 }
 
 // MARK: - Overlay Menu

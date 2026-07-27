@@ -243,6 +243,23 @@ extension ContentView {
     /// Attaches startup, lifecycle, preference, search, and data observers.
     private var viewLifecycle: some View {
         appNavigationStack
+            .overlay(alignment: .bottom) {
+                if weatherService.isLoading,
+                   !tutorialState.showsFirstLaunch,
+                   !tutorialState.showsReplay,
+                   !citySearchState.isPresented {
+                    WeatherLoadingNotice(progress: weatherService.loadingProgress)
+                        .frame(maxWidth: 760)
+                        .padding(.horizontal, 16)
+                        // Match the clearance already used to keep the forecast-
+                        // omission helper above the shared floating bottom toolbar.
+                        .padding(.bottom, 88)
+                        .allowsHitTesting(false)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(200)
+                }
+            }
+            .animation(.smooth(duration: 0.2), value: weatherService.isLoading)
             .task {
                 await onAppearLoad()
                 publishWidgetCatalog()

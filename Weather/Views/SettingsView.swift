@@ -529,8 +529,19 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
-    /// Bundled city-catalog source and license rows.
+    /// Bundled city-catalog and online place-search source rows.
     private var citiesAttributionRows: some View {
+        settingsInfoRow(
+            localizedString("Search", locale: locale),
+            value: "Open-Meteo / GeoNames",
+            systemImage: "magnifyingglass"
+        )
+        settingsLinkRow(
+            "Open-Meteo",
+            value: localizedString("View", locale: locale),
+            systemImage: "doc.text",
+            url: URL(string: "https://open-meteo.com/en/docs/geocoding-api")
+        )
         settingsInfoRow(
             localizedString("Cities Data", locale: locale),
             value: localizedString("SimpleMaps World Cities", locale: locale),

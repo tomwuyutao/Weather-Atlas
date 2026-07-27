@@ -2,13 +2,14 @@
 //  CitySearch.swift
 //  Weather
 //
-//  Purpose: Wraps MapKit city search and the in-app search sheet used by
-//  the floating bottom search control.
+//  Purpose: Combines Apple and Open-Meteo place search with the in-app search
+//  sheet used by the floating bottom search control.
 //
 
-import SwiftUI
 import CoreLocation
+import Foundation
 import MapKit
+import SwiftUI
 
 // MARK: - Presentation State
 
@@ -18,7 +19,7 @@ struct CitySearchPresentationState {
     var isPresented = false
     /// Current user-entered query fragment.
     var query = ""
-    /// Observable MapKit completion manager.
+    /// Observable Apple and Open-Meteo search manager.
     var manager = CitySearchManager()
     /// Whether a selected completion is resolving and fetching weather.
     var isLoading = false
@@ -37,16 +38,18 @@ struct CitySearchPresentationState {
 }
 
 // MARK: - Search Result
-/// Stable presentation wrapper around a MapKit completion.
+/// Stable presentation wrapper around an Apple or Open-Meteo place suggestion.
 struct CitySearchResult: Identifiable {
-    /// Deterministic identity derived from completion title and subtitle.
+    /// Deterministic provider-scoped identity.
     let id: String
-    /// Primary MapKit completion text.
+    /// Primary provider-supplied place name.
     let title: String
-    /// Secondary MapKit completion context.
+    /// Secondary administrative and country context.
     let subtitle: String
-    /// Source completion needed to resolve a concrete map item.
+    /// Apple completion needed to resolve a concrete map item.
     fileprivate let completion: MKLocalSearchCompletion?
+    /// Metadata already supplied by Open-Meteo, avoiding a second geocoding request.
+    fileprivate let resolvedPlace: CitySearchResolvedPlace?
 
     /// Creates a display result while retaining its MapKit resolution token.
     init(title: String, subtitle: String, completion: MKLocalSearchCompletion) {
@@ -54,8 +57,33 @@ struct CitySearchResult: Identifiable {
         self.title = title
         self.subtitle = subtitle
         self.completion = completion
+        self.resolvedPlace = nil
     }
 
+    /// Creates an immediately resolvable Open-Meteo suggestion.
+    init(
+        openMeteoID: Int,
+        title: String,
+        subtitle: String,
+        country: String,
+        latitude: Double,
+        longitude: Double,
+        timeZoneIdentifier: String
+    ) {
+        self.id = "open-meteo-\(openMeteoID)"
+        self.title = title
+        self.subtitle = subtitle
+        self.completion = nil
+        self.resolvedPlace = CitySearchResolvedPlace(
+            cityName: title,
+            country: country,
+            coordinate: CLLocationCoordinate2D(
+                latitude: latitude,
+                longitude: longitude
+            ),
+            timeZoneIdentifier: timeZoneIdentifier
+        )
+    }
 }
 
 /// Fully resolved place metadata required before requesting weather.
@@ -70,19 +98,53 @@ struct CitySearchResolvedPlace {
     let timeZoneIdentifier: String
 }
 
+/// Decodable subset of Open-Meteo's GeoNames-backed geocoding response.
+private struct OpenMeteoGeocodingResponse: Decodable {
+    /// Relevance-ranked matches; absent when no place matches the query.
+    let results: [OpenMeteoGeocodingResult]?
+}
+
+/// Location metadata needed to display and save one Open-Meteo result.
+private struct OpenMeteoGeocodingResult: Decodable {
+    let id: Int
+    let name: String
+    let latitude: Double
+    let longitude: Double
+    let country: String?
+    let countryCode: String?
+    let admin1: String?
+    let admin2: String?
+    let admin3: String?
+    let admin4: String?
+    let timezone: String?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, latitude, longitude, country, admin1, admin2, admin3, admin4, timezone
+        case countryCode = "country_code"
+    }
+}
+
 // MARK: - City Search Manager
 
-/// Wraps `MKLocalSearchCompleter` callbacks in observable search state.
+/// Coordinates Apple autocomplete with Open-Meteo's global place-name search.
 @Observable
 class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
-    /// Current place completions exposed to SwiftUI.
+    /// Current Apple place completions exposed to SwiftUI.
     var searchResults: [CitySearchResult] = []
+    /// Current Open-Meteo place-name results exposed to SwiftUI.
+    var openMeteoSearchResults: [CitySearchResult] = []
     /// Whether MapKit is processing a nonempty query.
     var isSearching = false
+    /// Whether the Open-Meteo request for the current query is in flight.
+    var isOpenMeteoSearching = false
     /// Most recent completer failure description.
     var searchErrorMessage: String?
+    /// Most recent Open-Meteo request failure description.
+    var openMeteoErrorMessage: String?
     /// Configured global MapKit place completer.
     private let completer: MKLocalSearchCompleter
+    /// Query owning the current Open-Meteo response, used to reject stale requests.
+    private var currentOpenMeteoQuery = ""
 
     /// Configures an unrestricted global completer and installs this manager as delegate.
     override init() {
@@ -105,17 +167,115 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     func search(query: String) {
         if query.isEmpty {
             searchResults = []
+            openMeteoSearchResults = []
             isSearching = false
+            isOpenMeteoSearching = false
             searchErrorMessage = nil
+            openMeteoErrorMessage = nil
+            currentOpenMeteoQuery = ""
+            completer.queryFragment = ""
             return
         }
         isSearching = true
         searchErrorMessage = nil
+        openMeteoSearchResults = []
+        openMeteoErrorMessage = nil
+        currentOpenMeteoQuery = query
+        isOpenMeteoSearching = query.count >= 2
         completer.queryFragment = query
+    }
+
+    /// Fetches up to five global place-name matches from Open-Meteo.
+    func searchOpenMeteo(query: String, locale: Locale) async {
+        guard query.count >= 2 else {
+            if currentOpenMeteoQuery == query {
+                openMeteoSearchResults = []
+                isOpenMeteoSearching = false
+            }
+            return
+        }
+
+        var components = URLComponents(
+            string: "https://geocoding-api.open-meteo.com/v1/search"
+        )
+        components?.queryItems = [
+            URLQueryItem(name: "name", value: query),
+            URLQueryItem(name: "count", value: "5"),
+            URLQueryItem(
+                name: "language",
+                value: locale.language.languageCode?.identifier ?? "en"
+            ),
+            URLQueryItem(name: "format", value: "json")
+        ]
+
+        guard let url = components?.url else {
+            if currentOpenMeteoQuery == query {
+                openMeteoSearchResults = []
+                isOpenMeteoSearching = false
+                openMeteoErrorMessage = URLError(.badURL).localizedDescription
+            }
+            return
+        }
+
+        do {
+            // Open-Meteo's public endpoint is suitable for the app's current
+            // noncommercial use; a commercial release requires its customer endpoint.
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard !Task.isCancelled, currentOpenMeteoQuery == query else { return }
+            guard let httpResponse = response as? HTTPURLResponse,
+                  200..<300 ~= httpResponse.statusCode else {
+                throw URLError(.badServerResponse)
+            }
+
+            let decoded = try JSONDecoder().decode(OpenMeteoGeocodingResponse.self, from: data)
+            openMeteoSearchResults = (decoded.results ?? []).compactMap { result in
+                guard let timeZoneIdentifier = result.timezone,
+                      TimeZone(identifier: timeZoneIdentifier) != nil else {
+                    return nil
+                }
+
+                var subtitleParts: [String] = []
+                for part in [result.admin4, result.admin3, result.admin2, result.admin1, result.country] {
+                    guard let part,
+                          !part.isEmpty,
+                          !subtitleParts.contains(where: {
+                              $0.localizedCaseInsensitiveCompare(part) == .orderedSame
+                          }),
+                          part.localizedCaseInsensitiveCompare(result.name) != .orderedSame else {
+                        continue
+                    }
+                    subtitleParts.append(part)
+                }
+
+                return CitySearchResult(
+                    openMeteoID: result.id,
+                    title: result.name,
+                    subtitle: subtitleParts.joined(separator: ", "),
+                    country: result.country ?? result.countryCode ?? "",
+                    latitude: result.latitude,
+                    longitude: result.longitude,
+                    timeZoneIdentifier: timeZoneIdentifier
+                )
+            }
+            .prefix(5)
+            .map { $0 }
+            openMeteoErrorMessage = nil
+            isOpenMeteoSearching = false
+        } catch is CancellationError {
+            return
+        } catch {
+            guard currentOpenMeteoQuery == query else { return }
+            openMeteoSearchResults = []
+            openMeteoErrorMessage = error.localizedDescription
+            isOpenMeteoSearching = false
+        }
     }
 
     /// Resolves one completion into coordinate, canonical labels, and timezone.
     func resolvePlace(for result: CitySearchResult) async -> CitySearchResolvedPlace? {
+        if let resolvedPlace = result.resolvedPlace {
+            return resolvedPlace
+        }
         guard let completion = result.completion else { return nil }
         let request = MKLocalSearch.Request(completion: completion)
         let search = MKLocalSearch(request: request)
@@ -178,7 +338,7 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
         isSearching = false
         searchErrorMessage = nil
-        searchResults = completer.results.map { completion in
+        searchResults = completer.results.prefix(5).map { completion in
             CitySearchResult(
                 title: completion.title,
                 subtitle: completion.subtitle,
@@ -203,24 +363,20 @@ extension ContentView {
     var searchSheet: some View {
         NavigationStack {
             List {
-                // Keep a broad but bounded, naturally scrollable suggestion list.
-                Section {
-                    ForEach(Array(displayedSearchResults.prefix(20)), id: \.id) { result in
-                        Button {
-                            guard !citySearchState.isLoading else { return }
-                            Task {
-                                await selectSearchResult(result)
-                            }
-                        } label: {
-                            citySearchSuggestionRow(
-                                for: result,
-                                isLoading: citySearchState.loadingResultID == result.id
-                            )
-                        }
-                        .buttonStyle(.plain)
-                        .disabled(citySearchState.isLoading)
-                        .listRowBackground(theme.colors.background)
-                    }
+                // Apple remains first for rich local places; Open-Meteo follows
+                // with globally available cities and administrative areas.
+                if !citySearchState.manager.searchResults.isEmpty {
+                    citySearchSuggestionSection(
+                        sourceName: "Apple Maps",
+                        results: Array(citySearchState.manager.searchResults.prefix(5))
+                    )
+                }
+
+                if !citySearchState.manager.openMeteoSearchResults.isEmpty {
+                    citySearchSuggestionSection(
+                        sourceName: "Open-Meteo",
+                        results: Array(citySearchState.manager.openMeteoSearchResults.prefix(5))
+                    )
                 }
             }
             .overlay {
@@ -248,9 +404,10 @@ extension ContentView {
                 prompt: Text(localizedString("Search for a place", locale: locale))
             )
             .searchFocused($searchFieldFocused)
+            .defaultFocus($searchFieldFocused, true)
             .onSubmit(of: .search) {
                 // Confirm the first resolved result when search is idle.
-                guard let result = displayedSearchResults.prefix(20).first,
+                guard let result = displayedSearchResults.first,
                       !citySearchState.isLoading else { return }
                 Task {
                     await selectSearchResult(result)
@@ -277,10 +434,13 @@ extension ContentView {
     private var citySearchStatusOverlay: some View {
         let trimmedQuery = citySearchState.query.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedQuery.isEmpty, displayedSearchResults.isEmpty {
-            if citySearchState.manager.isSearching || !citySearchState.isSettled {
+            if citySearchState.manager.isSearching
+                || citySearchState.manager.isOpenMeteoSearching
+                || !citySearchState.isSettled {
                 ProgressView()
                     .controlSize(.large)
-            } else if citySearchState.manager.searchErrorMessage != nil {
+            } else if citySearchState.manager.searchErrorMessage != nil,
+                      citySearchState.manager.openMeteoErrorMessage != nil {
                 ContentUnavailableView(
                     localizedString("Search Unavailable", locale: locale),
                     systemImage: "wifi.exclamationmark",
@@ -293,6 +453,36 @@ extension ContentView {
     }
 
     // MARK: - Search Result Rows
+
+    /// Builds one provider-labelled group capped at five suggestions.
+    private func citySearchSuggestionSection(
+        sourceName: String,
+        results: [CitySearchResult]
+    ) -> some View {
+        Section {
+            ForEach(results.prefix(5)) { result in
+                Button {
+                    guard !citySearchState.isLoading else { return }
+                    Task {
+                        await selectSearchResult(result)
+                    }
+                } label: {
+                    citySearchSuggestionRow(
+                        for: result,
+                        isLoading: citySearchState.loadingResultID == result.id
+                    )
+                }
+                .buttonStyle(.plain)
+                .disabled(citySearchState.isLoading)
+                .listRowBackground(theme.colors.background)
+            }
+        } header: {
+            Text(verbatim: sourceName)
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(theme.colors.secondaryText)
+                .textCase(nil)
+        }
+    }
 
     /// Builds one completion row with per-result resolution progress.
     private func citySearchSuggestionRow(for result: CitySearchResult, isLoading: Bool) -> some View {
@@ -327,9 +517,10 @@ extension ContentView {
         .contentShape(Rectangle())
     }
 
-    /// Current MapKit completions in relevance order.
+    /// Current suggestions in provider order for keyboard submission and empty states.
     var displayedSearchResults: [CitySearchResult] {
-        citySearchState.manager.searchResults
+        Array(citySearchState.manager.searchResults.prefix(5))
+            + Array(citySearchState.manager.openMeteoSearchResults.prefix(5))
     }
 
     // MARK: - Search Lifecycle
@@ -345,7 +536,7 @@ extension ContentView {
         searchFieldFocused = true
     }
 
-    /// Debounces query changes before updating the MapKit completer.
+    /// Debounces query changes before updating both search providers.
     func scheduleCitySearch(for query: String) {
         citySearchState.debounceTask?.cancel()
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -360,6 +551,14 @@ extension ContentView {
             try? await Task.sleep(for: .milliseconds(300))
             guard !Task.isCancelled else { return }
             citySearchState.manager.search(query: trimmedQuery)
+            await citySearchState.manager.searchOpenMeteo(
+                query: trimmedQuery,
+                locale: locale
+            )
+            guard !Task.isCancelled,
+                  citySearchState.query.trimmingCharacters(in: .whitespacesAndNewlines) == trimmedQuery else {
+                return
+            }
             citySearchState.isSettled = true
         }
     }
@@ -369,6 +568,7 @@ extension ContentView {
         let shouldRecenter = citySearchState.isPresented
             || !citySearchState.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             || !citySearchState.manager.searchResults.isEmpty
+            || !citySearchState.manager.openMeteoSearchResults.isEmpty
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             citySearchState.isPresented = false
             searchFieldFocused = false

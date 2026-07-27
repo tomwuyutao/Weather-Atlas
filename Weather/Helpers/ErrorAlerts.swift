@@ -192,3 +192,42 @@ struct ForecastOmissionNotice: View {
         .themedGlass(in: .rect(cornerRadius: 16))
     }
 }
+
+/// Shared progress notice displayed above the bottom toolbar while city weather loads.
+struct WeatherLoadingNotice: View {
+    /// Fraction of configured city fetch attempts completed.
+    let progress: Double
+
+    /// Active semantic palette.
+    @Environment(\.appTheme) private var theme
+    /// App-selected locale used by the status copy.
+    @Environment(\.locale) private var locale
+
+    /// Matches `ForecastOmissionNotice` while adding live loading feedback.
+    var body: some View {
+        let percentage = Int((min(max(progress, 0), 1) * 100).rounded())
+
+        HStack(spacing: 8) {
+            ProgressView()
+                .controlSize(.small)
+
+            Text(localizedString("Loading Weather", locale: locale))
+
+            Text(
+                String(
+                    format: localizedString("(%lld%% completed)", locale: locale),
+                    locale: locale,
+                    percentage
+                )
+            )
+            .monospacedDigit()
+        }
+        .font(.footnote.weight(.medium))
+        .foregroundStyle(theme.colors.secondaryText)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .themedGlass(in: .rect(cornerRadius: 16))
+        .accessibilityElement(children: .combine)
+    }
+}
