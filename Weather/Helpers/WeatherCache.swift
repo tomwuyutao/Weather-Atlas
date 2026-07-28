@@ -82,27 +82,21 @@ extension WeatherService {
             let decodedCache = try JSONDecoder().decode([CachedCityWeather].self, from: data)
             let cachedData = decodedCache.compactMap { $0.toCityWeather() }
             if cachedData.count != decodedCache.count {
-                reportDeveloperWarning(
-                    title: "Cached Weather Invalid",
-                    message: "Some cached weather entries for \(listID.rawValue) could not be restored and the cache was removed."
-                )
+                // Cache migrations are recoverable: discard the incompatible
+                // snapshot and let the normal fetch pipeline replace it.
                 removeCache(for: listID)
                 return nil
             }
             guard cachedWeatherDataLooksCurrent(cachedData, for: listID) else {
-                reportDeveloperWarning(
-                    title: "Cached Weather Stale",
-                    message: "The cached weather data for \(listID.rawValue) was not current enough to reuse and was removed."
-                )
+                // Stale coverage is not a user-facing error. A live fetch below
+                // will surface its own error only if replacement also fails.
                 removeCache(for: listID)
                 return nil
             }
             return cachedData
         } catch {
-            reportDeveloperWarning(
-                title: "Cached Weather Corrupt",
-                message: "The cached weather data for \(listID.rawValue) could not be decoded and was removed."
-            )
+            // Corrupt cache bytes are disposable. Keep this recovery silent;
+            // WeatherService's subsequent live request owns persistent errors.
             removeCache(for: listID)
             return nil
         }
@@ -384,6 +378,8 @@ struct CachedHourlyForecast: Codable {
     let precipitationChance: Double?
     /// Optional hourly UV index.
     let uvIndex: Int?
+    /// Optional horizontal visibility in kilometres.
+    let visibilityKilometers: Double?
 
     /// Copies a domain hourly forecast into its cache representation.
     init(from forecast: HourlyForecast) {
@@ -395,6 +391,7 @@ struct CachedHourlyForecast: Codable {
         cloudCover = forecast.cloudCover
         precipitationChance = forecast.precipitationChance
         uvIndex = forecast.uvIndex
+        visibilityKilometers = forecast.visibilityKilometers
     }
 
     /// Restores an absolute hour using a supplied local day for legacy payloads.
@@ -410,7 +407,8 @@ struct CachedHourlyForecast: Codable {
               let apparentTemperature,
               let cloudCover,
               let precipitationChance,
-              let uvIndex else {
+              let uvIndex,
+              let visibilityKilometers else {
             return nil
         }
         return HourlyForecast(
@@ -420,7 +418,8 @@ struct CachedHourlyForecast: Codable {
             apparentTemperature: apparentTemperature,
             cloudCover: cloudCover,
             precipitationChance: precipitationChance,
-            uvIndex: uvIndex
+            uvIndex: uvIndex,
+            visibilityKilometers: visibilityKilometers
         )
     }
 }

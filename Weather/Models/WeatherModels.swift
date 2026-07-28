@@ -283,6 +283,8 @@ struct HourlyForecast: Identifiable {
     let precipitationChance: Double?
     /// Optional hourly UV index.
     let uvIndex: Int?
+    /// Optional horizontal visibility in kilometres.
+    let visibilityKilometers: Double?
 
     /// Creates an hourly record while keeping legacy symbol-only fixtures valid.
     init(
@@ -292,7 +294,8 @@ struct HourlyForecast: Identifiable {
         apparentTemperature: Double? = nil,
         cloudCover: Double? = nil,
         precipitationChance: Double? = nil,
-        uvIndex: Int? = nil
+        uvIndex: Int? = nil,
+        visibilityKilometers: Double? = nil
     ) {
         self.date = date
         self.symbolName = symbolName
@@ -301,6 +304,7 @@ struct HourlyForecast: Identifiable {
         self.cloudCover = cloudCover
         self.precipitationChance = precipitationChance
         self.uvIndex = uvIndex
+        self.visibilityKilometers = visibilityKilometers
     }
 
     /// Returns this instant's integer clock hour in a supplied city timezone.

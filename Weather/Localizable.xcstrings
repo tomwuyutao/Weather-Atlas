@@ -71,102 +71,6 @@
         }
       }
     },
-    "Search and add a city to %@." : {
-      "comment" : "Description below Add City naming the active destination list.",
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Suche eine Stadt und füge sie zu %@ hinzu." } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Search and add a city to %@." } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Busca una ciudad y añádela a %@." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Recherchez une ville et ajoutez-la à %@." } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Cerca una città e aggiungila a %@." } },
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "都市を検索して%@に追加します。" } },
-        "ko" : { "stringUnit" : { "state" : "translated", "value" : "도시를 검색하여 %@에 추가합니다." } },
-        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Busque uma cidade e adicione-a a %@." } },
-        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Найдите город и добавьте его в «%@»." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "搜索城市并添加到“%@”。" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "搜尋城市並加入「%@」。" } }
-      }
-    },
-    "Create a list to organize cities for a trip or region." : {
-      "comment" : "Description explaining why a user may create a city list.",
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Erstelle eine Liste, um Städte nach Reise oder Region zu organisieren." } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Create a list to organize cities for a trip or region." } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Crea una lista para organizar ciudades por viaje o región." } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Créez une liste pour organiser les villes par voyage ou région." } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Crea un elenco per organizzare le città per viaggio o area." } },
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "旅行や地域ごとに都市を整理するリストを作成します。" } },
-        "ko" : { "stringUnit" : { "state" : "translated", "value" : "여행이나 지역별로 도시를 정리할 목록을 만듭니다." } },
-        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Crie uma lista para organizar cidades por viagem ou região." } },
-        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Создайте список, чтобы сгруппировать города по поездкам или регионам." } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "创建列表，按行程或地区整理城市。" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "建立清單，按行程或地區整理城市。" } }
-      }
-    },
-    "10 Days" : {
-      "comment" : "Segmented control option showing every available forecast day, up to ten.",
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "10 Tage" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "10 Days" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "10 días" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "10 jours" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "10 giorni" } },
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "10日間" } },
-        "ko" : { "stringUnit" : { "state" : "translated", "value" : "10일" } },
-        "pt" : { "stringUnit" : { "state" : "translated", "value" : "10 dias" } },
-        "ru" : { "stringUnit" : { "state" : "translated", "value" : "10 дней" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "10 天" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "10 天" } }
-      }
-    },
-    "Chart Range" : {
-      "comment" : "Accessibility label for the chart's day-versus-forecast segmented control.",
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Diagrammbereich" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Chart Range" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Intervalo del gráfico" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Plage du graphique" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Intervallo del grafico" } },
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "グラフ範囲" } },
-        "ko" : { "stringUnit" : { "state" : "translated", "value" : "차트 범위" } },
-        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Intervalo do gráfico" } },
-        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Диапазон графика" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "图表范围" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "圖表範圍" } }
-      }
-    },
-    "Day" : {
-      "comment" : "Segmented control option showing the selected day's hourly forecast.",
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Tag" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Day" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Día" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Jour" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Giorno" } },
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "1日" } },
-        "ko" : { "stringUnit" : { "state" : "translated", "value" : "일간" } },
-        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Dia" } },
-        "ru" : { "stringUnit" : { "state" : "translated", "value" : "День" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "单日" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "單日" } }
-      }
-    },
-    "Feels Like" : {
-      "comment" : "Title for the apparent-temperature metric in Detail and Chart View.",
-      "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Gefühlt" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Feels Like" } },
-        "es" : { "stringUnit" : { "state" : "translated", "value" : "Sensación" } },
-        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Ressenti" } },
-        "it" : { "stringUnit" : { "state" : "translated", "value" : "Percepita" } },
-        "ja" : { "stringUnit" : { "state" : "translated", "value" : "体感温度" } },
-        "ko" : { "stringUnit" : { "state" : "translated", "value" : "체감 온도" } },
-        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Sensação" } },
-        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Ощущается как" } },
-        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "体感温度" } },
-        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "體感溫度" } }
-      }
-    },
     " for you." : {
       "comment" : "Part of a sentence describing how many cities will be included in a newly created city list.",
       "isCommentAutoGenerated" : true,
@@ -239,13 +143,144 @@
         }
       }
     },
+    "(%lld%% completed)" : {
+      "comment" : "Parenthesized percentage shown beside the initial weather-loading indicator.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld%% abgeschlossen)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld%% completed)"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld%% completado)"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld%% terminé)"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld%% completato)"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld%% 完了)"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld%% 완료)"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(%lld%% concluído)"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "(завершено на %lld%%)"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（已完成 %lld%%）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "（已完成 %lld%%）"
+          }
+        }
+      }
+    },
     "%@ · %@" : {
       "comment" : "A line of text that includes the name of the city and the weather metric label.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
         "en" : {
           "stringUnit" : {
-            "state" : "new",
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ · %2$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
             "value" : "%1$@ · %2$@"
           }
         }
@@ -675,6 +710,77 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "由於缺少資料，已排除1個城市。"
+          }
+        }
+      }
+    },
+    "10 Days" : {
+      "comment" : "Segmented control option showing every available forecast day, up to ten.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 Tage"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 Days"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 días"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 jours"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 giorni"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10日間"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10일"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 dias"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 дней"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "10 天"
           }
         }
       }
@@ -1110,6 +1216,7 @@
     },
     "Add" : {
       "comment" : "Button label that triggers the creation of a new city list.",
+      "extractionState" : "stale",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -1182,6 +1289,7 @@
     },
     "Add City" : {
       "comment" : "Label for a button that adds a city to a list.",
+      "extractionState" : "stale",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -1254,6 +1362,7 @@
     },
     "Add City to List" : {
       "comment" : "Label for a button that opens city search from the list manager.",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1324,6 +1433,7 @@
       }
     },
     "Add Continent" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1394,6 +1504,7 @@
       }
     },
     "Add Country" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1465,6 +1576,7 @@
     },
     "Add List" : {
       "comment" : "Action that opens the city-list creation sheet.",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -1605,6 +1717,7 @@
       }
     },
     "Add to List" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -2246,6 +2359,7 @@
     },
     "Back" : {
       "comment" : "Label for the back button.",
+      "extractionState" : "stale",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -2738,9 +2852,148 @@
         }
       }
     },
+    "Chart Range" : {
+      "comment" : "Accessibility label for the chart's day-versus-forecast segmented control.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diagrammbereich"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chart Range"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Intervalo del gráfico"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plage du graphique"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Intervallo del grafico"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "グラフ範囲"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "차트 범위"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Intervalo do gráfico"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Диапазон графика"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "图表范围"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "圖表範圍"
+          }
+        }
+      }
+    },
     "Check your connection and try again." : {
       "comment" : "Description of an error message displayed when the user tries to search for a city but the search fails due to a connection issue.",
-      "isCommentAutoGenerated" : true
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Überprüfe deine Verbindung und versuche es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Check your connection and try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comprueba tu conexión e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vérifiez votre connexion et réessayez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Controlla la connessione e riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続を確認して、もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 상태를 확인하고 다시 시도하세요."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verifique a ligação e tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверьте подключение и повторите попытку."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请检查网络连接，然后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請檢查網路連線，然後再試一次。"
+          }
+        }
+      }
     },
     "Cities" : {
       "localizations" : {
@@ -3588,6 +3841,77 @@
         }
       }
     },
+    "Create a list to organize cities for a trip or region." : {
+      "comment" : "Description explaining why a user may create a city list.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erstelle eine Liste, um Städte nach Reise oder Region zu organisieren."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Create a list to organize cities for a trip or region."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crea una lista para organizar ciudades por viaje o región."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Créez une liste pour organiser les villes par voyage ou région."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crea un elenco per organizzare le città per viaggio o area."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旅行や地域ごとに都市を整理するリストを作成します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여행이나 지역별로 도시를 정리할 목록을 만듭니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Crie uma lista para organizar cidades por viagem ou região."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Создайте список, чтобы сгруппировать города по поездкам или регионам."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建列表，按行程或地区整理城市。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建立清單，按行程或地區整理城市。"
+          }
+        }
+      }
+    },
     "Creating a list of 15 cities" : {
       "comment" : "Title of a view that appears when a new city list is being created.",
       "isCommentAutoGenerated" : true,
@@ -3798,6 +4122,147 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "深色"
+          }
+        }
+      }
+    },
+    "Date" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datum"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Date"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fecha"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Date"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "日付"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "날짜"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Data"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дата"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "日期"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "日期"
+          }
+        }
+      }
+    },
+    "Day" : {
+      "comment" : "Segmented control option showing the selected day's hourly forecast.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tag"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Day"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Día"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jour"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Giorno"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1日"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "일간"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dia"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "День"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "单日"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "單日"
           }
         }
       }
@@ -4722,6 +5187,77 @@
         }
       }
     },
+    "Feels Like" : {
+      "comment" : "Title for the apparent-temperature metric in Detail and Chart View.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gefühlt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Feels Like"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensación"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ressenti"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Percepita"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "体感温度"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "체감 온도"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sensação"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ощущается как"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "体感温度"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "體感溫度"
+          }
+        }
+      }
+    },
     "Filter Sunny" : {
       "localizations" : {
         "de" : {
@@ -5068,6 +5604,76 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "說明"
+          }
+        }
+      }
+    },
+    "High" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Höchstwert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "High"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máximo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Maximum"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Massimo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最高値"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최고값"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Máximo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Максимум"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最高值"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最高值"
           }
         }
       }
@@ -5779,77 +6385,6 @@
         }
       }
     },
-    "(%lld%% completed)" : {
-      "comment" : "Parenthesized percentage shown beside the initial weather-loading indicator.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(%lld%% abgeschlossen)"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(%lld%% completed)"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(%lld%% completado)"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(%lld%% terminé)"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(%lld%% completato)"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(%lld%% 完了)"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(%lld%% 완료)"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(%lld%% concluído)"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "(завершено на %lld%%)"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "（已完成 %lld%%）"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "（已完成 %lld%%）"
-          }
-        }
-      }
-    },
     "Loading Weather" : {
       "comment" : "Label for the loading weather overlay.",
       "isCommentAutoGenerated" : true,
@@ -5918,6 +6453,76 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在載入天氣"
+          }
+        }
+      }
+    },
+    "Low" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tiefstwert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Low"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mínimo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minimum"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Minimo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最低値"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "최저값"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mínimo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Минимум"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最低值"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "最低值"
           }
         }
       }
@@ -6280,6 +6885,7 @@
     },
     "Max Temp" : {
       "comment" : "Label for the maximum temperature in the city detail screen.",
+      "extractionState" : "stale",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -6565,6 +7171,7 @@
     },
     "Min Temp" : {
       "comment" : "Title of a sunny factor tile displaying the minimum temperature.",
+      "extractionState" : "stale",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -6777,7 +7384,75 @@
     },
     "Missing place data for %@." : {
       "comment" : "A localized string describing an error that occurs when trying to fetch weather data for a specific city. The argument is the city name.",
-      "isCommentAutoGenerated" : true
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fehlende Ortsdaten für %1$@."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Missing place data for %1$@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faltan datos de ubicación para %1$@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Données de lieu manquantes pour %1$@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dati del luogo mancanti per %1$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@の場所データがありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@의 장소 데이터가 없습니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faltam dados de localização para %1$@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отсутствуют данные о местоположении для %1$@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缺少 %1$@ 的地点数据。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "缺少 %1$@ 的地點資料。"
+          }
+        }
+      }
     },
     "Missing precipitation data for %@." : {
       "localizations" : {
@@ -7622,6 +8297,122 @@
             "value" : "附近城市"
           }
         }
+      }
+    },
+    "New" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Neu" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "New" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Nuevo" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Nouveau" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Nuovo" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "新規" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "새로 만들기" } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Novo" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Создать" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "新建" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "新增" } }
+      }
+    },
+    "New City" : {
+      "comment" : "Title of the action that searches for a city to add.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Stadt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New City"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nueva ciudad"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nouvelle ville"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nuova città"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しい都市"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 도시"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nova cidade"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новый город"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新城市"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新城市"
+          }
+        }
+      }
+    },
+    "New Continent" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Neuer Kontinent" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "New Continent" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Nuevo continente" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Nouveau continent" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Nuovo continente" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "新しい大陸" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "새 대륙" } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Novo continente" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Новый континент" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "新建大洲" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "新增大洲" } }
+      }
+    },
+    "New Country" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Neues Land" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "New Country" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Nuevo país" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Nouveau pays" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Nuovo paese" } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "新しい国" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "새 국가" } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Novo país" } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Новая страна" } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "新建国家" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "新增國家" } }
       }
     },
     "New Empty List" : {
@@ -9465,7 +10256,6 @@
       }
     },
     "Search" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -9531,6 +10321,150 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "搜尋"
+          }
+        }
+      }
+    },
+    "Search and add a city to %@." : {
+      "comment" : "Description below Add City naming the active destination list.",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche eine Stadt und füge sie zu %@ hinzu."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search and add a city to %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Busca una ciudad y añádela a %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recherchez une ville et ajoutez-la à %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerca una città e aggiungila a %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "都市を検索して%@に追加します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "도시를 검색하여 %@에 추가합니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Busque uma cidade e adicione-a a %@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Найдите город и добавьте его в «%@»."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索城市并添加到“%@”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜尋城市並加入「%@」。"
+          }
+        }
+      }
+    },
+    "Search and add a new city to %@." : {
+      "comment" : "Description below New City naming the active destination list.",
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche eine neue Stadt und füge sie zu %@ hinzu."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search and add a new city to %@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Busca una ciudad nueva y añádela a %@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recherchez une nouvelle ville et ajoutez-la à %@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cerca una nuova città e aggiungila a %@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しい都市を検索して%@に追加します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 도시를 검색하여 %@에 추가합니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Busque uma nova cidade e adicione-a a %@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Найдите новый город и добавьте его в «%@»."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索新城市并添加到“%@”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜尋新城市並加入「%@」。"
           }
         }
       }
@@ -9676,9 +10610,92 @@
         }
       }
     },
+    "Search for a place and save it to %@." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Suche nach einem Ort und speichere ihn in „%1$@“." } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Search for a place and save it to %1$@." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Busca un lugar y guárdalo en %1$@." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Recherchez un lieu et enregistrez-le dans %1$@." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Cerca un luogo e salvalo in %1$@." } },
+        "ja" : { "stringUnit" : { "state" : "translated", "value" : "場所を検索して「%1$@」に保存します。" } },
+        "ko" : { "stringUnit" : { "state" : "translated", "value" : "장소를 검색하여 %1$@에 저장합니다." } },
+        "pt" : { "stringUnit" : { "state" : "translated", "value" : "Pesquise um local e guarde-o em %1$@." } },
+        "ru" : { "stringUnit" : { "state" : "translated", "value" : "Найдите место и сохраните его в «%1$@»." } },
+        "zh-Hans" : { "stringUnit" : { "state" : "translated", "value" : "搜索地点并保存到“%1$@”。" } },
+        "zh-Hant" : { "stringUnit" : { "state" : "translated", "value" : "搜尋地點並儲存到「%1$@」。" } }
+      }
+    },
     "Search Unavailable" : {
       "comment" : "Title for a view that indicates that the search feature is currently unavailable.",
-      "isCommentAutoGenerated" : true
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suche nicht verfügbar"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Search Unavailable"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Búsqueda no disponible"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recherche indisponible"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ricerca non disponibile"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "検索を利用できません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "검색을 사용할 수 없음"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesquisa indisponível"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Поиск недоступен"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "搜索不可用"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法使用搜尋"
+          }
+        }
+      }
     },
     "See when each place shines" : {
       "localizations" : {
@@ -9746,6 +10763,76 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "查看每個地點何時最晴朗"
+          }
+        }
+      }
+    },
+    "Series" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Datenreihe"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Series"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serie"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Série"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serie"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系列"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계열"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Série"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ряд данных"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "系列"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "數列"
           }
         }
       }
@@ -10885,6 +11972,76 @@
         }
       }
     },
+    "Time" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uhrzeit"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Time"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hora"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Heure"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ora"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時刻"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시간"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hora"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Время"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "时间"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "時間"
+          }
+        }
+      }
+    },
     "Today" : {
       "localizations" : {
         "de" : {
@@ -11381,6 +12538,76 @@
         }
       }
     },
+    "Value" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Value"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valor"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valeur"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valore"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "値"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "값"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Valor"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Значение"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "数值"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "數值"
+          }
+        }
+      }
+    },
     "Version" : {
       "localizations" : {
         "de" : {
@@ -11519,6 +12746,77 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "檢視"
+          }
+        }
+      }
+    },
+    "Visibility" : {
+      "comment" : "Title for the horizontal visibility metric in Detail and Chart View.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sichtweite"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visibility"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visibilidad"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visibilité"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visibilità"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "視程"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "가시거리"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Visibilidade"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Видимость"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "能见度"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "能見度"
           }
         }
       }
@@ -11739,7 +13037,75 @@
     },
     "Weather data could not be loaded: %@" : {
       "comment" : "A generic error message that could be shown when weather data cannot be loaded. The argument is a description of the underlying error.",
-      "isCommentAutoGenerated" : true
+      "isCommentAutoGenerated" : true,
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wetterdaten konnten nicht geladen werden: %1$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Weather data could not be loaded: %1$@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron cargar los datos meteorológicos: %1$@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de charger les données météo : %1$@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile caricare i dati meteo: %1$@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "天気データを読み込めませんでした：%1$@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "날씨 데이터를 불러올 수 없습니다: %1$@"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível carregar os dados meteorológicos: %1$@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось загрузить данные о погоде: %1$@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法加载天气数据：%1$@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法載入天氣資料：%1$@"
+          }
+        }
+      }
     },
     "Weather Data Missing" : {
       "localizations" : {

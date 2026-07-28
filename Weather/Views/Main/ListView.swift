@@ -105,16 +105,6 @@ extension ContentView {
                         contextMenuListID: weatherService.activeListID
                     )
                 }
-
-                // Rank omissions against the active list, excluding temporary search results.
-                let droppedCityCount = rankingOmissionCount(in: weatherService.cityWeatherData)
-                if droppedCityCount > 0 {
-                    forecastAvailabilityNote(droppedCityCount: droppedCityCount)
-                        .padding(.leading, 5)
-                        .padding(.top, 16)
-                        .padding(.bottom, 8)
-                        .cityListNativeRowStyle(background: theme.colors.background)
-                }
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
@@ -128,7 +118,7 @@ extension ContentView {
         }
     }
 
-    /// Empty-list explanation and direct Add City action shared with Home.
+    /// Empty-list explanation and direct New City action shared with Home.
     var emptyListContent: some View {
         VStack(spacing: 16) {
             Image(systemName: "building.2")
@@ -147,9 +137,9 @@ extension ContentView {
             .multilineTextAlignment(.center)
 
             Button {
-                presentAddCitySearch()
+                presentNewCitySearch()
             } label: {
-                Label(localizedString("Add City", locale: locale), systemImage: "plus")
+                Label(localizedString("New City", locale: locale), systemImage: "plus")
                     .font(.body.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                     .padding(.horizontal, 18)

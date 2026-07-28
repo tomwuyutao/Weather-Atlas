@@ -9,6 +9,7 @@
 import CoreLocation
 import Foundation
 import MapKit
+import NaturalLanguage
 import SwiftUI
 
 // MARK: - Presentation State
@@ -195,40 +196,26 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
             return
         }
 
-        var components = URLComponents(
-            string: "https://geocoding-api.open-meteo.com/v1/search"
-        )
-        components?.queryItems = [
-            URLQueryItem(name: "name", value: query),
-            URLQueryItem(name: "count", value: "5"),
-            URLQueryItem(
-                name: "language",
-                value: locale.language.languageCode?.identifier ?? "en"
-            ),
-            URLQueryItem(name: "format", value: "json")
-        ]
-
-        guard let url = components?.url else {
-            if currentOpenMeteoQuery == query {
-                openMeteoSearchResults = []
-                isOpenMeteoSearching = false
-                openMeteoErrorMessage = URLError(.badURL).localizedDescription
-            }
-            return
-        }
-
         do {
-            // Open-Meteo's public endpoint is suitable for the app's current
-            // noncommercial use; a commercial release requires its customer endpoint.
-            let (data, response) = try await URLSession.shared.data(from: url)
+            let appLanguage = locale.language.languageCode?.identifier.lowercased() ?? "en"
+            var results = try await openMeteoResults(query: query, language: appLanguage)
             guard !Task.isCancelled, currentOpenMeteoQuery == query else { return }
-            guard let httpResponse = response as? HTTPURLResponse,
-                  200..<300 ~= httpResponse.statusCode else {
-                throw URLError(.badServerResponse)
+
+            // The selected app language is the default. If Open-Meteo has no
+            // result in that language, let Apple's recognizer supply one retry
+            // rather than maintaining a custom script-detection algorithm.
+            if results.isEmpty,
+               let recognizedLanguage = NLLanguageRecognizer.dominantLanguage(for: query)?.rawValue,
+               recognizedLanguage != "und",
+               recognizedLanguage != appLanguage {
+                results = try await openMeteoResults(
+                    query: query,
+                    language: recognizedLanguage
+                )
+                guard !Task.isCancelled, currentOpenMeteoQuery == query else { return }
             }
 
-            let decoded = try JSONDecoder().decode(OpenMeteoGeocodingResponse.self, from: data)
-            openMeteoSearchResults = (decoded.results ?? []).compactMap { result in
+            openMeteoSearchResults = results.compactMap { result in
                 guard let timeZoneIdentifier = result.timezone,
                       TimeZone(identifier: timeZoneIdentifier) != nil else {
                     return nil
@@ -269,6 +256,36 @@ class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
             openMeteoErrorMessage = error.localizedDescription
             isOpenMeteoSearching = false
         }
+    }
+
+    /// Requests raw Open-Meteo matches in exactly one provider language.
+    private func openMeteoResults(
+        query: String,
+        language: String
+    ) async throws -> [OpenMeteoGeocodingResult] {
+        var components = URLComponents(
+            string: "https://geocoding-api.open-meteo.com/v1/search"
+        )
+        components?.queryItems = [
+            URLQueryItem(name: "name", value: query),
+            URLQueryItem(name: "count", value: "5"),
+            URLQueryItem(name: "language", value: language),
+            URLQueryItem(name: "format", value: "json")
+        ]
+        guard let url = components?.url else {
+            throw URLError(.badURL)
+        }
+
+        // Open-Meteo's public endpoint is suitable for the app's current
+        // noncommercial use; a commercial release requires its customer endpoint.
+        let (data, response) = try await URLSession.shared.data(from: url)
+        guard let httpResponse = response as? HTTPURLResponse,
+              200..<300 ~= httpResponse.statusCode else {
+            throw URLError(.badServerResponse)
+        }
+        return try JSONDecoder()
+            .decode(OpenMeteoGeocodingResponse.self, from: data)
+            .results ?? []
     }
 
     /// Resolves one completion into coordinate, canonical labels, and timezone.
@@ -362,60 +379,71 @@ extension ContentView {
     /// Builds the native search sheet, suggestions, progress, and empty states.
     var searchSheet: some View {
         NavigationStack {
-            List {
-                // Apple remains first for rich local places; Open-Meteo follows
-                // with globally available cities and administrative areas.
-                if !citySearchState.manager.searchResults.isEmpty {
-                    citySearchSuggestionSection(
-                        sourceName: "Apple Maps",
-                        results: Array(citySearchState.manager.searchResults.prefix(5))
-                    )
-                }
+            citySearchContent
+        }
+        .background(theme.colors.background.ignoresSafeArea())
+    }
 
-                if !citySearchState.manager.openMeteoSearchResults.isEmpty {
-                    citySearchSuggestionSection(
-                        sourceName: "Open-Meteo",
-                        results: Array(citySearchState.manager.openMeteoSearchResults.prefix(5))
-                    )
-                }
+    /// Search destination reused by its standalone sheet and the unified New sheet.
+    var citySearchContent: some View {
+        List {
+            // Apple remains first for rich local places; Open-Meteo follows
+            // with globally available cities and administrative areas.
+            if !citySearchState.manager.searchResults.isEmpty {
+                citySearchSuggestionSection(
+                    sourceName: "Apple Maps",
+                    results: Array(citySearchState.manager.searchResults.prefix(5))
+                )
             }
-            .overlay {
-                citySearchStatusOverlay
+
+            if !citySearchState.manager.openMeteoSearchResults.isEmpty {
+                citySearchSuggestionSection(
+                    sourceName: "Open-Meteo",
+                    results: Array(citySearchState.manager.openMeteoSearchResults.prefix(5))
+                )
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-            .navigationTitle(localizedString("Add City", locale: locale))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        dismissNativeCitySearchAndRecenter()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(theme.colors.primaryText)
-                    }
-                }
-            }
-            .searchable(
-                text: $citySearchState.query,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: Text(localizedString("Search for a place", locale: locale))
-            )
-            .searchFocused($searchFieldFocused)
-            .defaultFocus($searchFieldFocused, true)
-            .onSubmit(of: .search) {
-                // Confirm the first resolved result when search is idle.
-                guard let result = displayedSearchResults.first,
-                      !citySearchState.isLoading else { return }
-                Task {
-                    await selectSearchResult(result)
+        }
+        .overlay {
+            citySearchStatusOverlay
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .scrollDismissesKeyboard(.interactively)
+        .navigationTitle(localizedString("New City", locale: locale))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    dismissNativeCitySearchAndRecenter()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(theme.colors.primaryText)
                 }
             }
         }
-        .background(theme.colors.background.ignoresSafeArea())
-        .onAppear {
+        .searchable(
+            text: $citySearchState.query,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: Text(localizedString("Search for a place", locale: locale))
+        )
+        .searchFocused($searchFieldFocused)
+        .onSubmit(of: .search) {
+            // Confirm the first resolved result when search is idle.
+            guard let result = displayedSearchResults.first,
+                  !citySearchState.isLoading else { return }
+            Task {
+                await selectSearchResult(result)
+            }
+        }
+        .task {
+            // A search destination pushed inside the New sheet appears before
+            // its native search field has joined the focus system. Request
+            // focus after that transition instead of losing the initial write.
+            searchFieldFocused = false
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(350))
+            guard citySearchState.isPresented || newSheetState.showsCitySearch else { return }
             searchFieldFocused = true
         }
     }
@@ -525,15 +553,24 @@ extension ContentView {
 
     // MARK: - Search Lifecycle
 
-    /// Opens Add City search targeting the currently active list.
-    func presentAddCitySearch() {
+    /// Prepares city search to save into the currently active list.
+    func prepareNewCitySearch() {
         citySearchState.targetListID = weatherService.activeListID
+        // Ensure the destination's delayed request changes the focus binding
+        // even when search was focused during an earlier presentation.
+        searchFieldFocused = false
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             isMapCardPresented = false
             selectedMapCity = nil
+        }
+    }
+
+    /// Opens standalone New City search targeting the currently active list.
+    func presentNewCitySearch() {
+        prepareNewCitySearch()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             citySearchState.isPresented = true
         }
-        searchFieldFocused = true
     }
 
     /// Debounces query changes before updating both search providers.
@@ -571,8 +608,21 @@ extension ContentView {
             || !citySearchState.manager.openMeteoSearchResults.isEmpty
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             citySearchState.isPresented = false
+            newSheetState.isPresented = false
             searchFieldFocused = false
         }
+        clearCitySearchStateAndRecenter(shouldRecenter: shouldRecenter)
+    }
+
+    /// Clears provider state when either city-search presentation closes.
+    func clearCitySearchStateAndRecenter(shouldRecenter: Bool? = nil) {
+        let shouldRecenter = shouldRecenter ?? (
+            citySearchState.isPresented
+                || !citySearchState.query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || !citySearchState.manager.searchResults.isEmpty
+                || !citySearchState.manager.openMeteoSearchResults.isEmpty
+        )
+        searchFieldFocused = false
         // Cancel debounce work and clear all transient search state.
         citySearchState.query = ""
         citySearchState.manager.search(query: "")
@@ -617,6 +667,7 @@ extension ContentView {
             citySearchState.targetListID = nil
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 citySearchState.isPresented = false
+                newSheetState.isPresented = false
                 citySearchState.query = ""
             }
             await switchToList(targetListID)
@@ -627,14 +678,15 @@ extension ContentView {
             return
         }
 
-        let didAdd = weatherService.addCityToList(tempCityWeather, listID: targetListID)
+        let didSave = weatherService.addCityToList(tempCityWeather, listID: targetListID)
         citySearchState.targetListID = nil
         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
             citySearchState.isPresented = false
+            newSheetState.isPresented = false
             citySearchState.query = ""
         }
         await switchToList(targetListID)
-        if didAdd {
+        if didSave {
             showCityAddedConfirmation(
                 cityAddedConfirmationMessage(
                     cityName: localizedCityName(for: tempCityWeather.city),

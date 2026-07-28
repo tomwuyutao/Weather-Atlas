@@ -44,7 +44,7 @@ extension ContentView {
                     presentDetail(for: cityWeather)
                 } label: {
                     HStack(alignment: .center, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 4) {
+                        VStack(alignment: .leading, spacing: 2) {
                             Text(metric.value)
                                 .font(.system(size: 32, weight: .semibold, design: .default))
                                 .foregroundStyle(theme.colors.primaryText)
@@ -56,7 +56,6 @@ extension ContentView {
                                 .foregroundStyle(theme.colors.primaryText)
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.72)
-                                .padding(.top, 5)
                         }
                         .frame(maxHeight: .infinity, alignment: .center)
 
@@ -86,9 +85,9 @@ extension ContentView {
                 among: mapCities,
                 on: cardForecastDate
             ) {
-                // ForecastOmissionNotice owns the shared Liquid Glass surface;
+                // FloatingBox owns the shared Liquid Glass surface;
                 // avoid wrapping it in a second glass card on the map.
-                ForecastOmissionNotice(droppedCityCount: 1)
+                FloatingBox(content: .droppedCities(count: 1))
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: floatingMapCardHeight)
             } else {

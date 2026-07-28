@@ -256,6 +256,7 @@ private struct SunnyWindowLargeWidgetView: View {
                 SunnyHoursHeader(
                     cityName: city.cityName,
                     conditionSymbolName: city.currentConditionSymbolName,
+                    summaryText: widgetSunnyRangeText(for: city, locale: locale),
                     font: .headline.weight(.semibold),
                     usesWeatherColors: true
                 )
@@ -278,6 +279,7 @@ private struct SunnyWindowLargeWidgetView: View {
                         timeZone: timeZone,
                         chartBounds: chartBounds
                     )
+                    .padding(.top, 7)
                     .frame(maxHeight: .infinity, alignment: .top)
 
                     SunnyHoursLegend()
@@ -429,9 +431,7 @@ private struct SunnyWindowLargeChart: View {
                             .fill(
                                 usesSystemRenderingColors
                                     ? .primary.opacity(colorSchemeContrast == .increased ? 0.24 : 0.14)
-                                    : colorSchemeContrast == .increased
-                                        ? renderedPrimary.opacity(0.52)
-                                        : renderedSecondary.opacity(0.16)
+                                    : palette.settingsRow
                             )
                             .frame(height: capsuleHeight)
 
@@ -618,6 +618,8 @@ private struct SunnyWindowLargeChart: View {
 private struct SunnyHoursHomeWidgetView: View {
     /// Active widget family used for compact spacing decisions.
     @Environment(\.widgetFamily) private var family
+    /// Main-app locale used by the sunny-window summary.
+    @Environment(\.locale) private var locale
     /// Widget appearance selecting the shared palette.
     @Environment(\.colorScheme) private var colorScheme
     /// Timeline entry supplied by the shared provider.
@@ -639,6 +641,7 @@ private struct SunnyHoursHomeWidgetView: View {
             SunnyHoursHeader(
                 cityName: city.cityName,
                 conditionSymbolName: city.currentConditionSymbolName,
+                summaryText: widgetSunnyRangeText(for: city, locale: locale),
                 font: .headline.weight(.semibold),
                 usesWeatherColors: true
             )
@@ -647,7 +650,7 @@ private struct SunnyHoursHomeWidgetView: View {
                 WidgetDataUnavailablePlaceholder()
             } else {
                 SunnyHoursTimeline(city: city, currentDate: entry.date)
-                    .padding(.top, 5)
+                    .padding(.top, 12)
                     .frame(maxHeight: .infinity)
 
                 SunnyHoursLegend()
@@ -1180,6 +1183,8 @@ private struct SunnyHoursHeader: View {
     let cityName: String
     /// Optional recognized current-condition source symbol.
     let conditionSymbolName: String?
+    /// Optional sunny-window text replacing the condition icon on Home Screen widgets.
+    var summaryText: String? = nil
     /// Family-specific header font.
     let font: Font
     /// Whether full-color weather icon rendering is permitted.
@@ -1192,7 +1197,17 @@ private struct SunnyHoursHeader: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
             Spacer(minLength: 6)
-            if let conditionSymbolName {
+            if let summaryText {
+                Text(summaryText)
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(
+                        widgetRenderingMode == .fullColor
+                            ? AppPalette.values(for: colorScheme).secondaryText
+                            : Color.secondary
+                    )
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+            } else if let conditionSymbolName {
                 let displaySymbolName = widgetConditionDisplaySymbolName(for: conditionSymbolName)
                 if usesWeatherColors && widgetRenderingMode == .fullColor {
                     let palette = widgetConditionIconPalette(
@@ -1211,6 +1226,35 @@ private struct SunnyHoursHeader: View {
         }
         .font(font)
     }
+}
+
+/// Formats the longest current-day sunny or partly-sunny run for widget headers.
+private func widgetSunnyRangeText(for city: WidgetDataCity, locale: Locale) -> String {
+    guard city.widgetCurrentIssue == nil else { return "—" }
+    let ranges = SunnyHoursFormatting.contiguousRanges(
+        in: city.sunnyHours + city.partlySunnyHours
+    )
+    guard let range = ranges.max(by: {
+        $0.upperBound - $0.lowerBound < $1.upperBound - $1.lowerBound
+    }) else {
+        return widgetLocalizedString("No Sun", locale: locale)
+    }
+
+    let formatter = DateFormatter()
+    formatter.locale = locale
+    formatter.dateFormat = DateFormatter.dateFormat(
+        fromTemplate: "j",
+        options: 0,
+        locale: locale
+    )
+    func hourLabel(_ hour: Int) -> String {
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.hour = ((hour % 24) + 24) % 24
+        return components.date.map(formatter.string(from:))
+            ?? SunnyHoursFormatting.chartHourLabel(hour)
+    }
+    return "\(hourLabel(range.lowerBound)) – \(hourLabel(range.upperBound + 1))"
 }
 
 /// Current-day capsule timeline shared by medium and Lock Screen widgets.
@@ -1356,7 +1400,7 @@ private struct SunnyHoursTimeline: View {
             let colors = AppPalette.increasedContrastValues(for: colorScheme)
             if city.sunnyHours.contains(hour) { return colors.dotSun }
             if city.partlySunnyHours.contains(hour) { return colors.dotPartlyCloudy }
-            return colors.titleText.opacity(0.52)
+            return colors.settingsRow
         }
 
         if city.sunnyHours.contains(hour) {
@@ -1365,7 +1409,7 @@ private struct SunnyHoursTimeline: View {
         if city.partlySunnyHours.contains(hour) {
             return palette.dotPartlyCloudy
         }
-        return palette.secondaryText.opacity(0.16)
+        return palette.settingsRow
     }
 
     /// Thin marker placed at the nearest current-hour boundary.
@@ -1469,7 +1513,7 @@ private struct SunnyHoursTimeline: View {
 
 }
 
-/// Sunny and partly-sunny key shown below Home Screen timelines.
+/// Centered three-state key shared by medium and large Home Screen timelines.
 private struct SunnyHoursLegend: View {
     /// Replaces color dots with condition symbols when requested.
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
@@ -1480,9 +1524,9 @@ private struct SunnyHoursLegend: View {
     /// Widget appearance selecting the shared palette.
     @Environment(\.colorScheme) private var colorScheme
 
-    /// Builds the two-item legend and top divider.
+    /// Builds the same three centered legend items used by Detail View.
     var body: some View {
-        HStack(spacing: 9) {
+        HStack(spacing: 14) {
             item(
                 // Effective fully sunny swatch color.
                 color: usesSystemRenderingColors
@@ -1503,22 +1547,26 @@ private struct SunnyHoursLegend: View {
                 title: "Partly Sunny",
                 symbol: WeatherIconSymbol.partlyCloudy
             )
+            item(
+                color: usesSystemRenderingColors
+                    ? .primary.opacity(colorSchemeContrast == .increased ? 0.24 : 0.14)
+                    : colorSchemeContrast == .increased
+                        ? AppPalette.increasedContrastValues(for: colorScheme).settingsRow
+                        : palette.settingsRow,
+                title: "No Sun",
+                symbol: WeatherIconSymbol.cloudy
+            )
         }
         .font(.caption2.weight(.medium))
         .foregroundStyle(renderedSecondary)
         .lineLimit(1)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.top, 9)
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(renderedSecondary.opacity(0.18))
-                .frame(height: 1)
-        }
+        .frame(maxWidth: .infinity, alignment: .center)
+        .padding(.top, 4)
     }
 
     /// Builds one color-dot or redundant-symbol legend item.
     private func item(color: Color, title: String, symbol: String) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: 6) {
             if differentiateWithoutColor {
                 let iconPalette = widgetConditionIconPalette(for: symbol, colors: palette)
                 Image(systemName: widgetConditionDisplaySymbolName(for: symbol))
@@ -1527,7 +1575,7 @@ private struct SunnyHoursLegend: View {
             } else {
                 Circle()
                     .fill(color)
-                    .frame(width: 6, height: 6)
+                    .frame(width: 7, height: 7)
             }
             Text(title)
         }

@@ -16,9 +16,10 @@ extension ContentView {
     /// Builds the root dashboard with native bottom toolbar and route overlays.
     var homeView: some View {
         homeContent(previewActive: false)
-            .navigationTitle(toolbarTitle)
-            .navigationBarTitleDisplayMode(.inline)
+            // Home owns its large in-content list switcher and intentionally
+            // has no duplicate collapsed title or top navigation bar.
             .toolbar(.hidden, for: .navigationBar)
+            .tint(theme.colors.primaryText)
             .onAppear {
                 isMapCardPresented = false
             }
@@ -338,9 +339,6 @@ extension ContentView {
                 (usesWideLayout ? primaryColumnWidth : availableContentWidth) - 36,
                 0
             )
-            let droppedCityCount = previewActive
-                ? 0
-                : rankingOmissionCount(in: weatherService.cityWeatherData)
             let showsEmptyList = !previewActive
                 && weatherService.cityListCoordinates().isEmpty
             let showsSunnyDaysCard = !previewActive
@@ -418,11 +416,6 @@ extension ContentView {
                             homeSunnySection(previewActive: previewActive)
                         }
                     }
-
-                    if droppedCityCount > 0 {
-                        forecastAvailabilityNote(droppedCityCount: droppedCityCount)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                    }
                 }
                 // Keep the page comfortably readable in full-screen and large
                 // Stage Manager windows while leaving compact layouts unchanged.
@@ -430,9 +423,7 @@ extension ContentView {
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
-                // The omission notice is the final independent card. Leave
-                // enough room to scroll it fully above the floating toolbar.
-                .padding(.bottom, droppedCityCount > 0 ? 88 : 16)
+                .padding(.bottom, 16)
             }
             .scrollIndicators(.hidden)
             .background(theme.colors.background.ignoresSafeArea())
@@ -523,11 +514,6 @@ extension ContentView {
             }
 
         }
-    }
-
-    /// Creates the compact notice for expected forecast-boundary omissions.
-    func forecastAvailabilityNote(droppedCityCount: Int) -> some View {
-        ForecastOmissionNotice(droppedCityCount: droppedCityCount)
     }
 
     /// Builds the selectable multiweek sunny-date heatmap card.

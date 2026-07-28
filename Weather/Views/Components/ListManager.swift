@@ -15,7 +15,7 @@ struct ListManagementState {
     /// Whether the Lists management sheet is presented.
     var isPresented = false
     /// Whether the nested list-creation options are visible.
-    var showsAddOptions = false
+    var showsNewListOptions = false
     /// Whether the continent source destination is active.
     var showsContinentPicker = false
     /// Whether the country source destination is active.
@@ -43,7 +43,7 @@ enum ListManagementDismissAction {
 
 extension ContentView {
     /// Validates, creates, activates, and dismisses after an empty-list save.
-    func commitListManagerNewList() {
+    func commitNewList() {
         let trimmed = newListName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
         newListName = ""
@@ -53,7 +53,7 @@ extension ContentView {
             await switchToList(listID)
             refreshListOrder()
             listManagementState.isPresented = false
-            addListState.isPresented = false
+            newSheetState.isPresented = false
             centerMapOnDots()
         }
     }
@@ -62,7 +62,7 @@ extension ContentView {
     func performListCreationDismissAction(_ action: ListManagementDismissAction) {
         switch action {
         case .citySearch:
-            presentAddCitySearch()
+            presentNewCitySearch()
         case .previewContinent(let listID):
             let cities = CountryCityCatalog.topCities(
                 forContinentRawValue: listID.rawValue,
@@ -89,50 +89,75 @@ extension ContentView {
 extension ContentView {
     // MARK: Sheet Composition
 
-    /// Presents the shared list-creation choices directly from the global Add menu.
-    var addListSheet: some View {
+    /// Presents city and list creation in one native navigation sheet.
+    var newSheet: some View {
         NavigationStack {
-            AddSheet(
-                onNewEmptyList: {
-                    newListName = ""
-                    showingAddListAlert = true
+            NewSheetContent(
+                cityDestinationName: weatherService.activeListID.localizedDisplayName(locale: locale),
+                onNewCity: {
+                    prepareNewCitySearch()
+                    newSheetState.selectedDetent = .large
+                    newSheetState.showsCitySearch = true
                 },
-                onAddContinent: {
-                    addListState.showsContinentPicker = true
-                },
-                onAddCountry: {
-                    addListState.showsCountryPicker = true
+                onNewList: {
+                    newSheetState.showsListOptions = true
                 }
             )
-            .navigationTitle(localizedString("New List", locale: locale))
+            .navigationTitle(localizedString("New", locale: locale))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     listManagementToolbarButton(systemImage: "xmark") {
-                        addListState.isPresented = false
+                        newSheetState.isPresented = false
                     }
                 }
             }
-            .navigationDestination(isPresented: $addListState.showsContinentPicker) {
+            .navigationDestination(isPresented: $newSheetState.showsCitySearch) {
+                citySearchContent
+                    .navigationTitle(localizedString("New City", locale: locale))
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .navigationDestination(isPresented: $newSheetState.showsListOptions) {
+                newListSheetContent
+                    .navigationTitle(localizedString("New List", locale: locale))
+                    .navigationBarTitleDisplayMode(.inline)
+            }
+            .navigationDestination(isPresented: $newSheetState.showsContinentPicker) {
                 ContinentListPickerContent(lists: CityListID.builtInLists) { listID in
-                    addListState.dismissAction = .previewContinent(listID)
-                    addListState.isPresented = false
+                    newSheetState.dismissAction = .previewContinent(listID)
+                    newSheetState.isPresented = false
                 }
-                .navigationTitle(localizedString("Add Continent", locale: locale))
+                .navigationTitle(localizedString("New Continent", locale: locale))
                 .navigationBarTitleDisplayMode(.inline)
             }
-            .navigationDestination(isPresented: $addListState.showsCountryPicker) {
-                countryListSearchContent(query: $addListState.countryQuery) { country in
-                    addListState.dismissAction = .previewCountry(country)
-                    addListState.isPresented = false
+            .navigationDestination(isPresented: $newSheetState.showsCountryPicker) {
+                countryListSearchContent(query: $newSheetState.countryQuery) { country in
+                    newSheetState.dismissAction = .previewCountry(country)
+                    newSheetState.isPresented = false
                 }
-                .navigationTitle(localizedString("Add Country", locale: locale))
+                .navigationTitle(localizedString("New Country", locale: locale))
                 .navigationBarTitleDisplayMode(.inline)
             }
         }
         .background(theme.colors.background.ignoresSafeArea())
         .presentationBackground(theme.colors.background)
         .tint(theme.colors.accent)
+    }
+
+    /// List-creation choices pushed from the unified New sheet.
+    private var newListSheetContent: some View {
+        NewListSheetContent(
+            onNewEmptyList: {
+                newListName = ""
+                showingNewListAlert = true
+            },
+            onNewContinent: {
+                newSheetState.showsContinentPicker = true
+            },
+            onNewCountry: {
+                newSheetState.showsCountryPicker = true
+            }
+        )
     }
 
     /// Composes list selection, editing, creation navigation, and toolbar state.
@@ -159,7 +184,7 @@ extension ContentView {
                 if listManagementState.editMode != .active {
                     Section {
                         Button {
-                            listManagementState.showsAddOptions = true
+                            listManagementState.showsNewListOptions = true
                         } label: {
                             HStack(spacing: 10) {
                                 Image(systemName: "plus")
@@ -186,7 +211,7 @@ extension ContentView {
                             HStack(spacing: 10) {
                                 Image(systemName: "plus")
                                     .fontWeight(.semibold)
-                                Text(localizedString("Add City to List", locale: locale))
+                                Text(localizedString("New City", locale: locale))
                                     .fontWeight(.semibold)
                                 Spacer()
                             }
@@ -205,8 +230,8 @@ extension ContentView {
             .background(theme.colors.background)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(isPresented: $listManagementState.showsAddOptions) {
-                listManagementAddOptions
+            .navigationDestination(isPresented: $listManagementState.showsNewListOptions) {
+                listManagementNewListOptions
                     .navigationTitle("")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
@@ -256,7 +281,7 @@ extension ContentView {
         }
         .background(theme.colors.background.ignoresSafeArea())
         .presentationBackground(theme.colors.background)
-        // Keep the automatic back control in the nested add-list flow on the
+        // Keep the automatic back control in the nested new-list flow on the
         // app's navy accent instead of the system sheet tint.
         .tint(theme.colors.accent)
         .onDisappear {
@@ -269,27 +294,27 @@ extension ContentView {
                 inlineListNameFocused = false
             }
             listManagementState.editMode = .inactive
-            listManagementState.showsAddOptions = false
+            listManagementState.showsNewListOptions = false
             listManagementState.showsContinentPicker = false
             listManagementState.showsCountryPicker = false
         }
     }
 
-    // MARK: Add-List Options
+    // MARK: New-List Options
 
     /// Builds the nested empty/continent/country creation destination.
-    private var listManagementAddOptions: some View {
-        AddSheet(
+    private var listManagementNewListOptions: some View {
+        NewListSheetContent(
             onNewEmptyList: {
-                listManagementState.showsAddOptions = false
+                listManagementState.showsNewListOptions = false
                 // Present the native alert for naming an empty custom list.
                 newListName = ""
-                showingAddListAlert = true
+                showingNewListAlert = true
             },
-            onAddContinent: {
+            onNewContinent: {
                 listManagementState.showsContinentPicker = true
             },
-            onAddCountry: {
+            onNewCountry: {
                 listManagementState.showsCountryPicker = true
             }
         )
@@ -303,7 +328,7 @@ extension ContentView {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
-                    listManagementState.showsAddOptions = false
+                    listManagementState.showsNewListOptions = false
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 18, weight: .semibold))
@@ -320,7 +345,7 @@ extension ContentView {
                 listManagementState.dismissAction = .previewContinent(listID)
                 listManagementState.isPresented = false
             }
-                .navigationTitle(localizedString("Add Continent", locale: locale))
+                .navigationTitle(localizedString("New Continent", locale: locale))
                 .navigationBarTitleDisplayMode(.inline)
         }
         .navigationDestination(isPresented: $listManagementState.showsCountryPicker) {
@@ -328,7 +353,7 @@ extension ContentView {
                 listManagementState.dismissAction = .previewCountry(country)
                 listManagementState.isPresented = false
             }
-                .navigationTitle(localizedString("Add Country", locale: locale))
+                .navigationTitle(localizedString("New Country", locale: locale))
                 .navigationBarTitleDisplayMode(.inline)
         }
     }

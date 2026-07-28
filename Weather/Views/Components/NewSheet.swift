@@ -1,71 +1,114 @@
 //
-//  AddSheet.swift
+//  NewSheet.swift
 //  Weather
 //
-//  Purpose: Presents the add-list options sheet for creating empty,
-//  continent-based, or country-based city lists.
+//  Purpose: Defines the unified New sheet and the nested list-creation
+//  choices shared by the global creation flow and Lists manager.
 //
 
 import SwiftUI
 
-// MARK: - Standalone Presentation State
+// MARK: - Presentation State
 
-/// Navigation and deferred-preview state for list creation launched from Add.
-struct AddListPresentationState {
-    /// Whether the standalone list-creation sheet is presented.
+/// Navigation and deferred-preview state for the unified New sheet.
+struct NewSheetPresentationState {
+    /// Whether the standalone creation sheet is presented.
     var isPresented = false
+    /// Whether city search is pushed within the sheet.
+    var showsCitySearch = false
+    /// Whether list-creation choices are pushed within the sheet.
+    var showsListOptions = false
     /// Whether the continent source picker is active.
     var showsContinentPicker = false
     /// Whether the country source picker is active.
     var showsCountryPicker = false
+    /// Current compact-sheet height on iPhone.
+    var selectedDetent: PresentationDetent = .medium
     /// Query filtering country creation sources.
     var countryQuery = ""
     /// Generated-list preview to open after the sheet dismisses.
     var dismissAction: ListManagementDismissAction?
 }
 
-// MARK: - List-Creation Options
+// MARK: - New Options
 
-/// List-creation entry sheet for empty, continent, and country sources.
-struct AddSheet: View {
+/// Root creation choices shown when the global plus button is selected.
+struct NewSheetContent: View {
+    /// Localized name of the list that receives a newly searched place.
+    let cityDestinationName: String
+    /// Opens city search for the active list.
+    let onNewCity: () -> Void
+    /// Opens the nested list-creation choices.
+    let onNewList: () -> Void
+
+    @Environment(\.locale) private var locale
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        VStack(spacing: 0) {
+            NewOptionButton(
+                title: localizedString("New City", locale: locale),
+                subtitle: String(
+                    format: localizedString("Search for a place and save it to %@.", locale: locale),
+                    locale: locale,
+                    cityDestinationName
+                ),
+                systemImage: "building.2",
+                action: onNewCity
+            )
+
+            Divider()
+                .background(theme.colors.secondaryText.opacity(0.16))
+
+            NewOptionButton(
+                title: localizedString("New List", locale: locale),
+                subtitle: localizedString("Create a list to organize cities for a trip or region.", locale: locale),
+                systemImage: "list.bullet",
+                action: onNewList
+            )
+        }
+        .padding(.horizontal, 26)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+        .background(theme.colors.background.ignoresSafeArea())
+    }
+}
+
+/// Empty, continent, and country choices shown within the New sheet.
+struct NewListSheetContent: View {
     /// Starts an empty custom list.
     let onNewEmptyList: () -> Void
     /// Opens the continent source picker.
-    let onAddContinent: () -> Void
+    let onNewContinent: () -> Void
     /// Opens the country source picker.
-    let onAddCountry: () -> Void
+    let onNewCountry: () -> Void
 
-    /// App-selected locale used by all sheet copy.
     @Environment(\.locale) private var locale
-    /// Active semantic palette.
     @Environment(\.appTheme) private var theme
 
-    /// Builds the three creation options and explanatory header.
     var body: some View {
         VStack(spacing: 0) {
-            addListOptionButton(
-                title: localizedString("Add Continent", locale: locale),
+            NewOptionButton(
+                title: localizedString("New Continent", locale: locale),
                 subtitle: localizedString("Create a list of the largest cities in a continent", locale: locale),
                 systemImage: "globe.europe.africa",
-                action: onAddContinent
+                action: onNewContinent
             )
 
-            // Inset separator between creation options.
             Divider()
                 .background(theme.colors.secondaryText.opacity(0.16))
 
-            addListOptionButton(
-                title: localizedString("Add Country", locale: locale),
+            NewOptionButton(
+                title: localizedString("New Country", locale: locale),
                 subtitle: localizedString("Create a list of the largest cities in a country", locale: locale),
                 systemImage: "flag",
-                action: onAddCountry
+                action: onNewCountry
             )
 
-            // Inset separator between creation options.
             Divider()
                 .background(theme.colors.secondaryText.opacity(0.16))
 
-            addListOptionButton(
+            NewOptionButton(
                 title: localizedString("New Empty List", locale: locale),
                 subtitle: localizedString("Start a list from scratch", locale: locale),
                 systemImage: "pencil.and.list.clipboard",
@@ -77,54 +120,27 @@ struct AddSheet: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(theme.colors.background.ignoresSafeArea())
     }
-
-    /// Builds one creation row with consistent icon and typography.
-    private func addListOptionButton(
-        title: String,
-        subtitle: String?,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        AddListOptionButton(
-            title: title,
-            subtitle: subtitle,
-            systemImage: systemImage,
-            action: action
-        )
-    }
 }
 
-// MARK: - Add-List Option Row
+// MARK: - Creation Option Row
 
-/// Reusable full-width action card used by list-creation workflows.
-struct AddListOptionButton: View {
-    /// Primary action title.
+/// Reusable full-width action row shared by every creation workflow.
+struct NewOptionButton: View {
     let title: String
-    /// Optional explanatory line below the title.
     let subtitle: String?
-    /// SF Symbol representing the creation source.
     let systemImage: String
-    /// Configurable title emphasis.
     var titleWeight: Font.Weight = .semibold
-    /// Optional foreground override for branded tutorial variants.
     var titleColor: Color? = nil
-    /// Whether the icon receives its standard circular backing.
     var showsIconBackground: Bool = true
-    /// Optional icon foreground override.
     var iconColor: Color? = nil
-    /// Action performed when the card is selected.
     let action: () -> Void
 
-    /// Active semantic palette.
     @Environment(\.appTheme) private var theme
-    /// Resolved appearance used to tune surface shadow.
     @Environment(\.colorScheme) private var colorScheme
 
-    /// Builds the tappable option card.
     var body: some View {
         Button(action: action) {
             HStack(spacing: 18) {
-                // Use the standard backed icon outside the branded tutorial variant.
                 if showsIconBackground {
                     Image(systemName: systemImage)
                         .font(.system(size: 27, weight: .regular))

@@ -99,10 +99,9 @@ extension ContentView {
 
             globalMoreMenuFooter
         } label: {
-            Label(localizedString("Menu", locale: locale), systemImage: "ellipsis")
-                .labelStyle(.iconOnly)
+            Image(systemName: "ellipsis")
         }
-        .menuIndicator(.hidden)
+        .accessibilityLabel(localizedString("Menu", locale: locale))
         .menuOrder(.fixed)
         .tint(theme.colors.accent)
     }
@@ -221,13 +220,6 @@ extension ContentView {
                         isDetailLargeTitleVisible = isVisible
                     }
 
-                if isExpectedForecastBoundaryOmission(
-                    for: city,
-                    among: mapCities,
-                    on: detailForecastDate
-                ) {
-                    ForecastOmissionNotice(droppedCityCount: 1)
-                }
             }
             .frame(maxWidth: .infinity)
         }
@@ -281,7 +273,8 @@ extension ContentView {
             city: city,
             forecast: forecast,
             temperatureUnit: tempUnit,
-            usesLandscapeIPadLayout: usesLandscapeIPadLayout
+            usesLandscapeIPadLayout: usesLandscapeIPadLayout,
+            selectedForecastDate: $selectedForecastDate
         )
     }
 
@@ -299,10 +292,18 @@ extension ContentView {
 
             if !windows.isEmpty, let chartBounds {
                 VStack(alignment: .leading, spacing: 10) {
-                    detailSectionHeader(
-                        title: localizedString("Sunny Hours", locale: locale),
-                        systemImage: "calendar.day.timeline.left"
-                    )
+                    HStack(spacing: CityListLayout.columnSpacing) {
+                        Image(systemName: "calendar.day.timeline.left")
+                            .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
+                        Text(localizedString("Sunny Hours", locale: locale))
+                        Spacer(minLength: 8)
+                        Text(sunnyWindowRangeText(for: city))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(theme.colors.secondaryText)
+                            .lineLimit(1)
+                    }
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(theme.colors.primaryText)
 
                     DetailSunnyWindowOverviewChart(
                         rows: windows,
@@ -323,8 +324,9 @@ extension ContentView {
                             }
                         }
                     )
+                    .padding(.top, 8)
 
-                    // Distinguish sunny and partly-sunny timeline segments.
+                    // Identify every palette color used by the timeline.
                     HStack(spacing: 14) {
                         sunnyWindowLegendItem(
                             title: localizedString("Sunny", locale: locale),
@@ -334,6 +336,10 @@ extension ContentView {
                             title: localizedString("Partly Sunny", locale: locale),
                             color: theme.colors.dotPartlyCloudy
                         )
+                        sunnyWindowLegendItem(
+                            title: localizedString("No Sun", locale: locale),
+                            color: theme.colors.settingsRowFill
+                        )
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 4)
@@ -342,6 +348,20 @@ extension ContentView {
                 .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 20))
             }
         }
+    }
+
+    /// Formats the selected day's longest fully or partly sunny interval.
+    private func sunnyWindowRangeText(for city: CityWeather) -> String {
+        guard let forecast = city.forecastIfAvailable(on: selectedForecastDate),
+              let range = SunninessScoring.longestSunnyHourRange(
+                  in: forecast.hourlyForecasts,
+                  timeZone: city.timeZone
+              ) else {
+            return localizedString("No Sun", locale: locale)
+        }
+        let start = SunninessScoring.compactHourLabel(range.lowerBound, locale: locale)
+        let end = SunninessScoring.compactHourLabel(range.upperBound + 1, locale: locale)
+        return "\(start) – \(end)"
     }
 
     /// Builds one timeline legend swatch and localized label.
@@ -911,12 +931,10 @@ private struct DetailSunnyWindowOverviewChart: View {
                         .overlay {
                             if Calendar.current.isDate(row.id, inSameDayAs: selectedForecastDate) {
                                 Capsule()
-                                    .stroke(secondaryText.opacity(0.55), lineWidth: 1)
-                                    // Match the existing two-point vertical gap with
-                                    // four points of breathing room at each horizontal edge.
+                                    .stroke(primaryText, lineWidth: 1.5)
                                     .frame(
-                                        width: timelineWidth + 8,
-                                        height: capsuleHeight + 4
+                                        width: timelineWidth,
+                                        height: capsuleHeight
                                     )
                             }
                         }
@@ -1192,7 +1210,8 @@ private func detailPreviewForecast(dayOffset: Int) -> DailyForecast {
             apparentTemperature: 21 + Double(dayOffset % 3) + Double(max(0, 12 - abs(14 - hour))) * 0.72,
             cloudCover: cloud,
             precipitationChance: cloud > 0.72 ? 0.35 : 0.04,
-            uvIndex: hour < 7 || hour > 19 ? 0 : max(0, 9 - abs(13 - hour))
+            uvIndex: hour < 7 || hour > 19 ? 0 : max(0, 9 - abs(13 - hour)),
+            visibilityKilometers: max(2, 32 - cloud * 24)
         )
     }
 

@@ -82,10 +82,10 @@ struct ContentView: View {
     @State var showingSettings: Bool = false
     /// First-launch and replay tutorial presentation state.
     @State var tutorialState = TutorialPresentationState()
-    /// Add, rename, reorder, and delete-list workflow state.
+    /// Create, rename, reorder, and delete-list workflow state.
     @State var listManagementState = ListManagementState()
-    /// List-creation workflow opened directly from the global Add menu.
-    @State var addListState = AddListPresentationState()
+    /// Unified city/list creation workflow opened from the global plus button.
+    @State var newSheetState = NewSheetPresentationState()
     /// Focus binding for the inline list-name editor.
     @FocusState var inlineListNameFocused: Bool
     /// Generated country/continent list preview and requested city count.
@@ -137,9 +137,6 @@ struct ContentView: View {
     @State var dateSwitcherForward: Bool = true
     /// Controls the graphical date-picker popover.
     @State var showingDatePopover: Bool = false
-    /// Controls the descriptive global Add-actions popover.
-    @State var showingAddActionsPopover: Bool = false
-
     /// Controls the destructive list-removal confirmation.
     @State var showingDeleteListConfirmation: Bool = false
     /// Identity captured while a delete confirmation is pending.
@@ -157,7 +154,7 @@ struct ContentView: View {
     /// Editable name used by the create-list workflow.
     @State var newListName: String = ""
     /// Controls the native new-list naming alert.
-    @State var showingAddListAlert: Bool = false
+    @State var showingNewListAlert: Bool = false
     /// Typed route stack shared by all main destinations.
     @State var navigationPath: [AppNavigationRoute] = []
     /// Missing-data or developer warning currently presented as a native alert.
@@ -246,22 +243,32 @@ extension ContentView {
     private var viewLifecycle: some View {
         appNavigationStack
             .overlay(alignment: .bottom) {
-                if weatherService.isLoading,
-                   !tutorialState.showsFirstLaunch,
+                if !tutorialState.showsFirstLaunch,
                    !tutorialState.showsReplay,
-                   !citySearchState.isPresented {
-                    WeatherLoadingNotice(progress: weatherService.loadingProgress)
-                        .frame(maxWidth: 760)
-                        .padding(.horizontal, 16)
-                        // Match the clearance already used to keep the forecast-
-                        // omission helper above the shared floating bottom toolbar.
-                        .padding(.bottom, 88)
-                        .allowsHitTesting(false)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                        .zIndex(200)
+                   !citySearchState.isPresented,
+                   !newSheetState.isPresented {
+                    if weatherService.isLoading {
+                        // Loading always takes priority. Once it finishes, this
+                        // same surface can reveal any resulting omissions.
+                        FloatingBox(content: .loading(progress: weatherService.loadingProgress))
+                            .frame(maxWidth: 760)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 24)
+                            .allowsHitTesting(false)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .zIndex(200)
+                    } else if floatingBoxDroppedCityCount > 0,
+                              !(isMapRoute && isMapCardPresented) {
+                        FloatingBox(content: .droppedCities(count: floatingBoxDroppedCityCount))
+                            .frame(maxWidth: 760)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 24)
+                            .allowsHitTesting(false)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .zIndex(200)
+                    }
                 }
             }
-            .animation(.smooth(duration: 0.2), value: weatherService.isLoading)
             .task {
                 await onAppearLoad()
                 publishWidgetCatalog()
@@ -413,23 +420,30 @@ extension ContentView {
                     }
                     .presentationBackground(theme.colors.background)
             }
-            .sheet(isPresented: $addListState.isPresented, onDismiss: {
-                let action = addListState.dismissAction
-                addListState.dismissAction = nil
-                addListState.showsContinentPicker = false
-                addListState.showsCountryPicker = false
-                addListState.countryQuery = ""
+            .sheet(isPresented: $newSheetState.isPresented, onDismiss: {
+                let action = newSheetState.dismissAction
+                newSheetState.dismissAction = nil
+                newSheetState.showsCitySearch = false
+                newSheetState.showsListOptions = false
+                newSheetState.showsContinentPicker = false
+                newSheetState.showsCountryPicker = false
+                newSheetState.selectedDetent = .medium
+                newSheetState.countryQuery = ""
+                clearCitySearchStateAndRecenter()
                 if let action {
                     performListCreationDismissAction(action)
                 }
             }) {
-                addListSheet
+                newSheet
                     .if(horizontalSizeClass == .regular) { view in
                         view.presentationSizing(.form)
                     }
                     .if(horizontalSizeClass != .regular) { view in
                         view
-                            .presentationDetents([.medium, .large])
+                            .presentationDetents(
+                                [.medium, .large],
+                                selection: $newSheetState.selectedDetent
+                            )
                             .presentationDragIndicator(.visible)
                     }
                     .presentationBackground(theme.colors.background)
@@ -482,13 +496,13 @@ extension ContentView {
                 }
                 .disabled(cityRenameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .alert(localizedString("New List", locale: locale), isPresented: $showingAddListAlert) {
+            .alert(localizedString("New List", locale: locale), isPresented: $showingNewListAlert) {
                 TextField(localizedString("Name", locale: locale), text: $newListName)
                 Button(localizedString("Cancel", locale: locale), role: .cancel) {
                     newListName = ""
                 }
-                Button(localizedString("Add", locale: locale)) {
-                    commitListManagerNewList()
+                Button(localizedString("New", locale: locale)) {
+                    commitNewList()
                 }
                 .disabled(newListName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }

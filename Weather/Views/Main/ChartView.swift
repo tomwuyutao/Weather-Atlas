@@ -13,11 +13,11 @@ import SwiftUI
 
 /// Metrics exposed by the six-card Detail selector and chart sheet.
 enum DetailChartMetric: String, CaseIterable, Identifiable {
-    case sunnyHours
-    case cloudCover
     case temperature
     case feelsLike
+    case cloudCover
     case rainChance
+    case visibility
     case uvIndex
 
     var id: String { rawValue }
@@ -25,11 +25,11 @@ enum DetailChartMetric: String, CaseIterable, Identifiable {
     /// SF Symbol shared by the Detail card and chart title.
     var systemImage: String {
         switch self {
-        case .sunnyHours: "sun.max.fill"
-        case .cloudCover: "cloud"
         case .temperature: "thermometer.medium"
         case .feelsLike: "thermometer.variable"
+        case .cloudCover: "cloud"
         case .rainChance: "drop.fill"
+        case .visibility: "eye"
         case .uvIndex: "sun.max.trianglebadge.exclamationmark"
         }
     }
@@ -37,11 +37,11 @@ enum DetailChartMetric: String, CaseIterable, Identifiable {
     /// Localized user-facing metric title.
     func title(locale: Locale) -> String {
         switch self {
-        case .sunnyHours: localizedString("Sunny Hours", locale: locale)
-        case .cloudCover: localizedString("Cloud Cover", locale: locale)
         case .temperature: localizedString("Temperature", locale: locale)
         case .feelsLike: localizedString("Feels Like", locale: locale)
+        case .cloudCover: localizedString("Cloud Cover", locale: locale)
         case .rainChance: localizedString("Rain Chance", locale: locale)
+        case .visibility: localizedString("Visibility", locale: locale)
         case .uvIndex: localizedString("UV Index", locale: locale)
         }
     }
@@ -70,6 +70,8 @@ struct DetailMetricGrid: View {
     let forecast: DailyForecast
     let temperatureUnit: TemperatureUnit
     let usesLandscapeIPadLayout: Bool
+    /// App-wide forecast date shared with the Detail screen and chart sheet.
+    let selectedForecastDate: Binding<Date>
 
     @State private var presentedMetric: DetailChartMetric?
 
@@ -86,7 +88,8 @@ struct DetailMetricGrid: View {
                 city: city,
                 initialForecast: forecast,
                 initialMetric: metric,
-                temperatureUnit: temperatureUnit
+                temperatureUnit: temperatureUnit,
+                selectedForecastDate: selectedForecastDate
             )
             .presentationDetents([.large])
             .presentationDragIndicator(.visible)
@@ -183,6 +186,10 @@ struct DetailChartView: View {
 
     @State private var selectedMetric: DetailChartMetric
     @State private var selectedRange: DetailChartRange = .day
+    /// Controls the native Calendar popover in the chart-specific bottom bar.
+    @State private var showingChartDatePopover = false
+    /// Keeps Chart View synchronized with Detail View's selected forecast day.
+    @Binding private var selectedForecastDate: Date
 
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -193,13 +200,15 @@ struct DetailChartView: View {
         city: CityWeather,
         initialForecast: DailyForecast,
         initialMetric: DetailChartMetric,
-        temperatureUnit: TemperatureUnit
+        temperatureUnit: TemperatureUnit,
+        selectedForecastDate: Binding<Date>
     ) {
         self.city = city
         self.initialForecast = initialForecast
         self.initialMetric = initialMetric
         self.temperatureUnit = temperatureUnit
         _selectedMetric = State(initialValue: initialMetric)
+        _selectedForecastDate = selectedForecastDate
     }
 
     var body: some View {
@@ -219,6 +228,10 @@ struct DetailChartView: View {
                     chartHeader
                     conditionIcons
                     metricChart
+                        // Date swiping belongs to the plotted data only, leaving
+                        // the sheet's vertical scroll and metric-card taps intact.
+                        .contentShape(Rectangle())
+                        .simultaneousGesture(chartDateSwipeGesture)
 
                     chartMetricCards
                 }
@@ -232,10 +245,23 @@ struct DetailChartView: View {
             .navigationTitle(selectedMetric.title(locale: locale))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(localizedString("Done", locale: locale)) {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
                     }
+                    .buttonStyle(.plain)
+                }
+
+                // A sheet has its own toolbar hierarchy, so provide the same
+                // native date affordance here instead of hiding it behind Detail.
+                ToolbarItem(placement: .bottomBar) {
+                    chartDateToolbar
                 }
             }
             .tint(theme.colors.primaryText)
@@ -267,8 +293,8 @@ struct DetailChartView: View {
         let symbols: [String] = {
             switch selectedRange {
             case .day:
-                return stride(from: 0, to: initialForecast.hourlyForecasts.count, by: 3).map {
-                    initialForecast.hourlyForecasts[$0].symbolName
+                return stride(from: 0, to: chartForecast.hourlyForecasts.count, by: 3).map {
+                    chartForecast.hourlyForecasts[$0].symbolName
                 }
             case .forecast:
                 return availableForecasts.map(\.symbolName)
@@ -299,13 +325,13 @@ struct DetailChartView: View {
         }
     }
 
-    /// Hourly bar or line chart for the selected daily forecast.
+    /// Hourly line chart for the selected daily forecast.
     private var hourlyChart: some View {
-        let points = initialForecast.hourlyForecasts.compactMap {
+        let points = chartForecast.hourlyForecasts.compactMap {
             DetailChartPoint.hourly(
                 $0,
                 metric: selectedMetric,
-                forecast: initialForecast,
+                forecast: chartForecast,
                 timeZone: city.timeZone
             )
         }
@@ -318,37 +344,68 @@ struct DetailChartView: View {
                         y: .value("Value", point.value)
                     )
                     .interpolationMethod(.catmullRom)
-                    .foregroundStyle(theme.colors.primaryText)
+                    .foregroundStyle(metricColor)
 
                     PointMark(
                         x: .value("Time", point.date),
                         y: .value("Value", point.value)
                     )
-                    .foregroundStyle(theme.colors.background)
+                    .foregroundStyle(metricColor)
                     .symbolSize(24)
+                    .symbol {
+                        Circle()
+                            .fill(metricColor)
+                            .frame(width: 7, height: 7)
+                    }
                 }
             } else {
                 ForEach(points) { point in
-                    BarMark(
+                    LineMark(
                         x: .value("Time", point.date),
-                        y: .value("Value", point.value),
-                        width: .ratio(0.55)
+                        y: .value("Value", point.value)
                     )
-                    .foregroundStyle(barColor(for: point.value))
-                    .clipShape(Capsule())
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(metricColor)
+
+                    PointMark(
+                        x: .value("Time", point.date),
+                        y: .value("Value", point.value)
+                    )
+                    .foregroundStyle(metricColor)
+                    .symbolSize(24)
+                    .symbol {
+                        Circle()
+                            .fill(metricColor)
+                            .frame(width: 7, height: 7)
+                    }
                 }
             }
         }
+        .chartYScale(domain: yAxisDomain(for: points))
         .chartXAxis {
             AxisMarks(values: .stride(by: .hour, count: 6)) { value in
                 AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
                 AxisValueLabel(format: .dateTime.hour())
+                    .foregroundStyle(theme.colors.secondaryText)
             }
         }
         .chartYAxis {
-            AxisMarks(position: .trailing) { _ in
-                AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
-                AxisValueLabel()
+            if selectedMetric.usesPercentageScale {
+                AxisMarks(position: .trailing, values: [0.0, 25.0, 50.0, 75.0, 100.0]) { value in
+                    AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
+                    AxisValueLabel {
+                        if let percentage = value.as(Double.self) {
+                            Text("\(Int(percentage))%")
+                                .foregroundStyle(theme.colors.secondaryText)
+                        }
+                    }
+                }
+            } else {
+                AxisMarks(position: .trailing) { _ in
+                    AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
+                    AxisValueLabel()
+                        .foregroundStyle(theme.colors.secondaryText)
+                }
             }
         }
         .frame(height: 280)
@@ -371,14 +428,19 @@ struct DetailChartView: View {
                             series: .value("Series", "High")
                         )
                         .interpolationMethod(.catmullRom)
-                        .foregroundStyle(theme.colors.primaryText)
+                        .foregroundStyle(metricColor)
 
                         PointMark(
                             x: .value("Date", point.date),
                             y: .value("High", upper)
                         )
-                        .foregroundStyle(theme.colors.background)
+                        .foregroundStyle(metricColor)
                         .symbolSize(28)
+                        .symbol {
+                            Circle()
+                                .fill(metricColor)
+                                .frame(width: 8, height: 8)
+                        }
 
                         LineMark(
                             x: .value("Date", point.date),
@@ -392,32 +454,63 @@ struct DetailChartView: View {
                             x: .value("Date", point.date),
                             y: .value("Low", lower)
                         )
-                        .foregroundStyle(theme.colors.background)
+                        .foregroundStyle(theme.colors.secondaryText)
                         .symbolSize(28)
+                        .symbol {
+                            Circle()
+                                .fill(theme.colors.secondaryText)
+                                .frame(width: 8, height: 8)
+                        }
                     }
                 }
             } else {
                 ForEach(points) { point in
-                    BarMark(
+                    LineMark(
                         x: .value("Date", point.date),
-                        y: .value("Value", point.value),
-                        width: .ratio(0.38)
+                        y: .value("Value", point.value)
                     )
-                    .foregroundStyle(barColor(for: point.value))
-                    .clipShape(Capsule())
+                    .interpolationMethod(.catmullRom)
+                    .foregroundStyle(metricColor)
+
+                    PointMark(
+                        x: .value("Date", point.date),
+                        y: .value("Value", point.value)
+                    )
+                    .foregroundStyle(metricColor)
+                    .symbolSize(28)
+                    .symbol {
+                        Circle()
+                            .fill(metricColor)
+                            .frame(width: 8, height: 8)
+                    }
                 }
             }
         }
+        .chartYScale(domain: yAxisDomain(for: points))
         .chartXAxis {
             AxisMarks(values: .stride(by: .day)) { value in
                 AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
                 AxisValueLabel(format: .dateTime.weekday(.abbreviated))
+                    .foregroundStyle(theme.colors.secondaryText)
             }
         }
         .chartYAxis {
-            AxisMarks(position: .trailing) { _ in
-                AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
-                AxisValueLabel()
+            if selectedMetric.usesPercentageScale {
+                AxisMarks(position: .trailing, values: [0.0, 25.0, 50.0, 75.0, 100.0]) { value in
+                    AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
+                    AxisValueLabel {
+                        if let percentage = value.as(Double.self) {
+                            Text("\(Int(percentage))%")
+                                .foregroundStyle(theme.colors.secondaryText)
+                        }
+                    }
+                }
+            } else {
+                AxisMarks(position: .trailing) { _ in
+                    AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
+                    AxisValueLabel()
+                        .foregroundStyle(theme.colors.secondaryText)
+                }
             }
         }
         .frame(height: 280)
@@ -435,7 +528,7 @@ struct DetailChartView: View {
                 DetailMetricCard(
                     metric: metric,
                     value: metric.summary(
-                        for: initialForecast,
+                        for: chartForecast,
                         city: city,
                         temperatureUnit: temperatureUnit,
                         locale: locale
@@ -461,7 +554,7 @@ struct DetailChartView: View {
         switch selectedRange {
         case .day:
             return selectedMetric.summary(
-                for: initialForecast,
+                for: chartForecast,
                 city: city,
                 temperatureUnit: temperatureUnit,
                 locale: locale
@@ -482,7 +575,7 @@ struct DetailChartView: View {
         style.timeZone = city.timeZone
         switch selectedRange {
         case .day:
-            return initialForecast.date.formatted(style)
+            return chartForecast.date.formatted(style)
         case .forecast:
             guard let first = availableForecasts.first, let last = availableForecasts.last else {
                 return ""
@@ -491,12 +584,151 @@ struct DetailChartView: View {
         }
     }
 
-    /// Semantic chart color with UV risk bands and otherwise primary styling.
-    private func barColor(for value: Double) -> Color {
-        if selectedMetric == .sunnyHours {
-            return value >= 1 ? theme.colors.dotSun : theme.colors.dotPartlyCloudy
+    /// Reuses only Weather Atlas palette colors and follows the resolved theme.
+    private var metricColor: Color {
+        switch selectedMetric {
+        case .temperature: theme.colors.dotSun
+        case .feelsLike: theme.colors.dotPartlyCloudy
+        case .cloudCover: theme.colors.dotCloudy
+        case .rainChance: theme.colors.dotRain
+        case .visibility: theme.colors.dotDrizzle
+        case .uvIndex: theme.colors.primaryText
         }
-        return theme.colors.primaryText
+    }
+
+    /// Forecast matching the app-wide selected day, with the opening day as a
+    /// safe fallback while a list refresh temporarily changes its date range.
+    private var chartForecast: DailyForecast {
+        city.forecastIfAvailable(on: selectedForecastDate) ?? initialForecast
+    }
+
+    /// Device-calendar dates that this city's real forecast can display.
+    private var chartSelectionDates: [Date] {
+        Array(Set(city.dailyForecasts.compactMap {
+            city.selectionDate(for: $0)
+        })).sorted()
+    }
+
+    /// Native bottom toolbar for changing the chart's selected day.
+    private var chartDateToolbar: some View {
+        HStack(spacing: 6) {
+            chartDateStepButton(systemImage: "chevron.left", forward: false)
+
+            Button {
+                Haptics.lightImpact()
+                showingChartDatePopover = true
+            } label: {
+                Text(chartDateSwitcherText(for: selectedForecastDate))
+                    .font(.subheadline.weight(.medium))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+                    .frame(minWidth: 72, minHeight: 32)
+                    .contentShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .popover(isPresented: $showingChartDatePopover) {
+                chartDatePickerPopover
+            }
+
+            chartDateStepButton(systemImage: "chevron.right", forward: true)
+        }
+        .padding(.horizontal, 3)
+        .frame(width: 165)
+    }
+
+    /// One adjacent-day control, disabled when no forecast exists that way.
+    private func chartDateStepButton(systemImage: String, forward: Bool) -> some View {
+        let isEnabled = forward
+            ? chartSelectionDates.contains { $0 > selectedForecastDate }
+            : chartSelectionDates.contains { $0 < selectedForecastDate }
+
+        return Button {
+            selectAdjacentChartDate(forward: forward)
+        } label: {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(
+                    isEnabled ? theme.colors.primaryText : theme.colors.primaryText.opacity(0.35)
+                )
+                .frame(minWidth: 30, minHeight: 32)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!isEnabled)
+    }
+
+    /// Moves one literal app-calendar day through this city's forecast range.
+    private func selectAdjacentChartDate(forward: Bool) {
+        let nextDate = forward
+            ? chartSelectionDates.first(where: { $0 > selectedForecastDate })
+            : chartSelectionDates.last(where: { $0 < selectedForecastDate })
+        guard let nextDate else { return }
+        Haptics.lightImpact()
+        withAnimation(.smooth(duration: 0.2)) {
+            selectedForecastDate = nextDate
+        }
+    }
+
+    /// Handles a deliberate horizontal chart swipe without affecting the sheet.
+    private var chartDateSwipeGesture: some Gesture {
+        DragGesture(minimumDistance: 28)
+            .onEnded { value in
+                guard selectedRange == .day,
+                      abs(value.translation.width) > abs(value.translation.height),
+                      abs(value.translation.width) >= 50 else {
+                    return
+                }
+                selectAdjacentChartDate(forward: value.translation.width < 0)
+            }
+    }
+
+    /// Mirrors the app's compact date text in Chart View's own toolbar.
+    private func chartDateSwitcherText(for date: Date) -> String {
+        if Calendar.current.isDateInToday(date) {
+            return localizedString("Today", locale: locale)
+        }
+        return date.formatted(
+            Date.FormatStyle.dateTime
+                .weekday(.abbreviated)
+                .month(.abbreviated)
+                .day()
+                .locale(locale)
+        )
+    }
+
+    /// Graphical calendar limited to days with a real forecast for this city.
+    @ViewBuilder
+    private var chartDatePickerPopover: some View {
+        if let firstDate = chartSelectionDates.first, let lastDate = chartSelectionDates.last {
+            DatePicker(
+                chartDateSwitcherText(for: selectedForecastDate),
+                selection: $selectedForecastDate,
+                in: firstDate...lastDate,
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+            .labelsHidden()
+            .frame(width: 280, height: 300)
+            .padding(8)
+            .presentationCompactAdaptation(.popover)
+            .themedPopoverBackground()
+        }
+    }
+
+    /// Keeps percentage metrics fixed while retaining useful automatic-like ranges elsewhere.
+    private func yAxisDomain(for points: [DetailChartPoint]) -> ClosedRange<Double> {
+        if selectedMetric.usesPercentageScale {
+            return 0...100
+        }
+        guard !points.isEmpty else { return 0...1 }
+        if selectedMetric.usesTemperatureLines {
+            let minimum = points.map { $0.lowerValue ?? $0.value }.min() ?? 0
+            let maximum = points.map { $0.upperValue ?? $0.value }.max() ?? 1
+            let padding = max((maximum - minimum) * 0.12, 1)
+            return (minimum - padding)...(maximum + padding)
+        }
+        let maximum = points.map(\.value).max() ?? 1
+        return 0...max(maximum * 1.08, 1)
     }
 }
 
@@ -507,6 +739,10 @@ private extension DetailChartMetric {
         self == .temperature || self == .feelsLike
     }
 
+    var usesPercentageScale: Bool {
+        self == .cloudCover || self == .rainChance
+    }
+
     /// Card value for one selected day.
     func summary(
         for forecast: DailyForecast,
@@ -515,22 +751,6 @@ private extension DetailChartMetric {
         locale: Locale
     ) -> String {
         switch self {
-        case .sunnyHours:
-            guard case .success(let data) = SunninessScoring.sunnyHoursData(
-                for: forecast,
-                timeZone: city.timeZone
-            ) else {
-                return "—"
-            }
-            guard let range = SunninessScoring.longestSunnyHourRange(
-                in: data.hours,
-                timeZone: city.timeZone
-            ) else {
-                return localizedString("No Sun", locale: locale)
-            }
-            return "\(SunninessScoring.compactHourLabel(range.lowerBound, locale: locale)) – \(SunninessScoring.compactHourLabel(range.upperBound + 1, locale: locale))"
-        case .cloudCover:
-            return forecast.cloudCoverPercent.map { "\($0)%" } ?? "—"
         case .temperature:
             return temperatureRange(
                 low: forecast.dailyLow,
@@ -541,8 +761,12 @@ private extension DetailChartMetric {
             let values = forecast.hourlyForecasts.compactMap(\.apparentTemperature)
             guard let low = values.min(), let high = values.max() else { return "—" }
             return temperatureRange(low: low, high: high, unit: temperatureUnit)
+        case .cloudCover:
+            return forecast.cloudCoverPercent.map { "\($0)%" } ?? "—"
         case .rainChance:
             return forecast.precipitationChance.map { "\(Int(($0 * 100).rounded()))%" } ?? "—"
+        case .visibility:
+            return visibilityRange(forecast.hourlyForecasts.compactMap(\.visibilityKilometers))
         case .uvIndex:
             return forecast.uvIndex.map(String.init) ?? "—"
         }
@@ -557,13 +781,6 @@ private extension DetailChartMetric {
     ) -> String {
         guard !forecasts.isEmpty else { return "—" }
         switch self {
-        case .sunnyHours:
-            let totals = forecasts.compactMap {
-                DetailChartPoint.daily($0, metric: self, timeZone: city.timeZone)?.value
-            }
-            return numericRange(totals, suffix: "h")
-        case .cloudCover:
-            return numericRange(forecasts.compactMap { $0.cloudCover.map { $0 * 100 } }, suffix: "%")
         case .temperature:
             guard let low = forecasts.map(\.dailyLow).min(),
                   let high = forecasts.map(\.dailyHigh).max() else { return "—" }
@@ -572,11 +789,15 @@ private extension DetailChartMetric {
             let values = forecasts.flatMap(\.hourlyForecasts).compactMap(\.apparentTemperature)
             guard let low = values.min(), let high = values.max() else { return "—" }
             return temperatureRange(low: low, high: high, unit: temperatureUnit)
+        case .cloudCover:
+            return numericRange(forecasts.compactMap { $0.cloudCover.map { $0 * 100 } }, suffix: "%")
         case .rainChance:
             return numericRange(
                 forecasts.compactMap { $0.precipitationChance.map { $0 * 100 } },
                 suffix: "%"
             )
+        case .visibility:
+            return visibilityRange(forecasts.flatMap(\.hourlyForecasts).compactMap(\.visibilityKilometers))
         case .uvIndex:
             return numericRange(forecasts.compactMap { $0.uvIndex.map(Double.init) }, suffix: "")
         }
@@ -589,6 +810,11 @@ private extension DetailChartMetric {
     func numericRange(_ values: [Double], suffix: String) -> String {
         guard let low = values.min(), let high = values.max() else { return "—" }
         return "\(Int(low.rounded())) – \(Int(high.rounded()))\(suffix)"
+    }
+
+    func visibilityRange(_ values: [Double]) -> String {
+        guard let low = values.min(), let high = values.max() else { return "—" }
+        return "\(Int(low.rounded())) – \(Int(high.rounded())) km"
     }
 }
 
@@ -611,32 +837,18 @@ private struct DetailChartPoint: Identifiable {
     ) -> DetailChartPoint? {
         let value: Double?
         switch metric {
-        case .sunnyHours:
-            guard case .success(let data) = SunninessScoring.sunnyHoursData(
-                for: forecast,
-                timeZone: timeZone
-            ) else {
-                return nil
-            }
-            guard data.hours.contains(where: { $0.date == hour.date }) else {
-                return DetailChartPoint(
-                    date: hour.date,
-                    value: 0,
-                    lowerValue: nil,
-                    upperValue: nil
-                )
-            }
-            switch SunninessScoring.condition(for: hour.symbolName) {
-            case .clear: value = 1
-            case .partlySunny: value = 0.5
-            case .partlyCloudy, .cloudy, .rain, .drizzle, .snow, .fog, .wind: value = 0
-            case nil: value = nil
-            }
-        case .cloudCover: value = hour.cloudCover.map { $0 * 100 }
         case .temperature: value = hour.temperature
         case .feelsLike: value = hour.apparentTemperature
-        case .rainChance: value = hour.precipitationChance.map { $0 * 100 }
-        case .uvIndex: value = hour.uvIndex.map(Double.init)
+        case .cloudCover:
+            value = (hour.cloudCover ?? forecast.cloudCover).map { $0 * 100 }
+        case .rainChance:
+            value = (hour.precipitationChance ?? forecast.precipitationChance).map { $0 * 100 }
+        case .visibility:
+            value = hour.visibilityKilometers ?? forecast.hourlyForecasts
+                .compactMap(\.visibilityKilometers)
+                .average
+        case .uvIndex:
+            value = hour.uvIndex.map(Double.init) ?? forecast.uvIndex.map(Double.init)
         }
         guard let value else { return nil }
         return DetailChartPoint(date: hour.date, value: value, lowerValue: nil, upperValue: nil)
@@ -648,24 +860,6 @@ private struct DetailChartPoint: Identifiable {
         timeZone: TimeZone
     ) -> DetailChartPoint? {
         switch metric {
-        case .sunnyHours:
-            guard case .success(let data) = SunninessScoring.sunnyHoursData(
-                for: forecast,
-                timeZone: timeZone
-            ) else {
-                return nil
-            }
-            let value = data.hours.reduce(into: 0.0) { total, hour in
-                switch SunninessScoring.condition(for: hour.symbolName) {
-                case .clear: total += 1
-                case .partlySunny: total += 0.5
-                default: break
-                }
-            }
-            return DetailChartPoint(date: forecast.date, value: value, lowerValue: nil, upperValue: nil)
-        case .cloudCover:
-            guard let value = forecast.cloudCover.map({ $0 * 100 }) else { return nil }
-            return DetailChartPoint(date: forecast.date, value: value, lowerValue: nil, upperValue: nil)
         case .temperature:
             return DetailChartPoint(
                 date: forecast.date,
@@ -677,12 +871,38 @@ private struct DetailChartPoint: Identifiable {
             let values = forecast.hourlyForecasts.compactMap(\.apparentTemperature)
             guard let low = values.min(), let high = values.max() else { return nil }
             return DetailChartPoint(date: forecast.date, value: high, lowerValue: low, upperValue: high)
+        case .cloudCover:
+            let value = forecast.cloudCover
+                ?? forecast.hourlyForecasts.compactMap(\.cloudCover).average
+            guard let value else { return nil }
+            return DetailChartPoint(date: forecast.date, value: value * 100, lowerValue: nil, upperValue: nil)
         case .rainChance:
-            guard let value = forecast.precipitationChance.map({ $0 * 100 }) else { return nil }
-            return DetailChartPoint(date: forecast.date, value: value, lowerValue: nil, upperValue: nil)
+            let value = forecast.precipitationChance
+                ?? forecast.hourlyForecasts.compactMap(\.precipitationChance).max()
+            guard let value else { return nil }
+            return DetailChartPoint(date: forecast.date, value: value * 100, lowerValue: nil, upperValue: nil)
+        case .visibility:
+            let values = forecast.hourlyForecasts.compactMap(\.visibilityKilometers)
+            guard let value = values.average else { return nil }
+            return DetailChartPoint(
+                date: forecast.date,
+                value: value,
+                lowerValue: nil,
+                upperValue: nil
+            )
         case .uvIndex:
-            guard let value = forecast.uvIndex.map(Double.init) else { return nil }
+            let value = forecast.uvIndex.map(Double.init)
+                ?? forecast.hourlyForecasts.compactMap(\.uvIndex).map(Double.init).max()
+            guard let value else { return nil }
             return DetailChartPoint(date: forecast.date, value: value, lowerValue: nil, upperValue: nil)
         }
+    }
+}
+
+private extension Collection where Element == Double {
+    /// Arithmetic mean used as a faithful fallback when WeatherKit omits a daily aggregate.
+    var average: Double? {
+        guard !isEmpty else { return nil }
+        return reduce(0, +) / Double(count)
     }
 }

@@ -570,14 +570,14 @@ struct TutorialView: View {
             .padding(.bottom, 18)
 
             VStack(spacing: 16) {
-                tutorialAddListOptionCard(
+                tutorialNewListOptionCard(
                     title: localizedString("Pick a Continent", locale: locale),
                     systemImage: "globe.europe.africa"
                 ) {
                     showingContinentSearch = true
                 }
 
-                tutorialAddListOptionCard(
+                tutorialNewListOptionCard(
                     title: localizedString("Pick a Country", locale: locale),
                     systemImage: "flag"
                 ) {
@@ -592,12 +592,12 @@ struct TutorialView: View {
     }
 
     /// Builds a sunny-colored first-list source card.
-    private func tutorialAddListOptionCard(
+    private func tutorialNewListOptionCard(
         title: String,
         systemImage: String,
         action: @escaping () -> Void
     ) -> some View {
-        AddListOptionButton(
+        NewOptionButton(
             title: title,
             subtitle: nil,
             systemImage: systemImage,

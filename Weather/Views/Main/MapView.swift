@@ -126,7 +126,10 @@ extension ContentView {
                             }
                         }
                         .padding(.leading, 16)
-                        .padding(.top, 72)
+                        // The map now starts below the compact native toolbar;
+                        // only retain the same small visual separation that the
+                        // legend previously had beneath the large title.
+                        .padding(.top, 16)
                     }
                 }
                 .animation(.smooth(duration: 0.22), value: showLegend)
@@ -260,11 +263,13 @@ extension ContentView {
 
     /// Overflow menu button for secondary map controls.
     var mapMoreMenu: some View {
-        Menu(localizedString("Menu", locale: locale), systemImage: "ellipsis") {
+        Menu {
             mapMoreMenuItems
             globalMoreMenuFooter
+        } label: {
+            Image(systemName: "ellipsis")
         }
-        .menuIndicator(.hidden)
+        .accessibilityLabel(localizedString("Menu", locale: locale))
         .menuOrder(.fixed)
         .tint(theme.colors.accent)
     }
@@ -677,10 +682,8 @@ extension ContentView {
 
     // MARK: Map Composition
 
-    /// Renders the map plus the expected forecast-boundary omission notice.
+    /// Renders the map markers; shared status appears in the app-level floating box.
     var mapView: some View {
-        // Map omissions are measured against the active list, not a search preview.
-        let droppedCityCount = expectedForecastBoundaryOmissionCount(in: weatherService.cityWeatherData)
         let markers = currentMapMarkers
 
         return ZStack {
@@ -692,22 +695,9 @@ extension ContentView {
             )
             .ignoresSafeArea()
 
-            if !citySearchState.isPresented,
-               !isMapCardPresented,
-               droppedCityCount > 0 {
-                forecastAvailabilityNote(droppedCityCount: droppedCityCount)
-                    .frame(maxWidth: 520)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 106)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(70)
-            }
-
         }
         .background(theme.colors.background.ignoresSafeArea())
         .ignoresSafeArea()
-        .animation(.smooth(duration: 0.2), value: droppedCityCount)
         .onChange(of: selectedMapCityID) { previousID, selectedID in
             if selectedID != nil, selectedID != previousID {
                 Haptics.lightImpact()

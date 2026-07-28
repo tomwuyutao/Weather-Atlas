@@ -245,129 +245,51 @@ extension ContentView {
         }
     }
 
-    @ViewBuilder
-    /// Selects the date switcher or generated-list city-count control.
+    /// Selects the date switcher or generated-list city-count control while
+    /// preserving one stable toolbar host as forecast results arrive.
     var bottomCenterToolbarControl: some View {
-        if isListPreviewActive {
-            listPreviewCountPickerControl
-        } else if !dateSwitcherAvailableForecastDates.contains(where: {
-            Calendar.current.isDate($0, inSameDayAs: dateSwitcherSelectedForecastDate)
-        }) {
-            // Keep the toolbar stable when the selected date is absent from its source.
+        ZStack {
+            // Retain this fixed host even when partial weather updates temporarily
+            // add or remove the date switcher. Replacing a native toolbar item while
+            // its Menu is open causes iOS to dismiss that menu immediately.
             Color.clear
                 .frame(width: dateSwitcherWidth, height: 44)
-        } else {
-            dateSwitcherControl
+
+            if isListPreviewActive {
+                listPreviewCountPickerControl
+            } else {
+                // Keep the selected date visible when a newly selected list has
+                // no forecast for it. The unavailable direction is disabled by
+                // the stepper itself, while the date can still open Calendar.
+                dateSwitcherControl
+            }
         }
     }
 
     @ViewBuilder
-    /// Selects the global Add menu or generated-list preview confirmation.
+    /// Selects the global New sheet or generated-list preview confirmation.
     var bottomTrailingToolbarControl: some View {
         if isListPreviewActive {
             // Save the currently generated list preview.
-            Button(localizedString("Add", locale: locale), systemImage: "plus") {
+            Button(localizedString("New", locale: locale), systemImage: "plus") {
                 confirmGeneratedListPreview()
             }
             .disabled(listPreviewCities.isEmpty)
         } else {
-            Button(localizedString("Add", locale: locale), systemImage: "plus") {
-                showingAddActionsPopover = true
-            }
-            .popover(isPresented: $showingAddActionsPopover) {
-                addActionsPopoverContent
+            Button(localizedString("New", locale: locale), systemImage: "plus") {
+                newSheetState.isPresented = true
             }
             .tint(theme.colors.accent)
         }
     }
 
-    /// Presents two native, descriptive actions without an extra list-selection step.
-    var addActionsPopoverContent: some View {
-        VStack(spacing: 0) {
-            Button {
-                showingAddActionsPopover = false
-                Task { @MainActor in
-                    // Let the native popover finish dismissing before presenting Search.
-                    try? await Task.sleep(for: .milliseconds(150))
-                    presentAddCitySearch()
-                }
-            } label: {
-                addActionPopoverRow(
-                    title: localizedString("Add City", locale: locale),
-                    description: String(
-                        format: localizedString("Search and add a city to %@.", locale: locale),
-                        locale: locale,
-                        weatherService.activeListID.localizedDisplayName(locale: locale)
-                    ),
-                    systemImage: "building.2"
-                )
-            }
-            .buttonStyle(.plain)
-
-            Divider()
-                .padding(.leading, 56)
-
-            Button {
-                showingAddActionsPopover = false
-                Task { @MainActor in
-                    // Avoid overlapping native popover and list-flow presentations.
-                    try? await Task.sleep(for: .milliseconds(150))
-                    addListState.isPresented = true
-                }
-            } label: {
-                addActionPopoverRow(
-                    title: localizedString("New List", locale: locale),
-                    description: localizedString(
-                        "Create a list to organize cities for a trip or region.",
-                        locale: locale
-                    ),
-                    systemImage: "list.bullet"
-                )
-            }
-            .buttonStyle(.plain)
-        }
-        .padding(10)
-        .frame(width: 350)
-        .presentationCompactAdaptation(.popover)
-        .themedPopoverBackground()
-    }
-
-    /// Builds one large icon, title, and explanatory subtitle inside the Add popover.
-    private func addActionPopoverRow(
-        title: String,
-        description: String,
-        systemImage: String
-    ) -> some View {
-        HStack(alignment: .top, spacing: 14) {
-            Image(systemName: systemImage)
-                .font(.system(size: 20, weight: .semibold))
-                .symbolRenderingMode(.monochrome)
-                .foregroundStyle(theme.colors.accent)
-                .frame(width: 32, height: 32)
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(title)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-
-                Text(description)
-                    .font(.subheadline)
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-        }
-        .multilineTextAlignment(.leading)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 12)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-    }
-
     /// Renders previous, calendar, and next controls for the selected date source.
     var dateSwitcherControl: some View {
-        HStack(spacing: 6) {
+        let selectedDateIsAvailable = dateSwitcherAvailableForecastDates.contains {
+            Calendar.current.isDate($0, inSameDayAs: dateSwitcherSelectedForecastDate)
+        }
+
+        return HStack(spacing: 6) {
             dateStepperButton(
                 systemImage: "chevron.left",
                 isEnabled: dateSwitcherAvailableForecastDates.last {
@@ -399,7 +321,11 @@ extension ContentView {
 
                     Text(dateSwitcherText(for: dateSwitcherSelectedForecastDate))
                         .font(.subheadline.weight(.medium))
-                        .foregroundStyle(theme.colors.primaryText)
+                        .foregroundStyle(
+                            selectedDateIsAvailable
+                                ? theme.colors.primaryText
+                                : theme.colors.primaryText.opacity(0.35)
+                        )
                         .lineLimit(1)
                         .fixedSize(horizontal: true, vertical: false)
                         .id("date-\(dateSwitcherSelectedForecastDate.timeIntervalSinceReferenceDate)")
@@ -468,6 +394,14 @@ extension ContentView {
     var datePickerPopoverContent: some View {
         let dates = dateSwitcherAvailableForecastDates
         if let firstDate = dates.first, let lastDate = dates.last {
+            // The currently displayed date can sit just outside this list's
+            // forecast range after a list switch. Include it in the native
+            // picker's bounds so the dimmed date button still opens Calendar.
+            let normalizedSelection = Calendar.current.startOfDay(
+                for: dateSwitcherSelectedForecastDate
+            )
+            let pickerRange = min(firstDate, normalizedSelection)...max(lastDate, normalizedSelection)
+
             DatePicker(
                 dateSwitcherText(for: dateSwitcherSelectedForecastDate),
                 selection: Binding(
@@ -487,7 +421,7 @@ extension ContentView {
                     }
                 ),
                 // The graphical picker needs continuous bounds around represented dates.
-                in: firstDate...lastDate,
+                in: pickerRange,
                 displayedComponents: .date
             )
             .datePickerStyle(.graphical)
@@ -526,10 +460,12 @@ extension ContentView {
 
     /// Hosts the shared More-menu footer on screens with no additional actions.
     var bottomMoreButton: some View {
-        Menu(localizedString("Menu", locale: locale), systemImage: "ellipsis") {
+        Menu {
             globalMoreMenuFooter
+        } label: {
+            Image(systemName: "ellipsis")
         }
-        .menuIndicator(.hidden)
+        .accessibilityLabel(localizedString("Menu", locale: locale))
         .menuOrder(.fixed)
         .tint(theme.colors.accent)
     }

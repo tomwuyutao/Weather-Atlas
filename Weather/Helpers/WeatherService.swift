@@ -451,7 +451,8 @@ class WeatherService {
                 apparentTemperature: hourWeather.apparentTemperature.value,
                 cloudCover: hourWeather.cloudCover,
                 precipitationChance: hourWeather.precipitationChance,
-                uvIndex: hourWeather.uvIndex.value
+                uvIndex: hourWeather.uvIndex.value,
+                visibilityKilometers: hourWeather.visibility.converted(to: .kilometers).value
             )
         }
     }
