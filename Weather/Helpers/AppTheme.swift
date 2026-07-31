@@ -304,14 +304,10 @@ struct ThemeColors {
     /// Foreground used for standalone sun symbols.
     var sunIconColor: Color { dotSun }
 
-    /// Background used by list cards.
-    var listCardFill: Color { background }
     /// Tint participating in translucent glass surfaces.
     var glassFill: Color { background }
     /// Highlight used by the sunny-only filter.
     var filterSunny: Color { dotSun }
-    /// Stable dark shadow independent of current appearance.
-    var shadow: Color { AppPalette.light.titleText }
 
     /// Returns palette foreground styles for a weather SF Symbol icon name.
     func weatherIconPalette(for iconName: String) -> (primary: Color, secondary: Color) {

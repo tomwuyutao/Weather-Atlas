@@ -33,15 +33,14 @@ final class PlaceWeatherStore {
     /// Apple Weather attribution required on forecast-detail surfaces.
     private(set) var weatherAttribution: WeatherAttribution?
 
-    /// Existing WeatherKit adapter retained while list-specific behavior is
-    /// removed from the rest of the application.
+    /// WeatherKit adapter shared by every place-based app experience.
     private let weatherService: WeatherService
     /// File-backed cache used to render useful results before a network refresh.
     private let cache: PlaceWeatherSnapshotCache
     /// Current request identity for each place. Replacing a token makes any
     /// older overlapping refresh harmless when it eventually returns.
     @ObservationIgnored private var requestTokensByPlaceID: [City.ID: UUID] = [:]
-    /// Coalesced per-place work shared by Home, Places, Detail, and widgets.
+    /// Coalesced per-place work shared by app views and widgets.
     @ObservationIgnored
     private var inFlightRequestsByPlaceID: [
         City.ID: (token: UUID, task: Task<CityWeather?, Never>)
@@ -97,7 +96,7 @@ final class PlaceWeatherStore {
 
     /// Loads missing or stale places without disturbing independent consumers.
     ///
-    /// Home, Places, nearby discovery, and detail can all request forecasts at
+    /// Home, Map, Places, nearby discovery, and detail can request forecasts at
     /// once. A normal overlapping load coalesces with the request already
     /// represented by `loadingPlaceIDs`; a forced refresh supersedes only the
     /// matching place through its per-place request token.
@@ -170,16 +169,6 @@ final class PlaceWeatherStore {
         }
         lastRefreshDate = refreshDatesByPlaceID.values.max()
         persistSnapshot()
-    }
-
-    /// Stops in-flight work when the owning scene is discarded.
-    func cancelLoading() {
-        for request in inFlightRequestsByPlaceID.values {
-            request.task.cancel()
-        }
-        inFlightRequestsByPlaceID = [:]
-        requestTokensByPlaceID = [:]
-        loadingPlaceIDs = []
     }
 
     /// Loads Apple Weather's legal mark and link once per app process.

@@ -2,72 +2,21 @@
 //  ErrorAlerts.swift
 //  Weather
 //
-//  Purpose: Defines queued error alerts, localized weather-data issue messages,
-//  and the compact notice for expected forecast omissions.
+//  Purpose: Defines developer diagnostics, localized weather-data issue
+//  messages, and the compact notice for expected forecast omissions.
 //
 
 import Foundation
-import SwiftUI
 
-// MARK: - Warning Model
+// MARK: - Developer Diagnostics
 
-/// Native-alert payload for actionable missing or inconsistent app data.
-struct DeveloperWarning: Identifiable, Equatable {
-    /// Presentation identity allowing repeated messages to remain distinct.
-    let id = UUID()
-    /// Short native alert title.
-    let title: String
-    /// Specific description of the missing or inconsistent data.
-    let message: String
-}
-
-// MARK: - Warning Delivery
-
-/// Process-wide bridge from services and helpers to the root native alert queue.
-enum DeveloperWarningCenter {
-    /// Notification observed by the root `ContentView`.
-    static let notification = Notification.Name("WeatherAtlasDeveloperWarning")
-    /// Deduplication keys already emitted by `showOnce` in this process.
-    @MainActor private static var reportedKeys: Set<String> = []
-
-    /// Enqueues a warning on the main actor from any calling context.
+/// Debug-only reporting for internal catalog and geocoder invariants.
+enum DeveloperDiagnostics {
+    /// Logs implementation diagnostics without exposing them as user alerts.
     static func show(title: String, message: String) {
-        Task { @MainActor in
-            post(title: title, message: message)
-        }
-    }
-
-    /// Routes missing source data through the same queued system alert used by
-    /// developer warnings, with a title localized for the selected app language.
-    static func showMissingData(message: String, locale: Locale) {
-        show(
-            title: localizedString("Weather Data Missing", locale: locale),
-            message: message
-        )
-    }
-
-    /// Emits one warning per process for a stable diagnostic key.
-    static func showOnce(key: String, title: String, message: String) {
-        Task { @MainActor in
-            guard reportedKeys.insert(key).inserted else { return }
-            post(title: title, message: message)
-        }
-    }
-
-    @MainActor
-    /// Posts the notification payload consumed by the app shell.
-    private static func post(title: String, message: String) {
         #if DEBUG
         print("[DeveloperWarning] \(title): \(message)")
         #endif
-
-        NotificationCenter.default.post(
-            name: notification,
-            object: DeveloperWarning(
-                title: title,
-                message: message
-            )
-        )
     }
 }
 

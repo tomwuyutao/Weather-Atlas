@@ -15,6 +15,7 @@ struct ForecastDateStrip: View {
 
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var presentedCalendar: CalendarPresentation?
     @State private var scrolledDate: Date?
 
@@ -25,7 +26,7 @@ struct ForecastDateStrip: View {
 
     var body: some View {
         ScrollView(.horizontal) {
-            LazyHStack(spacing: 8) {
+            LazyHStack(spacing: 2) {
                 ForEach(dates, id: \.self) { date in
                     ForecastDateButton(
                         date: date,
@@ -44,7 +45,7 @@ struct ForecastDateStrip: View {
                         .labelStyle(.iconOnly)
                         .frame(width: 44, height: 44)
                 }
-                .buttonStyle(.bordered)
+                .buttonStyle(.plain)
                 .accessibilityHint("Shows a calendar for choosing another forecast date.")
             }
             .scrollTargetLayout()
@@ -76,7 +77,7 @@ struct ForecastDateStrip: View {
     private func scrollToSelection() {
         let normalizedSelection = calendar.startOfDay(for: selection)
         guard dates.contains(normalizedSelection) else { return }
-        withAnimation(.smooth) {
+        withAnimation(reduceMotion ? nil : .smooth) {
             scrolledDate = normalizedSelection
         }
     }
@@ -102,17 +103,17 @@ private struct ForecastDateButton: View {
                 Text(date, format: .dateTime.day().locale(locale))
                     .font(.headline)
             }
+            .padding(.horizontal, 4)
             .frame(minWidth: 44, minHeight: 44)
-            .padding(.horizontal, 6)
             .foregroundStyle(
                 isSelected ? theme.colors.background : theme.colors.primaryText
             )
-            .background(
-                isSelected
-                    ? theme.colors.accent
-                    : theme.colors.settingsRowFill,
-                in: .rect(cornerRadius: 12)
-            )
+            .background {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 11, style: .continuous)
+                        .fill(theme.colors.accent)
+                }
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(

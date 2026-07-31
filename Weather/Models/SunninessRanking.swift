@@ -2,14 +2,14 @@
 //  SunninessRanking.swift
 //  Weather
 //
-//  Purpose: Defines the native Places sorting choices. Recommendation values
-//  and grouping live in RecommendationEngine.
+//  Purpose: Defines the shared weather metric used to sort Places and style Map.
+//  Recommendation values and grouping live in RecommendationEngine.
 //
 
 import Foundation
 
-/// User-selectable ordering applied to saved-place and recommendation results.
-enum WeatherListSortMode: String, CaseIterable, Identifiable {
+/// User-selectable metric applied to saved-place and map presentations.
+enum WeatherMetricMode: String, CaseIterable, Identifiable {
     case sunny
     case temperature
     case feelsLike

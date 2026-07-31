@@ -11,15 +11,9 @@ import Observation
 
 enum AppTab: Hashable {
     case home
+    case map
     case places
     case search
-}
-
-enum PlacesViewMode: String, CaseIterable, Identifiable, Hashable {
-    case list
-    case map
-
-    var id: Self { self }
 }
 
 enum AppRoute: Hashable {
@@ -52,38 +46,26 @@ enum AppSheetDestination: Identifiable, Hashable {
 final class AppRouter {
     var selectedTab: AppTab = .home
     var homePath: [AppRoute] = []
+    var mapPath: [AppRoute] = []
     var placesPath: [AppRoute] = []
     var searchPath: [AppRoute] = []
     var presentedSheet: AppSheetDestination?
-    var placesViewMode: PlacesViewMode = .list
     var selectedCollectionID: PlaceCollection.ID?
     var selectedMapPlaceID: City.ID?
 
-    func showPlace(id: City.ID, date: Date) {
-        let route = AppRoute.place(id: id, date: date)
-        switch selectedTab {
-        case .home:
-            homePath.append(route)
-        case .places:
-            placesPath.append(route)
-        case .search:
-            searchPath.append(route)
-        }
-    }
-
-    func showPlaceOnMap(id: City.ID, collectionID: PlaceCollection.ID? = nil) {
+    func showMap(
+        collectionID: PlaceCollection.ID? = nil,
+        placeID: City.ID? = nil
+    ) {
         selectedCollectionID = collectionID
-        selectedMapPlaceID = id
-        placesViewMode = .map
-        selectedTab = .places
+        selectedMapPlaceID = placeID
+        selectedTab = .map
     }
 
     func showPlaces(
-        mode: PlacesViewMode = .list,
         collectionID: PlaceCollection.ID? = nil
     ) {
         selectedCollectionID = collectionID
-        placesViewMode = mode
         selectedTab = .places
     }
 }

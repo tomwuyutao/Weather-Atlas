@@ -140,7 +140,7 @@ enum CountryCityCatalog {
         guard let url = Bundle.main.url(forResource: "country_city_coordinates", withExtension: "csv")
                 ?? Bundle.main.url(forResource: "country_city_coordinates", withExtension: "csv", subdirectory: "Assets"),
               let csv = try? String(contentsOf: url, encoding: .utf8) else {
-            DeveloperWarningCenter.show(
+            DeveloperDiagnostics.show(
                 title: "Country City Catalog Missing",
                 message: "The bundled country_city_coordinates.csv file could not be loaded. Country lists cannot be created."
             )
@@ -160,7 +160,7 @@ enum CountryCityCatalog {
                   let latitude = Double(fields[3]),
                   let longitude = Double(fields[4]),
                   let population else {
-                DeveloperWarningCenter.show(
+                DeveloperDiagnostics.show(
                     title: "Country City Catalog Invalid",
                     message: "The bundled country_city_coordinates.csv row \(rowIndex + 2) is malformed and cannot be loaded."
                 )
@@ -168,7 +168,7 @@ enum CountryCityCatalog {
             }
 
             guard TimeZone(identifier: fields[5]) != nil else {
-                DeveloperWarningCenter.show(
+                DeveloperDiagnostics.show(
                     title: "Country City Time Zone Invalid",
                     message: "The bundled country_city_coordinates.csv row for \(fields[0]), \(fields[1]) has an invalid time zone identifier: \(fields[5])."
                 )
@@ -211,7 +211,7 @@ enum CountryCityCatalog {
         guard let url = Bundle.main.url(forResource: "worldcities", withExtension: "csv")
                 ?? Bundle.main.url(forResource: "worldcities", withExtension: "csv", subdirectory: "Assets"),
               let csv = try? String(contentsOf: url, encoding: .utf8) else {
-            DeveloperWarningCenter.show(
+            DeveloperDiagnostics.show(
                 title: "World Cities Catalog Missing",
                 message: "The bundled worldcities.csv file could not be loaded. Country search ordering is unavailable."
             )

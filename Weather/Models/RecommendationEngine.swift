@@ -163,7 +163,7 @@ enum RecommendationEngine {
 
     static func sorted(
         _ recommendations: [PlaceRecommendation],
-        by mode: WeatherListSortMode,
+        by mode: WeatherMetricMode,
         locale: Locale
     ) -> [PlaceRecommendation] {
         recommendations.sorted { lhs, rhs in

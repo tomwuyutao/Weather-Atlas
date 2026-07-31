@@ -8,26 +8,6 @@
 
 import SwiftUI
 
-/// Sheet wrapper used when collection management is presented modally.
-struct ManageCollectionsSheet: View {
-    let placesStore: PlacesStore
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ManageCollectionsView(placesStore: placesStore)
-                .toolbar {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Done") {
-                            dismiss()
-                        }
-                    }
-                }
-        }
-    }
-}
-
 /// Direct native creation flow used by the Places title menu and membership
 /// editor. An optional place is included as part of the same verified write.
 struct CreateCollectionSheet: View {
@@ -73,6 +53,7 @@ struct ManageCollectionsView: View {
         }
         .weatherAtlasScreenBackground()
         .navigationTitle("Collections")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {
                 if !placesStore.collections.isEmpty {
@@ -274,6 +255,7 @@ struct CollectionMembershipView: View {
             collection?.name
                 ?? localizedString("Collection", locale: locale)
         )
+        .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, prompt: "Search places")
         .alert(
             "Couldn’t Update Collection",
@@ -339,117 +321,6 @@ struct CollectionMembershipView: View {
                 )
             }
         }
-    }
-}
-
-/// Lets a place-detail screen edit one place's many-to-many collection
-/// memberships, and create a new collection containing that place.
-struct PlaceCollectionsView: View {
-    let placesStore: PlacesStore
-    let placeID: SavedPlace.ID
-
-    @State private var editorRequest: CollectionEditorRequest?
-    @State private var presentedError: CollectionOperationError?
-    @Environment(\.locale) private var locale
-
-    var body: some View {
-        Group {
-            if placesStore.place(id: placeID) == nil {
-                ContentUnavailableView(
-                    "Place Unavailable",
-                    systemImage: "mappin.slash",
-                    description: Text("This saved place no longer exists.")
-                )
-            } else if placesStore.collections.isEmpty {
-                ContentUnavailableView {
-                    Label("No Collections", systemImage: "folder")
-                } description: {
-                    Text("Collections are optional ways to group saved places.")
-                } actions: {
-                    Button("New Collection", systemImage: "plus") {
-                        editorRequest = .create(placeID: placeID)
-                    }
-                    .buttonStyle(.borderedProminent)
-                }
-            } else {
-                List(placesStore.collections) { collection in
-                    Toggle(
-                        isOn: membershipBinding(for: collection.id)
-                    ) {
-                        CollectionSummaryLabel(
-                            collection: collection,
-                            placeCount: collection.placeIDs.count
-                        )
-                    }
-                }
-                .listStyle(.insetGrouped)
-                .weatherAtlasScrollableBackground()
-            }
-        }
-        .weatherAtlasScreenBackground()
-        .navigationTitle("Collections")
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Button("New Collection", systemImage: "plus") {
-                    editorRequest = .create(placeID: placeID)
-                }
-            }
-        }
-        .sheet(item: $editorRequest) { request in
-            CollectionEditorSheet(
-                placesStore: placesStore,
-                request: request
-            )
-            .presentationSizing(.form)
-        }
-        .alert(
-            "Couldn’t Update Collections",
-            isPresented: errorIsPresented,
-            presenting: presentedError
-        ) { _ in
-            Button("OK") {
-                presentedError = nil
-            }
-        } message: { error in
-            Text(error.message)
-        }
-    }
-
-    private func membershipBinding(
-        for collectionID: PlaceCollection.ID
-    ) -> Binding<Bool> {
-        Binding {
-            placesStore.collections
-                .first { $0.id == collectionID }?
-                .placeIDs
-                .contains(placeID) == true
-        } set: { isMember in
-            do {
-                try placesStore.setMembership(
-                    of: placeID,
-                    in: collectionID,
-                    isMember: isMember
-                )
-            } catch {
-                presentedError = CollectionOperationError(
-                    message: localizedPlacesErrorDescription(
-                        error,
-                        locale: locale
-                    )
-                )
-            }
-        }
-    }
-
-    private var errorIsPresented: Binding<Bool> {
-        Binding(
-            get: { presentedError != nil },
-            set: { isPresented in
-                if !isPresented {
-                    presentedError = nil
-                }
-            }
-        )
     }
 }
 

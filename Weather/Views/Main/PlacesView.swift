@@ -1,20 +1,18 @@
 //
-//  PlacesTabView.swift
+//  PlacesView.swift
 //  Weather
 //
-//  Purpose: Presents the place-owned library as one native list-or-map
-//  workspace. Collections are optional filters, never owners of places.
+//  Purpose: Presents the place-owned library as a compact native list.
+//  Collections are optional filters, never owners of places.
 //
 
-import MapKit
 import SwiftUI
-import WeatherKit
 
 /// Content for the Places tab.
 ///
 /// The app shell owns the tab's `NavigationStack`; this view contributes
 /// value-based links and native navigation-bar content to that stack.
-struct PlacesTabView: View {
+struct PlacesView: View {
     let placesStore: PlacesStore
     let weatherStore: PlaceWeatherStore
 
@@ -26,11 +24,14 @@ struct PlacesTabView: View {
     @Environment(\.appTheme) private var theme
 
     @State private var searchText = ""
-    @State private var sortMode: WeatherListSortMode = .sunny
+    @State private var sortMode: WeatherMetricMode = .sunny
     @State private var membershipPlace: SavedPlace?
     @State private var pendingDeletion: SavedPlace?
     @State private var presentedError: PlacesUIError?
-    @State private var restoredPersistedCollection = false
+    @AppStorage("temperatureUnit")
+    private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
+    @AppStorage("distanceUnit")
+    private var distanceUnitRaw = DistanceUnit.defaultRawValue
 
     private var selectedCollection: PlaceCollection? {
         guard let collectionID = router.selectedCollectionID else { return nil }
@@ -90,6 +91,14 @@ struct PlacesTabView: View {
         return ordered + unavailable
     }
 
+    private var rankByPlaceID: [SavedPlace.ID: Int] {
+        Dictionary(
+            uniqueKeysWithValues: sortedPresentations.enumerated().map {
+                ($0.element.id, $0.offset + 1)
+            }
+        )
+    }
+
     private var sunnySections: [PlacesWeatherSection] {
         RecommendationConditionGroup.allCases.compactMap { condition in
             let matches = sortedPresentations.filter {
@@ -120,12 +129,18 @@ struct PlacesTabView: View {
             weatherStore.weather(for: $0.id)
         }
         let availableDates = RecommendationEngine.availableDates(in: weather)
-        guard availableDates.isEmpty else { return availableDates }
-
-        let today = calendar.startOfDay(for: Date())
-        return (0..<10).compactMap {
-            calendar.date(byAdding: .day, value: $0, to: today)
+        let baseDates: [Date]
+        if availableDates.isEmpty {
+            let today = calendar.startOfDay(for: Date())
+            baseDates = (0..<10).compactMap {
+                calendar.date(byAdding: .day, value: $0, to: today)
+            }
+        } else {
+            baseDates = availableDates
         }
+
+        let normalizedSelection = calendar.startOfDay(for: selectedDate)
+        return Array(Set(baseDates + [normalizedSelection])).sorted()
     }
 
     private var weatherLoadID: [City.ID] {
@@ -136,6 +151,14 @@ struct PlacesTabView: View {
         selectedCollection?.name ?? localizedString("Places", locale: locale)
     }
 
+    private var temperatureUnit: TemperatureUnit {
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
+    }
+
+    private var distanceUnit: DistanceUnit {
+        DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ForecastDateStrip(
@@ -143,23 +166,13 @@ struct PlacesTabView: View {
                 availableDates: forecastDates
             )
 
-            Picker("View", selection: $router.placesViewMode) {
-                Label("List", systemImage: "list.bullet")
-                    .tag(PlacesViewMode.list)
-                Label("Map", systemImage: "map")
-                    .tag(PlacesViewMode.map)
-            }
-            .pickerStyle(.segmented)
-            .padding(.horizontal)
-            .padding(.vertical, 8)
-
             Divider()
 
             placesContent
         }
         .weatherAtlasScreenBackground()
         .navigationTitle(navigationTitle)
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbarTitleMenu {
             collectionTitleMenu
         }
@@ -219,12 +232,11 @@ struct PlacesTabView: View {
                 locale: locale
             )
         }
-        .onAppear {
-            restoreCollectionSelectionIfNeeded()
-        }
-        .onChange(of: router.selectedCollectionID) { _, collectionID in
-            guard restoredPersistedCollection,
-                  placesStore.selectedCollectionID != collectionID else {
+        .onChange(
+            of: router.selectedCollectionID,
+            initial: true
+        ) { _, collectionID in
+            guard placesStore.selectedCollectionID != collectionID else {
                 return
             }
             persistCollectionSelection(collectionID)
@@ -232,7 +244,7 @@ struct PlacesTabView: View {
         .onChange(of: placesStore.collections.map(\.id)) {
             validateCollectionSelection()
         }
-        .sensoryFeedback(.selection, trigger: router.placesViewMode)
+        .sensoryFeedback(.selection, trigger: sortMode.rawValue)
     }
 
     @ViewBuilder
@@ -257,18 +269,7 @@ struct PlacesTabView: View {
         } else if filteredPlaces.isEmpty {
             ContentUnavailableView.search(text: searchText)
         } else {
-            switch router.placesViewMode {
-            case .list:
-                placesList
-            case .map:
-                PlacesLibraryMap(
-                    presentations: sortedPresentations,
-                    selectedPlaceID: $router.selectedMapPlaceID,
-                    selectedDate: selectedDate,
-                    displayName: displayName(for:),
-                    weatherAttribution: weatherStore.weatherAttribution
-                )
-            }
+            placesList
         }
     }
 
@@ -289,6 +290,8 @@ struct PlacesTabView: View {
                                     conditionTint(section.condition)
                                 )
                         }
+                        .font(.body.weight(.bold))
+                        .foregroundStyle(theme.colors.primaryText)
                     }
                 }
 
@@ -308,8 +311,17 @@ struct PlacesTabView: View {
                     }
                 }
             } else {
-                ForEach(sortedPresentations) { presentation in
-                    placeRow(presentation)
+                Section {
+                    ForEach(sortedPresentations) { presentation in
+                        placeRow(presentation)
+                    }
+                } header: {
+                    Label(
+                        sortMode.title(locale: locale),
+                        systemImage: sortMode.icon
+                    )
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(theme.colors.primaryText)
                 }
             }
 
@@ -318,10 +330,14 @@ struct PlacesTabView: View {
                 Section {
                     WeatherAttributionView(attribution: attribution)
                 }
+                .listRowBackground(theme.colors.background)
             }
         }
-        .listStyle(.insetGrouped)
+        .listStyle(.plain)
         .weatherAtlasScrollableBackground()
+        .contentMargins(.top, 12, for: .scrollContent)
+        .contentMargins(.bottom, 16, for: .scrollContent)
+        .environment(\.defaultMinListRowHeight, 1)
         .refreshable {
             await weatherStore.load(
                 cities: collectionPlaces.map(\.city),
@@ -341,11 +357,22 @@ struct PlacesTabView: View {
                 date: selectedDate
             )
         ) {
-            SavedPlaceForecastRow(
+            CompactSavedPlaceRow(
                 presentation: presentation,
-                displayName: displayName(for: presentation.place)
+                displayName: displayName(for: presentation.place),
+                rank: presentation.recommendation == nil
+                    ? nil
+                    : rankByPlaceID[presentation.id],
+                sortMode: sortMode,
+                temperatureUnit: temperatureUnit,
+                distanceUnit: distanceUnit
             )
         }
+        .listRowInsets(
+            EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
+        )
+        .listRowSeparator(.hidden)
+        .listRowBackground(theme.colors.background)
         .swipeActions(edge: .leading, allowsFullSwipe: false) {
             if !placesStore.collections.isEmpty {
                 Button {
@@ -353,7 +380,7 @@ struct PlacesTabView: View {
                 } label: {
                     Label("Collections", systemImage: "folder")
                 }
-                .tint(.accentColor)
+                .tint(theme.colors.accent)
             }
         }
         .swipeActions(edge: .trailing) {
@@ -437,7 +464,7 @@ struct PlacesTabView: View {
     private var sortMenu: some View {
         Menu {
             Picker("Sort Places", selection: $sortMode) {
-                ForEach(WeatherListSortMode.allCases) { mode in
+                ForEach(WeatherMetricMode.allCases) { mode in
                     Label(
                         mode.title(locale: locale),
                         systemImage: mode.icon
@@ -463,7 +490,10 @@ struct PlacesTabView: View {
             Label("Sort and Refresh", systemImage: "arrow.up.arrow.down")
         }
         .accessibilityHint(
-            "Changes how places are ordered or refreshes their forecasts."
+            localizedString(
+                "Changes how places are ordered or refreshes their forecasts.",
+                locale: locale
+            )
         )
     }
 
@@ -512,7 +542,6 @@ struct PlacesTabView: View {
         do {
             try placesStore.selectCollection(id: collectionID)
             router.selectedCollectionID = collectionID
-            router.selectedMapPlaceID = nil
         } catch {
             present(error)
         }
@@ -523,21 +552,9 @@ struct PlacesTabView: View {
     ) {
         do {
             try placesStore.selectCollection(id: collectionID)
-            router.selectedMapPlaceID = nil
         } catch {
             router.selectedCollectionID = placesStore.selectedCollectionID
             present(error)
-        }
-    }
-
-    private func restoreCollectionSelectionIfNeeded() {
-        guard !restoredPersistedCollection else { return }
-        restoredPersistedCollection = true
-
-        if router.selectedCollectionID == nil {
-            router.selectedCollectionID = placesStore.selectedCollectionID
-        } else if router.selectedCollectionID != placesStore.selectedCollectionID {
-            persistCollectionSelection(router.selectedCollectionID)
         }
     }
 
@@ -567,9 +584,6 @@ struct PlacesTabView: View {
     private func deletePlace(_ place: SavedPlace) {
         do {
             try placesStore.deletePlace(id: place.id)
-            if router.selectedMapPlaceID == place.id {
-                router.selectedMapPlaceID = nil
-            }
         } catch {
             present(error)
         }
@@ -585,15 +599,6 @@ struct PlacesTabView: View {
     }
 }
 
-private struct SavedPlacePresentation: Identifiable {
-    let place: SavedPlace
-    let recommendation: PlaceRecommendation?
-    let isLoading: Bool
-    let failureMessage: String?
-
-    var id: SavedPlace.ID { place.id }
-}
-
 private struct PlacesWeatherSection: Identifiable {
     let condition: RecommendationConditionGroup
     let presentations: [SavedPlacePresentation]
@@ -606,80 +611,147 @@ private struct PlacesUIError: Identifiable {
     let message: String
 }
 
-private struct SavedPlaceForecastRow: View {
+private struct CompactSavedPlaceRow: View {
     let presentation: SavedPlacePresentation
     let displayName: String
+    let rank: Int?
+    let sortMode: WeatherMetricMode
+    let temperatureUnit: TemperatureUnit
+    let distanceUnit: DistanceUnit
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
+    @Environment(\.appTheme) private var theme
+    @ScaledMetric(relativeTo: .body)
+    private var rankColumnWidth: CGFloat = 32
+    @ScaledMetric(relativeTo: .caption)
+    private var metricColumnWidth: CGFloat = 76
 
     var body: some View {
-        if let recommendation = presentation.recommendation {
-            PlaceRecommendationRow(
-                recommendation: recommendation,
-                displayName: displayName
-            )
-        } else if dynamicTypeSize.isAccessibilitySize {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(alignment: .top, spacing: 12) {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                accessibilityLayout
+            } else {
+                compactLayout
+            }
+        }
+        .padding(.vertical, 8)
+        .contentShape(.rect)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(displayName)
+        .accessibilityValue(accessibilityValue)
+    }
+
+    private var compactLayout: some View {
+        HStack(spacing: 5) {
+            rankOrStatusIcon
+
+            Text(displayName)
+                .font(.body.weight(.medium))
+                .foregroundStyle(theme.colors.primaryText)
+                .lineLimit(1)
+
+            Spacer(minLength: 8)
+
+            if let recommendation = presentation.recommendation {
+                compactMetric(for: recommendation)
+            } else {
+                Text(compactStatusLabel)
+                    .font(.caption.weight(.medium))
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    private var accessibilityLayout: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                if let rank {
+                    Text(rank, format: .number)
+                        .font(.headline)
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .monospacedDigit()
+                }
+
+                Text(displayName)
+                    .font(.headline)
+                    .foregroundStyle(theme.colors.primaryText)
+            }
+
+            if let recommendation = presentation.recommendation {
+                let details = metricDetails(for: recommendation)
+                Label(
+                    "\(details.label): \(details.value)",
+                    systemImage: details.icon
+                )
+                .font(.subheadline)
+                .foregroundStyle(theme.colors.secondaryText)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
                     statusIcon
-                        .frame(minWidth: 32, minHeight: 32)
                         .accessibilityHidden(true)
 
-                    Text(displayName)
-                        .font(.headline)
-                }
-
-                if !presentation.place.city.country.isEmpty {
-                    Text(presentation.place.city.country)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-
-                Text(statusDescription)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.vertical, 5)
-            .accessibilityElement(children: .combine)
-        } else {
-            HStack(spacing: 14) {
-                statusIcon
-                    .frame(width: 32, height: 32)
-                    .accessibilityHidden(true)
-
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(displayName)
-                        .font(.headline)
-                        .lineLimit(2)
-
-                    if !presentation.place.city.country.isEmpty {
-                        Text(presentation.place.city.country)
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-
                     Text(statusDescription)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+                        .font(.subheadline)
+                        .foregroundStyle(theme.colors.secondaryText)
                 }
             }
-            .padding(.vertical, 5)
-            .accessibilityElement(children: .combine)
         }
+    }
+
+    @ViewBuilder
+    private var rankOrStatusIcon: some View {
+        if let rank {
+            Text(rank, format: .number)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(theme.colors.secondaryText)
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+                .frame(width: rankColumnWidth, alignment: .leading)
+        } else {
+            statusIcon
+                .frame(width: rankColumnWidth, alignment: .leading)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func compactMetric(
+        for recommendation: PlaceRecommendation
+    ) -> some View {
+        let details = metricDetails(for: recommendation)
+
+        return HStack(spacing: 3) {
+            Image(systemName: details.icon)
+                .font(.caption.weight(.medium))
+                .accessibilityHidden(true)
+
+            Text(details.value)
+                .font(.caption.weight(.medium))
+                .monospacedDigit()
+        }
+        .foregroundStyle(theme.colors.secondaryText)
+        .lineLimit(1)
+        .frame(width: metricColumnWidth, alignment: .trailing)
     }
 
     @ViewBuilder
     private var statusIcon: some View {
         if presentation.isLoading {
             ProgressView()
+                .controlSize(.small)
         } else {
             Image(systemName: "exclamationmark.circle")
-                .font(.title2)
-                .foregroundStyle(.secondary)
+                .font(.body)
+                .foregroundStyle(theme.colors.secondaryText)
         }
+    }
+
+    private var compactStatusLabel: String {
+        presentation.isLoading
+            ? localizedString("Loading forecast…", locale: locale)
+            : localizedString("Forecast Unavailable", locale: locale)
     }
 
     private var statusDescription: String {
@@ -692,141 +764,79 @@ private struct SavedPlaceForecastRow: View {
                 locale: locale
             )
     }
-}
 
-private struct PlacesLibraryMap: View {
-    let presentations: [SavedPlacePresentation]
-    @Binding var selectedPlaceID: SavedPlace.ID?
-    let selectedDate: Date
-    let displayName: (SavedPlace) -> String
-    let weatherAttribution: WeatherAttribution?
+    private var accessibilityValue: String {
+        var components: [String] = []
 
-    @State private var position: MapCameraPosition = .automatic
-    @Environment(\.appTheme) private var theme
+        if let rank {
+            components.append(localizedString("Rank \(rank)", locale: locale))
+        }
 
-    private var selectedPresentation: SavedPlacePresentation? {
-        guard let selectedPlaceID else { return nil }
-        return presentations.first { $0.id == selectedPlaceID }
+        if let recommendation = presentation.recommendation {
+            let details = metricDetails(for: recommendation)
+            components.append("\(details.label): \(details.value)")
+        } else {
+            components.append(statusDescription)
+        }
+
+        return components.joined(separator: ", ")
     }
 
-    private var placeIDs: [SavedPlace.ID] {
-        presentations.map(\.id)
-    }
-
-    var body: some View {
-        Map(position: $position, selection: $selectedPlaceID) {
-            ForEach(presentations) { presentation in
-                Marker(
-                    displayName(presentation.place),
-                    systemImage: presentation.recommendation?
-                        .condition
-                        .displayIcon ?? "mappin",
-                    coordinate: CLLocationCoordinate2D(
-                        latitude: presentation.place.city.latitude,
-                        longitude: presentation.place.city.longitude
-                    )
-                )
-                .tint(markerTint(for: presentation.recommendation))
-                .tag(presentation.id)
-            }
-        }
-        .mapControls {
-            MapCompass()
-            MapScaleView()
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                if let selectedPresentation {
-                    MapPlaceSelectionCard(
-                        presentation: selectedPresentation,
-                        displayName: displayName(selectedPresentation.place),
-                        selectedDate: selectedDate,
-                        clearSelection: {
-                            selectedPlaceID = nil
-                        }
-                    )
-                }
-
-                if let weatherAttribution, !presentations.isEmpty {
-                    WeatherAttributionView(attribution: weatherAttribution)
-                        .padding(.horizontal)
-                        .padding(.vertical, 8)
-                        .background(.regularMaterial)
-                }
-            }
-        }
-        .onChange(of: placeIDs, initial: true) {
-            position = .automatic
-            if let selectedPlaceID,
-               !placeIDs.contains(selectedPlaceID) {
-                self.selectedPlaceID = nil
-            }
-        }
-        .accessibilityLabel("Map of saved places")
-    }
-
-    private func markerTint(
-        for recommendation: PlaceRecommendation?
-    ) -> Color {
-        switch recommendation?.conditionGroup {
+    private func metricDetails(
+        for recommendation: PlaceRecommendation
+    ) -> (value: String, icon: String, label: String) {
+        switch sortMode {
         case .sunny:
-            theme.colors.dotSun
-        case .partlySunny:
-            theme.colors.dotPartlyCloudy
-        case .mixed:
-            theme.colors.dotCloudy
-        case .wet:
-            theme.colors.dotRain
-        case nil:
-            theme.colors.accent
+            return (
+                String(recommendation.sunnyHourCount),
+                sortMode.icon,
+                localizedString("Sunny Hours", locale: locale)
+            )
+        case .cloud:
+            return (
+                percentage(recommendation.cloudCover),
+                "cloud",
+                localizedString("Cloud Cover", locale: locale)
+            )
+        case .temperature:
+            return (
+                temperatureUnit.display(recommendation.forecast.dailyHigh),
+                sortMode.icon,
+                sortMode.title(locale: locale)
+            )
+        case .feelsLike:
+            return (
+                recommendation.maximumFeelsLike.map(
+                    temperatureUnit.display
+                ) ?? "—",
+                sortMode.icon,
+                sortMode.title(locale: locale)
+            )
+        case .rainChance:
+            return (
+                recommendation.precipitationChance.map(percentage) ?? "—",
+                sortMode.icon,
+                sortMode.title(locale: locale)
+            )
+        case .visibility:
+            return (
+                recommendation.maximumVisibilityKilometers.map(
+                    distanceUnit.display
+                ) ?? "—",
+                sortMode.icon,
+                sortMode.title(locale: locale)
+            )
+        case .uvIndex:
+            return (
+                recommendation.forecast.uvIndex.map(String.init) ?? "—",
+                sortMode.icon,
+                sortMode.title(locale: locale)
+            )
         }
     }
-}
 
-private struct MapPlaceSelectionCard: View {
-    let presentation: SavedPlacePresentation
-    let displayName: String
-    let selectedDate: Date
-    let clearSelection: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(alignment: .top) {
-                Group {
-                    if let recommendation = presentation.recommendation {
-                        PlaceRecommendationRow(
-                            recommendation: recommendation,
-                            displayName: displayName
-                        )
-                    } else {
-                        SavedPlaceForecastRow(
-                            presentation: presentation,
-                            displayName: displayName
-                        )
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                Button("Close", systemImage: "xmark.circle.fill") {
-                    clearSelection()
-                }
-                .labelStyle(.iconOnly)
-                .foregroundStyle(.secondary)
-                .frame(minWidth: 44, minHeight: 44)
-            }
-
-            NavigationLink(
-                "View Forecast",
-                value: AppRoute.place(
-                    id: presentation.id,
-                    date: selectedDate
-                )
-            )
-            .buttonStyle(.borderedProminent)
-        }
-        .padding()
-        .background(.regularMaterial)
-        .accessibilityElement(children: .contain)
+    private func percentage(_ value: Double) -> String {
+        "\(Int((value * 100).rounded()))%"
     }
 }
 

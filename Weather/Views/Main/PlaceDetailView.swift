@@ -2,8 +2,8 @@
 //  PlaceDetailView.swift
 //  Weather
 //
-//  Purpose: Presents a recommendation-first native place report reached from
-//  either Home or Places, with optional save and collection actions.
+//  Purpose: Presents the shared recommendation-first native place report, with
+//  optional save and collection actions.
 //
 
 import SwiftUI

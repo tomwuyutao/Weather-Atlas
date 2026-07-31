@@ -1,103 +1,162 @@
-# Weather Atlas code map
+# Weather Atlas code organization
 
-This guide is the quickest route through the project. The app uses one shared
-`ContentView` state owner. Small, tightly coupled helpers stay in the source file
-that owns their behavior; dedicated files are reserved for substantial screens,
-services, models, or reusable components.
+Weather Atlas is a native SwiftUI app built around a place-owned library.
+`SavedPlace` is the durable unit; collections are optional relationships between
+places. The former list-owned `ContentView` architecture is no longer the active
+app shell.
 
-## Suggested reading order
+## Start here
 
-1. `Weather/App/WeatherApp.swift` — app entry point, language defaults, launch
-   migrations, and the root theme/locale/text-size environment.
-2. `Weather/App/ContentView.swift` — root state, lifecycle observers, sheets,
-   alerts, refresh work, and widget-catalog publication.
-3. `Weather/App/AppNavigation.swift` — route definitions, navigation stack, and
-   route transitions.
-4. `Weather/Views/BottomToolbar.swift` — shared top/bottom controls, list
-   switching, and forecast-date selection.
-5. The feature file you want to understand: `HomeView`, `ListView`, `MapView`,
-   `DetailView`, `SettingsView`, `Tutorial`, or a search file.
-6. `Weather/Helpers/WeatherService.swift` and `Weather/Models/WeatherModels.swift`
-   — WeatherKit fetching and the app's weather domain data.
+1. `Weather/App/WeatherApp.swift` creates the shared model and router, performs
+   launch migrations, and installs locale, theme, text-size, and accessibility
+   environment values.
+2. `Weather/App/WeatherAtlasRootView.swift` defines the native tab shell,
+   independent navigation stacks, shared routes, sheets, quick actions, widget
+   deep links, and the shared forecast-date selection.
+3. `Weather/App/AppRouter.swift` owns presentation state only: selected tab,
+   navigation paths, modal destinations, collection scope, and map selection.
+4. `Weather/App/WeatherAtlasModel.swift` coordinates saved places, place-keyed
+   weather, nearby discovery, recommendation inputs, and widget publication.
+5. Read the feature view, then the store or model that supplies its data.
 
-## Folder ownership
+## Native app shell
 
-| Folder | Owns |
+`WeatherAtlasRootView` owns one `TabView` with these destinations:
+
+- **Home** — a recommendation-first list for the selected date, combining saved
+  places with opted-in nearby candidates.
+- **Map** — a full-screen, immersive map of the saved-place scope. It owns the
+  floating date scroller, weather dots, legend, metric/filter controls, camera
+  fitting, and selected-place card.
+- **Places** — the list-only library for saving, sorting, searching, deleting,
+  and organizing places into optional collections.
+- **Search** — a system search-role tab that finds a world city and saves it
+  directly to All Places.
+
+Home, Map, Places, and Search keep independent `NavigationStack` histories.
+`AppRoute` carries stable place identity and the selected literal date to the
+shared `PlaceDetailView`; root-owned `AppSheetDestination` values drive add,
+collection, nearby-discovery, and settings sheets.
+
+Map and Places are sibling destinations. Do not put a list/map mode switch back
+inside Places or make a collection the owner of a place.
+
+## Root state and data flow
+
+`WeatherApp` creates `WeatherAtlasModel` and `AppRouter` once with `@State`.
+`WeatherAtlasRootView` passes bindings needed by a destination and also injects
+the model, `PlacesStore`, `PlaceWeatherStore`, and `LocationProvider` into the
+environment. Feature-local interaction state stays private to its view.
+
+`AppRouter` contains no persisted domain data. `WeatherAtlasModel` coordinates
+domain stores but does not duplicate their source-of-truth values:
+
+```text
+PlacesStore ───────────────┐
+                          ├─ WeatherAtlasModel ─ Views / widget catalog
+PlaceWeatherStore ─────────┤
+LocationProvider ──────────┤
+WorldCitiesCatalog ────────┘
+```
+
+## Places library
+
+The active persistence path is:
+
+- `Models/PlacesLibraryModels.swift` — `SavedPlace`, `PlaceCollection`, and the
+  versioned `PlacesLibraryDocument`.
+- `Helpers/PlacesStore.swift` — main-actor observable source of truth and the
+  only mutation API for saved places, ordering, collection membership, and
+  collection lifecycle.
+- `Helpers/PlacesDocumentStore.swift` — validated, atomic Application Support
+  JSON persistence with read-back verification.
+- `Helpers/PlacesLibraryValidator.swift` — schema and relationship invariants at
+  persistence boundaries.
+
+`PlacesLibraryDocument.places` is All Places. It is never represented by a
+synthetic collection. A `PlaceCollection` contains ordered place IDs, a place
+may belong to multiple collections, and deleting a collection never deletes its
+places.
+
+## Weather and recommendations
+
+- `Helpers/PlaceWeatherStore.swift` is the observable forecast repository. It
+  keys snapshots, failures, loading state, and coalesced requests by stable
+  `City.ID`, and persists only disposable weather cache data.
+- `Helpers/WeatherService.swift` is the WeatherKit adapter used by the
+  repository.
+- `Models/RecommendationEngine.swift` converts real forecasts into
+  `PlaceRecommendation` values for one literal date, then groups or sorts them.
+- `Helpers/SunninessScoring.swift` and the weather-domain files in `Models`
+  define sunny conditions, daytime windows, and display metrics.
+
+Home, Map, Places, and Detail request weather through `PlaceWeatherStore`; none
+owns an independent forecast array. Missing WeatherKit inputs remain explicit
+`WeatherDataIssue` values—views must not invent substitute chart, marker, or
+ranking data.
+
+## Nearby discovery and search
+
+Nearby discovery deliberately narrows the local dataset before WeatherKit:
+
+```text
+current coordinate
+  → radius and optional current-country filter
+  → WorldCitiesCatalog
+  → up to 10 highest-population cities in range
+  → PlaceWeatherStore
+  → RecommendationEngine sunniness ranking
+```
+
+`NearbyDiscoverySettingsSheet` owns the native radius/country controls and
+MapKit preview. `LocationProvider` requests permission only from an explicit
+user action. `WorldCitiesCatalog` loads and indexes the bundled
+`worldcities.csv` once and performs geographic and text queries off the main
+actor.
+
+`CitySearchManager` uses the same region-neutral catalog for Search. Only the
+selected result is reverse-geocoded for timezone metadata; `PlaceSearchView`
+then saves it through `PlacesStore` and asks `PlaceWeatherStore` to refresh it.
+
+## View ownership
+
+| Area | Primary files |
 | --- | --- |
-| `Weather/App` | App launch, root state and shell coordination, navigation, shortcuts, refresh, and widget publication. |
-| `Weather/Views` | Screen-level SwiftUI presentation, shared toolbars, map presentation, and feature-owned visual helpers. |
-| `Weather/Views/Components` | The shared ranked-city row renderer in `CityCandidateRows.swift`. |
-| `Weather/Search` | City and country search state, search services, and picker presentation. |
-| `Weather/Models` | App weather-domain values and ranking operations. These files do not own app lifecycle. |
-| `Weather/Helpers` | Services, persistence, catalogs, scoring, theme/UI infrastructure, and error presentation. |
-| `Weather/Widgets` | WidgetKit/AppIntent declarations, shared app-group data contracts and persistence, and widget-only presentation. |
+| App shell and routing | `App/WeatherAtlasRootView.swift`, `App/AppRouter.swift` |
+| Recommendations | `Views/Main/HomeView.swift`, `Views/Components/PlaceRecommendationRow.swift` |
+| Immersive map | `Views/Main/MapView.swift` |
+| Places and collections | `Views/Main/PlacesView.swift`, `Views/Places/ManageCollectionsView.swift`, `Views/Places/PlaceCollectionMembershipSheet.swift` |
+| Search and add | `Views/Places/PlaceSearchView.swift`, `AddPlaceSheet.swift`, `Search/CitySearch.swift` |
+| Shared date context | `Views/Components/ForecastDateStrip.swift` |
+| Forecast report | `Views/Main/PlaceDetailView.swift`, `Views/Main/ChartView.swift` |
+| Preferences | `Views/Main/NativeSettingsView.swift`, `Views/Components/NearbyDiscoverySettingsSheet.swift` |
 
-## Root-state pattern
+## Legacy and widget compatibility
 
-All `@State`, `@AppStorage`, `@Environment`, `@FocusState`, and namespace values
-used by `ContentView` are declared in `ContentView.swift`. Feature files extend
-`ContentView` only when the behavior belongs to a substantial screen or domain.
-When adding a feature:
+`LegacyPlacesImporter` performs a read-only, one-time conversion from the former
+UserDefaults list format. It deduplicates places, converts lists to optional
+collections, and preserves legacy collection IDs so installed widget
+configurations still resolve. The import marker is written only after the new
+document is atomically saved and verified. `LegacyCityListModels` and legacy
+list identities remain compatibility inputs, not active UI state.
 
-- put new stored root state in `ContentView.swift` under the matching state
-  section;
-- put the behavior and view composition in the owning feature file;
-- keep a short helper beside its call sites instead of creating a one-purpose
-  file;
-- put a genuinely reusable ranked-city row change in
-  `Views/Components/CityCandidateRows.swift`;
-- put a reusable domain value in `Models`.
+`WeatherAtlasModel.publishWidgetCatalog` publishes All Places first, followed by
+optional collections, through the existing app-group `WidgetDataStore`
+contract. Widget `kind` strings, AppIntent entity identities, Codable field
+names, app-group keys, and legacy deep-link formats must remain stable unless an
+explicit migration is added. Old Home/Map/List quick actions and widget URLs are
+translated by the root router into the current tabs and collection scopes.
 
-Avoid moving property-wrapper declarations merely for file size: their order is
-part of the root view's state layout and keeping them together makes lifecycle
-behavior easier to audit.
+The app and widget targets share only the explicitly target-membered theme,
+weather-domain, timeline, issue, and widget data-contract files. Widget-only UI
+and timeline behavior stays under `Weather/Widgets`.
 
-## Weather and persistence flow
+## Change rules
 
-`WeatherService` fetches WeatherKit data, resolves places/time zones, and owns
-the observable weather state. Persistence support is separated by responsibility:
-
-- `CityListStore.swift` — list identity, saved city lists, and list mutations;
-- `WeatherCache.swift` — cached app forecasts;
-- `PlaceResolution.swift` — canonical place and time-zone resolution;
-- `ContentView.swift` — conversion from loaded app data to the shared widget
-  catalog.
-
-Missing WeatherKit inputs use `WeatherDataIssue`; no chart, marker, or metric
-should invent a replacement value. User-visible issue messages live in
-`ErrorAlerts.swift` alongside the queued native-alert bridge and expected
-forecast-omission notice.
-
-## App and widget shared boundary
-
-The app and WidgetKit extension share these source files:
-
-- `Helpers/AppTheme.swift`
-- `Models/SunnyHoursTimeline.swift`
-- `Models/WeatherDataIssue.swift`
-- `Models/WeatherSymbols.swift`
-- `Widgets/WidgetDataModels.swift`
-- `Widgets/WidgetDataStore.swift`
-
-Widget-only localized-string lookup now lives directly in
-`Weather/Widgets/Widgets.swift`, which belongs only to the widget extension.
-Target membership is maintained by the synchronized-folder exception lists in
-`Weather Atlas.xcodeproj/project.pbxproj`. Persisted keys, Codable field names,
-widget `kind` strings, and AppIntent configuration identities must remain stable
-unless an explicit migration is added.
-
-## Comment conventions
-
-- Every Swift file starts with its filename, target, and a one-sentence purpose.
-- `// MARK:` headings describe meaningful navigator sections, not individual
-  functions.
-- Every source-level type and every stored/computed property, initializer, and
-  function has a concise `///` contract comment. Property comments explain
-  ownership or semantics; function comments explain the result, side effects,
-  validation, or invariant rather than paraphrasing the identifier.
-- Comments explain invariants and framework behavior: calendar/time-zone rules,
-  cache freshness, WeatherKit omissions, target sharing, accessibility choices,
-  or SwiftUI lifecycle ordering.
-- Local variables and ordinary SwiftUI modifier chains remain uncommented unless
-  their calculation, ordering, or framework behavior is non-obvious. This keeps
-  declaration documentation complete without burying executable logic in noise.
+- Persist place or collection changes only through `PlacesStore`.
+- Load or refresh forecasts only through `PlaceWeatherStore`.
+- Route by stable IDs, not captured weather snapshots.
+- Keep the selected forecast date as shared navigation context.
+- Prefer native SwiftUI navigation, lists, forms, search, toolbars, menus,
+  sheets, alerts, and MapKit controls; custom presentation should be limited to
+  Weather Atlas-specific data visualization.

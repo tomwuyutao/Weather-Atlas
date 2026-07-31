@@ -21,7 +21,7 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
         switch self {
         case .home: return "house"
         case .map: return "map"
-        case .list: return "list.bullet"
+        case .list: return "mappin.and.ellipse"
         }
     }
 
@@ -30,7 +30,8 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
         switch self {
         case .home: return localizedString("Home", locale: locale)
         case .map: return localizedString("Map", locale: locale)
-        case .list: return localizedString("List", locale: locale)
+        // Keep the legacy raw value so installed shortcuts continue to decode.
+        case .list: return localizedString("Places", locale: locale)
         }
     }
 }
@@ -39,7 +40,7 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
 
 /// Connects UIKit launch and shortcut callbacks to the SwiftUI navigation layer.
 class AppDelegate: NSObject, UIApplicationDelegate {
-    /// User-defaults key holding a shortcut until `ContentView` can consume it.
+    /// User-defaults key holding a shortcut until the SwiftUI app shell consumes it.
     nonisolated private static let pendingShortcutDestinationKey = "pendingShortcutDestination"
 
     /// Installs current shortcuts and captures a shortcut supplied at cold launch.
@@ -128,7 +129,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         }
 
         // An app update can leave an old dynamic list shortcut visible until the
-        // new shortcut set is installed. Route that legacy action to the List view.
+        // new shortcut set is installed. Route that legacy action to Places.
         if shortcutItem.userInfo?["listID"] != nil
             || shortcutItem.type.contains(".openList.") {
             return .list

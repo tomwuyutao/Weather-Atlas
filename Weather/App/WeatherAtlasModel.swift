@@ -3,7 +3,7 @@
 //  Weather
 //
 //  Purpose: Coordinates the independent places library, place-keyed forecasts,
-//  and population-prefiltered nearby discovery for the new two-tab app.
+//  and population-prefiltered nearby discovery for the native tabbed app.
 //
 
 import CoreLocation
@@ -11,7 +11,7 @@ import CryptoKit
 import Foundation
 import Observation
 
-/// Root domain model shared by Home and Places.
+/// Root domain model shared by Home, Map, Places, Search, and detail views.
 @MainActor
 @Observable
 final class WeatherAtlasModel {
@@ -37,6 +37,7 @@ final class WeatherAtlasModel {
                 forKey: PreferenceKey.enabled
             )
             if !isNearbyDiscoveryEnabled {
+                nearbyRefreshGeneration &+= 1
                 clearNearbyResults()
             }
         }
@@ -192,7 +193,8 @@ final class WeatherAtlasModel {
                 limit: WorldCitiesCatalog.maximumCandidateCount
             )
             guard !Task.isCancelled,
-                  nearbyRefreshGeneration == generation else {
+                  nearbyRefreshGeneration == generation,
+                  isNearbyDiscoveryEnabled else {
                 return
             }
 
@@ -210,6 +212,12 @@ final class WeatherAtlasModel {
                 forceRefresh: forceRefresh,
                 locale: locale
             )
+            guard !Task.isCancelled,
+                  nearbyRefreshGeneration == generation,
+                  isNearbyDiscoveryEnabled else {
+                reconcileRetainedWeather()
+                return
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -240,7 +248,8 @@ final class WeatherAtlasModel {
 
     /// Nearby population candidates ranked by their fetched sunny conditions.
     func nearbyRecommendations(on date: Date) -> [PlaceRecommendation] {
-        RecommendationEngine.ranked(
+        guard isNearbyDiscoveryEnabled else { return [] }
+        return RecommendationEngine.ranked(
             nearbyWeather.compactMap { weather in
                 let metadata = nearbyMetadataByPlaceID[weather.id]
                 return RecommendationEngine.recommendation(
@@ -405,7 +414,7 @@ final class WeatherAtlasModel {
                 listID: scopeID
             ),
             cityName: place.customName
-                ?? localizedCityDisplayName(for: city, locale: locale),
+                ?? city.localizedName(locale: locale),
             timeZoneIdentifier: resolvedTimeZoneIdentifier,
             latitude: city.latitude,
             longitude: city.longitude,

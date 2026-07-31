@@ -1,5 +1,5 @@
 //
-//  HomeTabView.swift
+//  HomeView.swift
 //  Weather
 //
 //  Purpose: Provides the image-free recommendation Home tab for one selected
@@ -9,12 +9,12 @@
 import SwiftUI
 
 /// Calm recommendation surface that answers where conditions are sunniest.
-struct HomeTabView: View {
+struct HomeView: View {
     /// Shared root domain model.
     let model: WeatherAtlasModel
     /// Value-navigation and item-driven presentation coordinator.
     @Bindable var router: AppRouter
-    /// Literal date shared with Places and Detail.
+    /// Literal date shared with Map, Places, and Detail.
     @Binding var selectedDate: Date
 
     @Environment(\.locale) private var locale

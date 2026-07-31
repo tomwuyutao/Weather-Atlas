@@ -236,32 +236,6 @@ struct CityWeather: Identifiable, Hashable {
     }
 }
 
-/// A city may have a shorter real WeatherKit range than its peers, or its local
-/// range may shift at a time-zone boundary. Both are expected omissions when a
-/// peer supplies the selected date. Empty forecasts and internal gaps remain
-/// genuine missing-data errors.
-func isExpectedForecastBoundaryOmission(
-    for cityWeather: CityWeather,
-    among cities: [CityWeather],
-    on selectedDate: Date,
-    selectionCalendar: Calendar = .current
-) -> Bool {
-    guard cities.contains(where: {
-        $0.id != cityWeather.id
-            && $0.forecastIfAvailable(
-                on: selectedDate,
-                selectionCalendar: selectionCalendar
-            ) != nil
-    }) else {
-        return false
-    }
-
-    return cityWeather.isForecastBoundaryOmission(
-        on: selectedDate,
-        selectionCalendar: selectionCalendar
-    )
-}
-
 // MARK: - Forecasts
 
 /// One WeatherKit daily forecast and its associated hourly source values.

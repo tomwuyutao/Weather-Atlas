@@ -2,14 +2,13 @@
 //  WeatherService.swift
 //  Weather
 //
-//  Purpose: Fetches WeatherKit data, converts it into app models, and manages
-//  the in-memory weather state for every saved list.
+//  Purpose: Fetches WeatherKit data, resolves place metadata, and converts
+//  WeatherKit responses into app weather models.
 //
 
-import Foundation
-import Observation
-import WeatherKit
 import CoreLocation
+import Foundation
+import WeatherKit
 
 // MARK: - Service Errors
 
@@ -29,405 +28,33 @@ enum WeatherServiceError: LocalizedError {
     }
 }
 
-/// Source of truth for lists, WeatherKit fetching, and weather caches.
-@Observable
+/// Thin WeatherKit adapter shared by the place-keyed forecast repository.
 @MainActor
 final class WeatherService {
-    // MARK: Observable State
+    // MARK: Resolution State
 
-    /// Persisted list catalog in user-defined order.
-    var availableLists: [CityListID] = CityListID.allLists
-    /// Loaded weather snapshots indexed by stable list raw value.
-    var weatherDataByListID: [String: [CityWeather]] = [:]
-    /// Read-write adapter exposing the active list's loaded snapshot.
-    var cityWeatherData: [CityWeather] {
-        get { weatherDataByListID[activeListID.rawValue] ?? [] }
-        set { weatherDataByListID[activeListID.rawValue] = newValue }
-    }
-    /// Whether the active list currently has an in-flight fetch.
-    var isLoading = false
-    /// Fraction of active-list city fetch attempts completed.
-    var loadingProgress: Double = 0
-    /// Most recent user-presentable service failure message.
-    var errorMessage: String?
-    /// Fetch date associated with the active list.
-    var lastFetchDate: Date?
-    /// WeatherKit legal attribution loaded for presentation.
-    var weatherAttribution: WeatherAttribution?
-    /// Stable identity of the currently selected list.
-    var activeListID: CityListID = .europe
-    /// Cancellable task owning the active-list fetch pipeline.
-    @ObservationIgnored private var activeFetchTask: Task<Void, Never>?
-    /// Duration for which successful snapshots remain fresh.
-    let weatherCacheDuration: TimeInterval = 30 * 60
-    /// In-memory per-list fetch timestamps.
-    var listFetchDates: [String: Date] = [:]
     /// In-process timezone cache keyed by rounded coordinates.
     var resolvedTimeZones: [String: TimeZone] = [:]
     /// In-process place cache keyed by rounded coordinates.
     var resolvedPlaces: [String: ResolvedPlace] = [:]
     
-    // MARK: WeatherKit and Persistence Keys
+    // MARK: WeatherKit
 
     /// Shared Apple WeatherKit client.
     let weatherKitService = WeatherKit.WeatherService.shared
 
-    /// Preference key containing the active list raw value.
-    static let activeListKey = "activeListID"
-    
-    // MARK: Initialization
+    // MARK: Error Reporting
 
-    /// Restores list identity and any valid cache needed for initial rendering.
-    init() {
-        if let saved = UserDefaults.standard.string(forKey: Self.activeListKey),
-           let listID = availableLists.first(where: { $0.rawValue == saved }) {
-            activeListID = listID
-        }
-        if let cachedData = loadCachedWeatherData(for: activeListID), isWeatherDataFresh(for: activeListID) {
-            cityWeatherData = cachedData
-            lastFetchDate = fetchDate(for: activeListID)
-        }
-    }
-
-    // MARK: List State
-
-    /// Reloads metadata and reconciles the active identity after mutations.
-    func reloadAvailableLists() {
-        availableLists = CityListID.allLists
-        if let refreshedActiveList = availableLists.first(where: { $0.rawValue == activeListID.rawValue }) {
-            activeListID = refreshedActiveList
-        }
-    }
-
-    /// Resets persisted and in-memory app data to the first-install state.
-    func resetForFirstLaunch() {
-        activeFetchTask?.cancel()
-        removeAllCachedWeatherData()
-        WidgetDataStore.removeAll()
-
-        let defaults = UserDefaults.standard
-        if let bundleIdentifier = Bundle.main.bundleIdentifier {
-            defaults.removePersistentDomain(forName: bundleIdentifier)
-        } else {
-            for key in defaults.dictionaryRepresentation().keys {
-                defaults.removeObject(forKey: key)
-            }
-        }
-
-        // Keep historical migrations from re-running after the new tutorial has
-        // created the user's fresh initial list selection.
-        defaults.set(true, forKey: "defaultCitiesMigrationV3")
-        defaults.set(true, forKey: "weatherCacheDaytimeForecastMigrationV1")
-        defaults.set("weather", forKey: "mapOverlayMode")
-        AppLanguageDefaults.configureInitialLanguage()
-        AppTheme.shared.style = .automatic
-
-        availableLists = CityListID.allLists
-        activeListID = .europe
-        weatherDataByListID = [:]
-        listFetchDates = [:]
-        resolvedTimeZones = [:]
-        resolvedPlaces = [:]
-        isLoading = false
-        loadingProgress = 0
-        errorMessage = nil
-        lastFetchDate = nil
-        weatherAttribution = nil
-    }
-
-    // MARK: Weather Attribution
-
-    // MARK: Active-List Fetching
-
-    /// Cancels any prior active-list fetch and starts a replacement pipeline.
-    func fetchWeatherForAllCities(forceRefresh: Bool = false) async {
-        activeFetchTask?.cancel()
-        let targetListID = activeListID
-        let task = Task { [weak self] in
-            guard let self else { return }
-            await self.performActiveListFetch(for: targetListID, forceRefresh: forceRefresh)
-        }
-        activeFetchTask = task
-        await task.value
-    }
-
-    /// Loads cache or fetches every configured city while guarding list identity.
-    private func performActiveListFetch(for targetListID: CityListID, forceRefresh: Bool) async {
-        guard activeListID == targetListID, !Task.isCancelled else { return }
-        errorMessage = nil
-        let currentData = weatherDataByListID[targetListID.rawValue] ?? []
-        if !forceRefresh,
-           currentData.isEmpty,
-           let cachedData = loadCachedWeatherData(for: activeListID),
-           isWeatherDataFresh(for: activeListID) {
-            weatherDataByListID[activeListID.rawValue] = cachedData
-            lastFetchDate = fetchDate(for: activeListID)
-            loadingProgress = 1
-            isLoading = false
-            return
-        }
-
-        if !forceRefresh,
-           !currentData.isEmpty,
-           isWeatherDataFresh(for: activeListID),
-           cachedWeatherDataLooksCurrent(currentData, for: activeListID) {
-            loadingProgress = 1
-            isLoading = false
-            return
-        }
-
-        isLoading = true
-        loadingProgress = 0
-        defer {
-            if !Task.isCancelled, activeListID == targetListID {
-                isLoading = false
-            }
-        }
-        
-        // Load the saved cities list, or use defaults for active list
-        let citiesToFetch = loadSavedCities(for: targetListID) ?? targetListID.defaultCities
-        guard !citiesToFetch.isEmpty else {
-            weatherDataByListID[targetListID.rawValue] = []
-            loadingProgress = 1
-            return
-        }
-        
-        var weatherData: [CityWeather] = []
-        weatherDataByListID[targetListID.rawValue] = []
-        
-        for (index, city) in citiesToFetch.enumerated() {
-            guard activeListID == targetListID, !Task.isCancelled else { return }
-            do {
-                let resolvedCity = try await resolvedCity(for: city)
-                let location = CLLocation(latitude: resolvedCity.latitude, longitude: resolvedCity.longitude)
-                let weather = try await weatherWithOneRetry(for: location)
-                let cityWeather = try await convertWeatherKitData(weather: weather, for: resolvedCity)
-                guard activeListID == targetListID, !Task.isCancelled else { return }
-
-                weatherData.append(cityWeather)
-                weatherDataByListID[targetListID.rawValue] = weatherData
-            } catch {
-                guard !Task.isCancelled else { return }
-                report(error)
-            }
-            loadingProgress = Double(index + 1) / Double(citiesToFetch.count)
-        }
-        
-        guard !Task.isCancelled, activeListID == targetListID else {
-            return
-        }
-        
-        if weatherData.count == citiesToFetch.count {
-            cacheData(weatherData, for: targetListID, updateFetchDate: true)
-        } else {
-            invalidateIncompleteCache(for: targetListID)
-        }
-    }
-    
-    // MARK: Refreshing and List Switching
-
-    /// Invalidates the active cache and forces a complete replacement fetch.
-    func refreshWeather() async {
-        // Remove the active list's weather snapshot and timestamp before refetching.
-        removeCache(for: activeListID)
-        await fetchWeatherForAllCities(forceRefresh: true)
-    }
-    
-    /// Activates a list, restores any snapshot, and fetches when needed.
-    func switchList(to listID: CityListID) async {
-        guard activateList(listID) else { return }
-        await fetchWeatherForAllCities()
-    }
-
-    /// Immediately changes the visible list, then fetches its weather without
-    /// making navigation wait for WeatherKit. Used by list controls on Map and List.
-    func beginSwitchList(to listID: CityListID) {
-        guard activateList(listID) else { return }
-        Task { [weak self] in
-            guard let self, self.activeListID == listID else { return }
-            await self.fetchWeatherForAllCities()
-        }
-    }
-
-    /// Replaces active-list state before either a blocking or background fetch.
-    @discardableResult
-    private func activateList(_ listID: CityListID) -> Bool {
-        guard listID != activeListID else { return false }
-        activeFetchTask?.cancel()
-        activeListID = listID
-        errorMessage = nil
-        loadingProgress = 0
-        isLoading = true
-        UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
-        weatherDataByListID[listID.rawValue] = weatherDataByListID[listID.rawValue]
-            ?? loadCachedWeatherData(for: listID)
-            ?? []
-        lastFetchDate = fetchDate(for: listID)
-        return true
-    }
-
-    /// Activates a list and fetches one requested city before its remaining peers.
-    func switchList(to listID: CityListID, prioritizing priorityCity: City) async -> CityWeather? {
-        let existingData = weatherDataByListID[listID.rawValue]
-            ?? (listID == activeListID ? cityWeatherData : nil)
-            ?? loadCachedWeatherData(for: listID)
-            ?? []
-        if isWeatherDataFresh(for: listID),
-           cachedWeatherDataLooksCurrent(existingData, for: listID),
-           let existingCity = existingData.first(where: { citiesMatch($0.city, priorityCity) }) {
-            activeFetchTask?.cancel()
-            activeListID = listID
-            UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
-            weatherDataByListID[listID.rawValue] = existingData
-            lastFetchDate = fetchDate(for: listID)
-            return existingCity
-        }
-
-        activeFetchTask?.cancel()
-        activeListID = listID
-        errorMessage = nil
-        UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
-        lastFetchDate = nil
-        loadingProgress = 0
-        isLoading = true
-
-        // Move the requested city first without duplicating coordinate identity.
-        let savedCities = loadSavedCities(for: listID) ?? listID.defaultCities
-        let citiesToFetch: [City]
-        if let priorityIndex = savedCities.firstIndex(where: { citiesMatch($0, priorityCity) }) {
-            var reorderedCities = savedCities
-            reorderedCities.insert(reorderedCities.remove(at: priorityIndex), at: 0)
-            citiesToFetch = reorderedCities
-        } else {
-            citiesToFetch = [priorityCity] + savedCities.filter { !citiesMatch($0, priorityCity) }
-        }
-        guard !citiesToFetch.isEmpty else {
-            weatherDataByListID[listID.rawValue] = []
-            isLoading = false
-            loadingProgress = 1
-            return nil
-        }
-
-        weatherDataByListID[listID.rawValue] = []
-
-        let priorityWeather = await fetchWeatherForCity(citiesToFetch[0])
-        guard !Task.isCancelled, activeListID == listID else { return nil }
-        guard let priorityWeather else {
-            activeFetchTask = Task { [weak self] in
-                guard let self else { return }
-                await self.finishPrioritizedListFetch(
-                    listID: listID,
-                    citiesToFetch: citiesToFetch,
-                    initialWeatherData: []
-                )
-            }
-            return nil
-        }
-
-        weatherDataByListID[listID.rawValue] = [priorityWeather]
-        loadingProgress = 1 / Double(citiesToFetch.count)
-
-        activeFetchTask = Task { [weak self] in
-            guard let self else { return }
-            await self.finishPrioritizedListFetch(
-                listID: listID,
-                citiesToFetch: Array(citiesToFetch.dropFirst()),
-                initialWeatherData: [priorityWeather]
-            )
-        }
-
-        return priorityWeather
-    }
-
-    // MARK: City Identity
-
-    /// Matches canonical names and coordinates within five kilometers.
-    func citiesMatch(_ lhs: City, _ rhs: City) -> Bool {
-        // Keep spelling, case, and diacritics significant while normalizing invisible
-        // whitespace and canonically equivalent Unicode encodings.
-        guard lhs.name
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .precomposedStringWithCanonicalMapping
-            == rhs.name
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .precomposedStringWithCanonicalMapping else {
-            return false
-        }
-        let lhsLocation = CLLocation(latitude: lhs.latitude, longitude: lhs.longitude)
-        let rhsLocation = CLLocation(latitude: rhs.latitude, longitude: rhs.longitude)
-        return lhsLocation.distance(from: rhsLocation) < 5_000
-    }
-
-    /// Completes the background remainder of a priority-first list fetch.
-    private func finishPrioritizedListFetch(
-        listID: CityListID,
-        citiesToFetch: [City],
-        initialWeatherData: [CityWeather]
-    ) async {
-        var weatherData = initialWeatherData
-        let totalCount = weatherData.count + citiesToFetch.count
-
-        for city in citiesToFetch {
-            guard !Task.isCancelled, activeListID == listID else { return }
-            if let cityWeather = await fetchWeatherForCity(city) {
-                guard !Task.isCancelled, activeListID == listID else { return }
-                weatherData.append(cityWeather)
-                weatherDataByListID[listID.rawValue] = weatherData
-                loadingProgress = Double(weatherData.count) / Double(max(totalCount, 1))
-            }
-        }
-
-        guard !Task.isCancelled, activeListID == listID else { return }
-        isLoading = false
-        loadingProgress = 1
-        weatherDataByListID[listID.rawValue] = weatherData
-        if weatherData.count == totalCount {
-            cacheData(weatherData, for: listID, updateFetchDate: true)
-        } else {
-            invalidateIncompleteCache(for: listID)
-        }
-    }
-    
-    // MARK: Data Access and Error Reporting
-
-    /// Returns the currently loaded snapshot for a stable list identity.
-    func weatherData(for listID: CityListID) -> [CityWeather] {
-        return weatherDataByListID[listID.rawValue] ?? []
-    }
-
-    /// Logs a service error and converts it into localized native-alert copy.
+    /// Logs a service error. PlaceWeatherStore owns user-facing failures.
     func report(_ error: Error) {
         #if DEBUG
         print("[WeatherService] \(error.localizedDescription)")
         #endif
-
-        let locale = Locale(identifier: UserDefaults.standard.string(forKey: "appLanguage") ?? Locale.autoupdatingCurrent.identifier)
-        if let serviceError = error as? WeatherServiceError {
-            switch serviceError {
-            case .undefinedTimeZone(let city):
-                errorMessage = weatherDataIssueMessage(
-                    .missingTimeZone,
-                    cityName: city,
-                    locale: locale
-                )
-            case .unresolvedPlace(let city):
-                errorMessage = String(
-                    format: localizedString("Missing place data for %@.", locale: locale),
-                    locale: locale,
-                    city
-                )
-            }
-        } else {
-            errorMessage = localizedString(
-                "Weather data could not be loaded. Please try again.",
-                locale: locale
-            )
-        }
     }
 
-    /// Sends an invariant or persistence warning to the shared alert queue.
+    /// Records an internal invariant or persistence diagnostic in debug builds.
     func reportDeveloperWarning(title: String, message: String) {
-        DeveloperWarningCenter.show(title: title, message: message)
+        DeveloperDiagnostics.show(title: title, message: message)
     }
 
     // MARK: WeatherKit Conversion
@@ -517,7 +144,7 @@ final class WeatherService {
             )
         }
     }
-    // MARK: Per-City Fetching and Replacement
+    // MARK: Per-City Fetching
 
     /// Retries one failed WeatherKit network request before allowing its error
     /// to reach the user-facing warning pipeline. This covers work interrupted
@@ -554,39 +181,4 @@ final class WeatherService {
         }
     }
 
-    /// Refetches one city and replaces its matching entries across loaded lists.
-    func refreshWeatherForCity(_ cityWeather: CityWeather) async -> CityWeather? {
-        errorMessage = nil
-        guard let fetchedWeather = await fetchWeatherForCity(cityWeather.city) else {
-            return nil
-        }
-
-        let refreshedWeather = fetchedWeather.replacingID(cityWeather.id)
-        replaceWeatherData(refreshedWeather, matching: cityWeather.id, in: activeListID)
-
-        for listID in availableLists where listID.rawValue != activeListID.rawValue {
-            replaceWeatherData(refreshedWeather, matching: cityWeather.id, in: listID)
-        }
-
-        return refreshedWeather
-    }
-
-    /// Replaces one loaded city snapshot and immediately persists that list cache.
-    private func replaceWeatherData(_ refreshedWeather: CityWeather, matching cityID: UUID, in listID: CityListID) {
-        if listID.rawValue == activeListID.rawValue {
-            guard let index = cityWeatherData.firstIndex(where: { $0.id == cityID }) else { return }
-            cityWeatherData[index] = refreshedWeather
-            cacheData(cityWeatherData, for: listID)
-            return
-        }
-
-        guard var listData = weatherDataByListID[listID.rawValue],
-              let index = listData.firstIndex(where: { $0.id == cityID }) else {
-            return
-        }
-        listData[index] = refreshedWeather
-        weatherDataByListID[listID.rawValue] = listData
-        cacheData(listData, for: listID)
-    }
-    
 }

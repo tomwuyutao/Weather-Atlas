@@ -2,14 +2,14 @@
 //  WeatherAtlasRootView.swift
 //  Weather
 //
-//  Purpose: Defines the native two-tab shell with a dedicated system search
-//  role, independent navigation histories, shared routes, modal destinations,
-//  quick actions, and widget deep links.
+//  Purpose: Defines the native Home, Map, and Places tab shell with a dedicated
+//  system search role, independent navigation histories, shared routes, modal
+//  destinations, quick actions, and widget deep links.
 //
 
 import SwiftUI
 
-/// Native app shell with Home recommendations and the Places library.
+/// Native app shell with Home recommendations, immersive Map, and Places.
 struct WeatherAtlasRootView: View {
     @Bindable var model: WeatherAtlasModel
     @Bindable var router: AppRouter
@@ -23,8 +23,23 @@ struct WeatherAtlasRootView: View {
         TabView(selection: $router.selectedTab) {
             Tab("Home", systemImage: "sun.max", value: AppTab.home) {
                 NavigationStack(path: $router.homePath) {
-                    HomeTabView(
+                    HomeView(
                         model: model,
+                        router: router,
+                        selectedDate: $selectedDate
+                    )
+                    .navigationBarTitleDisplayMode(.inline)
+                    .navigationDestination(for: AppRoute.self) {
+                        destination(for: $0)
+                    }
+                }
+            }
+
+            Tab("Map", systemImage: "map", value: AppTab.map) {
+                NavigationStack(path: $router.mapPath) {
+                    MapView(
+                        placesStore: model.placesStore,
+                        weatherStore: model.weatherStore,
                         router: router,
                         selectedDate: $selectedDate
                     )
@@ -36,7 +51,7 @@ struct WeatherAtlasRootView: View {
 
             Tab("Places", systemImage: "mappin.and.ellipse", value: AppTab.places) {
                 NavigationStack(path: $router.placesPath) {
-                    PlacesTabView(
+                    PlacesView(
                         placesStore: model.placesStore,
                         weatherStore: model.weatherStore,
                         router: router,
@@ -61,10 +76,10 @@ struct WeatherAtlasRootView: View {
                     ) { _ in
                         router.searchPath = []
                         router.placesPath = []
-                        router.showPlaces(mode: .list)
+                        router.showPlaces()
                     }
                     .navigationTitle("Search")
-                    .navigationBarTitleDisplayMode(.large)
+                    .navigationBarTitleDisplayMode(.inline)
                     .navigationDestination(for: AppRoute.self) {
                         destination(for: $0)
                     }
@@ -185,7 +200,7 @@ struct WeatherAtlasRootView: View {
         handleHomeScreenShortcut(destination)
     }
 
-    /// Keeps existing Home/Map/List quick actions useful in the two-tab model.
+    /// Maps existing Home/Map/List quick actions to their dedicated native tabs.
     private func handleHomeScreenShortcut(
         _ destination: HomeScreenShortcutDestination
     ) {
@@ -197,11 +212,11 @@ struct WeatherAtlasRootView: View {
             router.homePath = []
             router.selectedTab = .home
         case .map:
-            router.placesPath = []
-            router.showPlaces(mode: .map)
+            router.mapPath = []
+            router.showMap()
         case .list:
             router.placesPath = []
-            router.showPlaces(mode: .list)
+            router.showPlaces()
         }
     }
 
@@ -224,7 +239,7 @@ struct WeatherAtlasRootView: View {
                 collectionID = nil
             }
             router.placesPath = []
-            router.showPlaces(mode: .list, collectionID: collectionID)
+            router.showPlaces(collectionID: collectionID)
             presentWidgetIssueIfNeeded(url)
             return
         }
@@ -241,8 +256,8 @@ struct WeatherAtlasRootView: View {
         }
     }
 
-    /// Keeps precise widget diagnostics visible without coupling them to the
-    /// legacy ContentView warning queue.
+    /// Presents precise widget diagnostics without exposing internal developer
+    /// logging to the user.
     private func presentWidgetIssueIfNeeded(_ url: URL) {
         guard let components = URLComponents(
             url: url,

@@ -91,7 +91,7 @@ func localizedPlacesErrorDescription(
     return error.localizedDescription
 }
 
-/// Main-actor source of truth consumed by Home, Places, Detail, and Settings.
+/// Main-actor source of truth consumed across the app's place-based experiences.
 @MainActor
 @Observable
 final class PlacesStore {
@@ -103,8 +103,6 @@ final class PlacesStore {
     /// Non-`nil` when initial loading failed; mutations remain blocked to avoid
     /// replacing a recoverable corrupt or temporarily inaccessible file.
     private(set) var loadErrorDescription: String?
-    /// Most recent mutation persistence error for native alert presentation.
-    private(set) var lastPersistenceErrorDescription: String?
 
     @ObservationIgnored private var documentStore: PlacesDocumentStore?
     @ObservationIgnored private let defaults: UserDefaults
@@ -146,14 +144,6 @@ final class PlacesStore {
     /// Optional collections in user-visible order.
     var collections: [PlaceCollection] {
         document.collections
-    }
-
-    /// Current optional collection, or `nil` for All Places.
-    var selectedCollection: PlaceCollection? {
-        guard let selectedCollectionID = document.selectedCollectionID else {
-            return nil
-        }
-        return document.collections.first { $0.id == selectedCollectionID }
     }
 
     /// Current optional collection identity; `nil` represents All Places.
@@ -215,7 +205,6 @@ final class PlacesStore {
                 locale: locale
             )
             loadErrorDescription = nil
-            lastPersistenceErrorDescription = nil
         } catch {
             loadErrorDescription = error.localizedDescription
         }
@@ -225,11 +214,6 @@ final class PlacesStore {
     /// Reset flows should call this before clearing their UserDefaults domain.
     func resetToEmptyLibrary() throws {
         try persist(PlacesLibraryDocument.empty)
-    }
-
-    /// Clears a presented mutation error without changing library data.
-    func clearLastPersistenceError() {
-        lastPersistenceErrorDescription = nil
     }
 
     // MARK: Place Mutations
@@ -290,16 +274,6 @@ final class PlacesStore {
         return savedID
     }
 
-    /// Changes or removes only the user-facing custom label.
-    func setCustomName(_ name: String?, for placeID: SavedPlace.ID) throws {
-        try mutateAndPersist { candidate in
-            guard let index = candidate.places.firstIndex(where: { $0.id == placeID }) else {
-                throw PlacesStoreError.placeNotFound(placeID)
-            }
-            candidate.places[index].customName = SavedPlace.normalizedCustomName(name)
-        }
-    }
-
     /// Globally deletes a place and prunes every collection membership.
     func deletePlace(id placeID: SavedPlace.ID) throws {
         try mutateAndPersist { candidate in
@@ -310,20 +284,6 @@ final class PlacesStore {
             for index in candidate.collections.indices {
                 candidate.collections[index].placeIDs.removeAll { $0 == placeID }
             }
-        }
-    }
-
-    /// Replaces the All Places order after a native reorder operation.
-    func setAllPlacesOrder(_ orderedIDs: [SavedPlace.ID]) throws {
-        try mutateAndPersist { candidate in
-            let existingIDs = candidate.places.map(\.id)
-            guard Self.isExactReordering(orderedIDs, of: existingIDs) else {
-                throw PlacesStoreError.invalidOrdering
-            }
-            let placesByID = Dictionary(
-                uniqueKeysWithValues: candidate.places.map { ($0.id, $0) }
-            )
-            candidate.places = orderedIDs.compactMap { placesByID[$0] }
         }
     }
 
@@ -425,25 +385,6 @@ final class PlacesStore {
         }
     }
 
-    /// Replaces one collection's member order after a native reorder operation.
-    func setPlaceOrder(
-        _ orderedIDs: [SavedPlace.ID],
-        in collectionID: PlaceCollection.ID
-    ) throws {
-        try mutateAndPersist { candidate in
-            guard let index = candidate.collections.firstIndex(
-                where: { $0.id == collectionID }
-            ) else {
-                throw PlacesStoreError.collectionNotFound(collectionID)
-            }
-            let existingIDs = candidate.collections[index].placeIDs
-            guard Self.isExactReordering(orderedIDs, of: existingIDs) else {
-                throw PlacesStoreError.invalidOrdering
-            }
-            candidate.collections[index].placeIDs = orderedIDs
-        }
-    }
-
     /// Replaces optional collection order.
     func setCollectionOrder(_ orderedIDs: [PlaceCollection.ID]) throws {
         try mutateAndPersist { candidate in
@@ -487,14 +428,7 @@ final class PlacesStore {
             throw PlacesStoreError.unavailable("No document location is available.")
         }
 
-        do {
-            let verifiedDocument = try documentStore.saveAndReadBack(candidate)
-            document = verifiedDocument
-            lastPersistenceErrorDescription = nil
-        } catch {
-            lastPersistenceErrorDescription = error.localizedDescription
-            throw error
-        }
+        document = try documentStore.saveAndReadBack(candidate)
     }
 
     private func ensureAvailable() throws {
