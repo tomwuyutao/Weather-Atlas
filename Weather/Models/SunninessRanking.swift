@@ -14,7 +14,11 @@ import Foundation
 enum WeatherListSortMode: String, CaseIterable, Identifiable {
     case sunny
     case temperature
+    case feelsLike
     case cloud
+    case rainChance
+    case visibility
+    case uvIndex
 
     /// Stable identity used by SwiftUI selection controls.
     var id: String { rawValue }
@@ -23,7 +27,11 @@ enum WeatherListSortMode: String, CaseIterable, Identifiable {
     var icon: String {
         switch self {
         case .temperature: return "thermometer.medium"
+        case .feelsLike: return "thermometer.variable"
         case .cloud: return "cloud"
+        case .rainChance: return "cloud.rain"
+        case .visibility: return "eye"
+        case .uvIndex: return "sun.max.trianglebadge.exclamationmark"
         case .sunny: return "sun.max.fill"
         }
     }
@@ -31,9 +39,26 @@ enum WeatherListSortMode: String, CaseIterable, Identifiable {
     /// Localized menu title for the ordering rule.
     func title(locale: Locale) -> String {
         switch self {
-        case .temperature: return localizedString("Temperature", locale: locale)
-        case .cloud: return localizedString("Cloud Cover", locale: locale)
         case .sunny: return localizedString("Sunniness", locale: locale)
+        case .temperature: return localizedString("Max Temperature", locale: locale)
+        case .feelsLike: return localizedString("Feels Like", locale: locale)
+        case .cloud: return localizedString("Cloud Cover", locale: locale)
+        case .rainChance: return localizedString("Rain Chance", locale: locale)
+        case .visibility: return localizedString("Visibility", locale: locale)
+        case .uvIndex: return localizedString("UV Index", locale: locale)
+        }
+    }
+
+    /// Matching persisted Map overlay identifier for this shared menu option.
+    var mapOverlayMode: String {
+        switch self {
+        case .sunny: return "weather"
+        case .temperature: return "temperature"
+        case .feelsLike: return "feelsLike"
+        case .cloud: return "cloudCover"
+        case .rainChance: return "precipitation"
+        case .visibility: return "visibility"
+        case .uvIndex: return "uvIndex"
         }
     }
 }
@@ -52,6 +77,12 @@ struct SunnyCandidate: Identifiable {
     let precipitationChance: Double?
     /// Daily high displayed alongside the ranking.
     let temperature: Double
+    /// Maximum hourly apparent temperature for the selected local day.
+    let maximumFeelsLike: Double?
+    /// Maximum hourly visibility for the selected local day in kilometres.
+    let maximumVisibilityKilometers: Double?
+    /// Optional daily UV value supplied by WeatherKit.
+    let uvIndex: Int?
 
     /// Reuses city-weather identity so rows remain stable across sorting.
     var id: UUID { cityWeather.id }
@@ -98,7 +129,10 @@ extension ContentView {
             condition: condition,
             cloudCover: cloudCover,
             precipitationChance: forecast.precipitationChance,
-            temperature: forecast.dailyHigh
+            temperature: forecast.dailyHigh,
+            maximumFeelsLike: forecast.hourlyForecasts.compactMap(\.apparentTemperature).max(),
+            maximumVisibilityKilometers: forecast.hourlyForecasts.compactMap(\.visibilityKilometers).max(),
+            uvIndex: forecast.uvIndex
         )
     }
 
@@ -135,6 +169,8 @@ extension ContentView {
         switch selectedListSortMode {
         case .temperature:
             return candidates.sorted { $0.temperature > $1.temperature }
+        case .feelsLike:
+            return candidates.sorted { optionalMetric($0.maximumFeelsLike, sortsHigherFirst: true, than: $1.maximumFeelsLike) }
         case .cloud:
             return candidates.sorted { lhs, rhs in
                 if lhs.cloudCover != rhs.cloudCover {
@@ -143,8 +179,25 @@ extension ContentView {
                 return localizedCityName(for: lhs.cityWeather.city)
                     .localizedStandardCompare(localizedCityName(for: rhs.cityWeather.city)) == .orderedAscending
             }
+        case .rainChance:
+            return candidates.sorted { optionalMetric($0.precipitationChance, sortsHigherFirst: true, than: $1.precipitationChance) }
+        case .visibility:
+            return candidates.sorted { optionalMetric($0.maximumVisibilityKilometers, sortsHigherFirst: true, than: $1.maximumVisibilityKilometers) }
+        case .uvIndex:
+            return candidates.sorted { optionalMetric($0.uvIndex.map(Double.init), sortsHigherFirst: true, than: $1.uvIndex.map(Double.init)) }
         case .sunny:
             return sunninessCandidateGroups(from: candidates).flatMap(\.candidates)
+        }
+    }
+
+    /// Sorts complete metric values first, resolving ties by localized city name.
+    private func optionalMetric(_ lhs: Double?, sortsHigherFirst: Bool, than rhs: Double?) -> Bool {
+        switch (lhs, rhs) {
+        case let (lhs?, rhs?) where lhs != rhs:
+            return sortsHigherFirst ? lhs > rhs : lhs < rhs
+        case (.some, .none): return true
+        case (.none, .some): return false
+        default: return false
         }
     }
 

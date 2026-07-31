@@ -36,8 +36,12 @@ struct SunnyCandidateRow: View {
     var showsWeatherMetrics: Bool = true
     /// Whether temperature participates in the metrics group.
     var showsTemperature: Bool = true
+    /// Optional List View sort metric replacing the standard metrics group.
+    var listMetricMode: WeatherListSortMode? = nil
     /// Resolved temperature unit used to format the daily high.
     let tempUnit: TemperatureUnit
+    /// Resolved distance unit used to format visibility values.
+    let distanceUnit: DistanceUnit
     /// Optional externally supplied city label.
     var cityNameOverride: String? = nil
     /// Optional rename action shown as a trailing pencil button.
@@ -98,7 +102,59 @@ struct SunnyCandidateRow: View {
     }
 
     /// Builds temperature, cloud-cover, and condition metric columns.
+    @ViewBuilder
     private func weatherMetrics(usesFixedColumns: Bool) -> some View {
+        if let listMetricMode {
+            listMetricValue(for: listMetricMode, usesFixedColumns: usesFixedColumns)
+        } else {
+            standardWeatherMetrics(usesFixedColumns: usesFixedColumns)
+        }
+    }
+
+    /// Builds the compact trailing value used exclusively by the ranked List View.
+    private func listMetricValue(
+        for mode: WeatherListSortMode,
+        usesFixedColumns: Bool
+    ) -> some View {
+        let metricWidth: CGFloat = dynamicTypeSize > .large ? 92 : 76
+        let value: String
+        let icon: String
+
+        switch mode {
+        case .sunny, .cloud:
+            value = "\(Int((candidate.cloudCover * 100).rounded()))%"
+            icon = "cloud"
+        case .temperature:
+            value = tempUnit.display(candidate.temperature)
+            icon = mode.icon
+        case .feelsLike:
+            value = candidate.maximumFeelsLike.map(tempUnit.display) ?? "—"
+            icon = mode.icon
+        case .rainChance:
+            value = candidate.precipitationChance.map { "\(Int(($0 * 100).rounded()))%" } ?? "—"
+            icon = mode.icon
+        case .visibility:
+            value = candidate.maximumVisibilityKilometers.map(distanceUnit.display) ?? "—"
+            icon = mode.icon
+        case .uvIndex:
+            value = candidate.uvIndex.map(String.init) ?? "—"
+            icon = mode.icon
+        }
+
+        return HStack(spacing: 3) {
+            Image(systemName: icon)
+                .font(.caption.weight(.medium))
+            Text(value)
+                .font(.caption.weight(.medium))
+                .monospacedDigit()
+        }
+        .foregroundStyle(theme.colors.secondaryText)
+        .lineLimit(1)
+        .frame(width: usesFixedColumns ? metricWidth : nil, alignment: .trailing)
+    }
+
+    /// Builds the standard temperature, cloud-cover, and condition columns.
+    private func standardWeatherMetrics(usesFixedColumns: Bool) -> some View {
         let icon = candidate.condition.displayIcon
         let cloudText = "\(Int((candidate.cloudCover * 100).rounded()))%"
         // Temperature and cloud cover share one Dynamic Type-aware column width.
@@ -193,6 +249,7 @@ extension ContentView {
         showsConditionIcon: Bool = true,
         showsWeatherMetrics: Bool = true,
         showsTemperature: Bool = true,
+        listMetricMode: WeatherListSortMode? = nil,
         cityNameOverride: String? = nil,
         cityRenameAction: (() -> Void)? = nil
     ) -> some View {
@@ -203,7 +260,9 @@ extension ContentView {
             showsConditionIcon: showsConditionIcon,
             showsWeatherMetrics: showsWeatherMetrics,
             showsTemperature: showsTemperature,
+            listMetricMode: listMetricMode,
             tempUnit: tempUnit,
+            distanceUnit: DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers,
             cityNameOverride: cityNameOverride ?? localizedCityName(for: candidate.cityWeather.city),
             cityRenameAction: cityRenameAction
         )
@@ -216,6 +275,7 @@ extension ContentView {
         showsConditionIcon: Bool = true,
         showsWeatherMetrics: Bool = true,
         showsTemperature: Bool = true,
+        listMetricMode: WeatherListSortMode? = nil,
         cityRenameAction: (() -> Void)? = nil
     ) -> some View {
         sunnyCandidateRow(
@@ -225,6 +285,7 @@ extension ContentView {
             showsConditionIcon: showsConditionIcon,
             showsWeatherMetrics: showsWeatherMetrics,
             showsTemperature: showsTemperature,
+            listMetricMode: listMetricMode,
             cityNameOverride: CityListID.customCityName(for: candidate.cityWeather.city)
                 ?? localizedCityName(for: candidate.cityWeather.city),
             cityRenameAction: cityRenameAction
@@ -239,6 +300,7 @@ extension ContentView {
         showsDividers: Bool,
         showsConditionIcon: Bool = true,
         showsTemperature: Bool = true,
+        listMetricMode: WeatherListSortMode? = nil,
         selectionAction: ((SunnyCandidate) -> Void)?,
         contextMenuListID: CityListID? = nil
     ) -> some View {
@@ -254,7 +316,8 @@ extension ContentView {
                         candidate,
                         rank: rank,
                         showsConditionIcon: showsConditionIcon,
-                        showsTemperature: showsTemperature
+                        showsTemperature: showsTemperature,
+                        listMetricMode: listMetricMode
                     )
                 }
                 .buttonStyle(.plain)
@@ -266,7 +329,8 @@ extension ContentView {
                         candidate,
                         rank: rank,
                         compact: true,
-                        showsConditionIcon: showsConditionIcon
+                        showsConditionIcon: showsConditionIcon,
+                        listMetricMode: listMetricMode
                     )
                     .padding(.vertical, 2)
                     .background(
@@ -280,6 +344,36 @@ extension ContentView {
                     .frame(width: 360)
                 }
                 .cityListNativeRowStyle(background: theme.colors.background)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button {
+                        cityToMove = candidate.cityWeather
+                        cityMoveSourceListID = menuListID
+                        showingCityMoveListPicker = true
+                    } label: {
+                        Label {
+                            Text(localizedString("Move", locale: locale))
+                        } icon: {
+                            Image(systemName: "arrow.right")
+                        }
+                        // Native swipe actions otherwise choose a system label
+                        // color. Keep this text legible on both custom fills.
+                        .foregroundStyle(AppPalette.dark.titleText)
+                    }
+                    .tint(theme.colors.dotRain)
+
+                    Button(role: .destructive) {
+                        weatherService.removeCity(candidate.cityWeather, from: menuListID)
+                        Haptics.lightImpact()
+                    } label: {
+                        Label {
+                            Text(localizedString("Delete", locale: locale))
+                        } icon: {
+                            Image(systemName: "trash")
+                        }
+                        .foregroundStyle(AppPalette.dark.titleText)
+                    }
+                    .tint(theme.colors.destructive)
+                }
             } else if let selectionAction {
                 Button {
                     selectionAction(candidate)
@@ -288,7 +382,8 @@ extension ContentView {
                         candidate,
                         rank: rank,
                         showsConditionIcon: showsConditionIcon,
-                        showsTemperature: showsTemperature
+                        showsTemperature: showsTemperature,
+                        listMetricMode: listMetricMode
                     )
                 }
                 .buttonStyle(.plain)
@@ -329,7 +424,7 @@ extension ContentView {
                 }
             } label: {
                 primaryMenuLabel(
-                    localizedString("Move", locale: locale),
+                    localizedString("Move to List", locale: locale),
                     systemImage: "arrow.right"
                 )
             }

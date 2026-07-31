@@ -99,6 +99,42 @@ class WeatherService {
         }
     }
 
+    /// Resets persisted and in-memory app data to the first-install state.
+    func resetForFirstLaunch() {
+        activeFetchTask?.cancel()
+        removeAllCachedWeatherData()
+        WidgetDataStore.removeAll()
+
+        let defaults = UserDefaults.standard
+        if let bundleIdentifier = Bundle.main.bundleIdentifier {
+            defaults.removePersistentDomain(forName: bundleIdentifier)
+        } else {
+            for key in defaults.dictionaryRepresentation().keys {
+                defaults.removeObject(forKey: key)
+            }
+        }
+
+        // Keep historical migrations from re-running after the new tutorial has
+        // created the user's fresh initial list selection.
+        defaults.set(true, forKey: "defaultCitiesMigrationV3")
+        defaults.set(true, forKey: "weatherCacheDaytimeForecastMigrationV1")
+        defaults.set("weather", forKey: "mapOverlayMode")
+        AppLanguageDefaults.configureInitialLanguage()
+        AppTheme.shared.style = .automatic
+
+        availableLists = CityListID.allLists
+        activeListID = .europe
+        weatherDataByListID = [:]
+        listFetchDates = [:]
+        resolvedTimeZones = [:]
+        resolvedPlaces = [:]
+        isLoading = false
+        loadingProgress = 0
+        errorMessage = nil
+        lastFetchDate = nil
+        weatherAttribution = nil
+    }
+
     // MARK: Weather Attribution
 
     // MARK: Active-List Fetching
@@ -164,7 +200,7 @@ class WeatherService {
             do {
                 let resolvedCity = try await resolvedCity(for: city)
                 let location = CLLocation(latitude: resolvedCity.latitude, longitude: resolvedCity.longitude)
-                let weather = try await weatherKitService.weather(for: location)
+                let weather = try await weatherWithOneRetry(for: location)
                 let cityWeather = try await convertWeatherKitData(weather: weather, for: resolvedCity)
                 guard activeListID == targetListID, !Task.isCancelled else { return }
 
@@ -199,16 +235,35 @@ class WeatherService {
     
     /// Activates a list, restores any snapshot, and fetches when needed.
     func switchList(to listID: CityListID) async {
-        guard listID != activeListID else { return }
+        guard activateList(listID) else { return }
+        await fetchWeatherForAllCities()
+    }
+
+    /// Immediately changes the visible list, then fetches its weather without
+    /// making navigation wait for WeatherKit. Used by list controls on Map and List.
+    func beginSwitchList(to listID: CityListID) {
+        guard activateList(listID) else { return }
+        Task { [weak self] in
+            guard let self, self.activeListID == listID else { return }
+            await self.fetchWeatherForAllCities()
+        }
+    }
+
+    /// Replaces active-list state before either a blocking or background fetch.
+    @discardableResult
+    private func activateList(_ listID: CityListID) -> Bool {
+        guard listID != activeListID else { return false }
         activeFetchTask?.cancel()
         activeListID = listID
-        isLoading = false
+        errorMessage = nil
+        loadingProgress = 0
+        isLoading = true
         UserDefaults.standard.set(listID.rawValue, forKey: Self.activeListKey)
         weatherDataByListID[listID.rawValue] = weatherDataByListID[listID.rawValue]
             ?? loadCachedWeatherData(for: listID)
             ?? []
         lastFetchDate = fetchDate(for: listID)
-        await fetchWeatherForAllCities()
+        return true
     }
 
     /// Activates a list and fetches one requested city before its remaining peers.
@@ -458,13 +513,30 @@ class WeatherService {
     }
     // MARK: Per-City Fetching and Replacement
 
+    /// Retries one failed WeatherKit network request before allowing its error
+    /// to reach the user-facing warning pipeline. This covers work interrupted
+    /// while the app is suspended and ordinary transient connection timeouts.
+    private func weatherWithOneRetry(for location: CLLocation) async throws -> Weather {
+        do {
+            return try await weatherKitService.weather(for: location)
+        } catch {
+            // Do not turn an intentional task cancellation into a second request.
+            try Task.checkCancellation()
+            // Give a newly foregrounded app and its network path a brief moment
+            // to recover before retrying the exact same WeatherKit request.
+            try? await Task.sleep(for: .milliseconds(400))
+            try Task.checkCancellation()
+            return try await weatherKitService.weather(for: location)
+        }
+    }
+
     /// Resolves and fetches one city, reporting failure and returning `nil`.
     func fetchWeatherForCity(_ city: City) async -> CityWeather? {
         do {
             // Fetch weather for the city
             let resolvedCity = try await resolvedCity(for: city)
             let location = CLLocation(latitude: resolvedCity.latitude, longitude: resolvedCity.longitude)
-            let weather = try await weatherKitService.weather(for: location)
+            let weather = try await weatherWithOneRetry(for: location)
             
             // Convert to our model
             let cityWeather = try await convertWeatherKitData(weather: weather, for: resolvedCity)

@@ -62,9 +62,29 @@ enum CityNameLocalizationCatalog {
     }
 }
 
+// MARK: - Generated List Names
+
+extension City {
+    /// Captures the GeoNames spelling for a newly generated list. The result is
+    /// persisted as the city's name, so later interface-language changes never
+    /// rewrite an existing list or a user-selected search result.
+    func localizedForGeneratedList(locale: Locale) -> City {
+        guard let localizedName = CityNameLocalizationCatalog.localizedName(for: self, locale: locale) else {
+            return self
+        }
+
+        var localizedCity = self
+        localizedCity.name = localizedName
+        return localizedCity
+    }
+}
+
 /// Single source of truth for every user-visible city name in the app.
 func localizedCityDisplayName(for city: City, locale: Locale) -> String {
-    CityListID.customCityName(for: city)
-        ?? CityNameLocalizationCatalog.localizedName(for: city, locale: locale)
-        ?? city.localizedName(locale: locale)
+    if let customName = CityListID.customCityName(for: city) {
+        return customName
+    }
+    // Preserve the resolved or user-provided city spelling across interface
+    // language changes. The app language localizes UI copy only.
+    return city.localizedName(locale: locale)
 }

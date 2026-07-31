@@ -62,6 +62,44 @@ enum TemperatureUnit: String, CaseIterable {
     }
 }
 
+// MARK: - Distance Unit
+
+/// Persisted distance preference used for visibility values and charts.
+enum DistanceUnit: String, CaseIterable {
+    case kilometers
+    case miles
+
+    /// Existing visibility data is stored in kilometres, preserving that as the
+    /// default for people who have not chosen a distance preference yet.
+    static let defaultRawValue = DistanceUnit.kilometers.rawValue
+
+    /// Localized label displayed in Settings.
+    func displayName(locale: Locale = .current) -> String {
+        switch self {
+        case .kilometers: localizedString("Kilometers (km)", locale: locale)
+        case .miles: localizedString("Miles (mi)", locale: locale)
+        }
+    }
+
+    /// Converts and formats WeatherKit's kilometre-based visibility value.
+    func display(_ kilometers: Double) -> String {
+        switch self {
+        case .kilometers:
+            return "\(Int(kilometers.rounded())) km"
+        case .miles:
+            return "\(Int((kilometers * 0.621_371).rounded())) mi"
+        }
+    }
+
+    /// Converts stored kilometre values into the selected display unit.
+    func value(fromKilometers kilometers: Double) -> Double {
+        switch self {
+        case .kilometers: kilometers
+        case .miles: kilometers * 0.621_371
+        }
+    }
+}
+
 // MARK: - App Text Size
 
 /// Supported steps for the app-specific text-size slider.

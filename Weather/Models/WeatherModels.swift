@@ -263,6 +263,14 @@ struct DailyForecast: Identifiable {
     var cloudCoverPercent: Int? {
         cloudCover.map { Int(($0 * 100).rounded()) }
     }
+
+    /// Daily visibility derived as the arithmetic mean of every available
+    /// WeatherKit hourly visibility reading for this city-local day.
+    var averageVisibilityKilometers: Double? {
+        let values = hourlyForecasts.compactMap(\.visibilityKilometers)
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
+    }
 }
 
 /// Hourly WeatherKit source record used by sunny-window and detail charts.

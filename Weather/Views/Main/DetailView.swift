@@ -20,13 +20,19 @@ extension ContentView {
                 theme.colors.background
                     .ignoresSafeArea()
             }
-            // Keep the compact native title absent while the large report title
-            // is visible, then let the navigation bar take over as it scrolls away.
-            .navigationTitle(
-                isDetailLargeTitleVisible ? "" : localizedCityName(for: city.city)
-            )
+            // Retain the city title in the navigation item so native Back history
+            // can name this report, while the principal item hides it until the
+            // in-content title has scrolled away.
+            .navigationTitle(localizedCityName(for: city.city))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
+            .toolbar {
+                if isDetailLargeTitleVisible {
+                    ToolbarItem(placement: .principal) {
+                        Color.clear.frame(width: 1, height: 1)
+                    }
+                }
+            }
             .tint(theme.colors.primaryText)
             .onAppear {
                 isDetailLargeTitleVisible = true
@@ -96,8 +102,6 @@ extension ContentView {
                 }
             }
             .tint(theme.colors.destructive)
-
-            globalMoreMenuFooter
         } label: {
             Image(systemName: "ellipsis")
         }
@@ -119,19 +123,9 @@ extension ContentView {
         )
         Haptics.lightImpact()
 
-        Task {
-            await switchToList(destinationListID)
-            let movedCity = weatherService.cityWeatherData.first {
-                weatherService.citiesMatch($0.city, city.city)
-            } ?? city
-
-            guard let routeIndex = navigationPath.indices.last,
-                  case .cityDetail = navigationPath[routeIndex] else {
-                return
-            }
-            navigationPath[routeIndex] = .cityDetail(movedCity)
-            publishWidgetCatalog()
-        }
+        // Keep the user on the source list and preserve the existing route.
+        // The destination will load only if the user later chooses to open it.
+        publishWidgetCatalog()
     }
 
     /// Deletes the represented city from its list and closes Detail.
@@ -313,6 +307,8 @@ extension ContentView {
                         chartBounds: chartBounds,
                         sunnyColor: theme.colors.dotSun,
                         partlySunnyColor: theme.colors.dotPartlyCloudy,
+                        rainColor: theme.colors.dotRain,
+                        drizzleColor: theme.colors.dotDrizzle,
                         // Chart tracks use the same subdued fill as settings rows.
                         trackColor: theme.colors.settingsRowFill,
                         gridColor: theme.colors.secondaryText.opacity(0.06),
@@ -326,20 +322,62 @@ extension ContentView {
                     )
                     .padding(.top, 8)
 
-                    // Identify every palette color used by the timeline.
-                    HStack(spacing: 14) {
-                        sunnyWindowLegendItem(
-                            title: localizedString("Sunny", locale: locale),
-                            color: theme.colors.dotSun
-                        )
-                        sunnyWindowLegendItem(
-                            title: localizedString("Partly Sunny", locale: locale),
-                            color: theme.colors.dotPartlyCloudy
-                        )
-                        sunnyWindowLegendItem(
-                            title: localizedString("No Sun", locale: locale),
-                            color: theme.colors.settingsRowFill
-                        )
+                    // Use one centred line when all five legends fit (such as
+                    // on iPad), while retaining a readable two-line fallback
+                    // for narrower iPhone cards and larger text sizes.
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 14) {
+                            sunnyWindowLegendItem(
+                                title: localizedString("Sunny", locale: locale),
+                                color: theme.colors.dotSun
+                            )
+                            sunnyWindowLegendItem(
+                                title: localizedString("Partly Sunny", locale: locale),
+                                color: theme.colors.dotPartlyCloudy
+                            )
+                            sunnyWindowLegendItem(
+                                title: localizedString("No Sun", locale: locale),
+                                color: theme.colors.settingsRowFill
+                            )
+                            sunnyWindowLegendItem(
+                                title: localizedString("Rain", locale: locale),
+                                color: theme.colors.dotRain
+                            )
+                            sunnyWindowLegendItem(
+                                title: localizedString("Drizzle", locale: locale),
+                                color: theme.colors.dotDrizzle
+                            )
+                        }
+                        .fixedSize(horizontal: true, vertical: false)
+
+                        VStack(spacing: 6) {
+                            HStack(spacing: 14) {
+                                sunnyWindowLegendItem(
+                                    title: localizedString("Sunny", locale: locale),
+                                    color: theme.colors.dotSun
+                                )
+                                sunnyWindowLegendItem(
+                                    title: localizedString("Partly Sunny", locale: locale),
+                                    color: theme.colors.dotPartlyCloudy
+                                )
+                                sunnyWindowLegendItem(
+                                    title: localizedString("No Sun", locale: locale),
+                                    color: theme.colors.settingsRowFill
+                                )
+                            }
+
+                            HStack(spacing: 14) {
+                                sunnyWindowLegendItem(
+                                    title: localizedString("Rain", locale: locale),
+                                    color: theme.colors.dotRain
+                                )
+                                sunnyWindowLegendItem(
+                                    title: localizedString("Drizzle", locale: locale),
+                                    color: theme.colors.dotDrizzle
+                                )
+                            }
+                        }
+                        .fixedSize(horizontal: true, vertical: false)
                     }
                     .frame(maxWidth: .infinity, alignment: .center)
                     .padding(.top, 4)
@@ -353,8 +391,12 @@ extension ContentView {
     /// Formats the selected day's longest fully or partly sunny interval.
     private func sunnyWindowRangeText(for city: CityWeather) -> String {
         guard let forecast = city.forecastIfAvailable(on: selectedForecastDate),
+              case .success(let daylightData) = SunninessScoring.sunnyHoursData(
+                  for: forecast,
+                  timeZone: city.timeZone
+              ),
               let range = SunninessScoring.longestSunnyHourRange(
-                  in: forecast.hourlyForecasts,
+                  in: daylightData.hours,
                   timeZone: city.timeZone
               ) else {
             return localizedString("No Sun", locale: locale)
@@ -368,7 +410,9 @@ extension ContentView {
     private func sunnyWindowLegendItem(title: String, color: Color) -> some View {
         HStack(spacing: 6) {
             Group {
-                if differentiateWithoutColor, title == localizedString("Partly Sunny", locale: locale) {
+                if differentiateWithoutColor,
+                   title == localizedString("Partly Sunny", locale: locale)
+                    || title == localizedString("Drizzle", locale: locale) {
                     Circle()
                         .stroke(color, style: StrokeStyle(lineWidth: 1.5, dash: [2, 2]))
                 } else {
@@ -586,6 +630,10 @@ extension ContentView {
         let sunnyRanges: [ClosedRange<Int>]
         /// Contiguous partly sunny hour ranges.
         let partlySunnyRanges: [ClosedRange<Int>]
+        /// Contiguous rain hour ranges displayed in the in-app chart only.
+        let rainRanges: [ClosedRange<Int>]
+        /// Contiguous drizzle hour ranges displayed in the in-app chart only.
+        let drizzleRanges: [ClosedRange<Int>]
     }
 
     /// Validates the chart as a continuous prefix of eight to ten days.
@@ -643,6 +691,16 @@ extension ContentView {
             let partlySunnyHours = day.sunnyHours.hours.compactMap { hour -> Int? in
                 detailHourlySunnyLevel(hour) == 1 ? hour.hour(in: city.timeZone) : nil
             }
+            let rainHours = day.sunnyHours.hours.compactMap { hour -> Int? in
+                SunninessScoring.condition(for: hour.symbolName) == .rain
+                    ? hour.hour(in: city.timeZone)
+                    : nil
+            }
+            let drizzleHours = day.sunnyHours.hours.compactMap { hour -> Int? in
+                SunninessScoring.condition(for: hour.symbolName) == .drizzle
+                    ? hour.hour(in: city.timeZone)
+                    : nil
+            }
             return DetailSunnyWindowRow(
                 id: selectionDate,
                 // Format Today or a city-local abbreviated date for this row.
@@ -655,7 +713,9 @@ extension ContentView {
                     return forecast.date.formatted(format)
                 }(),
                 sunnyRanges: SunnyHoursFormatting.contiguousRanges(in: sunnyHours),
-                partlySunnyRanges: SunnyHoursFormatting.contiguousRanges(in: partlySunnyHours)
+                partlySunnyRanges: SunnyHoursFormatting.contiguousRanges(in: partlySunnyHours),
+                rainRanges: SunnyHoursFormatting.contiguousRanges(in: rainHours),
+                drizzleRanges: SunnyHoursFormatting.contiguousRanges(in: drizzleHours)
             )
         }
     }
@@ -694,6 +754,10 @@ private struct DetailSunnyWindowOverviewChart: View {
     let sunnyColor: Color
     /// Partly sunny segment color.
     let partlySunnyColor: Color
+    /// Rain segment color matching map annotations.
+    let rainColor: Color
+    /// Drizzle segment color matching map annotations.
+    let drizzleColor: Color
     /// Empty daylight track color.
     let trackColor: Color
     /// Vertical hour-grid color.
@@ -871,6 +935,45 @@ private struct DetailSunnyWindowOverviewChart: View {
                                 .fill(trackColor)
                                 .frame(height: capsuleHeight)
 
+                            // Rain and drizzle remain visible inside the daylight
+                            // track, while every other unfavorable condition keeps
+                            // the neutral No Sun color beneath them.
+                            ForEach(row.rainRanges, id: \.lowerBound) { range in
+                                Rectangle()
+                                    .fill(rainColor)
+                                    .frame(
+                                        width: chartBounds.width(
+                                            for: range,
+                                            timelineWidth: timelineWidth
+                                        ),
+                                        height: capsuleHeight
+                                    )
+                                    .offset(
+                                        x: chartBounds.xPosition(
+                                            for: Double(range.lowerBound),
+                                            width: timelineWidth
+                                        )
+                                    )
+                            }
+
+                            ForEach(row.drizzleRanges, id: \.lowerBound) { range in
+                                Rectangle()
+                                    .fill(drizzleColor)
+                                    .frame(
+                                        width: chartBounds.width(
+                                            for: range,
+                                            timelineWidth: timelineWidth
+                                        ),
+                                        height: capsuleHeight
+                                    )
+                                    .offset(
+                                        x: chartBounds.xPosition(
+                                            for: Double(range.lowerBound),
+                                            width: timelineWidth
+                                        )
+                                    )
+                            }
+
                             ForEach(
                                 SunnyHoursTimelineLayout.spans(
                                     sunnyRanges: row.sunnyRanges,
@@ -927,6 +1030,7 @@ private struct DetailSunnyWindowOverviewChart: View {
                                 .offset(x: spanStartX)
                             }
                         }
+                        .clipShape(Capsule())
                         .frame(width: timelineWidth, height: isIPad ? 22 : 18)
                         .overlay {
                             if Calendar.current.isDate(row.id, inSameDayAs: selectedForecastDate) {

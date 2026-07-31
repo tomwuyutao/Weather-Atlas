@@ -1,87 +1,48 @@
 //
-//  NewSheet.swift
+//  AddListSheet.swift
 //  Weather
 //
-//  Purpose: Defines the unified New sheet and the nested list-creation
-//  choices shared by the global creation flow and Lists manager.
+//  Purpose: Defines the reusable list-creation choices used from both the
+//  root Add sheet and List Manager.
 //
 
 import SwiftUI
 
 // MARK: - Presentation State
 
-/// Navigation and deferred-preview state for the unified New sheet.
-struct NewSheetPresentationState {
-    /// Whether the standalone creation sheet is presented.
-    var isPresented = false
-    /// Whether city search is pushed within the sheet.
-    var showsCitySearch = false
-    /// Whether list-creation choices are pushed within the sheet.
-    var showsListOptions = false
+/// Navigation and query state shared by every Add List entry point.
+struct AddListSheetPresentationState {
     /// Whether the continent source picker is active.
     var showsContinentPicker = false
     /// Whether the country source picker is active.
     var showsCountryPicker = false
-    /// Current compact-sheet height on iPhone.
-    var selectedDetent: PresentationDetent = .medium
     /// Query filtering country creation sources.
     var countryQuery = ""
-    /// Generated-list preview to open after the sheet dismisses.
+}
+
+/// Presentation and deferred-preview state for the standalone New List sheet.
+struct AddListSheetContainerState {
+    /// Whether the shared New List sheet is presented from the global menu.
+    var isPresented = false
+    /// Current compact-sheet height, expanded for country search.
+    var selectedDetent: PresentationDetent = .medium
+    /// Navigation state owned by the shared list-creation choices.
+    var creation = AddListSheetPresentationState()
+    /// Generated preview to open after this sheet has dismissed.
     var dismissAction: ListManagementDismissAction?
 }
 
-// MARK: - New Options
-
-/// Root creation choices shown when the global plus button is selected.
-struct NewSheetContent: View {
-    /// Localized name of the list that receives a newly searched place.
-    let cityDestinationName: String
-    /// Opens city search for the active list.
-    let onNewCity: () -> Void
-    /// Opens the nested list-creation choices.
-    let onNewList: () -> Void
-
-    @Environment(\.locale) private var locale
-    @Environment(\.appTheme) private var theme
-
-    var body: some View {
-        VStack(spacing: 0) {
-            NewOptionButton(
-                title: localizedString("New City", locale: locale),
-                subtitle: String(
-                    format: localizedString("Search for a place and save it to %@.", locale: locale),
-                    locale: locale,
-                    cityDestinationName
-                ),
-                systemImage: "building.2",
-                action: onNewCity
-            )
-
-            Divider()
-                .background(theme.colors.secondaryText.opacity(0.16))
-
-            NewOptionButton(
-                title: localizedString("New List", locale: locale),
-                subtitle: localizedString("Create a list to organize cities for a trip or region.", locale: locale),
-                systemImage: "list.bullet",
-                action: onNewList
-            )
-        }
-        .padding(.horizontal, 26)
-        .padding(.vertical, 16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .background(theme.colors.background.ignoresSafeArea())
-    }
-}
-
-/// Empty, continent, and country choices shown within the New sheet.
-struct NewListSheetContent: View {
+/// Empty, continent, and country list choices shared by every entry point.
+struct AddListSheet: View {
+    @Binding var presentationState: AddListSheetPresentationState
     /// Starts an empty custom list.
     let onNewEmptyList: () -> Void
-    /// Opens the continent source picker.
-    let onNewContinent: () -> Void
-    /// Opens the country source picker.
-    let onNewCountry: () -> Void
+    /// Handles a continent source selection.
+    let onSelectContinent: (CityListID) -> Void
+    /// Handles a country source selection.
+    let onSelectCountry: (CountryListOption) -> Void
+    /// Lets the enclosing sheet expand before country search is pushed.
+    var onCountrySearchPresented: (() -> Void)?
 
     @Environment(\.locale) private var locale
     @Environment(\.appTheme) private var theme
@@ -92,7 +53,7 @@ struct NewListSheetContent: View {
                 title: localizedString("New Continent", locale: locale),
                 subtitle: localizedString("Create a list of the largest cities in a continent", locale: locale),
                 systemImage: "globe.europe.africa",
-                action: onNewContinent
+                action: { presentationState.showsContinentPicker = true }
             )
 
             Divider()
@@ -102,7 +63,10 @@ struct NewListSheetContent: View {
                 title: localizedString("New Country", locale: locale),
                 subtitle: localizedString("Create a list of the largest cities in a country", locale: locale),
                 systemImage: "flag",
-                action: onNewCountry
+                action: {
+                    onCountrySearchPresented?()
+                    presentationState.showsCountryPicker = true
+                }
             )
 
             Divider()
@@ -119,12 +83,24 @@ struct NewListSheetContent: View {
         .padding(.vertical, 16)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(theme.colors.background.ignoresSafeArea())
+        // These destinations live with the shared creation options, so Add and
+        // List Manager always use the same search and selection implementation.
+        .navigationDestination(isPresented: $presentationState.showsContinentPicker) {
+            ContinentListPickerContent(lists: CityListID.builtInLists, onSelect: onSelectContinent)
+                .navigationTitle(localizedString("New Continent", locale: locale))
+                .navigationBarTitleDisplayMode(.inline)
+        }
+        .navigationDestination(isPresented: $presentationState.showsCountryPicker) {
+            CountryListSearchPicker(query: $presentationState.countryQuery, onSelect: onSelectCountry)
+                .navigationTitle(localizedString("New Country", locale: locale))
+                .navigationBarTitleDisplayMode(.inline)
+        }
     }
 }
 
 // MARK: - Creation Option Row
 
-/// Reusable full-width action row shared by every creation workflow.
+/// Reusable full-width action row shared by list creation and onboarding.
 struct NewOptionButton: View {
     let title: String
     let subtitle: String?

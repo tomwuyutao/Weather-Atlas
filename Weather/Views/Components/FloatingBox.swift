@@ -66,7 +66,8 @@ struct FloatingBox: View {
         .foregroundStyle(theme.colors.secondaryText)
         .padding(.horizontal, 14)
         .padding(.vertical, 12)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        // Keep status messages compact on wide iPad detail columns.
+        .frame(maxWidth: 420, alignment: .leading)
         .themedGlass(in: .rect(cornerRadius: 16))
         .accessibilityElement(children: .combine)
     }

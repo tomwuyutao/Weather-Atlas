@@ -138,12 +138,16 @@ struct CountryListPickerContent<SearchBar: View>: View {
     }
 }
 
-/// Capsule search field shared by generated country-list workflows.
-struct CountrySearchField: View {
+/// Capsule search field shared by city and generated country-list workflows.
+struct AppSearchField: View {
     /// Query text owned by the parent presentation state.
     @Binding var text: String
+    /// Localized prompt appropriate to the current search source.
+    let prompt: String
     /// Whether the field should claim focus on first appearance.
     var automaticallyFocus = false
+    /// Optional action submitted from the keyboard's Search key.
+    var onSubmit: (() -> Void)?
 
     /// Active semantic palette.
     @Environment(\.appTheme) private var theme
@@ -151,8 +155,6 @@ struct CountrySearchField: View {
     @Environment(\.colorScheme) private var colorScheme
     /// Contrast preference used to strengthen the outline.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    /// App-selected locale used by the placeholder.
-    @Environment(\.locale) private var locale
     /// Native text-field focus state.
     @FocusState private var isFocused: Bool
 
@@ -163,13 +165,17 @@ struct CountrySearchField: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(theme.colors.accent)
 
-            TextField(localizedString("Search for a country", locale: locale), text: $text)
+            TextField(prompt, text: $text)
                 .font(.body)
                 .foregroundStyle(theme.colors.primaryText)
                 .focused($isFocused)
                 .defaultFocus($isFocused, automaticallyFocus)
                 .textInputAutocapitalization(.words)
                 .disableAutocorrection(true)
+                .submitLabel(.search)
+                .onSubmit {
+                    onSubmit?()
+                }
 
             if !text.isEmpty {
                 Button {
@@ -211,14 +217,16 @@ struct CountrySearchField: View {
 
 // MARK: - Country List Search
 
-extension ContentView {
-    /// Builds the searchable country source picker and resets stale query text.
-    func countryListSearchContent(
-        query: Binding<String>,
-        onSelect: @escaping (CountryListOption) -> Void
-    ) -> some View {
+/// Reusable searchable country picker for every generated-list entry point.
+struct CountryListSearchPicker: View {
+    @Binding var query: String
+    let onSelect: (CountryListOption) -> Void
+
+    @Environment(\.locale) private var locale
+
+    var body: some View {
         let countries = CountryCityCatalog.countries(locale: locale)
-        let trimmedQuery = query.wrappedValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         // Match localized and English names as well as ISO codes.
         let filteredCountries = trimmedQuery.isEmpty ? countries : countries.filter { country in
             country.localizedName(locale: locale).localizedCaseInsensitiveContains(trimmedQuery)
@@ -226,17 +234,17 @@ extension ContentView {
                 || country.iso2.localizedCaseInsensitiveContains(trimmedQuery)
         }
 
-        return CountryListPickerContent(
+        CountryListPickerContent(
             countries: filteredCountries,
-            searchBar: CountrySearchField(
-                text: query,
+            searchBar: AppSearchField(
+                text: $query,
+                prompt: localizedString("Search for a country", locale: locale),
                 automaticallyFocus: true
             ),
             onSelect: onSelect
         )
         .onAppear {
-            query.wrappedValue = ""
+            query = ""
         }
     }
-
 }

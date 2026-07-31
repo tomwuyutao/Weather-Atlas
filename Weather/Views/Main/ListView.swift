@@ -23,8 +23,6 @@ extension ContentView {
                 }
 
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    listSortControl
-
                     Button {
                         withAnimation(.smooth(duration: 0.2)) {
                             listEditMode.toggle()
@@ -64,7 +62,7 @@ extension ContentView {
                 .padding(.horizontal, 24)
                 .padding(.top, 24)
                 .frame(maxWidth: maxContentWidth)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
         } else {
             List {
                 if listEditMode {
@@ -96,9 +94,12 @@ extension ContentView {
                         contextMenuListID: weatherService.activeListID
                     )
                 } else {
+                    listMetricHeading(for: selectedListSortMode)
+
                     listCandidateRows(
                         sortedListCandidates,
                         showsDividers: false,
+                        listMetricMode: selectedListSortMode,
                         selectionAction: { candidate in
                             presentDetail(for: candidate.cityWeather)
                         },
@@ -141,7 +142,9 @@ extension ContentView {
             } label: {
                 Label(localizedString("New City", locale: locale), systemImage: "plus")
                     .font(.body.weight(.semibold))
-                    .foregroundStyle(theme.colors.primaryText)
+                    // Yellow calls to action retain the same dark ink in both
+                    // appearances, matching the list-management actions.
+                    .foregroundStyle(AppPalette.light.titleText)
                     .padding(.horizontal, 18)
                     .frame(minHeight: 44)
             }
@@ -166,7 +169,7 @@ extension ContentView {
 
                 Text(group.title.replacingOccurrences(of: "\n", with: " "))
                     .font(.body.weight(.bold))
-                    .foregroundStyle(theme.colors.secondaryText)
+                    .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
 
@@ -196,12 +199,34 @@ extension ContentView {
                 rankOffset: rankOffset,
                 showsDividers: false,
                 showsConditionIcon: false,
+                listMetricMode: .sunny,
                 selectionAction: { candidate in
                     presentDetail(for: candidate.cityWeather)
                 },
                 contextMenuListID: contextMenuListID
             )
         }
+    }
+
+    /// Labels a non-sunniness ranking with the same semantic icon as its sort option.
+    private func listMetricHeading(for mode: WeatherListSortMode) -> some View {
+        HStack(spacing: CityListLayout.columnSpacing) {
+            Image(systemName: mode.icon)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(theme.colors.accent)
+                .frame(width: CityListLayout.rankColumnWidth, alignment: .leading)
+
+            Text(mode.title(locale: locale))
+                .font(.body.weight(.bold))
+                .foregroundStyle(theme.colors.primaryText)
+
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 8)
+        .padding(.bottom, 5)
+        .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
+        .listRowSeparator(.hidden)
+        .listRowBackground(theme.colors.background)
     }
 
     /// Menu for selecting the persisted city ordering rule.

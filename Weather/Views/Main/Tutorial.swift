@@ -145,7 +145,10 @@ struct TutorialView: View {
             tutorialPickerPresentation(
                 CountryListPickerContent(
                     countries: filteredCountries,
-                    searchBar: CountrySearchField(text: $countrySearchText),
+                    searchBar: AppSearchField(
+                        text: $countrySearchText,
+                        prompt: localizedString("Search for a country", locale: locale)
+                    ),
                     onSelect: { country in
                         // Dismiss the picker and begin country-list creation.
                         showingCountrySearch = false
@@ -288,6 +291,13 @@ struct TutorialView: View {
         .system(.largeTitle, design: .serif, weight: .bold)
     }
 
+    /// Uses the dedicated artwork only when the selected theme resolves to the
+    /// app's true-black palette; normal dark mode retains its existing graphic.
+    private var usesBlackTutorialArtwork: Bool {
+        theme.style == .black
+            || (theme.style == .automaticBlack && colorScheme == .dark)
+    }
+
     // The page footer is an overlay at normal Dynamic Type sizes. Limit the
     // iPad scene's downward shift in shorter windows so the subtitle always
     // clears the page indicator instead of scrolling beneath it.
@@ -313,9 +323,9 @@ struct TutorialView: View {
                 && max(proxy.size.width, proxy.size.height) < 1_250
             let artworkVerticalOffset: CGFloat = usesCompactIPadArtworkPosition ? 36 : 28
             let usesIPadLandscapeArtwork = isIPad && proxy.size.width > proxy.size.height
-            let introGraphicName = usesIPadLandscapeArtwork
-                ? "IntroGraphicsLandscape"
-                : "IntroGraphics"
+            let introGraphicName = usesBlackTutorialArtwork
+                ? "IntroGraphicsBlack"
+                : (usesIPadLandscapeArtwork ? "IntroGraphicsLandscape" : "IntroGraphics")
             let sceneOffset = welcomeSceneOffset(for: proxy.size)
 
             ZStack(alignment: .top) {
@@ -336,7 +346,7 @@ struct TutorialView: View {
                             }
                             .frame(width: proxy.size.width, height: proxy.size.height)
                         } else {
-                            Image("IntroGraphics")
+                            Image(introGraphicName)
                                 .resizable()
                                 .scaledToFill()
                                 .frame(width: proxy.size.width, height: proxy.size.height)
@@ -448,13 +458,13 @@ struct TutorialView: View {
                         )
                         tutorialStep(
                             number: 2,
-                            title: localizedString("See when each place shines", locale: locale),
-                            subtitle: localizedString("Stop opening forecasts one by one.", locale: locale)
+                            title: localizedString("Choose the best date", locale: locale),
+                            subtitle: localizedString("See which dates have the most sunny cities in your list.", locale: locale)
                         )
                         tutorialStep(
                             number: 3,
-                            title: localizedString("Visualise weather on a map", locale: locale),
-                            subtitle: localizedString("Discover weather patterns across your saved places.", locale: locale)
+                            title: localizedString("See when a city is sunny", locale: locale),
+                            subtitle: localizedString("Use Sunny Hours view to find the best time to visit a specific city.", locale: locale)
                         )
                     }
                 } else {
@@ -466,13 +476,13 @@ struct TutorialView: View {
                         )
                         tutorialStep(
                             number: 2,
-                            title: localizedString("See when each place shines", locale: locale),
-                            subtitle: localizedString("Stop opening forecasts one by one.", locale: locale)
+                            title: localizedString("Choose the best date", locale: locale),
+                            subtitle: localizedString("See which dates have the most sunny cities in your list.", locale: locale)
                         )
                         tutorialStep(
                             number: 3,
-                            title: localizedString("Visualise weather on a map", locale: locale),
-                            subtitle: localizedString("Discover weather patterns across your saved places.", locale: locale)
+                            title: localizedString("See when a city is sunny", locale: locale),
+                            subtitle: localizedString("Use Sunny Hours view to find the best time to visit a specific city.", locale: locale)
                         )
                     }
                 }
@@ -759,6 +769,14 @@ extension ContentView {
         let selectedLists = CityListID.builtInLists.filter { selectedContinentIDs.contains($0.rawValue) }
 
         CityListID.keepBuiltInLists(withRawValues: selectedContinentIDs)
+        // Built-in continent lists are generated by Weather Atlas too. Persist
+        // their GeoNames spellings now so they stay in the creation language.
+        for listID in selectedLists {
+            weatherService.saveCities(
+                listID.defaultCities.map { $0.localizedForGeneratedList(locale: locale) },
+                for: listID
+            )
+        }
         refreshListOrder()
         navigationPath = []
 
@@ -774,7 +792,8 @@ extension ContentView {
             )
             let listID = await weatherService.createCustomList(
                 name: identity.displayName,
-                cities: CountryCityCatalog.topCities(for: country),
+                cities: CountryCityCatalog.topCities(for: country)
+                    .map { $0.localizedForGeneratedList(locale: locale) },
                 nameSource: identity.nameSource
             )
             if firstList == nil {

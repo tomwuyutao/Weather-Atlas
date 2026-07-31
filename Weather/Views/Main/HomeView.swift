@@ -16,9 +16,10 @@ extension ContentView {
     /// Builds the root dashboard with native bottom toolbar and route overlays.
     var homeView: some View {
         homeContent(previewActive: false)
-            // Home owns its large in-content list switcher and intentionally
-            // has no duplicate collapsed title or top navigation bar.
-            .toolbar(.hidden, for: .navigationBar)
+            // Home keeps its custom in-content title while iPad exposes the
+            // native navigation bar for NavigationSplitView's own sidebar control.
+            .navigationTitle("")
+            .toolbar(isIPad ? .visible : .hidden, for: .navigationBar)
             .tint(theme.colors.primaryText)
             .onAppear {
                 isMapCardPresented = false
@@ -53,6 +54,11 @@ struct HomeStaticMapPreview: View {
         center: CLLocationCoordinate2D(latitude: 48, longitude: 12),
         span: MKCoordinateSpan(latitudeDelta: 28, longitudeDelta: 38)
     ))
+
+    /// Keep the Home map excerpt in step with the larger iPad map markers.
+    private var markerScale: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 1.25 : 1
+    }
 
     /// Builds the clipped, noninteractive map preview.
     var body: some View {
@@ -122,31 +128,34 @@ struct HomeStaticMapPreview: View {
     @ViewBuilder
     /// Builds a noninteractive dot with an increased-contrast alternative.
     private func staticMapMarker(color: Color) -> some View {
-        if colorSchemeContrast == .increased {
-            // An opaque backing and high-contrast outline keep the
-            // weather color perceivable over every possible MapKit tile.
-            ZStack {
-                Circle()
-                    .fill(theme.colors.glassFill)
-                    .frame(width: 18, height: 18)
-                    .overlay {
-                        Circle().stroke(theme.colors.primaryText, lineWidth: 2)
-                    }
+        Group {
+            if colorSchemeContrast == .increased {
+                // An opaque backing and high-contrast outline keep the
+                // weather color perceivable over every possible MapKit tile.
+                ZStack {
+                    Circle()
+                        .fill(theme.colors.glassFill)
+                        .frame(width: 18, height: 18)
+                        .overlay {
+                            Circle().stroke(theme.colors.primaryText, lineWidth: 2)
+                        }
 
+                    Circle()
+                        .fill(color)
+                        .frame(width: 8, height: 8)
+                }
+            } else {
                 Circle()
                     .fill(color)
                     .frame(width: 8, height: 8)
+                    .shadow(color: color.opacity(0.42), radius: 5, y: 1)
             }
-            // Counteract tile desaturation so semantic marker colors remain unchanged.
-            .saturation(mapSaturation == 0 ? 1 : 1 / mapSaturation)
-        } else {
-            Circle()
-                .fill(color)
-                .frame(width: 8, height: 8)
-                .shadow(color: color.opacity(0.42), radius: 5, y: 1)
-                // Counteract tile desaturation so semantic marker colors remain unchanged.
-                .saturation(mapSaturation == 0 ? 1 : 1 / mapSaturation)
         }
+        // The compact Home map uses the same iPad-only visual scaling as the
+        // full map, while phone markers retain their established size.
+        .scaleEffect(markerScale)
+        // Counteract tile desaturation so semantic marker colors remain unchanged.
+        .saturation(mapSaturation == 0 ? 1 : 1 / mapSaturation)
     }
 
     /// Fits loaded or preview coordinates without responding to user gestures.
@@ -326,37 +335,31 @@ extension ContentView {
     /// Builds responsive dashboard cards for loaded or generated-preview state.
     func homeContent(previewActive: Bool) -> some View {
         GeometryReader { geometry in
-            let availableContentWidth = min(max(geometry.size.width - 32, 0), 1_160)
-            // The app's text-size setting currently caps at xxLarge, so treat that
-            // maximum as the readable single-column breakpoint as well as the
-            // largest system categories.
-            let usesReadableSingleColumn = dynamicTypeSize >= .xxLarge
-            let usesWideLayout = availableContentWidth >= 900 && !usesReadableSingleColumn
             let isIPad = UIDevice.current.userInterfaceIdiom == .pad
-            let columnSpacing: CGFloat = 20
-            let primaryColumnWidth = (availableContentWidth - columnSpacing) * 0.58
-            let calendarContentWidth = max(
-                (usesWideLayout ? primaryColumnWidth : availableContentWidth) - 36,
-                0
+            // Match List View's readable iPad column and its centered side margins.
+            let maxContentWidth = usesIPadLandscapeLayout(for: geometry.size) ? 680.0 : 760.0
+            let availableContentWidth = min(
+                max(geometry.size.width - 32, 0),
+                maxContentWidth
             )
+            let calendarContentWidth = max(availableContentWidth - 36, 0)
+            // The map sits inside a card with a 6pt inset on each side.
+            let mapContentWidth = max(availableContentWidth - 12, 0)
             let showsEmptyList = !previewActive
                 && weatherService.cityListCoordinates().isEmpty
             let showsSunnyDaysCard = !previewActive
                 && !homeSunnyCalendarDates(for: weatherService.cityWeatherData).isEmpty
-            // Preserve the existing height calculation in narrow windows. On a
-            // wide window, derive the map height from its column so it retains a
-            // useful landscape proportion instead of stretching with the screen.
-            // iPad has enough room to give the map more geographic context; the
-            // phone proportions remain exactly as before.
+            // Keep the established device-specific map proportions within the
+            // shared single-column layout.
             let snapshotHeight: CGFloat = {
-                if usesWideLayout {
-                    return isIPad
-                        ? min(max(primaryColumnWidth * 0.55, 300), 390)
-                        : min(max(primaryColumnWidth * 0.48, 240), 310)
-                }
-                return isIPad
+                let preferredHeight = isIPad
                     ? min(max(geometry.size.height * 0.36, 240), 390)
                     : min(max(geometry.size.height * 0.32, 190), 310)
+                // A very wide dashboard map must remain tall enough to read;
+                // preserve at least a 2:1 width-to-height proportion using
+                // the map's rendered card width, not the full window width.
+                let minimumHeight = mapContentWidth / 2
+                return max(preferredHeight, minimumHeight)
             }()
 
             ScrollView {
@@ -377,29 +380,6 @@ extension ContentView {
                             emptyListContent
                                 .padding(.vertical, 24)
                         }
-                    } else if usesWideLayout {
-                        HStack(alignment: .top, spacing: columnSpacing) {
-                            VStack(spacing: 20) {
-                                homeCard(contentPadding: 6) {
-                                    homeMapSnapshot(height: snapshotHeight, previewActive: previewActive)
-                                }
-
-                                if showsSunnyDaysCard {
-                                    homeCard {
-                                        homeSunnyDaysSection(
-                                            previewActive: previewActive,
-                                            calendarContentWidth: calendarContentWidth
-                                        )
-                                    }
-                                }
-                            }
-                            .frame(width: primaryColumnWidth, alignment: .top)
-
-                            homeCard {
-                                homeSunnySection(previewActive: previewActive)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .top)
-                        }
                     } else {
                         homeCard(contentPadding: 6) {
                             homeMapSnapshot(height: snapshotHeight, previewActive: previewActive)
@@ -417,9 +397,8 @@ extension ContentView {
                         }
                     }
                 }
-                // Keep the page comfortably readable in full-screen and large
-                // Stage Manager windows while leaving compact layouts unchanged.
-                .frame(maxWidth: usesReadableSingleColumn ? 760 : 1_160)
+                // Use exactly List View's single centered content width on iPad.
+                .frame(maxWidth: maxContentWidth)
                 .frame(maxWidth: .infinity)
                 .padding(.horizontal, 16)
                 .padding(.top, 14)
@@ -788,7 +767,9 @@ extension ContentView {
                 listCandidateRows(
                     rankedCandidates,
                     showsDividers: true,
-                    showsTemperature: true,
+                    // Match List View's sunniness ranking: rank and city name
+                    // share its typography, while cloud cover is the only value.
+                    listMetricMode: .sunny,
                     selectionAction: { candidate in
                         selectCandidate(candidate, focusMap: false)
                     }

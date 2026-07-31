@@ -32,6 +32,18 @@ private enum WeatherSnapshotStorage {
         try? FileManager.default.removeItem(at: url)
     }
 
+    /// Removes every file-backed forecast snapshot during a full app reset.
+    static func removeAll() {
+        guard let caches = try? FileManager.default.url(
+            for: .cachesDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: false
+        ) else { return }
+        let directory = caches.appending(path: "WeatherSnapshots", directoryHint: .isDirectory)
+        try? FileManager.default.removeItem(at: directory)
+    }
+
     /// Returns a filesystem-safe URL derived from the list's stable identifier.
     private static func fileURL(for listID: CityListID) throws -> URL {
         let caches = try FileManager.default.url(
@@ -53,6 +65,11 @@ private enum WeatherSnapshotStorage {
 // MARK: - Weather Cache
 
 extension WeatherService {
+    /// Erases every file-backed weather snapshot before a fresh-install reset.
+    func removeAllCachedWeatherData() {
+        WeatherSnapshotStorage.removeAll()
+    }
+
     /// Encodes and writes a complete WeatherKit-derived snapshot for one list.
     func saveCachedWeatherData(_ data: [CityWeather], for listID: CityListID) {
         do {

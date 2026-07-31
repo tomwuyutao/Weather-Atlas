@@ -79,7 +79,7 @@ extension ContentView {
     /// Wraps Map View as a route and owns per-visit camera initialization/reset.
     var fullMapDestination: some View {
         mapTabContent
-            .navigationTitle(localizedString("Weather", locale: locale))
+            .navigationTitle(toolbarTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.visible, for: .navigationBar)
             .toolbar {
@@ -89,12 +89,30 @@ extension ContentView {
 
                 ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
+                        withAnimation(.smooth(duration: 0.2)) {
+                            filterSunny.toggle()
+                        }
+                    } label: {
+                        Image(systemName: filterSunny ? "sun.max.fill" : "sun.max")
+                    }
+                    .accessibilityLabel(localizedString("Filter Sunny", locale: locale))
+                    .accessibilityValue(filterSunny ? localizedString("On", locale: locale) : localizedString("Off", locale: locale))
+
+                    Button {
+                        withAnimation(.smooth(duration: 0.2)) {
+                            showLegend.toggle()
+                        }
+                    } label: {
+                        Image(systemName: showLegend ? "eye.fill" : "eye.slash")
+                    }
+                    .accessibilityLabel(localizedString("Legend", locale: locale))
+                    .accessibilityValue(showLegend ? localizedString("On", locale: locale) : localizedString("Off", locale: locale))
+
+                    Button {
                         centerMapOnDots()
                     } label: {
                         Image(systemName: "arrow.up.left.and.down.right.magnifyingglass")
                     }
-
-                    mapOverlayMenu
                 }
             }
             .onAppear {
@@ -182,6 +200,10 @@ func mapWeatherDataIssue(
         return forecast.precipitationChance == nil ? .missingPrecipitationData : nil
     case "uvIndex":
         return forecast.uvIndex == nil ? .missingUVIndexData : nil
+    case "feelsLike":
+        return forecast.hourlyForecasts.contains(where: { $0.apparentTemperature != nil }) ? nil : .missingHourlyData
+    case "visibility":
+        return forecast.hourlyForecasts.contains(where: { $0.visibilityKilometers != nil }) ? nil : .missingHourlyData
     case "temperature":
         return nil
     default:
@@ -215,23 +237,17 @@ extension ContentView {
     /// Menu that changes the metric encoded by marker color and cards.
     var mapOverlayMenu: some View {
         Menu {
-            // Keep localized map layers in their fixed menu order.
-            ForEach([
-                (mode: "weather", icon: "sun.max.fill", label: localizedString("Sunniness", locale: locale)),
-                (mode: "temperature", icon: "thermometer.medium", label: localizedString("Max Temperature", locale: locale)),
-                (mode: "cloudCover", icon: "cloud", label: localizedString("Cloud Cover", locale: locale)),
-                (mode: "precipitation", icon: "cloud.rain", label: localizedString("Rain Chance", locale: locale)),
-                (mode: "uvIndex", icon: "sun.max.trianglebadge.exclamationmark", label: localizedString("UV Index", locale: locale))
-            ], id: \.mode) { option in
+            // Use the exact same metric model and order as List sorting.
+            ForEach(WeatherListSortMode.allCases) { option in
                 Button {
                     Haptics.lightImpact()
                     withAnimation(.easeInOut(duration: 0.2)) {
-                        mapOverlayMode = option.mode
+                        mapOverlayMode = option.mapOverlayMode
                     }
                 } label: {
                     primaryMenuLabel(
-                        option.label,
-                        systemImage: mapOverlayMode == option.mode ? "checkmark" : option.icon
+                        option.title(locale: locale),
+                        systemImage: mapOverlayMode == option.mapOverlayMode ? "checkmark" : option.icon
                     )
                 }
             }
@@ -242,37 +258,6 @@ extension ContentView {
         .menuOrder(.fixed)
     }
 
-    @ViewBuilder
-    /// Map-specific actions shown above the shared More-menu footer.
-    private var mapMoreMenuItems: some View {
-        Toggle(isOn: Binding(
-            get: { showLegend },
-            set: { newValue in withAnimation(.smooth(duration: 0.3)) { showLegend = newValue } }
-        )) {
-            primaryMenuLabel(localizedString("Legend", locale: locale), systemImage: "eye")
-        }
-
-        Toggle(isOn: Binding(
-            get: { filterSunny },
-            set: { newValue in withAnimation { filterSunny = newValue } }
-        )) {
-            primaryMenuLabel(localizedString("Filter Sunny", locale: locale), systemImage: "sun.max")
-        }
-
-    }
-
-    /// Overflow menu button for secondary map controls.
-    var mapMoreMenu: some View {
-        Menu {
-            mapMoreMenuItems
-            globalMoreMenuFooter
-        } label: {
-            Image(systemName: "ellipsis")
-        }
-        .accessibilityLabel(localizedString("Menu", locale: locale))
-        .menuOrder(.fixed)
-        .tint(theme.colors.accent)
-    }
 }
 
 // MARK: - Apple Maps Implementation
@@ -295,6 +280,8 @@ private struct AppleMapView: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     /// Persisted raw temperature preference for temperature markers.
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
+    /// Persisted distance preference for visibility markers.
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
 
     // MARK: Body and Camera
 
@@ -352,12 +339,18 @@ private struct AppleMapView: View {
         case "temperature":
             let celsius = forecast.dailyHigh
             return (TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic).display(celsius)
+        case "feelsLike":
+            guard let value = forecast.hourlyForecasts.compactMap(\.apparentTemperature).max() else { return nil }
+            return (TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic).display(value)
         case "cloudCover":
             return forecast.cloudCover.map { "\(Int(($0 * 100).rounded()))%" }
         case "precipitation":
             return forecast.precipitationChance.map { "\(Int(($0 * 100).rounded()))%" }
         case "uvIndex":
             return forecast.uvIndex.map(String.init)
+        case "visibility":
+            guard let value = forecast.hourlyForecasts.compactMap(\.visibilityKilometers).max() else { return nil }
+            return (DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers).display(value)
         default:
             return nil
         }
@@ -383,6 +376,9 @@ private struct AppleMapView: View {
             } else {
                 return partlySunny.interpolated(with: colors.destructive, by: clamped((celsius - 20) / 20))
             }
+        case "feelsLike":
+            guard let celsius = forecast.hourlyForecasts.compactMap(\.apparentTemperature).max() else { return nil }
+            return temperatureColor(for: celsius)
         case "cloudCover":
             guard let cloudCover = forecast.cloudCover else { return nil }
             // Map a cloud fraction into the cloud-cover gradient.
@@ -401,6 +397,9 @@ private struct AppleMapView: View {
                 with: colors.destructive,
                 by: clamped(Double(uvIndex) / 11)
             )
+        case "visibility":
+            guard let value = forecast.hourlyForecasts.compactMap(\.visibilityKilometers).max() else { return nil }
+            return colors.dotRain.interpolated(with: colors.dotSun, by: clamped(value / 30))
         default:
             guard let condition = SunninessScoring.condition(for: forecast.symbolName) else { return nil }
             return condition.dotColor(for: colors)
@@ -410,6 +409,20 @@ private struct AppleMapView: View {
     /// Restricts interpolation fractions to the zero-through-one domain.
     private func clamped(_ value: Double) -> Double {
         max(0, min(1, value))
+    }
+
+    /// Applies the existing temperature ramp to either air or apparent temperature.
+    private func temperatureColor(for celsius: Double) -> Color {
+        let colors = theme.colors
+        let partlySunny = colors.dotPartlyCloudy.interpolated(with: colors.filterSunny, by: 0.18)
+        if celsius <= 0 {
+            return colors.dotRain.interpolated(with: colors.dotDrizzle, by: clamped((celsius + 20) / 20))
+        } else if celsius <= 10 {
+            return colors.dotDrizzle.interpolated(with: colors.dotCloudy, by: clamped(celsius / 10))
+        } else if celsius <= 20 {
+            return colors.dotCloudy.interpolated(with: partlySunny, by: clamped((celsius - 10) / 10))
+        }
+        return partlySunny.interpolated(with: colors.destructive, by: clamped((celsius - 20) / 20))
     }
 
 }
@@ -550,6 +563,12 @@ private struct WeatherMapMarker: View {
     /// Active semantic palette.
     @Environment(\.appTheme) private var theme
 
+    /// iPad's larger map canvas benefits from slightly more legible dots,
+    /// including the selected marker's glow and pulse ring.
+    private var markerScale: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad ? 1.25 : 1
+    }
+
     /// Builds marker glow, selection, and accessibility variants.
     var body: some View {
         ZStack {
@@ -619,9 +638,10 @@ private struct WeatherMapMarker: View {
                 Circle()
                     .fill(color)
                     .frame(width: 9, height: 9)
-                    .shadow(color: color.opacity(0.42), radius: 3)
+                .shadow(color: color.opacity(0.42), radius: 3)
             }
         }
+        .scaleEffect(markerScale)
         // Enlarge the map marker's hit region without enlarging
         // the normal visual dot.
         .frame(width: 44, height: 44)

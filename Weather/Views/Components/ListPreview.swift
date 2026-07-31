@@ -61,7 +61,9 @@ extension ContentView {
     func previewGeneratedList(name: String, cities: [City], nameSource: CityListNameSource? = nil) {
         listPreviewState.name = name
         listPreviewState.nameSource = nameSource
-        listPreviewState.allCities = cities
+        // GeoNames names are captured only while creating Weather Atlas-generated
+        // lists. User-search cities never pass through this creation flow.
+        listPreviewState.allCities = cities.map { $0.localizedForGeneratedList(locale: locale) }
         listPreviewState.cityCount = min(
             CountryCityCatalog.defaultCountryCityCount,
             min(CountryCityCatalog.maxCountryCityCount, cities.count)

@@ -44,7 +44,7 @@ extension ContentView {
                     presentDetail(for: cityWeather)
                 } label: {
                     HStack(alignment: .center, spacing: 16) {
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 6) {
                             Text(metric.value)
                                 .font(.system(size: 32, weight: .semibold, design: .default))
                                 .foregroundStyle(theme.colors.primaryText)
@@ -123,6 +123,13 @@ extension ContentView {
                 label: localizedString("Max Temperature", locale: locale),
                 iconName: icon
             )
+        case "feelsLike":
+            guard let value = forecast.hourlyForecasts.compactMap(\.apparentTemperature).max() else { return nil }
+            return MapFloatingCardMetric(
+                value: tempUnit.display(value),
+                label: localizedString("Feels Like", locale: locale),
+                iconName: icon
+            )
         case "cloudCover":
             guard let cloudCover = forecast.cloudCover else { return nil }
             return MapFloatingCardMetric(
@@ -142,6 +149,13 @@ extension ContentView {
             return MapFloatingCardMetric(
                 value: String(uvIndex),
                 label: localizedString("UV Index", locale: locale),
+                iconName: icon
+            )
+        case "visibility":
+            guard let value = forecast.hourlyForecasts.compactMap(\.visibilityKilometers).max() else { return nil }
+            return MapFloatingCardMetric(
+                value: (DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers).display(value),
+                label: localizedString("Visibility", locale: locale),
                 iconName: icon
             )
         default:

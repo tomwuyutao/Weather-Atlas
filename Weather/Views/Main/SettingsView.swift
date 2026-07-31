@@ -18,6 +18,8 @@ struct SettingsView: View {
 
     /// Persisted raw temperature preference.
     @AppStorage("temperatureUnit") private var temperatureUnit: String = TemperatureUnit.defaultRawValue
+    /// Persisted distance preference used for visibility.
+    @AppStorage("distanceUnit") private var distanceUnit: String = DistanceUnit.defaultRawValue
     /// Persisted in-app language identifier.
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     /// Whether typography follows the system Dynamic Type category.
@@ -28,6 +30,8 @@ struct SettingsView: View {
     let weatherService: WeatherService
     /// Callback that dismisses Settings and starts tutorial replay.
     let onReplayTutorial: () -> Void
+    /// Clears persisted app data and restarts first-launch onboarding.
+    let onResetApp: () -> Void
     /// Native sheet dismissal action.
     @Environment(\.dismiss) private var dismiss
     /// Active semantic palette and theme manager.
@@ -47,10 +51,14 @@ struct SettingsView: View {
     @State private var showingAttributions = false
     /// Whether the Units navigation destination is active.
     @State private var showingUnits = false
+    /// Whether the Language navigation destination is active.
+    @State private var showingLanguage = false
     /// Whether the Text Size navigation destination is active.
     @State private var showingTextSize = false
     /// Whether the Theme navigation destination is active.
     @State private var showingTheme = false
+    /// Controls confirmation before destructive full-app reset.
+    @State private var showingResetAppConfirmation = false
     /// Continuous slider value mapped back to discrete text-size steps.
     @State private var textSizeSliderValue = Double(AppTextSizeLevel.defaultRawValue)
     /// Whether a text-size drag is currently suppressing navigation pop gestures.
@@ -79,7 +87,7 @@ struct SettingsView: View {
                         .foregroundStyle(theme.colors.primaryText)
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     // Dismiss Settings from its root toolbar.
                     Button {
                         dismiss()
@@ -100,6 +108,10 @@ struct SettingsView: View {
             .navigationDestination(isPresented: $showingUnits) {
                 unitsForm
                     .navigationTitle(localizedString("Units", locale: locale))
+            }
+            .navigationDestination(isPresented: $showingLanguage) {
+                languageForm
+                    .navigationTitle(localizedString("Language", locale: locale))
             }
             .navigationDestination(isPresented: $showingTextSize) {
                 textSizeForm
@@ -158,22 +170,12 @@ struct SettingsView: View {
                     action: { showingUnits = true }
                 )
 
-                Picker(selection: Binding(get: { appLanguage }, set: { appLanguage = $0 })) {
-                    Text(verbatim: "English").tag("en")
-                    Text(verbatim: "Français").tag("fr")
-                    Text(verbatim: "Deutsch").tag("de")
-                    Text(verbatim: "Italiano").tag("it")
-                    Text(verbatim: "日本語").tag("ja")
-                    Text(verbatim: "한국어").tag("ko")
-                    Text(verbatim: "Português").tag("pt")
-                    Text(verbatim: "Русский").tag("ru")
-                    Text(verbatim: "简体中文").tag("zh-Hans")
-                    Text(verbatim: "Español").tag("es")
-                    Text(verbatim: "繁體中文").tag("zh-Hant")
-                } label: {
-                    settingsLabel(localizedString("Language", locale: locale), systemImage: "globe")
-                }
-                .tint(theme.colors.secondaryText)
+                settingsNavigationRow(
+                    localizedString("Language", locale: locale),
+                    value: languageDisplayName(for: appLanguage),
+                    systemImage: "globe",
+                    action: { showingLanguage = true }
+                )
 
                 settingsNavigationRow(
                     localizedString("Text Size", locale: locale),
@@ -201,6 +203,15 @@ struct SettingsView: View {
                     onReplayTutorial()
                 } label: {
                     settingsLabel(localizedString("Replay Tutorial", locale: locale), systemImage: "play.circle")
+                }
+
+                Button(role: .destructive) {
+                    showingResetAppConfirmation = true
+                } label: {
+                    settingsLabel(
+                        localizedString("Clear Data and Reset App", locale: locale),
+                        systemImage: "trash"
+                    )
                 }
             } header: {
                 settingsSectionHeader(localizedString("Help", locale: locale))
@@ -264,6 +275,58 @@ struct SettingsView: View {
                 } catch { }
             }
         }
+        .alert(localizedString("Clear Data and Reset App", locale: locale), isPresented: $showingResetAppConfirmation) {
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {}
+            Button(localizedString("Reset App", locale: locale), role: .destructive) {
+                onResetApp()
+            }
+        } message: {
+            Text(localizedString("This removes your lists, saved cities, preferences, and cached weather, then restarts setup.", locale: locale))
+        }
+    }
+
+    // MARK: Language Preferences
+
+    /// Builds one full-width row for every supported in-app language.
+    private var languageForm: some View {
+        Form {
+            Section {
+                ForEach(AppLanguageDefaults.supportedLanguageCodes, id: \.self) { languageCode in
+                    settingsSelectionRow(
+                        title: languageDisplayName(for: languageCode),
+                        isSelected: appLanguage == languageCode,
+                        action: { requestLanguageChange(to: languageCode) }
+                    )
+                }
+            }
+            .listRowBackground(settingsRowBackground)
+        }
+        .scrollContentBackground(.hidden)
+        .background(settingsFormBackground)
+    }
+
+    /// Returns each language's self-name so it remains recognizable in any locale.
+    private func languageDisplayName(for languageCode: String) -> String {
+        switch languageCode {
+        case "en": return "English"
+        case "fr": return "Français"
+        case "de": return "Deutsch"
+        case "it": return "Italiano"
+        case "ja": return "日本語"
+        case "ko": return "한국어"
+        case "pt": return "Português"
+        case "ru": return "Русский"
+        case "zh-Hans": return "简体中文"
+        case "es": return "Español"
+        case "zh-Hant": return "繁體中文"
+        default: return languageCode
+        }
+    }
+
+    /// Applies interface-language changes without altering stored place names.
+    private func requestLanguageChange(to languageCode: String) {
+        guard languageCode != appLanguage else { return }
+        appLanguage = languageCode
     }
 
     // MARK: Theme Preferences
@@ -303,16 +366,19 @@ struct SettingsView: View {
 
     /// Previews the light, charcoal, and black canvases used by each theme mode.
     private func themeIndicator(for style: AppThemeStyle) -> some View {
+        // Keep the indicator's charcoal sample fixed to the product's exact
+        // Dark canvas instead of deriving it from the currently resolved theme.
+        let darkIndicatorColor = Color(hex: 0x262626)
         let fills: (topLeading: Color, bottomTrailing: Color)
         switch style {
         case .automatic:
-            fills = (AppPalette.light.background, AppPalette.dark.background)
+            fills = (AppPalette.light.background, darkIndicatorColor)
         case .automaticBlack:
             fills = (AppPalette.light.background, AppPalette.black.background)
         case .light:
             fills = (AppPalette.light.background, AppPalette.light.background)
         case .dark:
-            fills = (AppPalette.dark.background, AppPalette.dark.background)
+            fills = (darkIndicatorColor, darkIndicatorColor)
         case .black:
             fills = (AppPalette.black.background, AppPalette.black.background)
         }
@@ -425,9 +491,9 @@ struct SettingsView: View {
         .frame(height: 36)
     }
 
-    // MARK: Temperature Units
+    // MARK: Units
 
-    /// Builds selectable Celsius and Fahrenheit rows.
+    /// Builds selectable temperature and distance-unit rows.
     private var unitsForm: some View {
         Form {
             Section {
@@ -442,6 +508,19 @@ struct SettingsView: View {
                 }
             } header: {
                 settingsSectionHeader(localizedString("Temperature", locale: locale))
+            }
+            .listRowBackground(settingsRowBackground)
+
+            Section {
+                ForEach(DistanceUnit.allCases, id: \.rawValue) { unit in
+                    settingsSelectionRow(
+                        title: unit.displayName(locale: locale),
+                        isSelected: (DistanceUnit(rawValue: distanceUnit) ?? .kilometers) == unit,
+                        action: { distanceUnit = unit.rawValue }
+                    )
+                }
+            } header: {
+                settingsSectionHeader(localizedString("Distance", locale: locale))
             }
             .listRowBackground(settingsRowBackground)
 
@@ -471,8 +550,18 @@ struct SettingsView: View {
             }
             .listRowBackground(settingsRowBackground)
 
-            Section(localizedString("Cities", locale: locale)) {
-                citiesAttributionRows
+            Section(localizedString("Search", locale: locale)) {
+                searchAttributionRows
+            }
+            .listRowBackground(settingsRowBackground)
+
+            Section(localizedString("Cities Data", locale: locale)) {
+                cityCatalogAttributionRows
+            }
+            .listRowBackground(settingsRowBackground)
+
+            Section(localizedString("City Name Translations", locale: locale)) {
+                cityTranslationAttributionRows
             }
             .listRowBackground(settingsRowBackground)
         }
@@ -511,7 +600,7 @@ struct SettingsView: View {
     private var mapAttributionRows: some View {
         settingsInfoRow(
             localizedString("Map Data", locale: locale),
-            value: "\u{F8FF} " + localizedString("Apple Maps", locale: locale),
+            value: "\u{F8FF} Map",
             systemImage: "map"
         )
         settingsLinkRow(
@@ -529,8 +618,8 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
-    /// Bundled city-catalog and online place-search source rows.
-    private var citiesAttributionRows: some View {
+    /// Online place-search source and its documentation link.
+    private var searchAttributionRows: some View {
         settingsInfoRow(
             localizedString("Search", locale: locale),
             value: "Open-Meteo / GeoNames",
@@ -542,6 +631,11 @@ struct SettingsView: View {
             systemImage: "doc.text",
             url: URL(string: "https://open-meteo.com/en/docs/geocoding-api")
         )
+    }
+
+    @ViewBuilder
+    /// Bundled city-catalog source and its documentation link.
+    private var cityCatalogAttributionRows: some View {
         settingsInfoRow(
             localizedString("Cities Data", locale: locale),
             value: localizedString("SimpleMaps World Cities", locale: locale),
@@ -553,6 +647,11 @@ struct SettingsView: View {
             systemImage: "doc.text",
             url: URL(string: "https://simplemaps.com/data/world-cities")
         )
+    }
+
+    @ViewBuilder
+    /// City-name translation source and its documentation link.
+    private var cityTranslationAttributionRows: some View {
         settingsInfoRow(
             localizedString("City Name Translations", locale: locale),
             value: "GeoNames",
@@ -745,5 +844,5 @@ private struct NavigationPopGestureDisabler: UIViewControllerRepresentable {
 }
 
 #Preview("Settings View") {
-    SettingsView(weatherService: WeatherService(), onReplayTutorial: {})
+    SettingsView(weatherService: WeatherService(), onReplayTutorial: {}, onResetApp: {})
 }

@@ -54,6 +54,15 @@ enum WidgetDataStore {
         WidgetCenter.shared.reloadAllTimelines()
     }
 
+    /// Clears app-group widget metadata and snapshots during a full app reset.
+    static func removeAll() {
+        guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
+        for key in defaults.dictionaryRepresentation().keys {
+            defaults.removeObject(forKey: key)
+        }
+        WidgetCenter.shared.reloadAllTimelines()
+    }
+
     /// Returns a fresh city snapshot, rejecting stale or corrupt payloads.
     static func weatherSnapshot(for cityID: String, now: Date = .now) -> WidgetWeatherSnapshot? {
         guard let snapshot = latestWeatherSnapshot(for: cityID),

@@ -22,10 +22,55 @@ extension ContentView {
         weatherService.reloadAvailableLists()
     }
 
-    /// Activates and fetches a list, then fits the map to its available cities.
+    /// Activates and fetches a list, preserving Map or List while returning an
+    /// open city report to Home so it cannot continue showing another list's city.
     func switchToList(_ listID: CityListID) async {
         guard listID.rawValue != weatherService.activeListID.rawValue else { return }
+
+        let shouldReturnHome = if case .cityDetail = currentRoute {
+            true
+        } else {
+            false
+        }
+
+        if shouldReturnHome {
+            // A sidebar choice is immediate. Do not leave Detail visible while
+            // the selected list's weather request is still in flight.
+            navigationPath = []
+        }
+
         await weatherService.switchList(to: listID)
+
+        centerMapOnDots()
+    }
+
+    /// Changes lists synchronously from an on-screen list control so Map and
+    /// List remain visible and can show loading progress immediately.
+    func beginSwitchToList(_ listID: CityListID) {
+        guard listID.rawValue != weatherService.activeListID.rawValue else { return }
+
+        let routeToPreserve = currentRoute
+        if case .cityDetail = routeToPreserve {
+            navigationPath = []
+        }
+
+        weatherService.beginSwitchList(to: listID)
+
+        // A List(selection:) in the iPad sidebar can pop the detail stack as
+        // its selected value changes. Restore the current primary destination
+        // after activation, while Detail deliberately remains at Home.
+        switch routeToPreserve {
+        case let .some(route) where route == .map || route == .list:
+            Task { @MainActor in
+                // Let List(selection:) commit its split-view update before
+                // restoring the destination it otherwise pops to Home.
+                try? await Task.sleep(for: .milliseconds(100))
+                navigationPath = [route]
+            }
+        default:
+            break
+        }
+
         centerMapOnDots()
     }
 
@@ -105,9 +150,7 @@ extension ContentView {
                 ForEach(managedLists) { listID in
                     Button {
                         listEditMode = false
-                        Task {
-                            await switchToList(listID)
-                        }
+                        beginSwitchToList(listID)
                     } label: {
                         HStack {
                             Text(listID.localizedDisplayName(locale: locale))
@@ -127,7 +170,7 @@ extension ContentView {
 
                 Button {
                     listEditMode = false
-                    listManagementState.isPresented = true
+                    presentListManagement()
                 } label: {
                     primaryMenuLabel(
                         localizedString("Manage Lists", locale: locale),
@@ -225,14 +268,14 @@ extension ContentView {
         } else {
             switch currentRoute {
             case .some(.list):
-                bottomMoreButton
+                listSortControl
             case .some(.map):
-                mapMoreMenu
+                mapOverlayMenu
             case .some(.cityDetail(let city)):
                 if let sourceListID = detailSourceListID(for: city) {
                     detailCityMoreMenu(for: city, sourceListID: sourceListID)
                 } else {
-                    bottomMoreButton
+                    EmptyView()
                 }
             case .some(.listPreview):
                 // A preview without initialized draft state still cancels natively.
@@ -240,7 +283,10 @@ extension ContentView {
                     cancelGeneratedListPreview()
                 }
             case nil:
-                bottomMoreButton
+                Button(localizedString("Settings", locale: locale), systemImage: "slider.horizontal.3") {
+                    showingSettings = true
+                }
+                .tint(theme.colors.accent)
             }
         }
     }
@@ -264,21 +310,41 @@ extension ContentView {
                 dateSwitcherControl
             }
         }
+        // Anchor Calendar to the fixed native toolbar host rather than its
+        // replaceable inner label. Forecast updates can rebuild that label
+        // while the popover is presenting, particularly on iPad.
+        .popover(isPresented: $showingDatePopover) {
+            datePickerPopoverContent
+        }
     }
 
     @ViewBuilder
-    /// Selects the global New sheet or generated-list preview confirmation.
+    /// Selects the compact global New menu or generated-list preview confirmation.
     var bottomTrailingToolbarControl: some View {
         if isListPreviewActive {
             // Save the currently generated list preview.
-            Button(localizedString("New", locale: locale), systemImage: "plus") {
+            Button(localizedString("Create", locale: locale), systemImage: "checkmark") {
                 confirmGeneratedListPreview()
             }
             .disabled(listPreviewCities.isEmpty)
         } else {
-            Button(localizedString("New", locale: locale), systemImage: "plus") {
-                newSheetState.isPresented = true
+            Menu {
+                Button {
+                    presentNewCitySearch()
+                } label: {
+                    Label(localizedString("New City", locale: locale), systemImage: "building.2")
+                }
+
+                Button {
+                    addListSheetState.selectedDetent = .medium
+                    addListSheetState.isPresented = true
+                } label: {
+                    Label(localizedString("New List", locale: locale), systemImage: "list.bullet")
+                }
+            } label: {
+                Image(systemName: "plus")
             }
+            .menuOrder(.fixed)
             .tint(theme.colors.accent)
         }
     }
@@ -336,9 +402,6 @@ extension ContentView {
                 .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .popover(isPresented: $showingDatePopover) {
-                datePickerPopoverContent
-            }
 
             dateStepperButton(
                 systemImage: "chevron.right",
@@ -433,41 +496,6 @@ extension ContentView {
         } else {
             EmptyView()
         }
-    }
-
-    /// Keeps the shared refresh and Settings actions at the bottom of every More menu.
-    @ViewBuilder
-    var globalMoreMenuFooter: some View {
-        Divider()
-
-        Button {
-            refreshWeather()
-        } label: {
-            primaryMenuLabel(
-                localizedString("Refresh", locale: locale)
-                    + (timeSinceRefreshText().isEmpty ? "" : " (\(timeSinceRefreshText()))"),
-                systemImage: "arrow.clockwise"
-            )
-        }
-        .disabled(weatherService.isLoading)
-
-        Button {
-            showingSettings = true
-        } label: {
-            primaryMenuLabel(localizedString("Settings", locale: locale), systemImage: "gearshape")
-        }
-    }
-
-    /// Hosts the shared More-menu footer on screens with no additional actions.
-    var bottomMoreButton: some View {
-        Menu {
-            globalMoreMenuFooter
-        } label: {
-            Image(systemName: "ellipsis")
-        }
-        .accessibilityLabel(localizedString("Menu", locale: locale))
-        .menuOrder(.fixed)
-        .tint(theme.colors.accent)
     }
 
     /// Adjusts how many ranked cities the generated list will contain.

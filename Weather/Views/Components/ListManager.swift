@@ -16,10 +16,10 @@ struct ListManagementState {
     var isPresented = false
     /// Whether the nested list-creation options are visible.
     var showsNewListOptions = false
-    /// Whether the continent source destination is active.
-    var showsContinentPicker = false
-    /// Whether the country source destination is active.
-    var showsCountryPicker = false
+    /// Shared navigation state for the nested list-creation flow.
+    var listCreation = AddListSheetPresentationState()
+    /// Current compact-sheet height, expanded for nested country search.
+    var selectedDetent: PresentationDetent = .medium
     /// Work deferred until the management sheet has dismissed.
     var dismissAction: ListManagementDismissAction?
     /// Native list edit mode for reordering, deletion, and inline rename.
@@ -28,8 +28,6 @@ struct ListManagementState {
     var renamingListID: CityListID?
     /// Staged inline list name.
     var renameText = ""
-    /// Query filtering country creation sources.
-    var countryQuery = ""
 }
 
 /// Destination to open after dismissing the management sheet.
@@ -52,8 +50,12 @@ extension ContentView {
             let listID = await weatherService.createCustomList(name: trimmed, cities: [])
             await switchToList(listID)
             refreshListOrder()
-            listManagementState.isPresented = false
-            newSheetState.isPresented = false
+            if isIPad {
+                listManagementState.showsNewListOptions = false
+            } else {
+                listManagementState.isPresented = false
+            }
+            addListSheetState.isPresented = false
             centerMapOnDots()
         }
     }
@@ -89,73 +91,37 @@ extension ContentView {
 extension ContentView {
     // MARK: Sheet Composition
 
-    /// Presents city and list creation in one native navigation sheet.
-    var newSheet: some View {
+    /// Shared New List workflow presented from the global plus menu.
+    var addListSheet: some View {
         NavigationStack {
-            NewSheetContent(
-                cityDestinationName: weatherService.activeListID.localizedDisplayName(locale: locale),
-                onNewCity: {
-                    prepareNewCitySearch()
-                    newSheetState.selectedDetent = .large
-                    newSheetState.showsCitySearch = true
-                },
-                onNewList: {
-                    newSheetState.showsListOptions = true
-                }
-            )
-            .navigationTitle(localizedString("New", locale: locale))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    listManagementToolbarButton(systemImage: "xmark") {
-                        newSheetState.isPresented = false
-                    }
-                }
-            }
-            .navigationDestination(isPresented: $newSheetState.showsCitySearch) {
-                citySearchContent
-                    .navigationTitle(localizedString("New City", locale: locale))
-                    .navigationBarTitleDisplayMode(.inline)
-            }
-            .navigationDestination(isPresented: $newSheetState.showsListOptions) {
-                newListSheetContent
-                    .navigationTitle(localizedString("New List", locale: locale))
-                    .navigationBarTitleDisplayMode(.inline)
-            }
-            .navigationDestination(isPresented: $newSheetState.showsContinentPicker) {
-                ContinentListPickerContent(lists: CityListID.builtInLists) { listID in
-                    newSheetState.dismissAction = .previewContinent(listID)
-                    newSheetState.isPresented = false
-                }
-                .navigationTitle(localizedString("New Continent", locale: locale))
+            addListSheetContent
+                .navigationTitle(localizedString("New List", locale: locale))
                 .navigationBarTitleDisplayMode(.inline)
-            }
-            .navigationDestination(isPresented: $newSheetState.showsCountryPicker) {
-                countryListSearchContent(query: $newSheetState.countryQuery) { country in
-                    newSheetState.dismissAction = .previewCountry(country)
-                    newSheetState.isPresented = false
-                }
-                .navigationTitle(localizedString("New Country", locale: locale))
-                .navigationBarTitleDisplayMode(.inline)
-            }
         }
         .background(theme.colors.background.ignoresSafeArea())
         .presentationBackground(theme.colors.background)
         .tint(theme.colors.accent)
     }
 
-    /// List-creation choices pushed from the unified New sheet.
-    private var newListSheetContent: some View {
-        NewListSheetContent(
+    /// List choices and source selection shared with the List Manager.
+    private var addListSheetContent: some View {
+        AddListSheet(
+            presentationState: $addListSheetState.creation,
             onNewEmptyList: {
                 newListName = ""
                 showingNewListAlert = true
             },
-            onNewContinent: {
-                newSheetState.showsContinentPicker = true
+            onSelectContinent: { listID in
+                addListSheetState.dismissAction = .previewContinent(listID)
+                addListSheetState.isPresented = false
             },
-            onNewCountry: {
-                newSheetState.showsCountryPicker = true
+            onSelectCountry: { country in
+                addListSheetState.dismissAction = .previewCountry(country)
+                addListSheetState.isPresented = false
+            },
+            onCountrySearchPresented: {
+                // Country search is a full-height task within this stack.
+                addListSheetState.selectedDetent = .large
             }
         )
     }
@@ -202,27 +168,6 @@ extension ContentView {
                         .listRowBackground(theme.colors.dotSun)
                     }
 
-                    // Keep city search visually separate from list creation.
-                    Section {
-                        Button {
-                            listManagementState.dismissAction = .citySearch
-                            listManagementState.isPresented = false
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "plus")
-                                    .fontWeight(.semibold)
-                                Text(localizedString("New City", locale: locale))
-                                    .fontWeight(.semibold)
-                                Spacer()
-                            }
-                            // Yellow action rows keep the same dark foreground
-                            // in every appearance for stable contrast.
-                            .foregroundStyle(AppPalette.light.titleText)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .listRowBackground(theme.colors.dotSun)
-                    }
                 }
             }
             .environment(\.editMode, $listManagementState.editMode)
@@ -232,15 +177,8 @@ extension ContentView {
             .navigationBarTitleDisplayMode(.inline)
             .navigationDestination(isPresented: $listManagementState.showsNewListOptions) {
                 listManagementNewListOptions
-                    .navigationTitle("")
+                    .navigationTitle(localizedString("New List", locale: locale))
                     .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .principal) {
-                            Text(localizedString("New List", locale: locale))
-                                .font(.headline.weight(.semibold))
-                                .foregroundStyle(theme.colors.primaryText)
-                        }
-                    }
             }
             .toolbar {
                 ToolbarItem(placement: .principal) {
@@ -251,6 +189,16 @@ extension ContentView {
 
                 if listManagementState.editMode != .active {
                     ToolbarItem(placement: .topBarLeading) {
+                        if !isIPad {
+                            // The compact sheet needs its own dismissal control.
+                            // On iPad, the detail-column sidebar button owns this.
+                            listManagementToolbarButton(systemImage: "xmark") {
+                                listManagementState.isPresented = false
+                            }
+                        }
+                    }
+
+                    ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             withAnimation(.smooth(duration: 0.2)) {
                                 listManagementState.editMode = .active
@@ -260,14 +208,8 @@ extension ContentView {
                         }
                     }
 
-                    ToolbarItem(placement: .topBarTrailing) {
-                        // Dismiss Lists management outside edit mode.
-                        listManagementToolbarButton(systemImage: "xmark") {
-                            listManagementState.isPresented = false
-                        }
-                    }
                 } else {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .topBarLeading) {
                         // Commit a valid inline rename and leave edit mode.
                         listManagementToolbarButton(systemImage: "checkmark") {
                             commitInlineListRename()
@@ -284,6 +226,25 @@ extension ContentView {
         // Keep the automatic back control in the nested new-list flow on the
         // app's navy accent instead of the system sheet tint.
         .tint(theme.colors.accent)
+        // Present from the manager itself. An alert attached to the underlying
+        // root view makes SwiftUI dismiss this sheet before showing the alert.
+        .alert(localizedString("Delete List", locale: locale), isPresented: $showingDeleteListConfirmation) {
+            Button(localizedString("Cancel", locale: locale), role: .cancel) {
+                listToDeleteID = nil
+            }
+            Button(localizedString("Delete", locale: locale), role: .destructive) {
+                if let listToDeleteID {
+                    weatherService.deleteList(listToDeleteID)
+                    refreshListOrder()
+                }
+                listToDeleteID = nil
+            }
+        } message: {
+            Text(String(
+                format: localizedString("Are you sure you want to delete \"%@\"? This cannot be undone.", locale: locale),
+                (listToDeleteID ?? weatherService.activeListID).localizedDisplayName(locale: locale)
+            ))
+        }
         .onDisappear {
             if isInlineListRenameValid {
                 commitInlineListRename()
@@ -295,66 +256,49 @@ extension ContentView {
             }
             listManagementState.editMode = .inactive
             listManagementState.showsNewListOptions = false
-            listManagementState.showsContinentPicker = false
-            listManagementState.showsCountryPicker = false
+            listManagementState.listCreation = AddListSheetPresentationState()
+            listManagementState.selectedDetent = .medium
         }
     }
 
     // MARK: New-List Options
 
+    /// Finishes a list-creation route without dismissing the permanent iPad sidebar.
+    private func completeListManagementSelection(_ action: ListManagementDismissAction) {
+        if isIPad {
+            listManagementState.showsNewListOptions = false
+            performListCreationDismissAction(action)
+        } else {
+            listManagementState.dismissAction = action
+            listManagementState.isPresented = false
+        }
+    }
+
     /// Builds the nested empty/continent/country creation destination.
-    private var listManagementNewListOptions: some View {
-        NewListSheetContent(
+    var listManagementNewListOptions: some View {
+        AddListSheet(
+            presentationState: $listManagementState.listCreation,
             onNewEmptyList: {
                 listManagementState.showsNewListOptions = false
                 // Present the native alert for naming an empty custom list.
                 newListName = ""
                 showingNewListAlert = true
             },
-            onNewContinent: {
-                listManagementState.showsContinentPicker = true
+            onSelectContinent: { listID in
+                completeListManagementSelection(.previewContinent(listID))
             },
-            onNewCountry: {
-                listManagementState.showsCountryPicker = true
+            onSelectCountry: { country in
+                completeListManagementSelection(.previewCountry(country))
+            },
+            onCountrySearchPresented: {
+                listManagementState.selectedDetent = .large
             }
         )
-        .background(theme.colors.background.ignoresSafeArea())
-        .toolbarBackground(theme.colors.background, for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
-        // The system Liquid Glass back symbol is always rendered in the system
-        // foreground color. Use the same native toolbar position with an explicit
-        // label so this app control keeps the theme's navy icon color.
-        .navigationBarBackButtonHidden()
-        .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button {
-                    listManagementState.showsNewListOptions = false
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .navigationDestination(isPresented: $listManagementState.showsContinentPicker) {
-            // Defer the generated preview until the management sheet dismisses.
-            ContinentListPickerContent(lists: CityListID.builtInLists) { listID in
-                listManagementState.dismissAction = .previewContinent(listID)
-                listManagementState.isPresented = false
-            }
-                .navigationTitle(localizedString("New Continent", locale: locale))
-                .navigationBarTitleDisplayMode(.inline)
-        }
-        .navigationDestination(isPresented: $listManagementState.showsCountryPicker) {
-            countryListSearchContent(query: $listManagementState.countryQuery) { country in
-                listManagementState.dismissAction = .previewCountry(country)
-                listManagementState.isPresented = false
-            }
-                .navigationTitle(localizedString("New Country", locale: locale))
-                .navigationBarTitleDisplayMode(.inline)
+        .if(!isIPad) { view in
+            view
+                .background(theme.colors.background.ignoresSafeArea())
+                .toolbarBackground(theme.colors.background, for: .navigationBar)
+                .toolbarBackground(.visible, for: .navigationBar)
         }
     }
 
@@ -362,7 +306,7 @@ extension ContentView {
 
     @ViewBuilder
     /// Builds a selectable or inline-editable row for one saved list.
-    private func listManagementRow(for listID: CityListID) -> some View {
+    func listManagementRow(for listID: CityListID) -> some View {
         Group {
             if listManagementState.editMode == .active {
                 if listManagementState.renamingListID?.rawValue == listID.rawValue {
@@ -382,7 +326,9 @@ extension ContentView {
                         listManagementState.renamingListID = listID
                         listManagementState.renameText = listID.localizedDisplayName(locale: locale)
                     } label: {
-                        listManagementRowLabel(for: listID, showsSelection: false)
+                        // The iPad sidebar already highlights the active row;
+                        // avoid a second selection indicator while editing it.
+                        listManagementRowLabel(for: listID, showsSelection: !isIPad)
                     }
                     .buttonStyle(.plain)
                 }
@@ -397,38 +343,48 @@ extension ContentView {
                 .buttonStyle(.plain)
             }
         }
-        .contextMenu {
-            Button {
-                // Enter edit mode and focus this list's inline name field.
-                withAnimation(.smooth(duration: 0.2)) {
-                    listManagementState.editMode = .active
-                    commitInlineListRename()
-                    listManagementState.renamingListID = listID
-                    listManagementState.renameText = listID.localizedDisplayName(locale: locale)
-                }
-            } label: {
-                primaryMenuLabel(localizedString("Rename List", locale: locale), systemImage: "pencil")
-            }
+        .contextMenu { listManagementContextMenu(for: listID) }
+    }
 
-            Button {
-                // Capture the identity before presenting the destructive native alert.
-                listToDeleteID = listID
-                showingDeleteListConfirmation = true
-            } label: {
-                Label {
-                    Text(localizedString("Delete List", locale: locale))
-                } icon: {
-                    Image(systemName: "trash")
-                        .foregroundStyle(theme.colors.destructive)
-                }
+    /// Provides the shared native contextual actions for a saved list.
+    @ViewBuilder
+    func listManagementContextMenu(for listID: CityListID) -> some View {
+        Button {
+            // Enter edit mode and focus this list's inline name field.
+            withAnimation(.smooth(duration: 0.2)) {
+                listManagementState.editMode = .active
+                commitInlineListRename()
+                listManagementState.renamingListID = listID
+                listManagementState.renameText = listID.localizedDisplayName(locale: locale)
             }
-            .tint(theme.colors.destructive)
+        } label: {
+            primaryMenuLabel(localizedString("Rename List", locale: locale), systemImage: "pencil")
         }
+
+        Button {
+            // Capture the identity before presenting the destructive native alert.
+            listToDeleteID = listID
+            showingDeleteListConfirmation = true
+        } label: {
+            Label {
+                Text(localizedString("Delete List", locale: locale))
+            } icon: {
+                Image(systemName: "trash")
+                    .foregroundStyle(theme.colors.destructive)
+            }
+        }
+        .tint(theme.colors.destructive)
     }
 
     /// Builds a list name, city count, and optional active-list checkmark.
     private func listManagementRowLabel(for listID: CityListID, showsSelection: Bool) -> some View {
         HStack {
+            Image(systemName: "checkmark")
+                .fontWeight(.semibold)
+                .foregroundStyle(theme.colors.accent)
+                .frame(width: 20)
+                .opacity(showsSelection && listID.rawValue == weatherService.activeListID.rawValue ? 1 : 0)
+
             Text(listID.localizedDisplayName(locale: locale))
                 .foregroundStyle(theme.colors.primaryText)
             Spacer()
@@ -436,12 +392,6 @@ extension ContentView {
             Text(verbatim: String(weatherService.cityListCoordinates(for: listID).count))
                 .font(.subheadline.monospacedDigit())
                 .foregroundStyle(theme.colors.secondaryText)
-
-            if showsSelection, listID.rawValue == weatherService.activeListID.rawValue {
-                Image(systemName: "checkmark")
-                    .fontWeight(.semibold)
-                    .foregroundStyle(theme.colors.accent)
-            }
         }
         .contentShape(Rectangle())
     }
@@ -466,7 +416,7 @@ extension ContentView {
     // MARK: List Manager Actions
 
     /// Persists a valid trimmed inline name and clears editing state.
-    private func commitInlineListRename() {
+    func commitInlineListRename() {
         guard let listID = listManagementState.renamingListID else { return }
         let trimmedName = listManagementState.renameText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else { return }
@@ -478,7 +428,7 @@ extension ContentView {
     }
 
     /// Whether no rename is active or its staged text is nonempty.
-    private var isInlineListRenameValid: Bool {
+    var isInlineListRenameValid: Bool {
         guard listManagementState.renamingListID != nil else { return true }
         return !listManagementState.renameText
             .trimmingCharacters(in: .whitespacesAndNewlines)

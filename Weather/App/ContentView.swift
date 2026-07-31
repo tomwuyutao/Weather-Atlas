@@ -11,6 +11,17 @@
 import Foundation
 import SwiftUI
 import MapKit
+import UIKit
+
+// MARK: - Destinations
+
+/// Every destination that can be stored in the root `NavigationStack` path.
+enum AppNavigationRoute: Hashable {
+    case map
+    case list
+    case cityDetail(CityWeather)
+    case listPreview
+}
 
 // MARK: - Root View State
 
@@ -60,6 +71,8 @@ struct ContentView: View {
     @State var selectedMapCityID: UUID?
     /// Persisted ordering rule for city rows and rankings.
     @AppStorage("weatherListSortMode") var listSortMode: String = WeatherListSortMode.sunny.rawValue
+    /// Persisted display unit for visibility metrics.
+    @AppStorage("distanceUnit") var distanceUnitRaw: String = DistanceUnit.defaultRawValue
     /// First-launch flag controlling onboarding presentation.
     @AppStorage("hasLaunchedBefore") var hasLaunchedBefore: Bool = false
     /// Search query, sheet, result, and temporary-map presentation state.
@@ -84,8 +97,10 @@ struct ContentView: View {
     @State var tutorialState = TutorialPresentationState()
     /// Create, rename, reorder, and delete-list workflow state.
     @State var listManagementState = ListManagementState()
-    /// Unified city/list creation workflow opened from the global plus button.
-    @State var newSheetState = NewSheetPresentationState()
+    /// System-managed visibility for the permanent iPad list sidebar.
+    @State var iPadSidebarVisibility: NavigationSplitViewVisibility = .all
+    /// Shared New List workflow opened from the global plus menu.
+    @State var addListSheetState = AddListSheetContainerState()
     /// Focus binding for the inline list-name editor.
     @FocusState var inlineListNameFocused: Bool
     /// Generated country/continent list preview and requested city count.
@@ -145,10 +160,14 @@ struct ContentView: View {
     @State var showingCityRenameAlert: Bool = false
     /// Editable text staged by the city-rename alert.
     @State var cityRenameText: String = ""
-    /// Focus binding for the city search field.
-    @FocusState var searchFieldFocused: Bool
     /// City captured while a rename operation is pending.
     @State var cityToRename: City?
+    /// City staged by a trailing swipe before choosing its destination list.
+    @State var cityToMove: CityWeather?
+    /// Source list captured with the staged city move.
+    @State var cityMoveSourceListID: CityListID?
+    /// Controls the native destination-list chooser for a swipe move.
+    @State var showingCityMoveListPicker = false
     /// Whether List View exposes its editing actions.
     @State var listEditMode: Bool = false
     /// Editable name used by the create-list workflow.
@@ -242,33 +261,6 @@ extension ContentView {
     /// Attaches startup, lifecycle, preference, search, and data observers.
     private var viewLifecycle: some View {
         appNavigationStack
-            .overlay(alignment: .bottom) {
-                if !tutorialState.showsFirstLaunch,
-                   !tutorialState.showsReplay,
-                   !citySearchState.isPresented,
-                   !newSheetState.isPresented {
-                    if weatherService.isLoading {
-                        // Loading always takes priority. Once it finishes, this
-                        // same surface can reveal any resulting omissions.
-                        FloatingBox(content: .loading(progress: weatherService.loadingProgress))
-                            .frame(maxWidth: 760)
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 24)
-                            .allowsHitTesting(false)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                            .zIndex(200)
-                    } else if floatingBoxDroppedCityCount > 0,
-                              !(isMapRoute && isMapCardPresented) {
-                        FloatingBox(content: .droppedCities(count: floatingBoxDroppedCityCount))
-                            .frame(maxWidth: 760)
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 24)
-                            .allowsHitTesting(false)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
-                            .zIndex(200)
-                    }
-                }
-            }
             .task {
                 await onAppearLoad()
                 publishWidgetCatalog()
@@ -321,6 +313,37 @@ extension ContentView {
             }
     }
 
+    /// Displays loading progress or expected forecast omissions above the
+    /// bottom toolbar, within the current navigation detail column.
+    @ViewBuilder
+    private var floatingStatusOverlay: some View {
+        if !tutorialState.showsFirstLaunch,
+           !tutorialState.showsReplay,
+           !citySearchState.isPresented,
+           !addListSheetState.isPresented {
+            if weatherService.isLoading {
+                // Loading always takes priority. Once it finishes, this same
+                // surface can reveal any resulting omissions.
+                FloatingBox(content: .loading(progress: weatherService.loadingProgress))
+                    .frame(maxWidth: 760)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
+                    .allowsHitTesting(false)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(200)
+            } else if floatingBoxDroppedCityCount > 0,
+                      !(isMapRoute && isMapCardPresented) {
+                FloatingBox(content: .droppedCities(count: floatingBoxDroppedCityCount))
+                    .frame(maxWidth: 760)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 24)
+                    .allowsHitTesting(false)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(200)
+            }
+        }
+    }
+
     /// Reconciles transient map selections whenever their source state changes.
     private var viewStateObservers: some View {
         viewLifecycle
@@ -353,6 +376,9 @@ extension ContentView {
                     onReplayTutorial: {
                         showingSettings = false
                         tutorialState.showsReplay = true
+                    },
+                    onResetApp: {
+                        resetAppToFirstLaunch()
                     }
                 )
                 // iPad: Use the native centred form presentation in regular-width
@@ -408,64 +434,80 @@ extension ContentView {
                 }
             )) {
                 searchSheet
-                    // iPad: A regular-width search is a native form sheet rather than
-                    // an unnecessarily wide bottom sheet.
+                    // A search is a full-height task on every device class.
                     .if(horizontalSizeClass == .regular) { view in
-                        view.presentationSizing(.form)
+                        view.presentationSizing(.page)
                     }
                     .if(horizontalSizeClass != .regular) { view in
                         view
-                            .presentationDetents([.fraction(0.82), .large])
+                            .presentationDetents([.large])
                             .presentationDragIndicator(.visible)
                     }
                     .presentationBackground(theme.colors.background)
             }
-            .sheet(isPresented: $newSheetState.isPresented, onDismiss: {
-                let action = newSheetState.dismissAction
-                newSheetState.dismissAction = nil
-                newSheetState.showsCitySearch = false
-                newSheetState.showsListOptions = false
-                newSheetState.showsContinentPicker = false
-                newSheetState.showsCountryPicker = false
-                newSheetState.selectedDetent = .medium
-                newSheetState.countryQuery = ""
-                clearCitySearchStateAndRecenter()
+            .sheet(isPresented: $addListSheetState.isPresented, onDismiss: {
+                let action = addListSheetState.dismissAction
+                addListSheetState.dismissAction = nil
+                addListSheetState.creation = AddListSheetPresentationState()
+                addListSheetState.selectedDetent = .medium
                 if let action {
                     performListCreationDismissAction(action)
                 }
             }) {
-                newSheet
-                    .if(horizontalSizeClass == .regular) { view in
+                addListSheet
+                    // Search needs a page-sized presentation; the compact root
+                    // Add sheet remains a native form on regular widths.
+                    .if(
+                        horizontalSizeClass == .regular
+                            && addListSheetState.creation.showsCountryPicker
+                    ) { view in
+                        view.presentationSizing(.page)
+                    }
+                    .if(
+                        horizontalSizeClass == .regular
+                            && !addListSheetState.creation.showsCountryPicker
+                    ) { view in
                         view.presentationSizing(.form)
                     }
                     .if(horizontalSizeClass != .regular) { view in
                         view
                             .presentationDetents(
                                 [.medium, .large],
-                                selection: $newSheetState.selectedDetent
+                                selection: $addListSheetState.selectedDetent
                             )
                             .presentationDragIndicator(.visible)
                     }
                     .presentationBackground(theme.colors.background)
             }
-            .sheet(isPresented: $listManagementState.isPresented, onDismiss: {
+            .if(!isIPad) { view in
+                view.sheet(isPresented: $listManagementState.isPresented, onDismiss: {
                 // Open the selected destination after the manager sheet closes.
-                guard let action = listManagementState.dismissAction else { return }
-                listManagementState.dismissAction = nil
-                performListCreationDismissAction(action)
-            }) {
-                listManagementSheet
-                    // iPad: Keep this short navigation hierarchy in the system form
-                    // size; narrow windows retain the existing draggable detents.
-                    .if(horizontalSizeClass == .regular) { view in
+                    performPendingListManagementDismissAction()
+                }) {
+                    listManagementSheet
+                    // Country search is a full-height task in both creation flows.
+                    .if(
+                        horizontalSizeClass == .regular
+                            && listManagementState.listCreation.showsCountryPicker
+                    ) { view in
+                        view.presentationSizing(.page)
+                    }
+                    .if(
+                        horizontalSizeClass == .regular
+                            && !listManagementState.listCreation.showsCountryPicker
+                    ) { view in
                         view.presentationSizing(.form)
                     }
                     .if(horizontalSizeClass != .regular) { view in
                         view
-                            .presentationDetents([.medium, .large])
+                            .presentationDetents(
+                                [.medium, .large],
+                                selection: $listManagementState.selectedDetent
+                            )
                             .presentationDragIndicator(.visible)
                     }
-                    .presentationBackground(theme.colors.background)
+                        .presentationBackground(theme.colors.background)
+                }
             }
             .overlay {
                 // Render the transient nonmodal confirmation after a city is saved.
@@ -496,15 +538,22 @@ extension ContentView {
                 }
                 .disabled(cityRenameText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            .alert(localizedString("New List", locale: locale), isPresented: $showingNewListAlert) {
+            .alert(localizedString("New Empty List", locale: locale), isPresented: $showingNewListAlert) {
                 TextField(localizedString("Name", locale: locale), text: $newListName)
                 Button(localizedString("Cancel", locale: locale), role: .cancel) {
                     newListName = ""
                 }
-                Button(localizedString("New", locale: locale)) {
+                Button(localizedString("Create", locale: locale)) {
                     commitNewList()
                 }
                 .disabled(newListName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            .confirmationDialog(
+                localizedString("Move to List", locale: locale),
+                isPresented: $showingCityMoveListPicker,
+                titleVisibility: .visible
+            ) {
+                cityMoveDestinationActions
             }
             .alert(developerWarning?.title ?? "Unexpected App Issue", isPresented: Binding(
                 get: { developerWarning != nil },
@@ -524,26 +573,32 @@ extension ContentView {
                 guard let warning = notification.object as? DeveloperWarning else { return }
                 enqueueDeveloperWarning(warning)
             }
-            .alert(localizedString("Delete List", locale: locale), isPresented: $showingDeleteListConfirmation) {
-                Button(localizedString("Cancel", locale: locale), role: .cancel) {
-                    listToDeleteID = nil
+    }
+
+    /// Lists valid move targets after a city row's native swipe action.
+    @ViewBuilder
+    private var cityMoveDestinationActions: some View {
+        if let sourceListID = cityMoveSourceListID {
+            ForEach(managedLists.filter { $0.rawValue != sourceListID.rawValue }) { destinationListID in
+                Button(destinationListID.localizedDisplayName(locale: locale)) {
+                    moveStagedCity(to: destinationListID)
                 }
-                Button(localizedString("Delete", locale: locale), role: .destructive) {
-                    if let listToDeleteID {
-                        weatherService.deleteList(listToDeleteID)
-                        refreshListOrder()
-                    }
-                    self.listToDeleteID = nil
-                }
-            } message: {
-                Text(String(
-                    format: localizedString("Are you sure you want to delete \"%@\"? This cannot be undone.", locale: locale),
-                    (listToDeleteID ?? weatherService.activeListID).localizedDisplayName(locale: locale)
-                ))
             }
-            .toolbar {
-                bottomToolbarItems
-            }
+        }
+
+        Button(localizedString("Cancel", locale: locale), role: .cancel) {
+            cityToMove = nil
+            cityMoveSourceListID = nil
+        }
+    }
+
+    /// Commits the staged move without changing the active list or its route.
+    private func moveStagedCity(to destinationListID: CityListID) {
+        guard let stagedCity = cityToMove, let sourceListID = cityMoveSourceListID else { return }
+        weatherService.moveCity(stagedCity, from: sourceListID, to: destinationListID)
+        cityToMove = nil
+        cityMoveSourceListID = nil
+        Haptics.lightImpact()
     }
 
     /// Presents a warning immediately or appends it to the FIFO alert queue.
@@ -603,6 +658,32 @@ extension ContentView {
             cityName,
             listName
         )
+    }
+}
+
+// MARK: - iPad Sidebar
+
+extension ContentView {
+    /// Uses the platform idiom rather than width so Mac and compact iPhone
+    /// windows retain their established sheet-based Lists workflow.
+    var isIPad: Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+    }
+
+    /// Completes a generated-list route after the compact list manager closes.
+    func performPendingListManagementDismissAction() {
+        guard let action = listManagementState.dismissAction else { return }
+        listManagementState.dismissAction = nil
+        performListCreationDismissAction(action)
+    }
+
+    /// Shows the system sidebar on iPad or the manager sheet on compact layouts.
+    func presentListManagement() {
+        if isIPad {
+            iPadSidebarVisibility = .all
+        } else {
+            listManagementState.isPresented = true
+        }
     }
 }
 
@@ -691,39 +772,26 @@ extension ContentView {
 // MARK: - Weather Refresh
 
 extension ContentView {
-    /// Returns a compact localized age for the most recent successful fetch.
-    func timeSinceRefreshText() -> String {
-        guard let lastFetch = weatherService.lastFetchDate else {
-            return ""
-        }
-        let elapsed = Date().timeIntervalSince(lastFetch)
-        let minutes = Int(elapsed / 60)
-        if minutes < 1 {
-            return localizedString("Now", locale: locale)
-        } else if minutes < 60 {
-            return "\(minutes) m"
-        } else {
-            return "\(minutes / 60) h"
-        }
-    }
-
-    /// Starts a user-requested full refresh and then refits available map dots.
-    func refreshWeather() {
-        // Remove cards whose underlying city value may be replaced by the refresh.
-        if isMapCardPresented || selectedMapCity != nil {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                isMapCardPresented = false
-                selectedMapCity = nil
-                citySearchState.temporaryMapCity = nil
-            }
-        }
-        daytimeScoreRefetchKeys.removeAll()
-        Task {
-            await weatherService.refreshWeather()
-            if !mapCities.isEmpty {
-                centerMapOnDots()
-            }
-        }
+    /// Dismisses transient UI and returns the app to its initial tutorial flow.
+    func resetAppToFirstLaunch() {
+        showingSettings = false
+        navigationPath = []
+        citySearchState = CitySearchPresentationState()
+        addListSheetState = AddListSheetContainerState()
+        listManagementState = ListManagementState()
+        listPreviewState = GeneratedListPreviewState()
+        daytimeScoreRefetchKeys = []
+        selectedMapCityID = nil
+        selectedForecastDate = forecastDateToday
+        filterSunny = false
+        showLegend = true
+        mapOverlayMode = "weather"
+        hasCompletedInitialWeatherLoad = false
+        hasLaunchedBefore = false
+        developerWarning = nil
+        pendingDeveloperWarnings = []
+        weatherService.resetForFirstLaunch()
+        tutorialState = TutorialPresentationState(showsFirstLaunch: true)
     }
 
     /// Launches targeted repair work without blocking the caller's UI update.
@@ -754,5 +822,251 @@ extension ContentView {
             daytimeScoreRefetchKeys.insert(refetchKey)
             _ = await weatherService.refreshWeatherForCity(cityWeather)
         }
+    }
+}
+
+// MARK: - Root Navigation Stack
+
+extension ContentView {
+    /// Builds the shared navigation stack and maps route values to screens.
+    var appNavigationStack: some View {
+        Group {
+            if isIPad {
+                NavigationSplitView(columnVisibility: $iPadSidebarVisibility) {
+                    listManagementSidebar
+                } detail: {
+                    appNavigationDetail
+                }
+                .navigationSplitViewStyle(.balanced)
+            } else {
+                appNavigationDetail
+            }
+        }
+    }
+
+    /// Keeps every route in one detail stack regardless of iPad sidebar state.
+    private var appNavigationDetail: some View {
+        NavigationStack(path: $navigationPath) {
+            homeView
+                // Retain the current list name for the native back-button history
+                // while Home continues to use its in-content list switcher.
+                .navigationTitle(toolbarTitle)
+                .navigationBarTitleDisplayMode(.inline)
+                .navigationDestination(for: AppNavigationRoute.self) { route in
+                    switch route {
+                    case .map:
+                        fullMapDestination
+                    case .list:
+                        fullListDestination
+                    case .cityDetail(let city):
+                        cityDetailView(for: city)
+                    case .listPreview:
+                        listPreviewDestination
+                    }
+                }
+        }
+        .overlay(alignment: .bottom) {
+            floatingStatusOverlay
+        }
+        // Attach the native bottom bar to the detail navigation stack. In an
+        // iPad split view this confines controls to the right column, leaving
+        // the sidebar to extend naturally to the full bottom safe area.
+        .toolbar {
+            bottomToolbarItems
+        }
+    }
+}
+
+// MARK: - Current Destination
+
+extension ContentView {
+    /// The route currently visible above Home, if any.
+    var currentRoute: AppNavigationRoute? {
+        navigationPath.last
+    }
+
+    /// Whether the full-screen map is the active destination.
+    var isMapRoute: Bool {
+        currentRoute == .map
+    }
+}
+
+// MARK: - Route Operations
+
+extension ContentView {
+    /// Pushes a route while preventing duplicate singleton destinations.
+    func pushRoute(_ route: AppNavigationRoute) {
+        if route == .list || route == .listPreview {
+            isMapCardPresented = false
+        }
+        if case .cityDetail = route {
+            navigationPath.append(route)
+            return
+        }
+        guard !navigationPath.contains(route) else { return }
+        navigationPath.append(route)
+    }
+
+    /// Reveals the existing Map route or pushes it when it is not in the path.
+    func navigateToMap() {
+        guard let mapIndex = navigationPath.lastIndex(of: .map) else {
+            pushRoute(.map)
+            return
+        }
+
+        let routesAboveMap = navigationPath.count - mapIndex - 1
+        if routesAboveMap > 0 {
+            navigationPath.removeLast(routesAboveMap)
+        }
+    }
+
+    /// Closes any map card and opens the requested saved-city detail report.
+    func presentDetail(for city: CityWeather) {
+        isMapCardPresented = false
+        pushRoute(.cityDetail(city))
+    }
+
+    /// Opens the selected ranked city in its detail report or focuses its map
+    /// marker, depending on the surface that initiated the selection.
+    func selectCandidate(_ candidate: SunnyCandidate, focusMap: Bool = true) {
+        let city = candidate.cityWeather
+        if focusMap {
+            pushRoute(.map)
+            centerMap(on: city)
+            showMapMarkerCard(city)
+        } else {
+            presentDetail(for: city)
+        }
+    }
+
+    /// Switches to the city's owning list before revealing its map marker.
+    /// The map only renders fetched data from the active list, so this ordering
+    /// is an invariant rather than a presentation delay.
+    func revealCityOnMap(_ city: CityWeather, in listID: CityListID) {
+        Task {
+            await switchToList(listID)
+            guard let revealedCity = weatherService.cityWeatherData.first(where: {
+                weatherService.citiesMatch($0.city, city.city)
+            }) else {
+                weatherService.reportDeveloperWarning(
+                    title: "Map Reveal Failed",
+                    message: "After switching to \(listID.rawValue), the requested city \(city.city.localizedName()) was not found in fetched weather data."
+                )
+                return
+            }
+            pushRoute(.map)
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                isMapCardPresented = false
+                selectedMapCity = nil
+            }
+            centerMap(on: revealedCity)
+            showMapMarkerCard(revealedCity)
+        }
+    }
+
+    /// Removes a particular destination and performs its feature cleanup.
+    func popRoute(_ route: AppNavigationRoute) {
+        guard navigationPath.contains(route) else { return }
+        if navigationPath.last == route {
+            navigationPath.removeLast()
+        } else {
+            navigationPath.removeAll { $0 == route }
+        }
+        cleanupAfterLeavingRoute(route)
+    }
+
+    /// Clears transient state that must not leak into a later visit.
+    func cleanupAfterLeavingRoute(_ route: AppNavigationRoute) {
+        switch route {
+        case .map:
+            isMapCardPresented = false
+            selectedMapCity = nil
+        case .list:
+            listEditMode = false
+        case .cityDetail:
+            break
+        case .listPreview:
+            clearGeneratedListPreview()
+        }
+    }
+}
+
+// MARK: - Home Screen Shortcut Routing
+
+extension ContentView {
+    /// Receives quick-action notifications after the SwiftUI hierarchy exists.
+    var homeScreenShortcutReceiver: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .onReceive(NotificationCenter.default.publisher(for: .weatherOpenMainViewShortcut)) { notification in
+                let notifiedDestination = (notification.object as? String)
+                    .flatMap(HomeScreenShortcutDestination.init(rawValue:))
+                guard let destination = AppDelegate.takePendingHomeScreenShortcut()
+                    ?? notifiedDestination else { return }
+                handleHomeScreenShortcut(destination)
+            }
+    }
+
+    // MARK: External Destinations
+
+    /// Activates a persisted list identifier received from a legacy deep link.
+    func handleOpenListShortcut(rawValue: String) {
+        guard let listID = CityListID.allLists.first(where: { $0.rawValue == rawValue }) else { return }
+        // External destinations always return the shared selection to today.
+        selectedForecastDate = forecastDateToday
+        showingSettings = false
+        citySearchState.isPresented = false
+        isMapCardPresented = false
+        selectedMapCity = nil
+        citySearchState.temporaryMapCity = nil
+        clearGeneratedListPreview(playsHaptic: false)
+        navigationPath = []
+
+        Task {
+            await switchToList(listID)
+        }
+    }
+
+    /// Rewrites the route stack for a Home Screen shortcut destination.
+    func handleHomeScreenShortcut(_ destination: HomeScreenShortcutDestination) {
+        // Home Screen shortcuts always return the shared selection to today.
+        selectedForecastDate = forecastDateToday
+        showingSettings = false
+        citySearchState.isPresented = false
+        isMapCardPresented = false
+        selectedMapCity = nil
+        citySearchState.temporaryMapCity = nil
+        clearGeneratedListPreview(playsHaptic: false)
+
+        switch destination {
+        case .home:
+            navigationPath = []
+        case .map:
+            navigationPath = [.map]
+        case .list:
+            navigationPath = [.list]
+        }
+    }
+
+    /// Parses widget deep links and opens the represented list or city.
+    func handleWidgetURL(_ url: URL) {
+        guard url.scheme == "weatheratlas",
+              url.host == "list",
+              let rawValue = url.pathComponents.dropFirst().first,
+              !rawValue.isEmpty else {
+            return
+        }
+        handleOpenListShortcut(rawValue: rawValue)
+
+        guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let kindValue = components.queryItems?.first(where: { $0.name == "missingKind" })?.value,
+              let kind = WeatherDataIssue.Kind(rawValue: kindValue),
+              let cityName = components.queryItems?.first(where: { $0.name == "city" })?.value else {
+            return
+        }
+        let detail = components.queryItems?.first(where: { $0.name == "missingDetail" })?.value
+        let issue = WeatherDataIssue(kind: kind, detail: detail)
+        let message = weatherDataIssueMessage(issue, cityName: cityName, locale: locale)
+        DeveloperWarningCenter.showMissingData(message: message, locale: locale)
     }
 }

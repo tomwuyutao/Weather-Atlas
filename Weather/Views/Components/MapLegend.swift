@@ -27,6 +27,8 @@ struct MapFloatingLegend: View {
     @Environment(\.appTheme) private var theme
     /// Persisted raw temperature preference.
     @AppStorage("temperatureUnit") private var temperatureUnitRaw: String = TemperatureUnit.defaultRawValue
+    /// Persisted distance preference used by the visibility scale.
+    @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
 
     /// Convenience access to the resolved semantic colors.
     private var palette: ThemeColors {
@@ -169,7 +171,7 @@ struct MapFloatingLegend: View {
                     conditionEntry(title: item.0, color: item.1)
                 }
             }
-        case "temperature":
+        case "temperature", "feelsLike":
             verticalGradientLegend(
                 colors: [
                     temperatureColor(celsius: 40),
@@ -213,6 +215,12 @@ struct MapFloatingLegend: View {
                     uvColor(fraction: 0)
                 ],
                 labels: ["11+", "9", "6", "3", "0"]
+            )
+        case "visibility":
+            let unit = DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+            verticalGradientLegend(
+                colors: [palette.dotSun, palette.dotPartlyCloudy, palette.dotCloudy, palette.dotRain],
+                labels: [unit.display(30), unit.display(20), unit.display(10), unit.display(0)]
             )
         default:
             EmptyView()

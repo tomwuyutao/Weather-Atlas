@@ -386,33 +386,48 @@ extension ContentView {
 
     /// Search destination reused by its standalone sheet and the unified New sheet.
     var citySearchContent: some View {
-        List {
-            // Apple remains first for rich local places; Open-Meteo follows
-            // with globally available cities and administrative areas.
-            if !citySearchState.manager.searchResults.isEmpty {
-                citySearchSuggestionSection(
-                    sourceName: "Apple Maps",
-                    results: Array(citySearchState.manager.searchResults.prefix(5))
-                )
-            }
+        VStack(spacing: 18) {
+            // City and country creation share one direct native text field, so
+            // both sheets receive the same deterministic initial focus.
+            AppSearchField(
+                text: $citySearchState.query,
+                prompt: localizedString("Search for a place", locale: locale),
+                automaticallyFocus: true,
+                onSubmit: submitFirstCitySearchResult
+            )
 
-            if !citySearchState.manager.openMeteoSearchResults.isEmpty {
-                citySearchSuggestionSection(
-                    sourceName: "Open-Meteo",
-                    results: Array(citySearchState.manager.openMeteoSearchResults.prefix(5))
-                )
+            List {
+                // Apple remains first for rich local places; Open-Meteo follows
+                // with globally available cities and administrative areas.
+                if !citySearchState.manager.searchResults.isEmpty {
+                    citySearchSuggestionSection(
+                        sourceName: "Apple Maps",
+                        results: Array(citySearchState.manager.searchResults.prefix(5))
+                    )
+                }
+
+                if !citySearchState.manager.openMeteoSearchResults.isEmpty {
+                    citySearchSuggestionSection(
+                        sourceName: "Open-Meteo",
+                        results: Array(citySearchState.manager.openMeteoSearchResults.prefix(5))
+                    )
+                }
             }
+            .overlay {
+                citySearchStatusOverlay
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
         }
-        .overlay {
-            citySearchStatusOverlay
-        }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
-        .scrollDismissesKeyboard(.interactively)
+        .padding(.horizontal, 18)
+        .padding(.top, 18)
+        .padding(.bottom, 28)
+        .background(theme.colors.background.ignoresSafeArea())
         .navigationTitle(localizedString("New City", locale: locale))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .topBarLeading) {
                 Button {
                     dismissNativeCitySearchAndRecenter()
                 } label: {
@@ -422,29 +437,14 @@ extension ContentView {
                 }
             }
         }
-        .searchable(
-            text: $citySearchState.query,
-            placement: .navigationBarDrawer(displayMode: .always),
-            prompt: Text(localizedString("Search for a place", locale: locale))
-        )
-        .searchFocused($searchFieldFocused)
-        .onSubmit(of: .search) {
-            // Confirm the first resolved result when search is idle.
-            guard let result = displayedSearchResults.first,
-                  !citySearchState.isLoading else { return }
-            Task {
-                await selectSearchResult(result)
-            }
-        }
-        .task {
-            // A search destination pushed inside the New sheet appears before
-            // its native search field has joined the focus system. Request
-            // focus after that transition instead of losing the initial write.
-            searchFieldFocused = false
-            await Task.yield()
-            try? await Task.sleep(for: .milliseconds(350))
-            guard citySearchState.isPresented || newSheetState.showsCitySearch else { return }
-            searchFieldFocused = true
+    }
+
+    /// Confirms the first resolved suggestion after a native search submission.
+    private func submitFirstCitySearchResult() {
+        guard let result = displayedSearchResults.first,
+              !citySearchState.isLoading else { return }
+        Task {
+            await selectSearchResult(result)
         }
     }
 
@@ -556,9 +556,6 @@ extension ContentView {
     /// Prepares city search to save into the currently active list.
     func prepareNewCitySearch() {
         citySearchState.targetListID = weatherService.activeListID
-        // Ensure the destination's delayed request changes the focus binding
-        // even when search was focused during an earlier presentation.
-        searchFieldFocused = false
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             isMapCardPresented = false
             selectedMapCity = nil
@@ -608,8 +605,6 @@ extension ContentView {
             || !citySearchState.manager.openMeteoSearchResults.isEmpty
         withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
             citySearchState.isPresented = false
-            newSheetState.isPresented = false
-            searchFieldFocused = false
         }
         clearCitySearchStateAndRecenter(shouldRecenter: shouldRecenter)
     }
@@ -622,7 +617,6 @@ extension ContentView {
                 || !citySearchState.manager.searchResults.isEmpty
                 || !citySearchState.manager.openMeteoSearchResults.isEmpty
         )
-        searchFieldFocused = false
         // Cancel debounce work and clear all transient search state.
         citySearchState.query = ""
         citySearchState.manager.search(query: "")
@@ -667,7 +661,6 @@ extension ContentView {
             citySearchState.targetListID = nil
             withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
                 citySearchState.isPresented = false
-                newSheetState.isPresented = false
                 citySearchState.query = ""
             }
             await switchToList(targetListID)
@@ -682,7 +675,6 @@ extension ContentView {
         citySearchState.targetListID = nil
         withAnimation(.spring(response: 0.5, dampingFraction: 0.8)) {
             citySearchState.isPresented = false
-            newSheetState.isPresented = false
             citySearchState.query = ""
         }
         await switchToList(targetListID)
