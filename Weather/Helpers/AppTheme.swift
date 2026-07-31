@@ -36,18 +36,26 @@ enum AppPalette {
         let destructive: Color
         /// Fully sunny semantic color.
         let dotSun: Color
+        /// Contrast-safe sunny foreground for symbols and charts.
+        let sunForeground: Color
         /// Partly sunny semantic color.
         let dotPartlyCloudy: Color
+        /// Contrast-safe partly-sunny foreground.
+        let partlySunnyForeground: Color
         /// Cloudy semantic color.
         let dotCloudy: Color
+        /// Contrast-safe cloudy foreground.
+        let cloudyForeground: Color
         /// Rain semantic color.
         let dotRain: Color
+        /// Contrast-safe rain foreground.
+        let rainForeground: Color
         /// Drizzle semantic color.
         let dotDrizzle: Color
+        /// Contrast-safe drizzle foreground.
+        let drizzleForeground: Color
         /// Subdued row and panel fill.
         let settingsRow: Color
-        /// Branded tutorial canvas color.
-        let tutorialBackground: Color
     }
 
     /// Standard light-appearance palette.
@@ -57,12 +65,16 @@ enum AppPalette {
         background: Color(hex: 0xFAF8F2),
         destructive: Color(hex: 0xD14D30),
         dotSun: Color(hex: 0xFBC056),
+        sunForeground: Color(hex: 0x986000),
         dotPartlyCloudy: Color(hex: 0xFAE38E),
+        partlySunnyForeground: Color(hex: 0x786200),
         dotCloudy: Color(hex: 0xC8C8C8),
+        cloudyForeground: Color(hex: 0x666666),
         dotRain: Color(hex: 0x5AA4F3),
+        rainForeground: Color(hex: 0x5AA4F3),
         dotDrizzle: Color(hex: 0x67D1F0),
-        settingsRow: Color(hex: 0xF4EFE4),
-        tutorialBackground: Color(hex: 0x244F9C)
+        drizzleForeground: Color(hex: 0x67D1F0),
+        settingsRow: Color(hex: 0xF4EFE4)
     )
 
     /// Standard charcoal dark-appearance palette.
@@ -72,12 +84,16 @@ enum AppPalette {
         background: Color(hex: 0x262626),
         destructive: Color(hex: 0xD14D30),
         dotSun: Color(hex: 0xFBC056),
+        sunForeground: Color(hex: 0xFBC056),
         dotPartlyCloudy: Color(hex: 0xFAE38E),
+        partlySunnyForeground: Color(hex: 0xFAE38E),
         dotCloudy: Color(hex: 0xC8C8C8),
+        cloudyForeground: Color(hex: 0xC8C8C8),
         dotRain: Color(hex: 0x5AA4F3),
+        rainForeground: Color(hex: 0x5AA4F3),
         dotDrizzle: Color(hex: 0x67D1F0),
-        settingsRow: Color(hex: 0x303030),
-        tutorialBackground: Color(hex: 0x244F9C)
+        drizzleForeground: Color(hex: 0x67D1F0),
+        settingsRow: Color(hex: 0x303030)
     )
 
     // Black keeps the dark palette's content colors while replacing its main
@@ -89,12 +105,16 @@ enum AppPalette {
         background: Color(hex: 0x000000),
         destructive: dark.destructive,
         dotSun: dark.dotSun,
+        sunForeground: dark.sunForeground,
         dotPartlyCloudy: dark.dotPartlyCloudy,
+        partlySunnyForeground: dark.partlySunnyForeground,
         dotCloudy: dark.dotCloudy,
+        cloudyForeground: dark.cloudyForeground,
         dotRain: dark.dotRain,
+        rainForeground: dark.rainForeground,
         dotDrizzle: dark.dotDrizzle,
-        settingsRow: Color(hex: 0x181818),
-        tutorialBackground: dark.tutorialBackground
+        drizzleForeground: dark.drizzleForeground,
+        settingsRow: Color(hex: 0x181818)
     )
 
     /// Returns the standard palette matching a resolved color scheme.
@@ -127,12 +147,16 @@ enum AppPalette {
                 background: palette.background,
                 destructive: palette.destructive.interpolated(with: palette.titleText, by: 0.12),
                 dotSun: palette.dotSun,
+                sunForeground: palette.sunForeground,
                 dotPartlyCloudy: palette.dotPartlyCloudy,
+                partlySunnyForeground: palette.partlySunnyForeground,
                 dotCloudy: palette.dotCloudy,
+                cloudyForeground: palette.cloudyForeground,
                 dotRain: palette.dotRain,
+                rainForeground: palette.rainForeground,
                 dotDrizzle: palette.dotDrizzle,
-                settingsRow: palette.settingsRow,
-                tutorialBackground: palette.tutorialBackground
+                drizzleForeground: palette.drizzleForeground,
+                settingsRow: palette.settingsRow
             )
         }
 
@@ -142,12 +166,31 @@ enum AppPalette {
             background: palette.background,
             destructive: palette.destructive.interpolated(with: palette.titleText, by: 0.12),
             dotSun: palette.dotSun.interpolated(with: palette.titleText, by: 0.48),
+            sunForeground: palette.sunForeground.interpolated(
+                with: palette.titleText,
+                by: 0.12
+            ),
             dotPartlyCloudy: palette.dotPartlyCloudy.interpolated(with: palette.titleText, by: 0.55),
+            partlySunnyForeground: palette.partlySunnyForeground.interpolated(
+                with: palette.titleText,
+                by: 0.12
+            ),
             dotCloudy: palette.dotCloudy.interpolated(with: palette.titleText, by: 0.66),
+            cloudyForeground: palette.cloudyForeground.interpolated(
+                with: palette.titleText,
+                by: 0.12
+            ),
             dotRain: palette.dotRain.interpolated(with: palette.titleText, by: 0.10),
+            rainForeground: palette.rainForeground.interpolated(
+                with: palette.titleText,
+                by: 0.08
+            ),
             dotDrizzle: palette.dotDrizzle.interpolated(with: palette.titleText, by: 0.35),
-            settingsRow: palette.settingsRow,
-            tutorialBackground: palette.tutorialBackground
+            drizzleForeground: palette.drizzleForeground.interpolated(
+                with: palette.titleText,
+                by: 0.08
+            ),
+            settingsRow: palette.settingsRow
         )
     }
 }
@@ -231,18 +274,26 @@ struct ThemeColors {
     let destructive: Color
     /// Fully sunny weather mark.
     let dotSun: Color
+    /// Contrast-safe sunny foreground.
+    let sunForeground: Color
     /// Partly sunny weather mark.
     let dotPartlyCloudy: Color
+    /// Contrast-safe partly-sunny foreground.
+    let partlySunnyForeground: Color
     /// Cloudy weather mark.
     let dotCloudy: Color
+    /// Contrast-safe cloudy foreground.
+    let cloudyForeground: Color
     /// Rain weather mark.
     let dotRain: Color
+    /// Contrast-safe rain foreground.
+    let rainForeground: Color
     /// Drizzle weather mark.
     let dotDrizzle: Color
+    /// Contrast-safe drizzle foreground.
+    let drizzleForeground: Color
     /// Subdued settings row and chart panel fill.
     let settingsRowFill: Color
-    /// Branded onboarding background.
-    let tutorialBackground: Color
 
     // Semantic aliases intentionally reuse the compact palette above.
     /// Standard primary foreground alias.
@@ -268,11 +319,16 @@ struct ThemeColors {
         case .clear:
             return (sunIconColor, sunIconColor)
         case .partlySunny, .partlyCloudy:
-            return (primaryText, sunIconColor)
+            return (cloudyForeground, partlySunnyForeground)
         case .rain, .drizzle:
-            return (primaryText, dotRain)
+            return (
+                cloudyForeground,
+                WeatherSymbolClassification.resolve(iconName) == .drizzle
+                    ? drizzleForeground
+                    : rainForeground
+            )
         case .cloudy, .snow, .fog, .wind, nil:
-            return (primaryText, primaryText)
+            return (cloudyForeground, cloudyForeground)
         }
     }
 }
@@ -325,12 +381,16 @@ private extension ThemeColors {
             background: palette.background,
             destructive: palette.destructive,
             dotSun: palette.dotSun,
+            sunForeground: palette.sunForeground,
             dotPartlyCloudy: palette.dotPartlyCloudy,
+            partlySunnyForeground: palette.partlySunnyForeground,
             dotCloudy: palette.dotCloudy,
+            cloudyForeground: palette.cloudyForeground,
             dotRain: palette.dotRain,
+            rainForeground: palette.rainForeground,
             dotDrizzle: palette.dotDrizzle,
-            settingsRowFill: palette.settingsRow,
-            tutorialBackground: palette.tutorialBackground
+            drizzleForeground: palette.drizzleForeground,
+            settingsRowFill: palette.settingsRow
         )
     }
 }
@@ -402,20 +462,9 @@ class AppTheme {
     }
 }
 
-// MARK: - Environment Key
-
-/// SwiftUI environment key exposing the process-wide theme manager.
-private struct AppThemeKey: EnvironmentKey {
-    /// Default value used before `ThemeRoot` injects its instance.
-    static let defaultValue = AppTheme.shared
-}
-
 extension EnvironmentValues {
     /// Observable Weather Atlas theme manager.
-    var appTheme: AppTheme {
-        get { self[AppThemeKey.self] }
-        set { self[AppThemeKey.self] = newValue }
-    }
+    @Entry var appTheme: AppTheme = .shared
 }
 
 // MARK: - View Modifiers
@@ -454,63 +503,6 @@ private extension View {
                     lineWidth: contrast == .increased ? 1 : 0.8
                 )
             )
-    }
-}
-
-/// Chooses native glass or an accessibility-safe opaque popover background.
-private struct ThemedPopoverBackgroundModifier: ViewModifier {
-    /// Active theme palette.
-    @Environment(\.appTheme) private var theme
-    /// System preference that forbids translucent surfaces.
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    /// System preference requiring stronger surface boundaries.
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-
-    @ViewBuilder
-    /// Applies the appropriate popover background for OS and accessibility state.
-    func body(content: Content) -> some View {
-        if reduceTransparency || colorSchemeContrast == .increased {
-            // Accessibility: `background` is fully opaque in every palette, unlike
-            // the standard popover color's intentional translucency.
-            content.presentationBackground(theme.colors.background)
-        } else if #available(iOS 26.0, *) {
-            content.presentationBackground {
-                Color.clear
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 30, style: .continuous))
-            }
-        } else {
-            content.presentationBackground(.ultraThinMaterial)
-        }
-    }
-}
-
-/// Shared interactive glass treatment for floating app controls.
-private struct ThemedGlassModifier<Shape: InsettableShape>: ViewModifier {
-    /// Active theme palette.
-    @Environment(\.appTheme) private var theme
-    /// System preference that replaces glass with an opaque surface.
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
-    /// System preference requiring a stronger outline.
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    /// Insettable boundary receiving the surface treatment.
-    let shape: Shape
-
-    @ViewBuilder
-    /// Applies native glass, a pre-iOS-26 material, or a high-legibility surface.
-    func body(content: Content) -> some View {
-        if reduceTransparency || colorSchemeContrast == .increased {
-            content.highLegibilityGlass(
-                theme: theme.colors,
-                contrast: colorSchemeContrast,
-                in: shape
-            )
-        } else if #available(iOS 26.0, *) {
-            content.glassEffect(.regular.interactive(), in: shape)
-        } else {
-            content
-                .background(theme.colors.glassFill, in: shape)
-                .overlay(shape.stroke(theme.colors.primaryText.opacity(0.18), lineWidth: 0.6))
-        }
     }
 }
 
@@ -566,6 +558,26 @@ private struct DetailTranslucentCardModifier<Shape: InsettableShape>: ViewModifi
     }
 }
 
+/// Applies the warm Weather Atlas canvas while retaining a native List or Form.
+private struct WeatherAtlasScrollableBackgroundModifier: ViewModifier {
+    @Environment(\.appTheme) private var theme
+
+    func body(content: Content) -> some View {
+        content
+            .scrollContentBackground(.hidden)
+            .background(theme.colors.background)
+    }
+}
+
+/// Applies the palette canvas to native stacks and empty states.
+private struct WeatherAtlasScreenBackgroundModifier: ViewModifier {
+    @Environment(\.appTheme) private var theme
+
+    func body(content: Content) -> some View {
+        content.background(theme.colors.background.ignoresSafeArea())
+    }
+}
+
 // MARK: - View Modifier APIs
 
 extension View {
@@ -574,51 +586,19 @@ extension View {
         modifier(WeatherIconStyleModifier(iconName: iconName))
     }
 
-    /// Applies the app's adaptive native popover surface.
-    func themedPopoverBackground() -> some View {
-        modifier(ThemedPopoverBackgroundModifier())
-    }
-
-    /// Wraps content in the shared interactive glass treatment.
-    func themedGlass<Shape: InsettableShape>(in shape: Shape) -> some View {
-        modifier(ThemedGlassModifier(shape: shape))
-    }
-
     /// Wraps Detail content in its shared translucent card treatment.
     func detailTranslucentCard<Shape: InsettableShape>(colorScheme: ColorScheme, in shape: Shape) -> some View {
         modifier(DetailTranslucentCardModifier(colorScheme: colorScheme, shape: shape))
     }
 
-}
-
-// MARK: - Conditional Transformation
-
-extension View {
-    /// Applies a view transformation only when a runtime condition is true.
-    @ViewBuilder
-    func `if`(_ condition: Bool, transform: (Self) -> some View) -> some View {
-        if condition {
-            transform(self)
-        } else {
-            self
-        }
+    /// Keeps system List/Form behavior while replacing only its canvas color.
+    func weatherAtlasScrollableBackground() -> some View {
+        modifier(WeatherAtlasScrollableBackgroundModifier())
     }
-}
 
-// MARK: - Interaction Feedback
-
-/// Centralized UIKit feedback used by lightweight app interactions.
-enum Haptics {
-    /// Emits a prepared light impact on the main actor.
-    static func lightImpact() {
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    /// Uses the active Weather Atlas canvas behind native screen content.
+    func weatherAtlasScreenBackground() -> some View {
+        modifier(WeatherAtlasScreenBackgroundModifier())
     }
-}
 
-// MARK: - Responsive Layout
-
-/// Identifies a genuinely landscape iPad window, including resized Stage Manager
-/// scenes, instead of relying on a size class that can remain regular.
-func usesIPadLandscapeLayout(for size: CGSize) -> Bool {
-    UIDevice.current.userInterfaceIdiom == .pad && size.width > size.height
 }

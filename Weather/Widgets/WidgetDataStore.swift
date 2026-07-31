@@ -47,9 +47,21 @@ enum WidgetDataStore {
         return Locale(identifier: identifier)
     }
 
+    /// Returns copy localized by the main app, falling back to the English key
+    /// for catalogs published by an older version.
+    static func localizedText(for key: String) -> String {
+        catalog()?.localizedStrings?[key] ?? key
+    }
+
     /// Encodes the catalog and requests WidgetKit timeline reloads.
     static func save(_ catalog: WidgetDataCatalog) {
-        guard let data = try? JSONEncoder().encode(catalog) else { return }
+        var publishedCatalog = catalog
+        let locale = catalog.appLanguageIdentifier
+            .flatMap { $0.isEmpty ? nil : Locale(identifier: $0) }
+            ?? .autoupdatingCurrent
+        publishedCatalog.localizedStrings = localizedWidgetStrings(locale: locale)
+
+        guard let data = try? JSONEncoder().encode(publishedCatalog) else { return }
         UserDefaults(suiteName: appGroupIdentifier)?.set(data, forKey: catalogKey)
         WidgetCenter.shared.reloadAllTimelines()
     }
@@ -91,5 +103,36 @@ enum WidgetDataStore {
     /// Produces the namespaced preference key for one city snapshot.
     private static func weatherCacheKey(for cityID: String) -> String {
         "\(weatherCacheKeyPrefix)\(cityID)"
+    }
+
+    /// Resolves the small amount of copy owned by the widget extension while
+    /// the main app's String Catalog and selected locale are available.
+    private static func localizedWidgetStrings(locale: Locale) -> [String: String] {
+        [
+            "List": localizedString("List", locale: locale),
+            "City": localizedString("City", locale: locale),
+            "Sunny Hours": localizedString("Sunny Hours", locale: locale),
+            "Sunny Hours (10 Days)": localizedString("Sunny Hours (10 Days)", locale: locale),
+            "Choose a city to track its sunny daytime hours.": localizedString(
+                "Choose a city to track its sunny daytime hours.",
+                locale: locale
+            ),
+            "Track sunny hours for a chosen city.": localizedString(
+                "Track sunny hours for a chosen city.",
+                locale: locale
+            ),
+            "Track sunny daytime hours for a chosen city.": localizedString(
+                "Track sunny daytime hours for a chosen city.",
+                locale: locale
+            ),
+            "Today": localizedString("Today", locale: locale),
+            "Sunny": localizedString("Sunny", locale: locale),
+            "Partly Sunny": localizedString("Partly Sunny", locale: locale),
+            "No Sun": localizedString("No Sun", locale: locale),
+            "Open Weather Atlas to refresh.": localizedString(
+                "Open Weather Atlas to refresh.",
+                locale: locale
+            )
+        ]
     }
 }

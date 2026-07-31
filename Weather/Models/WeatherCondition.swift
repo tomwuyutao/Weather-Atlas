@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import WeatherKit
 
 // MARK: - Normalized Weather Conditions
 
@@ -52,7 +53,7 @@ enum AppWeatherCondition: String, Codable {
     }
 
     /// Ascending condition rank used before cloud-cover tie-breaking.
-    var sunninessRank: Int {
+    nonisolated var sunninessRank: Int {
         switch self {
         case .clear: return 0
         case .partlySunny: return 1
@@ -67,31 +68,86 @@ enum AppWeatherCondition: String, Codable {
     }
 
     /// Whether this condition belongs to the strict sunny-only filter.
-    var isSunny: Bool {
+    nonisolated var isSunny: Bool {
         self == .clear
     }
 
     /// Whether this condition contributes to a favorable sunny window.
-    var isSunnyOrPartlySunny: Bool {
+    nonisolated var isSunnyOrPartlySunny: Bool {
         self == .clear || self == .partlySunny
     }
 
     /// Resolves a WeatherKit symbol without inventing a default classification.
-    static func fromWeatherSymbol(_ symbolName: String) -> AppWeatherCondition? {
-        guard let classification = WeatherSymbolClassification.resolve(symbolName) else {
-            return nil
-        }
+    nonisolated static func fromWeatherSymbol(_ symbolName: String) -> AppWeatherCondition? {
+        let symbol = symbolName.lowercased()
 
-        switch classification {
-        case .clear: return .clear
-        case .partlySunny: return .partlySunny
-        case .partlyCloudy: return .partlyCloudy
-        case .cloudy: return .cloudy
-        case .rain: return .rain
-        case .drizzle: return .drizzle
-        case .snow: return .snow
-        case .fog: return .fog
-        case .wind: return .wind
+        if symbol.contains("drizzle") { return .drizzle }
+        if symbol.contains("rain")
+            || symbol.contains("thunderstorm")
+            || symbol.contains("storm") {
+            return .rain
+        }
+        if symbol.contains("snow")
+            || symbol.contains("sleet")
+            || symbol.contains("flurr") {
+            return .snow
+        }
+        if symbol.contains("wind")
+            || symbol.contains("hurricane")
+            || symbol.contains("tropicalstorm") {
+            return .wind
+        }
+        if symbol.contains("fog")
+            || symbol.contains("haze")
+            || symbol.contains("smoke") {
+            return .fog
+        }
+        if symbol.contains("moon") {
+            return symbol.contains("cloud") ? .partlyCloudy : .clear
+        }
+        if symbol.contains("cloud") && symbol.contains("sun") { return .partlySunny }
+        if symbol.contains("sun.max") || symbol == "sun" || symbol == "sun.fill" {
+            return .clear
+        }
+        if symbol.contains("partly") && symbol.contains("cloud") { return .partlyCloudy }
+        if symbol.contains("cloud") { return .cloudy }
+        return nil
+    }
+
+    /// Maps WeatherKit's semantic condition into the app's smaller presentation
+    /// vocabulary. The source symbol remains available as a compatibility
+    /// fallback, but is no longer the primary source for live forecasts.
+    nonisolated static func fromWeatherKit(
+        _ condition: WeatherKit.WeatherCondition,
+        isDaylight: Bool? = nil
+    ) -> AppWeatherCondition? {
+        switch condition {
+        case .clear, .mostlyClear:
+            return .clear
+        case .partlyCloudy:
+            return isDaylight == true ? .partlySunny : .partlyCloudy
+        case .cloudy, .mostlyCloudy:
+            return .cloudy
+        case .drizzle, .freezingDrizzle:
+            return .drizzle
+        case .rain, .heavyRain, .freezingRain, .sunShowers:
+            return .rain
+        case .blizzard, .blowingSnow, .flurries, .hail, .heavySnow,
+                .sleet, .snow, .sunFlurries, .wintryMix:
+            return .snow
+        case .blowingDust, .foggy, .haze, .smoky:
+            return .fog
+        case .breezy, .windy:
+            return .wind
+        case .hurricane, .isolatedThunderstorms, .scatteredThunderstorms,
+                .strongStorms, .thunderstorms, .tropicalStorm:
+            return .rain
+        case .frigid, .hot:
+            // Temperature extremes don't describe the sky or precipitation.
+            // Let the source symbol provide the presentation classification.
+            return nil
+        @unknown default:
+            return nil
         }
     }
 

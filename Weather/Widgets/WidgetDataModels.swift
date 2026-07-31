@@ -111,4 +111,9 @@ struct WidgetDataCatalog: Codable, Hashable {
     let lists: [WidgetDataList]
     /// Main-app language used for widget localization consistency.
     var appLanguageIdentifier: String? = nil
+    /// Widget-only copy resolved by the localized main app before publication.
+    ///
+    /// Keeping this optional preserves decoding of catalogs written by earlier
+    /// app versions whose widget target did not contain localization resources.
+    var localizedStrings: [String: String]? = nil
 }

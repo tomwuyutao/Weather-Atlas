@@ -172,7 +172,8 @@ extension WeatherService {
             country: place.country,
             latitude: city.latitude,
             longitude: city.longitude,
-            timeZoneIdentifier: city.timeZoneIdentifier
+            timeZoneIdentifier: city.timeZoneIdentifier,
+            catalogIdentifier: city.catalogIdentifier
         )
     }
 

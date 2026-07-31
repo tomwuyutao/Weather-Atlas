@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "Weather Atlas";
+"CFBundleName" = "Weather Atlas";
+"NSLocationWhenInUseUsageDescription" = "Weather Atlasは、選択した移動範囲内で晴れた都市を見つけて比較するために位置情報を使用します。";

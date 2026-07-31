@@ -43,6 +43,8 @@
 		5908967530063DF500EB20E0 /* Exceptions for "Weather" folder in "Weather Atlas" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Widgets/Localizable.xcstrings,
+				"Widgets/WeatherWidgets-InfoPlist.xcstrings",
 				"Widgets/WeatherWidgets-Info.plist",
 				Widgets/Widgets.swift,
 			);
@@ -55,8 +57,10 @@
 				Models/SunnyHoursTimeline.swift,
 				Models/WeatherDataIssue.swift,
 				Models/WeatherSymbols.swift,
+				Widgets/Localizable.xcstrings,
 				Widgets/WidgetDataModels.swift,
 				Widgets/WidgetDataStore.swift,
+				"Widgets/WeatherWidgets-InfoPlist.xcstrings",
 				Widgets/Widgets.swift,
 			);
 			target = A10000000000000000000008 /* WeatherWidgets */;
@@ -180,6 +184,16 @@
 			knownRegions = (
 				en,
 				Base,
+				ja,
+				"zh-Hant",
+				it,
+				de,
+				pt,
+				es,
+				"zh-Hans",
+				fr,
+				ru,
+				ko,
 			);
 			mainGroup = 59C2E34D2F4F06B000877DA8;
 			minimizedProjectReferenceProxies = 1;
@@ -374,6 +388,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleTypeRole = Editor;\n    CFBundleURLName = \"Yutao-Wu.Weather\";\n    CFBundleURLSchemes =     (\n        weatheratlas\n    );\n}";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.weather";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Weather Atlas uses your location to find and compare sunny cities within your chosen travel radius.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -419,6 +434,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleTypeRole = Editor;\n    CFBundleURLName = \"Yutao-Wu.Weather\";\n    CFBundleURLSchemes =     (\n        weatheratlas\n    );\n}";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.weather";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Weather Atlas uses your location to find and compare sunny cities within your chosen travel radius.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "Weather Atlas";
+"CFBundleName" = "Weather Atlas";
+"NSLocationWhenInUseUsageDescription" = "O Weather Atlas usa a sua localização para encontrar e comparar cidades soalheiras dentro do raio de viagem escolhido.";

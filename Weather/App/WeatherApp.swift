@@ -50,7 +50,7 @@ enum AppLanguageDefaults {
 
 // MARK: - App Entry Point
 
-/// Process entry point that performs migrations before opening themed windows.
+/// Process entry point that imports legacy lists before opening themed windows.
 @main
 struct WeatherApp: App {
     /// UIKit delegate bridge used for Home Screen quick actions.
@@ -59,41 +59,25 @@ struct WeatherApp: App {
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     /// Shared observable theme mode.
     @State private var theme = AppTheme.shared
-    /// Observable model shared across WindowGroup scenes so list and weather
-    /// mutations remain consistent in multiple iPad windows.
-    @State private var weatherService: WeatherService
+    /// Shared place, weather, and discovery domain model.
+    @State private var appModel: WeatherAtlasModel
+    /// Shared tab, navigation, and modal presentation coordinator.
+    @State private var router: AppRouter
 
-    /// Runs preference and cache migrations before constructing shared app state.
+    /// Imports legacy place data before any historical cleanup can touch it.
     init() {
         AppLanguageDefaults.configureInitialLanguage()
 
-        // Always reset overlay mode to weather on launch
-        UserDefaults.standard.set("weather", forKey: "mapOverlayMode")
-
-        // One-time migration: clear old default-list data so new region defaults take effect.
-        let migrationKey = "defaultCitiesMigrationV3"
-        if !UserDefaults.standard.bool(forKey: migrationKey) {
-            UserDefaults.standard.removeObject(forKey: "savedCitiesList")
-            UserDefaults.standard.removeObject(forKey: "cachedWeatherData")
-            UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp")
-            UserDefaults.standard.removeObject(forKey: "deletedBuiltInLists")
-            UserDefaults.standard.removeObject(forKey: "listOrder")
-            UserDefaults.standard.removeObject(forKey: "customListNames")
-
-            for rawValue in ["china", "europe", "asia", "northAmerica", "southAmerica", "africa", "australia"] {
-                UserDefaults.standard.removeObject(forKey: "savedCitiesList_\(rawValue)")
-                UserDefaults.standard.removeObject(forKey: "cachedWeatherData_\(rawValue)")
-                UserDefaults.standard.removeObject(forKey: "weatherCacheTimestamp_\(rawValue)")
-            }
-
-            if UserDefaults.standard.string(forKey: "activeListID") == "china" {
-                UserDefaults.standard.set(CityListID.europe.rawValue, forKey: "activeListID")
-            }
-            UserDefaults.standard.set(true, forKey: migrationKey)
-        }
+        // PlacesStore performs a verified, read-only import of every legacy list
+        // before the app creates any new state. Legacy keys intentionally remain
+        // for one compatibility release.
+        let placesStore = PlacesStore()
+        // All Places is the default workspace on every launch. A collection is
+        // an optional session filter, never the owning container for a place.
+        try? placesStore.selectCollection(id: nil)
 
         // Daily weather metrics now come from WeatherKit's native daytime forecast.
-        // Refresh weather snapshots once without affecting saved city lists or preferences.
+        // Refresh disposable legacy snapshots without touching saved place keys.
         let weatherCacheMigrationKey = "weatherCacheDaytimeForecastMigrationV1"
         if !UserDefaults.standard.bool(forKey: weatherCacheMigrationKey) {
             let cacheKeyPrefixes = ["cachedWeatherData", "weatherCacheTimestamp"]
@@ -103,19 +87,24 @@ struct WeatherApp: App {
             UserDefaults.standard.set(true, forKey: weatherCacheMigrationKey)
         }
 
-        // Construct the shared model only after persistence migrations finish,
-        // so every iPad scene starts from the migrated source of truth.
-        _weatherService = State(initialValue: WeatherService())
+        let weatherStore = PlaceWeatherStore()
+        _appModel = State(
+            initialValue: WeatherAtlasModel(
+                placesStore: placesStore,
+                weatherStore: weatherStore
+            )
+        )
+        _router = State(initialValue: AppRouter())
     }
 
-    /// Creates themed app windows backed by the shared weather service.
+    /// Creates themed app windows backed by the shared place-owned model.
     var body: some Scene {
         WindowGroup {
             ThemeRoot(
                 theme: theme,
-                // Construct the locale directly from the app-specific preference.
                 appLocale: Locale(identifier: appLanguage),
-                weatherService: weatherService
+                appModel: appModel,
+                router: router
             )
         }
     }
@@ -129,8 +118,10 @@ struct ThemeRoot: View {
     let theme: AppTheme
     /// Locale chosen in Settings.
     let appLocale: Locale
-    /// Shared observable weather and list model.
-    let weatherService: WeatherService
+    /// Shared place, weather, and nearby-discovery model.
+    let appModel: WeatherAtlasModel
+    /// Shared native navigation coordinator.
+    let router: AppRouter
     /// System scheme used to resolve automatic theme modes.
     @Environment(\.colorScheme) private var colorScheme
 
@@ -139,7 +130,8 @@ struct ThemeRoot: View {
         ThemeContent(
             theme: theme,
             appLocale: appLocale,
-            weatherService: weatherService
+            appModel: appModel,
+            router: router
         )
         .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
     }
@@ -151,13 +143,15 @@ private struct ThemeContent: View {
     let theme: AppTheme
     /// Locale propagated to formatters and localization lookups.
     let appLocale: Locale
-    /// Shared model supplied to the root application view.
-    let weatherService: WeatherService
+    /// Shared model supplied to the redesigned root application view.
+    let appModel: WeatherAtlasModel
+    /// Shared navigation coordinator supplied to the redesigned root.
+    let router: AppRouter
     /// Effective scheme after the outer preferred-scheme override.
     @Environment(\.colorScheme) private var colorScheme
     /// Propagates Increase Contrast into the app's custom color palettes.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    /// Current system text category before app-specific clamping.
+    /// Current system text category, including accessibility categories.
     @Environment(\.dynamicTypeSize) private var systemDynamicTypeSize
     /// Reads Reduce Motion once so every feature follows the same policy.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -169,20 +163,15 @@ private struct ThemeContent: View {
     /// Injects locale, size, theme, tint, contrast, and motion behavior app-wide.
     var body: some View {
         let resolvedColors = theme.colors(for: colorScheme, contrast: colorSchemeContrast)
-        ContentView(weatherService: weatherService)
+        WeatherAtlasRootView(model: appModel, router: router)
             .environment(\.locale, appLocale)
-            // Resolve the system or persisted slider step within the app's supported limits.
+            // Preserve the complete system Dynamic Type range. Only the explicit
+            // in-app slider uses the app's smaller set of custom steps.
             .environment(
                 \.dynamicTypeSize,
-                min(
-                    max(
-                        useSystemTextSize
-                            ? systemDynamicTypeSize
-                            : AppTextSizeLevel.level(clamping: appTextSizeLevel).dynamicTypeSize,
-                        AppTextSizeLevel.minimumDynamicTypeSize
-                    ),
-                    AppTextSizeLevel.maximumDynamicTypeSize
-                )
+                useSystemTextSize
+                    ? systemDynamicTypeSize
+                    : AppTextSizeLevel.level(clamping: appTextSizeLevel).dynamicTypeSize
             )
             .environment(\.appTheme, theme)
             .tint(resolvedColors.accent)

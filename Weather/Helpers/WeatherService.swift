@@ -32,7 +32,7 @@ enum WeatherServiceError: LocalizedError {
 /// Source of truth for lists, WeatherKit fetching, and weather caches.
 @Observable
 @MainActor
-class WeatherService {
+final class WeatherService {
     // MARK: Observable State
 
     /// Persisted list catalog in user-defined order.
@@ -418,10 +418,9 @@ class WeatherService {
                 )
             }
         } else {
-            errorMessage = String(
-                format: localizedString("Weather data could not be loaded: %@", locale: locale),
-                locale: locale,
-                error.localizedDescription
+            errorMessage = localizedString(
+                "Weather data could not be loaded. Please try again.",
+                locale: locale
             )
         }
     }
@@ -458,6 +457,10 @@ class WeatherService {
                 dailyLow: day.lowTemperature.value,
                 dailyHigh: day.highTemperature.value,
                 symbolName: daySymbol,
+                condition: AppWeatherCondition.fromWeatherKit(
+                    day.condition,
+                    isDaylight: true
+                ) ?? AppWeatherCondition.fromWeatherSymbol(daySymbol),
                 hourlyForecasts: hourlyForecasts,
                 cloudCover: daytimeForecast.cloudCover,
                 precipitationChance: daytimeForecast.precipitationChance,
@@ -467,16 +470,15 @@ class WeatherService {
             )
         }
 
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = timeZone
-        let daytimeSymbolName = dailyForecasts.first(where: {
-            calendar.isDate($0.date, inSameDayAs: Date())
-        })?.symbolName
-        
+        let currentWeather = weather.currentWeather
         return CityWeather(
             city: city,
             temperature: currentTemp,
-            currentSymbolName: daytimeSymbolName,
+            currentSymbolName: currentWeather.symbolName,
+            currentCondition: AppWeatherCondition.fromWeatherKit(
+                currentWeather.condition,
+                isDaylight: currentWeather.isDaylight
+            ) ?? AppWeatherCondition.fromWeatherSymbol(currentWeather.symbolName),
             dailyForecasts: Array(dailyForecasts),
             timeZone: timeZone
         )
@@ -502,6 +504,10 @@ class WeatherService {
             HourlyForecast(
                 date: hourWeather.date,
                 symbolName: hourWeather.symbolName,
+                condition: AppWeatherCondition.fromWeatherKit(
+                    hourWeather.condition,
+                    isDaylight: hourWeather.isDaylight
+                ) ?? AppWeatherCondition.fromWeatherSymbol(hourWeather.symbolName),
                 temperature: hourWeather.temperature.value,
                 apparentTemperature: hourWeather.apparentTemperature.value,
                 cloudCover: hourWeather.cloudCover,

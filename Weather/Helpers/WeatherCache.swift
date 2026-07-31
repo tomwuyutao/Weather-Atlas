@@ -241,6 +241,8 @@ struct CachedCity: Codable {
     let longitude: Double
     /// Optional resolved timezone identifier.
     let timeZoneIdentifier: String?
+    /// Optional bundled world-city source identity.
+    let catalogIdentifier: String?
 
     /// Copies a domain city into its cache representation.
     init(from city: City) {
@@ -250,6 +252,7 @@ struct CachedCity: Codable {
         self.latitude = city.latitude
         self.longitude = city.longitude
         self.timeZoneIdentifier = city.timeZoneIdentifier
+        self.catalogIdentifier = city.catalogIdentifier
     }
 
     /// Decodes current and legacy city payloads.
@@ -261,11 +264,23 @@ struct CachedCity: Codable {
         latitude = try container.decode(Double.self, forKey: .latitude)
         longitude = try container.decode(Double.self, forKey: .longitude)
         timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
+        catalogIdentifier = try container.decodeIfPresent(
+            String.self,
+            forKey: .catalogIdentifier
+        )
     }
 
     /// Restores the domain city without inventing missing metadata.
     func toCity() -> City {
-        City(id: id, name: name, country: country, latitude: latitude, longitude: longitude, timeZoneIdentifier: timeZoneIdentifier)
+        City(
+            id: id,
+            name: name,
+            country: country,
+            latitude: latitude,
+            longitude: longitude,
+            timeZoneIdentifier: timeZoneIdentifier,
+            catalogIdentifier: catalogIdentifier
+        )
     }
 }
 
@@ -279,6 +294,8 @@ struct CachedCityWeather: Codable {
     let temperature: Double
     /// Optional raw current-condition symbol.
     let currentSymbolName: String?
+    /// Normalized native WeatherKit condition when available.
+    let currentCondition: AppWeatherCondition?
     /// Available encoded daily forecasts.
     let dailyForecasts: [CachedDailyForecast]
     /// Required resolved timezone identifier for forecast interpretation.
@@ -290,6 +307,7 @@ struct CachedCityWeather: Codable {
         city = CachedCity(from: cityWeather.city)
         temperature = cityWeather.temperature
         currentSymbolName = cityWeather.currentSymbolName
+        currentCondition = cityWeather.currentCondition
         dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
         timeZoneIdentifier = cityWeather.timeZone.identifier
     }
@@ -306,6 +324,7 @@ struct CachedCityWeather: Codable {
             city: decodedCity,
             temperature: temperature,
             currentSymbolName: currentSymbolName,
+            currentCondition: currentCondition,
             dailyForecasts: forecasts,
             timeZone: timeZone
         )
@@ -324,6 +343,8 @@ struct CachedDailyForecast: Codable {
     let dailyHigh: Double
     /// Raw WeatherKit condition symbol.
     let symbolName: String
+    /// Normalized native WeatherKit daily condition.
+    let condition: AppWeatherCondition?
     /// Encoded hourly source forecasts.
     let hourlyForecasts: [CachedHourlyForecast]
     /// Optional cloud-cover fraction.
@@ -344,6 +365,7 @@ struct CachedDailyForecast: Codable {
         dailyLow = forecast.dailyLow
         dailyHigh = forecast.dailyHigh
         symbolName = forecast.symbolName
+        condition = forecast.condition
         hourlyForecasts = forecast.hourlyForecasts.map { CachedHourlyForecast(from: $0) }
         cloudCover = forecast.cloudCover
         precipitationChance = forecast.precipitationChance
@@ -367,6 +389,7 @@ struct CachedDailyForecast: Codable {
             dailyLow: dailyLow,
             dailyHigh: dailyHigh,
             symbolName: symbolName,
+            condition: condition,
             hourlyForecasts: restoredHours,
             cloudCover: cloudCover,
             precipitationChance: precipitationChance,
@@ -385,6 +408,8 @@ struct CachedHourlyForecast: Codable {
     let hour: Int?
     /// Raw WeatherKit condition symbol.
     let symbolName: String
+    /// Normalized native WeatherKit hourly condition.
+    let condition: AppWeatherCondition?
     /// Optional hourly air temperature in Celsius.
     let temperature: Double?
     /// Optional hourly apparent temperature in Celsius.
@@ -403,6 +428,7 @@ struct CachedHourlyForecast: Codable {
         date = forecast.date
         hour = nil
         symbolName = forecast.symbolName
+        condition = forecast.condition
         temperature = forecast.temperature
         apparentTemperature = forecast.apparentTemperature
         cloudCover = forecast.cloudCover
@@ -431,6 +457,7 @@ struct CachedHourlyForecast: Codable {
         return HourlyForecast(
             date: restoredDate,
             symbolName: symbolName,
+            condition: condition,
             temperature: temperature,
             apparentTemperature: apparentTemperature,
             cloudCover: cloudCover,

@@ -112,9 +112,10 @@ enum AppTextSizeLevel: Int, CaseIterable {
 
     /// Default slider step for new preferences.
     static let defaultRawValue = AppTextSizeLevel.large.rawValue
-    /// Smallest Dynamic Type category supported app-wide.
+    /// Smallest Dynamic Type category offered by the optional in-app slider.
     static let minimumDynamicTypeSize: DynamicTypeSize = .small
-    /// Largest Dynamic Type category supported app-wide.
+    /// Largest Dynamic Type category offered by the optional in-app slider.
+    /// System text sizing is not constrained to this value.
     static let maximumDynamicTypeSize: DynamicTypeSize = .xxLarge
     /// Lowest raw value selectable by the Settings slider.
     static let minimumSelectableRawValue = AppTextSizeLevel.small.rawValue

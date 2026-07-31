@@ -13,12 +13,9 @@ import WidgetKit
 
 // MARK: - Widget Locale Lookup
 
-/// Looks up widget copy using the language published by the main app.
-func widgetLocalizedString(_ key: String.LocalizationValue, locale: Locale) -> String {
-    // Resolve the resource independently of WidgetKit's process locale.
-    var resource = LocalizedStringResource(key)
-    resource.locale = locale
-    return String(localized: resource)
+/// Looks up widget copy that the localized main app published into the app group.
+func widgetLocalizedString(_ key: String, locale _: Locale) -> String {
+    WidgetDataStore.localizedText(for: key)
 }
 
 // MARK: - Widget List Selection
@@ -142,13 +139,16 @@ struct WidgetCityQuery: EntityStringQuery {
         }
     }
 
-    /// Reads cities from the selected list, using the first list before selection.
+    /// Reads cities from the selected list. The first list is used only when
+    /// the user has not configured one; a stale explicit identity stays empty.
     private func citiesForSelectedList() -> [WidgetDataCity] {
         guard let catalog = WidgetDataStore.catalog() else { return [] }
-        let selectedListID = intent?.list.id
-        let list = selectedListID.flatMap { listID in
-            catalog.lists.first(where: { $0.id == listID })
-        } ?? catalog.lists.first
+        let list: WidgetDataList?
+        if let selectedList = intent?.list {
+            list = catalog.lists.first(where: { $0.id == selectedList.id })
+        } else {
+            list = catalog.lists.first
+        }
         return list?.cities ?? []
     }
 }
@@ -196,8 +196,8 @@ struct BestSunnyPlacesWidget: Widget {
                     WidgetPaletteBackground()
                 }
         }
-        .configurationDisplayName("Sunny Hours")
-        .description("Track sunny hours for a chosen city.")
+        .configurationDisplayName(WidgetDataStore.localizedText(for: "Sunny Hours"))
+        .description(WidgetDataStore.localizedText(for: "Track sunny hours for a chosen city."))
         .supportedFamilies([.systemMedium, .systemLarge])
     }
 }
@@ -232,8 +232,8 @@ struct SunnyWindowWidget: Widget {
                     WidgetPaletteBackground()
                 }
         }
-        .configurationDisplayName("Sunny Hours (10 Days)")
-        .description("Track sunny hours for a chosen city.")
+        .configurationDisplayName(WidgetDataStore.localizedText(for: "Sunny Hours (10 Days)"))
+        .description(WidgetDataStore.localizedText(for: "Track sunny hours for a chosen city."))
         .supportedFamilies([.systemLarge])
     }
 }
@@ -292,7 +292,7 @@ private struct SunnyWindowLargeWidgetView: View {
             .foregroundStyle(AppPalette.values(for: colorScheme).titleText)
             .widgetURL(widgetListURL(for: city, issue: city.widgetSunnyWindowIssue))
         } else {
-            EmptyView()
+            WidgetDataUnavailablePlaceholder()
         }
     }
 }
@@ -631,7 +631,7 @@ private struct SunnyHoursHomeWidgetView: View {
             content(city)
                 .widgetURL(widgetListURL(for: city, issue: city.widgetCurrentIssue))
         } else {
-            EmptyView()
+            WidgetDataUnavailablePlaceholder()
         }
     }
 
@@ -742,14 +742,18 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
     /// Resolves configured list/city while validating city membership in that list.
     private func selectedCity(for configuration: SunnyHoursLockScreenConfigurationIntent) -> WidgetDataCity? {
         guard let catalog = WidgetDataStore.catalog() else { return nil }
-        let list = configuration.list.flatMap { selectedList in
-            catalog.lists.first(where: { $0.id == selectedList.id })
-        } ?? catalog.lists.first
+        let list: WidgetDataList?
+        if let selectedList = configuration.list {
+            list = catalog.lists.first(where: { $0.id == selectedList.id })
+        } else {
+            list = catalog.lists.first
+        }
 
         guard let list else { return nil }
-        return configuration.city.flatMap { selectedCity in
-            list.cities.first(where: { $0.id == selectedCity.id })
-        } ?? list.cities.first
+        if let selectedCity = configuration.city {
+            return list.cities.first(where: { $0.id == selectedCity.id })
+        }
+        return list.cities.first
     }
 
     /// Applies the latest usable widget-owned cache, even when it is stale.
@@ -1130,8 +1134,8 @@ struct SunnyHoursLockScreenWidget: Widget {
                     Color.clear
                 }
         }
-        .configurationDisplayName("Sunny Hours")
-        .description("Track sunny daytime hours for a chosen city.")
+        .configurationDisplayName(WidgetDataStore.localizedText(for: "Sunny Hours"))
+        .description(WidgetDataStore.localizedText(for: "Track sunny daytime hours for a chosen city."))
         .supportedFamilies([.accessoryRectangular])
     }
 }
@@ -1166,7 +1170,7 @@ private struct SunnyHoursLockScreenWidgetView: View {
             }
             .widgetURL(widgetListURL(for: city, issue: city.widgetCurrentIssue))
         } else {
-            EmptyView()
+            WidgetDataUnavailablePlaceholder()
         }
     }
 }
@@ -1265,6 +1269,14 @@ private struct SunnyHoursTimeline: View {
         case lockScreen
     }
 
+    /// Stable axis identity is the unique represented clock hour.
+    private struct AxisMarker: Identifiable {
+        let hour: Int
+        let capsuleIndex: Int
+
+        var id: Int { hour }
+    }
+
     /// Adds outlines as a redundant cue when colors alone are insufficient.
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     /// Contrast preference strengthening tracks and outlines.
@@ -1343,7 +1355,7 @@ private struct SunnyHoursTimeline: View {
                             proxy.size.width - capsuleSpacing * CGFloat(hours.count - 1)
                         ) / CGFloat(hours.count)
                         ZStack(alignment: .leading) {
-                            ForEach(Array(axisMarkers.enumerated()), id: \.offset) { _, marker in
+                            ForEach(axisMarkers) { marker in
                                 Text(SunnyHoursFormatting.chartHourLabel(marker.hour))
                                     .position(
                                         // Align each clock label with its nearest capsule center.
@@ -1489,11 +1501,15 @@ private struct SunnyHoursTimeline: View {
         for hours: [Int],
         from startHour: Int,
         through endHour: Int
-    ) -> [(hour: Int, capsuleIndex: Int)] {
+    ) -> [AxisMarker] {
         guard !hours.isEmpty else { return [] }
         let span = max(endHour - startHour, 0)
-        let axisHours = (0...3).map { index in
-            startHour + Int((Double(span) * Double(index) / 3).rounded())
+        let axisHours = (0...3).reduce(into: [Int]()) { hours, index in
+            let hour = startHour
+                + Int((Double(span) * Double(index) / 3).rounded())
+            if hours.last != hour {
+                hours.append(hour)
+            }
         }
 
         return axisHours.enumerated().map { axisIndex, hour in
@@ -1507,7 +1523,7 @@ private struct SunnyHoursTimeline: View {
                     abs($0.element - hour) < abs($1.element - hour)
                 }?.offset ?? 0
             }
-            return (hour, capsuleIndex)
+            return AxisMarker(hour: hour, capsuleIndex: capsuleIndex)
         }
     }
 
@@ -1515,6 +1531,8 @@ private struct SunnyHoursTimeline: View {
 
 /// Centered three-state key shared by medium and large Home Screen timelines.
 private struct SunnyHoursLegend: View {
+    /// Locale published by the main app.
+    @Environment(\.locale) private var locale
     /// Replaces color dots with condition symbols when requested.
     @Environment(\.accessibilityDifferentiateWithoutColor) private var differentiateWithoutColor
     /// Contrast preference selecting stronger semantic colors.
@@ -1534,7 +1552,7 @@ private struct SunnyHoursLegend: View {
                     : colorSchemeContrast == .increased
                         ? AppPalette.increasedContrastValues(for: colorScheme).dotSun
                         : palette.dotSun,
-                title: "Sunny",
+                title: widgetLocalizedString("Sunny", locale: locale),
                 symbol: WeatherIconSymbol.clear
             )
             item(
@@ -1544,7 +1562,7 @@ private struct SunnyHoursLegend: View {
                     : colorSchemeContrast == .increased
                         ? AppPalette.increasedContrastValues(for: colorScheme).dotPartlyCloudy
                         : palette.dotPartlyCloudy,
-                title: "Partly Sunny",
+                title: widgetLocalizedString("Partly Sunny", locale: locale),
                 symbol: WeatherIconSymbol.partlyCloudy
             )
             item(
@@ -1553,7 +1571,7 @@ private struct SunnyHoursLegend: View {
                     : colorSchemeContrast == .increased
                         ? AppPalette.increasedContrastValues(for: colorScheme).settingsRow
                         : palette.settingsRow,
-                title: "No Sun",
+                title: widgetLocalizedString("No Sun", locale: locale),
                 symbol: WeatherIconSymbol.cloudy
             )
         }
@@ -1597,15 +1615,36 @@ private struct SunnyHoursLegend: View {
     }
 }
 
-// MARK: - Widget Missing-Data Suppression
+// MARK: - Widget Missing-Data Presentation
 
-/// Intentionally empty widget content whose deep link explains missing data.
+/// Compact visible and accessible fallback for missing widget configuration or
+/// unavailable WeatherKit data.
 private struct WidgetDataUnavailablePlaceholder: View {
-    /// Suppresses compact inline text while preserving layout replacement.
+    /// Locale published by the main app.
+    @Environment(\.locale) private var locale
+    /// Widget family used to keep Lock Screen copy to one line.
+    @Environment(\.widgetFamily) private var family
+
+    /// Presents a concise recovery action in every supported family.
     var body: some View {
-        // Missing-data text is intentionally suppressed inside the widget; the
-        // app deep link carries the issue and presents its native alert instead.
-        EmptyView()
+        let message = widgetLocalizedString(
+            "Open Weather Atlas to refresh.",
+            locale: locale
+        )
+
+        Label(message, systemImage: "icloud.slash")
+            .font(.caption2.weight(.medium))
+            .lineLimit(family == .accessoryRectangular ? 1 : 2)
+            .minimumScaleFactor(0.75)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(.secondary)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .center
+            )
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(message)
     }
 }
 

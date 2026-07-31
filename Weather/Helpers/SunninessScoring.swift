@@ -24,6 +24,17 @@ enum SunninessScoring {
         AppWeatherCondition.fromWeatherSymbol(symbolName)
     }
 
+    /// Prefers WeatherKit's semantic condition, retaining symbol parsing only
+    /// for older cache entries and source-compatible fixtures.
+    static func condition(for forecast: DailyForecast) -> AppWeatherCondition? {
+        forecast.condition ?? condition(for: forecast.symbolName)
+    }
+
+    /// Prefers WeatherKit's semantic condition for one hourly forecast.
+    static func condition(for forecast: HourlyForecast) -> AppWeatherCondition? {
+        forecast.condition ?? condition(for: forecast.symbolName)
+    }
+
     /// Validates solar/hourly inputs and returns only hours overlapping daylight.
     static func sunnyHoursData(
         for forecast: DailyForecast,
@@ -62,7 +73,7 @@ enum SunninessScoring {
             return .failure(.missingHourlyData)
         }
         if let unknownHour = daylightHours.first(where: {
-            condition(for: $0.symbolName) == nil
+            condition(for: $0) == nil
         }) {
             return .failure(.unknownWeatherSymbol(unknownHour.symbolName))
         }
@@ -88,7 +99,7 @@ enum SunninessScoring {
     /// Returns the longest contiguous run of fully or partly sunny local hours.
     static func longestSunnyHourRange(in forecasts: [HourlyForecast], timeZone: TimeZone) -> ClosedRange<Int>? {
         let sunnyHours = forecasts.compactMap { forecast in
-            condition(for: forecast.symbolName)?.isSunnyOrPartlySunny == true
+            condition(for: forecast)?.isSunnyOrPartlySunny == true
                 ? forecast.hour(in: timeZone)
                 : nil
         }
