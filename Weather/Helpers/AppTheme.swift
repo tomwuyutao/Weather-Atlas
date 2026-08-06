@@ -40,12 +40,8 @@ enum AppPalette {
         let sunForeground: Color
         /// Partly sunny semantic color.
         let dotPartlyCloudy: Color
-        /// Contrast-safe partly-sunny foreground.
-        let partlySunnyForeground: Color
         /// Cloudy semantic color.
         let dotCloudy: Color
-        /// Contrast-safe cloudy foreground.
-        let cloudyForeground: Color
         /// Rain semantic color.
         let dotRain: Color
         /// Contrast-safe rain foreground.
@@ -67,9 +63,7 @@ enum AppPalette {
         dotSun: Color(hex: 0xFBC056),
         sunForeground: Color(hex: 0x986000),
         dotPartlyCloudy: Color(hex: 0xFAE38E),
-        partlySunnyForeground: Color(hex: 0x786200),
         dotCloudy: Color(hex: 0xC8C8C8),
-        cloudyForeground: Color(hex: 0x666666),
         dotRain: Color(hex: 0x5AA4F3),
         rainForeground: Color(hex: 0x5AA4F3),
         dotDrizzle: Color(hex: 0x67D1F0),
@@ -86,9 +80,7 @@ enum AppPalette {
         dotSun: Color(hex: 0xFBC056),
         sunForeground: Color(hex: 0xFBC056),
         dotPartlyCloudy: Color(hex: 0xFAE38E),
-        partlySunnyForeground: Color(hex: 0xFAE38E),
         dotCloudy: Color(hex: 0xC8C8C8),
-        cloudyForeground: Color(hex: 0xC8C8C8),
         dotRain: Color(hex: 0x5AA4F3),
         rainForeground: Color(hex: 0x5AA4F3),
         dotDrizzle: Color(hex: 0x67D1F0),
@@ -107,9 +99,7 @@ enum AppPalette {
         dotSun: dark.dotSun,
         sunForeground: dark.sunForeground,
         dotPartlyCloudy: dark.dotPartlyCloudy,
-        partlySunnyForeground: dark.partlySunnyForeground,
         dotCloudy: dark.dotCloudy,
-        cloudyForeground: dark.cloudyForeground,
         dotRain: dark.dotRain,
         rainForeground: dark.rainForeground,
         dotDrizzle: dark.dotDrizzle,
@@ -149,9 +139,7 @@ enum AppPalette {
                 dotSun: palette.dotSun,
                 sunForeground: palette.sunForeground,
                 dotPartlyCloudy: palette.dotPartlyCloudy,
-                partlySunnyForeground: palette.partlySunnyForeground,
                 dotCloudy: palette.dotCloudy,
-                cloudyForeground: palette.cloudyForeground,
                 dotRain: palette.dotRain,
                 rainForeground: palette.rainForeground,
                 dotDrizzle: palette.dotDrizzle,
@@ -171,15 +159,7 @@ enum AppPalette {
                 by: 0.12
             ),
             dotPartlyCloudy: palette.dotPartlyCloudy.interpolated(with: palette.titleText, by: 0.55),
-            partlySunnyForeground: palette.partlySunnyForeground.interpolated(
-                with: palette.titleText,
-                by: 0.12
-            ),
             dotCloudy: palette.dotCloudy.interpolated(with: palette.titleText, by: 0.66),
-            cloudyForeground: palette.cloudyForeground.interpolated(
-                with: palette.titleText,
-                by: 0.12
-            ),
             dotRain: palette.dotRain.interpolated(with: palette.titleText, by: 0.10),
             rainForeground: palette.rainForeground.interpolated(
                 with: palette.titleText,
@@ -278,12 +258,8 @@ struct ThemeColors {
     let sunForeground: Color
     /// Partly sunny weather mark.
     let dotPartlyCloudy: Color
-    /// Contrast-safe partly-sunny foreground.
-    let partlySunnyForeground: Color
     /// Cloudy weather mark.
     let dotCloudy: Color
-    /// Contrast-safe cloudy foreground.
-    let cloudyForeground: Color
     /// Rain weather mark.
     let dotRain: Color
     /// Contrast-safe rain foreground.
@@ -315,16 +291,13 @@ struct ThemeColors {
         case .clear:
             return (sunIconColor, sunIconColor)
         case .partlySunny, .partlyCloudy:
-            return (cloudyForeground, partlySunnyForeground)
+            return (primaryText, sunIconColor)
         case .rain, .drizzle:
-            return (
-                cloudyForeground,
-                WeatherSymbolClassification.resolve(iconName) == .drizzle
-                    ? drizzleForeground
-                    : rainForeground
-            )
+            // Drizzle and rain share the wet-condition palette.
+            // same blue secondary tint even though their map dots differ.
+            return (primaryText, dotRain)
         case .cloudy, .snow, .fog, .wind, nil:
-            return (cloudyForeground, cloudyForeground)
+            return (primaryText, primaryText)
         }
     }
 }
@@ -379,9 +352,7 @@ private extension ThemeColors {
             dotSun: palette.dotSun,
             sunForeground: palette.sunForeground,
             dotPartlyCloudy: palette.dotPartlyCloudy,
-            partlySunnyForeground: palette.partlySunnyForeground,
             dotCloudy: palette.dotCloudy,
-            cloudyForeground: palette.cloudyForeground,
             dotRain: palette.dotRain,
             rainForeground: palette.rainForeground,
             dotDrizzle: palette.dotDrizzle,
@@ -428,7 +399,7 @@ class AppTheme {
     }
 
     /// The ColorScheme to apply to the window (nil = follow system).
-    func preferredColorScheme(for _: ColorScheme) -> ColorScheme? {
+    var preferredColorScheme: ColorScheme? {
         switch style {
         case .light: return .light
         case .dark, .black: return .dark
@@ -436,7 +407,7 @@ class AppTheme {
         }
     }
 
-    /// Restores the persisted style while normalizing unsupported old values.
+    /// Restores the persisted style while normalizing invalid values.
     private init() {
         let raw = UserDefaults.standard.string(forKey: "appThemeStyle") ?? AppThemeStyle.defaultRawValue
         self.style = AppThemeStyle(rawValue: raw) ?? .automatic
@@ -503,7 +474,7 @@ private extension View {
 }
 
 /// Translucent card surface shared by Detail View's report sections.
-private struct DetailTranslucentCardModifier<Shape: InsettableShape>: ViewModifier {
+private struct WeatherAtlasGlassCardModifier<Shape: InsettableShape>: ViewModifier {
     /// Active theme palette.
     @Environment(\.appTheme) private var theme
     /// System preference that replaces translucency with an opaque surface.
@@ -514,6 +485,8 @@ private struct DetailTranslucentCardModifier<Shape: InsettableShape>: ViewModifi
     let colorScheme: ColorScheme
     /// Insettable card boundary.
     let shape: Shape
+    /// Interactive glass is reserved for surfaces that actually receive input.
+    let isInteractive: Bool
 
     @ViewBuilder
     /// Applies the detail-card surface appropriate to OS and accessibility state.
@@ -525,18 +498,33 @@ private struct DetailTranslucentCardModifier<Shape: InsettableShape>: ViewModifi
                 in: shape
             )
         } else if #available(iOS 26.0, *) {
-            content
-                .background(
-                    theme.colors.glassFill.opacity(colorScheme == .dark ? 0.18 : 0.22),
-                    in: shape
-                )
-                .glassEffect(.regular.interactive(), in: shape)
-                .overlay(
-                    shape.stroke(
-                        theme.colors.primaryText.opacity(0.16),
-                        lineWidth: 0.6
+            if isInteractive {
+                content
+                    .background(
+                        theme.colors.glassFill.opacity(colorScheme == .dark ? 0.18 : 0.22),
+                        in: shape
                     )
-                )
+                    .glassEffect(.regular.interactive(), in: shape)
+                    .overlay(
+                        shape.stroke(
+                            theme.colors.primaryText.opacity(0.16),
+                            lineWidth: 0.6
+                        )
+                    )
+            } else {
+                content
+                    .background(
+                        theme.colors.glassFill.opacity(colorScheme == .dark ? 0.18 : 0.22),
+                        in: shape
+                    )
+                    .glassEffect(.regular, in: shape)
+                    .overlay(
+                        shape.stroke(
+                            theme.colors.primaryText.opacity(0.16),
+                            lineWidth: 0.6
+                        )
+                    )
+            }
         } else {
             content
                 .background(.ultraThinMaterial, in: shape)
@@ -582,9 +570,29 @@ extension View {
         modifier(WeatherIconStyleModifier(iconName: iconName))
     }
 
-    /// Wraps Detail content in its shared translucent card treatment.
+    /// Wraps static report content in the shared translucent card treatment.
     func detailTranslucentCard<Shape: InsettableShape>(colorScheme: ColorScheme, in shape: Shape) -> some View {
-        modifier(DetailTranslucentCardModifier(colorScheme: colorScheme, shape: shape))
+        modifier(
+            WeatherAtlasGlassCardModifier(
+                colorScheme: colorScheme,
+                shape: shape,
+                isInteractive: false
+            )
+        )
+    }
+
+    /// Wraps an input surface in the app's interactive floating glass treatment.
+    func weatherAtlasInteractiveGlass<Shape: InsettableShape>(
+        colorScheme: ColorScheme,
+        in shape: Shape
+    ) -> some View {
+        modifier(
+            WeatherAtlasGlassCardModifier(
+                colorScheme: colorScheme,
+                shape: shape,
+                isInteractive: true
+            )
+        )
     }
 
     /// Keeps system List/Form behavior while replacing only its canvas color.

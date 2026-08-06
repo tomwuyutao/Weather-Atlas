@@ -14,14 +14,14 @@ import UIKit
 enum HomeScreenShortcutDestination: String, CaseIterable {
     case home
     case map
-    case list
+    case places
 
     /// The SF Symbol paired with this destination in the system shortcut menu.
     var iconName: String {
         switch self {
         case .home: return "house"
         case .map: return "map"
-        case .list: return "mappin.and.ellipse"
+        case .places: return "mappin.and.ellipse"
         }
     }
 
@@ -30,8 +30,7 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
         switch self {
         case .home: return localizedString("Home", locale: locale)
         case .map: return localizedString("Map", locale: locale)
-        // Keep the legacy raw value so installed shortcuts continue to decode.
-        case .list: return localizedString("Places", locale: locale)
+        case .places: return localizedString("Places", locale: locale)
         }
     }
 }
@@ -113,7 +112,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return true
     }
 
-    /// Resolves current and legacy shortcut payloads into a supported destination.
+    /// Resolves one current shortcut payload into a supported destination.
     nonisolated private static func destination(
         from shortcutItem: UIApplicationShortcutItem
     ) -> HomeScreenShortcutDestination? {
@@ -128,12 +127,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
             return HomeScreenShortcutDestination(rawValue: String(shortcutItem.type[range.upperBound...]))
         }
 
-        // An app update can leave an old dynamic list shortcut visible until the
-        // new shortcut set is installed. Route that legacy action to Places.
-        if shortcutItem.userInfo?["listID"] != nil
-            || shortcutItem.type.contains(".openList.") {
-            return .list
-        }
         return nil
     }
 }

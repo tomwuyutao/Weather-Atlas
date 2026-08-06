@@ -2,21 +2,18 @@
 //  PlaceSearchView.swift
 //  Weather
 //
-//  Purpose: Provides one reusable, native world-city search experience for
-//  both the dedicated search-role tab and the Add Place sheet.
+//  Purpose: Provides the native world-city search experience for the
+//  dedicated search-role tab.
 //
 
 import CoreLocation
 import SwiftUI
 
-/// Searches the bundled world-city catalog and saves a result to All Places.
+/// Searches the bundled world-city catalog and saves a result to Saved Places.
 ///
-/// A collection identity is optional and only adds a relationship after the
-/// place itself has been saved.
 struct PlaceSearchView: View {
     let placesStore: PlacesStore
     let weatherStore: PlaceWeatherStore
-    let targetCollectionID: PlaceCollection.ID?
     let onSaved: (City.ID) -> Void
 
     @State private var searchManager = CitySearchManager()
@@ -30,12 +27,10 @@ struct PlaceSearchView: View {
     init(
         placesStore: PlacesStore,
         weatherStore: PlaceWeatherStore,
-        targetCollectionID: PlaceCollection.ID? = nil,
         onSaved: @escaping (City.ID) -> Void
     ) {
         self.placesStore = placesStore
         self.weatherStore = weatherStore
-        self.targetCollectionID = targetCollectionID
         self.onSaved = onSaved
     }
 
@@ -73,7 +68,7 @@ struct PlaceSearchView: View {
                 "Search for a City",
                 systemImage: "magnifyingglass",
                 description: Text(
-                    "Search by city name. It will be saved directly to All Places."
+                    "Search by city name. It will be saved directly to Saved Places."
                 )
             )
         } else if hasNoResults && isSearchInProgress && !hasProviderError {
@@ -242,10 +237,7 @@ struct PlaceSearchView: View {
             )
 
             do {
-                let savedID = try placesStore.savePlace(
-                    city,
-                    in: targetCollectionID
-                )
+                let savedID = try placesStore.savePlace(city)
                 guard let savedCity = placesStore.place(id: savedID)?.city else {
                     throw PlacesStoreError.placeNotFound(savedID)
                 }

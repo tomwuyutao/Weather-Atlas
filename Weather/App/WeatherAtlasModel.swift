@@ -3,7 +3,7 @@
 //  Weather
 //
 //  Purpose: Coordinates the independent places library, place-keyed forecasts,
-//  and population-prefiltered nearby discovery for the native tabbed app.
+//  current-location weather, and the query-budgeted nearest-sunny search.
 //
 
 import CoreLocation
@@ -11,64 +11,108 @@ import CryptoKit
 import Foundation
 import Observation
 
+/// Distance choices exposed directly on the Nearest Sunny Place card.
+nonisolated enum NearestSunnySearchRadius: Double, CaseIterable, Identifiable,
+    Sendable {
+    case kilometers25 = 25
+    case kilometers50 = 50
+    case kilometers100 = 100
+    case kilometers200 = 200
+
+    var id: Self { self }
+    var kilometers: Double { rawValue }
+
+    var measurement: Measurement<UnitLength> {
+        Measurement(value: kilometers, unit: .kilometers)
+    }
+}
+
+/// A strict clear-condition result that does not require optional ranking
+/// metrics such as cloud cover to be present.
+struct NearestSunnyPlaceResult: Identifiable {
+    let cityWeather: CityWeather
+    let forecast: DailyForecast
+    let distanceKilometers: Double
+
+    var id: City.ID { cityWeather.city.id }
+}
+
+/// Stable inputs that make rebuilding Home or changing tabs a no-op.
+nonisolated private struct NearestSunnySearchKey: Equatable, Sendable {
+    let date: Date
+    let radius: NearestSunnySearchRadius
+    let roundedLatitude: Double
+    let roundedLongitude: Double
+    let localeIdentifier: String
+    let locationDisplayName: String?
+    let locationCountryName: String?
+    let locationTimeZoneIdentifier: String?
+}
+
 /// Root domain model shared by Home, Map, Places, Search, and detail views.
 @MainActor
 @Observable
 final class WeatherAtlasModel {
-    /// Independent saved-place and optional-collection source of truth.
+    /// Independent flat Saved Places source of truth.
     let placesStore: PlacesStore
     /// Weather snapshots keyed by stable place identity.
     let weatherStore: PlaceWeatherStore
-    /// Contextual location provider that never prompts during initialization.
+    /// Current location provider that never prompts during initialization.
     let locationProvider: LocationProvider
-    /// Bundled world-cities catalog used before WeatherKit.
+    /// Bundled world-cities catalog used by Search and nearest-sunny lookup.
     let worldCitiesCatalog: WorldCitiesCatalog
 
-    /// Persisted nearby radius and country restriction.
-    var nearbyPreferences: NearbyDiscoveryPreferences {
-        didSet { persistNearbyPreferences() }
-    }
-    /// Explicit opt-in allowing already-authorized location to refresh once on
-    /// later launches without presenting a permission prompt.
-    var isNearbyDiscoveryEnabled: Bool {
+    /// Persisted search radius controlled from the Home card.
+    var nearestSunnySearchRadius: NearestSunnySearchRadius {
         didSet {
             defaults.set(
-                isNearbyDiscoveryEnabled,
-                forKey: PreferenceKey.enabled
+                nearestSunnySearchRadius.rawValue,
+                forKey: PreferenceKey.nearestSunnyRadius
             )
-            if !isNearbyDiscoveryEnabled {
-                nearbyRefreshGeneration &+= 1
-                clearNearbyResults()
-            }
         }
     }
-    /// Population-ranked catalog candidates for the current scope.
-    private(set) var nearbyCandidates: [NearbyWorldCityCandidate] = []
-    /// Stable app cities derived from the current catalog candidates.
-    private(set) var nearbyCities: [City] = []
-    /// Whether local catalog filtering or candidate weather loading is active.
-    private(set) var isRefreshingNearby = false
-    /// Stable user-facing nearby discovery problem.
-    private(set) var nearbyDiscoveryError: String?
 
-    /// Dataset metadata keyed by the identity used by the forecast repository.
+    /// Coordinate-backed city used to retain current-location weather safely.
+    private(set) var currentLocationCity: City?
+    /// Weather rendered by the Home timeline card.
+    private(set) var currentLocationWeather: CityWeather?
+    /// First distance-ordered catalog city that is fully sunny on the date.
+    private(set) var nearestSunnyRecommendation: NearestSunnyPlaceResult?
+    /// Loading state shared by the timeline and nearest-sunny cards.
+    private(set) var isRefreshingHomeWeather = false
+    /// Distinguishes an honest no-match result from an unstarted search.
+    private(set) var hasCompletedNearestSunnySearch = false
+    /// Recoverable problem for the current Home location workflow.
+    private(set) var homeLocationError: String?
+    /// Debug-visible count of WeatherKit calls started by the latest search.
+    private(set) var lastNearestSunnyWeatherQueryCount = 0
+    /// Number of distance-ordered catalog cities inspected by the latest search.
+    private(set) var lastNearestSunnyCheckedCityCount = 0
+
+    /// Invalidates stale writes from overlapping date, radius, and location work.
+    @ObservationIgnored private var homeRefreshGeneration = 0
+    /// Prevents tab reconstruction from repeating an identical completed search.
+    @ObservationIgnored private var lastCompletedSearchKey: NearestSunnySearchKey?
+    /// Small transient cache scope for the last candidate walk.
+    @ObservationIgnored private var retainedSearchPlaceIDs: Set<City.ID> = []
+    /// Results that have been surfaced remain routable for the life of the app
+    /// session, even if a later radius or date search replaces the Home card.
     @ObservationIgnored
-    private var nearbyMetadataByPlaceID: [City.ID: NearbyWorldCityCandidate] = [:]
-    /// Invalidates stale catalog/weather writes when location or preferences
-    /// trigger overlapping refreshes.
-    @ObservationIgnored
-    private var nearbyRefreshGeneration = 0
-    /// User defaults used only for the small nearby preferences.
-    @ObservationIgnored
-    private let defaults: UserDefaults
+    private var surfacedTransientCitiesByID: [City.ID: City] = [:]
+    /// User defaults used only for the compact Home radius preference.
+    @ObservationIgnored private let defaults: UserDefaults
 
     private enum PreferenceKey {
-        static let enabled = "nearbyDiscoveryEnabled"
-        static let radius = "nearbyDiscoveryRadiusKilometers"
-        static let limitToCountry = "nearbyDiscoveryLimitToCurrentCountry"
+        static let nearestSunnyRadius = "nearestSunnyPlaceRadiusKilometers"
     }
 
-    /// Creates the root model after PlacesStore has completed legacy import.
+    /// A strict ceiling for candidate WeatherKit calls in one search.
+    private static let maximumNearestSunnyWeatherQueries = 10
+    /// Avoids querying the dataset row that effectively represents the device's
+    /// own coordinate after current-location weather has already been loaded.
+    private static let minimumCandidateDistanceKilometers = 1.0
+
+    /// Creates the root model from its independent domain stores.
     init(
         placesStore: PlacesStore,
         weatherStore: PlaceWeatherStore,
@@ -81,18 +125,13 @@ final class WeatherAtlasModel {
         self.locationProvider = locationProvider
         self.worldCitiesCatalog = worldCitiesCatalog
         self.defaults = defaults
-        isNearbyDiscoveryEnabled = defaults.bool(
-            forKey: PreferenceKey.enabled
-        )
 
-        let savedRadius = defaults.double(forKey: PreferenceKey.radius)
-        let radius = NearbyDiscoveryRadius(rawValue: savedRadius) ?? .kilometers100
-        nearbyPreferences = NearbyDiscoveryPreferences(
-            radius: radius,
-            limitToCurrentCountry: defaults.bool(
-                forKey: PreferenceKey.limitToCountry
-            )
+        let savedRadius = defaults.double(
+            forKey: PreferenceKey.nearestSunnyRadius
         )
+        nearestSunnySearchRadius = NearestSunnySearchRadius(
+            rawValue: savedRadius
+        ) ?? .kilometers100
     }
 
     /// Live convenience that creates Core Location on the owning main actor.
@@ -114,20 +153,6 @@ final class WeatherAtlasModel {
         }
     }
 
-    /// Forecast snapshots corresponding to the current nearby prefilter.
-    var nearbyWeather: [CityWeather] {
-        nearbyCities.compactMap {
-            weatherStore.weather(for: $0.id)
-        }
-    }
-
-    /// Union used by the shared forecast-date control.
-    var availableForecastDates: [Date] {
-        RecommendationEngine.availableDates(
-            in: deduplicatedWeather(savedWeather + nearbyWeather)
-        )
-    }
-
     /// Loads saved forecasts without requesting or reading current location.
     func loadSavedWeather(
         forceRefresh: Bool = false,
@@ -140,259 +165,336 @@ final class WeatherAtlasModel {
         )
     }
 
-    /// Refreshes the dataset candidates and all weather required by Home.
-    ///
-    /// The query order is a product invariant: radius/country filter, top ten
-    /// by population, then WeatherKit and sunniness ranking.
-    func refreshNearbyRecommendations(
+    /// Loads the current-location timeline and then walks nearest catalog cities
+    /// sequentially, stopping on the first fully sunny daily condition.
+    func refreshHomeWeather(
+        on selectedDate: Date,
         forceRefresh: Bool = false,
         locale: Locale = .autoupdatingCurrent
     ) async {
-        nearbyRefreshGeneration &+= 1
-        let generation = nearbyRefreshGeneration
-
-        guard isNearbyDiscoveryEnabled else {
-            clearNearbyResults()
-            return
-        }
-
         guard let coordinate = locationProvider.coordinate,
               CLLocationCoordinate2DIsValid(coordinate) else {
-            clearNearbyResults()
+            clearHomeLocationResults()
             return
         }
 
-        let countryCode: String?
-        if nearbyPreferences.limitToCurrentCountry {
-            guard let resolvedCode = locationProvider.country?.isoCountryCode else {
-                clearNearbyResults()
-                nearbyDiscoveryError = localizedString(
-                    "Current country is still being resolved.",
-                    locale: locale
-                )
-                return
-            }
-            countryCode = resolvedCode
-        } else {
-            countryCode = nil
+        let key = nearestSunnySearchKey(
+            date: selectedDate,
+            coordinate: coordinate,
+            locale: locale
+        )
+        if !forceRefresh, key == lastCompletedSearchKey {
+            return
         }
 
-        isRefreshingNearby = true
-        nearbyDiscoveryError = nil
+        homeRefreshGeneration &+= 1
+        let generation = homeRefreshGeneration
+        isRefreshingHomeWeather = true
+        hasCompletedNearestSunnySearch = false
+        homeLocationError = nil
+        nearestSunnyRecommendation = nil
+        lastNearestSunnyWeatherQueryCount = 0
+        lastNearestSunnyCheckedCityCount = 0
+
         defer {
-            if nearbyRefreshGeneration == generation {
-                isRefreshingNearby = false
+            if homeRefreshGeneration == generation {
+                isRefreshingHomeWeather = false
             }
+        }
+
+        let currentCity = makeCurrentLocationCity(
+            coordinate: coordinate,
+            locale: locale
+        )
+        currentLocationCity = currentCity
+        let currentLookup = await weatherStore.lookup(
+            city: currentCity,
+            forceRefresh: forceRefresh,
+            locale: locale
+        )
+        guard isCurrentHomeRefresh(generation) else { return }
+        currentLocationWeather = currentLookup.weather
+
+        if currentLocationIsFullySunny(on: selectedDate) {
+            retainedSearchPlaceIDs = []
+            hasCompletedNearestSunnySearch = true
+            lastCompletedSearchKey = key
+            reconcileRetainedWeather()
+            logNearestSunnySearch(
+                radius: nearestSunnySearchRadius,
+                matchName: nil,
+                hiddenBecauseCurrentLocationIsSunny: true
+            )
+            return
         }
 
         do {
-            let candidates = try await worldCitiesCatalog.nearbyCities(
+            let candidates = try await worldCitiesCatalog.cities(
                 centeredAt: coordinate,
-                radiusKilometers: nearbyPreferences.radius.kilometers,
-                limitingToISOCountryCode: countryCode,
-                limit: WorldCitiesCatalog.maximumCandidateCount
+                withinKilometers: nearestSunnySearchRadius.kilometers,
+                fartherThanKilometers: Self.minimumCandidateDistanceKilometers,
+                limit: Self.maximumNearestSunnyWeatherQueries
             )
-            guard !Task.isCancelled,
-                  nearbyRefreshGeneration == generation,
-                  isNearbyDiscoveryEnabled else {
-                return
+            guard isCurrentHomeRefresh(generation) else { return }
+
+            var retainedIDs: Set<City.ID> = []
+            var queryCount = 0
+            var checkedCount = 0
+            var failedLookupCount = 0
+            var match: NearestSunnyPlaceResult?
+
+            for candidate in candidates {
+                guard isCurrentHomeRefresh(generation),
+                      queryCount < Self.maximumNearestSunnyWeatherQueries else {
+                    break
+                }
+
+                let city = resolvedCatalogCity(from: candidate.city)
+                let lookup = await weatherStore.lookup(
+                    city: city,
+                    forceRefresh: forceRefresh,
+                    retriesOnFailure: false,
+                    locale: locale
+                )
+                guard isCurrentHomeRefresh(generation) else { return }
+
+                retainedIDs.insert(city.id)
+                checkedCount += 1
+                if lookup.performedWeatherKitRequest {
+                    queryCount += 1
+                }
+
+                guard let weather = lookup.weather else {
+                    failedLookupCount += 1
+                    continue
+                }
+                guard let forecast = weather.forecastIfAvailable(
+                    on: selectedDate
+                ), forecast.isFullyClear == true else {
+                    continue
+                }
+                match = NearestSunnyPlaceResult(
+                    cityWeather: weather,
+                    forecast: forecast,
+                    distanceKilometers: candidate.distanceKilometers
+                )
+                break
             }
 
-            let converted = convertedCities(from: candidates)
-            nearbyCandidates = candidates
-            nearbyCities = converted.cities
-            nearbyMetadataByPlaceID = converted.metadata
+            guard isCurrentHomeRefresh(generation) else { return }
+            retainedSearchPlaceIDs = retainedIDs
+            nearestSunnyRecommendation = match
+            if let match,
+               placesStore.place(id: match.id) == nil {
+                surfacedTransientCitiesByID[match.id] = match.cityWeather.city
+            }
+            lastNearestSunnyWeatherQueryCount = queryCount
+            lastNearestSunnyCheckedCityCount = checkedCount
+            hasCompletedNearestSunnySearch = true
+            if match == nil, failedLookupCount > 0 {
+                homeLocationError = localizedString(
+                    "Some candidate forecasts were unavailable, so the nearest sunny place could not be confirmed.",
+                    locale: locale
+                )
+            }
+            lastCompletedSearchKey = key
             reconcileRetainedWeather()
-
-            let citiesToLoad = deduplicatedCities(
-                placesStore.allPlaces.map(\.city) + converted.cities
+            logNearestSunnySearch(
+                radius: nearestSunnySearchRadius,
+                matchName: match?.cityWeather.city.displayName,
+                hiddenBecauseCurrentLocationIsSunny: false
             )
-            await weatherStore.load(
-                cities: citiesToLoad,
-                forceRefresh: forceRefresh,
-                locale: locale
-            )
-            guard !Task.isCancelled,
-                  nearbyRefreshGeneration == generation,
-                  isNearbyDiscoveryEnabled else {
-                reconcileRetainedWeather()
-                return
-            }
         } catch is CancellationError {
             return
         } catch {
-            guard !Task.isCancelled,
-                  nearbyRefreshGeneration == generation else {
-                return
-            }
-            clearNearbyResults()
-            nearbyDiscoveryError = localizedString(
-                "Nearby city discovery is temporarily unavailable.",
+            guard isCurrentHomeRefresh(generation) else { return }
+            retainedSearchPlaceIDs = []
+            hasCompletedNearestSunnySearch = true
+            homeLocationError = localizedString(
+                "Nearest sunny place is temporarily unavailable.",
                 locale: locale
             )
+            lastCompletedSearchKey = key
+            reconcileRetainedWeather()
+            logNearestSunnySearch(
+                radius: nearestSunnySearchRadius,
+                matchName: nil,
+                hiddenBecauseCurrentLocationIsSunny: false
+            )
         }
+    }
+
+    /// Whether WeatherKit classified the selected day as exactly clear.
+    func currentLocationIsFullySunny(on date: Date) -> Bool {
+        guard let weather = currentLocationWeather,
+              let forecast = weather.forecastIfAvailable(on: date) else {
+            return false
+        }
+        return forecast.isFullyClear == true
     }
 
     /// Saved-place recommendations ranked for one literal calendar date.
     func savedRecommendations(on date: Date) -> [PlaceRecommendation] {
         RecommendationEngine.ranked(
             savedWeather.compactMap {
-                RecommendationEngine.recommendation(
-                    for: $0,
-                    on: date,
-                    source: .saved
-                )
+                RecommendationEngine.recommendation(for: $0, on: date)
             }
         )
     }
 
-    /// Nearby population candidates ranked by their fetched sunny conditions.
-    func nearbyRecommendations(on date: Date) -> [PlaceRecommendation] {
-        guard isNearbyDiscoveryEnabled else { return [] }
-        return RecommendationEngine.ranked(
-            nearbyWeather.compactMap { weather in
-                let metadata = nearbyMetadataByPlaceID[weather.id]
-                return RecommendationEngine.recommendation(
-                    for: weather,
-                    on: date,
-                    source: placesStore.place(id: weather.id) == nil
-                        ? .nearby
-                        : .saved,
-                    distanceKilometers: metadata?.distanceKilometers,
-                    population: metadata?.city.population
-                )
-            }
-        )
+    /// Resolves a detail route from either the library or the one transient
+    /// nearest-sunny result.
+    func city(for placeID: City.ID) -> City? {
+        if let savedCity = placesStore.place(id: placeID)?.city {
+            return savedCity
+        }
+        if let transientCity = surfacedTransientCitiesByID[placeID] {
+            return transientCity
+        }
+        guard let nearestSunnyRecommendation,
+              nearestSunnyRecommendation.id == placeID else {
+            return nil
+        }
+        return nearestSunnyRecommendation.cityWeather.city
     }
 
-    /// Combined Home ranking, deduplicated when a nearby candidate is saved.
-    func homeRecommendations(on date: Date) -> [PlaceRecommendation] {
-        let all = savedRecommendations(on: date)
-            + nearbyRecommendations(on: date)
-        var seen: Set<City.ID> = []
-        return RecommendationEngine.ranked(
-            all.filter { seen.insert($0.id).inserted }
-        )
-    }
-
-    /// Saves a discovered place directly into All Places, optionally tagging it
-    /// with one collection, then retains its stable forecast identity.
+    /// Saves a recommendation directly into Saved Places.
     @discardableResult
     func saveRecommendation(
-        _ recommendation: PlaceRecommendation,
-        in collectionID: PlaceCollection.ID? = nil
+        _ recommendation: NearestSunnyPlaceResult
     ) throws -> SavedPlace.ID {
-        try placesStore.savePlace(
-            recommendation.cityWeather.city,
-            in: collectionID
-        )
+        try placesStore.savePlace(recommendation.cityWeather.city)
     }
 
-    /// Clears the transient nearby error after native alert or retry handling.
-    func clearNearbyDiscoveryError() {
-        nearbyDiscoveryError = nil
-    }
-
-    /// Keeps the disposable forecast cache aligned with the current saved and
-    /// discovery scopes.
+    /// Keeps the disposable forecast cache aligned with saved places and the
+    /// compact transient Home search scope.
     func reconcileRetainedWeather() {
-        weatherStore.retainWeather(
-            for: Set(
-                placesStore.allPlaces.map(\.id)
-                    + nearbyCities.map(\.id)
-            )
-        )
+        var retainedIDs = Set(placesStore.allPlaces.map(\.id))
+        if let currentLocationCity {
+            retainedIDs.insert(currentLocationCity.id)
+        }
+        retainedIDs.formUnion(retainedSearchPlaceIDs)
+        retainedIDs.formUnion(surfacedTransientCitiesByID.keys)
+        weatherStore.retainWeather(for: retainedIDs)
     }
 
-    /// Removes transient discovery state while retaining the user's settings.
-    private func clearNearbyResults() {
-        nearbyCandidates = []
-        nearbyCities = []
-        nearbyMetadataByPlaceID = [:]
-        nearbyDiscoveryError = nil
-        isRefreshingNearby = false
-        reconcileRetainedWeather()
+    /// Invalidates the completed key when an explicit app reset occurs.
+    func resetHomeWeatherState() {
+        homeRefreshGeneration &+= 1
+        currentLocationCity = nil
+        currentLocationWeather = nil
+        nearestSunnyRecommendation = nil
+        isRefreshingHomeWeather = false
+        hasCompletedNearestSunnySearch = false
+        homeLocationError = nil
+        lastNearestSunnyWeatherQueryCount = 0
+        lastNearestSunnyCheckedCityCount = 0
+        retainedSearchPlaceIDs = []
+        surfacedTransientCitiesByID = [:]
+        lastCompletedSearchKey = nil
     }
 
-    /// Publishes All Places and optional collections to the existing widget
-    /// contract. Migrated collection IDs remain unchanged so installed widget
-    /// configurations can continue resolving their former list selection.
+    /// Publishes the one Saved Places scope to the widget extension.
     func publishWidgetCatalog(locale: Locale) {
-        let allPlaces = WidgetDataList(
+        let allPlaces = WidgetPlaceScope(
             id: "all-places",
-            displayName: localizedString("All Places", locale: locale),
+            // Keep the stable ID so existing widget configurations continue
+            // to resolve after the flat Saved Places migration.
+            displayName: localizedString("Saved Places", locale: locale),
             cities: placesStore.allPlaces.map {
                 widgetCity(for: $0, scopeID: "all-places", locale: locale)
             }
         )
-        let collections = placesStore.collections.map { collection in
-            WidgetDataList(
-                id: collection.id,
-                displayName: collection.name,
-                cities: placesStore.places(in: collection.id).map {
-                    widgetCity(
-                        for: $0,
-                        scopeID: collection.id,
-                        locale: locale
-                    )
-                }
-            )
-        }
         WidgetDataStore.save(
             WidgetDataCatalog(
-                lists: [allPlaces] + collections,
+                placeScopes: [allPlaces],
                 appLanguageIdentifier: locale.identifier
             )
         )
     }
 
-    /// Converts catalog rows to deterministic City identities. A matching saved
-    /// coordinate reuses its persisted identity so Home never duplicates it.
-    private func convertedCities(
-        from candidates: [NearbyWorldCityCandidate]
-    ) -> (
-        cities: [City],
-        metadata: [City.ID: NearbyWorldCityCandidate]
-    ) {
-        var cities: [City] = []
-        var metadata: [City.ID: NearbyWorldCityCandidate] = [:]
-
-        for candidate in candidates {
-            let catalogCity = City(
-                id: Self.stableCityID(for: candidate.city.id),
-                name: candidate.city.name,
-                country: candidate.city.countryName,
-                latitude: candidate.city.latitude,
-                longitude: candidate.city.longitude,
-                timeZoneIdentifier: nil,
-                catalogIdentifier: candidate.city.id
-            )
-
-            let city: City
-            if let savedID = placesStore.savedPlaceID(matching: catalogCity),
-               let savedPlace = placesStore.place(id: savedID) {
-                city = savedPlace.city
-            } else {
-                city = catalogCity
-            }
-
-            guard metadata[city.id] == nil else { continue }
-            cities.append(city)
-            metadata[city.id] = candidate
-        }
-        return (cities, metadata)
+    private func clearHomeLocationResults() {
+        homeRefreshGeneration &+= 1
+        currentLocationCity = nil
+        currentLocationWeather = nil
+        nearestSunnyRecommendation = nil
+        isRefreshingHomeWeather = false
+        hasCompletedNearestSunnySearch = false
+        homeLocationError = nil
+        lastNearestSunnyWeatherQueryCount = 0
+        lastNearestSunnyCheckedCityCount = 0
+        retainedSearchPlaceIDs = []
+        lastCompletedSearchKey = nil
+        reconcileRetainedWeather()
     }
 
-    /// Persists only the choices explicitly exposed by the native nearby sheet.
-    private func persistNearbyPreferences() {
-        defaults.set(
-            nearbyPreferences.radius.rawValue,
-            forKey: PreferenceKey.radius
+    private func isCurrentHomeRefresh(_ generation: Int) -> Bool {
+        !Task.isCancelled && homeRefreshGeneration == generation
+    }
+
+    private func nearestSunnySearchKey(
+        date: Date,
+        coordinate: CLLocationCoordinate2D,
+        locale: Locale
+    ) -> NearestSunnySearchKey {
+        let metadata = locationProvider.metadata
+        return NearestSunnySearchKey(
+            date: Calendar.current.startOfDay(for: date),
+            radius: nearestSunnySearchRadius,
+            roundedLatitude: (coordinate.latitude * 1_000).rounded() / 1_000,
+            roundedLongitude: (coordinate.longitude * 1_000).rounded() / 1_000,
+            localeIdentifier: locale.identifier,
+            locationDisplayName: metadata?.displayName,
+            locationCountryName: metadata?.countryName,
+            locationTimeZoneIdentifier: metadata?.timeZoneIdentifier
         )
-        defaults.set(
-            nearbyPreferences.limitToCurrentCountry,
-            forKey: PreferenceKey.limitToCountry
+    }
+
+    private func makeCurrentLocationCity(
+        coordinate: CLLocationCoordinate2D,
+        locale: Locale
+    ) -> City {
+        let metadata = locationProvider.metadata
+        let coordinateKey = String(
+            format: "%.4f,%.4f",
+            locale: Locale(identifier: "en_US_POSIX"),
+            coordinate.latitude,
+            coordinate.longitude
         )
+        return City(
+            id: Self.stableCityID(
+                namespace: "current-location",
+                value: coordinateKey
+            ),
+            name: metadata?.displayName
+                ?? localizedString("Current Location", locale: locale),
+            country: metadata?.countryName ?? "",
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            timeZoneIdentifier: metadata?.timeZoneIdentifier
+        )
+    }
+
+    private func makeCatalogCity(from record: WorldCityRecord) -> City {
+        City(
+            id: Self.stableCityID(namespace: "world-city", value: record.id),
+            name: record.name,
+            country: record.countryName,
+            latitude: record.latitude,
+            longitude: record.longitude,
+            catalogIdentifier: record.id
+        )
+    }
+
+    /// Reuses a durable saved identity for a catalog city whenever Search has
+    /// already added it to Saved Places.
+    private func resolvedCatalogCity(from record: WorldCityRecord) -> City {
+        let catalogCity = makeCatalogCity(from: record)
+        guard let savedID = placesStore.savedPlaceID(matching: catalogCity),
+              let savedCity = placesStore.place(id: savedID)?.city else {
+            return catalogCity
+        }
+        return savedCity
     }
 
     /// Creates the lightweight identity contract whose weather remains owned by
@@ -411,10 +513,10 @@ final class WeatherAtlasModel {
                 country: city.country,
                 latitude: city.latitude,
                 longitude: city.longitude,
-                listID: scopeID
+                scopeID: scopeID
             ),
             cityName: place.customName
-                ?? city.localizedName(locale: locale),
+                ?? city.displayName,
             timeZoneIdentifier: resolvedTimeZoneIdentifier,
             latitude: city.latitude,
             longitude: city.longitude,
@@ -428,21 +530,14 @@ final class WeatherAtlasModel {
         )
     }
 
-    private func deduplicatedCities(_ cities: [City]) -> [City] {
-        var seen: Set<City.ID> = []
-        return cities.filter { seen.insert($0.id).inserted }
-    }
-
-    private func deduplicatedWeather(_ weather: [CityWeather]) -> [CityWeather] {
-        var seen: Set<City.ID> = []
-        return weather.filter { seen.insert($0.id).inserted }
-    }
-
-    /// Derives a reproducible UUID from the world-cities dataset identity.
-    nonisolated private static func stableCityID(for worldCityID: String) -> UUID {
+    /// Derives a reproducible UUID from a namespaced source identity.
+    nonisolated private static func stableCityID(
+        namespace: String,
+        value: String
+    ) -> UUID {
         var bytes = Array(
             SHA256.hash(
-                data: Data("weather-atlas-world-city:\(worldCityID)".utf8)
+                data: Data("weather-atlas-\(namespace):\(value)".utf8)
             ).prefix(16)
         )
         bytes[6] = (bytes[6] & 0x0F) | 0x50
@@ -455,5 +550,22 @@ final class WeatherAtlasModel {
                 bytes[12], bytes[13], bytes[14], bytes[15]
             )
         )
+    }
+
+    private func logNearestSunnySearch(
+        radius: NearestSunnySearchRadius,
+        matchName: String?,
+        hiddenBecauseCurrentLocationIsSunny: Bool
+    ) {
+        #if DEBUG
+        let result = hiddenBecauseCurrentLocationIsSunny
+            ? "hidden-current-location-clear"
+            : matchName ?? "none"
+        print(
+            "[NearestSunnyPlace] checked \(lastNearestSunnyCheckedCityCount) cities; "
+                + "WeatherKit queries: \(lastNearestSunnyWeatherQueryCount); "
+                + "radius: \(Int(radius.kilometers)) km; result: \(result)"
+        )
+        #endif
     }
 }

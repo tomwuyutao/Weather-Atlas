@@ -67,9 +67,7 @@ final class WeatherService {
     
     /// Converts WeatherKit source values without filling omitted optional fields.
     func convertWeatherKitData(weather: Weather, for city: City, timeZone: TimeZone) -> CityWeather {
-        let currentTemp = weather.currentWeather.temperature.value
-
-        let dailyForecasts = weather.dailyForecast.forecast.enumerated().map { (index, day) -> DailyForecast in
+        let dailyForecasts = weather.dailyForecast.forecast.map { day -> DailyForecast in
             let daySymbol = day.symbolName
             let daytimeForecast = day.daytimeForecast
             let hourlyForecasts = generateHourlyFromDaily(
@@ -80,7 +78,6 @@ final class WeatherService {
 
             return DailyForecast(
                 date: day.date,
-                dayOffset: index,
                 dailyLow: day.lowTemperature.value,
                 dailyHigh: day.highTemperature.value,
                 symbolName: daySymbol,
@@ -88,6 +85,7 @@ final class WeatherService {
                     day.condition,
                     isDaylight: true
                 ) ?? AppWeatherCondition.fromWeatherSymbol(daySymbol),
+                isFullyClear: day.condition == .clear,
                 hourlyForecasts: hourlyForecasts,
                 cloudCover: daytimeForecast.cloudCover,
                 precipitationChance: daytimeForecast.precipitationChance,
@@ -97,15 +95,8 @@ final class WeatherService {
             )
         }
 
-        let currentWeather = weather.currentWeather
         return CityWeather(
             city: city,
-            temperature: currentTemp,
-            currentSymbolName: currentWeather.symbolName,
-            currentCondition: AppWeatherCondition.fromWeatherKit(
-                currentWeather.condition,
-                isDaylight: currentWeather.isDaylight
-            ) ?? AppWeatherCondition.fromWeatherSymbol(currentWeather.symbolName),
             dailyForecasts: Array(dailyForecasts),
             timeZone: timeZone
         )
@@ -164,12 +155,21 @@ final class WeatherService {
     }
 
     /// Resolves and fetches one city, reporting failure and returning `nil`.
-    func fetchWeatherForCity(_ city: City) async -> CityWeather? {
+    /// Query-budgeted callers can disable the normal single transient retry.
+    func fetchWeatherForCity(
+        _ city: City,
+        retriesOnFailure: Bool = true
+    ) async -> CityWeather? {
         do {
             // Fetch weather for the city
             let resolvedCity = try await resolvedCity(for: city)
             let location = CLLocation(latitude: resolvedCity.latitude, longitude: resolvedCity.longitude)
-            let weather = try await weatherWithOneRetry(for: location)
+            let weather: Weather
+            if retriesOnFailure {
+                weather = try await weatherWithOneRetry(for: location)
+            } else {
+                weather = try await weatherKitService.weather(for: location)
+            }
             
             // Convert to our model
             let cityWeather = try await convertWeatherKitData(weather: weather, for: resolvedCity)

@@ -10,29 +10,28 @@ import Foundation
 
 // MARK: - City
 
-/// Persistable place identity used by lists before and after weather is fetched.
+/// Persistable place identity used before and after weather is fetched.
 struct City: Identifiable, Hashable, Codable {
     /// Stable row and persistence identity.
-    var id = UUID()
+    let id: UUID
     /// User-facing place name, preserving the selected search result when applicable.
-    var name: String
+    let name: String
     /// Canonical country or region name returned by place resolution.
-    var country: String
+    let country: String
     /// Geographic latitude used by WeatherKit and MapKit.
     let latitude: Double
     /// Geographic longitude used by WeatherKit and MapKit.
     let longitude: Double
     /// Optional IANA or fixed-offset identifier retained with saved place data.
     let timeZoneIdentifier: String?
-    /// Stable source identity when this city came from the bundled world-city
-    /// dataset. Older, geocoded, and user-created records legitimately omit it.
+    /// Stable source identity when this city came from a bundled city catalog.
     let catalogIdentifier: String?
 
     /// Creates a fully named saved city.
     init(
         id: UUID = UUID(),
         name: String,
-        country: String = "",
+        country: String,
         latitude: Double,
         longitude: Double,
         timeZoneIdentifier: String? = nil,
@@ -47,43 +46,8 @@ struct City: Identifiable, Hashable, Codable {
         self.catalogIdentifier = catalogIdentifier
     }
 
-    /// Creates an unresolved coordinate placeholder for later reverse geocoding.
-    init(
-        id: UUID = UUID(),
-        latitude: Double,
-        longitude: Double,
-        timeZoneIdentifier: String? = nil,
-        catalogIdentifier: String? = nil
-    ) {
-        self.init(
-            id: id,
-            name: "",
-            country: "",
-            latitude: latitude,
-            longitude: longitude,
-            timeZoneIdentifier: timeZoneIdentifier,
-            catalogIdentifier: catalogIdentifier
-        )
-    }
-
-    /// Decodes old saved cities while preserving compatibility with newer fields.
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(UUID.self, forKey: .id)
-        name = try container.decodeIfPresent(String.self, forKey: .name) ?? ""
-        country = try container.decodeIfPresent(String.self, forKey: .country) ?? ""
-        latitude = try container.decode(Double.self, forKey: .latitude)
-        longitude = try container.decode(Double.self, forKey: .longitude)
-        timeZoneIdentifier = try container.decodeIfPresent(String.self, forKey: .timeZoneIdentifier)
-        catalogIdentifier = try container.decodeIfPresent(
-            String.self,
-            forKey: .catalogIdentifier
-        )
-    }
-
-    /// Returns the display city name stored with the city record.
-    /// Returns the best localized display name for this city-country pair.
-    func localizedName(locale: Locale = .current) -> String {
+    /// Returns the best available display name.
+    var displayName: String {
         if !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return name
         }
@@ -93,19 +57,12 @@ struct City: Identifiable, Hashable, Codable {
 
 // MARK: - City Weather
 
-/// Resolved city plus current and daily WeatherKit-backed forecast values.
+/// Resolved city plus its daily WeatherKit-backed forecast values.
 struct CityWeather: Identifiable, Hashable {
     /// Canonical resolved place metadata.
-    var city: City
+    let city: City
     /// Stable identity inherited directly from the saved city.
     var id: UUID { city.id }
-    /// Current temperature in Celsius.
-    let temperature: Double
-    /// WeatherKit's current-condition symbol, absent when the source omits it.
-    let currentSymbolName: String?
-    /// Normalized WeatherKit condition, with symbol classification retained as
-    /// a compatibility fallback for older cached snapshots.
-    let currentCondition: AppWeatherCondition?
     /// Available daily forecasts, whose horizons may legitimately differ by city.
     let dailyForecasts: [DailyForecast]
     /// Resolved timezone used for all city-local calendar comparisons.
@@ -113,37 +70,13 @@ struct CityWeather: Identifiable, Hashable {
 
     /// Creates a resolved weather aggregate without synthesizing missing fields.
     init(
-        // Retain the legacy label so existing cache restoration continues to
-        // compile. Identity now always comes from `city.id`.
-        id _: UUID? = nil,
         city: City,
-        temperature: Double,
-        currentSymbolName: String? = nil,
-        currentCondition: AppWeatherCondition? = nil,
         dailyForecasts: [DailyForecast],
         timeZone: TimeZone
     ) {
         self.city = city
-        self.temperature = temperature
-        self.currentSymbolName = currentSymbolName
-        self.currentCondition = currentCondition
-            ?? currentSymbolName.flatMap(AppWeatherCondition.fromWeatherSymbol)
         self.dailyForecasts = dailyForecasts
         self.timeZone = timeZone
-    }
-
-    /// Copies fetched data while restoring a saved city's stable identity.
-    func replacingID(_ id: UUID) -> CityWeather {
-        var identifiedCity = city
-        identifiedCity.id = id
-        return CityWeather(
-            city: identifiedCity,
-            temperature: temperature,
-            currentSymbolName: currentSymbolName,
-            currentCondition: currentCondition,
-            dailyForecasts: dailyForecasts,
-            timeZone: timeZone
-        )
     }
 
     /// Compares stable identity because forecast arrays are replaceable snapshots.
@@ -181,36 +114,6 @@ struct CityWeather: Identifiable, Hashable {
         }
     }
 
-    /// A boundary omission occurs when the literal selected date lies outside
-    /// the real forecast range returned for this city. WeatherKit can return
-    /// different range lengths for different cities, so no fixed day count is
-    /// required here. A gap inside the returned range is still an error.
-    func isForecastBoundaryOmission(
-        on selectedDate: Date,
-        selectionCalendar: Calendar = .current
-    ) -> Bool {
-        guard forecastIfAvailable(on: selectedDate, selectionCalendar: selectionCalendar) == nil else {
-            return false
-        }
-
-        let selectedDay = selectionCalendar.startOfDay(for: selectedDate)
-        let forecastDates = dailyForecasts.compactMap {
-            selectionDate(for: $0, selectionCalendar: selectionCalendar)
-        }
-        guard let firstDate = forecastDates.min(), let lastDate = forecastDates.max() else {
-            return false
-        }
-        return selectedDay < firstDate || selectedDay > lastDate
-    }
-
-    /// Finds the forecast for the city's local calendar day containing an
-    /// absolute instant, used for city-specific current-day data such as widgets.
-    func forecastForLocalDate(containing instant: Date) -> DailyForecast? {
-        var calendar = Calendar.current
-        calendar.timeZone = timeZone
-        return dailyForecasts.first { calendar.isDate($0.date, inSameDayAs: instant) }
-    }
-
     /// Converts the forecast's city-local year, month, and day into the device
     /// calendar used by the app-wide selector. The resulting union can be wider
     /// than one city's range when a list crosses several time zones.
@@ -244,17 +147,18 @@ struct DailyForecast: Identifiable {
     let date: Date
     /// Stable identity for this forecast day.
     var id: Date { date }
-    /// Position in the returned forecast sequence.
-    let dayOffset: Int
     /// Forecast daily low in Celsius.
     let dailyLow: Double
     /// Forecast daily high in Celsius.
     let dailyHigh: Double
     /// Raw WeatherKit condition symbol requiring explicit classification.
     let symbolName: String
-    /// Normalized WeatherKit condition, falling back to the symbol only when
-    /// restoring an older cache that predates native condition persistence.
+    /// Normalized WeatherKit condition, falling back to its symbol when needed.
     let condition: AppWeatherCondition?
+    /// Whether WeatherKit's source condition was exactly `.clear`. This keeps
+    /// the nearest-sunny feature stricter than the app's display grouping,
+    /// which intentionally presents `.mostlyClear` with the clear icon.
+    let isFullyClear: Bool
     /// Hourly forecasts associated with this local day.
     let hourlyForecasts: [HourlyForecast]
     /// Optional WeatherKit cloud fraction used by rankings.
@@ -267,11 +171,6 @@ struct DailyForecast: Identifiable {
     let sunrise: Date?
     /// Optional city-local sunset instant.
     let sunset: Date?
-
-    /// Recognized display symbol, or `nil` for an unknown source symbol.
-    var weatherIcon: String? {
-        condition?.displayIcon
-    }
 
     /// Rounded cloud-cover percentage when WeatherKit supplied the fraction.
     var cloudCoverPercent: Int? {
@@ -286,15 +185,14 @@ struct DailyForecast: Identifiable {
         return values.reduce(0, +) / Double(values.count)
     }
 
-    /// Creates one daily forecast while keeping legacy symbol-backed fixtures
-    /// and cache restoration source-compatible.
+    /// Creates one daily WeatherKit forecast.
     init(
         date: Date,
-        dayOffset: Int,
         dailyLow: Double,
         dailyHigh: Double,
         symbolName: String,
-        condition: AppWeatherCondition? = nil,
+        condition: AppWeatherCondition?,
+        isFullyClear: Bool,
         hourlyForecasts: [HourlyForecast],
         cloudCover: Double?,
         precipitationChance: Double?,
@@ -303,11 +201,11 @@ struct DailyForecast: Identifiable {
         sunset: Date?
     ) {
         self.date = date
-        self.dayOffset = dayOffset
         self.dailyLow = dailyLow
         self.dailyHigh = dailyHigh
         self.symbolName = symbolName
         self.condition = condition ?? AppWeatherCondition.fromWeatherSymbol(symbolName)
+        self.isFullyClear = isFullyClear
         self.hourlyForecasts = hourlyForecasts
         self.cloudCover = cloudCover
         self.precipitationChance = precipitationChance
@@ -325,8 +223,7 @@ struct HourlyForecast: Identifiable {
     var id: Date { date }
     /// Raw WeatherKit symbol requiring explicit classification.
     let symbolName: String
-    /// Normalized WeatherKit condition, with symbol parsing retained only for
-    /// older cache entries and fixtures.
+    /// Normalized WeatherKit condition, with symbol parsing as a fallback.
     let condition: AppWeatherCondition?
     /// Optional hourly air temperature in Celsius.
     let temperature: Double?
@@ -341,17 +238,17 @@ struct HourlyForecast: Identifiable {
     /// Optional horizontal visibility in kilometres.
     let visibilityKilometers: Double?
 
-    /// Creates an hourly record while keeping legacy symbol-only fixtures valid.
+    /// Creates an hourly WeatherKit record.
     init(
         date: Date,
         symbolName: String,
-        condition: AppWeatherCondition? = nil,
-        temperature: Double? = nil,
-        apparentTemperature: Double? = nil,
-        cloudCover: Double? = nil,
-        precipitationChance: Double? = nil,
-        uvIndex: Int? = nil,
-        visibilityKilometers: Double? = nil
+        condition: AppWeatherCondition?,
+        temperature: Double?,
+        apparentTemperature: Double?,
+        cloudCover: Double?,
+        precipitationChance: Double?,
+        uvIndex: Int?,
+        visibilityKilometers: Double?
     ) {
         self.date = date
         self.symbolName = symbolName

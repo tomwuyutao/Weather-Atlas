@@ -1,3 +1,3 @@
 "CFBundleDisplayName" = "Weather Atlas";
 "CFBundleName" = "Weather Atlas";
-"NSLocationWhenInUseUsageDescription" = "Weather Atlas usa tu ubicación para buscar y comparar ciudades soleadas dentro del radio de viaje que elijas.";
+"NSLocationWhenInUseUsageDescription" = "Weather Atlas usa tu ubicación para mostrar tu pronóstico local y encontrar la ciudad completamente soleada más cercana dentro de la distancia que elijas.";

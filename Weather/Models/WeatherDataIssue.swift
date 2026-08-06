@@ -21,9 +21,6 @@ struct WeatherDataIssue: Error, Codable, Hashable {
         case missingSunsetData
         case missingHourlyData
         case missingForecastData
-        case missingCloudCoverData
-        case missingPrecipitationData
-        case missingUVIndexData
         case missingTimeZone
         case unknownWeatherSymbol
     }
@@ -56,21 +53,6 @@ struct WeatherDataIssue: Error, Codable, Hashable {
     /// No daily forecast exists for the requested city and literal date.
     static let missingForecastData = WeatherDataIssue(
         kind: .missingForecastData,
-        detail: nil
-    )
-    /// WeatherKit omitted cloud cover needed for city ranking.
-    static let missingCloudCoverData = WeatherDataIssue(
-        kind: .missingCloudCoverData,
-        detail: nil
-    )
-    /// WeatherKit omitted precipitation probability needed by a surface.
-    static let missingPrecipitationData = WeatherDataIssue(
-        kind: .missingPrecipitationData,
-        detail: nil
-    )
-    /// WeatherKit omitted the daily UV index.
-    static let missingUVIndexData = WeatherDataIssue(
-        kind: .missingUVIndexData,
         detail: nil
     )
     /// Place resolution did not supply a usable timezone.

@@ -24,8 +24,8 @@ enum SunninessScoring {
         AppWeatherCondition.fromWeatherSymbol(symbolName)
     }
 
-    /// Prefers WeatherKit's semantic condition, retaining symbol parsing only
-    /// for older cache entries and source-compatible fixtures.
+    /// Prefers WeatherKit's semantic condition and parses the source symbol
+    /// when the semantic value is unavailable.
     static func condition(for forecast: DailyForecast) -> AppWeatherCondition? {
         forecast.condition ?? condition(for: forecast.symbolName)
     }
@@ -86,14 +86,6 @@ enum SunninessScoring {
             return nil
         }
         return data.hours
-    }
-
-    /// Whether a forecast has all solar, hourly, and symbol inputs needed to score.
-    static func hasDaytimeHourlyScoreData(for forecast: DailyForecast, timeZone: TimeZone) -> Bool {
-        guard case .success = sunnyHoursData(for: forecast, timeZone: timeZone) else {
-            return false
-        }
-        return true
     }
 
     /// Returns the longest contiguous run of fully or partly sunny local hours.

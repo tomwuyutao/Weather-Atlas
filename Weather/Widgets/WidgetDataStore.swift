@@ -16,19 +16,18 @@ enum WidgetDataStore {
     static let appGroupIdentifier = "group.Yutao-Wu.Weather"
     /// Preference key containing app-owned widget selection metadata.
     static let catalogKey = "bestSunnyPlacesWidgetCatalog"
-    // Legacy WidgetKit kind retained for installed medium-widget continuity.
-    /// Widget kind retained for installed medium-widget continuity.
+    /// WidgetKit kind for the unified Home Screen widget.
     static let kind = "BestSunnyPlacesWidget"
     /// Prefix for widget-owned timestamped per-city weather snapshots.
     static let weatherCacheKeyPrefix = "widgetWeatherSnapshot."
     /// Maximum accepted age of a normal widget weather snapshot.
     static let weatherCacheDuration: TimeInterval = 30 * 60
 
-    /// Builds a stable identifier from list identity and normalized coordinates.
-    static func cityIdentifier(country: String, latitude: Double, longitude: Double, listID: String) -> String {
+    /// Builds a stable identifier from scope identity and normalized coordinates.
+    static func cityIdentifier(country: String, latitude: Double, longitude: Double, scopeID: String) -> String {
         let latitude = String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), latitude)
         let longitude = String(format: "%.4f", locale: Locale(identifier: "en_US_POSIX"), longitude)
-        return "\(listID)|\(country)|\(latitude)|\(longitude)"
+        return "\(scopeID)|\(country)|\(latitude)|\(longitude)"
     }
 
     /// Decodes the current cross-process widget catalog.
@@ -41,24 +40,24 @@ enum WidgetDataStore {
 
     /// Locale published by the app, or system locale before first publication.
     static var appLocale: Locale {
-        guard let identifier = catalog()?.appLanguageIdentifier, !identifier.isEmpty else {
+        guard let identifier = catalog()?.appLanguageIdentifier,
+              !identifier.isEmpty else {
             return .autoupdatingCurrent
         }
         return Locale(identifier: identifier)
     }
 
-    /// Returns copy localized by the main app, falling back to the English key
-    /// for catalogs published by an older version.
+    /// Returns copy localized by the main app, falling back before publication.
     static func localizedText(for key: String) -> String {
-        catalog()?.localizedStrings?[key] ?? key
+        catalog()?.localizedStrings[key] ?? key
     }
 
     /// Encodes the catalog and requests WidgetKit timeline reloads.
     static func save(_ catalog: WidgetDataCatalog) {
         var publishedCatalog = catalog
-        let locale = catalog.appLanguageIdentifier
-            .flatMap { $0.isEmpty ? nil : Locale(identifier: $0) }
-            ?? .autoupdatingCurrent
+        let locale = catalog.appLanguageIdentifier.isEmpty
+            ? Locale.autoupdatingCurrent
+            : Locale(identifier: catalog.appLanguageIdentifier)
         publishedCatalog.localizedStrings = localizedWidgetStrings(locale: locale)
 
         guard let data = try? JSONEncoder().encode(publishedCatalog) else { return }
@@ -109,14 +108,7 @@ enum WidgetDataStore {
     /// the main app's String Catalog and selected locale are available.
     private static func localizedWidgetStrings(locale: Locale) -> [String: String] {
         [
-            "List": localizedString("List", locale: locale),
-            "City": localizedString("City", locale: locale),
             "Sunny Hours": localizedString("Sunny Hours", locale: locale),
-            "Sunny Hours (10 Days)": localizedString("Sunny Hours (10 Days)", locale: locale),
-            "Choose a city to track its sunny daytime hours.": localizedString(
-                "Choose a city to track its sunny daytime hours.",
-                locale: locale
-            ),
             "Track sunny hours for a chosen city.": localizedString(
                 "Track sunny hours for a chosen city.",
                 locale: locale

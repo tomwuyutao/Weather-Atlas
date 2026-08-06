@@ -76,44 +76,24 @@ struct WidgetWeatherSnapshot: Codable, Hashable {
     var dataIssue: WeatherDataIssue? = nil
 }
 
-extension WidgetWeatherSnapshot {
-    /// Copies weather-bearing fields from a published city catalog entry.
-    init(fetchedAt: Date, city: WidgetDataCity) {
-        self.init(
-            fetchedAt: fetchedAt,
-            timeZoneIdentifier: city.timeZoneIdentifier,
-            currentConditionSymbolName: city.currentConditionSymbolName,
-            daytimeHours: city.daytimeHours,
-            sunnyHours: city.sunnyHours,
-            partlySunnyHours: city.partlySunnyHours,
-            daylightBounds: city.daylightBounds,
-            sunnyWindowDays: city.sunnyWindowDays,
-            dataIssue: city.dataIssue
-        )
-    }
-}
-
 // MARK: - Widget Catalog Models
 
-/// Widget-selectable saved list and its published city options.
-struct WidgetDataList: Codable, Hashable, Identifiable {
-    /// Stable raw `CityListID` value.
+/// Widget-selectable place scope and its published city options.
+struct WidgetPlaceScope: Codable, Hashable, Identifiable {
+    /// Stable Saved Places scope identity.
     let id: String
-    /// User-facing saved or canonical list name.
+    /// User-facing Saved Places scope name.
     let displayName: String
-    /// Cities currently configured in this list.
+    /// Cities currently available in this scope.
     let cities: [WidgetDataCity]
 }
 
 /// Top-level app-group catalog read by App Intents and widget timelines.
 struct WidgetDataCatalog: Codable, Hashable {
-    /// All widget-selectable saved lists.
-    let lists: [WidgetDataList]
+    /// All widget-selectable place scopes.
+    let placeScopes: [WidgetPlaceScope]
     /// Main-app language used for widget localization consistency.
-    var appLanguageIdentifier: String? = nil
+    let appLanguageIdentifier: String
     /// Widget-only copy resolved by the localized main app before publication.
-    ///
-    /// Keeping this optional preserves decoding of catalogs written by earlier
-    /// app versions whose widget target did not contain localization resources.
-    var localizedStrings: [String: String]? = nil
+    var localizedStrings: [String: String] = [:]
 }

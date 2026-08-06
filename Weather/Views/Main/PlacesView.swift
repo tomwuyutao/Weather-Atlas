@@ -2,8 +2,7 @@
 //  PlacesView.swift
 //  Weather
 //
-//  Purpose: Presents the place-owned library as a compact native list.
-//  Collections are optional filters, never owners of places.
+//  Purpose: Presents the one-level Saved Places library as a compact list.
 //
 
 import SwiftUI
@@ -19,47 +18,30 @@ struct PlacesView: View {
     @Bindable var router: AppRouter
     @Binding var selectedDate: Date
 
-    @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
     @Environment(\.appTheme) private var theme
 
-    @State private var searchText = ""
     @State private var sortMode: WeatherMetricMode = .sunny
-    @State private var membershipPlace: SavedPlace?
     @State private var pendingDeletion: SavedPlace?
     @State private var presentedError: PlacesUIError?
     @AppStorage("temperatureUnit")
     private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
     @AppStorage("distanceUnit")
     private var distanceUnitRaw = DistanceUnit.defaultRawValue
+    @ScaledMetric(relativeTo: .body)
+    private var leadingColumnWidth: CGFloat = 32
 
-    private var selectedCollection: PlaceCollection? {
-        guard let collectionID = router.selectedCollectionID else { return nil }
-        return placesStore.collections.first { $0.id == collectionID }
-    }
-
-    private var collectionPlaces: [SavedPlace] {
-        placesStore.places(in: router.selectedCollectionID)
-    }
-
-    private var filteredPlaces: [SavedPlace] {
-        guard !searchText.isEmpty else { return collectionPlaces }
-        return collectionPlaces.filter { place in
-            displayName(for: place).localizedStandardContains(searchText)
-                || place.city.country.localizedStandardContains(searchText)
-        }
-    }
+    private var savedPlaces: [SavedPlace] { placesStore.allPlaces }
 
     private var presentations: [SavedPlacePresentation] {
-        filteredPlaces.map { place in
+        savedPlaces.map { place in
             let weather = weatherStore.weather(for: place.id)
             return SavedPlacePresentation(
                 place: place,
                 recommendation: weather.flatMap {
                     RecommendationEngine.recommendation(
                         for: $0,
-                        on: selectedDate,
-                        source: .saved
+                        on: selectedDate
                     )
                 },
                 isLoading: weatherStore.isLoading(place.id),
@@ -124,35 +106,16 @@ struct PlacesView: View {
         }
     }
 
-    private var forecastDates: [Date] {
-        let weather = collectionPlaces.compactMap {
-            weatherStore.weather(for: $0.id)
-        }
-        let availableDates = RecommendationEngine.availableDates(in: weather)
-        let baseDates: [Date]
-        if availableDates.isEmpty {
-            let today = calendar.startOfDay(for: Date())
-            baseDates = (0..<10).compactMap {
-                calendar.date(byAdding: .day, value: $0, to: today)
-            }
-        } else {
-            baseDates = availableDates
-        }
-
-        let normalizedSelection = calendar.startOfDay(for: selectedDate)
-        return Array(Set(baseDates + [normalizedSelection])).sorted()
-    }
-
     private var weatherLoadID: [City.ID] {
-        collectionPlaces.map(\.id)
+        savedPlaces.map(\.id)
     }
 
     private var navigationTitle: String {
-        selectedCollection?.name ?? localizedString("Places", locale: locale)
+        localizedString("Places", locale: locale)
     }
 
     private var temperatureUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
     }
 
     private var distanceUnit: DistanceUnit {
@@ -160,91 +123,71 @@ struct PlacesView: View {
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            ForecastDateStrip(
-                selection: $selectedDate,
-                availableDates: forecastDates
-            )
+        placesContent
+            .weatherAtlasScreenBackground()
+            .toolbarVisibility(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack(spacing: 8) {
+                    Text(navigationTitle)
+                        .font(.largeTitle.weight(.bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    .layoutPriority(1)
 
-            Divider()
+                    Spacer(minLength: 8)
 
-            placesContent
-        }
-        .weatherAtlasScreenBackground()
-        .navigationTitle(navigationTitle)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarTitleMenu {
-            collectionTitleMenu
-        }
-        .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                sortMenu
+                    sortMenu
+                        .frame(minWidth: 36, minHeight: 44)
 
-                Button {
-                    router.presentedSheet = .addPlace(
-                        collectionID: router.selectedCollectionID
+                    TopForecastDateSwitcher(
+                        selection: $selectedDate,
+                        availableDates: ForecastDateHorizon.dates
                     )
-                } label: {
-                    Label("Add Place", systemImage: "plus")
                 }
-                .accessibilityHint("Searches for a city to save.")
+                .font(.title3)
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.colors.primaryText)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
             }
-        }
-        .searchable(
-            text: $searchText,
-            placement: .navigationBarDrawer(displayMode: .automatic),
-            prompt: "Search Places"
-        )
-        .sheet(item: $membershipPlace) { place in
-            PlaceCollectionMembershipSheet(
-                place: place,
-                placesStore: placesStore
+            .confirmationDialog(
+                "Delete Place?",
+                isPresented: deletionIsPresented,
+                presenting: pendingDeletion
+            ) { place in
+                Button(
+                    "Delete \(displayName(for: place))",
+                    role: .destructive
+                ) {
+                    deletePlace(place)
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { place in
+                Text(
+                    "\(displayName(for: place)) will be removed from Saved Places."
+                )
+            }
+            .alert(
+                "Unable to Update Places",
+                isPresented: errorIsPresented,
+                presenting: presentedError
+            ) { _ in
+                Button("OK") {
+                    presentedError = nil
+                }
+            } message: { error in
+                Text(error.message)
+            }
+            .task(id: weatherLoadID) {
+                await weatherStore.load(
+                    cities: savedPlaces.map(\.city),
+                    locale: locale
+                )
+            }
+            .sensoryFeedback(
+                .selection,
+                trigger: sortMode.rawValue
             )
-        }
-        .confirmationDialog(
-            "Delete Place?",
-            isPresented: deletionIsPresented,
-            presenting: pendingDeletion
-        ) { place in
-            Button("Delete \(displayName(for: place))", role: .destructive) {
-                deletePlace(place)
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: { place in
-            Text(
-                "\(displayName(for: place)) will be removed from All Places and every collection."
-            )
-        }
-        .alert(
-            "Unable to Update Places",
-            isPresented: errorIsPresented,
-            presenting: presentedError
-        ) { _ in
-            Button("OK") {
-                presentedError = nil
-            }
-        } message: { error in
-            Text(error.message)
-        }
-        .task(id: weatherLoadID) {
-            await weatherStore.load(
-                cities: collectionPlaces.map(\.city),
-                locale: locale
-            )
-        }
-        .onChange(
-            of: router.selectedCollectionID,
-            initial: true
-        ) { _, collectionID in
-            guard placesStore.selectedCollectionID != collectionID else {
-                return
-            }
-            persistCollectionSelection(collectionID)
-        }
-        .onChange(of: placesStore.collections.map(\.id)) {
-            validateCollectionSelection()
-        }
-        .sensoryFeedback(.selection, trigger: sortMode.rawValue)
     }
 
     @ViewBuilder
@@ -254,20 +197,12 @@ struct PlacesView: View {
                 message: loadErrorDescription,
                 retry: placesStore.retryLoading
             )
-        } else if collectionPlaces.isEmpty {
+        } else if savedPlaces.isEmpty {
             PlacesEmptyView(
-                collectionName: selectedCollection?.name,
-                addPlace: {
-                    router.presentedSheet = .addPlace(
-                        collectionID: router.selectedCollectionID
-                    )
-                },
-                manageCollections: {
-                    router.placesPath.append(.collections)
+                searchPlaces: {
+                    router.selectedTab = .search
                 }
             )
-        } else if filteredPlaces.isEmpty {
-            ContentUnavailableView.search(text: searchText)
         } else {
             placesList
         }
@@ -282,16 +217,21 @@ struct PlacesView: View {
                             placeRow(presentation)
                         }
                     } header: {
-                        Label {
-                            Text(section.condition.title(locale: locale))
-                        } icon: {
+                        HStack(spacing: 5) {
                             Image(systemName: section.condition.systemImage)
-                                .foregroundStyle(
-                                    conditionTint(section.condition)
+                                .weatherIconStyle(
+                                    for: section.condition.systemImage
                                 )
+                                .frame(
+                                    width: leadingColumnWidth,
+                                    alignment: .leading
+                                )
+
+                            Text(section.condition.title(locale: locale))
                         }
                         .font(.body.weight(.bold))
                         .foregroundStyle(theme.colors.primaryText)
+                        .textCase(nil)
                     }
                 }
 
@@ -316,22 +256,20 @@ struct PlacesView: View {
                         placeRow(presentation)
                     }
                 } header: {
-                    Label(
-                        sortMode.title(locale: locale),
-                        systemImage: sortMode.icon
-                    )
+                    HStack(spacing: 5) {
+                        Image(systemName: sortMode.icon)
+                            .frame(
+                                width: leadingColumnWidth,
+                                alignment: .leading
+                            )
+                        Text(sortMode.title(locale: locale))
+                    }
                     .font(.body.weight(.bold))
                     .foregroundStyle(theme.colors.primaryText)
+                    .textCase(nil)
                 }
             }
 
-            if let attribution = weatherStore.weatherAttribution,
-               !sortedPresentations.isEmpty {
-                Section {
-                    WeatherAttributionView(attribution: attribution)
-                }
-                .listRowBackground(theme.colors.background)
-            }
         }
         .listStyle(.plain)
         .weatherAtlasScrollableBackground()
@@ -340,7 +278,7 @@ struct PlacesView: View {
         .environment(\.defaultMinListRowHeight, 1)
         .refreshable {
             await weatherStore.load(
-                cities: collectionPlaces.map(\.city),
+                cities: savedPlaces.map(\.city),
                 forceRefresh: true,
                 locale: locale
             )
@@ -352,10 +290,7 @@ struct PlacesView: View {
         _ presentation: SavedPlacePresentation
     ) -> some View {
         NavigationLink(
-            value: AppRoute.place(
-                id: presentation.id,
-                date: selectedDate
-            )
+            value: AppRoute.place(id: presentation.id)
         ) {
             CompactSavedPlaceRow(
                 presentation: presentation,
@@ -373,43 +308,14 @@ struct PlacesView: View {
         )
         .listRowSeparator(.hidden)
         .listRowBackground(theme.colors.background)
-        .swipeActions(edge: .leading, allowsFullSwipe: false) {
-            if !placesStore.collections.isEmpty {
-                Button {
-                    membershipPlace = presentation.place
-                } label: {
-                    Label("Collections", systemImage: "folder")
-                }
-                .tint(theme.colors.accent)
-            }
-        }
         .swipeActions(edge: .trailing) {
-            if let selectedCollection {
-                Button(role: .destructive) {
-                    remove(
-                        presentation.place,
-                        from: selectedCollection
-                    )
-                } label: {
-                    Label("Remove", systemImage: "folder.badge.minus")
-                }
-            } else {
-                Button(role: .destructive) {
-                    pendingDeletion = presentation.place
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
+            Button(role: .destructive) {
+                pendingDeletion = presentation.place
+            } label: {
+                Label("Delete", systemImage: "trash")
             }
         }
         .contextMenu {
-            if !placesStore.collections.isEmpty {
-                Button {
-                    membershipPlace = presentation.place
-                } label: {
-                    Label("Edit Collections", systemImage: "folder")
-                }
-            }
-
             Button(role: .destructive) {
                 pendingDeletion = presentation.place
             } label: {
@@ -418,51 +324,19 @@ struct PlacesView: View {
         }
     }
 
-    @ViewBuilder
-    private var collectionTitleMenu: some View {
-        Button {
-            selectCollection(nil)
-        } label: {
-            if router.selectedCollectionID == nil {
-                Label("All Places", systemImage: "checkmark")
-            } else {
-                Text("All Places")
-            }
-        }
-
-        if !placesStore.collections.isEmpty {
-            Section("Collections") {
-                ForEach(placesStore.collections) { collection in
-                    Button {
-                        selectCollection(collection.id)
-                    } label: {
-                        if router.selectedCollectionID == collection.id {
-                            Label(collection.name, systemImage: "checkmark")
-                        } else {
-                            Text(collection.name)
-                        }
-                    }
-                }
-            }
-        }
-
-        Divider()
-
-        Button {
-            router.presentedSheet = .createCollection(placeID: nil)
-        } label: {
-            Label("New Collection", systemImage: "folder.badge.plus")
-        }
-
-        Button {
-            router.placesPath.append(.collections)
-        } label: {
-            Label("Manage Collections", systemImage: "folder")
-        }
-    }
-
     private var sortMenu: some View {
         Menu {
+            Button {
+                router.presentedSheet = .addPlaces
+            } label: {
+                Label(
+                    "Add Places by Country or Continent",
+                    systemImage: "globe.europe.africa"
+                )
+            }
+
+            Divider()
+
             Picker("Sort Places", selection: $sortMode) {
                 ForEach(WeatherMetricMode.allCases) { mode in
                     Label(
@@ -478,7 +352,7 @@ struct PlacesView: View {
             Button {
                 Task {
                     await weatherStore.load(
-                        cities: collectionPlaces.map(\.city),
+                        cities: savedPlaces.map(\.city),
                         forceRefresh: true,
                         locale: locale
                     )
@@ -488,6 +362,7 @@ struct PlacesView: View {
             }
         } label: {
             Label("Sort and Refresh", systemImage: "arrow.up.arrow.down")
+                .labelStyle(.iconOnly)
         }
         .accessibilityHint(
             localizedString(
@@ -520,65 +395,7 @@ struct PlacesView: View {
     }
 
     private func displayName(for place: SavedPlace) -> String {
-        place.customName ?? place.city.localizedName(locale: locale)
-    }
-
-    private func conditionTint(
-        _ condition: RecommendationConditionGroup
-    ) -> Color {
-        switch condition {
-        case .sunny:
-            theme.colors.dotSun
-        case .partlySunny:
-            theme.colors.dotPartlyCloudy
-        case .mixed:
-            theme.colors.dotCloudy
-        case .wet:
-            theme.colors.dotRain
-        }
-    }
-
-    private func selectCollection(_ collectionID: PlaceCollection.ID?) {
-        do {
-            try placesStore.selectCollection(id: collectionID)
-            router.selectedCollectionID = collectionID
-        } catch {
-            present(error)
-        }
-    }
-
-    private func persistCollectionSelection(
-        _ collectionID: PlaceCollection.ID?
-    ) {
-        do {
-            try placesStore.selectCollection(id: collectionID)
-        } catch {
-            router.selectedCollectionID = placesStore.selectedCollectionID
-            present(error)
-        }
-    }
-
-    private func validateCollectionSelection() {
-        guard let collectionID = router.selectedCollectionID,
-              !placesStore.collections.contains(where: { $0.id == collectionID }) else {
-            return
-        }
-        selectCollection(nil)
-    }
-
-    private func remove(
-        _ place: SavedPlace,
-        from collection: PlaceCollection
-    ) {
-        do {
-            try placesStore.setMembership(
-                of: place.id,
-                in: collection.id,
-                isMember: false
-            )
-        } catch {
-            present(error)
-        }
+        place.customName ?? place.city.displayName
     }
 
     private func deletePlace(_ place: SavedPlace) {
@@ -624,9 +441,6 @@ private struct CompactSavedPlaceRow: View {
     @Environment(\.appTheme) private var theme
     @ScaledMetric(relativeTo: .body)
     private var rankColumnWidth: CGFloat = 32
-    @ScaledMetric(relativeTo: .caption)
-    private var metricColumnWidth: CGFloat = 76
-
     var body: some View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
@@ -651,52 +465,27 @@ private struct CompactSavedPlaceRow: View {
                 .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(1)
 
-            Spacer(minLength: 8)
-
-            if let recommendation = presentation.recommendation {
-                compactMetric(for: recommendation)
-            } else {
-                Text(compactStatusLabel)
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .lineLimit(1)
-            }
+            Spacer(minLength: 0)
         }
     }
 
     private var accessibilityLayout: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                if let rank {
-                    Text(rank, format: .number)
-                        .font(.headline)
-                        .foregroundStyle(theme.colors.secondaryText)
-                        .monospacedDigit()
-                }
-
-                Text(displayName)
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if let rank {
+                Text(rank, format: .number)
                     .font(.headline)
-                    .foregroundStyle(theme.colors.primaryText)
-            }
-
-            if let recommendation = presentation.recommendation {
-                let details = metricDetails(for: recommendation)
-                Label(
-                    "\(details.label): \(details.value)",
-                    systemImage: details.icon
-                )
-                .font(.subheadline)
-                .foregroundStyle(theme.colors.secondaryText)
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .monospacedDigit()
             } else {
-                HStack(alignment: .firstTextBaseline, spacing: 8) {
-                    statusIcon
-                        .accessibilityHidden(true)
-
-                    Text(statusDescription)
-                        .font(.subheadline)
-                        .foregroundStyle(theme.colors.secondaryText)
-                }
+                statusIcon
+                    .accessibilityHidden(true)
             }
+
+            Text(displayName)
+                .font(.headline)
+                .foregroundStyle(theme.colors.primaryText)
+
+            Spacer(minLength: 0)
         }
     }
 
@@ -717,25 +506,6 @@ private struct CompactSavedPlaceRow: View {
         }
     }
 
-    private func compactMetric(
-        for recommendation: PlaceRecommendation
-    ) -> some View {
-        let details = metricDetails(for: recommendation)
-
-        return HStack(spacing: 3) {
-            Image(systemName: details.icon)
-                .font(.caption.weight(.medium))
-                .accessibilityHidden(true)
-
-            Text(details.value)
-                .font(.caption.weight(.medium))
-                .monospacedDigit()
-        }
-        .foregroundStyle(theme.colors.secondaryText)
-        .lineLimit(1)
-        .frame(width: metricColumnWidth, alignment: .trailing)
-    }
-
     @ViewBuilder
     private var statusIcon: some View {
         if presentation.isLoading {
@@ -746,12 +516,6 @@ private struct CompactSavedPlaceRow: View {
                 .font(.body)
                 .foregroundStyle(theme.colors.secondaryText)
         }
-    }
-
-    private var compactStatusLabel: String {
-        presentation.isLoading
-            ? localizedString("Loading forecast…", locale: locale)
-            : localizedString("Forecast Unavailable", locale: locale)
     }
 
     private var statusDescription: String {
@@ -841,26 +605,16 @@ private struct CompactSavedPlaceRow: View {
 }
 
 private struct PlacesEmptyView: View {
-    let collectionName: String?
-    let addPlace: () -> Void
-    let manageCollections: () -> Void
+    let searchPlaces: () -> Void
     @Environment(\.locale) private var locale
 
     private var title: String {
-        collectionName == nil
-            ? localizedString("No Places Yet", locale: locale)
-            : localizedString("No Places in This Collection", locale: locale)
+        localizedString("No Places Yet", locale: locale)
     }
 
     private var description: String {
-        if let collectionName {
-            return localizedString(
-                "Save a new place here or add one of your existing places to \(collectionName).",
-                locale: locale
-            )
-        }
         return localizedString(
-            "Save cities you care about. You can organize them into optional collections later.",
+            "Save cities you care about to compare their weather in one place.",
             locale: locale
         )
     }
@@ -871,16 +625,12 @@ private struct PlacesEmptyView: View {
         } description: {
             Text(description)
         } actions: {
-            Button("Add Place", systemImage: "plus", action: addPlace)
+            Button(
+                "Search for a Place",
+                systemImage: "magnifyingglass",
+                action: searchPlaces
+            )
                 .buttonStyle(.borderedProminent)
-
-            if collectionName != nil {
-                Button(
-                    "Manage Collections",
-                    systemImage: "folder",
-                    action: manageCollections
-                )
-            }
         }
     }
 }

@@ -2,8 +2,8 @@
 //  PlaceWeatherStore.swift
 //  Weather
 //
-//  Purpose: Owns weather snapshots for independent saved and nearby places,
-//  without coupling forecast loading to a selected legacy list.
+//  Purpose: Owns weather snapshots for stable saved, current-location, and
+//  transient search place identities without coupling loading to a list.
 //
 
 import Foundation
@@ -18,19 +18,28 @@ struct PlaceWeatherFailure: Identifiable, Equatable {
     let message: String
 }
 
+/// Result of one cache-aware lookup, including whether this caller started a
+/// new WeatherKit request. The nearest-sunny search uses the flag only for
+/// debug accounting; cached answers remain equivalent to fresh answers.
+struct PlaceWeatherLookupResult {
+    let weather: CityWeather?
+    let performedWeatherKitRequest: Bool
+}
+
 /// Observable forecast repository keyed by stable place identity.
 @MainActor
 @Observable
 final class PlaceWeatherStore {
-    /// Latest usable forecast snapshot for each saved or discovered place.
+    /// Latest usable forecast snapshot for each stable place identity.
     private(set) var weatherByPlaceID: [City.ID: CityWeather] = [:]
     /// Place identities with an in-flight WeatherKit request.
     private(set) var loadingPlaceIDs: Set<City.ID> = []
     /// Most recent failed refresh for each place.
     private(set) var failuresByPlaceID: [City.ID: PlaceWeatherFailure] = [:]
-    /// Completion date of the latest successful place refresh.
-    private(set) var lastRefreshDate: Date?
-    /// Apple Weather attribution required on forecast-detail surfaces.
+    /// Explicit render revision ensures refreshed same-ID snapshots invalidate
+    /// consumers even though CityWeather's Hashable identity is place-based.
+    private(set) var weatherRevision = 0
+    /// Apple Weather attribution shown in Settings alongside every data source.
     private(set) var weatherAttribution: WeatherAttribution?
 
     /// WeatherKit adapter shared by every place-based app experience.
@@ -45,8 +54,7 @@ final class PlaceWeatherStore {
     private var inFlightRequestsByPlaceID: [
         City.ID: (token: UUID, task: Task<CityWeather?, Never>)
     ] = [:]
-    /// Simple actor-isolated request gate preserving the previous four-request
-    /// WeatherKit concurrency limit across independent callers.
+    /// Actor-isolated gate enforcing four concurrent WeatherKit requests.
     @ObservationIgnored private var activeRequestCount = 0
     @ObservationIgnored
     private var requestSlotWaiters: [CheckedContinuation<Void, Never>] = []
@@ -54,7 +62,7 @@ final class PlaceWeatherStore {
     /// make every other cached city appear fresh.
     @ObservationIgnored private var refreshDatesByPlaceID: [City.ID: Date] = [:]
 
-    /// Creates a place-keyed repository and restores any compatible cache.
+    /// Creates a place-keyed repository and restores its current cache format.
     init(
         weatherService: WeatherService,
         cache: PlaceWeatherSnapshotCache
@@ -64,19 +72,17 @@ final class PlaceWeatherStore {
 
         if let snapshot = cache.load() {
             for weather in snapshot.weather {
-                // Cache bytes are disposable and may come from an older build.
-                // Assignment deliberately makes duplicate identities safe.
+                // Assignment deliberately makes corrupt duplicate identities safe.
                 weatherByPlaceID[weather.id] = weather
             }
             refreshDatesByPlaceID = snapshot.refreshDatesByPlaceID.filter {
                 weatherByPlaceID[$0.key] != nil
             }
-            lastRefreshDate = refreshDatesByPlaceID.values.max()
         }
     }
 
     /// Convenience used by the live app while preserving main-actor creation of
-    /// the transitional WeatherKit service.
+    /// the WeatherKit service.
     convenience init() {
         self.init(
             weatherService: WeatherService(),
@@ -86,7 +92,8 @@ final class PlaceWeatherStore {
 
     /// Returns the latest usable weather for a stable place identity.
     func weather(for placeID: City.ID) -> CityWeather? {
-        weatherByPlaceID[placeID]
+        _ = weatherRevision
+        return weatherByPlaceID[placeID]
     }
 
     /// Whether one place is currently waiting for a WeatherKit response.
@@ -94,10 +101,47 @@ final class PlaceWeatherStore {
         loadingPlaceIDs.contains(placeID)
     }
 
+    /// Resolves one city through the same cache and in-flight coalescing as
+    /// bulk loads, while reporting whether this call started network work.
+    func lookup(
+        city: City,
+        forceRefresh: Bool = false,
+        retriesOnFailure: Bool = true,
+        locale: Locale = .autoupdatingCurrent
+    ) async -> PlaceWeatherLookupResult {
+        await loadAttributionIfNeeded()
+
+        if !forceRefresh,
+           let existing = inFlightRequestsByPlaceID[city.id] {
+            return PlaceWeatherLookupResult(
+                weather: await existing.task.value,
+                performedWeatherKitRequest: false
+            )
+        }
+
+        if !forceRefresh, !shouldRefresh(placeID: city.id) {
+            return PlaceWeatherLookupResult(
+                weather: weatherByPlaceID[city.id],
+                performedWeatherKitRequest: false
+            )
+        }
+
+        let weather = await startRequest(
+            for: city,
+            locale: locale,
+            supersedingExisting: forceRefresh,
+            retriesOnFailure: retriesOnFailure
+        ).value
+        return PlaceWeatherLookupResult(
+            weather: weather,
+            performedWeatherKitRequest: true
+        )
+    }
+
     /// Loads missing or stale places without disturbing independent consumers.
     ///
-    /// Home, Map, Places, nearby discovery, and detail can request forecasts at
-    /// once. A normal overlapping load coalesces with the request already
+    /// Home, Map, Places, Search, and detail can request forecasts at once. A
+    /// normal overlapping load coalesces with the request already
     /// represented by `loadingPlaceIDs`; a forced refresh supersedes only the
     /// matching place through its per-place request token.
     func load(
@@ -124,7 +168,8 @@ final class PlaceWeatherStore {
                 startRequest(
                     for: city,
                     locale: locale,
-                    supersedingExisting: forceRefresh
+                    supersedingExisting: forceRefresh,
+                    retriesOnFailure: true
                 )
             )
         }
@@ -144,12 +189,13 @@ final class PlaceWeatherStore {
         return await startRequest(
             for: city,
             locale: locale,
-            supersedingExisting: true
+            supersedingExisting: true,
+            retriesOnFailure: true
         ).value
     }
 
-    /// Removes snapshots that no longer belong to saved or visible discovery
-    /// results while preserving any explicitly retained identities.
+    /// Removes snapshots that no longer belong to an explicitly retained
+    /// saved or transient identity.
     func retainWeather(for placeIDs: Set<City.ID>) {
         weatherByPlaceID = weatherByPlaceID.filter { placeIDs.contains($0.key) }
         loadingPlaceIDs.formIntersection(placeIDs)
@@ -167,7 +213,6 @@ final class PlaceWeatherStore {
         refreshDatesByPlaceID = refreshDatesByPlaceID.filter {
             placeIDs.contains($0.key)
         }
-        lastRefreshDate = refreshDatesByPlaceID.values.max()
         persistSnapshot()
     }
 
@@ -183,7 +228,8 @@ final class PlaceWeatherStore {
     private func startRequest(
         for city: City,
         locale: Locale,
-        supersedingExisting: Bool
+        supersedingExisting: Bool,
+        retriesOnFailure: Bool
     ) -> Task<CityWeather?, Never> {
         if supersedingExisting {
             inFlightRequestsByPlaceID[city.id]?.task.cancel()
@@ -198,6 +244,7 @@ final class PlaceWeatherStore {
             return await self.performRequest(
                 for: city,
                 token: requestToken,
+                retriesOnFailure: retriesOnFailure,
                 locale: locale
             )
         }
@@ -212,6 +259,7 @@ final class PlaceWeatherStore {
     private func performRequest(
         for city: City,
         token: UUID,
+        retriesOnFailure: Bool,
         locale: Locale
     ) async -> CityWeather? {
         await acquireRequestSlot()
@@ -228,7 +276,10 @@ final class PlaceWeatherStore {
             return nil
         }
 
-        guard let fetched = await weatherService.fetchWeatherForCity(city) else {
+        guard let fetched = await weatherService.fetchWeatherForCity(
+            city,
+            retriesOnFailure: retriesOnFailure
+        ) else {
             guard !Task.isCancelled,
                   isCurrentRequest(for: city.id, token: token) else {
                 return nil
@@ -248,12 +299,12 @@ final class PlaceWeatherStore {
             return nil
         }
 
-        let stableWeather = fetched.replacingID(city.id)
-        weatherByPlaceID[city.id] = stableWeather
+        weatherByPlaceID[city.id] = fetched
+        weatherRevision &+= 1
         failuresByPlaceID[city.id] = nil
         recordSuccessfulRefresh(for: city.id)
         persistSnapshot()
-        return stableWeather
+        return fetched
     }
 
     /// Suspends excess place requests without blocking the main actor.
@@ -319,7 +370,6 @@ final class PlaceWeatherStore {
         at date: Date = Date()
     ) {
         refreshDatesByPlaceID[placeID] = date
-        lastRefreshDate = max(lastRefreshDate ?? date, date)
     }
 
     /// Keeps the first occurrence of each stable identity in user-visible order.
@@ -332,7 +382,6 @@ final class PlaceWeatherStore {
     /// because WeatherKit remains the source of truth.
     private func persistSnapshot() {
         let snapshot = PlaceWeatherSnapshot(
-            updatedAt: lastRefreshDate ?? Date(),
             weather: Array(weatherByPlaceID.values),
             refreshDatesByPlaceID: refreshDatesByPlaceID
         )
@@ -342,32 +391,10 @@ final class PlaceWeatherStore {
 
 /// Codable file representation for the place-keyed forecast cache.
 struct PlaceWeatherSnapshot {
-    /// Latest successful refresh, retained for compatibility and diagnostics.
-    let updatedAt: Date
-    /// Restored domain values.
+    /// Decoded domain values.
     let weather: [CityWeather]
-    /// Independent freshness timestamp for every restored place.
+    /// Independent freshness timestamp for every decoded place.
     let refreshDatesByPlaceID: [City.ID: Date]
-
-    /// Creates a snapshot. Older callers that omit per-place dates retain the
-    /// previous behavior by applying `updatedAt` to each included place.
-    init(
-        updatedAt: Date,
-        weather: [CityWeather],
-        refreshDatesByPlaceID: [City.ID: Date]? = nil
-    ) {
-        self.updatedAt = updatedAt
-        self.weather = weather
-        if let refreshDatesByPlaceID {
-            self.refreshDatesByPlaceID = refreshDatesByPlaceID
-        } else {
-            var fallbackRefreshDates: [City.ID: Date] = [:]
-            for weather in weather {
-                fallbackRefreshDates[weather.id] = updatedAt
-            }
-            self.refreshDatesByPlaceID = fallbackRefreshDates
-        }
-    }
 }
 
 /// Disposable, atomic cache stored below the system Caches directory.
@@ -376,15 +403,12 @@ struct PlaceWeatherSnapshotCache {
     /// Versioned file format so incompatible forecast snapshots can be discarded.
     private struct Document: Codable {
         let schemaVersion: Int
-        let updatedAt: Date
         let weather: [CachedCityWeather]
-        /// Added compatibly to schema v1. Missing values from an older cache
-        /// fall back to that document's global `updatedAt`.
-        let refreshDatesByPlaceID: [String: Date]?
+        let refreshDatesByPlaceID: [String: Date]
     }
 
     /// Current cache schema.
-    private static let schemaVersion = 1
+    private static let schemaVersion = 2
     /// Dedicated snapshot file.
     private let fileURL: URL?
 
@@ -398,10 +422,10 @@ struct PlaceWeatherSnapshotCache {
         )
         fileURL = cachesDirectory?
             .appending(path: "WeatherAtlas", directoryHint: .isDirectory)
-            .appending(path: "place-weather-v1.json")
+            .appending(path: "place-weather-v2.json")
     }
 
-    /// Restores compatible snapshots and silently discards corrupt cache bytes.
+    /// Restores current snapshots and silently discards corrupt cache bytes.
     func load() -> PlaceWeatherSnapshot? {
         guard let fileURL,
               let data = try? Data(contentsOf: fileURL),
@@ -426,16 +450,15 @@ struct PlaceWeatherSnapshotCache {
         let weather = placeOrder.compactMap { weatherByPlaceID[$0] }
 
         var refreshDatesByPlaceID: [City.ID: Date] = [:]
-        for (rawPlaceID, refreshDate) in document.refreshDatesByPlaceID ?? [:] {
+        for (rawPlaceID, refreshDate) in document.refreshDatesByPlaceID {
             guard let placeID = UUID(uuidString: rawPlaceID) else { continue }
             refreshDatesByPlaceID[placeID] = refreshDate
         }
-        for place in weather where refreshDatesByPlaceID[place.id] == nil {
-            refreshDatesByPlaceID[place.id] = document.updatedAt
+        guard weather.allSatisfy({ refreshDatesByPlaceID[$0.id] != nil }) else {
+            return nil
         }
 
         return PlaceWeatherSnapshot(
-            updatedAt: document.updatedAt,
             weather: weather,
             refreshDatesByPlaceID: refreshDatesByPlaceID
         )
@@ -446,7 +469,6 @@ struct PlaceWeatherSnapshotCache {
         guard let fileURL else { return }
         let document = Document(
             schemaVersion: Self.schemaVersion,
-            updatedAt: snapshot.updatedAt,
             weather: snapshot.weather.map(CachedCityWeather.init),
             refreshDatesByPlaceID: Dictionary(
                 uniqueKeysWithValues: snapshot.refreshDatesByPlaceID.map {

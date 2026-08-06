@@ -115,8 +115,7 @@ enum AppWeatherCondition: String, Codable {
     }
 
     /// Maps WeatherKit's semantic condition into the app's smaller presentation
-    /// vocabulary. The source symbol remains available as a compatibility
-    /// fallback, but is no longer the primary source for live forecasts.
+    /// vocabulary. Source-symbol parsing handles conditions outside this map.
     nonisolated static func fromWeatherKit(
         _ condition: WeatherKit.WeatherCondition,
         isDaylight: Bool? = nil

@@ -8,11 +8,6 @@
 
 import Foundation
 
-enum RecommendationSource: String, Codable, Hashable {
-    case saved
-    case nearby
-}
-
 enum RecommendationConditionGroup: String, CaseIterable, Identifiable {
     case sunny
     case partlySunny
@@ -41,9 +36,9 @@ enum RecommendationConditionGroup: String, CaseIterable, Identifiable {
         case .partlySunny:
             localizedString("Partly Sunny", locale: locale)
         case .mixed:
-            localizedString("Mixed Conditions", locale: locale)
+            localizedString("Cloudy, Windy, Snowy, Foggy", locale: locale)
         case .wet:
-            localizedString("Rain and Drizzle", locale: locale)
+            localizedString("Drizzle, Rain", locale: locale)
         }
     }
 }
@@ -52,15 +47,12 @@ struct PlaceRecommendation: Identifiable {
     let cityWeather: CityWeather
     let forecast: DailyForecast
     let condition: AppWeatherCondition
-    let source: RecommendationSource
     let cloudCover: Double
     let precipitationChance: Double?
     let sunnyHourCount: Int
     let bestSunnyWindow: ClosedRange<Int>?
     let maximumFeelsLike: Double?
     let maximumVisibilityKilometers: Double?
-    let distanceKilometers: Double?
-    let population: Int?
 
     var id: City.ID { cityWeather.city.id }
 
@@ -78,39 +70,10 @@ struct PlaceRecommendation: Identifiable {
     }
 }
 
-struct RecommendationGroup: Identifiable {
-    let condition: RecommendationConditionGroup
-    let recommendations: [PlaceRecommendation]
-
-    var id: RecommendationConditionGroup { condition }
-}
-
 enum RecommendationEngine {
-    static func availableDates(in weather: [CityWeather]) -> [Date] {
-        let dates = weather.flatMap { cityWeather in
-            cityWeather.dailyForecasts.map { forecast in
-                var calendar = Calendar(identifier: .gregorian)
-                calendar.timeZone = cityWeather.timeZone
-                let components = calendar.dateComponents([.year, .month, .day], from: forecast.date)
-                var selectionCalendar = Calendar.current
-                selectionCalendar.timeZone = .current
-                return selectionCalendar.date(from: components)
-            }
-        }
-        let today = Calendar.current.startOfDay(for: Date())
-        return Array(
-            Set(dates.compactMap { $0 })
-                .filter { $0 >= today }
-        )
-        .sorted()
-    }
-
     static func recommendation(
         for cityWeather: CityWeather,
-        on date: Date,
-        source: RecommendationSource,
-        distanceKilometers: Double? = nil,
-        population: Int? = nil
+        on date: Date
     ) -> PlaceRecommendation? {
         guard let forecast = cityWeather.forecastIfAvailable(on: date),
               let condition = SunninessScoring.condition(for: forecast),
@@ -132,7 +95,6 @@ enum RecommendationEngine {
             cityWeather: cityWeather,
             forecast: forecast,
             condition: condition,
-            source: source,
             cloudCover: cloudCover,
             precipitationChance: forecast.precipitationChance,
             sunnyHourCount: sunnyHourCount,
@@ -141,20 +103,8 @@ enum RecommendationEngine {
                 timeZone: cityWeather.timeZone
             ),
             maximumFeelsLike: forecast.hourlyForecasts.compactMap(\.apparentTemperature).max(),
-            maximumVisibilityKilometers: forecast.hourlyForecasts.compactMap(\.visibilityKilometers).max(),
-            distanceKilometers: distanceKilometers,
-            population: population
+            maximumVisibilityKilometers: forecast.hourlyForecasts.compactMap(\.visibilityKilometers).max()
         )
-    }
-
-    static func recommendations(
-        for weather: [CityWeather],
-        on date: Date,
-        source: RecommendationSource
-    ) -> [PlaceRecommendation] {
-        weather.compactMap {
-            recommendation(for: $0, on: date, source: source)
-        }
     }
 
     static func ranked(_ recommendations: [PlaceRecommendation]) -> [PlaceRecommendation] {
@@ -228,16 +178,6 @@ enum RecommendationEngine {
         }
     }
 
-    static func groups(from recommendations: [PlaceRecommendation]) -> [RecommendationGroup] {
-        let rankedRecommendations = ranked(recommendations)
-        return RecommendationConditionGroup.allCases.compactMap { condition in
-            let matches = rankedRecommendations.filter { $0.conditionGroup == condition }
-            return matches.isEmpty
-                ? nil
-                : RecommendationGroup(condition: condition, recommendations: matches)
-        }
-    }
-
     nonisolated private static func isBetterRecommendation(
         _ lhs: PlaceRecommendation,
         _ rhs: PlaceRecommendation
@@ -256,12 +196,6 @@ enum RecommendationEngine {
         let rhsRain = rhs.precipitationChance ?? 0
         if lhsRain != rhsRain {
             return lhsRain < rhsRain
-        }
-
-        let lhsDistance = lhs.distanceKilometers ?? .greatestFiniteMagnitude
-        let rhsDistance = rhs.distanceKilometers ?? .greatestFiniteMagnitude
-        if lhsDistance != rhsDistance {
-            return lhsDistance < rhsDistance
         }
 
         return lhs.cityWeather.city.id.uuidString < rhs.cityWeather.city.id.uuidString
@@ -313,8 +247,10 @@ enum RecommendationEngine {
         _ rhs: PlaceRecommendation,
         locale: Locale
     ) -> Bool {
-        lhs.cityWeather.city.localizedName(locale: locale)
-            .localizedStandardCompare(rhs.cityWeather.city.localizedName(locale: locale))
-            == .orderedAscending
+        lhs.cityWeather.city.displayName.compare(
+            rhs.cityWeather.city.displayName,
+            options: [.caseInsensitive, .diacriticInsensitive, .numeric],
+            locale: locale
+        ) == .orderedAscending
     }
 }

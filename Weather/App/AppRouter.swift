@@ -17,24 +17,17 @@ enum AppTab: Hashable {
 }
 
 enum AppRoute: Hashable {
-    case place(id: City.ID, date: Date)
-    case collections
+    case place(id: City.ID)
 }
 
 enum AppSheetDestination: Identifiable, Hashable {
-    case addPlace(collectionID: PlaceCollection.ID?)
-    case createCollection(placeID: SavedPlace.ID?)
-    case nearbyDiscovery
+    case addPlaces
     case settings
 
     var id: String {
         switch self {
-        case .addPlace(let collectionID):
-            "add-place-\(collectionID ?? "all")"
-        case .createCollection(let placeID):
-            "create-collection-\(placeID?.uuidString ?? "empty")"
-        case .nearbyDiscovery:
-            "nearby-discovery"
+        case .addPlaces:
+            "add-places"
         case .settings:
             "settings"
         }
@@ -48,24 +41,15 @@ final class AppRouter {
     var homePath: [AppRoute] = []
     var mapPath: [AppRoute] = []
     var placesPath: [AppRoute] = []
-    var searchPath: [AppRoute] = []
     var presentedSheet: AppSheetDestination?
-    var selectedCollectionID: PlaceCollection.ID?
     var selectedMapPlaceID: City.ID?
 
-    func showMap(
-        collectionID: PlaceCollection.ID? = nil,
-        placeID: City.ID? = nil
-    ) {
-        selectedCollectionID = collectionID
+    func showMap(placeID: City.ID? = nil) {
         selectedMapPlaceID = placeID
         selectedTab = .map
     }
 
-    func showPlaces(
-        collectionID: PlaceCollection.ID? = nil
-    ) {
-        selectedCollectionID = collectionID
+    func showPlaces() {
         selectedTab = .places
     }
 }

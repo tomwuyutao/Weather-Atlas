@@ -59,24 +59,6 @@ func weatherDataIssueMessage(
             locale: locale,
             cityName
         )
-    case .missingCloudCoverData:
-        return String(
-            format: localizedString("Missing cloud-cover data for %@.", locale: locale),
-            locale: locale,
-            cityName
-        )
-    case .missingPrecipitationData:
-        return String(
-            format: localizedString("Missing precipitation data for %@.", locale: locale),
-            locale: locale,
-            cityName
-        )
-    case .missingUVIndexData:
-        return String(
-            format: localizedString("Missing UV-index data for %@.", locale: locale),
-            locale: locale,
-            cityName
-        )
     case .missingTimeZone:
         return String(
             format: localizedString("Missing time zone for %@.", locale: locale),

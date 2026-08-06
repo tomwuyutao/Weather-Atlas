@@ -2,8 +2,8 @@
 //  LocationProvider.swift
 //  Weather
 //
-//  Purpose: Provides an explicitly requested current location and ISO country
-//  without prompting for permission during app launch.
+//  Purpose: Provides an explicitly requested current coordinate and display
+//  metadata without prompting for permission during initialization.
 //
 
 @preconcurrency import CoreLocation
@@ -13,8 +13,8 @@ import Observation
 
 // MARK: - Location State
 
-/// User-visible phases of the contextual nearby-location workflow.
-nonisolated enum LocationProviderStatus: Equatable, Sendable {
+/// User-visible phases of the current-location workflow.
+nonisolated enum LocationProviderStatus: Equatable, Hashable, Sendable {
     /// No location request is active.
     case idle
     /// The device-wide Location Services switch is being checked off-main.
@@ -23,12 +23,12 @@ nonisolated enum LocationProviderStatus: Equatable, Sendable {
     case requestingAuthorization
     /// Core Location is obtaining a one-shot coordinate.
     case locating
-    /// A coordinate is available and its ISO country is being resolved.
-    case resolvingCountry
-    /// Coordinate and ISO country are both available.
+    /// A coordinate is available and its display metadata is being resolved.
+    case resolvingPlace
+    /// Coordinate and display metadata are both available.
     case ready
-    /// The coordinate is usable, but country resolution failed.
-    case readyWithoutCountry
+    /// The coordinate is usable, but display metadata resolution failed.
+    case readyWithoutMetadata
     /// The user has denied this app's location access.
     case denied
     /// Device policy prevents this app from using location.
@@ -39,19 +39,20 @@ nonisolated enum LocationProviderStatus: Equatable, Sendable {
     case failed
 }
 
-/// Current country metadata returned by Apple's reverse geocoder.
-nonisolated struct CurrentCountry: Equatable, Hashable, Sendable {
-    /// ISO 3166-1 alpha-2 country code.
-    let isoCountryCode: String
+/// Display metadata returned by Apple's reverse geocoder for the coordinate.
+nonisolated struct CurrentLocationMetadata: Equatable, Hashable, Sendable {
+    /// City, locality, or map-item name suitable for the Home card.
+    let displayName: String?
     /// Geocoder-provided localized country name, when available.
-    let localizedName: String?
+    let countryName: String?
+    /// Time zone identifier attached to the resolved place, when available.
+    let timeZoneIdentifier: String?
 }
 
-/// Internal country-resolution failures.
-nonisolated private enum CountryResolutionError: Error {
+/// Internal display-metadata resolution failures.
+nonisolated private enum LocationMetadataResolutionError: Error {
     case requestUnavailable
     case noResult
-    case missingCountryCode
 }
 
 // MARK: - Provider
@@ -60,7 +61,7 @@ nonisolated private enum CountryResolutionError: Error {
 ///
 /// Initializing this provider never requests permission or starts location
 /// updates. Call `requestCurrentLocation(preferredLocale:)` from an explicit
-/// nearby-discovery action.
+/// current-location action.
 @MainActor
 @Observable
 final class LocationProvider: NSObject, CLLocationManagerDelegate {
@@ -68,8 +69,8 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     private(set) var status: LocationProviderStatus = .idle
     /// Most recent coordinate returned by Core Location.
     private(set) var coordinate: CLLocationCoordinate2D?
-    /// ISO country metadata for the current coordinate.
-    private(set) var country: CurrentCountry?
+    /// Localized display metadata for the current coordinate.
+    private(set) var metadata: CurrentLocationMetadata?
 
     /// Whether the current coordinate can already power an unrestricted query.
     var hasUsableCoordinate: Bool {
@@ -92,8 +93,8 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     @ObservationIgnored private let manager: CLLocationManager
     /// Pre-iOS 26 reverse geocoder retained so prior work can be cancelled.
     @ObservationIgnored private let geocoder = CLGeocoder()
-    /// Current country-resolution task.
-    @ObservationIgnored private var countryResolutionTask: Task<Void, Never>?
+    /// Current display-metadata resolution task.
+    @ObservationIgnored private var metadataResolutionTask: Task<Void, Never>?
     /// Off-main device-wide Location Services check.
     @ObservationIgnored private var availabilityTask: Task<Void, Never>?
     /// Whether authorization was requested as part of a location action.
@@ -110,23 +111,9 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         synchronizeAuthorizationStatus()
     }
 
-    /// Preview-only initializer that performs no live location or geocoding.
-    init(
-        previewStatus: LocationProviderStatus,
-        coordinate: CLLocationCoordinate2D? = nil,
-        country: CurrentCountry? = nil
-    ) {
-        manager = CLLocationManager()
-        self.status = previewStatus
-        self.coordinate = coordinate
-        self.country = country
-        super.init()
-        configureManager()
-    }
-
     deinit {
         availabilityTask?.cancel()
-        countryResolutionTask?.cancel()
+        metadataResolutionTask?.cancel()
         geocoder.cancelGeocode()
     }
 
@@ -136,7 +123,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     ) {
         self.preferredLocale = preferredLocale
         availabilityTask?.cancel()
-        countryResolutionTask?.cancel()
+        metadataResolutionTask?.cancel()
         geocoder.cancelGeocode()
         status = .checkingAvailability
 
@@ -156,8 +143,8 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    /// Refreshes a previously authorized nearby opt-in without ever triggering
-    /// the first-use permission prompt.
+    /// Refreshes a previously authorized location without ever triggering the
+    /// first-use permission prompt.
     func requestCurrentLocationIfAuthorized(
         preferredLocale: Locale = .autoupdatingCurrent
     ) {
@@ -203,9 +190,9 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         }
 
         coordinate = location.coordinate
-        country = nil
-        status = .resolvingCountry
-        resolveCountry(for: location)
+        metadata = nil
+        status = .resolvingPlace
+        resolveMetadata(for: location)
     }
 
     /// Converts Core Location failures into stable states rather than exposing
@@ -222,7 +209,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         status = .failed
     }
 
-    /// Configures accuracy appropriate for city-radius discovery.
+    /// Configures accuracy appropriate for city-level weather lookup.
     private func configureManager() {
         manager.delegate = self
         manager.desiredAccuracy = kCLLocationAccuracyHundredMeters
@@ -267,76 +254,86 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         }
     }
 
-    /// Resolves ISO country metadata while retaining an unrestricted coordinate
-    /// if reverse geocoding is temporarily unavailable.
-    private func resolveCountry(for location: CLLocation) {
-        countryResolutionTask?.cancel()
-        countryResolutionTask = Task { [weak self] in
+    /// Resolves display metadata while retaining the coordinate if reverse
+    /// geocoding is temporarily unavailable.
+    private func resolveMetadata(for location: CLLocation) {
+        metadataResolutionTask?.cancel()
+        metadataResolutionTask = Task { [weak self] in
             guard let self else { return }
             do {
-                let resolvedCountry: CurrentCountry
+                let resolvedMetadata: CurrentLocationMetadata
                 if #available(iOS 26.0, *) {
-                    resolvedCountry = try await mapKitCountry(for: location)
+                    // Fix for Home's place label: MapKit may return no item in
+                    // Simulator or at a coordinate it cannot name. Fall back
+                    // to Core Location so the card still receives the normal
+                    // reverse-geocoded locality (for example, "London").
+                    do {
+                        resolvedMetadata = try await mapKitMetadata(
+                            for: location
+                        )
+                    } catch {
+                        resolvedMetadata = try await coreLocationMetadata(
+                            for: location
+                        )
+                    }
                 } else {
-                    resolvedCountry = try await coreLocationCountry(for: location)
+                    resolvedMetadata = try await coreLocationMetadata(for: location)
                 }
                 guard !Task.isCancelled else { return }
-                country = resolvedCountry
+                metadata = resolvedMetadata
                 status = .ready
             } catch is CancellationError {
                 return
             } catch {
                 guard !Task.isCancelled else { return }
-                country = nil
-                status = .readyWithoutCountry
+                metadata = nil
+                status = .readyWithoutMetadata
             }
         }
     }
 
     /// Uses MapKit's modern reverse-geocoding request on iOS 26 and later.
     @available(iOS 26.0, *)
-    private func mapKitCountry(for location: CLLocation) async throws -> CurrentCountry {
+    private func mapKitMetadata(
+        for location: CLLocation
+    ) async throws -> CurrentLocationMetadata {
         guard let request = MKReverseGeocodingRequest(location: location) else {
-            throw CountryResolutionError.requestUnavailable
+            throw LocationMetadataResolutionError.requestUnavailable
         }
         request.preferredLocale = preferredLocale
-        guard let mapItem = try await request.mapItems.first,
-              let representations = mapItem.addressRepresentations else {
-            throw CountryResolutionError.noResult
+        guard let mapItem = try await request.mapItems.first else {
+            throw LocationMetadataResolutionError.noResult
         }
 
-        guard let rawCode = representations.region?.identifier else {
-            throw CountryResolutionError.missingCountryCode
+        let representations = mapItem.addressRepresentations
+        guard let displayName = representations?.cityName ?? mapItem.name,
+              !displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+                .isEmpty else {
+            throw LocationMetadataResolutionError.noResult
         }
-        let code = rawCode
-            .trimmingCharacters(in: CharacterSet.whitespacesAndNewlines)
-            .uppercased()
-        guard code.count == 2 else {
-            throw CountryResolutionError.missingCountryCode
-        }
-        return CurrentCountry(
-            isoCountryCode: code,
-            localizedName: representations.regionName
+        return CurrentLocationMetadata(
+            displayName: displayName,
+            countryName: representations?.regionName,
+            timeZoneIdentifier: mapItem.timeZone?.identifier
         )
     }
 
     /// Uses Core Location's reverse geocoder on the iOS 18 fallback path.
-    private func coreLocationCountry(for location: CLLocation) async throws -> CurrentCountry {
+    private func coreLocationMetadata(
+        for location: CLLocation
+    ) async throws -> CurrentLocationMetadata {
         guard let placemark = try await geocoder.reverseGeocodeLocation(
             location,
             preferredLocale: preferredLocale
         ).first else {
-            throw CountryResolutionError.noResult
+            throw LocationMetadataResolutionError.noResult
         }
-        let code = placemark.isoCountryCode?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
-        guard let code, code.count == 2 else {
-            throw CountryResolutionError.missingCountryCode
-        }
-        return CurrentCountry(
-            isoCountryCode: code,
-            localizedName: placemark.country
+        return CurrentLocationMetadata(
+            displayName: placemark.locality
+                ?? placemark.subAdministrativeArea
+                ?? placemark.administrativeArea,
+            countryName: placemark.country,
+            timeZoneIdentifier: placemark.timeZone?.identifier
         )
     }
 }

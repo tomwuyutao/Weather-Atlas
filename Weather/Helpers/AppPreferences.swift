@@ -13,7 +13,6 @@ import SwiftUI
 
 /// Persistable temperature preference exposed in Settings.
 enum TemperatureUnit: String, CaseIterable {
-    case automatic = "automatic"
     case celsius = "celsius"
     case fahrenheit = "fahrenheit"
 
@@ -33,30 +32,18 @@ enum TemperatureUnit: String, CaseIterable {
     /// Initial persisted value for installations without a saved preference.
     static let defaultRawValue = TemperatureUnit.systemDefault.rawValue
 
-    /// Converts Automatic into the current system choice.
-    var resolved: TemperatureUnit {
-        switch self {
-        case .automatic:
-            return Self.systemDefault
-        case .celsius, .fahrenheit:
-            return self
-        }
-    }
-
     /// Localized Settings label for this preference.
     func displayName(locale: Locale = .current) -> String {
-        switch resolved {
+        switch self {
         case .celsius: return localizedString("Celsius (°C)", locale: locale)
         case .fahrenheit: return localizedString("Fahrenheit (°F)", locale: locale)
-        case .automatic: return resolved.displayName(locale: locale)
         }
     }
 
     /// Converts Celsius source data and formats a rounded localized value.
     func display(_ celsius: Double) -> String {
         let temperature = Measurement(value: celsius, unit: UnitTemperature.celsius)
-            // `resolved` converts the legacy Automatic case before formatting.
-            .converted(to: resolved == .fahrenheit ? .fahrenheit : .celsius)
+            .converted(to: self == .fahrenheit ? .fahrenheit : .celsius)
             .value
         return "\(Int(temperature.rounded()))°"
     }
@@ -112,17 +99,12 @@ enum AppTextSizeLevel: Int, CaseIterable {
 
     /// Default slider step for new preferences.
     static let defaultRawValue = AppTextSizeLevel.large.rawValue
-    /// Smallest Dynamic Type category offered by the optional in-app slider.
-    static let minimumDynamicTypeSize: DynamicTypeSize = .small
-    /// Largest Dynamic Type category offered by the optional in-app slider.
-    /// System text sizing is not constrained to this value.
-    static let maximumDynamicTypeSize: DynamicTypeSize = .xxLarge
     /// Lowest raw value selectable by the Settings slider.
     static let minimumSelectableRawValue = AppTextSizeLevel.small.rawValue
     /// Highest raw value selectable by the Settings slider.
     static let maximumSelectableRawValue = AppTextSizeLevel.xxLarge.rawValue
 
-    /// Normalizes migrated or corrupt raw values into the supported range.
+    /// Normalizes out-of-range or corrupt raw values into the supported range.
     static func level(clamping rawValue: Int) -> AppTextSizeLevel {
         let clampedRawValue = min(
             max(rawValue, minimumSelectableRawValue),

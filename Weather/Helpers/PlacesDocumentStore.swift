@@ -74,7 +74,7 @@ struct PlacesDocumentStore {
     /// Atomically saves, reopens, validates, and compares a complete document.
     ///
     /// Callers must use the returned value as their in-memory source of truth.
-    /// A migration marker can safely be written only after this method returns.
+    /// Callers can treat a successful return as a fully verified commit.
     @discardableResult
     func saveAndReadBack(
         _ document: PlacesLibraryDocument

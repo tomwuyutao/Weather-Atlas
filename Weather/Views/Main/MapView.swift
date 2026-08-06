@@ -2,65 +2,67 @@
 //  MapView.swift
 //  Weather
 //
-//  Purpose: Presents the place-owned library in a dedicated immersive map tab
-//  while preserving Weather Atlas's compact weather-dot visual language.
+//  Purpose: Presents saved places in one immersive map while preserving
+//  Weather Atlas's compact weather-dot language.
 //
 
 import CoreLocation
 import MapKit
 import SwiftUI
 import UIKit
-import WeatherKit
 
 struct MapView: View {
-    let placesStore: PlacesStore
-    let weatherStore: PlaceWeatherStore
+    let model: WeatherAtlasModel
 
     @Bindable var router: AppRouter
     @Binding var selectedDate: Date
 
     @State private var sortMode: WeatherMetricMode = .sunny
     @State private var filtersToSunnyPlaces = false
-    @State private var fitRequestID = 0
+    /// Drives the explicit current-location focus without re-fitting saved dots.
+    @State private var currentLocationFocusRequestID = 0
     @State private var presentedError: MapUIError?
     @AppStorage("showLegend") private var showsLegend = true
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.appTheme) private var theme
-    @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
 
-    private var selectedCollection: PlaceCollection? {
-        guard let collectionID = router.selectedCollectionID else {
-            return nil
-        }
-        return placesStore.collections.first { $0.id == collectionID }
+    private var placesStore: PlacesStore {
+        model.placesStore
     }
 
-    private var collectionPlaces: [SavedPlace] {
-        placesStore.places(in: router.selectedCollectionID)
+    private var weatherStore: PlaceWeatherStore {
+        model.weatherStore
     }
 
-    private var presentations: [SavedPlacePresentation] {
-        collectionPlaces.map { place in
+    private var savedPlaces: [SavedPlace] { placesStore.allPlaces }
+
+    private var savedPresentations: [PlacesMapPlacePresentation] {
+        savedPlaces.map { place in
             let weather = weatherStore.weather(for: place.id)
-            return SavedPlacePresentation(
-                place: place,
-                recommendation: weather.flatMap {
-                    RecommendationEngine.recommendation(
-                        for: $0,
-                        on: selectedDate,
-                        source: .saved
-                    )
-                },
-                isLoading: weatherStore.isLoading(place.id),
-                failureMessage:
-                    weatherStore.failuresByPlaceID[place.id]?.message
+            return PlacesMapPlacePresentation(
+                presentation: SavedPlacePresentation(
+                    place: place,
+                    recommendation: weather.flatMap {
+                        RecommendationEngine.recommendation(
+                            for: $0,
+                            on: selectedDate
+                        )
+                    },
+                    isLoading: weatherStore.isLoading(place.id),
+                    failureMessage:
+                        weatherStore.failuresByPlaceID[place.id]?.message
+                )
             )
         }
     }
 
-    private var sortedPresentations: [SavedPlacePresentation] {
+    private var presentations: [PlacesMapPlacePresentation] {
+        savedPresentations
+    }
+
+    private var sortedPresentations: [PlacesMapPlacePresentation] {
         let orderedRecommendations = RecommendationEngine.sorted(
             presentations.compactMap(\.recommendation),
             by: sortMode,
@@ -82,67 +84,53 @@ struct MapView: View {
         return ordered + unavailable
     }
 
-    private var forecastDates: [Date] {
-        let weather = collectionPlaces.compactMap {
-            weatherStore.weather(for: $0.id)
-        }
-        let availableDates = RecommendationEngine.availableDates(in: weather)
-        let baseDates: [Date]
-        if availableDates.isEmpty {
-            let today = calendar.startOfDay(for: Date())
-            baseDates = (0..<10).compactMap {
-                calendar.date(byAdding: .day, value: $0, to: today)
-            }
-        } else {
-            baseDates = availableDates
-        }
-
-        let normalizedSelection = calendar.startOfDay(for: selectedDate)
-        return Array(Set(baseDates + [normalizedSelection])).sorted()
+    private var weatherLoadID: [City.ID] {
+        mapCities
+            .map(\.id)
+            .sorted { $0.uuidString < $1.uuidString }
     }
 
-    private var weatherLoadID: [City.ID] {
-        collectionPlaces.map(\.id)
+    private var mapCities: [City] {
+        savedPlaces.map(\.city)
     }
 
     private var navigationTitle: String {
-        selectedCollection?.name ?? localizedString("Map", locale: locale)
+        localizedString("Map", locale: locale)
     }
 
     var body: some View {
         mapBody
-            .navigationTitle(navigationTitle)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbarTitleMenu {
-                collectionTitleMenu
-            }
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    layerMenu
-                    sunnyFilterButton
-                    legendButton
-                    fitButton
+            .toolbarVisibility(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack(spacing: 4) {
+                    Text(navigationTitle)
+                        .font(.largeTitle.weight(.bold))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                    .layoutPriority(1)
+
+                    Spacer(minLength: 4)
+
+                    currentLocationButton
+                        .frame(minWidth: 36, minHeight: 44)
+                    moreMenu
+                        .frame(minWidth: 36, minHeight: 44)
+                    TopForecastDateSwitcher(
+                        selection: $selectedDate,
+                        availableDates: ForecastDateHorizon.dates
+                    )
                 }
+                .font(.title3)
+                .buttonStyle(.plain)
+                .foregroundStyle(theme.colors.primaryText)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 6)
             }
             .task(id: weatherLoadID) {
                 await weatherStore.load(
-                    cities: collectionPlaces.map(\.city),
+                    cities: mapCities,
                     locale: locale
                 )
-            }
-            .onChange(
-                of: router.selectedCollectionID,
-                initial: true
-            ) {
-                _,
-                collectionID in
-                guard placesStore.selectedCollectionID != collectionID else {
-                    return
-                }
-                persistCollectionSelection(collectionID)
-            }
-            .onChange(of: placesStore.collections.map(\.id)) {
-                validateCollectionSelection()
             }
             .sensoryFeedback(
                 .selection,
@@ -180,83 +168,18 @@ struct MapView: View {
                 selectedPlaceID: $router.selectedMapPlaceID,
                 showsLegend: $showsLegend,
                 filtersToSunnyPlaces: $filtersToSunnyPlaces,
-                selectedDate: selectedDate,
                 sortMode: sortMode,
-                fitRequestID: fitRequestID,
+                currentLocationCoordinate: currentLocationCoordinate,
+                currentLocationFocusRequestID: currentLocationFocusRequestID,
                 displayName: displayName(for:),
-                weatherAttribution: weatherStore.weatherAttribution,
-                addPlace: {
-                    router.presentedSheet = .addPlace(
-                        collectionID: router.selectedCollectionID
-                    )
+                searchPlaces: {
+                    router.selectedTab = .search
                 }
             )
-            .overlay(alignment: .top) {
-                floatingDateStrip
-            }
         }
     }
 
-    private var floatingDateStrip: some View {
-        ForecastDateStrip(
-            selection: $selectedDate,
-            availableDates: forecastDates
-        )
-        .padding(.vertical, 6)
-        .mapFloatingSurface(
-            in: RoundedRectangle(cornerRadius: 22, style: .continuous)
-        )
-        .padding(.horizontal, 12)
-        .padding(.top, 8)
-    }
-
-    @ViewBuilder
-    private var collectionTitleMenu: some View {
-        Button {
-            selectCollection(nil)
-        } label: {
-            if router.selectedCollectionID == nil {
-                Label("All Places", systemImage: "checkmark")
-            } else {
-                Text("All Places")
-            }
-        }
-
-        if !placesStore.collections.isEmpty {
-            Section("Collections") {
-                ForEach(placesStore.collections) { collection in
-                    Button {
-                        selectCollection(collection.id)
-                    } label: {
-                        if router.selectedCollectionID == collection.id {
-                            Label(
-                                collection.name,
-                                systemImage: "checkmark"
-                            )
-                        } else {
-                            Text(collection.name)
-                        }
-                    }
-                }
-            }
-        }
-
-        Divider()
-
-        Button {
-            router.presentedSheet = .createCollection(placeID: nil)
-        } label: {
-            Label("New Collection", systemImage: "folder.badge.plus")
-        }
-
-        Button {
-            router.mapPath.append(.collections)
-        } label: {
-            Label("Manage Collections", systemImage: "folder")
-        }
-    }
-
-    private var layerMenu: some View {
+    private var moreMenu: some View {
         Menu {
             Picker("Map Data", selection: $sortMode) {
                 ForEach(WeatherMetricMode.allCases) { mode in
@@ -268,12 +191,10 @@ struct MapView: View {
                 }
             }
 
-            Divider()
-
             Button {
                 Task {
                     await weatherStore.load(
-                        cities: collectionPlaces.map(\.city),
+                        cities: mapCities,
                         forceRefresh: true,
                         locale: locale
                     )
@@ -281,72 +202,43 @@ struct MapView: View {
             } label: {
                 Label("Refresh Forecasts", systemImage: "arrow.clockwise")
             }
+
+            Divider()
+
+            Toggle(isOn: $filtersToSunnyPlaces) {
+                Label("Sunny Places Only", systemImage: "sun.max")
+            }
+
+            Toggle(isOn: $showsLegend) {
+                Label("Show Legend", systemImage: "list.bullet.rectangle")
+            }
         } label: {
-            Label("Map Data", systemImage: "square.3.layers.3d")
+            Label("More", systemImage: "ellipsis")
+                .labelStyle(.iconOnly)
         }
+    }
+
+    /// Replaces the removed fit-visible-dots action with the user's actual
+    /// spatial anchor. The map marker remains visibly highlighted after focus.
+    private var currentLocationButton: some View {
+        Button {
+            currentLocationFocusRequestID &+= 1
+        } label: {
+            Label("Center on Current Location", systemImage: "location.fill")
+                .labelStyle(.iconOnly)
+        }
+        .disabled(currentLocationCoordinate == nil)
         .accessibilityHint(
-            localizedString(
-                "Changes the map metric or refreshes forecasts.",
-                locale: locale
-            )
+            "Centers the map on your current location and highlights it."
         )
     }
 
-    private var sunnyFilterButton: some View {
-        Button {
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) {
-                filtersToSunnyPlaces.toggle()
-            }
-        } label: {
-            Label(
-                "Filter Sunny",
-                systemImage: filtersToSunnyPlaces
-                    ? "sun.max.fill"
-                    : "sun.max"
-            )
-            .labelStyle(.iconOnly)
-            .foregroundStyle(
-                filtersToSunnyPlaces
-                    ? theme.colors.filterSunny
-                    : theme.colors.primaryText
-            )
+    private var currentLocationCoordinate: CLLocationCoordinate2D? {
+        guard let coordinate = model.locationProvider.coordinate,
+              CLLocationCoordinate2DIsValid(coordinate) else {
+            return nil
         }
-        .tint(
-            filtersToSunnyPlaces
-                ? theme.colors.filterSunny
-                : theme.colors.accent
-        )
-        .accessibilityAddTraits(
-            filtersToSunnyPlaces ? .isSelected : []
-        )
-    }
-
-    private var legendButton: some View {
-        Button {
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) {
-                showsLegend.toggle()
-            }
-        } label: {
-            Label(
-                "Legend",
-                systemImage: showsLegend ? "eye.fill" : "eye.slash"
-            )
-            .labelStyle(.iconOnly)
-        }
-        .accessibilityAddTraits(showsLegend ? .isSelected : [])
-    }
-
-    private var fitButton: some View {
-        Button {
-            fitRequestID &+= 1
-        } label: {
-            Label(
-                "Fit Visible Places",
-                systemImage:
-                    "arrow.up.left.and.down.right.magnifyingglass"
-            )
-            .labelStyle(.iconOnly)
-        }
+        return coordinate
     }
 
     private var errorIsPresented: Binding<Bool> {
@@ -361,41 +253,7 @@ struct MapView: View {
     }
 
     private func displayName(for place: SavedPlace) -> String {
-        place.customName ?? place.city.localizedName(locale: locale)
-    }
-
-    private func selectCollection(
-        _ collectionID: PlaceCollection.ID?
-    ) {
-        do {
-            try placesStore.selectCollection(id: collectionID)
-            router.selectedCollectionID = collectionID
-            router.selectedMapPlaceID = nil
-        } catch {
-            present(error)
-        }
-    }
-
-    private func persistCollectionSelection(
-        _ collectionID: PlaceCollection.ID?
-    ) {
-        do {
-            try placesStore.selectCollection(id: collectionID)
-            router.selectedMapPlaceID = nil
-        } catch {
-            router.selectedCollectionID = placesStore.selectedCollectionID
-            present(error)
-        }
-    }
-
-    private func validateCollectionSelection() {
-        guard let collectionID = router.selectedCollectionID,
-              !placesStore.collections.contains(where: {
-                  $0.id == collectionID
-              }) else {
-            return
-        }
-        selectCollection(nil)
+        place.customName ?? place.city.displayName
     }
 
     private func present(_ error: Error) {
@@ -413,20 +271,36 @@ private struct MapUIError: Identifiable {
     let message: String
 }
 
+/// A single stable map item using the saved-place presentation contract shared
+/// by cards and weather rows.
+private struct PlacesMapPlacePresentation: Identifiable {
+    let presentation: SavedPlacePresentation
+
+    var id: City.ID { presentation.id }
+    var place: SavedPlace { presentation.place }
+    var recommendation: PlaceRecommendation? {
+        presentation.recommendation
+    }
+    var isLoading: Bool { presentation.isLoading }
+    var failureMessage: String? { presentation.failureMessage }
+}
+
 private struct PlacesMapCanvas: View {
-    let presentations: [SavedPlacePresentation]
-    @Binding var selectedPlaceID: SavedPlace.ID?
+    let presentations: [PlacesMapPlacePresentation]
+    @Binding var selectedPlaceID: City.ID?
     @Binding var showsLegend: Bool
     @Binding var filtersToSunnyPlaces: Bool
-    let selectedDate: Date
     let sortMode: WeatherMetricMode
-    let fitRequestID: Int
+    let currentLocationCoordinate: CLLocationCoordinate2D?
+    let currentLocationFocusRequestID: Int
     let displayName: (SavedPlace) -> String
-    let weatherAttribution: WeatherAttribution?
-    let addPlace: () -> Void
+    let searchPlaces: () -> Void
 
     @State private var position: MapCameraPosition = .automatic
     @State private var hasInitializedCamera = false
+    @State private var highlightsCurrentLocation = false
+    @State private var labelPlacements:
+        [City.ID: PlacesMapLabelPlacement] = [:]
 
     @Environment(\.appTheme) private var theme
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -437,11 +311,11 @@ private struct PlacesMapCanvas: View {
     @AppStorage("distanceUnit")
     private var distanceUnitRaw = DistanceUnit.defaultRawValue
 
-    private var layerPresentations: [SavedPlacePresentation] {
+    private var layerPresentations: [PlacesMapPlacePresentation] {
         presentations.filter(hasValidActiveLayerData)
     }
 
-    private var visiblePresentations: [SavedPlacePresentation] {
+    private var visiblePresentations: [PlacesMapPlacePresentation] {
         mapMarkers.map(\.presentation)
     }
 
@@ -463,15 +337,28 @@ private struct PlacesMapCanvas: View {
         }
     }
 
-    private var selectedPresentation: SavedPlacePresentation? {
+    private var selectedPresentation: PlacesMapPlacePresentation? {
         guard let selectedPlaceID else { return nil }
         return visiblePresentations.first { $0.id == selectedPlaceID }
     }
 
-    private var visiblePlaceIDs: [SavedPlace.ID] {
+    private var visiblePlaceIDs: [City.ID] {
         visiblePresentations
             .map(\.id)
             .sorted { $0.uuidString < $1.uuidString }
+    }
+
+    private var labelLayoutInputs: [PlacesMapLabelLayoutInput] {
+        mapMarkers.map { marker in
+            PlacesMapLabelLayoutInput(
+                id: marker.id,
+                name: displayName(marker.presentation.place),
+                coordinate: CLLocationCoordinate2D(
+                    latitude: marker.presentation.place.city.latitude,
+                    longitude: marker.presentation.place.city.longitude
+                )
+            )
+        }
     }
 
     var body: some View {
@@ -487,7 +374,6 @@ private struct PlacesMapCanvas: View {
                 MapPlaceSelectionCard(
                     presentation: selectedPresentation,
                     displayName: displayName(selectedPresentation.place),
-                    selectedDate: selectedDate,
                     sortMode: sortMode,
                     clearSelection: clearSelection
                 )
@@ -495,18 +381,10 @@ private struct PlacesMapCanvas: View {
                     .horizontal,
                     dynamicTypeSize.isAccessibilitySize ? 12 : 18
                 )
-                .padding(.bottom, weatherAttribution == nil ? 18 : 52)
+                .padding(.bottom, 18)
                 .frame(maxWidth: cardMaximumWidth)
                 .transition(cardTransition)
                 .zIndex(2)
-            }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let weatherAttribution, !visiblePresentations.isEmpty {
-                WeatherAttributionView(attribution: weatherAttribution)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .background(.regularMaterial)
             }
         }
         .onChange(of: visiblePlaceIDs, initial: true) { _, newIDs in
@@ -514,15 +392,13 @@ private struct PlacesMapCanvas: View {
                 self.selectedPlaceID = nil
             }
 
-            if hasInitializedCamera {
-                fitAllVisiblePlaces()
-            } else {
+            if !hasInitializedCamera {
                 initializeCamera()
                 hasInitializedCamera = true
             }
         }
-        .onChange(of: fitRequestID) {
-            fitAllVisiblePlaces()
+        .onChange(of: currentLocationFocusRequestID) {
+            focusCurrentLocation()
         }
         .animation(
             reduceMotion
@@ -534,93 +410,273 @@ private struct PlacesMapCanvas: View {
     }
 
     private var mapContent: some View {
-        Map(position: $position, selection: $selectedPlaceID) {
-            ForEach(mapMarkers) { marker in
-                Annotation(
-                    "",
-                    coordinate: CLLocationCoordinate2D(
-                        latitude: marker.presentation.place.city.latitude,
-                        longitude: marker.presentation.place.city.longitude
-                    ),
-                    anchor: .center
-                ) {
-                    Button {
-                        withAnimation(
-                            reduceMotion
-                                ? nil
-                                : .smooth(duration: 0.22)
+        MapReader { mapProxy in
+            GeometryReader { geometry in
+                Map(position: $position, selection: $selectedPlaceID) {
+                    // MapKit's muted standard style removes most visual
+                    // competition; this light semantic wash further subdues
+                    // the tiles while annotations remain above the overlay.
+                    MapPolygon(points: subtleBaseMapOverlayPoints)
+                        .foregroundStyle(
+                            theme.colors.background.opacity(0.22)
+                        )
+                        .stroke(.clear, lineWidth: 0)
+
+                    ForEach(mapMarkers) { marker in
+                        Annotation(
+                            "",
+                            coordinate: CLLocationCoordinate2D(
+                                latitude:
+                                    marker.presentation.place.city.latitude,
+                                longitude:
+                                    marker.presentation.place.city.longitude
+                            ),
+                            anchor: .center
                         ) {
-                            selectedPlaceID = marker.id
-                        }
-                    } label: {
-                        PlacesWeatherMapAnnotation(
-                            name: displayName(marker.presentation.place),
-                            color: marker.color,
-                            isSelected: selectedPlaceID == marker.id,
-                            differentiatingText:
-                                markerDifferentiatingText(
+                            PlacesWeatherMapAnnotation(
+                                name: displayName(
+                                    marker.presentation.place
+                                ),
+                                color: marker.color,
+                                isSelected: selectedPlaceID == marker.id,
+                                labelPlacement:
+                                    labelPlacements[marker.id] ?? .below,
+                                differentiatingText:
+                                    markerDifferentiatingText(
+                                        for: marker.presentation
+                                    ),
+                                differentiatingSymbol:
+                                    markerDifferentiatingSymbol(
+                                        for: marker.presentation
+                                    ),
+                                accessibilityValue: markerAccessibilityValue(
                                     for: marker.presentation
                                 ),
-                            differentiatingSymbol:
-                                markerDifferentiatingSymbol(
-                                    for: marker.presentation
-                                )
-                        )
+                                select: {
+                                    withAnimation(
+                                        reduceMotion
+                                            ? nil
+                                            : .smooth(duration: 0.22)
+                                    ) {
+                                        selectedPlaceID = marker.id
+                                    }
+                                }
+                            )
+                        }
+                        .tag(marker.id)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(
-                        displayName(marker.presentation.place)
+
+                    if let currentLocationCoordinate {
+                        // This is intentionally separate from saved-place
+                        // weather dots: it stays available under all filters
+                        // and makes the location-focus action unambiguous.
+                        Annotation(
+                            "Current Location",
+                            coordinate: currentLocationCoordinate,
+                            anchor: .center
+                        ) {
+                            CurrentLocationMapAnnotation(
+                                isHighlighted: highlightsCurrentLocation
+                            )
+                        }
+                    }
+                }
+                .mapStyle(
+                    // "Muted" is MapKit's subtle standard-map emphasis.
+                    .standard(
+                        elevation: .flat,
+                        emphasis: .muted,
+                        pointsOfInterest: .excludingAll,
+                        showsTraffic: false
                     )
-                    .accessibilityValue(
-                        markerAccessibilityValue(
-                            for: marker.presentation
-                        )
-                    )
-                    .accessibilityAddTraits(
-                        selectedPlaceID == marker.id
-                            ? .isSelected
-                            : []
+                )
+                .mapControls {
+                    MapCompass()
+                    MapScaleView()
+                }
+                .overlay(alignment: .topLeading) {
+                    if showsLegend,
+                       selectedPresentation == nil,
+                       !visiblePresentations.isEmpty {
+                        PlacesMapLegend(sortMode: sortMode) {
+                            withAnimation(
+                                reduceMotion
+                                    ? nil
+                                    : .smooth(duration: 0.2)
+                            ) {
+                                showsLegend = false
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, legendTopPadding)
+                        .transition(legendTransition)
+                    }
+                }
+                .onMapCameraChange(frequency: .onEnd) { _ in
+                    updateLabelPlacements(
+                        using: mapProxy,
+                        viewportSize: geometry.size
                     )
                 }
-                .tag(marker.id)
+                .onChange(of: labelLayoutInputs, initial: true) {
+                    _,
+                    _ in
+                    updateLabelPlacements(
+                        using: mapProxy,
+                        viewportSize: geometry.size
+                    )
+                }
+                .onChange(of: geometry.size, initial: true) {
+                    _,
+                    newSize in
+                    updateLabelPlacements(
+                        using: mapProxy,
+                        viewportSize: newSize
+                    )
+                }
+                .animation(
+                    reduceMotion ? nil : .smooth(duration: 0.22),
+                    value: showsLegend
+                )
+                .animation(
+                    reduceMotion ? nil : .smooth(duration: 0.22),
+                    value: selectedPlaceID
+                )
             }
         }
-        .mapStyle(
-            .standard(
-                elevation: .flat,
-                emphasis: .muted,
-                pointsOfInterest: .excludingAll,
-                showsTraffic: false
+    }
+
+    private func updateLabelPlacements(
+        using mapProxy: MapProxy,
+        viewportSize: CGSize
+    ) {
+        guard viewportSize.width > 0, viewportSize.height > 0 else {
+            return
+        }
+
+        let projectedLabels: [PlacesMapProjectedLabel] = labelLayoutInputs
+            .compactMap {
+                input -> PlacesMapProjectedLabel? in
+                guard let point = mapProxy.convert(
+                    input.coordinate,
+                    to: .local
+                ) else {
+                    return nil
+                }
+
+                return PlacesMapProjectedLabel(
+                    input: input,
+                    point: point,
+                    size: estimatedLabelSize(for: input.name)
+                )
+            }
+            .sorted {
+                (lhs: PlacesMapProjectedLabel,
+                 rhs: PlacesMapProjectedLabel) -> Bool in
+                if lhs.point.y != rhs.point.y {
+                    return lhs.point.y < rhs.point.y
+                }
+                if lhs.point.x != rhs.point.x {
+                    return lhs.point.x < rhs.point.x
+                }
+                return lhs.input.id.uuidString
+                    < rhs.input.id.uuidString
+            }
+
+        let viewportBounds = CGRect(
+            origin: .zero,
+            size: viewportSize
+        )
+        .insetBy(dx: 4, dy: 4)
+        let markerObstacles = projectedLabels.map { projectedLabel in
+            (
+                id: projectedLabel.input.id,
+                rect: CGRect(
+                    x: projectedLabel.point.x - 7,
+                    y: projectedLabel.point.y - 7,
+                    width: 14,
+                    height: 14
+                )
             )
-        )
-        .mapControls {
-            MapCompass()
-            MapScaleView()
         }
-        .overlay(alignment: .topLeading) {
-            if showsLegend,
-               selectedPresentation == nil,
-               !visiblePresentations.isEmpty {
-                PlacesMapLegend(sortMode: sortMode) {
-                    withAnimation(
-                        reduceMotion ? nil : .smooth(duration: 0.2)
-                    ) {
-                        showsLegend = false
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, legendTopPadding)
-                .transition(legendTransition)
-            }
+
+        var occupiedLabelRects: [CGRect] = []
+        var newPlacements: [City.ID: PlacesMapLabelPlacement] = [:]
+
+        for projectedLabel in projectedLabels {
+            let belowRect = projectedLabel.rect(
+                for: PlacesMapLabelPlacement.below
+            )
+            let aboveRect = projectedLabel.rect(
+                for: PlacesMapLabelPlacement.above
+            )
+            let belowScore = labelCollisionScore(
+                for: belowRect,
+                labelID: projectedLabel.input.id,
+                occupiedLabelRects: occupiedLabelRects,
+                markerObstacles: markerObstacles,
+                viewportBounds: viewportBounds
+            )
+            let aboveScore = labelCollisionScore(
+                for: aboveRect,
+                labelID: projectedLabel.input.id,
+                occupiedLabelRects: occupiedLabelRects,
+                markerObstacles: markerObstacles,
+                viewportBounds: viewportBounds
+            )
+            let placement: PlacesMapLabelPlacement =
+                aboveScore < belowScore ? .above : .below
+
+            newPlacements[projectedLabel.input.id] = placement
+            occupiedLabelRects.append(projectedLabel.rect(for: placement))
         }
-        .animation(
-            reduceMotion ? nil : .smooth(duration: 0.22),
-            value: showsLegend
+
+        guard newPlacements != labelPlacements else { return }
+        labelPlacements = newPlacements
+    }
+
+    private func estimatedLabelSize(for name: String) -> CGSize {
+        let preferredFont = UIFont.preferredFont(forTextStyle: .caption2)
+        let font = UIFont.systemFont(
+            ofSize: preferredFont.pointSize,
+            weight: .semibold
         )
-        .animation(
-            reduceMotion ? nil : .smooth(duration: 0.22),
-            value: selectedPlaceID
+        let measuredSize = (name as NSString).size(
+            withAttributes: [.font: font]
         )
+
+        return CGSize(
+            width: min(104, max(18, ceil(measuredSize.width))) + 4,
+            height: ceil(font.lineHeight) + 2
+        )
+    }
+
+    private func labelCollisionScore(
+        for rect: CGRect,
+        labelID: City.ID,
+        occupiedLabelRects: [CGRect],
+        markerObstacles: [(id: City.ID, rect: CGRect)],
+        viewportBounds: CGRect
+    ) -> CGFloat {
+        let labelOverlap = occupiedLabelRects.reduce(CGFloat.zero) {
+            $0 + intersectionArea(rect, $1)
+        }
+        let markerOverlap = markerObstacles.reduce(CGFloat.zero) {
+            partialResult,
+            obstacle in
+            guard obstacle.id != labelID else { return partialResult }
+            return partialResult + intersectionArea(rect, obstacle.rect)
+        }
+        let clippedArea = intersectionArea(rect, viewportBounds)
+        let offscreenArea = max(0, rect.width * rect.height - clippedArea)
+
+        return labelOverlap * 4 + markerOverlap * 2 + offscreenArea * 6
+    }
+
+    private func intersectionArea(_ lhs: CGRect, _ rhs: CGRect) -> CGFloat {
+        let intersection = lhs.intersection(rhs)
+        guard !intersection.isNull else { return 0 }
+        return intersection.width * intersection.height
     }
 
     private func clearSelection() {
@@ -645,24 +701,38 @@ private struct PlacesMapCanvas: View {
                 )
             )
         } else {
-            fitAllVisiblePlaces()
+            guard !visiblePresentations.isEmpty else {
+                position = .automatic
+                return
+            }
+            position = .region(
+                PlacesMapRegionFitting.region(
+                    for: visiblePresentations.map(\.place.city)
+                )
+            )
         }
     }
 
-    private func fitAllVisiblePlaces() {
-        guard !visiblePresentations.isEmpty else {
-            position = .automatic
-            return
-        }
-
-        let cities = visiblePresentations.map(\.place.city)
+    /// Centers on the real location marker instead of changing zoom to include
+    /// every saved city. This preserves the user's manual map framing.
+    private func focusCurrentLocation() {
+        guard let currentLocationCoordinate else { return }
         withAnimation(reduceMotion ? nil : .smooth(duration: 0.35)) {
-            position = .region(PlacesMapRegionFitting.region(for: cities))
+            position = .region(
+                MKCoordinateRegion(
+                    center: currentLocationCoordinate,
+                    span: MKCoordinateSpan(
+                        latitudeDelta: 0.16,
+                        longitudeDelta: 0.16
+                    )
+                )
+            )
+            highlightsCurrentLocation = true
         }
     }
 
     private func hasValidActiveLayerData(
-        _ presentation: SavedPlacePresentation
+        _ presentation: PlacesMapPlacePresentation
     ) -> Bool {
         guard let recommendation = presentation.recommendation else {
             return false
@@ -683,7 +753,7 @@ private struct PlacesMapCanvas: View {
     }
 
     private func markerColor(
-        for presentation: SavedPlacePresentation
+        for presentation: PlacesMapPlacePresentation
     ) -> Color? {
         guard let recommendation = presentation.recommendation else {
             return nil
@@ -735,13 +805,17 @@ private struct PlacesMapCanvas: View {
     private var emptyMapState: some View {
         if presentations.isEmpty {
             ContentUnavailableView {
-                Label("No Saved Places", systemImage: "mappin.slash")
+                Label("No Places to Show", systemImage: "mappin.slash")
             } description: {
                 Text(
-                    "Save cities you care about. You can organize them into optional collections later."
+                    "Save a city to add it to this map."
                 )
             } actions: {
-                Button("Add Place", systemImage: "plus", action: addPlace)
+                Button(
+                    "Search for a Place",
+                    systemImage: "magnifyingglass",
+                    action: searchPlaces
+                )
                     .buttonStyle(.borderedProminent)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -787,7 +861,7 @@ private struct PlacesMapCanvas: View {
     }
 
     private var legendTopPadding: CGFloat {
-        dynamicTypeSize.isAccessibilitySize ? 128 : 72
+        dynamicTypeSize.isAccessibilitySize ? 24 : 12
     }
 
     private var cardTransition: AnyTransition {
@@ -804,7 +878,7 @@ private struct PlacesMapCanvas: View {
     }
 
     private func markerDifferentiatingText(
-        for presentation: SavedPlacePresentation
+        for presentation: PlacesMapPlacePresentation
     ) -> String? {
         guard let recommendation = presentation.recommendation else {
             return nil
@@ -835,7 +909,7 @@ private struct PlacesMapCanvas: View {
     }
 
     private func markerDifferentiatingSymbol(
-        for presentation: SavedPlacePresentation
+        for presentation: PlacesMapPlacePresentation
     ) -> String? {
         guard sortMode == .sunny else { return nil }
         return presentation.recommendation?.condition.displayIcon
@@ -843,10 +917,13 @@ private struct PlacesMapCanvas: View {
     }
 
     private func markerAccessibilityValue(
-        for presentation: SavedPlacePresentation
+        for presentation: PlacesMapPlacePresentation
     ) -> String {
         guard let recommendation = presentation.recommendation else {
-            return localizedString("Forecast Unavailable", locale: locale)
+            return localizedString(
+                "Forecast Unavailable",
+                locale: locale
+            )
         }
 
         if sortMode == .sunny {
@@ -860,7 +937,7 @@ private struct PlacesMapCanvas: View {
     }
 
     private var temperatureUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
     }
 
     private var distanceUnit: DistanceUnit {
@@ -905,57 +982,156 @@ private struct PlacesMapCanvas: View {
     private func clamped(_ value: Double) -> Double {
         max(0, min(1, value))
     }
+
+    /// A native MapKit overlay spanning the complete projected world map.
+    private var subtleBaseMapOverlayPoints: [MKMapPoint] {
+        let world = MKMapRect.world
+        return [
+            MKMapPoint(x: world.minX, y: world.minY),
+            MKMapPoint(x: world.maxX, y: world.minY),
+            MKMapPoint(x: world.maxX, y: world.maxY),
+            MKMapPoint(x: world.minX, y: world.maxY)
+        ]
+    }
 }
 
 private struct PlacesMapMarkerPresentation: Identifiable {
-    let presentation: SavedPlacePresentation
+    let presentation: PlacesMapPlacePresentation
     let color: Color
 
-    var id: SavedPlace.ID { presentation.id }
+    var id: City.ID { presentation.id }
+}
+
+private struct PlacesMapLabelLayoutInput: Equatable {
+    let id: City.ID
+    let name: String
+    let latitude: CLLocationDegrees
+    let longitude: CLLocationDegrees
+
+    init(
+        id: City.ID,
+        name: String,
+        coordinate: CLLocationCoordinate2D
+    ) {
+        self.id = id
+        self.name = name
+        latitude = coordinate.latitude
+        longitude = coordinate.longitude
+    }
+
+    var coordinate: CLLocationCoordinate2D {
+        CLLocationCoordinate2D(
+            latitude: latitude,
+            longitude: longitude
+        )
+    }
+}
+
+private struct PlacesMapProjectedLabel {
+    let input: PlacesMapLabelLayoutInput
+    let point: CGPoint
+    let size: CGSize
+
+    func rect(for placement: PlacesMapLabelPlacement) -> CGRect {
+        CGRect(
+            x: point.x - size.width / 2,
+            y: point.y + placement.verticalOffset - size.height / 2,
+            width: size.width,
+            height: size.height
+        )
+    }
+}
+
+private enum PlacesMapLabelPlacement: Equatable {
+    case above
+    case below
+
+    var verticalOffset: CGFloat {
+        switch self {
+        case .above:
+            -15
+        case .below:
+            15
+        }
+    }
+}
+
+/// A distinct, accessible marker for the device coordinate. It is independent
+/// of the saved-place weather layer, so filters never hide the user's anchor.
+private struct CurrentLocationMapAnnotation: View {
+    let isHighlighted: Bool
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        ZStack {
+            if isHighlighted {
+                Circle()
+                    .stroke(.white.opacity(0.94), lineWidth: 2)
+                    .frame(width: 30, height: 30)
+                    .shadow(color: .black.opacity(0.22), radius: 3)
+            }
+
+            Circle()
+                .fill(.blue)
+                .frame(width: 14, height: 14)
+                .overlay {
+                    Circle().stroke(.white, lineWidth: 3)
+                }
+                .shadow(color: .black.opacity(0.24), radius: 2)
+        }
+        .frame(width: 44, height: 44)
+        .contentShape(Circle())
+        .accessibilityLabel("Current Location")
+        .accessibilityValue(
+            isHighlighted ? "Map centered here" : "Location marker"
+        )
+        .animation(
+            reduceMotion ? nil : .smooth(duration: 0.22),
+            value: isHighlighted
+        )
+    }
 }
 
 private struct PlacesWeatherMapAnnotation: View {
     let name: String
     let color: Color
     let isSelected: Bool
+    let labelPlacement: PlacesMapLabelPlacement
     let differentiatingText: String?
     let differentiatingSymbol: String?
+    let accessibilityValue: String
+    let select: () -> Void
 
     @Environment(\.appTheme) private var theme
 
     var body: some View {
-        PlacesWeatherMapDot(
-            color: color,
-            isSelected: isSelected,
-            differentiatingText: differentiatingText,
-            differentiatingSymbol: differentiatingSymbol
-        )
-        .overlay(alignment: .bottom) {
+        Button(action: select) {
+            PlacesWeatherMapDot(
+                color: color,
+                isSelected: isSelected,
+                differentiatingText: differentiatingText,
+                differentiatingSymbol: differentiatingSymbol
+            )
+        }
+        .buttonStyle(.plain)
+        .frame(width: 44, height: 44)
+        .contentShape(Rectangle())
+        .accessibilityLabel(name)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .overlay {
             Text(name)
-                .font(.caption2.weight(.medium))
+                .font(.caption2.weight(.semibold))
                 .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .padding(.horizontal, 6)
-                .padding(.vertical, 2)
                 .frame(maxWidth: 104)
-                .background(
-                    theme.colors.glassFill.opacity(0.9),
-                    in: Capsule()
-                )
-                .overlay {
-                    Capsule()
-                        .stroke(
-                            theme.colors.primaryText.opacity(0.16),
-                            lineWidth: 0.6
-                        )
-                }
                 .fixedSize(horizontal: true, vertical: false)
-                .offset(y: 15)
+                .offset(y: labelPlacement.verticalOffset)
                 .allowsHitTesting(false)
+                .accessibilityHidden(true)
         }
-        .frame(width: 104, height: 44)
-        .contentShape(Rectangle())
     }
 }
 
@@ -1108,12 +1284,12 @@ private struct PlacesMapSelectedPulseRing: View {
 }
 
 private struct MapPlaceSelectionCard: View {
-    let presentation: SavedPlacePresentation
+    let presentation: PlacesMapPlacePresentation
     let displayName: String
-    let selectedDate: Date
     let sortMode: WeatherMetricMode
     let clearSelection: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
     @AppStorage("temperatureUnit")
@@ -1123,12 +1299,7 @@ private struct MapPlaceSelectionCard: View {
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
-            NavigationLink(
-                value: AppRoute.place(
-                    id: presentation.id,
-                    date: selectedDate
-                )
-            ) {
+            NavigationLink(value: AppRoute.place(id: presentation.id)) {
                 cardContent
                     .padding(.horizontal, 22)
                     .padding(.vertical, 16)
@@ -1149,7 +1320,8 @@ private struct MapPlaceSelectionCard: View {
                 .foregroundStyle(.secondary)
                 .frame(width: 44, height: 44)
         }
-        .mapFloatingSurface(
+        .weatherAtlasInteractiveGlass(
+            colorScheme: colorScheme,
             in: RoundedRectangle(cornerRadius: 24, style: .continuous)
         )
         .accessibilityElement(children: .contain)
@@ -1214,7 +1386,9 @@ private struct MapPlaceSelectionCard: View {
                     Text(displayName)
                         .font(.headline)
 
-                    Text(statusDescription)
+                    Text(
+                        statusDescription
+                    )
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -1289,7 +1463,7 @@ private struct MapPlaceSelectionCard: View {
     }
 
     private var temperatureUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
     }
 
     private var distanceUnit: DistanceUnit {
@@ -1306,6 +1480,7 @@ private struct PlacesMapLegend: View {
     let close: () -> Void
 
     @Environment(\.appTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
     @AppStorage("temperatureUnit")
@@ -1333,7 +1508,8 @@ private struct PlacesMapLegend: View {
             width: legendWidth,
             alignment: .leading
         )
-        .mapFloatingSurface(
+        .detailTranslucentCard(
+            colorScheme: colorScheme,
             in: RoundedRectangle(cornerRadius: 24, style: .continuous)
         )
         .overlay(alignment: .topTrailing) {
@@ -1352,6 +1528,11 @@ private struct PlacesMapLegend: View {
 
     @ViewBuilder
     private var legendContent: some View {
+        metricLegendContent
+    }
+
+    @ViewBuilder
+    private var metricLegendContent: some View {
         switch sortMode {
         case .sunny:
             VStack(alignment: .leading, spacing: 11) {
@@ -1372,10 +1553,7 @@ private struct PlacesMapLegend: View {
                     color: theme.colors.dotDrizzle
                 )
                 legendEntry(
-                    localizedString(
-                        "Cloudy, Windy, Snowy, Foggy",
-                        locale: locale
-                    ),
+                    wrappedCloudyConditionsTitle,
                     color: theme.colors.dotCloudy
                 )
             }
@@ -1388,7 +1566,7 @@ private struct PlacesMapLegend: View {
                     temperatureColor(for: 0),
                     temperatureColor(for: -20)
                 ],
-                labels: temperatureUnit.resolved == .fahrenheit
+                labels: temperatureUnit == .fahrenheit
                     ? ["104°F", "68°F", "50°F", "32°F", "-4°F"]
                     : ["40°C", "20°C", "10°C", "0°C", "-20°C"]
             )
@@ -1445,21 +1623,45 @@ private struct PlacesMapLegend: View {
         _ title: String,
         color: Color
     ) -> some View {
-        HStack(alignment: .center, spacing: 12) {
+        let isWrapped = title.contains("\n")
+
+        return HStack(
+            alignment: isWrapped ? .top : .center,
+            spacing: 12
+        ) {
             Circle()
                 .fill(color)
                 .frame(width: 8, height: 8)
                 .shadow(color: color.opacity(0.5), radius: 2)
+                .padding(.top, isWrapped ? 5 : 0)
 
             Text(title)
                 .font(.caption.weight(.medium))
                 .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 .fixedSize(
-                    horizontal: false,
-                    vertical: dynamicTypeSize.isAccessibilitySize
+                    horizontal: !dynamicTypeSize.isAccessibilitySize,
+                    vertical: true
                 )
         }
+    }
+
+    private var wrappedCloudyConditionsTitle: String {
+        let title = localizedString(
+            "Cloudy, Windy, Snowy, Foggy",
+            locale: locale
+        )
+        let separator = title.contains("、") ? "、" : ","
+        let conditions = title
+            .components(separatedBy: separator)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+
+        guard conditions.count == 4 else { return title }
+
+        let joiner = separator == "、" ? separator : "\(separator) "
+        let firstLine = conditions.prefix(2).joined(separator: joiner)
+        let secondLine = conditions.suffix(2).joined(separator: joiner)
+        return "\(firstLine)\(separator)\n\(secondLine)"
     }
 
     private func verticalGradientLegend(
@@ -1476,7 +1678,7 @@ private struct PlacesMapLegend: View {
             .clipShape(Capsule())
 
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(labels.enumerated()), id: \.offset) {
+                ForEach(Array(labels.enumerated()), id: \.element) {
                     index,
                     label in
                     Text(label)
@@ -1495,7 +1697,7 @@ private struct PlacesMapLegend: View {
         if dynamicTypeSize.isAccessibilitySize {
             return 260
         }
-        return sortMode == .sunny ? nil : 118
+        return sortMode == .sunny ? nil : 172
     }
 
     private var gradientHeight: CGFloat {
@@ -1503,7 +1705,7 @@ private struct PlacesMapLegend: View {
     }
 
     private var temperatureUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
     }
 
     private var distanceUnit: DistanceUnit {
@@ -1563,59 +1765,6 @@ private struct PlacesMapLegend: View {
 
     private func clamped(_ value: Double) -> Double {
         max(0, min(1, value))
-    }
-}
-
-private struct MapFloatingSurfaceModifier<Surface: InsettableShape>:
-    ViewModifier
-{
-    let surface: Surface
-
-    @Environment(\.accessibilityReduceTransparency)
-    private var reduceTransparency
-    @Environment(\.appTheme) private var theme
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if reduceTransparency || colorSchemeContrast == .increased {
-            content
-                .background(theme.colors.glassFill, in: surface)
-                .overlay {
-                    surface.stroke(
-                        theme.colors.primaryText.opacity(
-                            colorSchemeContrast == .increased ? 0.9 : 0.18
-                        ),
-                        lineWidth: colorSchemeContrast == .increased ? 1 : 0.8
-                    )
-                }
-        } else if #available(iOS 26.0, *) {
-            content
-                .glassEffect(.regular.interactive(), in: surface)
-                .overlay {
-                    surface.stroke(
-                        theme.colors.primaryText.opacity(0.14),
-                        lineWidth: 0.6
-                    )
-                }
-        } else {
-            content
-                .background(.ultraThinMaterial, in: surface)
-                .overlay {
-                    surface.stroke(
-                        theme.colors.primaryText.opacity(0.14),
-                        lineWidth: 0.6
-                    )
-                }
-        }
-    }
-}
-
-private extension View {
-    func mapFloatingSurface<Surface: InsettableShape>(
-        in surface: Surface
-    ) -> some View {
-        modifier(MapFloatingSurfaceModifier(surface: surface))
     }
 }
 

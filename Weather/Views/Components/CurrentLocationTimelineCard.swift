@@ -1,0 +1,354 @@
+//
+//  CurrentLocationTimelineCard.swift
+//  Weather
+//
+//  Purpose: Brings the medium widget's single-day sunny-hour timeline into
+//  Home using live current-location weather.
+//
+
+import SwiftUI
+
+struct CurrentLocationTimelineCard: View {
+    let weather: CityWeather?
+    let selectedDate: Date
+    /// Reverse-geocoded locality shown in the card header as soon as it arrives.
+    let locationName: String?
+    let locationStatus: LocationProviderStatus
+    let isLoading: Bool
+    let requestLocation: () -> Void
+    let openSettings: () -> Void
+    let retry: () -> Void
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.calendar) private var calendar
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.locale) private var locale
+
+    private var selectedForecast: DailyForecast? {
+        weather?.forecastIfAvailable(on: selectedDate)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HomeWeatherCardHeader(
+                icon: "location.fill",
+                title: displayLocationName
+            )
+
+            cardContent
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .detailTranslucentCard(
+            colorScheme: colorScheme,
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
+    }
+
+    @ViewBuilder
+    private var cardContent: some View {
+        if let weather,
+           let forecast = selectedForecast,
+           case .success(let data) = SunninessScoring.sunnyHoursData(
+            for: forecast,
+            timeZone: weather.timeZone
+           ) {
+            loadedTimeline(weather: weather, forecast: forecast, data: data)
+        } else if isLoading || locationStatus.isActivelyLocating {
+            HStack(spacing: 12) {
+                ProgressView()
+                Text("Loading current-location weather…")
+                    .font(.callout)
+                    .foregroundStyle(theme.colors.secondaryText)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 18)
+        } else {
+            locationUnavailableContent
+        }
+    }
+
+    private func loadedTimeline(
+        weather: CityWeather,
+        forecast: DailyForecast,
+        data: SunninessScoring.SunnyHoursData
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 11) {
+            HStack(alignment: .firstTextBaseline, spacing: 10) {
+                // The card header now owns the reverse-geocoded locality.
+                // Reserve this prominent line for the actionable sun status
+                // rather than repeating "Current Location" underneath it.
+                Text(sunStatus(for: weather, forecast: forecast, data: data))
+                    // Match the city-name typography in BestSunnyPlacesCard.
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+
+                Spacer(minLength: 8)
+
+                let icon = SunninessScoring.condition(for: forecast)?.displayIcon
+                    ?? forecast.symbolName
+                Image(systemName: icon)
+                    .font(.title2.weight(.medium))
+                    .weatherIconStyle(for: icon)
+                    .accessibilityHidden(true)
+            }
+
+            CurrentLocationHourTrack(
+                data: data,
+                selectedDate: selectedDate,
+                timeZone: weather.timeZone
+            )
+
+            CurrentLocationTimelineLegend()
+                .frame(maxWidth: .infinity)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var locationUnavailableContent: some View {
+        switch locationStatus {
+        case .denied:
+            locationMessage(
+                "Location access is off. Allow it in Settings to show your local timeline and nearest sunny place.",
+                buttonTitle: "Open Settings",
+                systemImage: "gearshape",
+                action: openSettings
+            )
+        case .restricted, .servicesDisabled:
+            locationMessage(
+                "Current location is unavailable on this device.",
+                buttonTitle: "Open Settings",
+                systemImage: "gearshape",
+                action: openSettings
+            )
+        case .failed:
+            locationMessage(
+                "Weather Atlas could not update your current location.",
+                buttonTitle: "Try Again",
+                systemImage: "arrow.clockwise",
+                action: retry
+            )
+        case .ready, .readyWithoutMetadata:
+            locationMessage(
+                "Forecast data is unavailable for the selected date.",
+                buttonTitle: "Try Again",
+                systemImage: "arrow.clockwise",
+                action: retry
+            )
+        case .idle, .checkingAvailability, .requestingAuthorization,
+                .locating, .resolvingPlace:
+            locationMessage(
+                "Use your location to see the day's sunny-hour timeline.",
+                buttonTitle: "Use Current Location",
+                systemImage: "location",
+                action: requestLocation
+            )
+        }
+    }
+
+    private func locationMessage(
+        _ message: LocalizedStringKey,
+        buttonTitle: LocalizedStringKey,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(message)
+                .font(.callout)
+                .foregroundStyle(theme.colors.secondaryText)
+
+            Button(action: action) {
+                Label(buttonTitle, systemImage: systemImage)
+            }
+            .buttonStyle(.bordered)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 4)
+    }
+
+    private var displayLocationName: LocalizedStringKey {
+        let name = locationName?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return LocalizedStringKey(name?.isEmpty == false ? name! : "Current Location")
+    }
+
+    /// Explains the selected day in terms of the next fully clear hour. The
+    /// countdown deliberately uses a duration rather than an absolute clock
+    /// time, so Home answers how long the user has to wait for sun.
+    private func sunStatus(
+        for weather: CityWeather,
+        forecast: DailyForecast,
+        data: SunninessScoring.SunnyHoursData
+    ) -> String {
+        var cityCalendar = calendar
+        cityCalendar.timeZone = weather.timeZone
+
+        let clearHours = data.hours.filter {
+            SunninessScoring.condition(for: $0) == .clear
+        }
+        let now = Date()
+        if cityCalendar.isDateInToday(selectedDate),
+           let currentHour = data.hours.last(where: { $0.date <= now }),
+           SunninessScoring.condition(for: currentHour) == .clear {
+            return localizedString("Clear Now", locale: locale)
+        }
+        if let nextClearHour = clearHours.first(where: { $0.date > now }) {
+            return String(
+                format: localizedString("Sun coming out in %@", locale: locale),
+                locale: locale,
+                countdownText(to: nextClearHour.date, from: now)
+            )
+        }
+        return localizedString("No Sun on this day", locale: locale)
+    }
+
+    /// Produces a concise, localized duration such as "2 hours, 15 minutes".
+    private func countdownText(to date: Date, from referenceDate: Date) -> String {
+        let formatter = DateComponentsFormatter()
+        formatter.allowedUnits = [.hour, .minute]
+        formatter.unitsStyle = .full
+        formatter.maximumUnitCount = 2
+        formatter.zeroFormattingBehavior = .dropAll
+        formatter.calendar = calendar
+        return formatter.string(
+            from: max(0, date.timeIntervalSince(referenceDate))
+        ) ?? localizedString("less than one minute", locale: locale)
+    }
+}
+
+private struct CurrentLocationHourTrack: View {
+    let data: SunninessScoring.SunnyHoursData
+    let selectedDate: Date
+    let timeZone: TimeZone
+
+    @Environment(\.accessibilityDifferentiateWithoutColor)
+    private var differentiateWithoutColor
+    @Environment(\.appTheme) private var theme
+    @Environment(\.calendar) private var calendar
+
+    private var axisHours: [Int] {
+        data.bounds.axisHours(maximumTickCount: 4)
+    }
+
+    var body: some View {
+        VStack(spacing: 5) {
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    HStack(spacing: 7) {
+                        ForEach(data.hours, id: \.date) { hour in
+                            let condition = SunninessScoring.condition(for: hour)
+                            Capsule()
+                                .fill(color(for: condition))
+                                .overlay {
+                                    if differentiateWithoutColor,
+                                       condition == .partlySunny {
+                                        Capsule().strokeBorder(
+                                            theme.colors.primaryText.opacity(0.8),
+                                            style: StrokeStyle(
+                                                lineWidth: 1,
+                                                dash: [2, 2]
+                                            )
+                                        )
+                                    }
+                                }
+                        }
+                    }
+
+                    if selectedDateIsToday,
+                       let markerX = data.bounds.currentTimeXPosition(
+                        at: Date(),
+                        timeZone: timeZone,
+                        width: proxy.size.width
+                       ) {
+                        Rectangle()
+                            .fill(theme.colors.primaryText.opacity(0.9))
+                            .frame(width: 2)
+                            .position(x: markerX, y: proxy.size.height / 2)
+                    }
+                }
+            }
+            .frame(height: 44)
+
+            GeometryReader { proxy in
+                ZStack(alignment: .topLeading) {
+                    ForEach(axisHours, id: \.self) { hour in
+                        Text(SunnyHoursFormatting.chartHourLabel(hour))
+                            .position(
+                                x: data.bounds.xPosition(
+                                    for: Double(hour),
+                                    width: proxy.size.width
+                                ),
+                                y: 7
+                            )
+                    }
+                }
+            }
+            .frame(height: 14)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(theme.colors.secondaryText)
+            .lineLimit(1)
+        }
+    }
+
+    private var selectedDateIsToday: Bool {
+        var cityCalendar = calendar
+        cityCalendar.timeZone = timeZone
+        return cityCalendar.isDateInToday(selectedDate)
+    }
+
+    private func color(for condition: AppWeatherCondition?) -> Color {
+        switch condition {
+        case .clear:
+            theme.colors.dotSun
+        case .partlySunny:
+            theme.colors.dotPartlyCloudy
+        default:
+            theme.colors.settingsRowFill
+        }
+    }
+}
+
+private struct CurrentLocationTimelineLegend: View {
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        HStack(spacing: 14) {
+            item("Sunny", color: theme.colors.dotSun)
+            item("Partly Sunny", color: theme.colors.dotPartlyCloudy)
+            item("No Sun", color: theme.colors.settingsRowFill)
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private func item(
+        _ title: LocalizedStringKey,
+        color: Color
+    ) -> some View {
+        HStack(spacing: 5) {
+            Circle()
+                .fill(color)
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(theme.colors.secondaryText)
+                .lineLimit(1)
+        }
+    }
+}
+
+private extension LocationProviderStatus {
+    var isActivelyLocating: Bool {
+        switch self {
+        case .checkingAvailability, .requestingAuthorization, .locating,
+                .resolvingPlace:
+            true
+        case .idle, .ready, .readyWithoutMetadata, .denied, .restricted,
+                .servicesDisabled, .failed:
+            false
+        }
+    }
+}

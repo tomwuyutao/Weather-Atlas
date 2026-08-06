@@ -2,8 +2,8 @@
 //  WeatherApp.swift
 //  Weather
 //
-//  Purpose: Defines app launch, first-run language defaults, data migrations,
-//  and the root environment applied to every window.
+//  Purpose: Defines app launch, first-run language defaults, and the root
+//  environment applied to every window.
 //
 
 import Foundation
@@ -50,7 +50,7 @@ enum AppLanguageDefaults {
 
 // MARK: - App Entry Point
 
-/// Process entry point that imports legacy lists before opening themed windows.
+/// Process entry point that creates shared state before opening themed windows.
 @main
 struct WeatherApp: App {
     /// UIKit delegate bridge used for Home Screen quick actions.
@@ -59,33 +59,16 @@ struct WeatherApp: App {
     @AppStorage("appLanguage") private var appLanguage: String = "en"
     /// Shared observable theme mode.
     @State private var theme = AppTheme.shared
-    /// Shared place, weather, and discovery domain model.
+    /// Shared place, weather, and current-location recommendation model.
     @State private var appModel: WeatherAtlasModel
     /// Shared tab, navigation, and modal presentation coordinator.
     @State private var router: AppRouter
 
-    /// Imports legacy place data before any historical cleanup can touch it.
+    /// Creates the app's shared stores and navigation state.
     init() {
         AppLanguageDefaults.configureInitialLanguage()
 
-        // PlacesStore performs a verified, read-only import of every legacy list
-        // before the app creates any new state. Legacy keys intentionally remain
-        // for one compatibility release.
         let placesStore = PlacesStore()
-        // All Places is the default workspace on every launch. A collection is
-        // an optional session filter, never the owning container for a place.
-        try? placesStore.selectCollection(id: nil)
-
-        // Daily weather metrics now come from WeatherKit's native daytime forecast.
-        // Refresh disposable legacy snapshots without touching saved place keys.
-        let weatherCacheMigrationKey = "weatherCacheDaytimeForecastMigrationV1"
-        if !UserDefaults.standard.bool(forKey: weatherCacheMigrationKey) {
-            let cacheKeyPrefixes = ["cachedWeatherData", "weatherCacheTimestamp"]
-            for key in UserDefaults.standard.dictionaryRepresentation().keys where cacheKeyPrefixes.contains(where: { key.hasPrefix($0) }) {
-                UserDefaults.standard.removeObject(forKey: key)
-            }
-            UserDefaults.standard.set(true, forKey: weatherCacheMigrationKey)
-        }
 
         let weatherStore = PlaceWeatherStore()
         _appModel = State(
@@ -118,13 +101,10 @@ struct ThemeRoot: View {
     let theme: AppTheme
     /// Locale chosen in Settings.
     let appLocale: Locale
-    /// Shared place, weather, and nearby-discovery model.
+    /// Shared place and weather model.
     let appModel: WeatherAtlasModel
     /// Shared native navigation coordinator.
     let router: AppRouter
-    /// System scheme used to resolve automatic theme modes.
-    @Environment(\.colorScheme) private var colorScheme
-
     /// Applies the theme's scheme preference before constructing inner content.
     var body: some View {
         ThemeContent(
@@ -133,7 +113,7 @@ struct ThemeRoot: View {
             appModel: appModel,
             router: router
         )
-        .preferredColorScheme(theme.preferredColorScheme(for: colorScheme))
+        .preferredColorScheme(theme.preferredColorScheme)
     }
 }
 

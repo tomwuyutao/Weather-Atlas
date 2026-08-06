@@ -41,23 +41,24 @@ extension WeatherService {
         }
 
         let location = CLLocation(latitude: city.latitude, longitude: city.longitude)
-        if #available(iOS 26.0, *) {
-            if let place = await resolvedPlaceWithMapKit(for: city, location: location) {
-                resolvedPlaces[key] = place
-                if let timeZone = place.timeZone {
-                    resolvedTimeZones[key] = timeZone
-                }
-                return place
+        if #available(iOS 26.0, *),
+           let place = await resolvedPlaceWithMapKit(for: city, location: location) {
+            resolvedPlaces[key] = place
+            if let timeZone = place.timeZone {
+                resolvedTimeZones[key] = timeZone
             }
-            return nil
+            return place
         }
 
+        // MapKit's iOS 26 reverse-geocoding request can legitimately return no
+        // map item for a coordinate. Keep Core Location as the fallback rather
+        // than making current-location and nearest-city WeatherKit lookups fail.
         do {
             let placemarks = try await CLGeocoder().reverseGeocodeLocation(location, preferredLocale: preferredGeocodingLocale())
             guard let placemark = placemarks.first else {
                 reportDeveloperWarning(
                     title: "Geocoder Returned No Placemark",
-                    message: "Apple reverse geocoding returned no placemark for \(city.localizedName()) at \(city.latitude), \(city.longitude)."
+                    message: "Apple reverse geocoding returned no placemark for \(city.displayName) at \(city.latitude), \(city.longitude)."
                 )
                 return nil
             }
@@ -87,7 +88,7 @@ extension WeatherService {
         } catch {
             reportDeveloperWarning(
                 title: "Geocoder Failed",
-                message: "Apple reverse geocoding failed for \(city.localizedName()) at \(city.latitude), \(city.longitude): \(error.localizedDescription)"
+                message: "Apple reverse geocoding failed for \(city.displayName) at \(city.latitude), \(city.longitude): \(error.localizedDescription)"
             )
             return nil
         }
@@ -104,7 +105,7 @@ extension WeatherService {
                   let mapItem = mapItems.first else {
                 reportDeveloperWarning(
                     title: "MapKit Returned No Placemark",
-                    message: "Apple reverse geocoding returned no map item for \(city.localizedName()) at \(city.latitude), \(city.longitude)."
+                    message: "Apple reverse geocoding returned no map item for \(city.displayName) at \(city.latitude), \(city.longitude)."
                 )
                 return nil
             }
@@ -130,7 +131,7 @@ extension WeatherService {
         } catch {
             reportDeveloperWarning(
                 title: "MapKit Geocoder Failed",
-                message: "Apple reverse geocoding failed for \(city.localizedName()) at \(city.latitude), \(city.longitude): \(error.localizedDescription)"
+                message: "Apple reverse geocoding failed for \(city.displayName) at \(city.latitude), \(city.longitude): \(error.localizedDescription)"
             )
             return nil
         }
@@ -158,13 +159,15 @@ extension WeatherService {
 
     /// Returns a canonically named city while preserving stable identity and coordinates.
     func resolvedCity(for city: City) async throws -> City {
-        if !city.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           !city.country.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        // WeatherKit only needs the coordinate. A current-location coordinate
+        // often has a display name before its country metadata arrives, so do
+        // not make its weather request wait for a second reverse-geocode pass.
+        if !city.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             return city
         }
 
         guard let place = await resolvedPlace(for: city) else {
-            throw WeatherServiceError.unresolvedPlace(city: city.localizedName())
+            throw WeatherServiceError.unresolvedPlace(city: city.displayName)
         }
         return City(
             id: city.id,
@@ -184,7 +187,7 @@ extension WeatherService {
             guard let timeZone = TimeZone(identifier: identifier) else {
                 reportDeveloperWarning(
                     title: "Invalid City Time Zone",
-                    message: "The city \(city.localizedName()) has an invalid time zone identifier: \(identifier)."
+                    message: "The city \(city.displayName) has an invalid time zone identifier: \(identifier)."
                 )
                 return nil
             }
@@ -195,6 +198,21 @@ extension WeatherService {
             return cachedTimeZone
         }
         if let timeZone = await resolvedPlace(for: city)?.timeZone {
+            return timeZone
+        }
+
+        // Home's current-location and nearest-sunny cards must not depend on
+        // reverse geocoding being available. Their coordinates are precise,
+        // while the bundled country-city resource contains validated IANA
+        // timezones. Use its closest row as the final offline fallback instead
+        // of failing the WeatherKit response conversion or inventing GMT.
+        if let identifier = CountryCityCatalog.nearestTimeZoneIdentifier(
+            to: CLLocationCoordinate2D(
+                latitude: city.latitude,
+                longitude: city.longitude
+            )
+        ), let timeZone = TimeZone(identifier: identifier) {
+            resolvedTimeZones[key] = timeZone
             return timeZone
         }
         return nil
@@ -208,8 +226,8 @@ extension WeatherService {
 
         reportDeveloperWarning(
             title: "Time Zone Missing",
-            message: "No Apple-provided time zone was available for \(city.localizedName()) at \(city.latitude), \(city.longitude)."
+            message: "No Apple-provided time zone was available for \(city.displayName) at \(city.latitude), \(city.longitude)."
         )
-        throw WeatherServiceError.undefinedTimeZone(city: city.localizedName())
+        throw WeatherServiceError.undefinedTimeZone(city: city.displayName)
     }
 }

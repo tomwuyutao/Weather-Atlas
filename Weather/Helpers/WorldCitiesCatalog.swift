@@ -2,8 +2,8 @@
 //  WorldCitiesCatalog.swift
 //  Weather
 //
-//  Purpose: Loads the bundled world-cities dataset once and performs the
-//  geographic prefilter used before nearby weather requests are considered.
+//  Purpose: Loads the bundled world-cities dataset once for region-neutral
+//  place search and distance-ordered city lookup.
 //
 
 import CoreLocation
@@ -44,7 +44,7 @@ nonisolated struct WorldCityRecord: Identifiable, Hashable, Sendable {
 }
 
 /// A geographically eligible city plus its distance from the query center.
-nonisolated struct NearbyWorldCityCandidate: Identifiable, Hashable, Sendable {
+nonisolated struct WorldCityDistanceCandidate: Identifiable, Hashable, Sendable {
     /// Catalog row selected before any weather request is made.
     let city: WorldCityRecord
     /// Great-circle distance from the user's coordinate.
@@ -77,71 +77,50 @@ nonisolated enum WorldCitiesCatalogError: Error, Equatable, Sendable {
 /// Lazily loads and queries the complete bundled world-cities dataset.
 ///
 /// The catalog is an actor so every caller shares one background load task.
-/// Its query returns at most ten population-ranked candidates and performs no
-/// network or weather work.
+/// Geographic queries are distance-first with population as a stable tie-break;
+/// callers choose their own result limit. The catalog performs no network or
+/// weather work.
 actor WorldCitiesCatalog {
     /// App-wide catalog backed by `worldcities.csv` in the main bundle.
     static let shared = WorldCitiesCatalog()
 
-    /// Hard ceiling from the nearby-discovery product rule.
-    static let maximumCandidateCount = 10
-
-    /// Optional explicit URL used by tests and command-line validation.
-    private let resourceURL: URL?
-    /// Optional in-memory rows used by deterministic previews and tests.
-    private let preloadedCities: [WorldCityRecord]?
     /// The retained task ensures the 50,000-row resource is parsed at most once.
     private var loadTask: Task<[WorldCityRecord], Error>?
     /// Normalized search metadata is likewise built once, rather than folding
     /// all 50,000 rows after every debounce.
     private var searchIndexTask: Task<[WorldCitySearchEntry], Never>?
 
-    /// Creates the production catalog, optionally overriding its resource URL.
-    init(resourceURL: URL? = nil) {
-        self.resourceURL = resourceURL
-        self.preloadedCities = nil
-    }
-
-    /// Creates an in-memory catalog that never reads the app bundle.
-    init(preloadedCities: [WorldCityRecord]) {
-        self.resourceURL = nil
-        self.preloadedCities = preloadedCities
-    }
-
-    /// Returns the highest-population cities inside the requested geographic
-    /// radius, optionally constrained to one ISO country.
-    ///
-    /// Country and latitude checks occur before great-circle distance work.
-    /// The returned candidates are the only cities the recommendation layer
-    /// should pass to WeatherKit.
-    func nearbyCities(
+    /// Returns catalog cities inside a geographic radius, ordered nearest
+    /// first so a caller can stop network work as soon as it finds a match.
+    /// The catalog query itself is local and performs no WeatherKit requests.
+    func cities(
         centeredAt center: CLLocationCoordinate2D,
-        radiusKilometers: Double,
-        limitingToISOCountryCode isoCountryCode: String? = nil,
-        limit: Int = maximumCandidateCount
-    ) async throws -> [NearbyWorldCityCandidate] {
+        withinKilometers radiusKilometers: Double,
+        fartherThanKilometers minimumDistanceKilometers: Double = 0,
+        limit: Int
+    ) async throws -> [WorldCityDistanceCandidate] {
         guard CLLocationCoordinate2DIsValid(center),
               radiusKilometers.isFinite,
               radiusKilometers > 0,
+              minimumDistanceKilometers.isFinite,
+              minimumDistanceKilometers >= 0,
               limit > 0 else {
             return []
         }
 
-        let maximumResults = min(limit, Self.maximumCandidateCount)
-        let normalizedCountryCode = Self.normalizedISOCountryCode(isoCountryCode)
         let maximumLatitudeDelta = radiusKilometers / Self.minimumKilometersPerLatitudeDegree
         let cities = try await allCities()
 
-        let candidates = cities.compactMap { city -> NearbyWorldCityCandidate? in
-            if let normalizedCountryCode,
-               city.isoCountryCode != normalizedCountryCode {
-                return nil
+        var candidates: [WorldCityDistanceCandidate] = []
+        candidates.reserveCapacity(min(limit * 8, cities.count))
+        for (index, city) in cities.enumerated() {
+            if index.isMultiple(of: 256) {
+                try Task.checkCancellation()
             }
-
             // This inexpensive geographic bound removes most of the dataset
             // before the more precise great-circle calculation.
             guard abs(city.latitude - center.latitude) <= maximumLatitudeDelta else {
-                return nil
+                continue
             }
 
             let distance = Self.distanceKilometers(
@@ -150,16 +129,21 @@ actor WorldCitiesCatalog {
                 toLatitude: city.latitude,
                 longitude: city.longitude
             )
-            guard distance <= radiusKilometers else { return nil }
+            guard distance <= radiusKilometers,
+                  distance > minimumDistanceKilometers else {
+                continue
+            }
 
-            return NearbyWorldCityCandidate(
-                city: city,
-                distanceKilometers: distance
+            candidates.append(
+                WorldCityDistanceCandidate(
+                    city: city,
+                    distanceKilometers: distance
+                )
             )
         }
 
         return Array(
-            candidates.sorted(by: Self.isHigherPriorityCandidate).prefix(maximumResults)
+            candidates.sorted(by: Self.isNearerCandidate).prefix(limit)
         )
     }
 
@@ -219,9 +203,6 @@ actor WorldCitiesCatalog {
 
     /// Returns parsed rows, starting and retaining one utility-priority task.
     private func allCities() async throws -> [WorldCityRecord] {
-        if let preloadedCities {
-            return preloadedCities
-        }
         if let loadTask {
             return try await loadTask.value
         }
@@ -276,10 +257,6 @@ actor WorldCitiesCatalog {
     /// Locates the resource in both Xcode's flattened bundle layout and a
     /// folder-preserving bundle layout.
     private func resolvedResourceURL() throws -> URL {
-        if let resourceURL {
-            return resourceURL
-        }
-
         guard let bundledURL =
                 Bundle.main.url(forResource: "worldcities", withExtension: "csv")
                 ?? Bundle.main.url(
@@ -297,16 +274,17 @@ actor WorldCitiesCatalog {
         return bundledURL
     }
 
-    /// Orders candidates by population, then distance, then stable identity.
-    nonisolated private static func isHigherPriorityCandidate(
-        _ lhs: NearbyWorldCityCandidate,
-        _ rhs: NearbyWorldCityCandidate
+    /// Orders candidates by distance, using population and stable identity only
+    /// to make effectively equal coordinates deterministic.
+    nonisolated private static func isNearerCandidate(
+        _ lhs: WorldCityDistanceCandidate,
+        _ rhs: WorldCityDistanceCandidate
     ) -> Bool {
-        if lhs.city.population != rhs.city.population {
-            return lhs.city.population > rhs.city.population
-        }
         if lhs.distanceKilometers != rhs.distanceKilometers {
             return lhs.distanceKilometers < rhs.distanceKilometers
+        }
+        if lhs.city.population != rhs.city.population {
+            return lhs.city.population > rhs.city.population
         }
         return lhs.id < rhs.id
     }
@@ -453,15 +431,6 @@ actor WorldCitiesCatalog {
 
         fields.append(currentField)
         return fields
-    }
-
-    /// Normalizes an optional ISO alpha-2 filter.
-    nonisolated private static func normalizedISOCountryCode(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let normalized = value
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .uppercased()
-        return normalized.count == 2 ? normalized : nil
     }
 
     /// Locale-stable normalization for city, region, and country search.

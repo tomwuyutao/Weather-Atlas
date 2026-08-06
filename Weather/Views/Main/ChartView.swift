@@ -158,7 +158,7 @@ private struct DetailMetricCard: View {
             HStack(spacing: 10) {
                 Image(systemName: metric.systemImage)
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(metricTint)
+                    .foregroundStyle(theme.colors.primaryText)
                     .frame(width: 24)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -168,6 +168,8 @@ private struct DetailMetricCard: View {
                     Text(value)
                         .font(.callout.weight(.semibold))
                         .foregroundStyle(theme.colors.primaryText)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
                         .frame(minHeight: 20, alignment: .leading)
                 }
 
@@ -177,11 +179,14 @@ private struct DetailMetricCard: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .detailTranslucentCard(colorScheme: colorScheme, in: .rect(cornerRadius: 18))
+        .weatherAtlasInteractiveGlass(
+            colorScheme: colorScheme,
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
         .overlay {
             if isSelected {
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(theme.colors.accent, lineWidth: 1.5)
+                    .stroke(theme.colors.primaryText.opacity(0.75), lineWidth: 1.5)
                     .allowsHitTesting(false)
             }
         }
@@ -190,20 +195,6 @@ private struct DetailMetricCard: View {
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
-    private var metricTint: Color {
-        switch metric {
-        case .temperature, .feelsLike:
-            theme.colors.sunForeground
-        case .cloudCover:
-            theme.colors.cloudyForeground
-        case .rainChance:
-            theme.colors.drizzleForeground
-        case .visibility:
-            theme.colors.accent
-        case .uvIndex:
-            theme.colors.destructive
-        }
-    }
 }
 
 // MARK: - Chart Sheet
@@ -247,12 +238,6 @@ struct DetailChartView: View {
         NavigationStack {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
-                    ForecastDateStrip(
-                        selection: $selectedForecastDate,
-                        availableDates: chartSelectionDates
-                    )
-                    .padding(.horizontal, -16)
-
                     Picker(
                         localizedString("Chart Range", locale: locale),
                         selection: $selectedRange
@@ -264,7 +249,6 @@ struct DetailChartView: View {
                     .pickerStyle(.segmented)
 
                     chartHeader
-                    conditionIcons
                     temperatureSeriesLegend
                     metricChart
 
@@ -285,6 +269,12 @@ struct DetailChartView: View {
                         dismiss()
                     }
                     .labelStyle(.iconOnly)
+                }
+                ToolbarItem(placement: .topBarTrailing) {
+                    TopForecastDateSwitcher(
+                        selection: $selectedForecastDate,
+                        availableDates: chartSelectionDates
+                    )
                 }
             }
             .tint(theme.colors.accent)
@@ -323,67 +313,15 @@ struct DetailChartView: View {
         }
     }
 
-    /// Weather symbols aligned in the same cadence as the plot below.
-    private var conditionIcons: some View {
-        let symbols: [ChartConditionIcon] = {
-            switch selectedRange {
-            case .day:
-                return stride(from: 0, to: chartForecast.hourlyForecasts.count, by: 3).map {
-                    let forecast = chartForecast.hourlyForecasts[$0]
-                    return ChartConditionIcon(
-                        id: forecast.id,
-                        symbolName: forecast.symbolName,
-                        condition: SunninessScoring.condition(for: forecast)
-                    )
-                }
-            case .forecast:
-                return availableForecasts.map {
-                    ChartConditionIcon(
-                        id: $0.id,
-                        symbolName: $0.symbolName,
-                        condition: SunninessScoring.condition(for: $0)
-                    )
-                }
-            }
-        }()
-
-        return HStack(spacing: 0) {
-            ForEach(symbols) { symbol in
-                let icon = symbol.condition?.displayIcon ?? symbol.symbolName
-                Image(systemName: icon)
-                    .weatherIconStyle(for: icon)
-                    .font(.caption.weight(.semibold))
-                    .frame(maxWidth: .infinity)
-            }
-        }
-        .frame(height: dynamicTypeSize.isAccessibilitySize ? 44 : 24)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Forecast conditions")
-        .accessibilityValue(conditionAccessibilitySummary(for: symbols))
-    }
-
     /// Selects an hourly or multi-day Swift Charts rendering.
     ///
-    /// Day charts use SwiftUI's page-style `TabView`, giving the plot its
-    /// native interactive swipe transition while keeping the rest of the sheet
-    /// vertically scrollable and stationary.
+    /// The shared bottom date slider is the sole date-changing control, so the
+    /// chart itself remains a stable rendering of that selection.
     @ViewBuilder
     private var metricChart: some View {
         switch selectedRange {
         case .day:
-            TabView(selection: $selectedForecastDate) {
-                ForEach(chartSelectionDates, id: \.self) { date in
-                    hourlyChart(
-                        for: city.forecastIfAvailable(on: date) ?? initialForecast
-                    )
-                    .tag(date)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            // A paged TabView inside ScrollView needs an explicit height;
-            // otherwise SwiftUI gives it no vertical proposal and the chart
-            // pages appear blank.
-            .frame(height: chartHeight)
+            hourlyChart(for: chartForecast)
         case .forecast:
             forecastChart
         }
@@ -399,6 +337,7 @@ struct DetailChartView: View {
             )
         }
         let domain = yAxisDomain(for: points)
+        let icons = hourlyConditionIcons(for: forecast, at: points.map(\.date))
 
         return Chart {
             if selectedMetric.usesTemperatureLines {
@@ -453,7 +392,9 @@ struct DetailChartView: View {
         // Keep endpoint symbols and the trailing scale clear of the plot edges.
         .chartXScale(range: .plotDimension(startPadding: 12, endPadding: 18))
         .chartXAxis {
-            AxisMarks(values: .stride(by: .hour, count: 6)) { value in
+            conditionIconAxisMarks(for: icons)
+
+            AxisMarks(position: .bottom, values: .stride(by: .hour, count: 6)) { value in
                 AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
                 // Extend each vertical division below the plot before its label.
                 AxisTick(
@@ -498,6 +439,7 @@ struct DetailChartView: View {
             )
         }
         let domain = yAxisDomain(for: points)
+        let icons = dailyConditionIcons(at: points.map(\.date))
 
         return Chart {
             if selectedMetric.usesTemperatureLines {
@@ -570,7 +512,9 @@ struct DetailChartView: View {
         .chartYScale(domain: domain, range: .plotDimension(startPadding: 0, endPadding: 0))
         .chartXScale(range: .plotDimension(startPadding: 12, endPadding: 18))
         .chartXAxis {
-            AxisMarks(values: .stride(by: .day)) { value in
+            conditionIconAxisMarks(for: icons)
+
+            AxisMarks(position: .bottom, values: .stride(by: .day)) { value in
                 AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
                 AxisTick(
                     centered: true,
@@ -692,32 +636,54 @@ struct DetailChartView: View {
         return style
     }
 
-    /// Gives VoiceOver the same time-varying condition sequence represented by
-    /// the otherwise image-only symbol strip.
-    private func conditionAccessibilitySummary(
-        for symbols: [ChartConditionIcon]
-    ) -> String {
-        var timeStyle = Date.FormatStyle.dateTime
-            .hour()
-            .locale(locale)
-        timeStyle.timeZone = city.timeZone
-        var dayStyle = Date.FormatStyle.dateTime
-            .weekday(.abbreviated)
-            .locale(locale)
-        dayStyle.timeZone = city.timeZone
-
-        return symbols.map { symbol in
-            let condition = (
-                symbol.condition
-                    ?? AppWeatherCondition.fromWeatherSymbol(symbol.symbolName)
-            )?.localizedDisplayName(locale: locale)
-                ?? localizedString("Forecast unavailable", locale: locale)
-            let dateLabel = symbol.id.formatted(
-                selectedRange == .day ? timeStyle : dayStyle
-            )
-            return "\(dateLabel), \(condition)"
+    /// Places weather symbols on the chart's top axis so their centers share
+    /// the exact x-coordinate of their associated point marks.
+    @AxisContentBuilder
+    private func conditionIconAxisMarks(
+        for icons: [ChartConditionIcon]
+    ) -> some AxisContent {
+        AxisMarks(position: .top, values: icons.map(\.id)) { value in
+            AxisValueLabel {
+                if let date = value.as(Date.self),
+                   let icon = icons.first(where: { $0.id == date }) {
+                    let symbolName = icon.condition?.displayIcon ?? icon.symbolName
+                    Image(systemName: symbolName)
+                        .weatherIconStyle(for: symbolName)
+                        .font(.caption2.weight(.semibold))
+                }
+            }
         }
-        .joined(separator: "; ")
+    }
+
+    /// One symbol for every plotted hourly point, excluding missing readings
+    /// that have no corresponding dot in the chart.
+    private func hourlyConditionIcons(
+        for forecast: DailyForecast,
+        at dates: [Date]
+    ) -> [ChartConditionIcon] {
+        let plottedDates = Set(dates)
+        return forecast.hourlyForecasts.compactMap { forecast in
+            guard plottedDates.contains(forecast.id) else { return nil }
+            return ChartConditionIcon(
+                id: forecast.id,
+                symbolName: forecast.symbolName,
+                condition: SunninessScoring.condition(for: forecast)
+            )
+        }
+    }
+
+    /// One symbol for every plotted daily point, excluding unavailable metric
+    /// values that do not produce a dot.
+    private func dailyConditionIcons(at dates: [Date]) -> [ChartConditionIcon] {
+        let plottedDates = Set(dates)
+        return availableForecasts.compactMap { forecast in
+            guard plottedDates.contains(forecast.id) else { return nil }
+            return ChartConditionIcon(
+                id: forecast.id,
+                symbolName: forecast.symbolName,
+                condition: SunninessScoring.condition(for: forecast)
+            )
+        }
     }
 
     /// Reuses only Weather Atlas palette colors and follows the resolved theme.
@@ -766,11 +732,14 @@ struct DetailChartView: View {
         // Add a small, rounded margin without letting the axis dominate the
         // data. This keeps values legible near the chart edge while avoiding
         // the overly broad ranges caused by the earlier half-step padding.
-        let step = roundedAxisStep(for: span / 5)
+        // Integer tick intervals keep every visible y-axis label free of
+        // decimal fractions, including narrow temperature ranges.
+        let step = max(roundedAxisStep(for: span / 5), 1)
         let roundedLower = floor((minimum - step * 0.15) / step) * step
         // Visibility, UV, and percentage values have no meaningful negative
         // range. Temperature and feels-like temperature remain unrestricted.
-        let lower = selectedMetric.usesNonNegativeScale ? max(0, roundedLower) : roundedLower
+        let lower = selectedMetric.requiresZeroBaseline ? 0 :
+            (selectedMetric.usesNonNegativeScale ? max(0, roundedLower) : roundedLower)
         let upper = ceil((maximum + step * 0.15) / step) * step
         return lower...max(upper, lower + step)
     }
@@ -787,8 +756,16 @@ struct DetailChartView: View {
             return [0, 25, 50, 75, 100]
         }
 
-        let interval = (domain.upperBound - domain.lowerBound) / 4
-        return (0...4).map { domain.lowerBound + Double($0) * interval }
+        let lower = Int(domain.lowerBound.rounded(.up))
+        let upper = Int(domain.upperBound.rounded(.down))
+        guard lower < upper else { return [domain.lowerBound, domain.upperBound] }
+
+        let interval = max(1, Int(ceil(Double(upper - lower) / 4)))
+        var values = stride(from: lower, through: upper, by: interval).map(Double.init)
+        if values.last != Double(upper) {
+            values.append(Double(upper))
+        }
+        return values
     }
 
     /// Chooses a familiar 1–2–5 axis interval at the required magnitude.
@@ -822,6 +799,12 @@ private extension DetailChartMetric {
         self == .cloudCover || self == .rainChance || self == .visibility || self == .uvIndex
     }
 
+    /// Visibility and UV charts should always communicate their natural zero
+    /// baseline, even when all currently displayed readings are higher.
+    var requiresZeroBaseline: Bool {
+        self == .visibility || self == .uvIndex
+    }
+
     /// Formats the explicit axis ticks without introducing values outside the
     /// chart's real scale domain.
     func axisLabel(for value: Double, locale: Locale) -> String {
@@ -833,17 +816,7 @@ private extension DetailChartMetric {
             )
         }
 
-        let roundedValue = value.rounded()
-        if abs(value - roundedValue) < 0.001 {
-            return Int(roundedValue).formatted(
-                .number.locale(locale)
-            )
-        }
-        return value.formatted(
-            .number
-                .precision(.fractionLength(1))
-                .locale(locale)
-        )
+        return Int(value.rounded()).formatted(.number.locale(locale))
     }
 
     /// Card value for one selected day.

@@ -2,8 +2,7 @@
 //  PlaceDetailView.swift
 //  Weather
 //
-//  Purpose: Presents the shared recommendation-first native place report, with
-//  optional save and collection actions.
+//  Purpose: Presents the shared card-based Saved Place report.
 //
 
 import SwiftUI
@@ -17,26 +16,28 @@ struct PlaceDetailView: View {
     /// Active-tab navigation coordinator.
     @Bindable var router: AppRouter
 
-    @State private var selectedDate: Date
+    /// App-wide forecast day controlled by the tab-bar date accessory.
+    @Binding private var selectedDate: Date
     @State private var showingDeleteConfirmation = false
     @State private var mutationError: PlaceDetailMutationError?
+    @State private var isDetailLargeTitleVisible = true
 
     @Environment(\.locale) private var locale
+    @Environment(\.appTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     @AppStorage("temperatureUnit")
     private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
 
     init(
         placeID: City.ID,
-        initialDate: Date,
+        selectedDate: Binding<Date>,
         model: WeatherAtlasModel,
         router: AppRouter
     ) {
         self.placeID = placeID
         self.model = model
         self.router = router
-        _selectedDate = State(
-            initialValue: Calendar.current.startOfDay(for: initialDate)
-        )
+        _selectedDate = selectedDate
     }
 
     private var savedPlace: SavedPlace? {
@@ -44,8 +45,7 @@ struct PlaceDetailView: View {
     }
 
     private var city: City? {
-        savedPlace?.city
-            ?? model.nearbyCities.first(where: { $0.id == placeID })
+        model.city(for: placeID)
     }
 
     private var cityWeather: CityWeather? {
@@ -56,23 +56,14 @@ struct PlaceDetailView: View {
         cityWeather?.forecastIfAvailable(on: selectedDate)
     }
 
-    private var recommendation: PlaceRecommendation? {
-        guard let cityWeather else { return nil }
-        return RecommendationEngine.recommendation(
-            for: cityWeather,
-            on: selectedDate,
-            source: savedPlace == nil ? .nearby : .saved
-        )
-    }
-
     private var displayName: String {
         savedPlace?.displayName
-            ?? city?.localizedName(locale: locale)
+            ?? city?.displayName
             ?? localizedString("Place", locale: locale)
     }
 
     private var temperatureUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .automatic
+        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
     }
 
     var body: some View {
@@ -103,27 +94,42 @@ struct PlaceDetailView: View {
                     "Place Not Found",
                     systemImage: "mappin.slash",
                     description: Text(
-                        "This place is no longer available in your library or nearby results."
+                        "This place is no longer available in your library or recommendations."
                     )
                 )
             }
         }
         .weatherAtlasScreenBackground()
+        // Keep the city in the navigation item for native back history while
+        // suppressing its principal rendering until the in-content title has
+        // scrolled away.
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if isDetailLargeTitleVisible {
+                ToolbarItem(placement: .principal) {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+                        .accessibilityHidden(true)
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 placeActionsMenu
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                TopForecastDateSwitcher(
+                    selection: $selectedDate,
+                    availableDates: ForecastDateHorizon.dates
+                )
+            }
         }
         .task(id: placeID) {
+            isDetailLargeTitleVisible = true
             guard let city,
                   model.weatherStore.weather(for: placeID) == nil else {
-                normalizeSelectedDate()
                 return
             }
             await model.weatherStore.refresh(city: city, locale: locale)
-            normalizeSelectedDate()
         }
         .confirmationDialog(
             "Delete \(displayName)?",
@@ -135,7 +141,7 @@ struct PlaceDetailView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("The place will also be removed from every collection.")
+            Text("The place will be removed from Saved Places.")
         }
         .alert(
             "Places",
@@ -150,27 +156,12 @@ struct PlaceDetailView: View {
         }
     }
 
-    /// Uses a standard inset-grouped List so typography, selection, contrast,
-    /// and Dynamic Type behavior remain system-owned.
     private func detailList(_ cityWeather: CityWeather) -> some View {
-        List {
-            Section {
-                ForecastDateStrip(
-                    selection: $selectedDate,
-                    availableDates: availableDates(for: cityWeather)
-                )
-                .listRowInsets(
-                    EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0)
-                )
-            }
+        ScrollView {
+            LazyVStack(spacing: 14) {
+                if let forecast {
+                    detailHeader(forecast)
 
-            if let recommendation {
-                verdictSection(recommendation)
-                reasonSection(recommendation)
-            }
-
-            if let forecast {
-                Section("Forecast Details") {
                     DetailMetricGrid(
                         city: cityWeather,
                         forecast: forecast,
@@ -178,93 +169,76 @@ struct PlaceDetailView: View {
                         usesLandscapeIPadLayout: false,
                         selectedForecastDate: $selectedDate
                     )
-                    .padding(.vertical, 4)
-                }
-            } else {
-                Section {
+
+                    SunnyHoursOverviewCard(
+                        city: cityWeather,
+                        selectedDate: selectedDate
+                    )
+                } else {
                     ContentUnavailableView(
                         "No Forecast for This Date",
                         systemImage: "calendar.badge.exclamationmark",
                         description: Text("Choose another available date.")
                     )
+                    .padding(18)
+                    .detailTranslucentCard(
+                        colorScheme: colorScheme,
+                        in: RoundedRectangle(
+                            cornerRadius: 20,
+                            style: .continuous
+                        )
+                    )
                 }
             }
-
-            if let attribution = model.weatherStore.weatherAttribution {
-                Section {
-                    WeatherAttributionView(attribution: attribution)
-                }
-            }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 24)
         }
-        .listStyle(.insetGrouped)
-        .weatherAtlasScrollableBackground()
+        .background(theme.colors.background)
         .refreshable {
             guard let city else { return }
             await model.weatherStore.refresh(city: city, locale: locale)
         }
     }
 
-    /// Plain-language result appears before individual weather metrics.
-    private func verdictSection(
-        _ recommendation: PlaceRecommendation
-    ) -> some View {
-        Section {
-            Label {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(verdictTitle(for: recommendation))
-                        .font(.headline)
-                    Text(verdictDescription(for: recommendation))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
-            } icon: {
-                Image(systemName: recommendation.condition.displayIcon)
-                    .weatherIconStyle(for: recommendation.condition.displayIcon)
-            }
+    private func detailHeader(_ forecast: DailyForecast) -> some View {
+        let condition = SunninessScoring.condition(for: forecast)
+        let icon = condition?.displayIcon ?? forecast.symbolName
 
-            if let range = recommendation.bestSunnyWindow {
-                LabeledContent("Best Sunny Window") {
-                    Text(sunnyWindowLabel(range))
-                        .fontWeight(.semibold)
+        return VStack(spacing: 9) {
+            Text(displayName)
+                .font(.system(.largeTitle, design: .serif).weight(.bold))
+                .foregroundStyle(theme.colors.primaryText)
+                .lineLimit(2)
+                .minimumScaleFactor(0.72)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 34)
+                .onScrollVisibilityChange(threshold: 0.01) { isVisible in
+                    isDetailLargeTitleVisible = isVisible
                 }
+
+            if condition != nil {
+                Image(systemName: icon)
+                    .weatherIconStyle(for: icon)
+                    .font(.system(size: 52, weight: .semibold))
+                    .frame(width: 62, height: 58)
+                    .padding(.vertical, 8)
+
+                Text(
+                    condition?.localizedDisplayName(locale: locale)
+                        ?? localizedString("Forecast", locale: locale)
+                )
+                .font(.callout)
+                .foregroundStyle(theme.colors.primaryText)
+                .multilineTextAlignment(.center)
             }
         }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
     }
 
-    /// Source-backed factors explain the ranking without a hidden score.
-    private func reasonSection(
-        _ recommendation: PlaceRecommendation
-    ) -> some View {
-        Section("Why this is recommended") {
-            LabeledContent("Sunny Hours") {
-                Text(recommendation.sunnyHourCount, format: .number)
-            }
-
-            LabeledContent("Cloud Cover") {
-                Text(
-                    recommendation.cloudCover,
-                    format: .percent.precision(.fractionLength(0))
-                )
-            }
-
-            if let rainChance = recommendation.precipitationChance {
-                LabeledContent("Rain Chance") {
-                    Text(
-                        rainChance,
-                        format: .percent.precision(.fractionLength(0))
-                    )
-                }
-            }
-
-            LabeledContent("Temperature") {
-                Text(
-                    "\(temperatureUnit.display(recommendation.forecast.dailyLow))–\(temperatureUnit.display(recommendation.forecast.dailyHigh))"
-                )
-            }
-        }
-    }
-
-    /// Native menu adapts between Save and many-to-many collection management.
+    /// Native menu presents the one-level Saved Places actions.
     @ViewBuilder
     private var placeActionsMenu: some View {
         if savedPlace == nil {
@@ -273,49 +247,11 @@ struct PlaceDetailView: View {
             }
         } else {
             Menu("Place Actions", systemImage: "ellipsis") {
-                if !model.placesStore.collections.isEmpty {
-                    Section("Collections") {
-                        ForEach(model.placesStore.collections) { collection in
-                            Toggle(
-                                collection.name,
-                                isOn: collectionMembershipBinding(collection.id)
-                            )
-                        }
-                    }
-                }
-
                 Button("Delete Place", systemImage: "trash", role: .destructive) {
                     showingDeleteConfirmation = true
                 }
             }
         }
-    }
-
-    private func collectionMembershipBinding(
-        _ collectionID: PlaceCollection.ID
-    ) -> Binding<Bool> {
-        Binding(
-            get: {
-                model.placesStore.collections(containing: placeID)
-                    .contains { $0.id == collectionID }
-            },
-            set: { isMember in
-                do {
-                    try model.placesStore.setMembership(
-                        of: placeID,
-                        in: collectionID,
-                        isMember: isMember
-                    )
-                } catch {
-                    mutationError = PlaceDetailMutationError(
-                        message: localizedPlacesErrorDescription(
-                            error,
-                            locale: locale
-                        )
-                    )
-                }
-            }
-        )
     }
 
     private var mutationErrorIsPresented: Binding<Bool> {
@@ -327,58 +263,6 @@ struct PlaceDetailView: View {
                 }
             }
         )
-    }
-
-    private func verdictTitle(
-        for recommendation: PlaceRecommendation
-    ) -> String {
-        switch recommendation.conditionGroup {
-        case .sunny:
-            return localizedString("Excellent for a sunny day", locale: locale)
-        case .partlySunny:
-            return localizedString("A good sunny option", locale: locale)
-        case .mixed:
-            return localizedString("Conditions are mixed", locale: locale)
-        case .wet:
-            return localizedString("Rain may limit this plan", locale: locale)
-        }
-    }
-
-    private func verdictDescription(
-        for recommendation: PlaceRecommendation
-    ) -> String {
-        if recommendation.sunnyHourCount > 0 {
-            return localizedString(
-                "\(recommendation.sunnyHourCount) expected sunny hours with \(Int((recommendation.cloudCover * 100).rounded()))% cloud cover.",
-                locale: locale
-            )
-        }
-        return recommendation.condition.localizedDisplayName(locale: locale)
-    }
-
-    private func sunnyWindowLabel(_ range: ClosedRange<Int>) -> String {
-        let start = SunninessScoring.compactHourLabel(range.lowerBound, locale: locale)
-        let end = SunninessScoring.compactHourLabel(range.upperBound + 1, locale: locale)
-        return localizedString("\(start)–\(end)", locale: locale)
-    }
-
-    private func availableDates(for weather: CityWeather) -> [Date] {
-        let today = Calendar.current.startOfDay(for: Date())
-        return weather.dailyForecasts.compactMap {
-            weather.selectionDate(for: $0)
-        }
-        .filter { $0 >= today }
-    }
-
-    private func normalizeSelectedDate() {
-        guard let cityWeather else { return }
-        let dates = availableDates(for: cityWeather)
-        guard !dates.contains(where: {
-            Calendar.current.isDate($0, inSameDayAs: selectedDate)
-        }), let firstDate = dates.first else {
-            return
-        }
-        selectedDate = firstDate
     }
 
     private func savePlace() {
@@ -398,12 +282,22 @@ struct PlaceDetailView: View {
     private func deleteSavedPlace() {
         do {
             try model.placesStore.deletePlace(id: placeID)
-            if router.selectedTab == .home {
+            switch router.selectedTab {
+            case .home:
                 if !router.homePath.isEmpty {
                     router.homePath.removeLast()
                 }
-            } else if !router.placesPath.isEmpty {
-                router.placesPath.removeLast()
+            case .map:
+                router.selectedMapPlaceID = nil
+                if !router.mapPath.isEmpty {
+                    router.mapPath.removeLast()
+                }
+            case .places:
+                if !router.placesPath.isEmpty {
+                    router.placesPath.removeLast()
+                }
+            case .search:
+                break
             }
         } catch {
             mutationError = PlaceDetailMutationError(

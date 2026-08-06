@@ -1,3 +1,3 @@
 "CFBundleDisplayName" = "Weather Atlas";
 "CFBundleName" = "Weather Atlas";
-"NSLocationWhenInUseUsageDescription" = "Weather Atlas 會使用您的位置，在所選移動半徑內尋找並比較陽光充足的城市。";
+"NSLocationWhenInUseUsageDescription" = "Weather Atlas 會使用您的位置顯示當地天氣預報，並在所選距離內尋找最近的晴朗城市。";
