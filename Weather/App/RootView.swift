@@ -1,5 +1,5 @@
 //
-//  WeatherAtlasRootView.swift
+//  RootView.swift
 //  Weather
 //
 //  Purpose: Defines the native Home, Map, and Places tab shell with a dedicated
@@ -17,12 +17,14 @@ struct WeatherAtlasRootView: View {
     @Environment(\.locale) private var locale
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.appTheme) private var theme
-    @AppStorage("hasLaunchedBefore") private var hasLaunchedBefore = false
+    /// Reuses the former first-launch key so existing installs are not seeded
+    /// again after starter places replaced setup.
+    @AppStorage("hasLaunchedBefore") private var hasSeededStarterPlaces = false
     @State private var selectedDate = Calendar.current.startOfDay(for: Date())
+    /// Preserves the user's selected relative forecast day when location
+    /// metadata changes the app-wide calendar from the device to local time.
+    @State private var selectedDateTimeZone = TimeZone.autoupdatingCurrent
     @State private var externalRouteMessage: ExternalRouteMessage?
-    @State private var presentedTutorial: WeatherAtlasTutorialMode?
-    @State private var deferredTutorial: WeatherAtlasTutorialMode?
-    @State private var startingCityImportIDs: Set<SavedPlace.ID> = []
     @State private var appResetID = UUID()
 
     var body: some View {
@@ -73,36 +75,31 @@ struct WeatherAtlasRootView: View {
                 value: AppTab.search,
                 role: .search
             ) {
-                NavigationStack {
+                NavigationStack(path: $router.searchPath) {
                     PlaceSearchView(
-                        placesStore: model.placesStore,
-                        weatherStore: model.weatherStore
-                    ) { _ in
-                        router.placesPath = []
-                        router.showPlaces()
-                    }
+                        model: model,
+                        router: router
+                    )
                     .navigationTitle("Search")
                     .navigationBarTitleDisplayMode(.large)
+                    .navigationDestination(for: AppRoute.self) {
+                        destination(for: $0)
+                    }
                 }
             }
         }
-        .id(appResetID)
-        .sheet(
-            item: $router.presentedSheet,
-            onDismiss: presentDeferredTutorialIfNeeded
-        ) { destination in
-            sheet(for: destination)
+        .environment(\.calendar, model.forecastCalendar)
+        .onChange(of: model.currentLocationTimeZone.identifier) { _, identifier in
+            guard let newTimeZone = TimeZone(identifier: identifier),
+                  newTimeZone != selectedDateTimeZone else {
+                return
+            }
+            rebaseSelectedDate(from: selectedDateTimeZone, to: newTimeZone)
+            selectedDateTimeZone = newTimeZone
         }
-        .fullScreenCover(
-            item: $presentedTutorial,
-            onDismiss: { startingCityImportIDs = [] }
-        ) { mode in
-            WeatherAtlasTutorialView(
-                mode: mode,
-                importProgress: startingCityImportProgress,
-                onAddStartingCities: importStartingCities,
-                onFinish: finishTutorial
-            )
+        .id(appResetID)
+        .sheet(item: $router.presentedSheet) { destination in
+            sheet(for: destination)
         }
         .alert(
             externalRouteMessage?.title ?? "",
@@ -116,9 +113,7 @@ struct WeatherAtlasRootView: View {
             Text(message.message)
         }
         .task {
-            if !hasLaunchedBefore, presentedTutorial == nil {
-                presentedTutorial = .firstLaunch
-            }
+            await seedStarterPlacesIfNeeded()
             model.reconcileRetainedWeather()
             await model.loadSavedWeather(locale: locale)
             model.publishWidgetCatalog(locale: locale)
@@ -168,6 +163,24 @@ struct WeatherAtlasRootView: View {
         .environment(model.locationProvider)
     }
 
+    /// Keeps “tomorrow” as tomorrow when the current location resolves to a
+    /// different time zone, rather than reinterpreting a device-midnight
+    /// instant as a neighbouring local calendar day.
+    private func rebaseSelectedDate(from oldTimeZone: TimeZone, to newTimeZone: TimeZone) {
+        var oldCalendar = Calendar.autoupdatingCurrent
+        oldCalendar.timeZone = oldTimeZone
+        var newCalendar = Calendar.autoupdatingCurrent
+        newCalendar.timeZone = newTimeZone
+        let offset = oldCalendar.dateComponents(
+            [.day],
+            from: oldCalendar.startOfDay(for: Date()),
+            to: oldCalendar.startOfDay(for: selectedDate)
+        ).day ?? 0
+        let newToday = newCalendar.startOfDay(for: Date())
+        selectedDate = newCalendar.date(byAdding: .day, value: offset, to: newToday)
+            ?? newToday
+    }
+
     /// Registers the same value destinations in each tab's independent stack.
     @ViewBuilder
     private func destination(for route: AppRoute) -> some View {
@@ -186,70 +199,43 @@ struct WeatherAtlasRootView: View {
     @ViewBuilder
     private func sheet(for destination: AppSheetDestination) -> some View {
         switch destination {
-        case .addPlaces:
-            AddPlacesSheet(placesStore: model.placesStore)
         case .settings:
             SettingsView(
                 model: model,
-                onReplayTutorial: deferTutorialUntilSettingsDismisses,
-                onResetApp: resetAppToFirstLaunch
+                onResetApp: resetAppToStarterPlaces
             )
         }
     }
 
-    /// Dismisses Settings before replaying the root-owned tutorial.
-    private func deferTutorialUntilSettingsDismisses() {
-        deferredTutorial = .replay
-        router.presentedSheet = nil
-    }
-
-    /// Presents a deferred full-screen tutorial after the sheet is fully gone.
-    private func presentDeferredTutorialIfNeeded() {
-        guard let tutorial = deferredTutorial else { return }
-        deferredTutorial = nil
-        presentedTutorial = tutorial
-    }
-
-    /// Adds one geographic preset directly to Saved Places, then prepares its
-    /// forecasts before first-run onboarding completes.
-    private func importStartingCities(_ cities: [City]) async throws {
-        let savedIDs = try model.placesStore.savePlaces(cities)
-        startingCityImportIDs = Set(savedIDs)
-        model.reconcileRetainedWeather()
-        let importedCities = savedIDs.compactMap {
-            model.placesStore.place(id: $0)?.city
+    /// Seeds a first-run library with a fixed, globally recognisable overview.
+    /// Existing and intentionally emptied libraries are left untouched.
+    private func seedStarterPlacesIfNeeded() async {
+        guard !hasSeededStarterPlaces else { return }
+        guard model.placesStore.loadErrorDescription == nil else { return }
+        guard model.placesStore.allPlaces.isEmpty else {
+            hasSeededStarterPlaces = true
+            return
         }
-        await model.weatherStore.load(cities: importedCities, locale: locale)
-        model.publishWidgetCatalog(locale: locale)
-    }
 
-    /// Persists tutorial completion only after any starting-city import has
-    /// finished successfully.
-    private func finishTutorial() {
-        hasLaunchedBefore = true
-        presentedTutorial = nil
-    }
-
-    /// Reports completed or terminal forecast requests for the imported set.
-    private var startingCityImportProgress: Double {
-        guard !startingCityImportIDs.isEmpty else { return 0 }
-        let completedCount = startingCityImportIDs.reduce(into: 0) {
-            completedCount, placeID in
-            if !model.weatherStore.isLoading(placeID)
-                && (model.weatherStore.weather(for: placeID) != nil
-                    || model.weatherStore.failuresByPlaceID[placeID] != nil) {
-                completedCount += 1
-            }
+        do {
+            let cities = try await model.starterCities()
+            guard !cities.isEmpty else { return }
+            _ = try model.placesStore.savePlaces(cities)
+            model.reconcileRetainedWeather()
+            await model.weatherStore.load(cities: cities, locale: locale)
+            model.publishWidgetCatalog(locale: locale)
+            hasSeededStarterPlaces = true
+        } catch {
+            // Leave the flag unset so a transient catalog or persistence
+            // failure can be retried when the app next becomes active.
         }
-        return Double(completedCount) / Double(startingCityImportIDs.count)
     }
 
-    /// Clears user-owned state and transient UI, then restarts first-run setup.
-    private func resetAppToFirstLaunch() throws {
+    /// Clears user-owned state, then restores the fixed first-run overview.
+    private func resetAppToStarterPlaces() throws {
         try model.placesStore.resetToEmptyLibrary()
         model.weatherStore.retainWeather(for: [])
         WidgetDataStore.removeAll()
-        model.nearestSunnySearchRadius = .kilometers100
         model.resetHomeWeatherState()
 
         let defaults = UserDefaults.standard
@@ -274,12 +260,13 @@ struct WeatherAtlasRootView: View {
         router.selectedMapPlaceID = nil
         router.selectedTab = .home
         appResetID = UUID()
-        hasLaunchedBefore = false
-        startingCityImportIDs = []
+        hasSeededStarterPlaces = false
         model.publishWidgetCatalog(locale: locale)
-
-        deferredTutorial = .firstLaunch
         router.presentedSheet = nil
+
+        Task {
+            await seedStarterPlacesIfNeeded()
+        }
     }
 
     private func handlePendingHomeScreenShortcut() {
@@ -308,7 +295,7 @@ struct WeatherAtlasRootView: View {
         }
     }
 
-    /// Opens the Places scope encoded by a widget URL.
+    /// Opens Places from a widget URL.
     private func handleExternalURL(_ url: URL) {
         guard url.scheme == "weatheratlas" else { return }
 

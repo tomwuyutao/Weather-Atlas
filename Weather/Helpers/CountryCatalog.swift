@@ -2,9 +2,8 @@
 //  CountryCatalog.swift
 //  Weather
 //
-//  Purpose: Loads the bundled country city catalog used by population-ranked
-//  bulk place additions and first-run Starting Cities without runtime
-//  geocoding or timezone guessing.
+//  Purpose: Loads the bundled country city catalog used by Map's country and
+//  continent queries, plus offline timezone resolution.
 //
 
 import CoreLocation
@@ -29,7 +28,7 @@ struct CountryPlacesOption: Identifiable, Hashable {
     }
 }
 
-/// The six continent sources available when adding places in bulk.
+/// The six continent scopes available in Map's Find Sun query.
 enum ContinentPlacesOption: String, CaseIterable, Identifiable, Hashable {
     case europe
     case asia
@@ -92,11 +91,6 @@ struct CountryCityCatalogEntry: Hashable {
 
 /// Loads and queries the bundled population-ranked country-city resource.
 enum CountryCityCatalog {
-    /// Default population-ranked geographic preset size.
-    static let defaultGeneratedCityCount = 15
-    /// Maximum size offered by the bulk-add preview.
-    static let maximumGeneratedCityCount = 25
-
     /// Returns every available country, sorted by its localized display name.
     static func countries(locale: Locale) -> [CountryPlacesOption] {
         catalog.countriesByCode.values.sorted {
@@ -106,18 +100,32 @@ enum CountryCityCatalog {
         }
     }
 
+    /// Resolves one bundled country from an ISO 3166-1 alpha-2 code.
+    static func country(iso2: String) -> CountryPlacesOption? {
+        catalog.countriesByCode[iso2.uppercased()]
+    }
+
+    /// Resolves the supported continent for a bundled country.
+    static func continent(
+        for country: CountryPlacesOption
+    ) -> ContinentPlacesOption? {
+        continentCountryCodes.first { _, countryCodes in
+            countryCodes.contains(country.iso2)
+        }?.key
+    }
+
     /// Returns the requested leading population-ranked cities for a country.
     static func topCities(
         for country: CountryPlacesOption,
-        limit: Int = defaultGeneratedCityCount
+        limit: Int
     ) -> [City] {
-        Array(country.cities.prefix(clampedLimit(limit))).map(\.appCity)
+        Array(country.cities.prefix(max(0, limit))).map(\.appCity)
     }
 
     /// Returns top catalog cities across the countries mapped to a continent.
     static func topCities(
         for continent: ContinentPlacesOption,
-        limit: Int = defaultGeneratedCityCount
+        limit: Int
     ) -> [City] {
         guard let countryCodes = continentCountryCodes[continent] else { return [] }
         let cities = countryCodes
@@ -129,7 +137,25 @@ enum CountryCityCatalog {
                 }
                 return $0.city.localizedCaseInsensitiveCompare($1.city) == .orderedAscending
             }
-        return Array(cities.prefix(clampedLimit(limit))).map(\.appCity)
+        return Array(cities.prefix(max(0, limit))).map(\.appCity)
+    }
+
+    /// Resolves the geographic source nearest to a map-centered coordinate.
+    /// This keeps map-driven country selection offline and deterministic.
+    static func country(
+        nearestTo coordinate: CLLocationCoordinate2D
+    ) -> CountryPlacesOption? {
+        guard let nearest = nearestEntry(to: coordinate) else { return nil }
+        return catalog.countriesByCode[nearest.iso2]
+    }
+
+    /// Resolves the supported continent containing the catalog country nearest
+    /// to a map-centered coordinate.
+    static func continent(
+        nearestTo coordinate: CLLocationCoordinate2D
+    ) -> ContinentPlacesOption? {
+        guard let country = country(nearestTo: coordinate) else { return nil }
+        return continent(for: country)
     }
 
     /// Returns the timezone of the closest validated bundled catalog city.
@@ -141,25 +167,30 @@ enum CountryCityCatalog {
     static func nearestTimeZoneIdentifier(
         to coordinate: CLLocationCoordinate2D
     ) -> String? {
-        guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
+        nearestEntry(to: coordinate)?.timeZoneIdentifier
+    }
 
+    private static func nearestEntry(
+        to coordinate: CLLocationCoordinate2D
+    ) -> CountryCityCatalogEntry? {
+        guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
         let target = CLLocation(
             latitude: coordinate.latitude,
             longitude: coordinate.longitude
         )
-        return catalog.allCities.min { lhs, rhs in
-            let lhsDistance = target.distance(
-                from: CLLocation(latitude: lhs.latitude, longitude: lhs.longitude)
-            )
-            let rhsDistance = target.distance(
-                from: CLLocation(latitude: rhs.latitude, longitude: rhs.longitude)
-            )
-            return lhsDistance < rhsDistance
-        }?.timeZoneIdentifier
-    }
+        var nearest: CountryCityCatalogEntry?
+        var nearestDistance = CLLocationDistance.greatestFiniteMagnitude
 
-    private static func clampedLimit(_ limit: Int) -> Int {
-        min(max(1, limit), maximumGeneratedCityCount)
+        for entry in catalog.allCities {
+            let distance = target.distance(
+                from: CLLocation(latitude: entry.latitude, longitude: entry.longitude)
+            )
+            if distance < nearestDistance {
+                nearest = entry
+                nearestDistance = distance
+            }
+        }
+        return nearest
     }
 
     /// Built-in continents mapped to included ISO country codes.
@@ -197,7 +228,8 @@ enum CountryCityCatalog {
         ]
     ]
 
-    /// Complete parsed resource retained once for bulk place additions.
+    /// Complete parsed resource retained once for Map queries and timezone
+    /// fallback lookup.
     private struct CatalogData {
         let countriesByCode: [String: CountryPlacesOption]
         /// Flattened validated rows reused by the offline timezone fallback.
@@ -225,7 +257,7 @@ enum CountryCityCatalog {
               let csv = try? String(contentsOf: url, encoding: .utf8) else {
             DeveloperDiagnostics.show(
                 title: "Country City Catalog Missing",
-                message: "The bundled country_city_coordinates.csv file could not be loaded. Places cannot be added by country or continent."
+                message: "The bundled country_city_coordinates.csv file could not be loaded. Country and continent searches are unavailable."
             )
             return CatalogData(countriesByCode: [:], allCities: [])
         }

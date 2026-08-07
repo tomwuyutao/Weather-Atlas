@@ -1,5 +1,5 @@
 //
-//  PlacesView.swift
+//  Places.swift
 //  Weather
 //
 //  Purpose: Presents the one-level Saved Places library as a compact list.
@@ -19,10 +19,14 @@ struct PlacesView: View {
     @Binding var selectedDate: Date
 
     @Environment(\.locale) private var locale
+    @Environment(\.calendar) private var forecastCalendar
     @Environment(\.appTheme) private var theme
 
     @State private var sortMode: WeatherMetricMode = .sunny
+    @State private var isSorting = false
+    @State private var listEditMode: EditMode = .inactive
     @State private var pendingDeletion: SavedPlace?
+    @State private var renamingPlace: SavedPlace?
     @State private var presentedError: PlacesUIError?
     @AppStorage("temperatureUnit")
     private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
@@ -41,7 +45,8 @@ struct PlacesView: View {
                 recommendation: weather.flatMap {
                     RecommendationEngine.recommendation(
                         for: $0,
-                        on: selectedDate
+                        on: selectedDate,
+                        selectionCalendar: forecastCalendar
                     )
                 },
                 isLoading: weatherStore.isLoading(place.id),
@@ -125,6 +130,7 @@ struct PlacesView: View {
     var body: some View {
         placesContent
             .weatherAtlasScreenBackground()
+            .environment(\.editMode, $listEditMode)
             .toolbarVisibility(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HStack(spacing: 8) {
@@ -139,10 +145,16 @@ struct PlacesView: View {
                     sortMenu
                         .frame(minWidth: 36, minHeight: 44)
 
-                    TopForecastDateSwitcher(
-                        selection: $selectedDate,
-                        availableDates: ForecastDateHorizon.dates
-                    )
+                    EditButton()
+                        .frame(minWidth: 44, minHeight: 44)
+                        .disabled(savedPlaces.isEmpty)
+
+                    if isSorting {
+                        TopForecastDateSwitcher(
+                            selection: $selectedDate,
+                            availableDates: ForecastDateHorizon.dates(in: forecastCalendar)
+                        )
+                    }
                 }
                 .font(.title3)
                 .buttonStyle(.plain)
@@ -178,15 +190,28 @@ struct PlacesView: View {
             } message: { error in
                 Text(error.message)
             }
+            .sheet(item: $renamingPlace) { place in
+                RenamePlaceSheet(place: place, placesStore: placesStore)
+            }
             .task(id: weatherLoadID) {
+                guard isSorting else { return }
                 await weatherStore.load(
                     cities: savedPlaces.map(\.city),
                     locale: locale
                 )
             }
+            .onChange(of: isSorting) { _, sortingEnabled in
+                guard sortingEnabled else { return }
+                Task {
+                    await weatherStore.load(
+                        cities: savedPlaces.map(\.city),
+                        locale: locale
+                    )
+                }
+            }
             .sensoryFeedback(
                 .selection,
-                trigger: sortMode.rawValue
+                trigger: isSorting ? sortMode.rawValue : "unsorted"
             )
     }
 
@@ -210,11 +235,23 @@ struct PlacesView: View {
 
     private var placesList: some View {
         List {
-            if sortMode == .sunny {
+            if !isSorting {
+                Section {
+                    ForEach(presentations) { presentation in
+                        placeRow(presentation)
+                    }
+                    .onDelete { offsets in
+                        requestDeletion(offsets, from: presentations)
+                    }
+                }
+            } else if sortMode == .sunny {
                 ForEach(sunnySections) { section in
                     Section {
                         ForEach(section.presentations) { presentation in
                             placeRow(presentation)
+                        }
+                        .onDelete { offsets in
+                            requestDeletion(offsets, from: section.presentations)
                         }
                     } header: {
                         HStack(spacing: 5) {
@@ -233,12 +270,18 @@ struct PlacesView: View {
                         .foregroundStyle(theme.colors.primaryText)
                         .textCase(nil)
                     }
+                    // Restore the compact rule directly below each weather
+                    // subheading from the earlier list design.
+                    .listSectionSeparator(.visible, edges: .top)
                 }
 
                 if !loadingPresentations.isEmpty {
                     Section("Loading Forecasts") {
                         ForEach(loadingPresentations) { presentation in
                             placeRow(presentation)
+                        }
+                        .onDelete { offsets in
+                            requestDeletion(offsets, from: loadingPresentations)
                         }
                     }
                 }
@@ -248,12 +291,21 @@ struct PlacesView: View {
                         ForEach(unavailablePresentations) { presentation in
                             placeRow(presentation)
                         }
+                        .onDelete { offsets in
+                            requestDeletion(
+                                offsets,
+                                from: unavailablePresentations
+                            )
+                        }
                     }
                 }
             } else {
                 Section {
                     ForEach(sortedPresentations) { presentation in
                         placeRow(presentation)
+                    }
+                    .onDelete { offsets in
+                        requestDeletion(offsets, from: sortedPresentations)
                     }
                 } header: {
                     HStack(spacing: 5) {
@@ -286,22 +338,20 @@ struct PlacesView: View {
         .accessibilityLabel("Saved places")
     }
 
+    @ViewBuilder
     private func placeRow(
         _ presentation: SavedPlacePresentation
     ) -> some View {
-        NavigationLink(
-            value: AppRoute.place(id: presentation.id)
-        ) {
-            CompactSavedPlaceRow(
-                presentation: presentation,
-                displayName: displayName(for: presentation.place),
-                rank: presentation.recommendation == nil
-                    ? nil
-                    : rankByPlaceID[presentation.id],
-                sortMode: sortMode,
-                temperatureUnit: temperatureUnit,
-                distanceUnit: distanceUnit
-            )
+        Group {
+            if listEditMode.isEditing {
+                editablePlaceRow(presentation)
+            } else {
+                NavigationLink(
+                    value: AppRoute.place(id: presentation.id)
+                ) {
+                    savedPlaceRow(presentation)
+                }
+            }
         }
         .listRowInsets(
             EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16)
@@ -324,26 +374,62 @@ struct PlacesView: View {
         }
     }
 
+    private func savedPlaceRow(
+        _ presentation: SavedPlacePresentation
+    ) -> some View {
+        CompactSavedPlaceRow(
+            presentation: presentation,
+            displayName: displayName(for: presentation.place),
+            rank: !isSorting || presentation.recommendation == nil
+                ? nil
+                : rankByPlaceID[presentation.id],
+            sortMode: sortMode,
+            showsWeatherDetails: isSorting,
+            temperatureUnit: temperatureUnit,
+            distanceUnit: distanceUnit
+        )
+    }
+
+    private func editablePlaceRow(
+        _ presentation: SavedPlacePresentation
+    ) -> some View {
+        HStack(spacing: 8) {
+            savedPlaceRow(presentation)
+
+            Button {
+                renamingPlace = presentation.place
+            } label: {
+                Label("Rename", systemImage: "pencil")
+                    .labelStyle(.iconOnly)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel("Rename \(displayName(for: presentation.place))")
+        }
+    }
+
     private var sortMenu: some View {
         Menu {
-            Button {
-                router.presentedSheet = .addPlaces
-            } label: {
-                Label(
-                    "Add Places by Country or Continent",
-                    systemImage: "globe.europe.africa"
-                )
-            }
+            if isSorting {
+                Picker("Sort Places", selection: $sortMode) {
+                    ForEach(WeatherMetricMode.allCases) { mode in
+                        Label(
+                            mode.title(locale: locale),
+                            systemImage: mode.icon
+                        )
+                        .tag(mode)
+                    }
+                }
 
-            Divider()
-
-            Picker("Sort Places", selection: $sortMode) {
-                ForEach(WeatherMetricMode.allCases) { mode in
-                    Label(
-                        mode.title(locale: locale),
-                        systemImage: mode.icon
-                    )
-                    .tag(mode)
+                Button(localizedString("Stop Sorting", locale: locale), systemImage: "xmark") {
+                    isSorting = false
+                }
+            } else {
+                Button(
+                    localizedString("Sort by Sunniness", locale: locale),
+                    systemImage: WeatherMetricMode.sunny.icon
+                ) {
+                    sortMode = .sunny
+                    isSorting = true
                 }
             }
 
@@ -361,12 +447,12 @@ struct PlacesView: View {
                 Label("Refresh Forecasts", systemImage: "arrow.clockwise")
             }
         } label: {
-            Label("Sort and Refresh", systemImage: "arrow.up.arrow.down")
+            Label("Sort", systemImage: "arrow.up.arrow.down")
                 .labelStyle(.iconOnly)
         }
         .accessibilityHint(
             localizedString(
-                "Changes how places are ordered or refreshes their forecasts.",
+                "Sorts places or refreshes their forecasts.",
                 locale: locale
             )
         )
@@ -406,6 +492,17 @@ struct PlacesView: View {
         }
     }
 
+    private func requestDeletion(
+        _ offsets: IndexSet,
+        from presentations: [SavedPlacePresentation]
+    ) {
+        guard let offset = offsets.first,
+              presentations.indices.contains(offset) else {
+            return
+        }
+        pendingDeletion = presentations[offset].place
+    }
+
     private func present(_ error: Error) {
         presentedError = PlacesUIError(
             message: localizedPlacesErrorDescription(
@@ -428,11 +525,78 @@ private struct PlacesUIError: Identifiable {
     let message: String
 }
 
+private struct RenamePlaceSheet: View {
+    let place: SavedPlace
+    let placesStore: PlacesStore
+
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
+    @State private var name: String
+    @State private var error: PlacesUIError?
+
+    init(place: SavedPlace, placesStore: PlacesStore) {
+        self.place = place
+        self.placesStore = placesStore
+        _name = State(initialValue: place.customName ?? place.city.displayName)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                TextField("Rename", text: $name)
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+            }
+            .navigationTitle("Rename")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save", action: save)
+                }
+            }
+        }
+        .alert(
+            "Unable to Update Places",
+            isPresented: errorIsPresented,
+            presenting: error
+        ) { _ in
+            Button("OK") { error = nil }
+        } message: { error in
+            Text(error.message)
+        }
+    }
+
+    private func save() {
+        do {
+            try placesStore.renamePlace(id: place.id, customName: name)
+            dismiss()
+        } catch {
+            self.error = PlacesUIError(
+                message: localizedPlacesErrorDescription(error, locale: locale)
+            )
+        }
+    }
+
+    private var errorIsPresented: Binding<Bool> {
+        Binding(
+            get: { error != nil },
+            set: { isPresented in
+                if !isPresented {
+                    error = nil
+                }
+            }
+        )
+    }
+}
+
 private struct CompactSavedPlaceRow: View {
     let presentation: SavedPlacePresentation
     let displayName: String
     let rank: Int?
     let sortMode: WeatherMetricMode
+    let showsWeatherDetails: Bool
     let temperatureUnit: TemperatureUnit
     let distanceUnit: DistanceUnit
 
@@ -458,7 +622,9 @@ private struct CompactSavedPlaceRow: View {
 
     private var compactLayout: some View {
         HStack(spacing: 5) {
-            rankOrStatusIcon
+            if showsWeatherDetails {
+                rankOrStatusIcon
+            }
 
             Text(displayName)
                 .font(.body.weight(.medium))
@@ -471,14 +637,16 @@ private struct CompactSavedPlaceRow: View {
 
     private var accessibilityLayout: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            if let rank {
-                Text(rank, format: .number)
-                    .font(.headline)
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .monospacedDigit()
-            } else {
-                statusIcon
-                    .accessibilityHidden(true)
+            if showsWeatherDetails {
+                if let rank {
+                    Text(rank, format: .number)
+                        .font(.headline)
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .monospacedDigit()
+                } else {
+                    statusIcon
+                        .accessibilityHidden(true)
+                }
             }
 
             Text(displayName)
@@ -530,6 +698,7 @@ private struct CompactSavedPlaceRow: View {
     }
 
     private var accessibilityValue: String {
+        guard showsWeatherDetails else { return "" }
         var components: [String] = []
 
         if let rank {

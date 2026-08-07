@@ -1,9 +1,9 @@
 //
-//  HomeView.swift
+//  Home.swift
 //  Weather
 //
-//  Purpose: Presents three focused cards for current-location sunny hours,
-//  saved-place ranking, and the nearest fully sunny World Cities result.
+//  Purpose: Presents current-location sunny hours, saved-place ranking, and
+//  the nearest fully sunny World Cities result.
 //
 
 import CoreLocation
@@ -11,7 +11,7 @@ import SwiftUI
 import UIKit
 
 struct HomeView: View {
-    /// Injected observable model; Home needs a binding only for its radius menu.
+    /// Injected observable model shared by Home's current-location workflows.
     @Bindable var model: WeatherAtlasModel
     /// Value-navigation and item-driven presentation coordinator.
     @Bindable var router: AppRouter
@@ -24,10 +24,24 @@ struct HomeView: View {
     @State private var recentlySavedPlaceID: SavedPlace.ID?
     @State private var saveErrorMessage: String?
 
-    private var sunnySavedRecommendations: [PlaceRecommendation] {
-        model.savedRecommendations(on: selectedDate).filter {
+    /// Home ranks the current location beside Saved Places, but the location is
+    /// never persisted into the Places library as a side effect.
+    private var allHomeRecommendations: [PlaceRecommendation] {
+        let saved = model.savedRecommendations(on: selectedDate)
+        guard let current = model.currentLocationRecommendation(on: selectedDate) else {
+            return saved
+        }
+        return RecommendationEngine.ranked(saved + [current])
+    }
+
+    private var sunnyHomeRecommendations: [PlaceRecommendation] {
+        allHomeRecommendations.filter {
             $0.condition == .clear || $0.condition == .partlySunny
         }
+    }
+
+    private var currentLocationRecommendationID: City.ID? {
+        model.currentLocationRecommendation(on: selectedDate)?.id
     }
 
     private var savedPlaceIDs: Set<SavedPlace.ID> {
@@ -38,62 +52,63 @@ struct HomeView: View {
         savedPlaceIDs.sorted { $0.uuidString < $1.uuidString }
     }
 
+    /// Re-ranks the preloaded nearby-city forecasts locally for the selected
+    /// date. Changing this date never creates another WeatherKit request.
+    private var nearbySunnyRecommendations: [NearestSunnyPlaceResult] {
+        model.nearbySunnyRecommendations(on: selectedDate)
+    }
+
     private var homeWeatherTaskID: HomeWeatherTaskID {
         HomeWeatherTaskID(
-            date: Calendar.current.startOfDay(for: selectedDate),
-            radius: model.nearestSunnySearchRadius,
-            localeIdentifier: locale.identifier,
-            status: model.locationProvider.status,
             latitude: model.locationProvider.coordinate?.latitude,
-            longitude: model.locationProvider.coordinate?.longitude,
-            metadata: model.locationProvider.metadata
+            longitude: model.locationProvider.coordinate?.longitude
         )
     }
 
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 20) {
-                CurrentLocationTimelineCard(
-                    weather: model.currentLocationWeather,
-                    selectedDate: selectedDate,
-                    locationName: model.locationProvider.metadata?.displayName,
-                    locationStatus: model.locationProvider.status,
-                    isLoading: model.isRefreshingHomeWeather,
-                    requestLocation: requestCurrentLocation,
-                    openSettings: openLocationSettings,
-                    retry: refreshHomeWeather
-                )
+                VStack(alignment: .leading, spacing: 8) {
+                    HomeScopeLabel("Current Location")
 
-                BestSunnyPlacesCard(
-                    recommendations: sunnySavedRecommendations,
-                    showAllPlaces: { router.showPlaces() }
-                )
+                    CurrentLocationTimelineCard(
+                        weather: model.currentLocationWeather,
+                        selectedDate: selectedDate,
+                        locationName: model.locationProvider.metadata?.displayName
+                            ?? model.currentLocationWeather?.city.displayName,
+                        locationStatus: model.locationProvider.status,
+                        isLoading: model.isRefreshingHomeWeather,
+                        requestLocation: requestCurrentLocation,
+                        openSettings: openLocationSettings,
+                        retry: refreshHomeWeather
+                    )
+                }
 
-                // Keep this card in the layout for every selected date. The
-                // prior conditional removed it whenever the current location
-                // was clear, which made a simple date change look like a
-                // failed or missing nearest-sunny search.
-                NearestSunnyPlaceCard(
-                    radius: $model.nearestSunnySearchRadius,
-                    recommendation: model.nearestSunnyRecommendation,
-                    currentLocationIsFullySunny:
-                        model.currentLocationIsFullySunny(on: selectedDate),
-                    locationStatus: model.locationProvider.status,
-                    isLoading: model.isRefreshingHomeWeather,
-                    hasCompletedSearch:
-                        model.hasCompletedNearestSunnySearch,
-                    checkedCityCount:
-                        model.lastNearestSunnyCheckedCityCount,
-                    weatherKitQueryCount:
-                        model.lastNearestSunnyWeatherQueryCount,
-                    errorMessage: model.homeLocationError,
-                    isSaved: model.nearestSunnyRecommendation.map {
-                        savedPlaceIDs.contains($0.id)
-                    } ?? false,
-                    requestLocation: requestCurrentLocation,
-                    retry: refreshHomeWeather,
-                    save: saveNearestSunnyPlace
-                )
+                VStack(alignment: .leading, spacing: 20) {
+                    HomeScopeLabel("Compare Locations")
+
+                    BestSunnyPlacesCard(
+                        recommendations: sunnyHomeRecommendations,
+                        selectedDate: selectedDate,
+                        currentLocationRecommendationID: currentLocationRecommendationID,
+                        showAllPlaces: { router.showPlaces() }
+                    )
+
+                    if !model.currentLocationIsSunny(on: selectedDate) {
+                        NearestSunnyPlaceCard(
+                            recommendations: nearbySunnyRecommendations,
+                            locationStatus: model.locationProvider.status,
+                            isLoading: model.isRefreshingHomeWeather,
+                            hasCompletedSearch:
+                                model.hasCompletedNearestSunnySearch,
+                            errorMessage: model.homeLocationError,
+                            savedPlaceIDs: savedPlaceIDs,
+                            requestLocation: requestCurrentLocation,
+                            retry: refreshHomeWeather,
+                            save: saveNearbySunnyPlace
+                        )
+                    }
+                }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -115,15 +130,26 @@ struct HomeView: View {
 
                 Spacer(minLength: 8)
 
-                Button("Settings", systemImage: "gearshape") {
-                    router.presentedSheet = .settings
+                Menu {
+                    Button {
+                        refreshHomeWeather()
+                    } label: {
+                        Label(refreshMenuTitle, systemImage: "arrow.clockwise")
+                    }
+                    Button {
+                        router.presentedSheet = .settings
+                    } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                } label: {
+                    Label("More", systemImage: "ellipsis")
+                        .labelStyle(.iconOnly)
                 }
-                .labelStyle(.iconOnly)
                 .frame(minWidth: 36, minHeight: 44)
 
                 TopForecastDateSwitcher(
                     selection: $selectedDate,
-                    availableDates: ForecastDateHorizon.dates
+                    availableDates: ForecastDateHorizon.dates(in: model.forecastCalendar)
                 )
             }
             .font(.title3)
@@ -139,7 +165,6 @@ struct HomeView: View {
             )
             if model.locationProvider.hasUsableCoordinate {
                 await model.refreshHomeWeather(
-                    on: selectedDate,
                     forceRefresh: true,
                     locale: locale
                 )
@@ -157,7 +182,6 @@ struct HomeView: View {
                 return
             }
             await model.refreshHomeWeather(
-                on: selectedDate,
                 locale: locale
             )
         }
@@ -205,17 +229,20 @@ struct HomeView: View {
         }
         Task {
             await model.refreshHomeWeather(
-                on: selectedDate,
                 forceRefresh: true,
                 locale: locale
             )
         }
     }
 
-    private func saveNearestSunnyPlace() {
-        guard let recommendation = model.nearestSunnyRecommendation else {
-            return
+    private var refreshMenuTitle: String {
+        guard let lastHomeRefreshDate = model.lastHomeRefreshDate else {
+            return "Refresh (Not yet)"
         }
+        return "Refresh (\(lastHomeRefreshDate.formatted(.relative(presentation: .named))))"
+    }
+
+    private func saveNearbySunnyPlace(_ recommendation: NearestSunnyPlaceResult) {
         do {
             recentlySavedPlaceID = try model.saveRecommendation(recommendation)
         } catch {
@@ -227,12 +254,26 @@ struct HomeView: View {
     }
 }
 
+private struct HomeScopeLabel: View {
+    let title: LocalizedStringKey
+
+    @Environment(\.appTheme) private var theme
+
+    init(_ title: LocalizedStringKey) {
+        self.title = title
+    }
+
+    var body: some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundStyle(theme.colors.secondaryText)
+            .tracking(0.7)
+            .padding(.horizontal, 4)
+            .accessibilityAddTraits(.isHeader)
+    }
+}
+
 private struct HomeWeatherTaskID: Hashable {
-    let date: Date
-    let radius: NearestSunnySearchRadius
-    let localeIdentifier: String
-    let status: LocationProviderStatus
     let latitude: Double?
     let longitude: Double?
-    let metadata: CurrentLocationMetadata?
 }

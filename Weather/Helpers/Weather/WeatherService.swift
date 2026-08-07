@@ -45,13 +45,6 @@ final class WeatherService {
 
     // MARK: Error Reporting
 
-    /// Logs a service error. PlaceWeatherStore owns user-facing failures.
-    func report(_ error: Error) {
-        #if DEBUG
-        print("[WeatherService] \(error.localizedDescription)")
-        #endif
-    }
-
     /// Records an internal invariant or persistence diagnostic in debug builds.
     func reportDeveloperWarning(title: String, message: String) {
         DeveloperDiagnostics.show(title: title, message: message)
@@ -176,7 +169,10 @@ final class WeatherService {
             
             return cityWeather
         } catch {
-            report(error)
+            reportDeveloperWarning(
+                title: "Weather Request Failed",
+                message: error.localizedDescription
+            )
             return nil
         }
     }

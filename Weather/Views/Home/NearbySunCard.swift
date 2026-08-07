@@ -1,29 +1,23 @@
 //
-//  NearestSunnyPlaceCard.swift
+//  NearbySunCard.swift
 //  Weather
 //
-//  Purpose: Presents the first fully sunny World Cities result found by the
-//  query-budgeted nearest-first Home search.
+//  Purpose: Presents nearby World Cities recommendations using the same
+//  scoring as Best Sunny Places, with each city's distance from the user.
 //
 
 import SwiftUI
 
 struct NearestSunnyPlaceCard: View {
-    @Binding var radius: NearestSunnySearchRadius
-
-    let recommendation: NearestSunnyPlaceResult?
-    /// Selected-day state that replaces card disappearance with an explanation.
-    let currentLocationIsFullySunny: Bool
+    let recommendations: [NearestSunnyPlaceResult]
     let locationStatus: LocationProviderStatus
     let isLoading: Bool
     let hasCompletedSearch: Bool
-    let checkedCityCount: Int
-    let weatherKitQueryCount: Int
     let errorMessage: String?
-    let isSaved: Bool
+    let savedPlaceIDs: Set<SavedPlace.ID>
     let requestLocation: () -> Void
     let retry: () -> Void
-    let save: () -> Void
+    let save: (NearestSunnyPlaceResult) -> Void
 
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -40,32 +34,11 @@ struct NearestSunnyPlaceCard: View {
             HStack(spacing: 8) {
                 HomeWeatherCardHeader(
                     icon: "location.magnifyingglass",
-                    title: "Nearest Sunny Place"
+                    title: "Nearby Sunny Places"
                 )
-
-                radiusMenu
             }
 
             cardContent
-
-            #if DEBUG
-            if hasCompletedSearch, !isLoading {
-                Text(
-                    verbatim:
-                        "Debug · \(weatherKitQueryCount) WeatherKit queries · "
-                        + "\(checkedCityCount) cities checked"
-                )
-                .font(.caption2.monospacedDigit())
-                .foregroundStyle(theme.colors.secondaryText)
-                .accessibilityLabel(
-                    Text(
-                        verbatim:
-                            "Debug. \(weatherKitQueryCount) WeatherKit queries. "
-                            + "\(checkedCityCount) cities checked."
-                    )
-                )
-            }
-            #endif
         }
         .padding(18)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -75,43 +48,18 @@ struct NearestSunnyPlaceCard: View {
         )
     }
 
-    private var radiusMenu: some View {
-        Menu {
-            Picker("Search Radius", selection: $radius) {
-                ForEach(NearestSunnySearchRadius.allCases) { option in
-                    Text(
-                        option.measurement,
-                        format: .measurement(width: .abbreviated)
-                    )
-                    .tag(option)
-                }
-            }
-        } label: {
-            HStack(spacing: 4) {
-                Text(
-                    radius.measurement,
-                    format: .measurement(width: .abbreviated)
-                )
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.caption2.weight(.semibold))
-            }
-        }
-        .font(.caption.weight(.semibold))
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .fixedSize()
-        .accessibilityHint("Changes the maximum nearest-sunny search distance.")
-    }
-
     @ViewBuilder
     private var cardContent: some View {
-        if let recommendation {
-            resultRow(recommendation)
-        } else if currentLocationIsFullySunny, hasCompletedSearch {
-            Text("Your current location is already fully sunny on this date.")
-                .font(.callout)
-                .foregroundStyle(theme.colors.secondaryText)
-                .padding(.vertical, 14)
+        if !recommendations.isEmpty {
+            VStack(spacing: 0) {
+                ForEach(recommendations) { recommendation in
+                    resultRow(recommendation)
+                    if recommendation.id != recommendations.last?.id {
+                        Divider()
+                            .padding(.leading, 42)
+                    }
+                }
+            }
         } else if isLoading {
             HStack(spacing: 12) {
                 ProgressView()
@@ -140,7 +88,7 @@ struct NearestSunnyPlaceCard: View {
         } else if hasCompletedSearch {
             messageWithAction(
                 localizedString(
-                    "No fully sunny city was found within the selected distance.",
+                    "No sunny city was found within this range.",
                     locale: locale
                 ),
                 actionTitle: "Try Again",
@@ -150,7 +98,7 @@ struct NearestSunnyPlaceCard: View {
         } else {
             messageWithAction(
                 localizedString(
-                    "Find the nearest World Cities location with fully clear conditions.",
+                    "Find nearby World Cities with sunny conditions.",
                     locale: locale
                 ),
                 actionTitle: "Find Sunny Place",
@@ -211,8 +159,10 @@ struct NearestSunnyPlaceCard: View {
             }
             .buttonStyle(.plain)
 
-            if !isSaved {
-                Button("Save", systemImage: "bookmark", action: save)
+            if !savedPlaceIDs.contains(recommendation.id) {
+                Button("Save", systemImage: "bookmark") {
+                    save(recommendation)
+                }
                     .labelStyle(.iconOnly)
                     .frame(width: 44, height: 44)
             }

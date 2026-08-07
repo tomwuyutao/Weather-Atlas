@@ -1,5 +1,5 @@
 //
-//  SunnyHoursOverviewCard.swift
+//  SunnyHoursCard.swift
 //  Weather
 //
 //  Purpose: Presents the compact ten-day sunny-hours detail card using the
@@ -10,7 +10,8 @@ import SwiftUI
 
 struct SunnyHoursOverviewCard: View {
     let city: CityWeather
-    let selectedDate: Date
+    /// Shared Detail selection; every chart row can change the active day.
+    @Binding var selectedDate: Date
 
     @Environment(\.accessibilityDifferentiateWithoutColor)
     private var differentiateWithoutColor
@@ -21,7 +22,10 @@ struct SunnyHoursOverviewCard: View {
 
     private var rows: [SunnyHoursDayRow] {
         city.dailyForecasts.prefix(10).compactMap { forecast in
-            guard let selectionDate = city.selectionDate(for: forecast),
+            guard let selectionDate = city.selectionDate(
+                for: forecast,
+                selectionCalendar: calendar
+            ),
                   selectionDate >= calendar.startOfDay(for: Date()),
                   case .success(let data) = SunninessScoring.sunnyHoursData(
                 for: forecast,
@@ -72,18 +76,26 @@ struct SunnyHoursOverviewCard: View {
 
                 VStack(spacing: 0) {
                     ForEach(rows) { row in
-                        SunnyHoursDayTrack(
-                            row: row,
-                            bounds: chartBounds,
-                            selected: calendar.isDate(
-                                row.date,
-                                inSameDayAs: selectedDate
-                            ),
-                            label: dayLabel(for: row.date),
-                            theme: theme.colors,
-                            differentiateWithoutColor:
-                                differentiateWithoutColor
-                        )
+                        Button {
+                            withAnimation(.smooth(duration: 0.2)) {
+                                selectedDate = calendar.startOfDay(for: row.date)
+                            }
+                        } label: {
+                            SunnyHoursDayTrack(
+                                row: row,
+                                bounds: chartBounds,
+                                selected: calendar.isDate(
+                                    row.date,
+                                    inSameDayAs: selectedDate
+                                ),
+                                label: dayLabel(for: row.date),
+                                theme: theme.colors,
+                                differentiateWithoutColor:
+                                    differentiateWithoutColor
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .contentShape(.rect)
                         .accessibilityLabel(
                             "\(dayLabel(for: row.date)), \(row.accessibilitySummary(locale: locale))"
                         )
@@ -109,7 +121,10 @@ struct SunnyHoursOverviewCard: View {
     }
 
     private var selectedSunnyWindow: String {
-        guard let forecast = city.forecastIfAvailable(on: selectedDate),
+        guard let forecast = city.forecastIfAvailable(
+            on: selectedDate,
+            selectionCalendar: calendar
+        ),
               case .success(let data) = SunninessScoring.sunnyHoursData(
                 for: forecast,
                 timeZone: city.timeZone
@@ -121,7 +136,7 @@ struct SunnyHoursOverviewCard: View {
             return localizedString("No Sun", locale: locale)
         }
 
-        return "\(SunninessScoring.compactHourLabel(range.lowerBound, locale: locale))–\(SunninessScoring.compactHourLabel(range.upperBound + 1, locale: locale))"
+        return "\(SunninessScoring.compactHourLabel(range.lowerBound, locale: locale)) – \(SunninessScoring.compactHourLabel(range.upperBound + 1, locale: locale))"
     }
 
     private func dayLabel(for date: Date) -> String {

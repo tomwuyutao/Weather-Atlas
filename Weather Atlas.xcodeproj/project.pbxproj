@@ -59,7 +59,6 @@
 				Models/WeatherSymbols.swift,
 				Widgets/Localizable.xcstrings,
 				"Widgets/WeatherWidgets-InfoPlist.xcstrings",
-				Widgets/WidgetDataModels.swift,
 				Widgets/WidgetDataStore.swift,
 				Widgets/Widgets.swift,
 			);

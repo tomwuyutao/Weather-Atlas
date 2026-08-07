@@ -2,12 +2,13 @@
 //  WorldCitiesCatalog.swift
 //  Weather
 //
-//  Purpose: Loads the bundled world-cities dataset once for region-neutral
-//  place search and distance-ordered city lookup.
+//  Purpose: Loads the bundled world-cities dataset once for Map discovery,
+//  nearby-city lookup, and first-run saved places.
 //
 
 import CoreLocation
 import Foundation
+import MapKit
 
 // MARK: - Catalog Models
 
@@ -20,16 +21,10 @@ nonisolated struct WorldCityRecord: Identifiable, Hashable, Sendable {
     let id: String
     /// Canonical city name, retaining source-language diacritics.
     let name: String
-    /// ASCII city name supplied by the dataset.
-    let asciiName: String
     /// Canonical English country name.
     let countryName: String
     /// ISO 3166-1 alpha-2 country code.
     let isoCountryCode: String
-    /// ISO 3166-1 alpha-3 country code.
-    let iso3CountryCode: String
-    /// First-level administrative area, when supplied.
-    let administrativeArea: String?
     /// Geographic latitude.
     let latitude: Double
     /// Geographic longitude.
@@ -54,16 +49,6 @@ nonisolated struct WorldCityDistanceCandidate: Identifiable, Hashable, Sendable 
     var id: WorldCityRecord.ID { city.id }
 }
 
-/// Pre-normalized fields reused by every settled city-search query.
-nonisolated private struct WorldCitySearchEntry: Sendable {
-    let city: WorldCityRecord
-    let normalizedName: String
-    let normalizedASCIIName: String
-    let normalizedNameWords: [Substring]
-    let normalizedASCIINameWords: [Substring]
-    let searchableMetadata: String
-}
-
 /// Failures that can occur while loading the bundled world-cities resource.
 nonisolated enum WorldCitiesCatalogError: Error, Equatable, Sendable {
     case resourceMissing
@@ -86,9 +71,45 @@ actor WorldCitiesCatalog {
 
     /// The retained task ensures the 50,000-row resource is parsed at most once.
     private var loadTask: Task<[WorldCityRecord], Error>?
-    /// Normalized search metadata is likewise built once, rather than folding
-    /// all 50,000 rows after every debounce.
-    private var searchIndexTask: Task<[WorldCitySearchEntry], Never>?
+    /// A deliberately curated, world-spanning starter collection for a new
+    /// Saved Places library. Each label resolves to its canonical row in the
+    /// bundled world-cities dataset rather than maintaining a second dataset.
+    private static let starterCityLabels: [(name: String, countryCode: String)] = [
+        ("London", "GB"),
+        ("Paris", "FR"),
+        ("New York", "US"),
+        ("Mexico City", "MX"),
+        ("Sao Paulo", "BR"),
+        ("Cairo", "EG"),
+        ("Johannesburg", "ZA"),
+        ("Istanbul", "TR"),
+        ("Dubai", "AE"),
+        ("Mumbai", "IN"),
+        ("Singapore", "SG"),
+        ("Beijing", "CN"),
+        ("Shanghai", "CN"),
+        ("Tokyo", "JP"),
+        ("Sydney", "AU")
+    ]
+
+    /// Returns the curated first-run cities in their intended overview order.
+    func starterCities() async throws -> [WorldCityRecord] {
+        let cities = try await allCities()
+        return Self.starterCityLabels.compactMap { label in
+            cities
+                .filter {
+                    $0.isoCountryCode == label.countryCode
+                        && Self.normalizedSearchText($0.name)
+                            == Self.normalizedSearchText(label.name)
+                }
+                .max { lhs, rhs in
+                    if lhs.population != rhs.population {
+                        return lhs.population < rhs.population
+                    }
+                    return lhs.id > rhs.id
+                }
+        }
+    }
 
     /// Returns catalog cities inside a geographic radius, ordered nearest
     /// first so a caller can stop network work as soon as it finds a match.
@@ -147,58 +168,111 @@ actor WorldCitiesCatalog {
         )
     }
 
-    /// Searches the bundled city index without inheriting the device's current
-    /// MapKit region bias. Exact and prefix city-name matches come first, then
-    /// population breaks ties so the most likely city remains easy to select.
-    func cities(
-        matching query: String,
-        limit: Int = 12
-    ) async throws -> [WorldCityRecord] {
-        let normalizedQuery = Self.normalizedSearchText(query)
-        guard !normalizedQuery.isEmpty, limit > 0 else { return [] }
-
-        let queryTokens = normalizedQuery.split(separator: " ").map(String.init)
-        let matches = try await searchIndex().compactMap {
-            entry -> (city: WorldCityRecord, rank: Int)? in
-            guard queryTokens.allSatisfy(entry.searchableMetadata.contains) else {
-                return nil
-            }
-
-            let rank: Int
-            if entry.normalizedName == normalizedQuery
-                || entry.normalizedASCIIName == normalizedQuery {
-                rank = 0
-            } else if entry.normalizedName.hasPrefix(normalizedQuery)
-                || entry.normalizedASCIIName.hasPrefix(normalizedQuery) {
-                rank = 1
-            } else if entry.normalizedNameWords.contains(
-                where: { $0.hasPrefix(normalizedQuery) }
-            ) || entry.normalizedASCIINameWords.contains(
-                where: { $0.hasPrefix(normalizedQuery) }
-            ) {
-                rank = 2
-            } else {
-                rank = 3
-            }
-            return (entry.city, rank)
+    /// Returns the most populous catalog cities inside a radius while retaining
+    /// their distance for later local ranking. Home uses this one bounded set
+    /// across date changes instead of making a new WeatherKit search per day.
+    func mostPopulousCities(
+        centeredAt center: CLLocationCoordinate2D,
+        withinKilometers radiusKilometers: Double,
+        fartherThanKilometers minimumDistanceKilometers: Double = 0,
+        limit: Int
+    ) async throws -> [WorldCityDistanceCandidate] {
+        guard CLLocationCoordinate2DIsValid(center),
+              radiusKilometers.isFinite,
+              radiusKilometers > 0,
+              minimumDistanceKilometers.isFinite,
+              minimumDistanceKilometers >= 0,
+              limit > 0 else {
+            return []
         }
 
-        return Array(
-            matches.sorted {
-                if $0.rank != $1.rank {
-                    return $0.rank < $1.rank
-                }
-                if $0.city.population != $1.city.population {
-                    return $0.city.population > $1.city.population
-                }
-                if $0.city.name != $1.city.name {
-                    return $0.city.name < $1.city.name
-                }
-                return $0.city.id < $1.city.id
+        let maximumLatitudeDelta =
+            radiusKilometers / Self.minimumKilometersPerLatitudeDegree
+        let cities = try await allCities()
+        var candidates: [WorldCityDistanceCandidate] = []
+        candidates.reserveCapacity(min(limit * 8, cities.count))
+
+        for (index, city) in cities.enumerated() {
+            if index.isMultiple(of: 256) {
+                try Task.checkCancellation()
             }
-            .prefix(limit)
-            .map(\.city)
-        )
+            guard abs(city.latitude - center.latitude) <= maximumLatitudeDelta else {
+                continue
+            }
+            let distance = Self.distanceKilometers(
+                fromLatitude: center.latitude,
+                longitude: center.longitude,
+                toLatitude: city.latitude,
+                longitude: city.longitude
+            )
+            guard distance <= radiusKilometers,
+                  distance > minimumDistanceKilometers else {
+                continue
+            }
+            candidates.append(
+                WorldCityDistanceCandidate(
+                    city: city,
+                    distanceKilometers: distance
+                )
+            )
+        }
+
+        return Array(candidates.sorted {
+            if $0.city.population != $1.city.population {
+                return $0.city.population > $1.city.population
+            }
+            if $0.distanceKilometers != $1.distanceKilometers {
+                return $0.distanceKilometers < $1.distanceKilometers
+            }
+            return $0.city.id < $1.city.id
+        }.prefix(limit))
+    }
+
+    /// Returns the most populous cities visible in a MapKit region. This is a
+    /// screen-area query rather than a radius query, so Find Sun mirrors the
+    /// part of the map the person is actually looking at.
+    func cities(
+        visibleIn region: MKCoordinateRegion,
+        limit: Int
+    ) async throws -> [WorldCityRecord] {
+        guard CLLocationCoordinate2DIsValid(region.center),
+              region.span.latitudeDelta > 0,
+              region.span.longitudeDelta > 0,
+              limit > 0 else {
+            return []
+        }
+
+        let lowerLatitude = max(-90, region.center.latitude - region.span.latitudeDelta / 2)
+        let upperLatitude = min(90, region.center.latitude + region.span.latitudeDelta / 2)
+        let rawLowerLongitude = region.center.longitude - region.span.longitudeDelta / 2
+        let rawUpperLongitude = region.center.longitude + region.span.longitudeDelta / 2
+        let lowerLongitude = Self.normalizedLongitude(rawLowerLongitude)
+        let upperLongitude = Self.normalizedLongitude(rawUpperLongitude)
+        let crossesAntimeridian = rawLowerLongitude < -180 || rawUpperLongitude > 180
+
+        let cities = try await allCities()
+        var matches: [WorldCityRecord] = []
+        matches.reserveCapacity(min(cities.count, limit * 8))
+        for (index, city) in cities.enumerated() {
+            if index.isMultiple(of: 256) {
+                try Task.checkCancellation()
+            }
+            guard city.latitude >= lowerLatitude,
+                  city.latitude <= upperLatitude else {
+                continue
+            }
+            let longitudeMatches = crossesAntimeridian
+                ? city.longitude >= lowerLongitude || city.longitude <= upperLongitude
+                : city.longitude >= lowerLongitude && city.longitude <= upperLongitude
+            if longitudeMatches {
+                matches.append(city)
+            }
+        }
+
+        return Array(matches.sorted {
+            if $0.population != $1.population { return $0.population > $1.population }
+            return $0.id < $1.id
+        }.prefix(limit))
     }
 
     /// Returns parsed rows, starting and retaining one utility-priority task.
@@ -213,45 +287,6 @@ actor WorldCitiesCatalog {
         }
         loadTask = task
         return try await task.value
-    }
-
-    /// Returns the one-time normalized search index.
-    private func searchIndex() async throws -> [WorldCitySearchEntry] {
-        if let searchIndexTask {
-            return await searchIndexTask.value
-        }
-
-        let cities = try await allCities()
-        let task = Task.detached(priority: .utility) {
-            cities.map { city in
-                let normalizedName = Self.normalizedSearchText(city.name)
-                let normalizedASCIIName = Self.normalizedSearchText(
-                    city.asciiName
-                )
-                let searchableMetadata = Self.normalizedSearchText(
-                    [
-                        city.name,
-                        city.asciiName,
-                        city.administrativeArea ?? "",
-                        city.countryName,
-                        city.isoCountryCode,
-                        city.iso3CountryCode
-                    ].joined(separator: " ")
-                )
-                return WorldCitySearchEntry(
-                    city: city,
-                    normalizedName: normalizedName,
-                    normalizedASCIIName: normalizedASCIIName,
-                    normalizedNameWords: normalizedName.split(separator: " "),
-                    normalizedASCIINameWords: normalizedASCIIName.split(
-                        separator: " "
-                    ),
-                    searchableMetadata: searchableMetadata
-                )
-            }
-        }
-        searchIndexTask = task
-        return await task.value
     }
 
     /// Locates the resource in both Xcode's flattened bundle layout and a
@@ -306,13 +341,10 @@ actor WorldCitiesCatalog {
         )
         let requiredColumnNames = [
             "city",
-            "city_ascii",
             "lat",
             "lng",
             "country",
             "iso2",
-            "iso3",
-            "admin_name",
             "population",
             "id"
         ]
@@ -327,23 +359,17 @@ actor WorldCitiesCatalog {
             let fields = parseCSVRow(line)
             guard
                 let cityIndex = columns["city"],
-                let asciiIndex = columns["city_ascii"],
                 let latitudeIndex = columns["lat"],
                 let longitudeIndex = columns["lng"],
                 let countryIndex = columns["country"],
                 let iso2Index = columns["iso2"],
-                let iso3Index = columns["iso3"],
-                let adminIndex = columns["admin_name"],
                 let populationIndex = columns["population"],
                 let idIndex = columns["id"],
                 fields.indices.contains(cityIndex),
-                fields.indices.contains(asciiIndex),
                 fields.indices.contains(latitudeIndex),
                 fields.indices.contains(longitudeIndex),
                 fields.indices.contains(countryIndex),
                 fields.indices.contains(iso2Index),
-                fields.indices.contains(iso3Index),
-                fields.indices.contains(adminIndex),
                 fields.indices.contains(populationIndex),
                 fields.indices.contains(idIndex),
                 let latitude = Double(fields[latitudeIndex]),
@@ -375,18 +401,12 @@ actor WorldCitiesCatalog {
                     $0.isFinite ? Int($0.rounded()) : nil
                 }
                 ?? 0
-            let adminName = fields[adminIndex]
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-
             cities.append(
                 WorldCityRecord(
                     id: identifier,
                     name: name,
-                    asciiName: fields[asciiIndex],
                     countryName: countryName,
                     isoCountryCode: iso2,
-                    iso3CountryCode: fields[iso3Index].uppercased(),
-                    administrativeArea: adminName.isEmpty ? nil : adminName,
                     latitude: latitude,
                     longitude: longitude,
                     population: max(0, population)
@@ -443,6 +463,13 @@ actor WorldCitiesCatalog {
             )
             .split(whereSeparator: \.isWhitespace)
             .joined(separator: " ")
+    }
+
+    nonisolated private static func normalizedLongitude(_ longitude: Double) -> Double {
+        let normalized = longitude.truncatingRemainder(dividingBy: 360)
+        if normalized > 180 { return normalized - 360 }
+        if normalized < -180 { return normalized + 360 }
+        return normalized
     }
 
     /// Haversine distance that handles the antimeridian without allocating

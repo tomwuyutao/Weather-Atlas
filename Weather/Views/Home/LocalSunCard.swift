@@ -1,5 +1,5 @@
 //
-//  CurrentLocationTimelineCard.swift
+//  LocalSunCard.swift
 //  Weather
 //
 //  Purpose: Brings the medium widget's single-day sunny-hour timeline into
@@ -25,7 +25,10 @@ struct CurrentLocationTimelineCard: View {
     @Environment(\.locale) private var locale
 
     private var selectedForecast: DailyForecast? {
-        weather?.forecastIfAvailable(on: selectedDate)
+        weather?.forecastIfAvailable(
+            on: selectedDate,
+            selectionCalendar: calendar
+        )
     }
 
     var body: some View {
@@ -99,9 +102,6 @@ struct CurrentLocationTimelineCard: View {
                 selectedDate: selectedDate,
                 timeZone: weather.timeZone
             )
-
-            CurrentLocationTimelineLegend()
-                .frame(maxWidth: .infinity)
         }
         .accessibilityElement(children: .contain)
     }
@@ -186,6 +186,10 @@ struct CurrentLocationTimelineCard: View {
         var cityCalendar = calendar
         cityCalendar.timeZone = weather.timeZone
 
+        guard cityCalendar.isDateInToday(selectedDate) else {
+            return sunnyHoursText(data: data, timeZone: weather.timeZone)
+        }
+
         let clearHours = data.hours.filter {
             SunninessScoring.condition(for: $0) == .clear
         }
@@ -203,6 +207,21 @@ struct CurrentLocationTimelineCard: View {
             )
         }
         return localizedString("No Sun on this day", locale: locale)
+    }
+
+    private func sunnyHoursText(
+        data: SunninessScoring.SunnyHoursData,
+        timeZone: TimeZone
+    ) -> String {
+        guard let range = SunninessScoring.longestSunnyHourRange(
+            in: data.hours,
+            timeZone: timeZone
+        ) else {
+            return localizedString("No Sun on this day", locale: locale)
+        }
+        let start = SunninessScoring.compactHourLabel(range.lowerBound, locale: locale)
+        let end = SunninessScoring.compactHourLabel(range.upperBound + 1, locale: locale)
+        return "\(localizedString("Sunny Hours", locale: locale)): \(start) – \(end)"
     }
 
     /// Produces a concise, localized duration such as "2 hours, 15 minutes".
@@ -232,6 +251,8 @@ private struct CurrentLocationHourTrack: View {
     private var axisHours: [Int] {
         data.bounds.axisHours(maximumTickCount: 4)
     }
+
+    private let axisLabelWidth: CGFloat = 24
 
     var body: some View {
         VStack(spacing: 5) {
@@ -276,10 +297,19 @@ private struct CurrentLocationHourTrack: View {
                 ZStack(alignment: .topLeading) {
                     ForEach(axisHours, id: \.self) { hour in
                         Text(SunnyHoursFormatting.chartHourLabel(hour))
+                            .frame(width: axisLabelWidth)
                             .position(
-                                x: data.bounds.xPosition(
-                                    for: Double(hour),
-                                    width: proxy.size.width
+                                // Keep the first and last labels inside the
+                                // same horizontal bounds as the hour track.
+                                x: min(
+                                    max(
+                                        axisLabelWidth / 2,
+                                        data.bounds.xPosition(
+                                            for: Double(hour),
+                                            width: proxy.size.width
+                                        )
+                                    ),
+                                    proxy.size.width - axisLabelWidth / 2
                                 ),
                                 y: 7
                             )
@@ -300,43 +330,7 @@ private struct CurrentLocationHourTrack: View {
     }
 
     private func color(for condition: AppWeatherCondition?) -> Color {
-        switch condition {
-        case .clear:
-            theme.colors.dotSun
-        case .partlySunny:
-            theme.colors.dotPartlyCloudy
-        default:
-            theme.colors.settingsRowFill
-        }
-    }
-}
-
-private struct CurrentLocationTimelineLegend: View {
-    @Environment(\.appTheme) private var theme
-
-    var body: some View {
-        HStack(spacing: 14) {
-            item("Sunny", color: theme.colors.dotSun)
-            item("Partly Sunny", color: theme.colors.dotPartlyCloudy)
-            item("No Sun", color: theme.colors.settingsRowFill)
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    private func item(
-        _ title: LocalizedStringKey,
-        color: Color
-    ) -> some View {
-        HStack(spacing: 5) {
-            Circle()
-                .fill(color)
-                .frame(width: 7, height: 7)
-                .accessibilityHidden(true)
-            Text(title)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(theme.colors.secondaryText)
-                .lineLimit(1)
-        }
+        condition?.dotColor(for: theme.colors) ?? theme.colors.dotCloudy
     }
 }
 

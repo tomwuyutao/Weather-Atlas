@@ -73,9 +73,13 @@ struct PlaceRecommendation: Identifiable {
 enum RecommendationEngine {
     static func recommendation(
         for cityWeather: CityWeather,
-        on date: Date
+        on date: Date,
+        selectionCalendar: Calendar = .current
     ) -> PlaceRecommendation? {
-        guard let forecast = cityWeather.forecastIfAvailable(on: date),
+        guard let forecast = cityWeather.forecastIfAvailable(
+            on: date,
+            selectionCalendar: selectionCalendar
+        ),
               let condition = SunninessScoring.condition(for: forecast),
               let cloudCover = forecast.cloudCover else {
             return nil

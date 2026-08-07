@@ -18,80 +18,9 @@ func widgetLocalizedString(_ key: String) -> String {
     WidgetDataStore.localizedText(for: key)
 }
 
-// MARK: - Widget Place Scope Selection
-
-/// App Intent entity representing the Saved Places library.
-struct WidgetPlaceScopeEntity: AppEntity, Identifiable {
-    /// Stable scope identifier.
-    let id: String
-    /// Localized scope name.
-    let displayName: String
-
-    /// Entity type label used by WidgetKit configuration UI.
-    static var typeDisplayRepresentation: TypeDisplayRepresentation = "Places"
-    /// Query used by App Intents to resolve place scopes.
-    static var defaultQuery = WidgetPlaceScopeQuery()
-
-    /// User-facing scope representation in configuration UI.
-    var displayRepresentation: DisplayRepresentation {
-        DisplayRepresentation(title: LocalizedStringResource(stringLiteral: displayName))
-    }
-}
-
-/// Searchable resolver for published widget place scopes.
-struct WidgetPlaceScopeQuery: EntityStringQuery {
-    /// Resolves stable identifiers against the latest app-group catalog.
-    func entities(for identifiers: [String]) async throws -> [WidgetPlaceScopeEntity] {
-        let scopes = WidgetDataStore.catalog()?.placeScopes ?? []
-        return identifiers.compactMap { id in
-            scopes.first(where: { $0.id == id }).map(WidgetPlaceScopeEntity.init)
-        }
-    }
-
-    /// Returns all published scopes in app-defined order.
-    func suggestedEntities() async throws -> [WidgetPlaceScopeEntity] {
-        (WidgetDataStore.catalog()?.placeScopes ?? []).map(WidgetPlaceScopeEntity.init)
-    }
-
-    /// Uses Saved Places as initial configuration.
-    func defaultResult() async -> WidgetPlaceScopeEntity? {
-        WidgetDataStore.catalog()?.placeScopes.first.map(WidgetPlaceScopeEntity.init)
-    }
-
-    /// Filters scopes by localized case-insensitive name matching.
-    func entities(matching string: String) async throws -> [WidgetPlaceScopeEntity] {
-        try await suggestedEntities().filter {
-            $0.displayName.localizedCaseInsensitiveContains(string)
-        }
-    }
-}
-
-// MARK: - Inline Place Scope Selection
-
-/// Finite place-scope options used by the widget editing interface.
-struct WidgetPlaceScopeOptionsProvider: DynamicOptionsProvider {
-    /// Returns all published place scopes.
-    func results() async throws -> [WidgetPlaceScopeEntity] {
-        (WidgetDataStore.catalog()?.placeScopes ?? []).map(WidgetPlaceScopeEntity.init)
-    }
-
-    /// Uses Saved Places when no configuration has been saved.
-    func defaultResult() async -> WidgetPlaceScopeEntity? {
-        WidgetDataStore.catalog()?.placeScopes.first.map(WidgetPlaceScopeEntity.init)
-    }
-}
-
-private extension WidgetPlaceScopeEntity {
-    /// Converts the shared Codable scope into an App Intent entity.
-    init(_ scope: WidgetPlaceScope) {
-        id = scope.id
-        displayName = scope.displayName
-    }
-}
-
 // MARK: - Widget City Selection
 
-/// App Intent entity representing one city within a selected place scope.
+/// App Intent entity representing one saved city.
 struct WidgetCityEntity: AppEntity, Identifiable {
     /// Stable cross-process city identifier.
     let id: String
@@ -109,27 +38,24 @@ struct WidgetCityEntity: AppEntity, Identifiable {
     }
 }
 
-/// Searchable city resolver scoped to the intent's selected places.
+/// Searchable city resolver for Saved Places.
 struct WidgetCityQuery: EntityStringQuery {
-    /// Dependency exposing the selected scope while resolving city options.
-    @IntentParameterDependency<SunnyHoursLockScreenConfigurationIntent>(\.$placeScope) var intent
-
-    /// Resolves identifiers only within the selected scope.
+    /// Resolves identifiers against the latest Saved Places catalog.
     func entities(for identifiers: [String]) async throws -> [WidgetCityEntity] {
-        let cities = citiesForSelectedScope()
+        let cities = WidgetDataStore.catalog()?.cities ?? []
         return identifiers.compactMap { id in
             cities.first(where: { $0.id == id }).map(WidgetCityEntity.init)
         }
     }
 
-    /// Returns all cities published for the selected scope.
+    /// Returns all cities published from Saved Places.
     func suggestedEntities() async throws -> [WidgetCityEntity] {
-        citiesForSelectedScope().map(WidgetCityEntity.init)
+        (WidgetDataStore.catalog()?.cities ?? []).map(WidgetCityEntity.init)
     }
 
-    /// Uses the selected scope's first city as initial configuration.
+    /// Uses the first Saved Place as initial configuration.
     func defaultResult() async -> WidgetCityEntity? {
-        citiesForSelectedScope().first.map(WidgetCityEntity.init)
+        WidgetDataStore.catalog()?.cities.first.map(WidgetCityEntity.init)
     }
 
     /// Filters scoped cities by localized case-insensitive name.
@@ -139,18 +65,6 @@ struct WidgetCityQuery: EntityStringQuery {
         }
     }
 
-    /// Reads cities from the selected scope. Saved Places is used only when the
-    /// user has not configured a scope; an unavailable explicit scope stays empty.
-    private func citiesForSelectedScope() -> [WidgetDataCity] {
-        guard let catalog = WidgetDataStore.catalog() else { return [] }
-        let scope: WidgetPlaceScope?
-        if let selectedScope = intent?.placeScope {
-            scope = catalog.placeScopes.first(where: { $0.id == selectedScope.id })
-        } else {
-            scope = catalog.placeScopes.first
-        }
-        return scope?.cities ?? []
-    }
 }
 
 private extension WidgetCityEntity {
@@ -163,16 +77,14 @@ private extension WidgetCityEntity {
 
 // MARK: - Widget Configuration Intent
 
-/// Shared place-scope and city configuration used by all Weather Atlas widgets.
+/// City configuration used by all Weather Atlas widgets.
 struct SunnyHoursLockScreenConfigurationIntent: WidgetConfigurationIntent {
     /// Configuration title shown by WidgetKit.
     static var title: LocalizedStringResource = "Sunny Hours"
     /// Configuration explanation shown by WidgetKit.
     static var description = IntentDescription("Choose a city to track its sunny daytime hours.")
 
-    /// Inline selected-place-scope parameter.
-    @Parameter(title: "Places", optionsProvider: WidgetPlaceScopeOptionsProvider()) var placeScope: WidgetPlaceScopeEntity?
-    /// Searchable selected-city parameter filtered by the chosen scope.
+    /// Searchable selected-city parameter.
     @Parameter(title: "City") var city: WidgetCityEntity?
 
     /// Required empty initializer for App Intent configuration.
@@ -720,21 +632,13 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
         return Timeline(entries: [entry], policy: .after(entry.date.addingTimeInterval(retryDelay)))
     }
 
-    /// Resolves configured scope and city while validating membership.
+    /// Resolves the configured city against the latest Saved Places catalog.
     private func selectedCity(for configuration: SunnyHoursLockScreenConfigurationIntent) -> WidgetDataCity? {
         guard let catalog = WidgetDataStore.catalog() else { return nil }
-        let scope: WidgetPlaceScope?
-        if let selectedScope = configuration.placeScope {
-            scope = catalog.placeScopes.first(where: { $0.id == selectedScope.id })
-        } else {
-            scope = catalog.placeScopes.first
-        }
-
-        guard let scope else { return nil }
         if let selectedCity = configuration.city {
-            return scope.cities.first(where: { $0.id == selectedCity.id })
+            return catalog.cities.first(where: { $0.id == selectedCity.id })
         }
-        return scope.cities.first
+        return catalog.cities.first
     }
 
     /// Applies the latest usable widget-owned cache, even when it is stale.
@@ -1669,15 +1573,9 @@ private func widgetConditionIconPalette(
 
 /// Builds a Places deep link carrying exact missing-data diagnostics when needed.
 private func widgetPlacesURL(for city: WidgetDataCity, issue: WeatherDataIssue?) -> URL? {
-    guard let separator = city.id.firstIndex(of: "|"),
-          separator > city.id.startIndex else {
-        return nil
-    }
-    let scopeID = String(city.id[..<separator])
     var components = URLComponents()
     components.scheme = "weatheratlas"
     components.host = "places"
-    components.path = "/\(scopeID)"
     if let issue {
         var queryItems = [
             URLQueryItem(name: "missingKind", value: issue.kind.rawValue),
@@ -1693,23 +1591,19 @@ private func widgetPlacesURL(for city: WidgetDataCity, issue: WeatherDataIssue?)
 
 // MARK: - Widget Presentation Models
 
-private extension WidgetPlaceScope {
-    /// Deterministic scope fixture used by widget previews and placeholders.
-    static let preview = WidgetPlaceScope(
-        id: "europe",
-        displayName: "Europe",
-        cities: [
-            WidgetDataCity(id: "barcelona", cityName: "Barcelona", timeZoneIdentifier: "Europe/Madrid", latitude: 41.3874, longitude: 2.1686, daytimeHours: Array(6...21), sunnyHours: Array(8...19), partlySunnyHours: [7, 20]),
-            WidgetDataCity(id: "rome", cityName: "Rome", timeZoneIdentifier: "Europe/Rome", latitude: 41.9028, longitude: 12.4964, daytimeHours: Array(6...21), sunnyHours: Array(9...18), partlySunnyHours: [7, 8, 19]),
-            WidgetDataCity(id: "athens", cityName: "Athens", timeZoneIdentifier: "Europe/Athens", latitude: 37.9838, longitude: 23.7275, daytimeHours: Array(6...21), sunnyHours: Array(8...20), partlySunnyHours: [7])
-        ]
-    )
-}
-
 private extension WidgetDataCity {
     /// Deterministic multi-day city fixture used by WidgetKit previews.
     static var preview: WidgetDataCity {
-        var city = WidgetPlaceScope.preview.cities[0]
+        var city = WidgetDataCity(
+            id: "barcelona",
+            cityName: "Barcelona",
+            timeZoneIdentifier: "Europe/Madrid",
+            latitude: 41.3874,
+            longitude: 2.1686,
+            daytimeHours: Array(6...21),
+            sunnyHours: Array(8...19),
+            partlySunnyHours: [7, 20]
+        )
         city.currentConditionSymbolName = WeatherIconSymbol.clear
         let calendar = Calendar.current
         city.sunnyWindowDays = (0..<10).compactMap { offset in

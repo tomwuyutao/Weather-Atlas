@@ -1,5 +1,5 @@
 //
-//  BestSunnyPlacesCard.swift
+//  SunPlacesCard.swift
 //  Weather
 //
 //  Purpose: Presents compact ranked place recommendations on Home.
@@ -11,8 +11,15 @@ import SwiftUI
 struct HomeWeatherCardHeader: View {
     let icon: String
     let title: LocalizedStringKey
+    let subtitle: String?
 
     @Environment(\.appTheme) private var theme
+
+    init(icon: String, title: LocalizedStringKey, subtitle: String? = nil) {
+        self.icon = icon
+        self.title = title
+        self.subtitle = subtitle
+    }
 
     var body: some View {
         HStack(spacing: HomeSunnyListLayout.columnSpacing) {
@@ -23,11 +30,20 @@ struct HomeWeatherCardHeader: View {
                     alignment: .leading
                 )
 
-            Text(title)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(1)
-                .multilineTextAlignment(.leading)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+                    .multilineTextAlignment(.leading)
+
+                if let subtitle {
+                    Text(verbatim: subtitle)
+                        .font(.caption)
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .lineLimit(1)
+                }
+            }
 
             Spacer(minLength: 8)
         }
@@ -38,16 +54,34 @@ struct HomeWeatherCardHeader: View {
 /// Compact ranked recommendations for saved places.
 struct BestSunnyPlacesCard: View {
     let recommendations: [PlaceRecommendation]
+    let selectedDate: Date
+    /// Identifies the ephemeral current-location row without treating it as a
+    /// Saved Place anywhere else in the app.
+    let currentLocationRecommendationID: City.ID?
     let showAllPlaces: () -> Void
 
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.locale) private var locale
+
+    private var selectedDateScope: String {
+        let date = selectedDate.formatted(
+            Date.FormatStyle.dateTime.weekday(.abbreviated).month(.abbreviated).day()
+                .locale(locale)
+        )
+        return String(
+            format: localizedString("For %@", locale: locale),
+            locale: locale,
+            date
+        )
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HomeWeatherCardHeader(
-                icon: "mappin.and.ellipse",
-                title: "Best Sunny Places"
+                icon: "bookmark",
+                title: "Best Sunny Places",
+                subtitle: selectedDateScope
             )
 
             if recommendations.isEmpty {
@@ -75,7 +109,9 @@ struct BestSunnyPlacesCard: View {
                         ) {
                             HomeSunnyPlaceRow(
                                 recommendation: recommendation,
-                                rank: index + 1
+                                rank: index + 1,
+                                isCurrentLocation:
+                                    recommendation.id == currentLocationRecommendationID
                             )
                         }
                         .buttonStyle(.plain)
@@ -126,6 +162,7 @@ private enum HomeSunnyListLayout {
 private struct HomeSunnyPlaceRow: View {
     let recommendation: PlaceRecommendation
     let rank: Int
+    let isCurrentLocation: Bool
 
     @Environment(\.appTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -138,24 +175,26 @@ private struct HomeSunnyPlaceRow: View {
         HStack(spacing: HomeSunnyListLayout.columnSpacing) {
             HomeSunnyRankLabel(rank: rank)
 
-            Text(cityName)
-                .font(.body.weight(.medium))
-                .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(1)
+            HStack(spacing: 5) {
+                Text(cityName)
+                    .font(.body.weight(.medium))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+
+                if isCurrentLocation {
+                    Image(systemName: "location.fill")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .accessibilityLabel("Current Location")
+                }
+            }
 
             Spacer(minLength: 8)
 
-            HStack(spacing: 3) {
-                Image(systemName: "cloud")
-                    .font(.caption.weight(.medium))
-                Text(
-                    recommendation.cloudCover,
-                    format: .percent.precision(.fractionLength(0))
-                )
-                .font(.caption.weight(.medium))
-                .monospacedDigit()
-            }
-            .foregroundStyle(theme.colors.secondaryText)
+            let icon = recommendation.condition.displayIcon
+            Image(systemName: icon)
+                .weatherIconStyle(for: icon)
+                .font(.callout.weight(.medium))
             .lineLimit(1)
             .frame(
                 width: dynamicTypeSize > .large ? 92 : 76,
@@ -166,7 +205,7 @@ private struct HomeSunnyPlaceRow: View {
         .contentShape(.rect)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(
-            "\(rank), \(cityName), \(Int((recommendation.cloudCover * 100).rounded())) percent cloud cover"
+            "\(rank), \(cityName), \(recommendation.condition.localizedDisplayName())"
         )
     }
 }

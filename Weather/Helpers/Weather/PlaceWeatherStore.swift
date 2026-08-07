@@ -18,14 +18,6 @@ struct PlaceWeatherFailure: Identifiable, Equatable {
     let message: String
 }
 
-/// Result of one cache-aware lookup, including whether this caller started a
-/// new WeatherKit request. The nearest-sunny search uses the flag only for
-/// debug accounting; cached answers remain equivalent to fresh answers.
-struct PlaceWeatherLookupResult {
-    let weather: CityWeather?
-    let performedWeatherKitRequest: Bool
-}
-
 /// Observable forecast repository keyed by stable place identity.
 @MainActor
 @Observable
@@ -102,40 +94,30 @@ final class PlaceWeatherStore {
     }
 
     /// Resolves one city through the same cache and in-flight coalescing as
-    /// bulk loads, while reporting whether this call started network work.
+    /// bulk loads.
     func lookup(
         city: City,
         forceRefresh: Bool = false,
         retriesOnFailure: Bool = true,
         locale: Locale = .autoupdatingCurrent
-    ) async -> PlaceWeatherLookupResult {
+    ) async -> CityWeather? {
         await loadAttributionIfNeeded()
 
         if !forceRefresh,
            let existing = inFlightRequestsByPlaceID[city.id] {
-            return PlaceWeatherLookupResult(
-                weather: await existing.task.value,
-                performedWeatherKitRequest: false
-            )
+            return await existing.task.value
         }
 
         if !forceRefresh, !shouldRefresh(placeID: city.id) {
-            return PlaceWeatherLookupResult(
-                weather: weatherByPlaceID[city.id],
-                performedWeatherKitRequest: false
-            )
+            return weatherByPlaceID[city.id]
         }
 
-        let weather = await startRequest(
+        return await startRequest(
             for: city,
             locale: locale,
             supersedingExisting: forceRefresh,
             retriesOnFailure: retriesOnFailure
         ).value
-        return PlaceWeatherLookupResult(
-            weather: weather,
-            performedWeatherKitRequest: true
-        )
     }
 
     /// Loads missing or stale places without disturbing independent consumers.

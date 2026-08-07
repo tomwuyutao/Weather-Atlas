@@ -1,5 +1,5 @@
 //
-//  SettingsView.swift
+//  Settings.swift
 //  Weather
 //
 //  Purpose: Presents Weather Atlas's warm, compact settings hierarchy using
@@ -12,7 +12,6 @@ import WeatherKit
 
 struct SettingsView: View {
     let model: WeatherAtlasModel
-    let onReplayTutorial: () -> Void
     let onResetApp: () throws -> Void
 
     @AppStorage("temperatureUnit")
@@ -138,10 +137,6 @@ struct SettingsView: View {
             .listRowBackground(theme.colors.settingsRowFill)
 
             Section {
-                Button(action: onReplayTutorial) {
-                    settingsLabel("Replay Tutorial", systemImage: "play.circle")
-                }
-
                 Button(role: .destructive) {
                     showingResetConfirmation = true
                 } label: {
@@ -354,7 +349,7 @@ struct SettingsView: View {
         settingsDestinationForm {
             Section("Weather") {
                 if let attribution = model.weatherStore.weatherAttribution {
-                    AppleWeatherCombinedMarkRow(attribution: attribution)
+                    WeatherAttributionView(attribution: attribution)
                 } else {
                     infoRow(
                         "Weather Data",
@@ -645,38 +640,52 @@ struct SettingsView: View {
     }
 }
 
-/// Displays WeatherKit's official mark for the active interface appearance.
-private struct AppleWeatherCombinedMarkRow: View {
+// MARK: - Weather Attribution
+
+/// Apple-provided attribution mark with a native legal-page link.
+///
+/// Restored from the pre-redesign app so the official Apple Weather attribution
+/// remains visible and directly opens the provider's legal page.
+private struct WeatherAttributionView: View {
     let attribution: WeatherAttribution
 
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        AsyncImage(url: markURL) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .scaledToFit()
-                    .frame(
-                        maxWidth: 120,
-                        maxHeight: 24,
-                        alignment: .leading
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            case .empty:
-                ProgressView()
-                    .controlSize(.small)
-                    .frame(minWidth: 24, minHeight: 24)
-            case .failure:
-                Text(attribution.serviceName)
+        Link(destination: attribution.legalPageURL) {
+            HStack {
+                AsyncImage(url: markURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                            .frame(
+                                maxWidth: 120,
+                                maxHeight: 24,
+                                alignment: .leading
+                            )
+                    case .empty:
+                        ProgressView()
+                            .controlSize(.small)
+                            .frame(minWidth: 24, minHeight: 24)
+                    case .failure:
+                        Text(attribution.serviceName)
+                            .font(.footnote)
+                    @unknown default:
+                        EmptyView()
+                    }
+                }
+
+                Spacer()
+
+                Image(systemName: "arrow.up.right")
                     .font(.footnote)
-            @unknown default:
-                EmptyView()
+                    .foregroundStyle(.secondary)
             }
+            .contentShape(.rect)
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Apple Weather attribution")
+        .accessibilityLabel("Apple Weather legal attribution")
     }
 
     private var markURL: URL {

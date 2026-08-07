@@ -8,12 +8,12 @@ collections, memberships, or scoped place libraries.
 
 1. `Weather/App/WeatherApp.swift` creates the shared model and router, then
    installs locale, theme, text-size, and accessibility environment values.
-2. `Weather/App/WeatherAtlasRootView.swift` defines the native tab shell,
+2. `Weather/App/RootView.swift` defines the native tab shell,
    independent navigation stacks, shared routes, sheets, quick actions, widget
    deep links, and the shared forecast-date selection.
 3. `Weather/App/AppRouter.swift` owns presentation state only: selected tab,
    navigation paths, modal destinations, and map selection.
-4. `Weather/App/WeatherAtlasModel.swift` coordinates saved places, place-keyed
+4. `Weather/Models/WeatherAtlasModel.swift` coordinates saved places, place-keyed
    weather, current-location forecasts, nearest-sunny lookup, and widget
    publication.
 
@@ -57,14 +57,9 @@ WorldCitiesCatalog ────────┘
 
 The active persistence path is:
 
-- `Models/PlacesLibraryModels.swift` — `SavedPlace` and the versioned flat
-  `PlacesLibraryDocument`.
-- `Helpers/PlacesStore.swift` — the main-actor observable source of truth and
-  the sole mutation API for saved cities.
-- `Helpers/PlacesDocumentStore.swift` — validated, atomic Application Support
-  JSON persistence with read-back verification.
-- `Helpers/PlacesLibraryValidator.swift` — schema and identity invariants at
-  persistence boundaries.
+- `Helpers/PlacesStore.swift` — the Saved Place data types, main-actor observable
+  source of truth, sole mutation API, validated atomic JSON persistence, and
+  schema/identity invariants for saved cities.
 
 Historic documents that contain collection data still decode safely: Swift
 `Codable` ignores those removed keys, and the next ordinary save writes the
@@ -72,14 +67,14 @@ flat current schema. The app does not expose or retain any collection model.
 
 ## Weather and recommendations
 
-- `Helpers/PlaceWeatherStore.swift` is the observable forecast repository. It
+- `Helpers/Weather/PlaceWeatherStore.swift` is the observable forecast repository. It
   keys snapshots, failures, loading state, and coalesced requests by stable
   `City.ID`, and persists only disposable weather cache data.
-- `Helpers/WeatherService.swift` is the WeatherKit adapter used by the
+- `Helpers/Weather/WeatherService.swift` is the WeatherKit adapter used by the
   repository.
 - `Models/RecommendationEngine.swift` converts real forecasts into
   `PlaceRecommendation` values for one literal date, then groups or sorts them.
-- `Helpers/SunninessScoring.swift` and the weather-domain files in `Models`
+- `Helpers/Weather/SunninessScoring.swift` and the weather-domain files in `Models`
   define sunny conditions, daytime windows, and display metrics.
 
 Home, Map, Places, and Detail request weather through `PlaceWeatherStore`; none
@@ -117,7 +112,7 @@ used by `AddPlacesSheet` and first-run Starting Cities.
 
 | Area | Primary files |
 | --- | --- |
-| App shell and routing | `App/WeatherAtlasRootView.swift`, `App/AppRouter.swift` |
+| App shell and routing | `App/RootView.swift`, `App/AppRouter.swift` |
 | Recommendations | `Views/Main/HomeView.swift`, `Views/Components/CurrentLocationTimelineCard.swift`, `Views/Components/BestSunnyPlacesCard.swift`, `Views/Components/NearestSunnyPlaceCard.swift` |
 | Immersive map | `Views/Main/MapView.swift` |
 | Saved-place library and bulk add | `Views/Main/PlacesView.swift`, `Views/Places/AddPlacesSheet.swift` |

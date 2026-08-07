@@ -34,7 +34,7 @@ enum WeatherMetricMode: String, CaseIterable, Identifiable {
 
     func title(locale: Locale) -> String {
         switch self {
-        case .sunny: localizedString("Sunniness", locale: locale)
+        case .sunny: localizedString("Sunny Hours", locale: locale)
         case .temperature: localizedString("Max Temperature", locale: locale)
         case .feelsLike: localizedString("Feels Like", locale: locale)
         case .cloud: localizedString("Cloud Cover", locale: locale)

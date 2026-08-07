@@ -1,20 +1,17 @@
 //
-//  PlaceSearchView.swift
+//  SearchView.swift
 //  Weather
 //
-//  Purpose: Provides the native world-city search experience for the
-//  dedicated search-role tab.
+//  Purpose: Presents Apple Maps and translated Open-Meteo city results, then
+//  opens an unsaved city in Detail for an explicit save decision.
 //
 
 import CoreLocation
 import SwiftUI
 
-/// Searches the bundled world-city catalog and saves a result to Saved Places.
-///
 struct PlaceSearchView: View {
-    let placesStore: PlacesStore
-    let weatherStore: PlaceWeatherStore
-    let onSaved: (City.ID) -> Void
+    let model: WeatherAtlasModel
+    @Bindable var router: AppRouter
 
     @State private var searchManager = CitySearchManager()
     @State private var query = ""
@@ -22,17 +19,9 @@ struct PlaceSearchView: View {
     @State private var loadingResultID: CitySearchResult.ID?
     @State private var selectionTask: Task<Void, Never>?
     @State private var presentedError: PlaceSearchPresentedError?
-    @Environment(\.locale) private var locale
+    @FocusState private var isSearchFocused: Bool
 
-    init(
-        placesStore: PlacesStore,
-        weatherStore: PlaceWeatherStore,
-        onSaved: @escaping (City.ID) -> Void
-    ) {
-        self.placesStore = placesStore
-        self.weatherStore = weatherStore
-        self.onSaved = onSaved
-    }
+    @Environment(\.locale) private var locale
 
     var body: some View {
         searchContent
@@ -42,22 +31,27 @@ struct PlaceSearchView: View {
                 placement: .navigationBarDrawer(displayMode: .always),
                 prompt: "Search cities"
             )
+            .searchFocused($isSearchFocused)
             .task(id: normalizedQuery) {
                 await updateSearch()
             }
+            .task(id: router.selectedTab) {
+                guard router.selectedTab == .search else { return }
+                await Task.yield()
+                isSearchFocused = true
+            }
             .onDisappear {
                 selectionTask?.cancel()
+                isSearchFocused = false
             }
             .alert(
                 "Search",
                 isPresented: errorIsPresented,
                 presenting: presentedError
             ) { _ in
-                Button("OK") {
-                    presentedError = nil
-                }
-            } message: { presentedError in
-                Text(presentedError.message)
+                Button("OK") { presentedError = nil }
+            } message: { error in
+                Text(error.message)
             }
     }
 
@@ -68,7 +62,7 @@ struct PlaceSearchView: View {
                 "Search for a City",
                 systemImage: "magnifyingglass",
                 description: Text(
-                    "Search by city name. It will be saved directly to Saved Places."
+                    "Search Apple Maps or Open-Meteo, then review the forecast before saving a place."
                 )
             )
         } else if hasNoResults && isSearchInProgress && !hasProviderError {
@@ -88,34 +82,52 @@ struct PlaceSearchView: View {
 
     private var resultsList: some View {
         List {
-            if !searchManager.searchResults.isEmpty {
-                Section("Results") {
-                    ForEach(searchManager.searchResults) { result in
-                        resultButton(result)
-                    }
-                }
-            }
+            providerSection(
+                "Apple Maps",
+                results: searchManager.appleResults,
+                isSearching: searchManager.isAppleSearching,
+                errorMessage: searchManager.appleErrorMessage
+            )
 
-            if isSearchInProgress {
-                Section {
+            providerSection(
+                "Open-Meteo",
+                results: searchManager.openMeteoResults,
+                isSearching: searchManager.isOpenMeteoSearching,
+                errorMessage: searchManager.openMeteoErrorMessage
+            )
+        }
+        .listStyle(.insetGrouped)
+        .scrollDismissesKeyboard(.interactively)
+        .weatherAtlasScrollableBackground()
+    }
+
+    @ViewBuilder
+    private func providerSection(
+        _ title: LocalizedStringKey,
+        results: [CitySearchResult],
+        isSearching: Bool,
+        errorMessage: String?
+    ) -> some View {
+        if !results.isEmpty || isSearching || errorMessage != nil {
+            Section(title) {
+                ForEach(results) { result in
+                    resultButton(result)
+                }
+
+                if isSearching {
                     HStack(spacing: 12) {
                         ProgressView()
-                        Text("Searching for more places…")
+                        Text("Searching…")
                             .foregroundStyle(.secondary)
                     }
                     .accessibilityElement(children: .combine)
-                }
-            }
-
-            if let message = searchManager.searchErrorMessage {
-                Section("Search Unavailable") {
-                    Text(message)
+                } else if let errorMessage {
+                    Text(errorMessage)
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
             }
         }
-        .listStyle(.insetGrouped)
-        .weatherAtlasScrollableBackground()
     }
 
     private func resultButton(_ result: CitySearchResult) -> some View {
@@ -142,14 +154,14 @@ struct PlaceSearchView: View {
                 if loadingResultID == result.id {
                     ProgressView()
                         .controlSize(.small)
-                        .accessibilityLabel("Adding \(result.title)")
+                        .accessibilityLabel("Opening \(result.title)")
                 }
             }
-            .contentShape(Rectangle())
+            .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .disabled(loadingResultID != nil)
-        .accessibilityHint("Saves this place")
+        .accessibilityHint("Opens this place's forecast")
     }
 
     private var normalizedQuery: String {
@@ -160,45 +172,40 @@ struct PlaceSearchView: View {
         Binding(
             get: { presentedError != nil },
             set: { isPresented in
-                if !isPresented {
-                    presentedError = nil
-                }
+                if !isPresented { presentedError = nil }
             }
         )
     }
 
     private var hasNoResults: Bool {
-        searchManager.searchResults.isEmpty
+        searchManager.appleResults.isEmpty && searchManager.openMeteoResults.isEmpty
     }
 
     private var isSearchInProgress: Bool {
-        !isSettled || searchManager.isSearching
+        !isSettled || searchManager.isAppleSearching || searchManager.isOpenMeteoSearching
     }
 
     private var hasProviderError: Bool {
-        searchManager.searchErrorMessage != nil
+        searchManager.appleErrorMessage != nil || searchManager.openMeteoErrorMessage != nil
     }
 
     @MainActor
     private func updateSearch() async {
-        searchManager.search(query: "", locale: locale)
-
         guard !normalizedQuery.isEmpty else {
+            searchManager.search(query: "", locale: locale)
             isSettled = true
             return
         }
 
         isSettled = false
         do {
-            try await Task.sleep(for: .milliseconds(300))
+            try await Task.sleep(for: .milliseconds(250))
         } catch {
             return
         }
-
         guard !Task.isCancelled else { return }
         let submittedQuery = normalizedQuery
         searchManager.search(query: submittedQuery, locale: locale)
-
         guard !Task.isCancelled, normalizedQuery == submittedQuery else { return }
         isSettled = true
     }
@@ -213,9 +220,7 @@ struct PlaceSearchView: View {
                 selectionTask = nil
             }
 
-            guard let resolvedPlace = await searchManager.resolvePlace(
-                for: result
-            ) else {
+            guard let resolvedPlace = await searchManager.resolvePlace(for: result) else {
                 guard !Task.isCancelled else { return }
                 presentedError = PlaceSearchPresentedError(
                     message: localizedString(
@@ -225,45 +230,27 @@ struct PlaceSearchView: View {
                 )
                 return
             }
-
             guard !Task.isCancelled else { return }
+
             let city = City(
                 name: resolvedPlace.cityName,
                 country: resolvedPlace.country,
                 latitude: resolvedPlace.coordinate.latitude,
                 longitude: resolvedPlace.coordinate.longitude,
-                timeZoneIdentifier: resolvedPlace.timeZoneIdentifier,
-                catalogIdentifier: resolvedPlace.catalogIdentifier
+                timeZoneIdentifier: resolvedPlace.timeZoneIdentifier
             )
-
-            do {
-                let savedID = try placesStore.savePlace(city)
-                guard let savedCity = placesStore.place(id: savedID)?.city else {
-                    throw PlacesStoreError.placeNotFound(savedID)
-                }
-
-                query = ""
-                onSaved(savedID)
-                Task {
-                    _ = await weatherStore.refresh(
-                        city: savedCity,
-                        locale: locale
-                    )
-                }
-            } catch {
-                guard !Task.isCancelled else { return }
-                presentedError = PlaceSearchPresentedError(
-                    message: localizedPlacesErrorDescription(
-                        error,
-                        locale: locale
-                    )
-                )
+            if let savedPlaceID = model.placesStore.savedPlaceID(matching: city) {
+                isSearchFocused = false
+                router.showMap(placeID: savedPlaceID)
+                return
             }
+            model.registerTransientSearchCity(city)
+            isSearchFocused = false
+            router.showMap(previewing: city)
         }
     }
 }
 
-/// Item-driven native alert content for recoverable place-search failures.
 private struct PlaceSearchPresentedError: Identifiable {
     let id = UUID()
     let message: String

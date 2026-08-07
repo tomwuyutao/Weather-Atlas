@@ -1,5 +1,5 @@
 //
-//  TopForecastDateSwitcher.swift
+//  DateSwitcher.swift
 //  Weather
 //
 //  Purpose: Provides the compact previous/date/next forecast control in the
@@ -19,6 +19,7 @@ struct TopForecastDateSwitcher: View {
     @State private var showsDatePicker = false
 
     @Environment(\.appTheme) private var theme
+    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
 
@@ -55,7 +56,9 @@ struct TopForecastDateSwitcher: View {
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .frame(minWidth: 62, minHeight: 32)
+                    // Reserve room for the longest supported localized date so
+                    // navigation controls never jump as the selected day changes.
+                    .frame(width: 90, height: 32)
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
@@ -63,6 +66,9 @@ struct TopForecastDateSwitcher: View {
             .accessibilityValue(dateText(for: normalizedSelection))
             .popover(isPresented: $showsDatePicker) {
                 datePicker
+                    // On iPhone retain the anchored calendar instead of
+                    // adapting this short choice into a full-screen sheet.
+                    .presentationCompactAdaptation(.popover)
             }
 
             stepperButton(
@@ -72,11 +78,7 @@ struct TopForecastDateSwitcher: View {
         }
         .padding(.horizontal, 2)
         .frame(height: 36)
-        .background(.thinMaterial, in: Capsule())
-        .overlay {
-            Capsule()
-                .stroke(theme.colors.primaryText.opacity(0.16), lineWidth: 1)
-        }
+        .weatherAtlasInteractiveGlass(colorScheme: colorScheme, in: Capsule())
         .fixedSize(horizontal: true, vertical: false)
     }
 
@@ -122,6 +124,7 @@ struct TopForecastDateSwitcher: View {
             .datePickerStyle(.graphical)
             .padding()
             .frame(minWidth: 320)
+            .presentationCompactAdaptation(.popover)
         } else {
             ContentUnavailableView("No Forecast Dates", systemImage: "calendar")
                 .padding()
@@ -154,11 +157,16 @@ struct TopForecastDateSwitcher: View {
 
 /// One literal forecast horizon shared by Home, Map, Places, and chart sheets.
 enum ForecastDateHorizon {
-    static var dates: [Date] {
-        let calendar = Calendar.current
+    static func dates(in calendar: Calendar) -> [Date] {
         let today = calendar.startOfDay(for: Date())
         return (0..<10).compactMap {
             calendar.date(byAdding: .day, value: $0, to: today)
         }
+    }
+
+    /// Default only for previews and isolated callers. App destinations pass
+    /// the current-location calendar explicitly.
+    static var dates: [Date] {
+        dates(in: .current)
     }
 }

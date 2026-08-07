@@ -1,5 +1,5 @@
 //
-//  ChartView.swift
+//  Charts.swift
 //  Weather
 //
 //  Purpose: Provides the reusable Detail metric cards and the interactive
@@ -214,6 +214,7 @@ struct DetailChartView: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.calendar) private var forecastCalendar
     @Environment(\.locale) private var locale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Persisted display unit for visibility values.
@@ -705,15 +706,18 @@ struct DetailChartView: View {
     /// Forecast matching the app-wide selected day, with the opening day as a
     /// safe fallback while a forecast refresh temporarily changes its date range.
     private var chartForecast: DailyForecast {
-        city.forecastIfAvailable(on: selectedForecastDate) ?? initialForecast
+        city.forecastIfAvailable(
+            on: selectedForecastDate,
+            selectionCalendar: forecastCalendar
+        ) ?? initialForecast
     }
 
     /// Device-calendar dates that this city's real forecast can display.
     private var chartSelectionDates: [Date] {
-        let today = Calendar.current.startOfDay(for: Date())
+        let today = forecastCalendar.startOfDay(for: Date())
         return Array(
             Set(city.dailyForecasts.compactMap {
-                city.selectionDate(for: $0)
+                city.selectionDate(for: $0, selectionCalendar: forecastCalendar)
             })
             .filter { $0 >= today }
         )

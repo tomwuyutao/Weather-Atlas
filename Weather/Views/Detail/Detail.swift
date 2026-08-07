@@ -1,5 +1,5 @@
 //
-//  PlaceDetailView.swift
+//  Detail.swift
 //  Weather
 //
 //  Purpose: Presents the shared card-based Saved Place report.
@@ -53,7 +53,10 @@ struct PlaceDetailView: View {
     }
 
     private var forecast: DailyForecast? {
-        cityWeather?.forecastIfAvailable(on: selectedDate)
+        cityWeather?.forecastIfAvailable(
+            on: selectedDate,
+            selectionCalendar: model.forecastCalendar
+        )
     }
 
     private var displayName: String {
@@ -116,10 +119,15 @@ struct PlaceDetailView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 placeActionsMenu
             }
+            // Keep the date capsule in its own native toolbar group. The
+            // spacer prevents iOS from clustering it with the More menu.
+            if #available(iOS 26.0, *) {
+                ToolbarSpacer(.fixed, placement: .topBarTrailing)
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 TopForecastDateSwitcher(
                     selection: $selectedDate,
-                    availableDates: ForecastDateHorizon.dates
+                    availableDates: ForecastDateHorizon.dates(in: model.forecastCalendar)
                 )
             }
         }
@@ -172,7 +180,7 @@ struct PlaceDetailView: View {
 
                     SunnyHoursOverviewCard(
                         city: cityWeather,
-                        selectedDate: selectedDate
+                        selectedDate: $selectedDate
                     )
                 } else {
                     ContentUnavailableView(
