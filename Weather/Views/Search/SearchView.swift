@@ -72,7 +72,6 @@ struct PlaceSearchView: View {
                     .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityElement(children: .combine)
         } else if hasNoResults && !hasProviderError {
             ContentUnavailableView.search(text: normalizedQuery)
         } else {
@@ -120,7 +119,6 @@ struct PlaceSearchView: View {
                         Text("Searching…")
                             .foregroundStyle(.secondary)
                     }
-                    .accessibilityElement(children: .combine)
                 } else if let errorMessage {
                     Text(errorMessage)
                         .font(.footnote)
@@ -137,7 +135,6 @@ struct PlaceSearchView: View {
             HStack(spacing: 12) {
                 Image(systemName: "mappin.and.ellipse")
                     .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(result.title)
@@ -154,14 +151,12 @@ struct PlaceSearchView: View {
                 if loadingResultID == result.id {
                     ProgressView()
                         .controlSize(.small)
-                        .accessibilityLabel("Opening \(result.title)")
                 }
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
         .disabled(loadingResultID != nil)
-        .accessibilityHint("Opens this place's forecast")
     }
 
     private var normalizedQuery: String {

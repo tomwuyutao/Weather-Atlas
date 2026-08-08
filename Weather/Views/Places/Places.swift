@@ -28,10 +28,6 @@ struct PlacesView: View {
     @State private var pendingDeletion: SavedPlace?
     @State private var renamingPlace: SavedPlace?
     @State private var presentedError: PlacesUIError?
-    @AppStorage("temperatureUnit")
-    private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
-    @AppStorage("distanceUnit")
-    private var distanceUnitRaw = DistanceUnit.defaultRawValue
     @ScaledMetric(relativeTo: .body)
     private var leadingColumnWidth: CGFloat = 32
 
@@ -119,14 +115,6 @@ struct PlacesView: View {
         localizedString("Places", locale: locale)
     }
 
-    private var temperatureUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
-    }
-
-    private var distanceUnit: DistanceUnit {
-        DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
-    }
-
     var body: some View {
         placesContent
             .weatherAtlasScreenBackground()
@@ -143,11 +131,19 @@ struct PlacesView: View {
                     Spacer(minLength: 8)
 
                     sortMenu
-                        .frame(minWidth: 36, minHeight: 44)
+                        .frame(width: 44, height: 44)
 
-                    EditButton()
-                        .frame(minWidth: 44, minHeight: 44)
-                        .disabled(savedPlaces.isEmpty)
+                    Button {
+                        withAnimation(.smooth(duration: 0.2)) {
+                            listEditMode = listEditMode.isEditing ? .inactive : .active
+                        }
+                    } label: {
+                        Image(systemName: listEditMode.isEditing ? "checkmark" : "pencil")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.borderless)
+                    .disabled(savedPlaces.isEmpty)
 
                     if isSorting {
                         TopForecastDateSwitcher(
@@ -254,21 +250,7 @@ struct PlacesView: View {
                             requestDeletion(offsets, from: section.presentations)
                         }
                     } header: {
-                        HStack(spacing: 5) {
-                            Image(systemName: section.condition.systemImage)
-                                .weatherIconStyle(
-                                    for: section.condition.systemImage
-                                )
-                                .frame(
-                                    width: leadingColumnWidth,
-                                    alignment: .leading
-                                )
-
-                            Text(section.condition.title(locale: locale))
-                        }
-                        .font(.body.weight(.bold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .textCase(nil)
+                        sunnySectionHeader(section)
                     }
                     // Restore the compact rule directly below each weather
                     // subheading from the earlier list design.
@@ -335,7 +317,6 @@ struct PlacesView: View {
                 locale: locale
             )
         }
-        .accessibilityLabel("Saved places")
     }
 
     @ViewBuilder
@@ -383,11 +364,28 @@ struct PlacesView: View {
             rank: !isSorting || presentation.recommendation == nil
                 ? nil
                 : rankByPlaceID[presentation.id],
-            sortMode: sortMode,
-            showsWeatherDetails: isSorting,
-            temperatureUnit: temperatureUnit,
-            distanceUnit: distanceUnit
+            leadingColumnWidth: leadingColumnWidth,
+            showsWeatherDetails: isSorting
         )
+    }
+
+    private func sunnySectionHeader(
+        _ section: PlacesWeatherSection
+    ) -> some View {
+        HStack(spacing: PlacesListLayout.leadingColumnSpacing) {
+            Image(systemName: section.condition.systemImage)
+                .weatherIconStyle(for: section.condition.systemImage)
+                .frame(
+                    width: leadingColumnWidth,
+                    alignment: .leading
+                )
+
+            Text(section.condition.title(locale: locale))
+        }
+        .font(.body.weight(.bold))
+        .foregroundStyle(theme.colors.primaryText)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .textCase(nil)
     }
 
     private func editablePlaceRow(
@@ -403,7 +401,6 @@ struct PlacesView: View {
                     .labelStyle(.iconOnly)
             }
             .buttonStyle(.borderless)
-            .accessibilityLabel("Rename \(displayName(for: presentation.place))")
         }
     }
 
@@ -450,12 +447,6 @@ struct PlacesView: View {
             Label("Sort", systemImage: "arrow.up.arrow.down")
                 .labelStyle(.iconOnly)
         }
-        .accessibilityHint(
-            localizedString(
-                "Sorts places or refreshes their forecasts.",
-                locale: locale
-            )
-        )
     }
 
     private var deletionIsPresented: Binding<Bool> {
@@ -523,6 +514,11 @@ private struct PlacesWeatherSection: Identifiable {
 private struct PlacesUIError: Identifiable {
     let id = UUID()
     let message: String
+}
+
+/// Shared horizontal rhythm for a sunny-condition header and its ranked rows.
+private enum PlacesListLayout {
+    static let leadingColumnSpacing: CGFloat = 5
 }
 
 private struct RenamePlaceSheet: View {
@@ -595,33 +591,26 @@ private struct CompactSavedPlaceRow: View {
     let presentation: SavedPlacePresentation
     let displayName: String
     let rank: Int?
-    let sortMode: WeatherMetricMode
+    let leadingColumnWidth: CGFloat
     let showsWeatherDetails: Bool
-    let temperatureUnit: TemperatureUnit
-    let distanceUnit: DistanceUnit
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.locale) private var locale
     @Environment(\.appTheme) private var theme
-    @ScaledMetric(relativeTo: .body)
-    private var rankColumnWidth: CGFloat = 32
+
     var body: some View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
-                accessibilityLayout
+                expandedLayout
             } else {
                 compactLayout
             }
         }
         .padding(.vertical, 8)
         .contentShape(.rect)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(displayName)
-        .accessibilityValue(accessibilityValue)
     }
 
     private var compactLayout: some View {
-        HStack(spacing: 5) {
+        HStack(spacing: PlacesListLayout.leadingColumnSpacing) {
             if showsWeatherDetails {
                 rankOrStatusIcon
             }
@@ -635,7 +624,7 @@ private struct CompactSavedPlaceRow: View {
         }
     }
 
-    private var accessibilityLayout: some View {
+    private var expandedLayout: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             if showsWeatherDetails {
                 if let rank {
@@ -645,7 +634,6 @@ private struct CompactSavedPlaceRow: View {
                         .monospacedDigit()
                 } else {
                     statusIcon
-                        .accessibilityHidden(true)
                 }
             }
 
@@ -666,11 +654,10 @@ private struct CompactSavedPlaceRow: View {
                 .monospacedDigit()
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
-                .frame(width: rankColumnWidth, alignment: .leading)
+                .frame(width: leadingColumnWidth, alignment: .leading)
         } else {
             statusIcon
-                .frame(width: rankColumnWidth, alignment: .leading)
-                .accessibilityHidden(true)
+                .frame(width: leadingColumnWidth, alignment: .leading)
         }
     }
 
@@ -686,91 +673,6 @@ private struct CompactSavedPlaceRow: View {
         }
     }
 
-    private var statusDescription: String {
-        if presentation.isLoading {
-            return localizedString("Loading forecast…", locale: locale)
-        }
-        return presentation.failureMessage
-            ?? localizedString(
-                "No forecast for the selected date.",
-                locale: locale
-            )
-    }
-
-    private var accessibilityValue: String {
-        guard showsWeatherDetails else { return "" }
-        var components: [String] = []
-
-        if let rank {
-            components.append(localizedString("Rank \(rank)", locale: locale))
-        }
-
-        if let recommendation = presentation.recommendation {
-            let details = metricDetails(for: recommendation)
-            components.append("\(details.label): \(details.value)")
-        } else {
-            components.append(statusDescription)
-        }
-
-        return components.joined(separator: ", ")
-    }
-
-    private func metricDetails(
-        for recommendation: PlaceRecommendation
-    ) -> (value: String, icon: String, label: String) {
-        switch sortMode {
-        case .sunny:
-            return (
-                String(recommendation.sunnyHourCount),
-                sortMode.icon,
-                localizedString("Sunny Hours", locale: locale)
-            )
-        case .cloud:
-            return (
-                percentage(recommendation.cloudCover),
-                "cloud",
-                localizedString("Cloud Cover", locale: locale)
-            )
-        case .temperature:
-            return (
-                temperatureUnit.display(recommendation.forecast.dailyHigh),
-                sortMode.icon,
-                sortMode.title(locale: locale)
-            )
-        case .feelsLike:
-            return (
-                recommendation.maximumFeelsLike.map(
-                    temperatureUnit.display
-                ) ?? "—",
-                sortMode.icon,
-                sortMode.title(locale: locale)
-            )
-        case .rainChance:
-            return (
-                recommendation.precipitationChance.map(percentage) ?? "—",
-                sortMode.icon,
-                sortMode.title(locale: locale)
-            )
-        case .visibility:
-            return (
-                recommendation.maximumVisibilityKilometers.map(
-                    distanceUnit.display
-                ) ?? "—",
-                sortMode.icon,
-                sortMode.title(locale: locale)
-            )
-        case .uvIndex:
-            return (
-                recommendation.forecast.uvIndex.map(String.init) ?? "—",
-                sortMode.icon,
-                sortMode.title(locale: locale)
-            )
-        }
-    }
-
-    private func percentage(_ value: Double) -> String {
-        "\(Int((value * 100).rounded()))%"
-    }
 }
 
 private struct PlacesEmptyView: View {

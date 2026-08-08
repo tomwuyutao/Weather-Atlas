@@ -62,8 +62,6 @@ struct TopForecastDateSwitcher: View {
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("Forecast date")
-            .accessibilityValue(dateText(for: normalizedSelection))
             .popover(isPresented: $showsDatePicker) {
                 datePicker
                     // On iPhone retain the anchored calendar instead of
@@ -104,9 +102,6 @@ struct TopForecastDateSwitcher: View {
                 : theme.colors.primaryText
         )
         .disabled(targetDate == nil)
-        .accessibilityLabel(
-            targetDate == previousDate ? "Previous Date" : "Next Date"
-        )
     }
 
     @ViewBuilder
@@ -142,9 +137,6 @@ struct TopForecastDateSwitcher: View {
     }
 
     private func dateText(for date: Date) -> String {
-        if calendar.isDateInToday(date) {
-            return localizedString("Today", locale: locale)
-        }
         return date.formatted(
             Date.FormatStyle.dateTime
                 .weekday(.abbreviated)

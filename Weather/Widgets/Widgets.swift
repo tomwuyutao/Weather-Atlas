@@ -1502,8 +1502,8 @@ private struct SunnyHoursLegend: View {
 
 // MARK: - Widget Missing-Data Presentation
 
-/// Compact visible and accessible fallback for missing widget configuration or
-/// unavailable WeatherKit data.
+/// Compact visible fallback for missing widget configuration or unavailable
+/// WeatherKit data.
 private struct WidgetDataUnavailablePlaceholder: View {
     /// Widget family used to keep Lock Screen copy to one line.
     @Environment(\.widgetFamily) private var family
@@ -1523,8 +1523,6 @@ private struct WidgetDataUnavailablePlaceholder: View {
                 maxHeight: .infinity,
                 alignment: .center
             )
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(message)
     }
 }
 

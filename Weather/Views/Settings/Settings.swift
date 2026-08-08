@@ -685,7 +685,6 @@ private struct WeatherAttributionView: View {
             }
             .contentShape(.rect)
         }
-        .accessibilityLabel("Apple Weather legal attribution")
     }
 
     private var markURL: URL {

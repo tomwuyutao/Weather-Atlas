@@ -23,25 +23,36 @@ struct HomeView: View {
     @Environment(\.openURL) private var openURL
     @State private var recentlySavedPlaceID: SavedPlace.ID?
     @State private var saveErrorMessage: String?
+    @State private var selectedSection: HomeSection = .currentLocation
 
-    /// Home ranks the current location beside Saved Places, but the location is
-    /// never persisted into the Places library as a side effect.
-    private var allHomeRecommendations: [PlaceRecommendation] {
-        let saved = model.savedRecommendations(on: selectedDate)
-        guard let current = model.currentLocationRecommendation(on: selectedDate) else {
-            return saved
-        }
-        return RecommendationEngine.ranked(saved + [current])
-    }
-
-    private var sunnyHomeRecommendations: [PlaceRecommendation] {
-        allHomeRecommendations.filter {
+    /// Saved Places remain distinct from the user's ephemeral current location.
+    private var sunnySavedPlaceRecommendations: [PlaceRecommendation] {
+        model.savedRecommendations(on: selectedDate).filter {
             $0.condition == .clear || $0.condition == .partlySunny
         }
     }
 
-    private var currentLocationRecommendationID: City.ID? {
-        model.currentLocationRecommendation(on: selectedDate)?.id
+    /// Forecast-date planning applies only to places the user explicitly chose
+    /// to compare in their saved library.
+    private var bestSunnyDateSummaries: [BestSunnyDateSummary] {
+        ForecastDateHorizon.dates(in: model.forecastCalendar).map { date in
+            let recommendations = model.savedRecommendations(on: date)
+            let sunnyScore = recommendations.reduce(into: 0.0) { score, item in
+                switch item.condition {
+                case .clear:
+                    score += 1
+                case .partlySunny:
+                    score += 0.5
+                default:
+                    break
+                }
+            }
+            return BestSunnyDateSummary(
+                date: date,
+                sunnyScore: sunnyScore,
+                availableCityCount: recommendations.count
+            )
+        }
     }
 
     private var savedPlaceIDs: Set<SavedPlace.ID> {
@@ -68,46 +79,18 @@ struct HomeView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 20) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HomeScopeLabel("Current Location")
-
-                    CurrentLocationTimelineCard(
-                        weather: model.currentLocationWeather,
-                        selectedDate: selectedDate,
-                        locationName: model.locationProvider.metadata?.displayName
-                            ?? model.currentLocationWeather?.city.displayName,
-                        locationStatus: model.locationProvider.status,
-                        isLoading: model.isRefreshingHomeWeather,
-                        requestLocation: requestCurrentLocation,
-                        openSettings: openLocationSettings,
-                        retry: refreshHomeWeather
-                    )
-                }
-
-                VStack(alignment: .leading, spacing: 20) {
-                    HomeScopeLabel("Compare Locations")
-
-                    BestSunnyPlacesCard(
-                        recommendations: sunnyHomeRecommendations,
-                        selectedDate: selectedDate,
-                        currentLocationRecommendationID: currentLocationRecommendationID,
-                        showAllPlaces: { router.showPlaces() }
-                    )
-
-                    if !model.currentLocationIsSunny(on: selectedDate) {
-                        NearestSunnyPlaceCard(
-                            recommendations: nearbySunnyRecommendations,
-                            locationStatus: model.locationProvider.status,
-                            isLoading: model.isRefreshingHomeWeather,
-                            hasCompletedSearch:
-                                model.hasCompletedNearestSunnySearch,
-                            errorMessage: model.homeLocationError,
-                            savedPlaceIDs: savedPlaceIDs,
-                            requestLocation: requestCurrentLocation,
-                            retry: refreshHomeWeather,
-                            save: saveNearbySunnyPlace
-                        )
+                Picker("Home section", selection: $selectedSection) {
+                    ForEach(HomeSection.allCases) { section in
+                        Text(section.title).tag(section)
                     }
+                }
+                .pickerStyle(.segmented)
+
+                switch selectedSection {
+                case .currentLocation:
+                    currentLocationSection
+                case .savedPlaces:
+                    savedPlacesSection
                 }
             }
             .padding(.horizontal, 16)
@@ -126,7 +109,6 @@ struct HomeView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                     .layoutPriority(1)
-                    .accessibilityAddTraits(.isHeader)
 
                 Spacer(minLength: 8)
 
@@ -142,10 +124,12 @@ struct HomeView: View {
                         Label("Settings", systemImage: "gearshape")
                     }
                 } label: {
-                    Label("More", systemImage: "ellipsis")
-                        .labelStyle(.iconOnly)
+                    Image(systemName: "ellipsis")
+                        .frame(width: 44, height: 44)
+                        .contentShape(Rectangle())
                 }
-                .frame(minWidth: 36, minHeight: 44)
+                .menuStyle(.button)
+                .buttonStyle(.borderless)
 
                 TopForecastDateSwitcher(
                     selection: $selectedDate,
@@ -211,6 +195,83 @@ struct HomeView: View {
         )
     }
 
+    private var currentLocationSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            CurrentLocationTimelineCard(
+                weather: model.currentLocationWeather,
+                selectedDate: selectedDate,
+                locationName: model.locationProvider.metadata?.displayName
+                    ?? model.currentLocationWeather?.city.displayName,
+                locationStatus: model.locationProvider.status,
+                isLoading: model.isRefreshingHomeWeather,
+                requestLocation: requestCurrentLocation,
+                openSettings: openLocationSettings,
+                retry: refreshHomeWeather
+            )
+
+            if let currentLocationWeather = model.currentLocationWeather {
+                SunnyHoursOverviewCard(
+                    city: currentLocationWeather,
+                    selectedDate: $selectedDate
+                )
+
+                NavigationLink(value: AppRoute.currentLocation) {
+                    subtleNavigationLabel("View Detailed Forecast")
+                }
+                .buttonStyle(.plain)
+            }
+
+            if !model.currentLocationIsSunny(on: selectedDate) {
+                NearestSunnyPlaceCard(
+                    recommendations: nearbySunnyRecommendations,
+                    locationStatus: model.locationProvider.status,
+                    isLoading: model.isRefreshingHomeWeather,
+                    hasCompletedSearch: model.hasCompletedNearestSunnySearch,
+                    errorMessage: model.homeLocationError,
+                    savedPlaceIDs: savedPlaceIDs,
+                    requestLocation: requestCurrentLocation,
+                    retry: refreshHomeWeather,
+                    save: saveNearbySunnyPlace
+                )
+            }
+        }
+    }
+
+    private var savedPlacesSection: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            if !model.placesStore.allPlaces.isEmpty {
+                BestSunnyDatesCard(
+                    summaries: bestSunnyDateSummaries,
+                    selectedDate: $selectedDate
+                )
+            }
+
+            BestSunnyPlacesCard(
+                recommendations: sunnySavedPlaceRecommendations
+            )
+
+            Button(action: router.showPlaces) {
+                subtleNavigationLabel("View Saved Places")
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func subtleNavigationLabel(
+        _ title: LocalizedStringKey
+    ) -> some View {
+        HStack(spacing: 5) {
+            Text(title)
+            Image(systemName: "chevron.right")
+                .font(.caption.weight(.semibold))
+        }
+        .font(.callout)
+        .foregroundStyle(theme.colors.secondaryText)
+        .frame(maxWidth: .infinity)
+        .frame(minHeight: 44)
+        .contentShape(.rect)
+    }
+
     private func requestCurrentLocation() {
         model.locationProvider.requestCurrentLocation(preferredLocale: locale)
     }
@@ -254,26 +315,23 @@ struct HomeView: View {
     }
 }
 
-private struct HomeScopeLabel: View {
-    let title: LocalizedStringKey
-
-    @Environment(\.appTheme) private var theme
-
-    init(_ title: LocalizedStringKey) {
-        self.title = title
-    }
-
-    var body: some View {
-        Text(title)
-            .font(.caption.weight(.semibold))
-            .foregroundStyle(theme.colors.secondaryText)
-            .tracking(0.7)
-            .padding(.horizontal, 4)
-            .accessibilityAddTraits(.isHeader)
-    }
-}
-
 private struct HomeWeatherTaskID: Hashable {
     let latitude: Double?
     let longitude: Double?
+}
+
+private enum HomeSection: CaseIterable, Identifiable {
+    case currentLocation
+    case savedPlaces
+
+    var id: Self { self }
+
+    var title: LocalizedStringKey {
+        switch self {
+        case .currentLocation:
+            "Your Location"
+        case .savedPlaces:
+            "Saved Places"
+        }
+    }
 }

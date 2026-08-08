@@ -185,6 +185,11 @@ struct WeatherAtlasRootView: View {
     @ViewBuilder
     private func destination(for route: AppRoute) -> some View {
         switch route {
+        case .currentLocation:
+            CurrentLocationDetailView(
+                model: model,
+                selectedDate: $selectedDate
+            )
         case let .place(id):
             PlaceDetailView(
                 placeID: id,

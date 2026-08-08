@@ -175,24 +175,27 @@ private struct DetailMetricCard: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(12)
+            .padding(WeatherCardLayout.padding)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .weatherAtlasInteractiveGlass(
             colorScheme: colorScheme,
-            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+            in: RoundedRectangle(
+                cornerRadius: WeatherCardLayout.cornerRadius,
+                style: .continuous
+            )
         )
         .overlay {
             if isSelected {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(
+                    cornerRadius: WeatherCardLayout.cornerRadius,
+                    style: .continuous
+                )
                     .stroke(theme.colors.primaryText.opacity(0.75), lineWidth: 1.5)
                     .allowsHitTesting(false)
             }
         }
-        .accessibilityLabel(metric.title(locale: locale))
-        .accessibilityValue(value)
-        .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
     }
 
 }
@@ -297,7 +300,6 @@ struct DetailChartView: View {
                 .font(.subheadline.weight(.medium))
                 .foregroundStyle(theme.colors.secondaryText)
         }
-        .accessibilityElement(children: .combine)
     }
 
     @ViewBuilder
@@ -310,7 +312,6 @@ struct DetailChartView: View {
                     .foregroundStyle(dailyLowTemperatureColor)
             }
             .font(.caption.weight(.semibold))
-            .accessibilityElement(children: .combine)
         }
     }
 
@@ -427,7 +428,6 @@ struct DetailChartView: View {
             }
         }
         .frame(height: chartHeight)
-        .accessibilityLabel(selectedMetric.title(locale: locale))
     }
 
     /// Available-days chart using every real forecast returned for the city.
@@ -546,7 +546,6 @@ struct DetailChartView: View {
             }
         }
         .frame(height: chartHeight)
-        .accessibilityLabel(selectedMetric.title(locale: locale))
     }
 
     /// The same six cards become an in-sheet metric switcher.

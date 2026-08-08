@@ -9,6 +9,9 @@
 import SwiftUI
 
 struct NearestSunnyPlaceCard: View {
+    /// Home is a quick local scan, not a second full results screen.
+    private static let maximumDisplayedRecommendations = 3
+
     let recommendations: [NearestSunnyPlaceResult]
     let locationStatus: LocationProviderStatus
     let isLoading: Bool
@@ -29,32 +32,37 @@ struct NearestSunnyPlaceCard: View {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
     }
 
+    private var displayedRecommendations: [NearestSunnyPlaceResult] {
+        Array(recommendations.prefix(Self.maximumDisplayedRecommendations))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                HomeWeatherCardHeader(
-                    icon: "location.magnifyingglass",
-                    title: "Nearby Sunny Places"
-                )
-            }
+            WeatherCardHeader(
+                icon: "location.magnifyingglass",
+                title: "Nearby Sunny Places"
+            )
 
             cardContent
         }
-        .padding(18)
+        .padding(WeatherCardLayout.padding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .detailTranslucentCard(
             colorScheme: colorScheme,
-            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            in: RoundedRectangle(
+                cornerRadius: WeatherCardLayout.cornerRadius,
+                style: .continuous
+            )
         )
     }
 
     @ViewBuilder
     private var cardContent: some View {
-        if !recommendations.isEmpty {
+        if !displayedRecommendations.isEmpty {
             VStack(spacing: 0) {
-                ForEach(recommendations) { recommendation in
+                ForEach(displayedRecommendations) { recommendation in
                     resultRow(recommendation)
-                    if recommendation.id != recommendations.last?.id {
+                    if recommendation.id != displayedRecommendations.last?.id {
                         Divider()
                             .padding(.leading, 42)
                     }
@@ -168,7 +176,6 @@ struct NearestSunnyPlaceCard: View {
             }
         }
         .padding(.vertical, 6)
-        .accessibilityElement(children: .contain)
     }
 
     private func messageWithAction(

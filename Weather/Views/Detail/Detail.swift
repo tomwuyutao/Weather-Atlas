@@ -113,7 +113,6 @@ struct PlaceDetailView: View {
                 ToolbarItem(placement: .principal) {
                     Color.clear
                         .frame(width: 1, height: 1)
-                        .accessibilityHidden(true)
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
@@ -188,11 +187,11 @@ struct PlaceDetailView: View {
                         systemImage: "calendar.badge.exclamationmark",
                         description: Text("Choose another available date.")
                     )
-                    .padding(18)
+                    .padding(WeatherCardLayout.padding)
                     .detailTranslucentCard(
                         colorScheme: colorScheme,
                         in: RoundedRectangle(
-                            cornerRadius: 20,
+                            cornerRadius: WeatherCardLayout.cornerRadius,
                             style: .continuous
                         )
                     )

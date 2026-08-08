@@ -59,18 +59,15 @@ struct SunnyHoursOverviewCard: View {
     var body: some View {
         if let chartBounds, !rows.isEmpty {
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "calendar.day.timeline.left")
-                        .frame(width: 24, alignment: .leading)
-                    Text("Sunny Hours")
-                    Spacer(minLength: 8)
+                WeatherCardHeader(
+                    icon: "calendar.day.timeline.left",
+                    title: "Sunny Hours"
+                ) {
                     Text(selectedSunnyWindow)
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(theme.colors.secondaryText)
                         .lineLimit(1)
                 }
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
 
                 SunnyHoursAxis(bounds: chartBounds)
 
@@ -96,15 +93,6 @@ struct SunnyHoursOverviewCard: View {
                         }
                         .buttonStyle(.plain)
                         .contentShape(.rect)
-                        .accessibilityLabel(
-                            "\(dayLabel(for: row.date)), \(row.accessibilitySummary(locale: locale))"
-                        )
-                        .accessibilityAddTraits(
-                            calendar.isDate(
-                                row.date,
-                                inSameDayAs: selectedDate
-                            ) ? .isSelected : []
-                        )
                     }
                 }
 
@@ -112,10 +100,13 @@ struct SunnyHoursOverviewCard: View {
                     .frame(maxWidth: .infinity)
                     .padding(.top, 2)
             }
-            .padding(14)
+            .padding(WeatherCardLayout.padding)
             .detailTranslucentCard(
                 colorScheme: colorScheme,
-                in: RoundedRectangle(cornerRadius: 20, style: .continuous)
+                in: RoundedRectangle(
+                    cornerRadius: WeatherCardLayout.cornerRadius,
+                    style: .continuous
+                )
             )
         }
     }
@@ -321,16 +312,6 @@ private struct SunnyHoursDayRow: Identifiable {
     let bounds: SunnyHoursChartBounds
 
     var id: Date { date }
-
-    func accessibilitySummary(locale: Locale) -> String {
-        let sunnyCount = hours.filter {
-            $0.condition.isSunnyOrPartlySunny
-        }.count
-        if sunnyCount == 0 {
-            return localizedString("No Sun", locale: locale)
-        }
-        return localizedString("\(sunnyCount) sunny hours", locale: locale)
-    }
 }
 
 private struct SunnyHoursDayCell: Identifiable {

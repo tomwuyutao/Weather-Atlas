@@ -79,9 +79,10 @@ private enum MapSunQueryScope {
 
 private struct MapSunSearchResult: Identifiable {
     let city: City
-    let forecast: DailyForecast
+    let recommendation: PlaceRecommendation
 
     var id: City.ID { city.id }
+    var forecast: DailyForecast { recommendation.forecast }
 }
 
 /// Country and continent resolved from a user-selected map coordinate.
@@ -120,6 +121,9 @@ struct MapView: View {
     @State private var sunSearchResults: [MapSunSearchResult] = []
     @State private var selectedSunResultID: City.ID?
     @State private var selectedSearchPreviewID: City.ID?
+    /// Lets the parent close a child-owned map card before a new transient
+    /// search or Search preview takes over the map.
+    @State private var mapSelectionResetID = 0
     @State private var isSearchingForSun = false
     /// Rejects stale asynchronous Find Sun results after a date or scope change.
     @State private var sunSearchGeneration = 0
@@ -205,13 +209,23 @@ struct MapView: View {
     private var searchPreviewResult: MapSunSearchResult? {
         guard let city = router.mapPreviewCity,
               let weather = weatherStore.weather(for: city.id),
-              let forecast = weather.forecastIfAvailable(
+              let recommendation = RecommendationEngine.recommendation(
+                for: weather,
                 on: selectedDate,
                 selectionCalendar: model.forecastCalendar
               ) else {
             return nil
         }
-        return MapSunSearchResult(city: city, forecast: forecast)
+        return MapSunSearchResult(city: city, recommendation: recommendation)
+    }
+
+    private var currentLocationRecommendation: PlaceRecommendation? {
+        guard let weather = model.currentLocationWeather else { return nil }
+        return RecommendationEngine.recommendation(
+            for: weather,
+            on: selectedDate,
+            selectionCalendar: model.forecastCalendar
+        )
     }
 
     private var navigationTitle: String {
@@ -241,14 +255,11 @@ struct MapView: View {
                             )
                             .labelStyle(.iconOnly)
                         }
-                        .accessibilityHint(
-                            "Centers the map on your current location and highlights it."
-                        )
-                        .frame(minWidth: 36, minHeight: 44)
+                        .frame(width: 44, height: 44)
                     }
 
                     moreMenu
-                        .frame(minWidth: 36, minHeight: 44)
+                        .frame(width: 44, height: 44)
 
                     TopForecastDateSwitcher(
                         selection: $selectedDate,
@@ -271,11 +282,15 @@ struct MapView: View {
                 // Find Sun is date-specific. Re-run its active query so dots
                 // and the selected-date capsule can never describe different days.
                 if let activeSunQuery {
-                    runSunSearch(activeSunQuery)
+                    beginSunSearch(activeSunQuery)
                 }
             }
             .onChange(of: router.mapPreviewCity?.id, initial: true) { _, previewID in
                 selectedSearchPreviewID = previewID
+                if previewID != nil {
+                    activateSunnyHoursLayer()
+                    mapSelectionResetID &+= 1
+                }
             }
             .sensoryFeedback(
                 .selection,
@@ -301,7 +316,7 @@ struct MapView: View {
                         viewport: currentViewport,
                         canSearchNearMe: currentLocationCoordinate != nil,
                         locale: locale,
-                        runSearch: runSunSearch
+                        runSearch: beginSunSearch
                     )
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
@@ -311,48 +326,40 @@ struct MapView: View {
 
     @ViewBuilder
     private var mapBody: some View {
-        if let loadErrorDescription = placesStore.loadErrorDescription {
-            ContentUnavailableView {
-                Label("Places Unavailable", systemImage: "exclamationmark.triangle")
-            } description: {
-                Text(loadErrorDescription)
-            } actions: {
-            Button("Try Again", action: placesStore.retryLoading)
-                .buttonStyle(.borderedProminent)
+        PlacesMapCanvas(
+            presentations: sortedPresentations,
+            libraryLoadErrorDescription: placesStore.loadErrorDescription,
+            retryLoading: placesStore.retryLoading,
+            selectedPlaceID: $router.selectedMapPlaceID,
+            showsLegend: $showsLegend,
+            filtersToSunnyPlaces: $filtersToSunnyPlaces,
+            sortMode: sortMode,
+            currentLocationCoordinate: currentLocationCoordinate,
+            currentLocationName: model.locationProvider.metadata?.displayName
+                ?? model.currentLocationWeather?.city.displayName
+                ?? localizedString("Current Location", locale: locale),
+            currentLocationRecommendation: currentLocationRecommendation,
+            currentLocationFocusRequestID: currentLocationFocusRequestID,
+            sunSearchResults: sunSearchResults,
+            selectedSunResultID: $selectedSunResultID,
+            searchPreviewResult: searchPreviewResult,
+            selectedSearchPreviewID: $selectedSearchPreviewID,
+            selectionResetID: mapSelectionResetID,
+            activeSunQuerySummary: activeSunQuery?.summary(locale: locale),
+            isSearchingForSun: isSearchingForSun,
+            viewport: $currentViewport,
+            displayName: displayName(for:),
+            findSun: {
+                presentedMapSheet = .findSun(initialScope: .area)
+            },
+            findSunInRegion: beginSunSearch,
+            clearSunSearch: clearSunSearch,
+            saveSunResult: saveSunResult,
+            saveSearchPreview: saveSearchPreview,
+            searchPlaces: {
+                router.selectedTab = .search
             }
-            .weatherAtlasScreenBackground()
-        } else {
-            PlacesMapCanvas(
-                presentations: sortedPresentations,
-                selectedPlaceID: $router.selectedMapPlaceID,
-                showsLegend: $showsLegend,
-                filtersToSunnyPlaces: $filtersToSunnyPlaces,
-                sortMode: sortMode,
-                currentLocationCoordinate: currentLocationCoordinate,
-                currentLocationName: model.locationProvider.metadata?.displayName
-                    ?? model.currentLocationWeather?.city.displayName
-                    ?? localizedString("Current Location", locale: locale),
-                currentLocationFocusRequestID: currentLocationFocusRequestID,
-                sunSearchResults: sunSearchResults,
-                selectedSunResultID: $selectedSunResultID,
-                searchPreviewResult: searchPreviewResult,
-                selectedSearchPreviewID: $selectedSearchPreviewID,
-                activeSunQuerySummary: activeSunQuery?.summary(locale: locale),
-                isSearchingForSun: isSearchingForSun,
-                viewport: $currentViewport,
-                displayName: displayName(for:),
-                findSun: {
-                    presentedMapSheet = .findSun(initialScope: .area)
-                },
-                findSunInRegion: runSunSearch,
-                clearSunSearch: clearSunSearch,
-                saveSunResult: saveSunResult,
-                saveSearchPreview: saveSearchPreview,
-                searchPlaces: {
-                    router.selectedTab = .search
-                }
-            )
-        }
+        )
     }
 
     private var moreMenu: some View {
@@ -391,6 +398,21 @@ struct MapView: View {
         } label: {
             Label("More", systemImage: "ellipsis")
                 .labelStyle(.iconOnly)
+        }
+    }
+
+    /// Find Sun and city previews are always explained through the sunniness
+    /// layer, so the dots, legend, and floating cards share one metric.
+    private func beginSunSearch(_ scope: MapSunQueryScope) {
+        activateSunnyHoursLayer()
+        mapSelectionResetID &+= 1
+        runSunSearch(scope)
+    }
+
+    private func activateSunnyHoursLayer() {
+        guard sortMode != .sunny else { return }
+        withAnimation(.smooth(duration: 0.2)) {
+            sortMode = .sunny
         }
     }
 
@@ -454,14 +476,18 @@ struct MapView: View {
 
                 sunSearchResults = candidates.compactMap { city in
                     guard let weather = weatherStore.weather(for: city.id),
-                          let forecast = weather.forecastIfAvailable(
+                          let recommendation = RecommendationEngine.recommendation(
+                            for: weather,
                             on: requestedDate,
                             selectionCalendar: model.forecastCalendar
                           ),
-                          forecast.condition?.isSunny == true else {
+                          recommendation.condition.isSunny else {
                         return nil
                     }
-                    return MapSunSearchResult(city: city, forecast: forecast)
+                    return MapSunSearchResult(
+                        city: city,
+                        recommendation: recommendation
+                    )
                 }
                 .sorted { lhs, rhs in
                     let lhsCloudCover = lhs.forecast.cloudCover ?? 1
@@ -661,6 +687,7 @@ private struct MapSunSearchSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close", systemImage: "xmark") { dismiss() }
                         .labelStyle(.iconOnly)
+                        .frame(width: 44, height: 44)
                 }
             }
         }
@@ -699,7 +726,10 @@ private struct MapSunSearchSheet: View {
                     locale: locale
                 )
             } label: {
-                Label("Search a Country", systemImage: "magnifyingglass")
+                Label(
+                    localizedString("Pick a Country", locale: locale),
+                    systemImage: "flag.fill"
+                )
             }
         } header: {
             Text("Country")
@@ -752,6 +782,7 @@ private struct MapSunCountryPicker: View {
     let locale: Locale
 
     @State private var query = ""
+    @FocusState private var isSearchFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     private var countries: [CountryPlacesOption] {
@@ -780,10 +811,56 @@ private struct MapSunCountryPicker: View {
                 }
             }
         }
-        .navigationTitle("Search a Country")
+        .navigationTitle(localizedString("Pick a Country", locale: locale))
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $query, prompt: "Search countries")
+        .searchFocused($isSearchFocused)
+        .defaultFocus($isSearchFocused, true)
     }
+}
+
+/// Shared geometry for the Map's saved-place, Find Sun, and current-location
+/// selection cards. Their actions may differ, but their visual grid does not.
+private enum MapSelectionCardLayout {
+    static let horizontalPadding: CGFloat = 22
+    static let verticalPadding: CGFloat = 16
+    static let iconWidth: CGFloat = 48
+    static let iconHeight: CGFloat = 48
+    static let closeClearance: CGFloat = 30
+
+    static func height(for dynamicTypeSize: DynamicTypeSize) -> CGFloat {
+        if dynamicTypeSize.isAccessibilitySize {
+            return 150
+        }
+        switch dynamicTypeSize {
+        case .xSmall, .small, .medium, .large:
+            return 128
+        case .xLarge:
+            return 138
+        default:
+            return 150
+        }
+    }
+}
+
+/// Formats the actual sunny interval used throughout Map selection cards.
+private func mapSunnyHoursText(
+    for recommendation: PlaceRecommendation,
+    locale: Locale
+) -> String {
+    guard let range = recommendation.bestSunnyWindow else {
+        return localizedString("No Sun", locale: locale)
+    }
+
+    let start = SunninessScoring.compactHourLabel(
+        range.lowerBound,
+        locale: locale
+    )
+    let end = SunninessScoring.compactHourLabel(
+        range.upperBound + 1,
+        locale: locale
+    )
+    return "\(start) – \(end)"
 }
 
 /// Uses the same floating-card material and hierarchy as a saved-place card;
@@ -796,18 +873,13 @@ private struct MapSunResultCard: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
-    @AppStorage("temperatureUnit")
-    private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
-
-    private var temperatureUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
-    }
 
     var body: some View {
         ZStack(alignment: .topTrailing) {
             cardContent
-                .padding(.horizontal, 22)
-                .padding(.vertical, 16)
+                .padding(.horizontal, MapSelectionCardLayout.horizontalPadding)
+                .padding(.vertical, MapSelectionCardLayout.verticalPadding)
+                .padding(.trailing, MapSelectionCardLayout.closeClearance)
                 .frame(maxWidth: .infinity)
                 .frame(minHeight: cardHeight)
 
@@ -815,39 +887,39 @@ private struct MapSunResultCard: View {
                 .labelStyle(.iconOnly)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 48, height: 48)
+                .frame(width: 44, height: 44)
                 .contentShape(Circle())
-                .accessibilityHint("Closes this place preview.")
         }
         .weatherAtlasInteractiveGlass(
             colorScheme: colorScheme,
             in: RoundedRectangle(cornerRadius: 24, style: .continuous)
         )
-        .accessibilityElement(children: .contain)
     }
 
     private var cardHeight: CGFloat {
-        dynamicTypeSize.isAccessibilitySize ? 150 : 128
+        MapSelectionCardLayout.height(for: dynamicTypeSize)
     }
 
     private var cardContent: some View {
         HStack(alignment: .center, spacing: 16) {
-            let icon = result.forecast.condition?.displayIcon ?? "sun.max.fill"
+            let icon = "sun.max.fill"
             Image(systemName: icon)
                 .font(.system(size: 40, weight: .medium))
                 .weatherIconStyle(for: icon)
-                .frame(width: 48, height: 48)
-                .accessibilityHidden(true)
+                .frame(
+                    width: MapSelectionCardLayout.iconWidth,
+                    height: MapSelectionCardLayout.iconHeight
+                )
 
             VStack(alignment: .leading, spacing: 6) {
-                Text(temperatureUnit.display(result.forecast.dailyHigh))
+                Text(mapSunnyHoursText(for: result.recommendation, locale: locale))
                     .font(.system(size: 32, weight: .semibold))
                     .monospacedDigit()
                     .lineLimit(1)
                     .minimumScaleFactor(0.74)
 
                 Text(
-                    "\(result.city.displayName) · \(result.forecast.condition?.localizedDisplayName(locale: locale) ?? localizedString("Sunny", locale: locale))"
+                    "\(result.city.displayName) · \(localizedString("Sunny Hours", locale: locale))"
                 )
                 .font(.headline.weight(.regular))
                 .lineLimit(1)
@@ -859,8 +931,80 @@ private struct MapSunResultCard: View {
             Button("Save", systemImage: "plus", action: save)
                 .font(.subheadline.weight(.semibold))
                 .buttonStyle(.borderedProminent)
-                .accessibilityHint("Saves this found sunny place to Saved Places.")
+                .frame(minWidth: 44, minHeight: 44)
         }
+    }
+}
+
+/// Read-only weather preview for the device location; it never saves a place.
+private struct MapCurrentLocationCard: View {
+    let name: String
+    let recommendation: PlaceRecommendation?
+    let clearSelection: () -> Void
+
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            HStack(alignment: .center, spacing: 16) {
+                if let recommendation {
+                    let icon = recommendation.condition.displayIcon
+                    Image(systemName: icon)
+                        .font(.system(size: 40, weight: .medium))
+                        .weatherIconStyle(for: icon)
+                        .frame(
+                            width: MapSelectionCardLayout.iconWidth,
+                            height: MapSelectionCardLayout.iconHeight
+                        )
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(mapSunnyHoursText(for: recommendation, locale: locale))
+                            .font(.system(size: 32, weight: .semibold))
+                            .monospacedDigit()
+                            .lineLimit(1)
+
+                        Text(
+                            "\(name) · \(localizedString("Sunny Hours", locale: locale))"
+                        )
+                        .font(.headline.weight(.regular))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.72)
+                    }
+                } else {
+                    Image(systemName: "exclamationmark.circle")
+                        .font(.title2)
+                        .foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 5) {
+                        Text(name).font(.headline)
+                        Text("Forecast Unavailable")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                Spacer(minLength: 4)
+            }
+            .padding(.horizontal, MapSelectionCardLayout.horizontalPadding)
+            .padding(.vertical, MapSelectionCardLayout.verticalPadding)
+            .padding(.trailing, MapSelectionCardLayout.closeClearance)
+            .frame(maxWidth: .infinity)
+            .frame(
+                minHeight: MapSelectionCardLayout.height(for: dynamicTypeSize)
+            )
+
+            Button("Close", systemImage: "xmark", action: clearSelection)
+                .labelStyle(.iconOnly)
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .weatherAtlasInteractiveGlass(
+            colorScheme: colorScheme,
+            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+        )
     }
 }
 
@@ -879,7 +1023,6 @@ private struct MapRegionContextCard: View {
                 Text(context.title(locale: locale))
                     .font(.headline)
                     .lineLimit(2)
-                    .accessibilityAddTraits(.isHeader)
 
                 Spacer(minLength: 0)
 
@@ -887,9 +1030,8 @@ private struct MapRegionContextCard: View {
                     .labelStyle(.iconOnly)
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.secondary)
-                    .frame(width: 32, height: 32)
+                    .frame(width: 44, height: 44)
                     .contentShape(Circle())
-                    .accessibilityHint("Closes regional search options.")
             }
 
             Button {
@@ -901,7 +1043,7 @@ private struct MapRegionContextCard: View {
                     ),
                     systemImage: "sun.max.magnifyingglass"
                 )
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, minHeight: 44)
             }
             .buttonStyle(.borderedProminent)
 
@@ -914,8 +1056,8 @@ private struct MapRegionContextCard: View {
                             for: continent.localizedName(locale: locale)
                         ),
                         systemImage: "globe.europe.africa"
-                    )
-                    .frame(maxWidth: .infinity)
+                )
+                .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 .buttonStyle(.bordered)
             }
@@ -925,7 +1067,6 @@ private struct MapRegionContextCard: View {
             colorScheme: colorScheme,
             in: RoundedRectangle(cornerRadius: 24, style: .continuous)
         )
-        .accessibilityElement(children: .contain)
     }
 
     private func findSunTitle(for regionName: String) -> String {
@@ -953,17 +1094,21 @@ private struct PlacesMapPlacePresentation: Identifiable {
 
 private struct PlacesMapCanvas: View {
     let presentations: [PlacesMapPlacePresentation]
+    let libraryLoadErrorDescription: String?
+    let retryLoading: () -> Void
     @Binding var selectedPlaceID: City.ID?
     @Binding var showsLegend: Bool
     @Binding var filtersToSunnyPlaces: Bool
     let sortMode: WeatherMetricMode
     let currentLocationCoordinate: CLLocationCoordinate2D?
     let currentLocationName: String
+    let currentLocationRecommendation: PlaceRecommendation?
     let currentLocationFocusRequestID: Int
     let sunSearchResults: [MapSunSearchResult]
     @Binding var selectedSunResultID: City.ID?
     let searchPreviewResult: MapSunSearchResult?
     @Binding var selectedSearchPreviewID: City.ID?
+    let selectionResetID: Int
     let activeSunQuerySummary: String?
     let isSearchingForSun: Bool
     @Binding var viewport: MapViewport?
@@ -981,6 +1126,7 @@ private struct PlacesMapCanvas: View {
         [City.ID: PlacesMapLabelPlacement] = [:]
     @State private var tappedRegionContext: MapTapRegionContext?
     @State private var regionContextResolutionID = 0
+    @State private var isCurrentLocationSelected = false
 
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -1082,7 +1228,106 @@ private struct PlacesMapCanvas: View {
                 )
             ]
         } ?? []
-        return savedInputs + foundInputs + previewInputs
+        let currentLocationInput = currentLocationCoordinate.map { coordinate in
+            [
+                PlacesMapLabelLayoutInput(
+                    id: Self.currentLocationLabelID,
+                    name: currentLocationMarkerLabel,
+                    coordinate: coordinate
+                )
+            ]
+        } ?? []
+        return savedInputs + foundInputs + previewInputs + currentLocationInput
+    }
+
+    private static let currentLocationLabelID = UUID()
+
+    private var currentLocationMarkerLabel: String {
+        localizedString("Current Location", locale: locale)
+    }
+
+    private var hasFloatingCard: Bool {
+        selectedPresentation != nil
+            || selectedSunResult != nil
+            || selectedSearchPreview != nil
+            || isCurrentLocationSelected
+            || tappedRegionContext != nil
+    }
+
+    @ViewBuilder
+    private var activeFloatingCard: some View {
+        if let selectedPresentation {
+            MapPlaceSelectionCard(
+                presentation: selectedPresentation,
+                displayName: displayName(selectedPresentation.place),
+                sortMode: sortMode,
+                clearSelection: clearAllFloatingCards
+            )
+            .padding(
+                .horizontal,
+                dynamicTypeSize.isAccessibilitySize ? 12 : 18
+            )
+            .padding(.bottom, 18)
+            .frame(maxWidth: cardMaximumWidth)
+            .transition(cardTransition)
+        } else if let selectedSunResult {
+            MapSunResultCard(
+                result: selectedSunResult,
+                save: { saveSunResult(selectedSunResult) },
+                clearSelection: clearAllFloatingCards
+            )
+            .padding(
+                .horizontal,
+                dynamicTypeSize.isAccessibilitySize ? 12 : 18
+            )
+            .padding(.bottom, 18)
+            .frame(maxWidth: cardMaximumWidth)
+            .transition(cardTransition)
+        } else if let selectedSearchPreview {
+            MapSunResultCard(
+                result: selectedSearchPreview,
+                save: { saveSearchPreview(selectedSearchPreview) },
+                clearSelection: clearAllFloatingCards
+            )
+            .padding(
+                .horizontal,
+                dynamicTypeSize.isAccessibilitySize ? 12 : 18
+            )
+            .padding(.bottom, 18)
+            .frame(maxWidth: cardMaximumWidth)
+            .transition(cardTransition)
+        } else if isCurrentLocationSelected {
+            MapCurrentLocationCard(
+                name: currentLocationName,
+                recommendation: currentLocationRecommendation,
+                clearSelection: clearAllFloatingCards
+            )
+            .padding(
+                .horizontal,
+                dynamicTypeSize.isAccessibilitySize ? 12 : 18
+            )
+            .padding(.bottom, 18)
+            .frame(maxWidth: cardMaximumWidth)
+            .transition(cardTransition)
+        } else if let tappedRegionContext {
+            MapRegionContextCard(
+                context: tappedRegionContext,
+                findSun: { scope in
+                    clearAllFloatingCards()
+                    findSunInRegion(scope)
+                },
+                clearSelection: clearAllFloatingCards
+            )
+            .padding(
+                .horizontal,
+                dynamicTypeSize.isAccessibilitySize ? 12 : 18
+            )
+            .padding(.bottom, 18)
+            .frame(maxWidth: cardMaximumWidth)
+            .transition(cardTransition)
+        } else {
+            EmptyView()
+        }
     }
 
     var body: some View {
@@ -1096,73 +1341,8 @@ private struct PlacesMapCanvas: View {
                     .zIndex(1)
             }
 
-            if let selectedPresentation {
-                MapPlaceSelectionCard(
-                    presentation: selectedPresentation,
-                    displayName: displayName(selectedPresentation.place),
-                    sortMode: sortMode,
-                    clearSelection: clearSelection
-                )
-                .padding(
-                    .horizontal,
-                    dynamicTypeSize.isAccessibilitySize ? 12 : 18
-                )
-                .padding(.bottom, 18)
-                .frame(maxWidth: cardMaximumWidth)
-                .transition(cardTransition)
+            activeFloatingCard
                 .zIndex(2)
-            }
-
-            if let selectedSunResult {
-                MapSunResultCard(
-                    result: selectedSunResult,
-                    save: { saveSunResult(selectedSunResult) },
-                    clearSelection: { selectedSunResultID = nil }
-                )
-                .padding(
-                    .horizontal,
-                    dynamicTypeSize.isAccessibilitySize ? 12 : 18
-                )
-                .padding(.bottom, 18)
-                .frame(maxWidth: cardMaximumWidth)
-                .transition(cardTransition)
-                .zIndex(3)
-            }
-
-            if let selectedSearchPreview {
-                MapSunResultCard(
-                    result: selectedSearchPreview,
-                    save: { saveSearchPreview(selectedSearchPreview) },
-                    clearSelection: { selectedSearchPreviewID = nil }
-                )
-                .padding(
-                    .horizontal,
-                    dynamicTypeSize.isAccessibilitySize ? 12 : 18
-                )
-                .padding(.bottom, 18)
-                .frame(maxWidth: cardMaximumWidth)
-                .transition(cardTransition)
-                .zIndex(4)
-            }
-
-            if let tappedRegionContext {
-                MapRegionContextCard(
-                    context: tappedRegionContext,
-                    findSun: { scope in
-                        clearTappedRegionContext()
-                        findSunInRegion(scope)
-                    },
-                    clearSelection: clearTappedRegionContext
-                )
-                .padding(
-                    .horizontal,
-                    dynamicTypeSize.isAccessibilitySize ? 12 : 18
-                )
-                .padding(.bottom, 18)
-                .frame(maxWidth: cardMaximumWidth)
-                .transition(cardTransition)
-                .zIndex(5)
-            }
         }
         .onChange(of: visiblePlaceIDs, initial: true) { _, newIDs in
             if let selectedPlaceID, !newIDs.contains(selectedPlaceID) {
@@ -1177,18 +1357,24 @@ private struct PlacesMapCanvas: View {
         .onChange(of: currentLocationFocusRequestID) {
             focusCurrentLocation()
         }
+        .onChange(of: selectionResetID) {
+            clearAllFloatingCards()
+        }
         .onChange(of: searchPreviewResult?.id, initial: true) { _, previewID in
             guard let previewID,
                   let preview = searchPreviewResult,
                   preview.id == previewID else {
                 return
             }
+            selectSearchPreview(previewID)
             focus(on: preview.city)
         }
         .onChange(of: selectedPlaceID) {
             if selectedPlaceID != nil {
                 selectedSunResultID = nil
                 selectedSearchPreviewID = nil
+                isCurrentLocationSelected = false
+                clearTappedRegionContext()
             }
         }
         .animation(
@@ -1198,6 +1384,7 @@ private struct PlacesMapCanvas: View {
             value: selectedPlaceID
         )
         .sensoryFeedback(.selection, trigger: selectedPlaceID)
+        .sensoryFeedback(.selection, trigger: isCurrentLocationSelected)
     }
 
     private var mapContent: some View {
@@ -1244,17 +1431,9 @@ private struct PlacesMapCanvas: View {
                                     markerDifferentiatingSymbol(
                                         for: marker.presentation
                                     ),
-                                accessibilityValue: markerAccessibilityValue(
-                                    for: marker.presentation
-                                ),
+                                showsMetricText: sortMode == .sunny,
                                 select: {
-                                    withAnimation(
-                                        reduceMotion
-                                            ? nil
-                                            : .smooth(duration: 0.22)
-                                    ) {
-                                        selectedPlaceID = marker.id
-                                    }
+                                    selectPlace(marker.id)
                                 }
                             )
                         }
@@ -1263,7 +1442,7 @@ private struct PlacesMapCanvas: View {
 
                     ForEach(transientSunResults) { result in
                         Annotation(
-                            "Sunny result",
+                            "",
                             coordinate: CLLocationCoordinate2D(
                                 latitude: result.city.latitude,
                                 longitude: result.city.longitude
@@ -1277,16 +1456,13 @@ private struct PlacesMapCanvas: View {
                                 isSelected: selectedSunResultID == result.id,
                                 labelPlacement:
                                     labelPlacements[result.id] ?? .below,
-                                differentiatingText: nil,
-                                differentiatingSymbol:
-                                    result.forecast.condition?.displayIcon,
-                                accessibilityValue: localizedString(
-                                    "Sunny search result",
-                                    locale: locale
+                                differentiatingText: String(
+                                    result.recommendation.sunnyHourCount
                                 ),
+                                differentiatingSymbol: nil,
+                                showsMetricText: true,
                                 select: {
-                                    selectedPlaceID = nil
-                                    selectedSunResultID = result.id
+                                    selectSunResult(result.id)
                                 }
                             )
                         }
@@ -1294,7 +1470,7 @@ private struct PlacesMapCanvas: View {
 
                     if let searchPreviewResult {
                         Annotation(
-                            "Search result",
+                            "",
                             coordinate: CLLocationCoordinate2D(
                                 latitude: searchPreviewResult.city.latitude,
                                 longitude: searchPreviewResult.city.longitude
@@ -1309,17 +1485,13 @@ private struct PlacesMapCanvas: View {
                                     selectedSearchPreviewID == searchPreviewResult.id,
                                 labelPlacement:
                                     labelPlacements[searchPreviewResult.id] ?? .below,
-                                differentiatingText: nil,
-                                differentiatingSymbol:
-                                    searchPreviewResult.forecast.condition?.displayIcon,
-                                accessibilityValue: localizedString(
-                                    "Search result",
-                                    locale: locale
+                                differentiatingText: String(
+                                    searchPreviewResult.recommendation.sunnyHourCount
                                 ),
+                                differentiatingSymbol: nil,
+                                showsMetricText: true,
                                 select: {
-                                    selectedPlaceID = nil
-                                    selectedSunResultID = nil
-                                    selectedSearchPreviewID = searchPreviewResult.id
+                                    selectSearchPreview(searchPreviewResult.id)
                                 }
                             )
                         }
@@ -1330,12 +1502,18 @@ private struct PlacesMapCanvas: View {
                         // weather dots: it stays available under all filters
                         // and makes the location-focus action unambiguous.
                         Annotation(
-                            "Current Location",
+                            "",
                             coordinate: currentLocationCoordinate,
                             anchor: .center
                         ) {
                             CurrentLocationMapAnnotation(
-                                name: currentLocationName
+                                name: currentLocationMarkerLabel,
+                                color: currentLocationColor,
+                                isSelected: isCurrentLocationSelected,
+                                labelPlacement:
+                                    labelPlacements[Self.currentLocationLabelID]
+                                    ?? .below,
+                                select: selectCurrentLocation
                             )
                         }
                     }
@@ -1386,12 +1564,13 @@ private struct PlacesMapCanvas: View {
                                     "Found \(sunSearchResults.count) \(activeSunQuerySummary)"
                                 )
                                 .lineLimit(1)
-                                Button(
-                                    "Clear Find Sun Results",
-                                    systemImage: "xmark",
-                                    action: clearSunSearch
-                                )
-                                .labelStyle(.iconOnly)
+                            Button(
+                                "Clear Find Sun Results",
+                                systemImage: "xmark",
+                                action: clearSunSearch
+                            )
+                            .labelStyle(.iconOnly)
+                            .frame(width: 44, height: 44)
                             }
                             .font(.caption.weight(.semibold))
                             .padding(.horizontal, 12)
@@ -1400,33 +1579,28 @@ private struct PlacesMapCanvas: View {
                                 colorScheme: colorScheme,
                                 in: Capsule()
                             )
-                            .accessibilityElement(children: .combine)
                         } else {
                             Button(action: findSun) {
-                                Label(
-                                    "Find Sun",
-                                    systemImage: "sun.max.magnifyingglass"
-                                )
+                                HStack(spacing: 6) {
+                                    Image(systemName: "magnifyingglass")
+                                        .font(.caption.weight(.semibold))
+                                    Text("Find Sun")
+                                }
                                 .font(.subheadline.weight(.semibold))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 9)
+                                .frame(minHeight: 44)
                             }
                             .buttonStyle(.plain)
                             .weatherAtlasInteractiveGlass(
                                 colorScheme: colorScheme,
                                 in: Capsule()
                             )
-                            .accessibilityHint(
-                                "Search this area, near you, a country, or a continent."
-                            )
                         }
                     }
                     .padding(
                         .bottom,
-                        selectedPresentation == nil
-                            && selectedSunResult == nil
-                            && selectedSearchPreview == nil
-                            && tappedRegionContext == nil ? 24 : 164
+                        hasFloatingCard ? 164 : 24
                     )
                 }
                 .onMapCameraChange(frequency: .onEnd) { context in
@@ -1482,9 +1656,7 @@ private struct PlacesMapCanvas: View {
             return
         }
 
-        selectedPlaceID = nil
-        selectedSunResultID = nil
-        selectedSearchPreviewID = nil
+        clearAllFloatingCards()
         resolveTappedRegion(at: coordinate)
     }
 
@@ -1512,7 +1684,11 @@ private struct PlacesMapCanvas: View {
                 )
             ]
         } ?? []
-        let coordinates = savedCoordinates + foundCoordinates + previewCoordinates
+        let currentLocationCoordinates = currentLocationCoordinate.map { [$0] } ?? []
+        let coordinates = savedCoordinates
+            + foundCoordinates
+            + previewCoordinates
+            + currentLocationCoordinates
 
         return coordinates.contains { coordinate in
             guard let point = mapProxy.convert(coordinate, to: .local) else {
@@ -1555,6 +1731,56 @@ private struct PlacesMapCanvas: View {
     private func clearTappedRegionContext() {
         regionContextResolutionID &+= 1
         tappedRegionContext = nil
+    }
+
+    private func clearAllFloatingCards() {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+            selectedPlaceID = nil
+            selectedSunResultID = nil
+            selectedSearchPreviewID = nil
+            isCurrentLocationSelected = false
+            clearTappedRegionContext()
+        }
+    }
+
+    private func selectPlace(_ id: City.ID) {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+            selectedPlaceID = id
+            selectedSunResultID = nil
+            selectedSearchPreviewID = nil
+            isCurrentLocationSelected = false
+            clearTappedRegionContext()
+        }
+    }
+
+    private func selectSunResult(_ id: City.ID) {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+            selectedPlaceID = nil
+            selectedSunResultID = id
+            selectedSearchPreviewID = nil
+            isCurrentLocationSelected = false
+            clearTappedRegionContext()
+        }
+    }
+
+    private func selectSearchPreview(_ id: City.ID) {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+            selectedPlaceID = nil
+            selectedSunResultID = nil
+            selectedSearchPreviewID = id
+            isCurrentLocationSelected = false
+            clearTappedRegionContext()
+        }
+    }
+
+    private func selectCurrentLocation() {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+            selectedPlaceID = nil
+            selectedSunResultID = nil
+            selectedSearchPreviewID = nil
+            clearTappedRegionContext()
+            isCurrentLocationSelected = true
+        }
     }
 
     private func updateLabelPlacements(
@@ -1690,16 +1916,6 @@ private struct PlacesMapCanvas: View {
         return intersection.width * intersection.height
     }
 
-    private func clearSelection() {
-        withAnimation(
-            reduceMotion
-                ? nil
-                : .spring(response: 0.35, dampingFraction: 0.85)
-        ) {
-            selectedPlaceID = nil
-        }
-    }
-
     private func initializeCamera() {
         if let selectedPlaceID,
            let selected = visiblePresentations.first(where: {
@@ -1787,10 +2003,18 @@ private struct PlacesMapCanvas: View {
     private func markerColor(
         for presentation: PlacesMapPlacePresentation
     ) -> Color? {
-        guard let recommendation = presentation.recommendation else {
-            return nil
-        }
+        guard let recommendation = presentation.recommendation else { return nil }
+        return markerColor(for: recommendation)
+    }
 
+    private var currentLocationColor: Color {
+        currentLocationRecommendation.flatMap(markerColor(for:))
+            ?? theme.colors.dotCloudy
+    }
+
+    private func markerColor(
+        for recommendation: PlaceRecommendation
+    ) -> Color? {
         switch sortMode {
         case .sunny:
             return recommendation.condition.dotColor(for: theme.colors)
@@ -1835,57 +2059,95 @@ private struct PlacesMapCanvas: View {
 
     @ViewBuilder
     private var emptyMapState: some View {
-        if presentations.isEmpty {
-            ContentUnavailableView {
-                Label("No Places to Show", systemImage: "mappin.slash")
-            } description: {
-                Text(
-                    "Save a city to add it to this map."
-                )
-            } actions: {
-                Button(
-                    "Search for a Place",
-                    systemImage: "magnifyingglass",
-                    action: searchPlaces
-                )
-                    .buttonStyle(.borderedProminent)
+        if let libraryLoadErrorDescription {
+            mapEmptyOverlay {
+                ContentUnavailableView {
+                    Label(
+                        "Places Unavailable",
+                        systemImage: "exclamationmark.triangle"
+                    )
+                } description: {
+                    Text(libraryLoadErrorDescription)
+                } actions: {
+                    Button("Try Again", action: retryLoading)
+                        .buttonStyle(.borderedProminent)
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.regularMaterial)
+        } else if presentations.isEmpty {
+            mapEmptyOverlay {
+                ContentUnavailableView {
+                    Label("No Saved Places", systemImage: "mappin.slash")
+                } description: {
+                    Text(
+                        "Search for a city or use Find Sun to start exploring the map."
+                    )
+                } actions: {
+                    Button(
+                        "Search for a Place",
+                        systemImage: "magnifyingglass",
+                        action: searchPlaces
+                    )
+                    .buttonStyle(.borderedProminent)
+                }
+            }
         } else if presentations.contains(where: \.isLoading),
            layerPresentations.isEmpty {
-            ProgressView("Loading Forecasts")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(.regularMaterial)
+            mapEmptyOverlay {
+                ProgressView("Loading Forecasts")
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+            }
         } else if filtersToSunnyPlaces {
-            ContentUnavailableView {
-                Label("No Sun", systemImage: "sun.max")
-            } description: {
-                Text("No sunny places for this date.")
-            } actions: {
-                Button("Show All Cities") {
-                    withAnimation(
-                        reduceMotion ? nil : .smooth(duration: 0.2)
-                    ) {
-                        filtersToSunnyPlaces = false
+            mapEmptyOverlay {
+                ContentUnavailableView {
+                    Label("No Sun", systemImage: "sun.max")
+                } description: {
+                    Text("No sunny places for this date.")
+                } actions: {
+                    Button("Show All Saved Places") {
+                        withAnimation(
+                            reduceMotion ? nil : .smooth(duration: 0.2)
+                        ) {
+                            filtersToSunnyPlaces = false
+                        }
                     }
+                    .buttonStyle(.borderedProminent)
                 }
-                .buttonStyle(.borderedProminent)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.regularMaterial)
         } else {
-            ContentUnavailableView {
-                Label(
-                    "Forecast Unavailable",
-                    systemImage: "cloud.slash"
-                )
-            } description: {
-                Text("No forecast for the selected date.")
+            mapEmptyOverlay {
+                ContentUnavailableView {
+                    Label(
+                        "Forecast Unavailable",
+                        systemImage: "cloud.slash"
+                    )
+                } description: {
+                    Text("No forecast for the selected date.")
+                }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(.regularMaterial)
         }
+    }
+
+    private func mapEmptyOverlay<Content: View>(
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .padding(WeatherCardLayout.padding)
+            .frame(maxWidth: 360)
+            .weatherAtlasInteractiveGlass(
+                colorScheme: colorScheme,
+                in: RoundedRectangle(
+                    cornerRadius: WeatherCardLayout.cornerRadius,
+                    style: .continuous
+                )
+            )
+            .padding(.horizontal, 16)
+            .padding(.bottom, 28)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .bottom
+            )
     }
 
     private var cardMaximumWidth: CGFloat {
@@ -1946,26 +2208,6 @@ private struct PlacesMapCanvas: View {
         guard sortMode == .sunny else { return nil }
         return presentation.recommendation?.condition.displayIcon
             ?? "exclamationmark"
-    }
-
-    private func markerAccessibilityValue(
-        for presentation: PlacesMapPlacePresentation
-    ) -> String {
-        guard let recommendation = presentation.recommendation else {
-            return localizedString(
-                "Forecast Unavailable",
-                locale: locale
-            )
-        }
-
-        if sortMode == .sunny {
-            return recommendation.condition.localizedDisplayName(
-                locale: locale
-            )
-        }
-
-        let value = markerDifferentiatingText(for: presentation) ?? "—"
-        return "\(sortMode.title(locale: locale)), \(value)"
     }
 
     private var temperatureUnit: TemperatureUnit {
@@ -2088,35 +2330,41 @@ private enum PlacesMapLabelPlacement: Equatable {
     }
 }
 
-/// A distinct, accessible marker for the device coordinate. It is independent
-/// of the saved-place weather layer, so filters never hide the user's anchor.
+/// A distinct marker for the device coordinate. It is independent of the
+/// saved-place weather layer, so filters never hide the user's anchor.
 private struct CurrentLocationMapAnnotation: View {
     let name: String
-    @Environment(\.appTheme) private var theme
+    let color: Color
+    let isSelected: Bool
+    let labelPlacement: PlacesMapLabelPlacement
+    let select: () -> Void
+
+    @Environment(\.accessibilityDifferentiateWithoutColor)
+    private var differentiateWithoutColor
 
     var body: some View {
-        Image(systemName: "location.fill")
-            .font(.system(size: 20, weight: .semibold))
-            .foregroundStyle(.red)
-            .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
+        Button(action: select) {
+            ZStack {
+                if isSelected && !differentiateWithoutColor {
+                    PlacesMapSelectedPulseRing(
+                        color: color,
+                        diameter: 34,
+                        expandedScale: 1.28
+                    )
+                }
+
+                Image(systemName: "location.fill")
+                    .font(.system(size: 20, weight: .semibold))
+                    .foregroundStyle(color)
+                    .shadow(color: color.opacity(0.32), radius: 3, y: 1)
+            }
+        }
+        .buttonStyle(.plain)
         .frame(width: 44, height: 44)
         .contentShape(Circle())
         .overlay {
-            // Match the saved-city label exactly: the location is distinct by
-            // its red glyph, not a different label treatment.
-            Text(name)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: 104)
-                .fixedSize(horizontal: true, vertical: false)
-                .offset(y: PlacesMapLabelPlacement.below.verticalOffset)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+            PlacesMapMarkerLabel(name: name, placement: labelPlacement)
         }
-        .accessibilityLabel("Current Location")
-        .accessibilityValue(name)
     }
 }
 
@@ -2127,7 +2375,7 @@ private struct PlacesWeatherMapAnnotation: View {
     let labelPlacement: PlacesMapLabelPlacement
     let differentiatingText: String?
     let differentiatingSymbol: String?
-    let accessibilityValue: String
+    let showsMetricText: Bool
     let select: () -> Void
 
     @Environment(\.appTheme) private var theme
@@ -2138,27 +2386,36 @@ private struct PlacesWeatherMapAnnotation: View {
                 color: color,
                 isSelected: isSelected,
                 differentiatingText: differentiatingText,
-                differentiatingSymbol: differentiatingSymbol
+                differentiatingSymbol: differentiatingSymbol,
+                showsMetricText: showsMetricText
             )
         }
         .buttonStyle(.plain)
         .frame(width: 44, height: 44)
         .contentShape(Rectangle())
-        .accessibilityLabel(name)
-        .accessibilityValue(accessibilityValue)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .overlay {
-            Text(name)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .frame(maxWidth: 104)
-                .fixedSize(horizontal: true, vertical: false)
-                .offset(y: labelPlacement.verticalOffset)
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+            PlacesMapMarkerLabel(name: name, placement: labelPlacement)
         }
+    }
+}
+
+/// One label treatment shared by weather dots, Find Sun results, and location.
+private struct PlacesMapMarkerLabel: View {
+    let name: String
+    let placement: PlacesMapLabelPlacement
+
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        Text(name)
+            .font(.caption2.weight(.semibold))
+            .foregroundStyle(theme.colors.primaryText)
+            .lineLimit(1)
+            .minimumScaleFactor(0.7)
+            .frame(maxWidth: 104)
+            .fixedSize(horizontal: true, vertical: false)
+            .offset(y: placement.verticalOffset)
+            .allowsHitTesting(false)
     }
 }
 
@@ -2167,6 +2424,7 @@ private struct PlacesWeatherMapDot: View {
     let isSelected: Bool
     let differentiatingText: String?
     let differentiatingSymbol: String?
+    let showsMetricText: Bool
 
     @State private var glowPulse = false
     @Environment(\.accessibilityDifferentiateWithoutColor)
@@ -2201,7 +2459,8 @@ private struct PlacesWeatherMapDot: View {
                 PlacesMapSelectedPulseRing(color: color)
             }
 
-            if differentiateWithoutColor {
+            if differentiateWithoutColor
+                || (showsMetricText && differentiatingText != nil) {
                 differentiatingContent
                     .foregroundStyle(theme.colors.primaryText)
                     .frame(minWidth: 26, maxWidth: 44, minHeight: 24)
@@ -2282,6 +2541,8 @@ private struct PlacesWeatherMapDot: View {
 
 private struct PlacesMapSelectedPulseRing: View {
     let color: Color
+    var diameter: CGFloat = 22
+    var expandedScale: CGFloat = 1.22
 
     @State private var isPulsing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -2292,8 +2553,8 @@ private struct PlacesMapSelectedPulseRing: View {
                 color.opacity(isPulsing ? 0.3 : 0.8),
                 lineWidth: isPulsing ? 1.5 : 2.5
             )
-            .frame(width: 22, height: 22)
-            .scaleEffect(isPulsing ? 1.22 : 1)
+            .frame(width: diameter, height: diameter)
+            .scaleEffect(isPulsing ? expandedScale : 1, anchor: .center)
             .animation(
                 reduceMotion
                     ? nil
@@ -2307,6 +2568,7 @@ private struct PlacesMapSelectedPulseRing: View {
             .onChange(of: reduceMotion) { _, shouldReduceMotion in
                 isPulsing = !shouldReduceMotion
             }
+            .frame(width: 44, height: 44)
     }
 }
 
@@ -2328,8 +2590,9 @@ private struct MapPlaceSelectionCard: View {
         ZStack(alignment: .topTrailing) {
             NavigationLink(value: AppRoute.place(id: presentation.id)) {
                 cardContent
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 16)
+                    .padding(.horizontal, MapSelectionCardLayout.horizontalPadding)
+                    .padding(.vertical, MapSelectionCardLayout.verticalPadding)
+                    .padding(.trailing, MapSelectionCardLayout.closeClearance)
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: cardHeight)
                     .contentShape(
@@ -2345,16 +2608,14 @@ private struct MapPlaceSelectionCard: View {
                 .labelStyle(.iconOnly)
                 .font(.system(size: 16, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 48, height: 48)
+                .frame(width: 44, height: 44)
                 .contentShape(Circle())
                 .zIndex(1)
-                .accessibilityHint("Closes this place preview.")
         }
         .weatherAtlasInteractiveGlass(
             colorScheme: colorScheme,
             in: RoundedRectangle(cornerRadius: 24, style: .continuous)
         )
-        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
@@ -2365,7 +2626,6 @@ private struct MapPlaceSelectionCard: View {
                     Image(systemName: recommendation.condition.displayIcon)
                         .font(.title2.weight(.medium))
                         .weatherIconStyle(for: recommendation.condition.displayIcon)
-                        .accessibilityHidden(true)
 
                     Text(metricValue(for: recommendation))
                         .font(.title2.weight(.semibold))
@@ -2389,8 +2649,10 @@ private struct MapPlaceSelectionCard: View {
                         .weatherIconStyle(
                             for: recommendation.condition.displayIcon
                         )
-                        .frame(width: 56, height: 48)
-                        .accessibilityHidden(true)
+                        .frame(
+                            width: MapSelectionCardLayout.iconWidth,
+                            height: MapSelectionCardLayout.iconHeight
+                        )
 
                     VStack(alignment: .leading, spacing: 6) {
                         Text(metricValue(for: recommendation))
@@ -2415,7 +2677,6 @@ private struct MapPlaceSelectionCard: View {
                 Image(systemName: "exclamationmark.circle")
                     .font(.title2)
                     .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
 
                 VStack(alignment: .leading, spacing: 5) {
                     Text(displayName)
@@ -2433,17 +2694,7 @@ private struct MapPlaceSelectionCard: View {
     }
 
     private var cardHeight: CGFloat {
-        if dynamicTypeSize.isAccessibilitySize {
-            return 150
-        }
-        switch dynamicTypeSize {
-        case .xSmall, .small, .medium, .large:
-            return 128
-        case .xLarge:
-            return 138
-        default:
-            return 150
-        }
+        MapSelectionCardLayout.height(for: dynamicTypeSize)
     }
 
     private var statusDescription: String {
@@ -2462,20 +2713,7 @@ private struct MapPlaceSelectionCard: View {
     ) -> String {
         switch sortMode {
         case .sunny:
-            if let range = recommendation.bestSunnyWindow {
-                let start = SunninessScoring.compactHourLabel(
-                    range.lowerBound,
-                    locale: locale
-                )
-                let end = SunninessScoring.compactHourLabel(
-                    range.upperBound + 1,
-                    locale: locale
-                )
-                return "\(start) – \(end)"
-            }
-            return recommendation.sunnyHourCount == 0
-                ? localizedString("No Sun", locale: locale)
-                : String(recommendation.sunnyHourCount)
+            return mapSunnyHoursText(for: recommendation, locale: locale)
         case .temperature:
             return temperatureUnit.display(
                 recommendation.forecast.dailyHigh
@@ -2558,7 +2796,6 @@ private struct PlacesMapLegend: View {
             horizontal: !dynamicTypeSize.isAccessibilitySize,
             vertical: false
         )
-        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder

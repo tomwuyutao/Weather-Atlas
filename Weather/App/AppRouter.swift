@@ -17,6 +17,7 @@ enum AppTab: Hashable {
 }
 
 enum AppRoute: Hashable {
+    case currentLocation
     case place(id: City.ID)
 }
 

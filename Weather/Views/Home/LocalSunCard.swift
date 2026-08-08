@@ -33,18 +33,29 @@ struct CurrentLocationTimelineCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            HomeWeatherCardHeader(
+            WeatherCardHeader(
                 icon: "location.fill",
                 title: displayLocationName
-            )
+            ) {
+                if let forecast = selectedForecast {
+                    let icon = SunninessScoring.condition(for: forecast)?.displayIcon
+                        ?? forecast.symbolName
+                    Image(systemName: icon)
+                        .font(.title2.weight(.medium))
+                        .weatherIconStyle(for: icon)
+                }
+            }
 
             cardContent
         }
-        .padding(18)
+        .padding(WeatherCardLayout.padding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .detailTranslucentCard(
             colorScheme: colorScheme,
-            in: RoundedRectangle(cornerRadius: 24, style: .continuous)
+            in: RoundedRectangle(
+                cornerRadius: WeatherCardLayout.cornerRadius,
+                style: .continuous
+            )
         )
     }
 
@@ -77,33 +88,20 @@ struct CurrentLocationTimelineCard: View {
         data: SunninessScoring.SunnyHoursData
     ) -> some View {
         VStack(alignment: .leading, spacing: 11) {
-            HStack(alignment: .firstTextBaseline, spacing: 10) {
-                // The card header now owns the reverse-geocoded locality.
-                // Reserve this prominent line for the actionable sun status
-                // rather than repeating "Current Location" underneath it.
-                Text(sunStatus(for: weather, forecast: forecast, data: data))
-                    // Match the city-name typography in BestSunnyPlacesCard.
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .lineLimit(1)
-
-                Spacer(minLength: 8)
-
-                let icon = SunninessScoring.condition(for: forecast)?.displayIcon
-                    ?? forecast.symbolName
-                Image(systemName: icon)
-                    .font(.title2.weight(.medium))
-                    .weatherIconStyle(for: icon)
-                    .accessibilityHidden(true)
-            }
-
             CurrentLocationHourTrack(
                 data: data,
                 selectedDate: selectedDate,
                 timeZone: weather.timeZone
             )
+
+            // The location and condition symbol belong in the shared card
+            // header; the selected day's plain-language sun window follows the
+            // timeline as supporting information.
+            Text(sunStatus(for: weather, forecast: forecast, data: data))
+                .font(.body)
+                .foregroundStyle(theme.colors.secondaryText)
+                .lineLimit(1)
         }
-        .accessibilityElement(children: .contain)
     }
 
     @ViewBuilder
