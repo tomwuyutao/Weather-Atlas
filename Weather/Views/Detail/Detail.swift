@@ -103,33 +103,22 @@ struct PlaceDetailView: View {
             }
         }
         .weatherAtlasScreenBackground()
-        // Keep the city in the navigation item for native back history while
-        // suppressing its principal rendering until the in-content title has
-        // scrolled away.
-        .navigationTitle(displayName)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if isDetailLargeTitleVisible {
-                ToolbarItem(placement: .principal) {
-                    Color.clear
-                        .frame(width: 1, height: 1)
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
+        .weatherAtlasTopToolbar(
+            title: displayName,
+            titleStyle: .compact,
+            showsTitle: !isDetailLargeTitleVisible,
+            leading: {
+                WeatherTopToolbarDismissButton()
+            },
+            trailing: {
                 placeActionsMenu
-            }
-            // Keep the date capsule in its own native toolbar group. The
-            // spacer prevents iOS from clustering it with the More menu.
-            if #available(iOS 26.0, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
+
                 TopForecastDateSwitcher(
                     selection: $selectedDate,
                     availableDates: ForecastDateHorizon.dates(in: model.forecastCalendar)
                 )
             }
-        }
+        )
         .task(id: placeID) {
             isDetailLargeTitleVisible = true
             guard let city,
@@ -245,19 +234,31 @@ struct PlaceDetailView: View {
         .padding(.bottom, 4)
     }
 
-    /// Native menu presents the one-level Saved Places actions.
+    /// Presents the one-level Saved Places actions with the shared plain icon
+    /// treatment used by the primary-screen toolbar.
     @ViewBuilder
     private var placeActionsMenu: some View {
         if savedPlace == nil {
-            Button("Save Place", systemImage: "bookmark") {
+            Button {
                 savePlace()
+            } label: {
+                Image(systemName: "bookmark")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .disabled(city == nil)
         } else {
-            Menu("Place Actions", systemImage: "ellipsis") {
+            Menu {
                 Button("Delete Place", systemImage: "trash", role: .destructive) {
                     showingDeleteConfirmation = true
                 }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .frame(width: 44, height: 44)
+                    .contentShape(Rectangle())
             }
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
         }
     }
 

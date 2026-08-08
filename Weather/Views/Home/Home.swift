@@ -101,17 +101,13 @@ struct HomeView: View {
         }
         .scrollIndicators(.hidden)
         .background(theme.colors.background)
-        .toolbarVisibility(.hidden, for: .navigationBar)
-        .safeAreaInset(edge: .top, spacing: 0) {
-            HStack(spacing: 8) {
-                Text("Home")
-                    .font(.largeTitle.weight(.bold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.75)
-                    .layoutPriority(1)
-
-                Spacer(minLength: 8)
-
+        .weatherAtlasTopToolbar(
+            title: localizedString("Home", locale: locale),
+            titleStyle: .prominent,
+            leading: {
+                EmptyView()
+            },
+            trailing: {
                 Menu {
                     Button {
                         refreshHomeWeather()
@@ -136,12 +132,7 @@ struct HomeView: View {
                     availableDates: ForecastDateHorizon.dates(in: model.forecastCalendar)
                 )
             }
-            .font(.title3)
-            .buttonStyle(.plain)
-            .foregroundStyle(theme.colors.primaryText)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 6)
-        }
+        )
         .refreshable {
             await model.loadSavedWeather(
                 forceRefresh: true,

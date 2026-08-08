@@ -61,16 +61,19 @@ struct CurrentLocationDetailView: View {
             }
         }
         .weatherAtlasScreenBackground()
-        .navigationTitle(locationName)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+        .weatherAtlasTopToolbar(
+            title: locationName,
+            titleStyle: .compact,
+            leading: {
+                WeatherTopToolbarDismissButton()
+            },
+            trailing: {
                 TopForecastDateSwitcher(
                     selection: $selectedDate,
                     availableDates: ForecastDateHorizon.dates(in: model.forecastCalendar)
                 )
             }
-        }
+        )
         .refreshable {
             guard model.locationProvider.hasUsableCoordinate else { return }
             await model.refreshHomeWeather(forceRefresh: true, locale: locale)

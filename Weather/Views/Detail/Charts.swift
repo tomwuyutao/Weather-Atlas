@@ -215,8 +215,6 @@ struct DetailChartView: View {
     @Binding private var selectedForecastDate: Date
 
     @Environment(\.appTheme) private var theme
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.calendar) private var forecastCalendar
     @Environment(\.locale) private var locale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -265,22 +263,19 @@ struct DetailChartView: View {
                 .frame(maxWidth: .infinity)
             }
             .background(theme.colors.background.ignoresSafeArea())
-            .navigationTitle(selectedMetric.title(locale: locale))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", systemImage: "xmark") {
-                        dismiss()
-                    }
-                    .labelStyle(.iconOnly)
-                }
-                ToolbarItem(placement: .topBarTrailing) {
+            .weatherAtlasTopToolbar(
+                title: selectedMetric.title(locale: locale),
+                titleStyle: .compact,
+                leading: {
+                    WeatherTopToolbarDismissButton(systemImage: "xmark")
+                },
+                trailing: {
                     TopForecastDateSwitcher(
                         selection: $selectedForecastDate,
                         availableDates: chartSelectionDates
                     )
                 }
-            }
+            )
             .tint(theme.colors.accent)
         }
     }

@@ -119,17 +119,13 @@ struct PlacesView: View {
         placesContent
             .weatherAtlasScreenBackground()
             .environment(\.editMode, $listEditMode)
-            .toolbarVisibility(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HStack(spacing: 8) {
-                    Text(navigationTitle)
-                        .font(.largeTitle.weight(.bold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                    .layoutPriority(1)
-
-                    Spacer(minLength: 8)
-
+            .weatherAtlasTopToolbar(
+                title: navigationTitle,
+                titleStyle: .prominent,
+                leading: {
+                    EmptyView()
+                },
+                trailing: {
                     sortMenu
                         .frame(width: 44, height: 44)
 
@@ -152,12 +148,7 @@ struct PlacesView: View {
                         )
                     }
                 }
-                .font(.title3)
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.colors.primaryText)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-            }
+            )
             .confirmationDialog(
                 "Delete Place?",
                 isPresented: deletionIsPresented,

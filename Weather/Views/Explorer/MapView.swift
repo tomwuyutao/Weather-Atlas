@@ -234,28 +234,22 @@ struct MapView: View {
 
     var body: some View {
         mapBody
-            .toolbarVisibility(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HStack(spacing: 4) {
-                    Text(navigationTitle)
-                        .font(.largeTitle.weight(.bold))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                    .layoutPriority(1)
-
-                    Spacer(minLength: 4)
-
+            .weatherAtlasTopToolbar(
+                title: navigationTitle,
+                titleStyle: .prominent,
+                backgroundStyle: .transparent,
+                leading: {
+                    EmptyView()
+                },
+                trailing: {
                     if currentLocationCoordinate != nil {
-                        Button(action: {
+                        Button {
                             currentLocationFocusRequestID &+= 1
-                        }) {
-                            Label(
-                                "Center on Current Location",
-                                systemImage: "location.fill"
-                            )
-                            .labelStyle(.iconOnly)
+                        } label: {
+                            Image(systemName: "location.fill")
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                         }
-                        .frame(width: 44, height: 44)
                     }
 
                     moreMenu
@@ -266,12 +260,7 @@ struct MapView: View {
                         availableDates: ForecastDateHorizon.dates(in: model.forecastCalendar)
                     )
                 }
-                .font(.title3)
-                .buttonStyle(.plain)
-                .foregroundStyle(theme.colors.primaryText)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 6)
-            }
+            )
             .task(id: weatherLoadID) {
                 await weatherStore.load(
                     cities: mapCities,
