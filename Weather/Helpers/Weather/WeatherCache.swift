@@ -3,13 +3,25 @@
 //  Weather
 //
 //  Purpose: Defines Codable snapshots for the place-keyed forecast cache.
+//  These types mirror the app's richer weather models using only Codable
+//  Foundation values, which makes an on-disk cache safe to read after launch.
 //
 
 import Foundation
 
 // MARK: - Cache Models
 
+// Cache records are intentionally layered to mirror the live weather aggregate:
+// city → daily forecasts → hourly forecasts. Keeping each level separate makes
+// schema changes and validation failures easy to locate when reading the code.
+
+// MARK: - City Snapshot
+
 /// Codable representation of a complete city weather snapshot.
+///
+/// The cache is intentionally separate from `CityWeather`: the live model can
+/// evolve around WeatherKit while this representation stays constrained to
+/// values `JSONEncoder` can serialize predictably.
 struct CachedCityWeather: Codable {
     /// Cached source city metadata.
     let city: City
@@ -26,20 +38,35 @@ struct CachedCityWeather: Codable {
     }
 
     /// Restores a domain aggregate only when timezone and every day are valid.
+    ///
+    /// This is all-or-nothing. A cache with one corrupt day is discarded rather
+    /// than showing a deceptively incomplete multi-day forecast as fresh data.
     func toCityWeather() -> CityWeather? {
         guard let timeZone = TimeZone(identifier: timeZoneIdentifier) else { return nil }
-        let forecasts = dailyForecasts.compactMap { $0.toDailyForecast() }
-        guard !forecasts.isEmpty, forecasts.count == dailyForecasts.count else { return nil }
+        let forecasts = dailyForecasts.map { $0.toDailyForecast() }
+        guard !forecasts.isEmpty else { return nil }
 
-        return CityWeather(
+        let weather = CityWeather(
             city: city,
             dailyForecasts: forecasts,
             timeZone: timeZone
         )
+        // A structurally decodable cache can still contain finite-but-invalid
+        // numbers (for example 150% cloud cover or negative visibility). Reject
+        // the complete disposable snapshot so none of those values is presented;
+        // the repository will request a fresh WeatherKit replacement.
+        guard weather.numericDataIssues.isEmpty else {
+            return nil
+        }
+        return weather
     }
 }
 
+// MARK: - Daily Snapshot
+
 /// Codable representation of one daily forecast.
+/// Optional values stay optional in the cache because an omitted WeatherKit
+/// measurement is materially different from a fabricated zero.
 struct CachedDailyForecast: Codable {
     /// Absolute WeatherKit forecast date.
     let date: Date
@@ -82,10 +109,10 @@ struct CachedDailyForecast: Codable {
         sunset = forecast.sunset
     }
 
-    /// Restores a complete daily forecast.
-    func toDailyForecast() -> DailyForecast? {
-        let restoredHours = hourlyForecasts.compactMap { $0.toHourlyForecast() }
-        guard restoredHours.count == hourlyForecasts.count else { return nil }
+    /// Restores one daily forecast without dropping hours that contain nil
+    /// optional metrics.
+    func toDailyForecast() -> DailyForecast {
+        let restoredHours = hourlyForecasts.map { $0.toHourlyForecast() }
         return DailyForecast(
             date: date,
             dailyLow: dailyLow,
@@ -103,6 +130,8 @@ struct CachedDailyForecast: Codable {
     }
 }
 
+// MARK: - Hourly Snapshot
+
 /// Codable representation of one hourly forecast.
 struct CachedHourlyForecast: Codable {
     /// Absolute WeatherKit forecast instant.
@@ -111,6 +140,9 @@ struct CachedHourlyForecast: Codable {
     let symbolName: String
     /// Normalized native WeatherKit hourly condition.
     let condition: AppWeatherCondition?
+    /// Source daylight bit required to distinguish polar day/night from missing
+    /// sunrise or sunset timestamps.
+    let isDaylight: Bool
     /// Optional hourly air temperature in Celsius.
     let temperature: Double?
     /// Optional hourly apparent temperature in Celsius.
@@ -129,6 +161,7 @@ struct CachedHourlyForecast: Codable {
         date = forecast.date
         symbolName = forecast.symbolName
         condition = forecast.condition
+        isDaylight = forecast.isDaylight
         temperature = forecast.temperature
         apparentTemperature = forecast.apparentTemperature
         cloudCover = forecast.cloudCover
@@ -137,20 +170,16 @@ struct CachedHourlyForecast: Codable {
         visibilityKilometers = forecast.visibilityKilometers
     }
 
-    /// Restores a complete hourly forecast.
-    func toHourlyForecast() -> HourlyForecast? {
-        guard let temperature,
-              let apparentTemperature,
-              let cloudCover,
-              let precipitationChance,
-              let uvIndex,
-              let visibilityKilometers else {
-            return nil
-        }
-        return HourlyForecast(
+    /// Restores one hourly forecast while preserving every optional metric.
+    /// Missing UV, visibility, or temperature data must blank only that field;
+    /// dropping the whole hour/day/city would hide the actual failure and discard
+    /// unrelated valid source data.
+    func toHourlyForecast() -> HourlyForecast {
+        HourlyForecast(
             date: date,
             symbolName: symbolName,
             condition: condition,
+            isDaylight: isDaylight,
             temperature: temperature,
             apparentTemperature: apparentTemperature,
             cloudCover: cloudCover,

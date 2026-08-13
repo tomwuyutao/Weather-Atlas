@@ -1,4 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+  This workspace contains the adjacent Weather Atlas project. Xcode uses the
+  self-relative reference so opening the workspace remains portable when the
+  repository moves to a different directory or another developer's machine.
+-->
 <Workspace
    version = "1.0">
    <FileRef

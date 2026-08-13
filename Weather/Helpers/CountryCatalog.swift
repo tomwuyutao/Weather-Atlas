@@ -2,16 +2,23 @@
 //  CountryCatalog.swift
 //  Weather
 //
-//  Purpose: Loads the bundled country city catalog used by Map's country and
-//  continent queries, plus offline timezone resolution.
+//  Purpose: Loads the bundled country-city catalog used by Map's country and
+//  continent queries.
+//
+//  Reading guide: this file is a local-data service. It never calls WeatherKit
+//  or the network; it parses one CSV resource, then answers deterministic
+//  country, continent, and city-ranking questions.
 //
 
+import CryptoKit
 import CoreLocation
 import Foundation
 
 // MARK: - Geographic Place Sources
 
 /// A country and its population-ranked bundled cities.
+/// `Identifiable` gives SwiftUI pickers a stable ISO-code identity, while
+/// `Hashable` makes the value safe to use in navigation and selections.
 struct CountryPlacesOption: Identifiable, Hashable {
     /// ISO 3166-1 alpha-2 identity used by search and localization.
     let iso2: String
@@ -23,12 +30,16 @@ struct CountryPlacesOption: Identifiable, Hashable {
     var id: String { iso2 }
 
     /// Resolves the system-localized country name without persisting it.
+    /// We retain English as source data but localize only at display time, so a
+    /// language change does not require rewriting the catalog or saved cities.
     func localizedName(locale: Locale) -> String {
         locale.localizedString(forRegionCode: iso2) ?? englishName
     }
 }
 
 /// The six continent scopes available in Map's Find Sun query.
+/// These are product-defined search buckets, not a full geopolitical taxonomy;
+/// their exact country membership appears later in `continentCountryCodes`.
 enum ContinentPlacesOption: String, CaseIterable, Identifiable, Hashable {
     case europe
     case asia
@@ -59,7 +70,13 @@ enum ContinentPlacesOption: String, CaseIterable, Identifiable, Hashable {
 }
 
 /// One validated row from the bundled country-city CSV catalog.
-struct CountryCityCatalogEntry: Hashable {
+/// Raw CSV is parsed once into this typed form so the rest of the app never
+/// indexes string arrays or needs to revalidate latitude/timezone fields.
+struct CountryCityCatalogEntry: Identifiable, Hashable {
+    /// Reproducible identity derived only from factual source fields.
+    let id: UUID
+    /// Compact source identity persisted with a saved catalog city.
+    let catalogIdentifier: String
     /// Canonical city name.
     let city: String
     /// Canonical country name.
@@ -75,23 +92,122 @@ struct CountryCityCatalogEntry: Hashable {
     /// Population used for deterministic city ranking.
     let population: Int
 
+    init(
+        city: String,
+        country: String,
+        iso2: String,
+        latitude: Double,
+        longitude: Double,
+        timeZoneIdentifier: String,
+        population: Int
+    ) {
+        self.city = city
+        self.country = country
+        self.iso2 = iso2
+        self.latitude = latitude
+        self.longitude = longitude
+        self.timeZoneIdentifier = timeZoneIdentifier
+        self.population = population
+
+        // The CSV has no provider ID. Hash the normalized factual row identity
+        // (excluding population, which can be revised without moving a city) so
+        // repeated catalog queries never manufacture a fresh UUID.
+        let normalizedCity = city
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+        let sourceKey = [
+            iso2.uppercased(),
+            normalizedCity,
+            String(latitude.bitPattern),
+            String(longitude.bitPattern),
+            timeZoneIdentifier
+        ].joined(separator: "|")
+        let digest = Array(SHA256.hash(data: Data(sourceKey.utf8)))
+        var uuidBytes = Array(digest.prefix(16))
+        uuidBytes[6] = (uuidBytes[6] & 0x0F) | 0x50
+        uuidBytes[8] = (uuidBytes[8] & 0x3F) | 0x80
+        id = UUID(
+            uuid: (
+                uuidBytes[0], uuidBytes[1], uuidBytes[2], uuidBytes[3],
+                uuidBytes[4], uuidBytes[5], uuidBytes[6], uuidBytes[7],
+                uuidBytes[8], uuidBytes[9], uuidBytes[10], uuidBytes[11],
+                uuidBytes[12], uuidBytes[13], uuidBytes[14], uuidBytes[15]
+            )
+        )
+        catalogIdentifier = "country-city:" + digest.map {
+            String(format: "%02x", $0)
+        }.joined()
+    }
+
     /// Converts the catalog row into the app's persistable city model.
     var appCity: City {
         City(
+            id: id,
             name: city,
             country: country,
             latitude: latitude,
             longitude: longitude,
-            timeZoneIdentifier: timeZoneIdentifier
+            timeZoneIdentifier: timeZoneIdentifier,
+            catalogIdentifier: catalogIdentifier
         )
     }
+
+    /// Mirrors Saved Places' city-scale duplicate rule so two near-identical
+    /// source rows cannot later collapse onto one saved UUID only after Map has
+    /// already accepted both as distinct candidates.
+    func representsSamePlace(as other: CountryCityCatalogEntry) -> Bool {
+        guard iso2 == other.iso2,
+              timeZoneIdentifier == other.timeZoneIdentifier,
+              normalizedCityName == other.normalizedCityName else {
+            return false
+        }
+        let location = CLLocation(latitude: latitude, longitude: longitude)
+        let otherLocation = CLLocation(
+            latitude: other.latitude,
+            longitude: other.longitude
+        )
+        return location.distance(from: otherLocation) <= 10_000
+    }
+
+    private var normalizedCityName: String {
+        city.trimmingCharacters(in: .whitespacesAndNewlines).folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: Locale(identifier: "en_US_POSIX")
+        )
+    }
+}
+
+/// Bundled-data failures retained by the catalog loader.
+///
+/// A few malformed rows are a developer diagnostic, not a reason to interrupt a
+/// search that still has usable candidates. Only source-wide failures prevent a
+/// country or continent query from running.
+enum CountryCityCatalogIssue: Hashable {
+    case resourceMissing
+    case unreadableResource
+    case invalidRows(Int)
+    case noValidCities
 }
 
 // MARK: - Country City Catalog
 
 /// Loads and queries the bundled population-ranked country-city resource.
+///
+/// This enum acts as a namespace for immutable global data. `catalog` is a lazy
+/// static value, so Foundation initializes it once, on first use, and thereafter
+/// each query works only with already-validated Swift values.
 enum CountryCityCatalog {
+    /// Resource problems retained alongside any valid catalog rows.
+    static var dataIssues: [CountryCityCatalogIssue] {
+        catalog.issues
+    }
+
     /// Returns every available country, sorted by its localized display name.
+    /// `localizedStandardCompare` gives people familiar ordering such as natural
+    /// number handling, rather than sorting the English fallback byte-for-byte.
     static func countries(locale: Locale) -> [CountryPlacesOption] {
         catalog.countriesByCode.values.sorted {
             $0.localizedName(locale: locale).localizedStandardCompare(
@@ -100,12 +216,114 @@ enum CountryCityCatalog {
         }
     }
 
+    /// Returns a compact, location-aware country starter list for Search. The
+    /// nearest catalog city is used as the factual proximity signal rather
+    /// than inventing country centroids for irregular or overseas territories.
+    /// If location is unavailable, the locale's region is followed by a small
+    /// world-spanning fallback so the search remains immediately useful.
+    static func recommendedCountries(
+        near coordinate: CLLocationCoordinate2D?,
+        locale: Locale,
+        limit: Int = 6
+    ) -> [CountryPlacesOption] {
+        guard limit > 0 else { return [] }
+        let allCountries = countries(locale: locale)
+
+        guard let coordinate,
+              CLLocationCoordinate2DIsValid(coordinate) else {
+            return fallbackRecommendedCountries(
+                from: allCountries,
+                locale: locale,
+                limit: limit
+            )
+        }
+
+        let location = CLLocation(
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude
+        )
+        let rankedCountries = allCountries.map { country in
+            let nearestDistance = country.cities.reduce(
+                CLLocationDistance.greatestFiniteMagnitude
+            ) { nearestDistance, city in
+                let cityLocation = CLLocation(
+                    latitude: city.latitude,
+                    longitude: city.longitude
+                )
+                return min(nearestDistance, location.distance(from: cityLocation))
+            }
+            return (country, nearestDistance)
+        }
+
+        return rankedCountries
+            .sorted { lhs, rhs in
+                if lhs.1 != rhs.1 {
+                    return lhs.1 < rhs.1
+                }
+                return lhs.0.localizedName(locale: locale)
+                    .localizedStandardCompare(rhs.0.localizedName(locale: locale))
+                    == .orderedAscending
+            }
+            .prefix(limit)
+            .map { $0.0 }
+    }
+
     /// Resolves one bundled country from an ISO 3166-1 alpha-2 code.
     static func country(iso2: String) -> CountryPlacesOption? {
         catalog.countriesByCode[iso2.uppercased()]
     }
 
+    private static func fallbackRecommendedCountries(
+        from countries: [CountryPlacesOption],
+        locale: Locale,
+        limit: Int
+    ) -> [CountryPlacesOption] {
+        let preferredCodes = [
+            locale.region?.identifier,
+            Locale.autoupdatingCurrent.region?.identifier,
+            "GB", "US", "FR", "DE", "SG", "JP"
+        ].compactMap { $0?.uppercased() }
+
+        var selected: [CountryPlacesOption] = []
+        for code in preferredCodes {
+            guard let country = countries.first(where: { $0.iso2 == code }),
+                  !selected.contains(where: { $0.iso2 == country.iso2 }) else {
+                continue
+            }
+            selected.append(country)
+            if selected.count == limit {
+                return selected
+            }
+        }
+
+        for country in countries where !selected.contains(where: { $0.iso2 == country.iso2 }) {
+            selected.append(country)
+            if selected.count == limit {
+                break
+            }
+        }
+        return selected
+    }
+
+    /// Returns a timezone only when every validated city in the factual bundled
+    /// country catalog uses the same IANA identifier. This is not a nearest-city
+    /// or coordinate guess: it merely lets another catalog with no timezone
+    /// column reuse an unambiguous country-wide source fact (for example, GB).
+    /// Countries spanning more than one zone intentionally return `nil` and
+    /// continue through Apple reverse geocoding.
+    static func unambiguousTimeZoneIdentifier(forISO2 iso2: String) -> String? {
+        let identifiers = Set(
+            catalog.countriesByCode[iso2.uppercased()]?.cities.map(
+                \.timeZoneIdentifier
+            ) ?? []
+        )
+        guard identifiers.count == 1 else { return nil }
+        return identifiers.first
+    }
+
     /// Resolves the supported continent for a bundled country.
+    /// The inner `Set` keeps membership checks fast even though a continent can
+    /// contain many ISO codes.
     static func continent(
         for country: CountryPlacesOption
     ) -> ContinentPlacesOption? {
@@ -115,6 +333,8 @@ enum CountryCityCatalog {
     }
 
     /// Returns the requested leading population-ranked cities for a country.
+    /// `max(0, limit)` makes a negative UI/configuration value harmless rather
+    /// than relying on `prefix` behavior at every call site.
     static func topCities(
         for country: CountryPlacesOption,
         limit: Int
@@ -123,77 +343,41 @@ enum CountryCityCatalog {
     }
 
     /// Returns top catalog cities across the countries mapped to a continent.
+    /// The cross-country sort is repeated here because each country has already
+    /// been sorted only within itself; this produces one continent-wide ranking.
     static func topCities(
         for continent: ContinentPlacesOption,
         limit: Int
     ) -> [City] {
+        Array(cities(for: continent).prefix(max(0, limit)))
+    }
+
+    /// Returns every bundled city for a continent in the same deterministic
+    /// population order used by `topCities`. Map uses this complete geographic
+    /// sample to establish a stable scope camera, independently of which
+    /// individual cities happen to be sunny on a particular date.
+    static func cities(for continent: ContinentPlacesOption) -> [City] {
         guard let countryCodes = continentCountryCodes[continent] else { return [] }
-        let cities = countryCodes
-            .compactMap { catalog.countriesByCode[$0]?.cities }
-            .flatMap { $0 }
+        return countryCodes
+            .flatMap { countryCode in
+                catalog.countriesByCode[countryCode]?.cities ?? []
+            }
             .sorted {
                 if $0.population != $1.population {
                     return $0.population > $1.population
                 }
-                return $0.city.localizedCaseInsensitiveCompare($1.city) == .orderedAscending
+                let nameOrder = $0.city.localizedCaseInsensitiveCompare($1.city)
+                if nameOrder != .orderedSame {
+                    return nameOrder == .orderedAscending
+                }
+                return $0.id.uuidString < $1.id.uuidString
             }
-        return Array(cities.prefix(max(0, limit))).map(\.appCity)
-    }
-
-    /// Resolves the geographic source nearest to a map-centered coordinate.
-    /// This keeps map-driven country selection offline and deterministic.
-    static func country(
-        nearestTo coordinate: CLLocationCoordinate2D
-    ) -> CountryPlacesOption? {
-        guard let nearest = nearestEntry(to: coordinate) else { return nil }
-        return catalog.countriesByCode[nearest.iso2]
-    }
-
-    /// Resolves the supported continent containing the catalog country nearest
-    /// to a map-centered coordinate.
-    static func continent(
-        nearestTo coordinate: CLLocationCoordinate2D
-    ) -> ContinentPlacesOption? {
-        guard let country = country(nearestTo: coordinate) else { return nil }
-        return continent(for: country)
-    }
-
-    /// Returns the timezone of the closest validated bundled catalog city.
-    ///
-    /// This deliberately remains an offline fallback, rather than guessing a
-    /// timezone such as GMT. It keeps WeatherKit conversion working when Apple
-    /// reverse geocoding is temporarily unavailable (notably for a simulator
-    /// current location and transient world-city candidates).
-    static func nearestTimeZoneIdentifier(
-        to coordinate: CLLocationCoordinate2D
-    ) -> String? {
-        nearestEntry(to: coordinate)?.timeZoneIdentifier
-    }
-
-    private static func nearestEntry(
-        to coordinate: CLLocationCoordinate2D
-    ) -> CountryCityCatalogEntry? {
-        guard CLLocationCoordinate2DIsValid(coordinate) else { return nil }
-        let target = CLLocation(
-            latitude: coordinate.latitude,
-            longitude: coordinate.longitude
-        )
-        var nearest: CountryCityCatalogEntry?
-        var nearestDistance = CLLocationDistance.greatestFiniteMagnitude
-
-        for entry in catalog.allCities {
-            let distance = target.distance(
-                from: CLLocation(latitude: entry.latitude, longitude: entry.longitude)
-            )
-            if distance < nearestDistance {
-                nearest = entry
-                nearestDistance = distance
-            }
-        }
-        return nearest
+            .map(\.appCity)
     }
 
     /// Built-in continents mapped to included ISO country codes.
+    /// `Set` literals express membership rather than order; no UI relies on the
+    /// ordering in this data structure.
     private static let continentCountryCodes: [ContinentPlacesOption: Set<String>] = [
         .europe: [
             "AL", "AD", "AT", "BY", "BE", "BA", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR",
@@ -228,15 +412,20 @@ enum CountryCityCatalog {
         ]
     ]
 
-    /// Complete parsed resource retained once for Map queries and timezone
-    /// fallback lookup.
+    // MARK: - Bundle Resource Loading
+
+    /// Complete parsed resource retained once for Map queries, together with
+    /// source-wide failures and nonfatal malformed-row diagnostics.
     private struct CatalogData {
         let countriesByCode: [String: CountryPlacesOption]
-        /// Flattened validated rows reused by the offline timezone fallback.
-        let allCities: [CountryCityCatalogEntry]
+        let issues: [CountryCityCatalogIssue]
     }
 
     /// Lazily parses and validates the bundled catalog exactly once.
+    ///
+    /// The multiple resource paths support both Xcode's usual flattened bundle
+    /// and project layouts that retain a Resources/Cities folder. A missing or
+    /// unreadable file produces an empty catalog plus a native-alert issue.
     private static let catalog: CatalogData = {
         guard let url = Bundle.main.url(forResource: "country_city_coordinates", withExtension: "csv")
                 ?? Bundle.main.url(
@@ -253,28 +442,57 @@ enum CountryCityCatalog {
                     forResource: "country_city_coordinates",
                     withExtension: "csv",
                     subdirectory: "Assets"
-                ),
-              let csv = try? String(contentsOf: url, encoding: .utf8) else {
+                ) else {
             DeveloperDiagnostics.show(
                 title: "Country City Catalog Missing",
-                message: "The bundled country_city_coordinates.csv file could not be loaded. Country and continent searches are unavailable."
+                message: "The bundled country_city_coordinates.csv file is missing. Country and continent searches are unavailable."
             )
-            return CatalogData(countriesByCode: [:], allCities: [])
+            return CatalogData(
+                countriesByCode: [:],
+                issues: [.resourceMissing]
+            )
+        }
+
+        let csv: String
+        do {
+            csv = try String(contentsOf: url, encoding: .utf8)
+        } catch {
+            DeveloperDiagnostics.show(
+                title: "Country City Catalog Unreadable",
+                message: "The bundled country_city_coordinates.csv file could not be read: \(error.localizedDescription)"
+            )
+            return CatalogData(
+                countriesByCode: [:],
+                issues: [.unreadableResource]
+            )
         }
 
         var grouped: [String: [CountryCityCatalogEntry]] = [:]
         var countryNames: [String: String] = [:]
+        var invalidRowCount = 0
 
+        // The first line is the header. Each later row is independently checked;
+        // one malformed source row is logged and skipped, not allowed to discard
+        // every otherwise valid country.
         for (rowIndex, line) in csv.split(whereSeparator: \.isNewline).dropFirst().enumerated() {
             let fields = parseCSVLine(String(line))
             // Accept population values stored as either integers or integer-like decimals.
             let populationValue = fields.count == 7 ? fields[6] : ""
-            let population = Int(populationValue)
-                ?? Double(populationValue).flatMap { $0.isFinite ? Int($0.rounded()) : nil }
             guard fields.count == 7,
-                  let latitude = Double(fields[3]),
-                  let longitude = Double(fields[4]),
-                  let population else {
+                  let city = nonemptyCatalogValue(fields[0]),
+                  let country = nonemptyCatalogValue(fields[1]),
+                  let iso2 = validISO2(fields[2]),
+                  let latitude = finiteCatalogCoordinate(
+                      fields[3],
+                      allowedRange: -90...90
+                  ),
+                  let longitude = finiteCatalogCoordinate(
+                      fields[4],
+                      allowedRange: -180...180
+                  ),
+                  let timeZoneIdentifier = validTimeZoneIdentifier(fields[5]),
+                  let population = catalogPopulation(populationValue) else {
+                invalidRowCount += 1
                 DeveloperDiagnostics.show(
                     title: "Country City Catalog Invalid",
                     message: "The bundled country_city_coordinates.csv row \(rowIndex + 2) is malformed and cannot be loaded."
@@ -282,53 +500,123 @@ enum CountryCityCatalog {
                 continue
             }
 
-            guard TimeZone(identifier: fields[5]) != nil else {
-                DeveloperDiagnostics.show(
-                    title: "Country City Time Zone Invalid",
-                    message: "The bundled country_city_coordinates.csv row for \(fields[0]), \(fields[1]) has an invalid time zone identifier: \(fields[5])."
-                )
-                continue
-            }
-
-            let iso2 = fields[2]
-            countryNames[iso2] = fields[1]
+            countryNames[iso2] = country
             grouped[iso2, default: []].append(
                 CountryCityCatalogEntry(
-                    city: fields[0],
-                    country: fields[1],
+                    city: city,
+                    country: country,
                     iso2: iso2,
                     latitude: latitude,
                     longitude: longitude,
-                    timeZoneIdentifier: fields[5],
+                    timeZoneIdentifier: timeZoneIdentifier,
                     population: population
                 )
             )
         }
 
+        // Convert the raw dictionary into query-ready country values. Sorting once
+        // here means every later top-city request is only a cheap `prefix`.
         let countriesByCode: [String: CountryPlacesOption] = grouped.reduce(
             into: [:]
         ) { result, pair in
             let cities = pair.value
-            let sortedCities = cities.sorted {
+            let rankedCities = cities.sorted {
                 if $0.population != $1.population {
                     return $0.population > $1.population
                 }
-                return $0.city.localizedCaseInsensitiveCompare($1.city)
-                    == .orderedAscending
+                let nameOrder = $0.city.localizedCaseInsensitiveCompare($1.city)
+                if nameOrder != .orderedSame {
+                    return nameOrder == .orderedAscending
+                }
+                return $0.id.uuidString < $1.id.uuidString
+            }
+            var sortedCities: [CountryCityCatalogEntry] = []
+            sortedCities.reserveCapacity(rankedCities.count)
+            for city in rankedCities where !sortedCities.contains(
+                where: { $0.representsSamePlace(as: city) }
+            ) {
+                // Ranking is deterministic, so the retained representative is
+                // always the highest-population row for this logical place.
+                sortedCities.append(city)
+            }
+            guard let countryName = countryNames[pair.key] else {
+                DeveloperDiagnostics.show(
+                    title: "Country City Catalog Invalid",
+                    message: "The bundled country-city catalog has no country name for \(pair.key)."
+                )
+                return
             }
             result[pair.key] = CountryPlacesOption(
                 iso2: pair.key,
-                englishName: countryNames[pair.key] ?? pair.key,
+                englishName: countryName,
                 cities: sortedCities
             )
         }
-        return CatalogData(
-            countriesByCode: countriesByCode,
-            allCities: grouped.values.flatMap { $0 }
-        )
+        var issues: [CountryCityCatalogIssue] = []
+        if invalidRowCount > 0 {
+            issues.append(.invalidRows(invalidRowCount))
+        }
+        if countriesByCode.isEmpty {
+            issues.append(.noValidCities)
+        }
+        return CatalogData(countriesByCode: countriesByCode, issues: issues)
     }()
 
+    private static func nonemptyCatalogValue(_ value: String) -> String? {
+        let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return value.isEmpty ? nil : value
+    }
+
+    private static func validISO2(_ value: String) -> String? {
+        guard let value = nonemptyCatalogValue(value)?.uppercased(),
+              value.unicodeScalars.count == 2,
+              value.unicodeScalars.allSatisfy({
+                  (65...90).contains(Int($0.value))
+              }) else {
+            return nil
+        }
+        return value
+    }
+
+    private static func finiteCatalogCoordinate(
+        _ value: String,
+        allowedRange: ClosedRange<Double>
+    ) -> Double? {
+        guard let value = Double(value),
+              value.isFinite,
+              allowedRange.contains(value) else {
+            return nil
+        }
+        return value
+    }
+
+    private static func validTimeZoneIdentifier(_ value: String) -> String? {
+        guard let value = nonemptyCatalogValue(value),
+              TimeZone(identifier: value) != nil else {
+            return nil
+        }
+        return value
+    }
+
+    private static func catalogPopulation(_ value: String) -> Int? {
+        if let population = Int(value), population >= 0 {
+            return population
+        }
+        guard let value = Double(value),
+              value.isFinite,
+              value >= 0,
+              value.rounded(.towardZero) == value,
+              value < Double(Int.max) else {
+            return nil
+        }
+        return Int(value)
+    }
+
     /// Splits one CSV row while respecting quoted commas and escaped quotes.
+    ///
+    /// CSV permits commas inside a quoted field and represents a literal quote
+    /// as two adjacent quotes. The loop is intentionally small and dependency-
+    /// free because Foundation has no general-purpose CSV parser in this target.
     private static func parseCSVLine(_ line: String) -> [String] {
         var fields: [String] = []
         var current = ""
@@ -339,6 +627,8 @@ enum CountryCityCatalog {
         while index < characters.count {
             let character = characters[index]
             if character == "\"" {
+                // Inside quotes, a doubled quote becomes one literal character;
+                // otherwise this quote starts or ends the quoted field.
                 if isInsideQuotes,
                    index + 1 < characters.count,
                    characters[index + 1] == "\"" {
@@ -348,6 +638,7 @@ enum CountryCityCatalog {
                     isInsideQuotes.toggle()
                 }
             } else if character == ",", !isInsideQuotes {
+                // Only commas outside quotes separate fields.
                 fields.append(current)
                 current = ""
             } else {

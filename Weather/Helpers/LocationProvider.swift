@@ -5,7 +5,15 @@
 //  Purpose: Provides an explicitly requested current coordinate and display
 //  metadata without prompting for permission during initialization.
 //
+//  Reading guide: this is a small state machine around `CLLocationManager`.
+//  It separates permission, one-shot coordinate acquisition, and reverse-
+//  geocoded display metadata so the app can still use a valid coordinate when
+//  Apple cannot name it.
+//
 
+// Core Location's delegate APIs predate Swift concurrency annotations.
+// `@preconcurrency` imports its declarations compatibly while this main-actor
+// class keeps all delegate-driven mutable state on one predictable executor.
 @preconcurrency import CoreLocation
 import Foundation
 import MapKit
@@ -14,6 +22,8 @@ import Observation
 // MARK: - Location State
 
 /// User-visible phases of the current-location workflow.
+/// These states intentionally distinguish permission failures from temporary
+/// lookup failures, allowing Settings/Home to suggest the right recovery action.
 nonisolated enum LocationProviderStatus: Equatable, Hashable, Sendable {
     /// No location request is active.
     case idle
@@ -40,13 +50,78 @@ nonisolated enum LocationProviderStatus: Equatable, Hashable, Sendable {
 }
 
 /// Display metadata returned by Apple's reverse geocoder for the coordinate.
+/// All fields are optional because a coordinate can be precise and usable even
+/// when a provider cannot supply one of these presentation-only details.
 nonisolated struct CurrentLocationMetadata: Equatable, Hashable, Sendable {
-    /// City, locality, or map-item name suitable for the Home card.
+    /// City, locality, or map-item name suitable for the Your Location card.
     let displayName: String?
     /// Geocoder-provided localized country name, when available.
     let countryName: String?
     /// Time zone identifier attached to the resolved place, when available.
     let timeZoneIdentifier: String?
+
+    /// Current-location labels show the locality rather than a composite
+    /// locality-and-city result returned by a reverse geocoder. This rule is
+    /// exclusive to transient device-location metadata, so saved-place names
+    /// retain their original spelling and hierarchy.
+    init(
+        displayName: String?,
+        countryName: String?,
+        timeZoneIdentifier: String?
+    ) {
+        self.displayName = Self.localityName(from: displayName)
+        self.countryName = countryName
+        self.timeZoneIdentifier = timeZoneIdentifier
+    }
+
+    /// Apple can return values such as "Southwark, London" for a precise
+    /// current location. Keep the locality before a geographic separator.
+    static func localityName(from value: String?) -> String? {
+        guard let trimmed = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !trimmed.isEmpty else {
+            return nil
+        }
+
+        let separators = CharacterSet(charactersIn: ",，、;；")
+        guard let separator = trimmed.rangeOfCharacter(from: separators) else {
+            return trimmed
+        }
+
+        let locality = trimmed[..<separator.lowerBound].trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return locality.isEmpty ? nil : locality
+    }
+
+    /// Whether Apple supplied at least one factual presentation field.
+    var hasAnyValue: Bool {
+        displayName != nil || countryName != nil || timeZoneIdentifier != nil
+    }
+
+    /// A complete current-location identity has a real locality, country, and
+    /// valid timezone. Partial metadata remains publishable so available fields
+    /// can render while the missing fields stay blank.
+    var isComplete: Bool {
+        displayName != nil && countryName != nil && timeZoneIdentifier != nil
+    }
+
+    func fillingMissingFields(
+        from other: CurrentLocationMetadata
+    ) -> CurrentLocationMetadata {
+        CurrentLocationMetadata(
+            displayName: displayName ?? other.displayName,
+            countryName: countryName ?? other.countryName,
+            timeZoneIdentifier:
+                timeZoneIdentifier ?? other.timeZoneIdentifier
+        )
+    }
+
+    static let empty = CurrentLocationMetadata(
+        displayName: nil,
+        countryName: nil,
+        timeZoneIdentifier: nil
+    )
 }
 
 /// Internal display-metadata resolution failures.
@@ -62,6 +137,9 @@ nonisolated private enum LocationMetadataResolutionError: Error {
 /// Initializing this provider never requests permission or starts location
 /// updates. Call `requestCurrentLocation(preferredLocale:)` from an explicit
 /// current-location action.
+/// `NSObject` is required because Core Location talks back through an Objective-
+/// C delegate. `@Observable` exposes only the state that SwiftUI reads; private
+/// manager/task references are explicitly ignored by the observation system.
 @MainActor
 @Observable
 final class LocationProvider: NSObject, CLLocationManagerDelegate {
@@ -73,6 +151,8 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     private(set) var metadata: CurrentLocationMetadata?
 
     /// Whether the current coordinate can already power an unrestricted query.
+    /// Metadata is not required: weather and nearby-place queries use latitude /
+    /// longitude, so a reverse-geocoding outage should not disable them.
     var hasUsableCoordinate: Bool {
         coordinate.map(CLLocationCoordinate2DIsValid) == true
     }
@@ -89,16 +169,18 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    // MARK: - Core Location Dependencies and Task State
+
     /// System manager retained for delegate callbacks.
     @ObservationIgnored private let manager: CLLocationManager
     /// Pre-iOS 26 reverse geocoder retained so prior work can be cancelled.
     @ObservationIgnored private let geocoder = CLGeocoder()
     /// Current display-metadata resolution task.
-    @ObservationIgnored private var metadataResolutionTask: Task<Void, Never>?
+    @ObservationIgnored private var metadataTask: Task<Void, Never>?
     /// Off-main device-wide Location Services check.
     @ObservationIgnored private var availabilityTask: Task<Void, Never>?
     /// Whether authorization was requested as part of a location action.
-    @ObservationIgnored private var shouldLocateAfterAuthorization = false
+    @ObservationIgnored private var locateAfterAuthorization = false
     /// Locale requested by the app's currently selected language.
     @ObservationIgnored private var preferredLocale = Locale.autoupdatingCurrent
 
@@ -107,23 +189,31 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     override init() {
         manager = CLLocationManager()
         super.init()
+        // Merely configuring/querying authorization never shows the permission
+        // prompt. The prompt is deferred to an explicit user-driven request.
         configureManager()
-        synchronizeAuthorizationStatus()
+        syncAuthorizationStatus()
     }
 
     deinit {
+        // The provider can disappear while either async helper is suspended.
+        // Cancel work and a legacy geocode so it cannot update stale state.
         availabilityTask?.cancel()
-        metadataResolutionTask?.cancel()
+        metadataTask?.cancel()
         geocoder.cancelGeocode()
     }
+
+    // MARK: - Public Location Requests
 
     /// Starts the contextual authorization or one-shot location flow.
     func requestCurrentLocation(
         preferredLocale: Locale = .autoupdatingCurrent
     ) {
         self.preferredLocale = preferredLocale
+        // A newer request supersedes pending availability/metadata work. This
+        // prevents an old location from replacing a more recent user action.
         availabilityTask?.cancel()
-        metadataResolutionTask?.cancel()
+        metadataTask?.cancel()
         geocoder.cancelGeocode()
         status = .checkingAvailability
 
@@ -131,52 +221,60 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         // Keep that work away from the main actor before invoking any manager
         // APIs that may display authorization UI.
         availabilityTask = Task { [weak self] in
+            // `Task` returns to the main actor after awaiting the detached check,
+            // so assignments to observable state below remain actor-safe.
             let servicesEnabled = await Task.detached(priority: .userInitiated) {
                 CLLocationManager.locationServicesEnabled()
             }.value
             guard let self, !Task.isCancelled else { return }
             guard servicesEnabled else {
-                status = .servicesDisabled
+                clearPublishedLocation(status: .servicesDisabled)
                 return
             }
-            continueLocationRequest()
+            continueRequest()
         }
     }
 
     /// Refreshes a previously authorized location without ever triggering the
     /// first-use permission prompt.
-    func requestCurrentLocationIfAuthorized(
+    func requestLocationIfAuthorized(
         preferredLocale: Locale = .autoupdatingCurrent
     ) {
         guard hasLocationAuthorization else { return }
         requestCurrentLocation(preferredLocale: preferredLocale)
     }
 
+    // MARK: - CLLocationManager Delegate Callbacks
+
     /// Mirrors changes made in the system authorization prompt or Settings.
+    /// Core Location may call this both after the initial system prompt and when
+    /// the person later changes permission in Settings.
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
-            if shouldLocateAfterAuthorization {
-                shouldLocateAfterAuthorization = false
-                beginOneShotLocationRequest()
+            if locateAfterAuthorization {
+                locateAfterAuthorization = false
+                beginOneShotRequest()
             } else if coordinate == nil {
                 status = .idle
             }
         case .notDetermined:
-            status = shouldLocateAfterAuthorization ? .requestingAuthorization : .idle
+            status = locateAfterAuthorization ? .requestingAuthorization : .idle
         case .denied:
-            shouldLocateAfterAuthorization = false
-            status = .denied
+            locateAfterAuthorization = false
+            clearPublishedLocation(status: .denied)
         case .restricted:
-            shouldLocateAfterAuthorization = false
-            status = .restricted
+            locateAfterAuthorization = false
+            clearPublishedLocation(status: .restricted)
         @unknown default:
-            shouldLocateAfterAuthorization = false
-            status = .failed
+            locateAfterAuthorization = false
+            clearPublishedLocation(status: .failed)
         }
     }
 
     /// Accepts the newest valid location from the one-shot callback.
+    /// A one-shot request can still deliver multiple candidates; the last valid
+    /// value is normally Core Location's most recent/best refinement.
     func locationManager(
         _ manager: CLLocationManager,
         didUpdateLocations locations: [CLLocation]
@@ -185,10 +283,12 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
             $0.horizontalAccuracy >= 0
                 && CLLocationCoordinate2DIsValid($0.coordinate)
         }) else {
-            status = .failed
+            clearPublishedLocation(status: .failed)
             return
         }
 
+        // Publish coordinate first. Reverse geocoding is supplementary work, so
+        // the app can already build WeatherKit requests while it is resolving.
         coordinate = location.coordinate
         metadata = nil
         status = .resolvingPlace
@@ -203,11 +303,13 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     ) {
         if let locationError = error as? CLError,
            locationError.code == .denied {
-            synchronizeAuthorizationStatus()
+            syncAuthorizationStatus()
             return
         }
-        status = .failed
+        clearPublishedLocation(status: .failed)
     }
+
+    // MARK: - Authorization and One-Shot Flow
 
     /// Configures accuracy appropriate for city-level weather lookup.
     private func configureManager() {
@@ -217,82 +319,135 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     }
 
     /// Reads current authorization without prompting or starting updates.
-    private func synchronizeAuthorizationStatus() {
+    private func syncAuthorizationStatus() {
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse, .notDetermined:
             status = coordinate == nil ? .idle : status
         case .denied:
-            status = .denied
+            clearPublishedLocation(status: .denied)
         case .restricted:
-            status = .restricted
+            clearPublishedLocation(status: .restricted)
         @unknown default:
-            status = .failed
+            clearPublishedLocation(status: .failed)
         }
     }
 
     /// Starts one request after authorization has already been granted.
-    private func beginOneShotLocationRequest() {
+    /// `requestLocation()` asks for a single callback rather than starting the
+    /// continuous GPS tracking that `startUpdatingLocation()` would enable.
+    private func beginOneShotRequest() {
         status = .locating
         manager.requestLocation()
     }
 
     /// Continues on the main actor after device-wide availability is known.
-    private func continueLocationRequest() {
+    /// Only the `.notDetermined` branch asks iOS to show the permission prompt.
+    private func continueRequest() {
         switch manager.authorizationStatus {
         case .notDetermined:
-            shouldLocateAfterAuthorization = true
+            locateAfterAuthorization = true
             status = .requestingAuthorization
             manager.requestWhenInUseAuthorization()
         case .authorizedAlways, .authorizedWhenInUse:
-            beginOneShotLocationRequest()
+            beginOneShotRequest()
         case .denied:
-            status = .denied
+            clearPublishedLocation(status: .denied)
         case .restricted:
-            status = .restricted
+            clearPublishedLocation(status: .restricted)
         @unknown default:
-            status = .failed
+            clearPublishedLocation(status: .failed)
         }
+    }
+
+    /// Permission and request failures invalidate the meaning of a previously
+    /// published coordinate as "current." Clearing both values prevents stale
+    /// location data from continuing to drive weather or nearby searches.
+    private func clearPublishedLocation(status: LocationProviderStatus) {
+        metadataTask?.cancel()
+        geocoder.cancelGeocode()
+        coordinate = nil
+        metadata = nil
+        self.status = status
+    }
+
+    // MARK: - Reverse-Geocoded Display Metadata
+
+    /// Re-runs Apple's complete MapKit → Core Location metadata chain for the
+    /// current coordinate. This is deliberately separate from a new GPS lookup:
+    /// when only the locality/country/time-zone field is missing, the weather
+    /// request has already used the valid coordinate and does not need a second
+    /// unrelated forecast episode. Callers await this once before presenting a
+    /// metadata-missing alert.
+    func retryMetadataResolution() async {
+        guard let coordinate,
+              CLLocationCoordinate2DIsValid(coordinate) else {
+            return
+        }
+        metadataTask?.cancel()
+        geocoder.cancelGeocode()
+        status = .resolvingPlace
+        await resolveMetadataOnce(
+            for: CLLocation(
+                latitude: coordinate.latitude,
+                longitude: coordinate.longitude
+            )
+        )
     }
 
     /// Resolves display metadata while retaining the coordinate if reverse
     /// geocoding is temporarily unavailable.
     private func resolveMetadata(for location: CLLocation) {
-        metadataResolutionTask?.cancel()
-        metadataResolutionTask = Task { [weak self] in
+        metadataTask?.cancel()
+        metadataTask = Task { [weak self] in
+            // Keep a task reference so the next location request can cancel this
+            // one; that avoids an older geocoder response winning the race.
             guard let self else { return }
-            do {
-                let resolvedMetadata: CurrentLocationMetadata
-                if #available(iOS 26.0, *) {
-                    // Fix for Home's place label: MapKit may return no item in
-                    // Simulator or at a coordinate it cannot name. Fall back
-                    // to Core Location so the card still receives the normal
-                    // reverse-geocoded locality (for example, "London").
-                    do {
-                        resolvedMetadata = try await mapKitMetadata(
-                            for: location
-                        )
-                    } catch {
-                        resolvedMetadata = try await coreLocationMetadata(
-                            for: location
-                        )
-                    }
-                } else {
-                    resolvedMetadata = try await coreLocationMetadata(for: location)
+            await self.resolveMetadataOnce(for: location)
+        }
+    }
+
+    /// Performs one full factual metadata pass. Keeping publication in this
+    /// awaited helper lets both the normal location callback and the mandatory
+    /// one-shot recovery share exactly the same blank-first behavior.
+    private func resolveMetadataOnce(for location: CLLocation) async {
+        var resolvedMetadata = CurrentLocationMetadata.empty
+        do {
+            if #available(iOS 26.0, *) {
+                do {
+                    resolvedMetadata = try await mapKitMetadata(for: location)
+                } catch {
+                    // Core Location below remains a second authoritative source
+                    // for this exact coordinate.
                 }
-                guard !Task.isCancelled else { return }
-                metadata = resolvedMetadata
-                status = .ready
-            } catch is CancellationError {
-                return
-            } catch {
-                guard !Task.isCancelled else { return }
-                metadata = nil
-                status = .readyWithoutMetadata
             }
+
+            // A partial MapKit result must not suppress a valid locality,
+            // country, or timezone available from Core Location.
+            if !resolvedMetadata.isComplete {
+                let coreMetadata = try await coreLocationMetadata(for: location)
+                resolvedMetadata = resolvedMetadata.fillingMissingFields(
+                    from: coreMetadata
+                )
+            }
+            // Awaited APIs may finish after cancellation, so check again
+            // immediately before publishing their result into SwiftUI state.
+            guard !Task.isCancelled else { return }
+            metadata = resolvedMetadata.hasAnyValue ? resolvedMetadata : nil
+            status = resolvedMetadata.isComplete ? .ready : .readyWithoutMetadata
+        } catch is CancellationError {
+            return
+        } catch {
+            guard !Task.isCancelled else { return }
+            // Retain factual MapKit fields if Core Location failed after a
+            // partial response; only the absent fields remain blank.
+            metadata = resolvedMetadata.hasAnyValue ? resolvedMetadata : nil
+            status = .readyWithoutMetadata
         }
     }
 
     /// Uses MapKit's modern reverse-geocoding request on iOS 26 and later.
+    /// This stays in a separately availability-gated method so older iOS builds
+    /// never need to link or execute the newer API.
     @available(iOS 26.0, *)
     private func mapKitMetadata(
         for location: CLLocation
@@ -305,20 +460,27 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
             throw LocationMetadataResolutionError.noResult
         }
 
+        // A POI or street-level `mapItem.name` is not a city. Only a real city
+        // address component is eligible for the current-location place label.
         let representations = mapItem.addressRepresentations
-        guard let displayName = representations?.cityName ?? mapItem.name,
-              !displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-                .isEmpty else {
+        let metadata = CurrentLocationMetadata(
+            displayName: cleanMetadataValue(representations?.cityName),
+            countryName: cleanMetadataValue(
+                mapItem.placemark.country
+                    ?? mapItem.placemark.isoCountryCode
+            ),
+            timeZoneIdentifier: validTimeZoneIdentifier(
+                mapItem.timeZone?.identifier
+            )
+        )
+        guard metadata.hasAnyValue else {
             throw LocationMetadataResolutionError.noResult
         }
-        return CurrentLocationMetadata(
-            displayName: displayName,
-            countryName: representations?.regionName,
-            timeZoneIdentifier: mapItem.timeZone?.identifier
-        )
+        return metadata
     }
 
-    /// Uses Core Location's reverse geocoder on the iOS 18 fallback path.
+    /// Uses Core Location's reverse geocoder as an independent Apple source.
+    /// Wider administrative areas are deliberately not substituted for a city.
     private func coreLocationMetadata(
         for location: CLLocation
     ) async throws -> CurrentLocationMetadata {
@@ -328,12 +490,35 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         ).first else {
             throw LocationMetadataResolutionError.noResult
         }
-        return CurrentLocationMetadata(
-            displayName: placemark.locality
-                ?? placemark.subAdministrativeArea
-                ?? placemark.administrativeArea,
-            countryName: placemark.country,
-            timeZoneIdentifier: placemark.timeZone?.identifier
+        let metadata = CurrentLocationMetadata(
+            displayName: cleanMetadataValue(placemark.locality),
+            countryName: cleanMetadataValue(
+                placemark.country ?? placemark.isoCountryCode
+            ),
+            timeZoneIdentifier: validTimeZoneIdentifier(
+                placemark.timeZone?.identifier
+            )
         )
+        guard metadata.hasAnyValue else {
+            throw LocationMetadataResolutionError.noResult
+        }
+        return metadata
+    }
+
+    private func cleanMetadataValue(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    private func validTimeZoneIdentifier(_ identifier: String?) -> String? {
+        guard let identifier = cleanMetadataValue(identifier),
+              TimeZone(identifier: identifier) != nil else {
+            return nil
+        }
+        return identifier
     }
 }

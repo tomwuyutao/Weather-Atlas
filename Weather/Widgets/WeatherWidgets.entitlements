@@ -2,8 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- The extension needs its own WeatherKit entitlement because app extensions
+	     are independently signed targets, even though they ship with the app. -->
 	<key>com.apple.developer.weatherkit</key>
 	<true/>
+	<!-- This must match the main app's App Group so widget timeline data can be
+	     read from the same shared container. -->
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.Yutao-Wu.Weather</string>

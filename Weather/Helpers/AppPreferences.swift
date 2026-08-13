@@ -2,8 +2,13 @@
 //  AppPreferences.swift
 //  Weather
 //
-//  Purpose: Defines persisted preference value types that are consumed across
-//  the app, independently of the Settings screen that edits them.
+//  Purpose: Defines the small, raw-value-backed preference types consumed
+//  across the app, independently of the Settings screen that edits them.
+//
+//  Reading guide: these enums describe *what* is stored in UserDefaults. The
+//  SwiftUI Settings views own the actual `@AppStorage` properties; keeping the
+//  types here lets formatting code share the same choices without depending on
+//  any one screen.
 //
 
 import Foundation
@@ -17,6 +22,10 @@ enum TemperatureUnit: String, CaseIterable {
     case fahrenheit = "fahrenheit"
 
     /// Unit inferred from the device's current measurement system.
+    ///
+    /// Foundation does not expose a direct "weather temperature unit" setting.
+    /// Formatting a harmless sample value with `.weather` therefore lets the
+    /// current locale tell us whether it conventionally displays °C or °F.
     static var systemDefault: TemperatureUnit {
         let sample = Measurement(value: 0, unit: UnitTemperature.celsius)
             .formatted(.measurement(width: .abbreviated, usage: .weather).locale(.autoupdatingCurrent))
@@ -41,6 +50,8 @@ enum TemperatureUnit: String, CaseIterable {
     }
 
     /// Converts Celsius source data and formats a rounded localized value.
+    /// WeatherKit values are normalized to Celsius before they reach this
+    /// layer, so every caller can use one consistent source unit.
     func display(_ celsius: Double) -> String {
         let temperature = Measurement(value: celsius, unit: UnitTemperature.celsius)
             .converted(to: self == .fahrenheit ? .fahrenheit : .celsius)
@@ -58,6 +69,8 @@ enum DistanceUnit: String, CaseIterable {
 
     /// Existing visibility data is stored in kilometres, preserving that as the
     /// default for people who have not chosen a distance preference yet.
+    /// Persisting a canonical unit avoids accumulating conversion errors when a
+    /// person toggles between kilometres and miles.
     static let defaultRawValue = DistanceUnit.kilometers.rawValue
 
     /// Localized label displayed in Settings.
@@ -89,7 +102,11 @@ enum DistanceUnit: String, CaseIterable {
 
 // MARK: - App Text Size
 
-/// Supported steps for the app-specific text-size slider.
+    /// Supported steps for the app-specific text-size slider.
+    ///
+    /// These are deliberately semantic slider steps rather than font sizes.
+    /// SwiftUI maps them to Dynamic Type categories, so text still follows the
+    /// platform's scaling and accessibility behavior.
 enum AppTextSizeLevel: Int, CaseIterable {
     case small = 1
     case medium = 2
@@ -105,6 +122,8 @@ enum AppTextSizeLevel: Int, CaseIterable {
     static let maximumSelectableRawValue = AppTextSizeLevel.xxLarge.rawValue
 
     /// Normalizes out-of-range or corrupt raw values into the supported range.
+    /// This makes a future change to the slider range safe for old persisted
+    /// values: an unexpected integer becomes the nearest supported choice.
     static func level(clamping rawValue: Int) -> AppTextSizeLevel {
         let clampedRawValue = min(
             max(rawValue, minimumSelectableRawValue),

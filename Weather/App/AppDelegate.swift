@@ -12,6 +12,8 @@ import UIKit
 
 /// Stable destinations exposed through the app's dynamic Home Screen shortcuts.
 enum HomeScreenShortcutDestination: String, CaseIterable {
+    /// Raw values are persisted in `UserDefaults`, so keep them stable across
+    /// releases even if the visible tab labels change.
     case home
     case map
     case places
@@ -19,18 +21,18 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
     /// The SF Symbol paired with this destination in the system shortcut menu.
     var iconName: String {
         switch self {
-        case .home: return "house"
+        case .home: return "location.fill"
         case .map: return "map"
-        case .places: return "mappin.and.ellipse"
+        case .places: return "bookmark"
         }
     }
 
     /// Returns the user-facing destination name in the app-selected locale.
     func localizedTitle(locale: Locale) -> String {
         switch self {
-        case .home: return localizedString("Home", locale: locale)
+        case .home: return localizedString("Your Location", locale: locale)
         case .map: return localizedString("Map", locale: locale)
-        case .places: return localizedString("Places", locale: locale)
+        case .places: return localizedString("Saved Places", locale: locale)
         }
     }
 }
@@ -81,6 +83,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     /// Rebuilds the dynamic shortcut set using the app's selected language.
     static func updateHomeScreenShortcuts() {
+        // UIKit builds shortcut titles outside SwiftUI's environment, so read
+        // the stored language directly instead of relying on `@Environment`.
         let locale = Locale(
             identifier: UserDefaults.standard.string(forKey: AppLanguageDefaults.storageKey)
                 ?? Locale.autoupdatingCurrent.identifier
@@ -99,6 +103,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     /// Atomically consumes the destination saved by a UIKit shortcut callback.
     static func takePendingHomeScreenShortcut() -> HomeScreenShortcutDestination? {
+        // Removing before returning makes this a one-shot hand-off: reopening
+        // the app later does not repeat an already handled shortcut.
         guard let rawValue = UserDefaults.standard.string(forKey: pendingShortcutDestinationKey) else { return nil }
         UserDefaults.standard.removeObject(forKey: pendingShortcutDestinationKey)
         return HomeScreenShortcutDestination(rawValue: rawValue)
@@ -107,6 +113,8 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     /// Decodes, stores, and broadcasts a shortcut received outside the main actor.
     nonisolated fileprivate static func handleShortcutItem(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
         guard let destination = destination(from: shortcutItem) else { return false }
+        // UIKit callbacks can arrive before the SwiftUI root exists. Persist
+        // first, then broadcast so either lifecycle timing can consume it.
         UserDefaults.standard.set(destination.rawValue, forKey: pendingShortcutDestinationKey)
         NotificationCenter.default.post(name: .weatherOpenMainViewShortcut, object: destination.rawValue)
         return true
@@ -116,12 +124,14 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     nonisolated private static func destination(
         from shortcutItem: UIApplicationShortcutItem
     ) -> HomeScreenShortcutDestination? {
+        // Prefer the explicit payload added by current versions of the app.
         if let rawValue = shortcutItem.userInfo?["destination"] as? String,
            let destination = HomeScreenShortcutDestination(rawValue: rawValue) {
             return destination
         }
 
-        // Current destination shortcuts follow the bundle-qualified openView marker.
+        // Fall back to the identifier shape so older installed shortcuts still
+        // work even when they do not contain the `userInfo` dictionary.
         let marker = ".openView."
         if let range = shortcutItem.type.range(of: marker) {
             return HomeScreenShortcutDestination(rawValue: String(shortcutItem.type[range.upperBound...]))
@@ -151,6 +161,8 @@ final class AppSceneDelegate: NSObject, UIWindowSceneDelegate {
         _ windowScene: UIWindowScene,
         performActionFor shortcutItem: UIApplicationShortcutItem
     ) async -> Bool {
+        // The same static handler keeps cold-launch and warm-scene behavior
+        // identical; its Boolean result is the system's completion signal.
         AppDelegate.handleShortcutItem(shortcutItem)
     }
 }

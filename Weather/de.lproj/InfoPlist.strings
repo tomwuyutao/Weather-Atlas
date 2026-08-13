@@ -1,3 +1,4 @@
+/* Localized app name and iOS current-location permission prompt (German). */
 "CFBundleDisplayName" = "Weather Atlas";
 "CFBundleName" = "Weather Atlas";
 "NSLocationWhenInUseUsageDescription" = "Weather Atlas verwendet Ihren Standort, um Ihre lokale Vorhersage anzuzeigen und die nächstgelegene vollständig sonnige Stadt innerhalb der gewählten Entfernung zu finden.";

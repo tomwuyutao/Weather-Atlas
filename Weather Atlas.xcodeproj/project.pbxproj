@@ -53,9 +53,11 @@
 		5908967630063DF500EB20E0 /* Exceptions for "Weather" folder in "WeatherWidgets" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				Helpers/AppPreferences.swift,
 				Helpers/AppTheme.swift,
-				Models/SunnyHoursTimeline.swift,
-				Models/WeatherDataIssue.swift,
+				Models/DaylightHours.swift,
+				Models/WeatherCondition.swift,
+				Models/WeatherDataValidation.swift,
 				Models/WeatherSymbols.swift,
 				Widgets/Localizable.xcstrings,
 				"Widgets/WeatherWidgets-InfoPlist.xcstrings",
@@ -482,6 +484,7 @@
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "WEATHER_WIDGETS $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
@@ -508,6 +511,7 @@
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "WEATHER_WIDGETS $(inherited)";
 				SWIFT_APPROACHABLE_CONCURRENCY = YES;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;

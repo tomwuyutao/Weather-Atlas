@@ -2,19 +2,30 @@
 //  PlacesStore.swift
 //  Weather
 //
-//  Purpose: Owns the flat Saved Places library and atomic persistence.
+//  Purpose: Owns the flat Saved Places library, its validation rules, and its
+//  atomic on-disk persistence. This is the single source of truth for saved
+//  cities; SwiftUI views ask it to mutate a document instead of writing files.
+//
+//  Reading guide: the file moves from small value types at the top, through the
+//  JSON document boundary and validation, to the observable store at the end.
 //
 
+import CoreLocation
 import Foundation
 import Observation
 
 // MARK: - Saved Places Data
 
 /// One city the user has chosen to keep in Saved Places.
+///
+/// The stable identity comes from `City.id`, not the display name. This lets a
+/// person rename "London" without creating a second saved place or breaking
+/// navigation and cached weather keyed by its UUID.
 struct SavedPlace: Identifiable, Codable, Equatable, Hashable {
     var city: City
     var customName: String?
 
+    /// `Identifiable` forwards the city's persistent UUID for SwiftUI lists.
     var id: UUID { city.id }
 
     init(city: City, customName: String? = nil) {
@@ -22,8 +33,11 @@ struct SavedPlace: Identifiable, Codable, Equatable, Hashable {
         self.customName = Self.normalizedCustomName(customName)
     }
 
+    /// Primary presentation name. A custom name never replaces the underlying
+    /// geographic `City`; it only changes what saved-place surfaces lead with.
     var displayName: String { customName ?? city.displayName }
 
+    /// Treats blank names as absent, so the UI naturally falls back to the city.
     static func normalizedCustomName(_ name: String?) -> String? {
         guard let name else { return nil }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -31,7 +45,11 @@ struct SavedPlace: Identifiable, Codable, Equatable, Hashable {
     }
 }
 
-/// Saved-place forecast state shared by the Places list and map.
+/// Saved-place forecast state used by Map presentation.
+///
+/// This is presentation state, not something stored in the JSON library: a
+/// recommendation/loading/error belongs to the current weather request and is
+/// allowed to disappear on the next launch.
 struct SavedPlacePresentation: Identifiable {
     let place: SavedPlace
     let recommendation: PlaceRecommendation?
@@ -46,6 +64,7 @@ struct SavedPlacePresentation: Identifiable {
 /// `Codable` intentionally ignores historical collection keys when reading an
 /// existing document. The next ordinary save rewrites it as this flat schema.
 struct PlacesLibraryDocument: Codable, Equatable {
+    /// Bumping this value creates an explicit migration decision for future code.
     static let currentSchemaVersion = 1
 
     var schemaVersion: Int
@@ -76,23 +95,17 @@ enum PlacesStoreError: LocalizedError {
     func description(locale: Locale) -> String { errorDescription ?? "" }
 }
 
+/// Gives UI code one stable entry point for Places-specific error copy.
 func localizedPlacesErrorDescription(_ error: Error, locale: Locale) -> String {
     (error as? PlacesStoreError)?.description(locale: locale) ?? error.localizedDescription
-}
-
-private struct SavedPlaceCoordinateIdentity: Hashable {
-    let latitude: Int64
-    let longitude: Int64
-
-    init(city: City) {
-        latitude = Int64((city.latitude * 10_000).rounded(.toNearestOrAwayFromZero))
-        longitude = Int64((city.longitude * 10_000).rounded(.toNearestOrAwayFromZero))
-    }
 }
 
 // MARK: - Document Persistence
 
 /// Persistence failures kept separate from domain validation failures.
+///
+/// Separating these categories helps callers distinguish a malformed library
+/// from a storage problem such as a failed read-back verification.
 enum PlacesDocumentStoreError: LocalizedError {
     case documentTooLarge(Int)
     case readBackMissing
@@ -111,6 +124,9 @@ enum PlacesDocumentStoreError: LocalizedError {
 }
 
 /// File-backed document persistence with validation on every boundary.
+///
+/// It knows nothing about SwiftUI. That makes file operations testable with an
+/// injected URL/FileManager and keeps the observable store focused on state.
 struct PlacesDocumentStore {
     /// The current schema has its own filename so a future migration can keep
     /// the previous version available until the replacement is verified.
@@ -128,6 +144,8 @@ struct PlacesDocumentStore {
     }
 
     /// Resolves the app-specific Application Support document location.
+    /// Application Support is appropriate for app-owned data that should be
+    /// backed up with the app but not be manually visible in Files.
     static func live(
         fileManager: FileManager = .default,
         bundleIdentifier: String? = Bundle.main.bundleIdentifier
@@ -149,6 +167,8 @@ struct PlacesDocumentStore {
     }
 
     /// Loads and validates the current document, or returns `nil` if none exists.
+    /// `mappedIfSafe` lets Foundation use memory mapping for a normal file while
+    /// remaining free to choose a safer loading strategy when necessary.
     func load() throws -> PlacesLibraryDocument? {
         guard fileManager.fileExists(atPath: fileURL.path) else { return nil }
         let data = try Data(contentsOf: fileURL, options: [.mappedIfSafe])
@@ -163,6 +183,8 @@ struct PlacesDocumentStore {
     func saveAndReadBack(
         _ document: PlacesLibraryDocument
     ) throws -> PlacesLibraryDocument {
+        // Validate before encoding so corrupt in-memory state can never replace
+        // a previously good file on disk.
         try PlacesLibraryValidator.validate(document)
         let data = try makeEncoder().encode(document)
         guard data.count <= Self.maximumEncodedByteCount else {
@@ -174,12 +196,16 @@ struct PlacesDocumentStore {
             withIntermediateDirectories: true
         )
 
+        // `.atomic` writes a temporary file then replaces the destination. A
+        // crash cannot leave a half-written JSON document at `fileURL`.
         var writingOptions: Data.WritingOptions = [.atomic]
 #if os(iOS) || os(tvOS) || os(watchOS)
         writingOptions.insert(.completeFileProtectionUnlessOpen)
 #endif
         try data.write(to: fileURL, options: writingOptions)
 
+        // Treat the save as a small transaction: read and validate the bytes we
+        // just wrote before publishing them to the observable in-memory state.
         guard let verifiedDocument = try load() else {
             throw PlacesDocumentStoreError.readBackMissing
         }
@@ -190,6 +216,8 @@ struct PlacesDocumentStore {
     }
 
     /// Decodes a fixture or on-disk payload through the production validator.
+    /// Tests use this same boundary so a fixture cannot accidentally bypass the
+    /// checks that protect a real customer library.
     func decodeAndValidate(_ data: Data) throws -> PlacesLibraryDocument {
         guard data.count <= Self.maximumEncodedByteCount else {
             throw PlacesDocumentStoreError.documentTooLarge(data.count)
@@ -199,6 +227,7 @@ struct PlacesDocumentStore {
         return document
     }
 
+    /// Uses deterministic JSON settings for stable files and reliable read-back.
     private func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -219,6 +248,10 @@ enum PlacesLibraryValidationError: LocalizedError, Equatable {
     case unsupportedSchemaVersion(Int)
     case tooManyPlaces(Int)
     case duplicatePlaceID(UUID)
+    case missingPlaceName(UUID)
+    case missingCountry(UUID)
+    case missingTimeZone(UUID)
+    case invalidTimeZone(UUID, String)
     case invalidPlace(UUID)
     case invalidCustomName(UUID)
 
@@ -228,21 +261,34 @@ enum PlacesLibraryValidationError: LocalizedError, Equatable {
             "The Places library uses unsupported schema version \(version)."
         case .tooManyPlaces(let count):
             "The Places library contains too many places (\(count))."
-        case .duplicatePlaceID(let id):
-            "The Places library contains duplicate place ID \(id.uuidString)."
-        case .invalidPlace(let id):
-            "Saved place \(id.uuidString) contains invalid place metadata."
-        case .invalidCustomName(let id):
-            "Saved place \(id.uuidString) contains an invalid custom name."
+        case .duplicatePlaceID:
+            "The Places library contains duplicate internal place data."
+        case .missingPlaceName:
+            "Place name data is missing for a saved place."
+        case .missingCountry:
+            "Country data is missing for a saved place."
+        case .missingTimeZone:
+            "Time zone data is missing for a saved place."
+        case .invalidTimeZone(_, let identifier):
+            "A saved place has invalid time zone data: \(identifier)."
+        case .invalidPlace:
+            "A saved place contains invalid place metadata."
+        case .invalidCustomName:
+            "A saved place contains an invalid custom name."
         }
     }
 }
 
+/// Guards the document boundary against malformed, oversized, or duplicate data.
+///
+/// Validation is intentionally independent from the store so it can run on both
+/// newly constructed documents and bytes read from storage.
 enum PlacesLibraryValidator {
     static let maximumPlaceCount = 25_000
     static let maximumPlaceNameLength = 500
     static let maximumIdentifierLength = 200
 
+    /// Performs cheap, deterministic checks before a document becomes visible.
     static func validate(_ document: PlacesLibraryDocument) throws {
         guard document.schemaVersion == PlacesLibraryDocument.currentSchemaVersion else {
             throw PlacesLibraryValidationError.unsupportedSchemaVersion(document.schemaVersion)
@@ -250,12 +296,58 @@ enum PlacesLibraryValidator {
         guard document.places.count <= maximumPlaceCount else {
             throw PlacesLibraryValidationError.tooManyPlaces(document.places.count)
         }
+        // A `Set` makes duplicate UUID detection linear rather than repeatedly
+        // scanning the growing array for every saved place.
         var placeIDs = Set<SavedPlace.ID>()
         for place in document.places {
             guard placeIDs.insert(place.id).inserted else {
                 throw PlacesLibraryValidationError.duplicatePlaceID(place.id)
             }
-            guard isValidCity(place.city) else {
+            let city = place.city
+            guard isValidUserFacingName(
+                city.name,
+                maximumLength: maximumPlaceNameLength
+            ) else {
+                if city.name.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ).isEmpty {
+                    throw PlacesLibraryValidationError.missingPlaceName(place.id)
+                }
+                throw PlacesLibraryValidationError.invalidPlace(place.id)
+            }
+            guard isValidUserFacingName(
+                city.country,
+                maximumLength: maximumPlaceNameLength
+            ) else {
+                if city.country.trimmingCharacters(
+                    in: .whitespacesAndNewlines
+                ).isEmpty {
+                    throw PlacesLibraryValidationError.missingCountry(place.id)
+                }
+                throw PlacesLibraryValidationError.invalidPlace(place.id)
+            }
+            // A Saved Place is a durable user choice, not a completed forecast
+            // record. Older libraries and a temporary geocoder outage can lack
+            // a timezone, but that must not hide the entire library or turn a
+            // harmless local-date exclusion into a load failure. Leave the
+            // timezone optional here; reverse geocoding re-fetches authoritative
+            // metadata before WeatherKit is queried, and a successfully resolved
+            // city is written back by `WeatherModel.loadSavedWeather`.
+            //
+            // New places still go through `isValidCity(_:)` at the save boundary,
+            // so search/map flows cannot deliberately create incomplete rows.
+            if let timeZoneIdentifier = city.timeZoneIdentifier?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ), !timeZoneIdentifier.isEmpty {
+                guard timeZoneIdentifier.count <= maximumIdentifierLength,
+                      !containsUnsafeControlCharacters(timeZoneIdentifier) else {
+                    throw PlacesLibraryValidationError.invalidTimeZone(
+                        place.id,
+                        timeZoneIdentifier
+                    )
+                }
+            }
+            guard isValidCityStructure(city) else {
                 throw PlacesLibraryValidationError.invalidPlace(place.id)
             }
             if let customName = place.customName,
@@ -265,16 +357,29 @@ enum PlacesLibraryValidator {
         }
     }
 
+    /// Accepts only complete, representable place metadata.
     static func isValidCity(_ city: City) -> Bool {
+        guard isValidUserFacingName(
+            city.name,
+            maximumLength: maximumPlaceNameLength
+        ), isValidUserFacingName(
+            city.country,
+            maximumLength: maximumPlaceNameLength
+        ), let timeZoneIdentifier = city.timeZoneIdentifier?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !timeZoneIdentifier.isEmpty,
+           timeZoneIdentifier.count <= maximumIdentifierLength,
+           !containsUnsafeControlCharacters(timeZoneIdentifier),
+           TimeZone(identifier: timeZoneIdentifier) != nil else {
+            return false
+        }
+        return isValidCityStructure(city)
+    }
+
+    private static func isValidCityStructure(_ city: City) -> Bool {
         guard city.latitude.isFinite, city.longitude.isFinite,
               (-90...90).contains(city.latitude),
-              (-180...180).contains(city.longitude),
-              city.name.count <= maximumPlaceNameLength,
-              city.country.count <= maximumPlaceNameLength,
-              !containsUnsafeControlCharacters(city.name),
-              !containsUnsafeControlCharacters(city.country) else { return false }
-        if let timezone = city.timeZoneIdentifier,
-           (timezone.count > maximumIdentifierLength || containsUnsafeControlCharacters(timezone)) {
+              (-180...180).contains(city.longitude) else {
             return false
         }
         if let catalogID = city.catalogIdentifier,
@@ -290,6 +395,8 @@ enum PlacesLibraryValidator {
             && !containsUnsafeControlCharacters(value)
     }
 
+    /// Newlines/tabs are permitted in user text; other control scalars can make
+    /// JSON/UI rendering confusing, so reject them at the persistence boundary.
     private static func containsUnsafeControlCharacters(_ value: String) -> Bool {
         value.unicodeScalars.contains {
             CharacterSet.controlCharacters.contains($0) && $0 != "\n" && $0 != "\t"
@@ -297,10 +404,24 @@ enum PlacesLibraryValidator {
     }
 }
 
-private struct SavedPlaceSemanticIdentity: Hashable {
-    let coordinate: SavedPlaceCoordinateIdentity
+// MARK: - Duplicate-Detection Identities
+
+/// A normalized fallback identity for cities originating from different sources.
+///
+/// UUID is the preferred identity, followed by a catalog ID. This final form
+/// catches a geocoded city and a catalog city that represent the same place but
+/// arrived with different UUIDs.
+private struct SavedPlaceSemanticIdentity {
+    /// Different providers often use different representative points for the
+    /// same city centre. Ten kilometres is deliberately city-scale; matching
+    /// names/countries and conflict checks below keep nearby distinct cities apart.
+    private static let maximumDistanceMeters: CLLocationDistance = 10_000
+
+    let location: CLLocation
     let cityName: String
     let countryName: String
+    let timeZoneIdentifier: String?
+    let catalogIdentifier: String?
 
     init?(city: City) {
         guard city.latitude.isFinite, city.longitude.isFinite,
@@ -308,11 +429,40 @@ private struct SavedPlaceSemanticIdentity: Hashable {
         let cityName = Self.normalized(city.name)
         let countryName = Self.normalized(city.country)
         guard !cityName.isEmpty, !countryName.isEmpty else { return nil }
-        coordinate = SavedPlaceCoordinateIdentity(city: city)
+        location = CLLocation(
+            latitude: city.latitude,
+            longitude: city.longitude
+        )
         self.cityName = cityName
         self.countryName = countryName
+        timeZoneIdentifier = city.timeZoneIdentifier?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        catalogIdentifier = city.catalogIdentifier?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
     }
 
+    func matches(_ other: SavedPlaceSemanticIdentity) -> Bool {
+        guard cityName == other.cityName,
+              countryName == other.countryName else {
+            return false
+        }
+        if let catalogIdentifier,
+           let otherCatalogIdentifier = other.catalogIdentifier,
+           catalogIdentifier != otherCatalogIdentifier {
+            return false
+        }
+        if let timeZoneIdentifier,
+           let otherTimeZoneIdentifier = other.timeZoneIdentifier,
+           timeZoneIdentifier != otherTimeZoneIdentifier {
+            return false
+        }
+        return location.distance(from: other.location)
+            <= Self.maximumDistanceMeters
+    }
+
+    /// Removes presentation-only differences before comparing city/country text.
     private static func normalized(_ value: String) -> String {
         value.trimmingCharacters(in: .whitespacesAndNewlines).folding(
             options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
@@ -321,13 +471,26 @@ private struct SavedPlaceSemanticIdentity: Hashable {
     }
 }
 
+// MARK: - Observable Saved Places Store
+
+/// The main-actor store exposes a safely observable library to SwiftUI.
+///
+/// `@Observable` lets views track only the properties they read. `@MainActor`
+/// serializes mutations with UI updates, which is especially important because
+/// every successful mutation replaces the complete `document` value.
 @MainActor
 @Observable
 final class PlacesStore {
+    /// The verified in-memory copy of the complete JSON document.
     private(set) var document: PlacesLibraryDocument
+    /// A persistent failure shown by settings/UI instead of causing a crash.
     private(set) var loadErrorDescription: String?
+    /// File I/O dependency hidden from Observation because views never render it.
     @ObservationIgnored private var documentStore: PlacesDocumentStore?
 
+    /// Loads the existing library synchronously during app setup, or starts an
+    /// empty, verified document on the first launch. The injectable argument is
+    /// primarily for tests and previews that should not touch user storage.
     init(documentStore: PlacesDocumentStore? = nil) {
         document = .empty
         self.documentStore = documentStore
@@ -340,20 +503,32 @@ final class PlacesStore {
         }
     }
 
+    /// Read-only convenience used by screens that should not edit the document.
     var allPlaces: [SavedPlace] { document.places }
 
+    /// Looks up one row by its stable UUID for detail navigation and editing.
     func place(id: SavedPlace.ID) -> SavedPlace? {
         document.places.first { $0.id == id }
     }
 
+    /// Finds an existing saved place using increasingly forgiving identities.
+    ///
+    /// Order matters: UUID is exact, a catalog ID links bundled rows, and the
+    /// semantic identity only handles otherwise equivalent geocoded cities.
     func savedPlaceID(matching city: City) -> SavedPlace.ID? {
         if let match = document.places.first(where: { $0.id == city.id }) { return match.id }
         if let catalogID = city.catalogIdentifier,
            let match = document.places.first(where: { $0.city.catalogIdentifier == catalogID }) { return match.id }
         guard let identity = SavedPlaceSemanticIdentity(city: city) else { return nil }
-        return document.places.first { SavedPlaceSemanticIdentity(city: $0.city) == identity }?.id
+        return document.places.first {
+            guard let candidate = SavedPlaceSemanticIdentity(city: $0.city) else {
+                return false
+            }
+            return identity.matches(candidate)
+        }?.id
     }
 
+    /// Lets the UI retry a transient file-system failure without recreating data.
     func retryLoading() {
         guard let documentStore else { return }
         do {
@@ -362,12 +537,24 @@ final class PlacesStore {
         } catch { loadErrorDescription = error.localizedDescription }
     }
 
+    /// Replaces the whole library through the normal verified persistence path.
     func resetToEmptyLibrary() throws { try persist(.empty) }
 
     @discardableResult
+    /// Adds one city at the front of the library or merges refreshed metadata.
+    /// Returning the existing/new ID lets a caller navigate to the canonical row.
     func savePlace(_ city: City, customName: String? = nil) throws -> SavedPlace.ID {
+        // Incoming places are created only from a fully resolved Search/Map/
+        // WeatherKit result. Existing legacy rows may be incomplete on disk, but
+        // they remain displayable and are repaired asynchronously rather than
+        // allowing new incomplete rows to accumulate.
+        guard PlacesLibraryValidator.isValidCity(city) else {
+            throw PlacesLibraryValidationError.invalidPlace(city.id)
+        }
         var savedID = city.id
         try mutateAndPersist { candidate in
+            // A repeated Save is an update, not a duplicate. The merge preserves
+            // user-owned values such as the existing UUID and custom name.
             if let index = Self.matchingPlaceIndex(for: city, in: candidate.places) {
                 savedID = candidate.places[index].id
                 Self.merge(city: city, customName: customName, into: &candidate.places[index])
@@ -381,13 +568,21 @@ final class PlacesStore {
     }
 
     @discardableResult
+    /// Saves a batch atomically, deduplicating both against the library and
+    /// within the incoming array before one file write.
     func savePlaces(_ cities: [City]) throws -> [SavedPlace.ID] {
         guard !cities.isEmpty else { return [] }
+        if let incompleteCity = cities.first(
+            where: { !PlacesLibraryValidator.isValidCity($0) }
+        ) {
+            throw PlacesLibraryValidationError.invalidPlace(incompleteCity.id)
+        }
         var savedIDs: [SavedPlace.ID] = []
         try mutateAndPersist { savedIDs = Self.mergeCities(cities, into: &$0) }
         return savedIDs
     }
 
+    /// Deletes exactly one row; an unknown ID is surfaced rather than ignored.
     func deletePlace(id placeID: SavedPlace.ID) throws {
         try mutateAndPersist { candidate in
             guard candidate.places.contains(where: { $0.id == placeID }) else {
@@ -397,8 +592,10 @@ final class PlacesStore {
         }
     }
 
-    /// Changes only the user-owned display name of one saved city.
-    func renamePlace(
+    /// Changes only the user-owned custom name of one saved city.
+    /// Passing `nil` or whitespace removes the override and restores the source
+    /// city name through `SavedPlace.displayName`.
+    func setCustomName(
         id placeID: SavedPlace.ID,
         customName: String?
     ) throws {
@@ -414,6 +611,9 @@ final class PlacesStore {
         }
     }
 
+    /// Runs a mutation against a throwaway value, then publishes it only after
+    /// validated atomic persistence succeeds. This is a small value-type
+    /// transaction: the live document remains unchanged if any step throws.
     private func mutateAndPersist(_ mutation: (inout PlacesLibraryDocument) throws -> Void) throws {
         try ensureAvailable()
         var candidate = document
@@ -422,29 +622,43 @@ final class PlacesStore {
         try persist(candidate)
     }
 
+    /// Makes the store's memory reflect the document read back from disk—not
+    /// merely the candidate that was asked to be saved.
     private func persist(_ candidate: PlacesLibraryDocument) throws {
         try ensureAvailable()
         guard let documentStore else { throw PlacesStoreError.unavailable("No document location is available.") }
         document = try documentStore.saveAndReadBack(candidate)
     }
 
+    /// Prevents a later edit from overwriting data after the initial load failed.
     private func ensureAvailable() throws {
         if let loadErrorDescription { throw PlacesStoreError.unavailable(loadErrorDescription) }
     }
 
+    /// Establishes a real empty file on first launch so subsequent operations
+    /// always use the same validation/read-back path as existing libraries.
     private static func loadOrCreate(documentStore: PlacesDocumentStore) throws -> PlacesLibraryDocument {
         if let document = try documentStore.load() { return document }
         return try documentStore.saveAndReadBack(.empty)
     }
 
+    /// Shared private counterpart of `savedPlaceID(matching:)` for mutations.
     private static func matchingPlaceIndex(for city: City, in places: [SavedPlace]) -> Int? {
         if let index = places.firstIndex(where: { $0.id == city.id }) { return index }
         if let catalogID = city.catalogIdentifier,
            let index = places.firstIndex(where: { $0.city.catalogIdentifier == catalogID }) { return index }
         guard let identity = SavedPlaceSemanticIdentity(city: city) else { return nil }
-        return places.firstIndex { SavedPlaceSemanticIdentity(city: $0.city) == identity }
+        return places.firstIndex {
+            guard let candidate = SavedPlaceSemanticIdentity(city: $0.city) else {
+                return false
+            }
+            return identity.matches(candidate)
+        }
     }
 
+    /// Resolves each incoming city to a stable ID while accumulating unseen rows.
+    /// New rows are inserted together at the front only after the full batch has
+    /// been examined, preserving the incoming order and avoiding index drift.
     private static func mergeCities(_ cities: [City], into document: inout PlacesLibraryDocument) -> [SavedPlace.ID] {
         var resolvedIDs: [SavedPlace.ID] = []
         var seen = Set<SavedPlace.ID>()
@@ -468,6 +682,8 @@ final class PlacesStore {
         return resolvedIDs
     }
 
+    /// Refreshes source metadata without overwriting stable identity, coordinate,
+    /// or a previously chosen custom name unless the caller provides a new one.
     private static func merge(city incoming: City, customName: String?, into existing: inout SavedPlace) {
         let current = existing.city
         existing.city = City(

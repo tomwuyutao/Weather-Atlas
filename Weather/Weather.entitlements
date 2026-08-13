@@ -2,10 +2,14 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Shared App Group lets the app and WeatherWidgets exchange their
+	     intentionally shared on-device data through one container. -->
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.Yutao-Wu.Weather</string>
 	</array>
+	<!-- WeatherKit entitlement authorizes Apple's weather service for the main
+	     app target. The matching widget entitlement is kept separately. -->
 	<key>com.apple.developer.weatherkit</key>
 	<true/>
 </dict>

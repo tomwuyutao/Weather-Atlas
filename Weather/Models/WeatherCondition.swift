@@ -5,13 +5,20 @@
 //  Purpose: Defines the app's normalized weather-condition domain model and
 //  its localized/icon/color presentation mappings.
 //
+//  Reading guide: WeatherKit exposes many detailed conditions and SF Symbol
+//  names. The rest of the app uses this deliberately smaller vocabulary so
+//  ranking, cards, maps, and widgets all make the same interpretation.
+//
 
 import SwiftUI
 import WeatherKit
 
 // MARK: - Normalized Weather Conditions
 
-/// Finite condition vocabulary recognized by scoring and presentation code.
+/// Finite condition vocabulary shared by analysis and presentation code.
+/// Sunny-hours ranking policy lives in `SunnyPlacesRanking`.
+/// The raw string makes the enum `Codable`, so cached and widget data can store
+/// a condition without depending on WeatherKit's own type at decode time.
 enum AppWeatherCondition: String, Codable {
     case clear
     case partlySunny
@@ -22,6 +29,8 @@ enum AppWeatherCondition: String, Codable {
     case snow
     case fog
     case wind
+
+    // MARK: - User-Facing Presentation
 
     /// Returns the condition's user-facing name in the requested locale.
     func localizedDisplayName(locale: Locale = .current) -> String {
@@ -38,47 +47,47 @@ enum AppWeatherCondition: String, Codable {
         }
     }
 
-    /// Selects the semantic map/list dot color from an active theme palette.
+    /// Selects the shared semantic tint for both Map dots and weather symbols.
+    /// ThemeColors owns the actual colors; this enum chooses their meaning.
     func dotColor(for theme: ThemeColors) -> Color {
+        theme.weatherIconColor(for: iconTone)
+    }
+
+    /// Preserves the condition's exact marker tint when its display symbol is
+    /// also used for another condition, such as `cloud.sun`.
+    var iconTone: WeatherIconTone {
         switch self {
-        case .clear: return theme.dotSun
-        case .partlySunny: return theme.dotPartlyCloudy
-        case .partlyCloudy: return theme.dotCloudy
-        case .cloudy: return theme.dotCloudy
-        case .rain: return theme.dotRain
-        case .drizzle: return theme.dotDrizzle
+        case .clear: return .clear
+        case .partlySunny: return .partlySunny
+        case .partlyCloudy, .cloudy: return .cloudy
+        case .rain: return .rain
+        case .drizzle: return .drizzle
         // Snow, fog, and wind share the neutral cloudy mark.
-        case .snow, .fog, .wind: return theme.dotCloudy
+        case .snow, .fog, .wind: return .cloudy
         }
     }
 
-    /// Ascending condition rank used before cloud-cover tie-breaking.
-    nonisolated var sunninessRank: Int {
-        switch self {
-        case .clear: return 0
-        case .partlySunny: return 1
-        case .partlyCloudy: return 2
-        case .cloudy: return 3
-        case .wind: return 4
-        case .fog: return 5
-        case .drizzle: return 6
-        case .rain: return 7
-        case .snow: return 8
-        }
-    }
+    // MARK: - Sunny Predicates
 
-    /// Whether this condition belongs to the strict sunny-only filter.
+    /// Whether this condition is fully clear. Use
+    /// `isSunnyOrPartlySunny` for Sunny Places discovery and hourly counts.
     nonisolated var isSunny: Bool {
         self == .clear
     }
 
-    /// Whether this condition contributes to a favorable sunny window.
+    /// Whether this condition contributes to a favorable sunny window. Charts
+    /// include partly sunny hours even when a strict filter does not.
     nonisolated var isSunnyOrPartlySunny: Bool {
         self == .clear || self == .partlySunny
     }
 
+    // MARK: - Source Classification
+
     /// Resolves a WeatherKit symbol without inventing a default classification.
+    /// The tests run from specific to broad because a symbol such as a rainy
+    /// cloud must match rain before the generic "cloud" fallback.
     nonisolated static func fromWeatherSymbol(_ symbolName: String) -> AppWeatherCondition? {
+        // Normalize case once so the following substring checks are predictable.
         let symbol = symbolName.lowercased()
 
         if symbol.contains("drizzle") { return .drizzle }
@@ -102,6 +111,8 @@ enum AppWeatherCondition: String, Codable {
             || symbol.contains("smoke") {
             return .fog
         }
+        // Moon symbols describe nighttime equivalents. The app's daytime
+        // presentation treats them as the comparable clear/cloudy condition.
         if symbol.contains("moon") {
             return symbol.contains("cloud") ? .partlyCloudy : .clear
         }
@@ -111,11 +122,15 @@ enum AppWeatherCondition: String, Codable {
         }
         if symbol.contains("partly") && symbol.contains("cloud") { return .partlyCloudy }
         if symbol.contains("cloud") { return .cloudy }
+        // Returning nil is intentional: guessing "cloudy" would make rankings
+        // look confident even though the source symbol was not understood.
         return nil
     }
 
     /// Maps WeatherKit's semantic condition into the app's smaller presentation
     /// vocabulary. Source-symbol parsing handles conditions outside this map.
+    /// `isDaylight` distinguishes WeatherKit's one partly-cloudy semantic value
+    /// into the app's sunny daytime versus ordinary cloudy nighttime treatment.
     nonisolated static func fromWeatherKit(
         _ condition: WeatherKit.WeatherCondition,
         isDaylight: Bool? = nil
@@ -145,12 +160,17 @@ enum AppWeatherCondition: String, Codable {
             // Temperature extremes don't describe the sky or precipitation.
             // Let the source symbol provide the presentation classification.
             return nil
+        // Future WeatherKit cases land here until the app deliberately decides
+        // how they should affect ranking and presentation.
         @unknown default:
             return nil
         }
     }
 
-    /// Canonical SF Symbol used to display the normalized condition.
+    // MARK: - Canonical Icon
+
+    /// Canonical SF Symbol used to display the normalized condition. The icon
+    /// mapping is centralized so views never embed their own condition switch.
     var displayIcon: String {
         switch self {
         case .clear: return WeatherIconSymbol.clear

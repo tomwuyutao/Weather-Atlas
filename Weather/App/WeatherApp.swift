@@ -21,6 +21,7 @@ enum AppLanguageDefaults {
 
     /// Seeds the language preference only when no app-specific choice exists.
     static func configureInitialLanguage() {
+        // Do this once only. From then on, Settings owns the explicit choice.
         guard UserDefaults.standard.object(forKey: storageKey) == nil else { return }
         // Use the first device preference the bundled localization table supports.
         for identifier in Locale.preferredLanguages {
@@ -34,6 +35,8 @@ enum AppLanguageDefaults {
 
     /// Normalizes an Apple locale identifier to a bundled language code.
     private static func supportedLanguageCode(for identifier: String) -> String? {
+        // iOS may return either underscore or hyphen locale separators. Work
+        // with one normalized form before comparing the bundled languages.
         let normalized = identifier.replacingOccurrences(of: "_", with: "-")
         if normalized.hasPrefix("zh-Hans") { return "zh-Hans" }
         if normalized.hasPrefix("zh-Hant") { return "zh-Hant" }
@@ -41,6 +44,7 @@ enum AppLanguageDefaults {
         let components = normalized.split(separator: "-").map(String.init)
         guard let languageCode = components.first else { return nil }
         if languageCode == "zh" {
+            // Bare Chinese preferences need a region-based script choice.
             let regionCode = components.dropFirst().first?.uppercased()
             return ["TW", "HK", "MO"].contains(regionCode) ? "zh-Hant" : "zh-Hans"
         }
@@ -60,34 +64,50 @@ struct WeatherApp: App {
     /// Shared observable theme mode.
     @State private var theme = AppTheme.shared
     /// Shared place, weather, and current-location recommendation model.
-    @State private var appModel: WeatherAtlasModel
+    @State private var appModel: WeatherModel
     /// Shared tab, navigation, and modal presentation coordinator.
-    @State private var router: AppRouter
+    @State private var router: AppNavigation
+    /// Single queue for native alerts describing data that remains blank.
+    @State private var missingDataAlerts: MissingDataAlertCenter
+    /// Shared system reachability state used by the offline-cache presentation.
+    @State private var networkConnectivity: NetworkConnectivity
 
     /// Creates the app's shared stores and navigation state.
     init() {
+        // Both stores are created once and injected into the app-wide model,
+        // so Your Location, Saved Places, Map, and widgets read the same data.
         AppLanguageDefaults.configureInitialLanguage()
 
         let placesStore = PlacesStore()
+        let missingDataAlerts = MissingDataAlertCenter()
+        let networkConnectivity = NetworkConnectivity()
 
-        let weatherStore = PlaceWeatherStore()
+        let weatherStore = PlaceWeatherStore(
+            networkConnectivity: networkConnectivity
+        )
         _appModel = State(
-            initialValue: WeatherAtlasModel(
+            initialValue: WeatherModel(
                 placesStore: placesStore,
                 weatherStore: weatherStore
             )
         )
-        _router = State(initialValue: AppRouter())
+        _router = State(initialValue: AppNavigation())
+        _missingDataAlerts = State(initialValue: missingDataAlerts)
+        _networkConnectivity = State(initialValue: networkConnectivity)
     }
 
     /// Creates themed app windows backed by the shared place-owned model.
     var body: some Scene {
+        // A `WindowGroup` supplies a separate SwiftUI window when the platform
+        // supports it, while all windows receive the same app-level services.
         WindowGroup {
             ThemeRoot(
                 theme: theme,
                 appLocale: Locale(identifier: appLanguage),
                 appModel: appModel,
-                router: router
+                router: router,
+                missingDataAlerts: missingDataAlerts,
+                networkConnectivity: networkConnectivity
             )
         }
     }
@@ -102,16 +122,24 @@ struct ThemeRoot: View {
     /// Locale chosen in Settings.
     let appLocale: Locale
     /// Shared place and weather model.
-    let appModel: WeatherAtlasModel
+    let appModel: WeatherModel
     /// Shared native navigation coordinator.
-    let router: AppRouter
+    let router: AppNavigation
+    /// Shared native missing-data alert queue.
+    let missingDataAlerts: MissingDataAlertCenter
+    /// Shared system reachability state.
+    let networkConnectivity: NetworkConnectivity
     /// Applies the theme's scheme preference before constructing inner content.
     var body: some View {
+        // Apply the preferred scheme outside `ThemeContent`. That lets the
+        // inner environment read the final light/dark value, not a stale one.
         ThemeContent(
             theme: theme,
             appLocale: appLocale,
             appModel: appModel,
-            router: router
+            router: router,
+            missingDataAlerts: missingDataAlerts,
+            networkConnectivity: networkConnectivity
         )
         .preferredColorScheme(theme.preferredColorScheme)
     }
@@ -124,9 +152,13 @@ private struct ThemeContent: View {
     /// Locale propagated to formatters and localization lookups.
     let appLocale: Locale
     /// Shared model supplied to the redesigned root application view.
-    let appModel: WeatherAtlasModel
+    let appModel: WeatherModel
     /// Shared navigation coordinator supplied to the redesigned root.
-    let router: AppRouter
+    let router: AppNavigation
+    /// Shared native missing-data alert queue.
+    let missingDataAlerts: MissingDataAlertCenter
+    /// Shared system reachability state injected into every root screen.
+    let networkConnectivity: NetworkConnectivity
     /// Effective scheme after the outer preferred-scheme override.
     @Environment(\.colorScheme) private var colorScheme
     /// Propagates Increase Contrast into the app's custom color palettes.
@@ -142,8 +174,15 @@ private struct ThemeContent: View {
 
     /// Injects locale, size, theme, tint, contrast, and motion behavior app-wide.
     var body: some View {
+        // Resolve the custom palette after reading the system scheme and
+        // contrast setting. Every descendant then receives matching colors.
         let resolvedColors = theme.colors(for: colorScheme, contrast: colorSchemeContrast)
-        WeatherAtlasRootView(model: appModel, router: router)
+        ContentView(
+            model: appModel,
+            router: router,
+            missingDataAlerts: missingDataAlerts,
+            networkConnectivity: networkConnectivity
+        )
             .environment(\.locale, appLocale)
             // Preserve the complete system Dynamic Type range. Only the explicit
             // in-app slider uses the app's smaller set of custom steps.
@@ -154,8 +193,11 @@ private struct ThemeContent: View {
                     : AppTextSizeLevel.level(clamping: appTextSizeLevel).dynamicTypeSize
             )
             .environment(\.appTheme, theme)
+            .environment(missingDataAlerts)
+            .environment(networkConnectivity)
             .tint(resolvedColors.accent)
-            // Disable app-supplied animation without altering state transitions.
+            // Reduce Motion suppresses only app-supplied animation; the state
+            // still changes normally and system navigation remains native.
             .transaction { transaction in
                 if reduceMotion {
                     transaction.animation = nil
@@ -163,6 +205,8 @@ private struct ThemeContent: View {
                 }
             }
             .onChange(of: colorScheme, initial: true) { _, newScheme in
+                // Retain the latest resolved system inputs so `AppTheme` can
+                // compute its palette consistently outside this view as well.
                 theme.systemScheme = newScheme
             }
             .onChange(of: colorSchemeContrast, initial: true) { _, newContrast in

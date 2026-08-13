@@ -10,9 +10,16 @@ import SwiftUI
 import UIKit
 import WeatherKit
 
+// MARK: - Settings Root
+
+/// A sheet-hosted navigation hierarchy for preferences, legal information,
+/// and the destructive app reset action. Preferences use `@AppStorage` so the
+/// corresponding services and views can observe the same persisted choices.
 struct SettingsView: View {
-    let model: WeatherAtlasModel
+    let model: WeatherModel
     let onResetApp: () throws -> Void
+
+    // MARK: Persisted preferences and presentation state
 
     @AppStorage("temperatureUnit")
     private var temperatureUnit = TemperatureUnit.defaultRawValue
@@ -29,20 +36,26 @@ struct SettingsView: View {
     @Environment(\.openURL) private var openURL
 
     @State private var destination: SettingsDestination?
-    @State private var showingEmailCopied = false
-    @State private var showingResetConfirmation = false
+    @State private var showsCopiedNotice = false
+    @State private var showsResetAlert = false
     @State private var resetError: SettingsResetError?
-    @State private var textSizeSliderValue = Double(
+    @State private var textSizeValue = Double(
         AppTextSizeLevel.defaultRawValue
     )
 
-    private var selectedTextSizeLevel: AppTextSizeLevel {
+    /// Converts the stored integer to a valid domain value, guarding against a
+    /// stale value from an older app release or direct UserDefaults editing.
+    private var textSizeLevel: AppTextSizeLevel {
         AppTextSizeLevel.level(clamping: appTextSizeLevel)
     }
+
+    // MARK: Root navigation and safety prompts
 
     var body: some View {
         NavigationStack {
             settingsForm
+                // A custom principal view keeps this sheet's title vertically
+                // aligned with its native close button without hiding the bar.
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
@@ -50,6 +63,7 @@ struct SettingsView: View {
                         Text("Settings")
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(theme.colors.primaryText)
+                            .accessibilityAddTraits(.isHeader)
                     }
 
                     ToolbarItem(placement: .topBarLeading) {
@@ -77,10 +91,12 @@ struct SettingsView: View {
         .background(theme.colors.background.ignoresSafeArea())
         .preferredColorScheme(theme.preferredColorScheme)
         .presentationBackground(theme.colors.background)
-        .confirmationDialog(
-            "Clear Data and Reset App",
-            isPresented: $showingResetConfirmation,
-            titleVisibility: .visible
+        // A system alert is the widest native, modal confirmation surface
+        // available here. Its size remains system-controlled, while its focus
+        // and explicit cancel/destructive actions work with assistive input.
+        .alert(
+            "Clear Data and Reset App?",
+            isPresented: $showsResetAlert
         ) {
             Button("Reset App", role: .destructive, action: resetApp)
             Button("Cancel", role: .cancel) {}
@@ -91,7 +107,7 @@ struct SettingsView: View {
         }
         .alert(
             "Settings",
-            isPresented: resetErrorIsPresented,
+            isPresented: showsResetError,
             presenting: resetError
         ) { _ in
             Button("OK") {
@@ -102,6 +118,10 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: Main settings categories
+
+    /// The main form contains navigational summaries; detailed controls live
+    /// in destination forms so the initial screen remains easy to scan.
     private var settingsForm: some View {
         Form {
             Section {
@@ -121,7 +141,7 @@ struct SettingsView: View {
                     "Text Size",
                     value: useSystemTextSize
                         ? localizedString("System", locale: locale)
-                        : selectedTextSizeLevel.displayName(locale: locale),
+                        : textSizeLevel.displayName(locale: locale),
                     systemImage: "textformat.size",
                     destination: .textSize
                 )
@@ -138,7 +158,7 @@ struct SettingsView: View {
 
             Section {
                 Button(role: .destructive) {
-                    showingResetConfirmation = true
+                    showsResetAlert = true
                 } label: {
                     settingsLabel(
                         "Clear Data and Reset App",
@@ -183,10 +203,16 @@ struct SettingsView: View {
         .scrollContentBackground(.hidden)
         .background(theme.colors.background)
         .task {
+            // Attribution is provider data and may not be immediately present
+            // in the weather store, so load it independently of forecasts.
             await model.weatherStore.loadAttributionIfNeeded()
         }
     }
 
+    // MARK: Destination forms
+
+    /// Value-based destination selection keeps navigation state in one enum
+    /// instead of five separate Boolean flags.
     @ViewBuilder
     private func destinationView(
         _ destination: SettingsDestination
@@ -210,6 +236,8 @@ struct SettingsView: View {
         }
     }
 
+    /// Unit choices write immediately to app storage, which lets weather text
+    /// throughout the app reformat on its next SwiftUI update.
     private var unitsForm: some View {
         settingsDestinationForm {
             Section {
@@ -266,6 +294,8 @@ struct SettingsView: View {
         }
     }
 
+    /// The slider uses a `Double` because SwiftUI's Slider requires it, then
+    /// rounds back to the integer-backed `AppTextSizeLevel` preference.
     private var textSizeForm: some View {
         settingsDestinationForm {
             Section {
@@ -277,9 +307,10 @@ struct SettingsView: View {
                         Text(verbatim: "A")
                             .font(.system(size: 18))
                             .frame(width: 44)
+                            .accessibilityHidden(true)
 
                         Slider(
-                            value: $textSizeSliderValue,
+                            value: $textSizeValue,
                             in: Double(
                                 AppTextSizeLevel.minimumSelectableRawValue
                             )...Double(
@@ -288,13 +319,21 @@ struct SettingsView: View {
                             step: 1
                         )
                         .tint(theme.colors.accent)
-                        .onChange(of: textSizeSliderValue) { _, newValue in
+                        .onChange(of: textSizeValue) { _, newValue in
                             appTextSizeLevel = Int(newValue.rounded())
                         }
+                        .accessibilityLabel(Text("Text Size"))
+                        .accessibilityValue(
+                            useSystemTextSize
+                                ? localizedString("System", locale: locale)
+                                : textSizeLevel.displayName(locale: locale)
+                        )
+                        .accessibilityHint(Text("Adjusts the app text size"))
 
                         Text(verbatim: "A")
                             .font(.system(size: 34))
                             .frame(width: 44)
+                            .accessibilityHidden(true)
                     }
                     .foregroundStyle(theme.colors.secondaryText)
                     .opacity(useSystemTextSize ? 0.42 : 1)
@@ -302,7 +341,7 @@ struct SettingsView: View {
                     Text(
                         useSystemTextSize
                             ? localizedString("System", locale: locale)
-                            : selectedTextSizeLevel.displayName(locale: locale)
+                            : textSizeLevel.displayName(locale: locale)
                     )
                     .font(.callout.weight(.medium))
                     .foregroundStyle(theme.colors.secondaryText)
@@ -312,10 +351,12 @@ struct SettingsView: View {
             .listRowBackground(theme.colors.settingsRowFill)
         }
         .onAppear {
-            textSizeSliderValue = Double(selectedTextSizeLevel.rawValue)
+            textSizeValue = Double(textSizeLevel.rawValue)
         }
     }
 
+    /// Theme selection mutates the environment's shared theme object rather
+    /// than locally styling this one screen.
     private var themeForm: some View {
         settingsDestinationForm {
             Section {
@@ -334,17 +375,23 @@ struct SettingsView: View {
                                     .foregroundStyle(
                                         theme.colors.secondaryText
                                     )
+                                    .accessibilityHidden(true)
                             }
                         }
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(
+                        theme.style == style ? .isSelected : []
+                    )
                 }
             }
             .listRowBackground(theme.colors.settingsRowFill)
         }
     }
 
+    /// Attribution is data-driven: WeatherKit's official mark is shown when
+    /// its asynchronously loaded attribution object is available.
     private var attributionsForm: some View {
         settingsDestinationForm {
             Section("Weather") {
@@ -419,6 +466,9 @@ struct SettingsView: View {
         }
     }
 
+    // MARK: Reusable rows and formatting helpers
+
+    /// Applies the shared background treatment to every pushed settings form.
     private func settingsDestinationForm<Content: View>(
         @ViewBuilder content: () -> Content
     ) -> some View {
@@ -437,6 +487,7 @@ struct SettingsView: View {
         } icon: {
             Image(systemName: systemImage)
                 .foregroundStyle(theme.colors.dotSun)
+                .accessibilityHidden(true)
         }
     }
 
@@ -461,6 +512,8 @@ struct SettingsView: View {
         }
     }
 
+    /// A plain button gives consistent custom row styling while the enum state
+    /// above still drives native NavigationStack destinations.
     private func navigationRow(
         _ title: LocalizedStringKey,
         value: String?,
@@ -476,11 +529,13 @@ struct SettingsView: View {
                 if let value {
                     Text(value)
                         .foregroundStyle(theme.colors.secondaryText)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.trailing)
                 }
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(theme.colors.secondaryText)
+                    .accessibilityHidden(true)
             }
             .contentShape(.rect)
         }
@@ -501,11 +556,13 @@ struct SettingsView: View {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(theme.colors.secondaryText)
+                        .accessibilityHidden(true)
                 }
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -526,6 +583,7 @@ struct SettingsView: View {
                     Image(systemName: "arrow.up.forward")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(theme.colors.secondaryText)
+                        .accessibilityHidden(true)
                 }
                 .contentShape(.rect)
             }
@@ -533,36 +591,41 @@ struct SettingsView: View {
         }
     }
 
+    /// Copies the contact address intentionally, then confirms the action in a
+    /// small native alert rather than opening the user's mail client.
     private var sayHelloRow: some View {
         Button {
             UIPasteboard.general.string = "yutao5726@gmail.com"
-            showingEmailCopied = true
+            showsCopiedNotice = true
         } label: {
             HStack {
                 settingsLabel("Say Hello", systemImage: "envelope")
                 Spacer(minLength: 8)
                 Image(systemName: "doc.on.doc")
                     .foregroundStyle(theme.colors.secondaryText)
+                    .accessibilityHidden(true)
             }
         }
         .buttonStyle(.plain)
-        .alert("Email Copied", isPresented: $showingEmailCopied) {
+        .accessibilityHint(Text("Copies the support email address"))
+        .alert("Email Copied", isPresented: $showsCopiedNotice) {
             Button("OK", role: .cancel) {}
         }
     }
 
+    /// Canvas draws a compact diagonal light/dark swatch without bundling image
+    /// assets for every theme option.
     private func themeIndicator(for style: AppThemeStyle) -> some View {
-        let dark = Color(hex: 0x262626)
         let fills: (Color, Color)
         switch style {
         case .automatic:
-            fills = (AppPalette.light.background, dark)
+            fills = (AppPalette.light.background, AppPalette.dark.background)
         case .automaticBlack:
             fills = (AppPalette.light.background, AppPalette.black.background)
         case .light:
             fills = (AppPalette.light.background, AppPalette.light.background)
         case .dark:
-            fills = (dark, dark)
+            fills = (AppPalette.dark.background, AppPalette.dark.background)
         case .black:
             fills = (AppPalette.black.background, AppPalette.black.background)
         }
@@ -588,6 +651,7 @@ struct SettingsView: View {
                     lineWidth: 0.75
                 )
         }
+        .accessibilityHidden(true)
     }
 
     private var resolvedTemperatureUnit: TemperatureUnit {
@@ -599,6 +663,8 @@ struct SettingsView: View {
     }
 
     private func languageDisplayName(for code: String) -> String {
+        // Show each option in its own language rather than localizing the
+        // language name into the currently selected app language.
         switch code {
         case "en": "English"
         case "fr": "Français"
@@ -615,7 +681,10 @@ struct SettingsView: View {
         }
     }
 
-    private var resetErrorIsPresented: Binding<Bool> {
+    // MARK: Reset handling
+
+    /// Adapts optional error state to the Boolean binding expected by `alert`.
+    private var showsResetError: Binding<Bool> {
         Binding(
             get: { resetError != nil },
             set: { isPresented in
@@ -627,6 +696,8 @@ struct SettingsView: View {
     }
 
     private func resetApp() {
+        // The root owns the multi-store reset sequence. Settings only presents
+        // the destructive confirmation and turns a thrown error into an alert.
         do {
             try onResetApp()
         } catch {
@@ -654,6 +725,9 @@ private struct WeatherAttributionView: View {
     var body: some View {
         Link(destination: attribution.legalPageURL) {
             HStack {
+                // `AsyncImage` is explicit about loading and failure so the
+                // attribution row remains useful even if the mark URL is slow
+                // or unavailable on the current network.
                 AsyncImage(url: markURL) { phase in
                     switch phase {
                     case .success(let image):
@@ -669,6 +743,7 @@ private struct WeatherAttributionView: View {
                         ProgressView()
                             .controlSize(.small)
                             .frame(minWidth: 24, minHeight: 24)
+                            .accessibilityHidden(true)
                     case .failure:
                         Text(attribution.serviceName)
                             .font(.footnote)
@@ -682,11 +757,16 @@ private struct WeatherAttributionView: View {
                 Image(systemName: "arrow.up.right")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
             }
             .contentShape(.rect)
         }
+        .accessibilityLabel(attribution.serviceName)
+        .accessibilityHint(Text("Opens weather attribution"))
     }
 
+    /// WeatherKit provides separate light and dark artwork, so select the one
+    /// with sufficient contrast for the currently resolved color scheme.
     private var markURL: URL {
         colorScheme == .dark
             ? attribution.combinedMarkDarkURL
@@ -700,6 +780,8 @@ private struct WeatherAttributionView: View {
 private struct NavigationPopGestureDisabler: UIViewControllerRepresentable {
     let isDisabled: Bool
 
+    /// Stores the original UIKit state so the bridge can restore it exactly,
+    /// including when SwiftUI tears the representable down unexpectedly.
     final class Coordinator {
         weak var gestureRecognizer: UIGestureRecognizer?
         var originalIsEnabled: Bool?
@@ -713,6 +795,8 @@ private struct NavigationPopGestureDisabler: UIViewControllerRepresentable {
         UIViewController()
     }
 
+    /// UIKit exposes the interactive back swipe on the navigation controller,
+    /// not as a SwiftUI modifier. The dispatch defers until it is attached.
     func updateUIViewController(
         _ uiViewController: UIViewController,
         context: Context
@@ -749,6 +833,10 @@ private struct NavigationPopGestureDisabler: UIViewControllerRepresentable {
     }
 }
 
+// MARK: - Settings Navigation Values
+
+/// The finite list of pushed settings screens. `rawValue` supplies stable
+/// identity for `navigationDestination(item:)`.
 private enum SettingsDestination: String, Hashable, Identifiable {
     case units
     case language
@@ -759,6 +847,7 @@ private enum SettingsDestination: String, Hashable, Identifiable {
     var id: String { rawValue }
 }
 
+/// Error wrapper required for presentation via `alert(item:)`.
 private struct SettingsResetError: Identifiable {
     let id = UUID()
     let message: String

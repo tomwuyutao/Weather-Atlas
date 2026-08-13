@@ -1,7 +1,11 @@
-# macOS
+# Repository policy: keep source, shared Xcode settings, and project metadata in
+# Git; ignore only machine-specific files and regenerated local output.
+
+# macOS Finder metadata (created locally, never relevant to the app).
 .DS_Store
 
-# Xcode user-specific and generated files
+# Xcode per-developer UI state and derived build products. Xcode recreates these
+# from the tracked project file, so sharing them would create noisy conflicts.
 xcuserdata/
 *.xcuserstate
 DerivedData/
@@ -10,10 +14,12 @@ build/
 *.xccheckout
 *.xcscmblueprint
 
-# Local developer-tool output
+# Local developer-tool output: temporary Python bytecode and caches are inputs
+# to no app target and can be rebuilt on each machine.
 Tools/__pycache__/
 Tools/cache/
 *.pyc
 
-# Local assistant transcripts must never be committed
+# Local assistant transcripts may contain transient working context; keep them
+# outside the shared project history.
 codex-messages-*.txt
