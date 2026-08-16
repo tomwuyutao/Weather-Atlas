@@ -546,7 +546,7 @@ struct SunnyHoursTimelineSegment: Identifiable, Hashable {
     /// Condition treatment used to render the segment.
     let kind: SunnyHourKind
 
-    /// Convenience flag used by chart fill and accessibility styling.
+    /// Convenience flag used by chart fill styling.
     var isPartlySunny: Bool { kind == .partlySunny }
 }
 
@@ -717,9 +717,10 @@ enum SunnyHoursFormatting {
     // MARK: - Sunny-Hour Counts
 
     /// Formats a whole or half sunny-hour total with the active locale's
-    /// decimal separator while keeping compact card terminology consistent.
+    /// decimal separator and the app-wide compact unit convention (for example,
+    /// `11h`, never `11 h`).
     static func hourCountLabel(_ hours: Double, locale: Locale) -> String {
-        "\(hourCountText(hours, locale: locale)) h"
+        "\(hourCountText(hours, locale: locale))h"
     }
 
     /// Formats the numeric portion separately for status sentences that supply

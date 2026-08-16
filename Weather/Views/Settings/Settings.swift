@@ -18,6 +18,8 @@ import WeatherKit
 struct SettingsView: View {
     let model: WeatherModel
     let onResetApp: () throws -> Void
+    /// Restarts the guided onboarding without clearing user data.
+    let onReplayTutorial: () -> Void
 
     // MARK: Persisted preferences and presentation state
 
@@ -39,9 +41,6 @@ struct SettingsView: View {
     @State private var showsCopiedNotice = false
     @State private var showsResetAlert = false
     @State private var resetError: SettingsResetError?
-    @State private var textSizeValue = Double(
-        AppTextSizeLevel.defaultRawValue
-    )
 
     /// Converts the stored integer to a valid domain value, guarding against a
     /// stale value from an older app release or direct UserDefaults editing.
@@ -63,7 +62,7 @@ struct SettingsView: View {
                         Text("Settings")
                             .font(.headline.weight(.semibold))
                             .foregroundStyle(theme.colors.primaryText)
-                            .accessibilityAddTraits(.isHeader)
+
                     }
 
                     ToolbarItem(placement: .topBarLeading) {
@@ -80,14 +79,6 @@ struct SettingsView: View {
                     destinationView(destination)
                 }
         }
-        // Live Dynamic Type changes can rebuild the text-size destination
-        // during an edge swipe. Keep interactive pop disabled until that
-        // destination is dismissed, then restore its previous UIKit state.
-        .background(
-            NavigationPopGestureDisabler(
-                isDisabled: destination == .textSize
-            )
-        )
         .background(theme.colors.background.ignoresSafeArea())
         .preferredColorScheme(theme.preferredColorScheme)
         .presentationBackground(theme.colors.background)
@@ -137,14 +128,7 @@ struct SettingsView: View {
                     systemImage: "globe",
                     destination: .language
                 )
-                navigationRow(
-                    "Text Size",
-                    value: useSystemTextSize
-                        ? localizedString("System", locale: locale)
-                        : textSizeLevel.displayName(locale: locale),
-                    systemImage: "textformat.size",
-                    destination: .textSize
-                )
+                textSizeMenuRow
                 navigationRow(
                     "Theme",
                     value: theme.style.displayName(locale: locale),
@@ -157,6 +141,13 @@ struct SettingsView: View {
             .listRowBackground(theme.colors.settingsRowFill)
 
             Section {
+                Button(action: onReplayTutorial) {
+                    settingsLabel(
+                        "Replay Tutorial",
+                        systemImage: "play.circle"
+                    )
+                }
+
                 Button(role: .destructive) {
                     showsResetAlert = true
                 } label: {
@@ -224,9 +215,6 @@ struct SettingsView: View {
         case .language:
             languageForm
                 .navigationTitle("Language")
-        case .textSize:
-            textSizeForm
-                .navigationTitle("Text Size")
         case .theme:
             themeForm
                 .navigationTitle("Theme")
@@ -294,67 +282,6 @@ struct SettingsView: View {
         }
     }
 
-    /// The slider uses a `Double` because SwiftUI's Slider requires it, then
-    /// rounds back to the integer-backed `AppTextSizeLevel` preference.
-    private var textSizeForm: some View {
-        settingsDestinationForm {
-            Section {
-                Toggle("Use System Text Size", isOn: $useSystemTextSize)
-                    .tint(theme.colors.accent)
-
-                VStack(spacing: 14) {
-                    HStack(spacing: 8) {
-                        Text(verbatim: "A")
-                            .font(.system(size: 18))
-                            .frame(width: 44)
-                            .accessibilityHidden(true)
-
-                        Slider(
-                            value: $textSizeValue,
-                            in: Double(
-                                AppTextSizeLevel.minimumSelectableRawValue
-                            )...Double(
-                                AppTextSizeLevel.maximumSelectableRawValue
-                            ),
-                            step: 1
-                        )
-                        .tint(theme.colors.accent)
-                        .onChange(of: textSizeValue) { _, newValue in
-                            appTextSizeLevel = Int(newValue.rounded())
-                        }
-                        .accessibilityLabel(Text("Text Size"))
-                        .accessibilityValue(
-                            useSystemTextSize
-                                ? localizedString("System", locale: locale)
-                                : textSizeLevel.displayName(locale: locale)
-                        )
-                        .accessibilityHint(Text("Adjusts the app text size"))
-
-                        Text(verbatim: "A")
-                            .font(.system(size: 34))
-                            .frame(width: 44)
-                            .accessibilityHidden(true)
-                    }
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .opacity(useSystemTextSize ? 0.42 : 1)
-
-                    Text(
-                        useSystemTextSize
-                            ? localizedString("System", locale: locale)
-                            : textSizeLevel.displayName(locale: locale)
-                    )
-                    .font(.callout.weight(.medium))
-                    .foregroundStyle(theme.colors.secondaryText)
-                }
-                .disabled(useSystemTextSize)
-            }
-            .listRowBackground(theme.colors.settingsRowFill)
-        }
-        .onAppear {
-            textSizeValue = Double(textSizeLevel.rawValue)
-        }
-    }
-
     /// Theme selection mutates the environment's shared theme object rather
     /// than locally styling this one screen.
     private var themeForm: some View {
@@ -375,15 +302,13 @@ struct SettingsView: View {
                                     .foregroundStyle(
                                         theme.colors.secondaryText
                                     )
-                                    .accessibilityHidden(true)
+
                             }
                         }
                         .contentShape(.rect)
                     }
                     .buttonStyle(.plain)
-                    .accessibilityAddTraits(
-                        theme.style == style ? .isSelected : []
-                    )
+
                 }
             }
             .listRowBackground(theme.colors.settingsRowFill)
@@ -487,7 +412,7 @@ struct SettingsView: View {
         } icon: {
             Image(systemName: systemImage)
                 .foregroundStyle(theme.colors.dotSun)
-                .accessibilityHidden(true)
+
         }
     }
 
@@ -535,11 +460,79 @@ struct SettingsView: View {
                 Image(systemName: "chevron.right")
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(theme.colors.secondaryText)
-                    .accessibilityHidden(true)
+
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
+    }
+
+    /// A direct native menu keeps the text-size selection on the main Settings
+    /// screen instead of pushing a slider-only destination.
+    private var textSizeMenuRow: some View {
+        Menu {
+            Button {
+                useSystemTextSize = true
+            } label: {
+                textSizeMenuOption(
+                    localizedString("System", locale: locale),
+                    isSelected: useSystemTextSize
+                )
+            }
+
+            Divider()
+
+            ForEach(AppTextSizeLevel.allCases, id: \.rawValue) { level in
+                Button {
+                    useSystemTextSize = false
+                    appTextSizeLevel = level.rawValue
+                } label: {
+                    textSizeMenuOption(
+                        level.displayName(locale: locale),
+                        isSelected: !useSystemTextSize
+                            && textSizeLevel == level
+                    )
+                }
+            }
+        } label: {
+            HStack(spacing: 8) {
+                settingsLabel("Text Size", systemImage: "textformat.size")
+                Spacer(minLength: 8)
+                Text(
+                    useSystemTextSize
+                        ? localizedString("System", locale: locale)
+                        : textSizeLevel.displayName(locale: locale)
+                )
+                .foregroundStyle(theme.colors.secondaryText)
+                .lineLimit(1)
+
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(theme.colors.secondaryText)
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text("Text Size"))
+        .accessibilityValue(
+            useSystemTextSize
+                ? localizedString("System", locale: locale)
+                : textSizeLevel.displayName(locale: locale)
+        )
+        .accessibilityHint(Text("Adjusts the app text size"))
+    }
+
+    private func textSizeMenuOption(
+        _ title: String,
+        isSelected: Bool
+    ) -> some View {
+        HStack {
+            Text(title)
+            Spacer(minLength: 8)
+            if isSelected {
+                Image(systemName: "checkmark")
+            }
+        }
     }
 
     private func selectionRow(
@@ -556,13 +549,13 @@ struct SettingsView: View {
                     Image(systemName: "checkmark")
                         .font(.body.weight(.semibold))
                         .foregroundStyle(theme.colors.secondaryText)
-                        .accessibilityHidden(true)
+
                 }
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+
     }
 
     @ViewBuilder
@@ -583,7 +576,7 @@ struct SettingsView: View {
                     Image(systemName: "arrow.up.forward")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(theme.colors.secondaryText)
-                        .accessibilityHidden(true)
+
                 }
                 .contentShape(.rect)
             }
@@ -603,11 +596,11 @@ struct SettingsView: View {
                 Spacer(minLength: 8)
                 Image(systemName: "doc.on.doc")
                     .foregroundStyle(theme.colors.secondaryText)
-                    .accessibilityHidden(true)
+
             }
         }
         .buttonStyle(.plain)
-        .accessibilityHint(Text("Copies the support email address"))
+
         .alert("Email Copied", isPresented: $showsCopiedNotice) {
             Button("OK", role: .cancel) {}
         }
@@ -651,7 +644,7 @@ struct SettingsView: View {
                     lineWidth: 0.75
                 )
         }
-        .accessibilityHidden(true)
+
     }
 
     private var resolvedTemperatureUnit: TemperatureUnit {
@@ -743,7 +736,7 @@ private struct WeatherAttributionView: View {
                         ProgressView()
                             .controlSize(.small)
                             .frame(minWidth: 24, minHeight: 24)
-                            .accessibilityHidden(true)
+
                     case .failure:
                         Text(attribution.serviceName)
                             .font(.footnote)
@@ -757,12 +750,12 @@ private struct WeatherAttributionView: View {
                 Image(systemName: "arrow.up.right")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
-                    .accessibilityHidden(true)
+
             }
             .contentShape(.rect)
         }
-        .accessibilityLabel(attribution.serviceName)
-        .accessibilityHint(Text("Opens weather attribution"))
+
+
     }
 
     /// WeatherKit provides separate light and dark artwork, so select the one
@@ -774,65 +767,6 @@ private struct WeatherAttributionView: View {
     }
 }
 
-// MARK: - Navigation Gesture Bridge
-
-/// Temporarily disables interactive navigation pop while Text Size is open.
-private struct NavigationPopGestureDisabler: UIViewControllerRepresentable {
-    let isDisabled: Bool
-
-    /// Stores the original UIKit state so the bridge can restore it exactly,
-    /// including when SwiftUI tears the representable down unexpectedly.
-    final class Coordinator {
-        weak var gestureRecognizer: UIGestureRecognizer?
-        var originalIsEnabled: Bool?
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeUIViewController(context: Context) -> UIViewController {
-        UIViewController()
-    }
-
-    /// UIKit exposes the interactive back swipe on the navigation controller,
-    /// not as a SwiftUI modifier. The dispatch defers until it is attached.
-    func updateUIViewController(
-        _ uiViewController: UIViewController,
-        context: Context
-    ) {
-        DispatchQueue.main.async {
-            guard let gestureRecognizer = uiViewController
-                .navigationController?
-                .interactivePopGestureRecognizer else {
-                return
-            }
-
-            context.coordinator.gestureRecognizer = gestureRecognizer
-            if isDisabled {
-                if context.coordinator.originalIsEnabled == nil {
-                    context.coordinator.originalIsEnabled =
-                        gestureRecognizer.isEnabled
-                }
-                gestureRecognizer.isEnabled = false
-            } else if let originalIsEnabled =
-                context.coordinator.originalIsEnabled {
-                gestureRecognizer.isEnabled = originalIsEnabled
-                context.coordinator.originalIsEnabled = nil
-            }
-        }
-    }
-
-    static func dismantleUIViewController(
-        _ uiViewController: UIViewController,
-        coordinator: Coordinator
-    ) {
-        if let originalIsEnabled = coordinator.originalIsEnabled {
-            coordinator.gestureRecognizer?.isEnabled = originalIsEnabled
-        }
-    }
-}
-
 // MARK: - Settings Navigation Values
 
 /// The finite list of pushed settings screens. `rawValue` supplies stable
@@ -840,7 +774,6 @@ private struct NavigationPopGestureDisabler: UIViewControllerRepresentable {
 private enum SettingsDestination: String, Hashable, Identifiable {
     case units
     case language
-    case textSize
     case theme
     case attributions
 

@@ -34,8 +34,8 @@ struct OfflineBanner: View {
             colorScheme: colorScheme,
             in: Capsule()
         )
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text("No Internet Connection"))
+
+
         .foregroundStyle(theme.colors.primaryText)
     }
 }
@@ -53,7 +53,7 @@ struct OfflineBannerContent: View {
             Image(systemName: "wifi.slash")
                 .font(.title3.weight(.medium))
                 .frame(width: 28)
-                .accessibilityHidden(true)
+
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("No Internet Connection")
@@ -76,7 +76,7 @@ struct OfflineBannerContent: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
                 .buttonStyle(.plain)
-                .accessibilityLabel(Text("Close"))
+
         }
         .frame(minHeight: OfflineBannerLayout.height)
     }

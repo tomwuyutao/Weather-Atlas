@@ -50,9 +50,7 @@ struct ManageSavedPlaces: View {
                     Button(action: toggleEditMode) {
                         Image(systemName: editMode.isEditing ? "checkmark" : "pencil")
                     }
-                    .accessibilityLabel(
-                        editMode.isEditing ? "Done editing" : "Edit saved places"
-                    )
+
                     .disabled(savedPlaces.isEmpty)
                 }
             }
@@ -113,7 +111,9 @@ struct ManageSavedPlaces: View {
         } else if savedPlaces.isEmpty {
             PlacesEmptyView(
                 searchPlaces: {
-                    router.selectedTab = .search
+                    // Do not restore a previous Search detail after the user
+                    // reaches this empty-library call to action.
+                    router.showSearchRoot()
                 }
             )
         } else {
@@ -172,7 +172,7 @@ struct ManageSavedPlaces: View {
                         .frame(width: 32)
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Rename \(place.displayName)")
+
             }
             .contextMenu { placeContextMenu(place) }
         } else {
@@ -341,6 +341,7 @@ private struct CompactSavedPlaceRow: View {
 /// First-run state directing users toward the only way to create saved places.
 private struct PlacesEmptyView: View {
     let searchPlaces: () -> Void
+    @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
 
     private var title: String {
@@ -364,12 +365,10 @@ private struct PlacesEmptyView: View {
             Button(action: searchPlaces) {
                 Label("Search for a Place", systemImage: "magnifyingglass")
                     .font(.body.weight(.medium))
-                    .foregroundStyle(AppPalette.light.titleText)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 12)
+                    .foregroundStyle(theme.colors.primaryText)
+                    .frame(minHeight: 44)
             }
-            .buttonStyle(.plain)
-            .background(AppPalette.light.dotSun, in: Capsule())
+            .weatherGlassActionStyle()
         }
     }
 }
@@ -387,7 +386,7 @@ private struct PlacesLibraryUnavailableView: View {
             Text(message)
         } actions: {
             Button("Try Again", systemImage: "arrow.clockwise", action: retry)
-                .buttonStyle(.borderedProminent)
+                .weatherGlassActionStyle()
         }
     }
 }

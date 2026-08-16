@@ -315,6 +315,52 @@ struct ThemeColors {
     /// Highlight used by the sunny-only filter.
     var filterSunny: Color { dotSun }
 
+    /// The upper bound for the shared sunny-hours color scale used by the map
+    /// and Saved Places heatmap. Longer days intentionally share the same
+    /// fully-sunny endpoint.
+    static let sunnyHoursColorScaleMaximum = 10.0
+
+    /// Maps total sunny hours onto the shared quiet-to-vivid sunny ramp.
+    ///
+    /// Zero hours uses the plain surface fill. Positive values use the same
+    /// curved sunny-yellow opacity, reaching its strongest value at ten
+    /// hours. Keeping this calculation in the theme keeps Map dots and the
+    /// Saved Places heatmap visually identical.
+    func sunnyHoursColor(
+        for sunnyHours: Double,
+        colorScheme: ColorScheme
+    ) -> Color {
+        let fraction = min(
+            max(sunnyHours / Self.sunnyHoursColorScaleMaximum, 0),
+            1
+        )
+        guard fraction > 0 else {
+            return glassFill.opacity(colorScheme == .dark ? 0.34 : 0.56)
+        }
+
+        let curvedFraction = pow(fraction, 1.55)
+        return dotSun.opacity(0.16 + 0.79 * curvedFraction)
+    }
+
+    /// Fully opaque Map-dot equivalent of `sunnyHoursColor(for:colorScheme:)`.
+    ///
+    /// MapKit draws dots over variable terrain, so applying alpha directly can
+    /// make lower-sun dots look transparent. Pre-blending the same ramp with a
+    /// very light neutral gray preserves its soft progression while keeping
+    /// every marker solid and legible above the map.
+    func sunnyHoursMapDotColor(for sunnyHours: Double) -> Color {
+        let fraction = min(
+            max(sunnyHours / Self.sunnyHoursColorScaleMaximum, 0),
+            1
+        )
+        let lightGrayBase = Color.white.interpolated(with: dotCloudy, by: 0.55)
+        guard fraction > 0 else { return lightGrayBase }
+
+        let curvedFraction = pow(fraction, 1.55)
+        let sunnyOpacity = 0.16 + 0.79 * curvedFraction
+        return lightGrayBase.interpolated(with: dotSun, by: sunnyOpacity)
+    }
+
     /// Returns the exact semantic marker color for a normalized weather tone.
     ///
     /// Weather symbols must match their corresponding Map marker rather than
@@ -385,7 +431,7 @@ extension ThemeColors {
     static let black = ThemeColors(palette: AppPalette.black)
 }
 
-// MARK: - Accessibility - Increased Contrast Palettes
+// MARK: - Increased Contrast Palettes
 
 // These palettes activate only with the system Increase Contrast setting.
 // Text colors meet a 4.5:1 minimum and meaningful palette colors meet a 3:1 minimum
@@ -535,7 +581,7 @@ private struct WeatherIconStyleModifier: ViewModifier {
     }
 }
 
-// MARK: - Accessibility - Legible Translucent Surfaces
+// MARK: - High-Contrast Translucent Surfaces
 
 // These surface modifiers replace translucency with opaque, outlined surfaces
 // when Reduce Transparency or Increase Contrast is enabled.
@@ -564,8 +610,6 @@ private extension View {
 private struct GlassCardModifier<Shape: InsettableShape>: ViewModifier {
     /// Active theme palette.
     @Environment(\.appTheme) private var theme
-    /// System preference that replaces translucency with an opaque surface.
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     /// System preference requiring a stronger card outline.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     /// Resolved scheme used to tune translucent fill opacity.
@@ -576,11 +620,11 @@ private struct GlassCardModifier<Shape: InsettableShape>: ViewModifier {
     let isInteractive: Bool
 
     @ViewBuilder
-    /// Applies the detail-card surface appropriate to OS and accessibility state.
+    /// Applies the detail-card surface appropriate to the OS and contrast setting.
     func body(content: Content) -> some View {
-        // People who ask for less transparency or more contrast get an opaque
-        // shape first; visual legibility takes precedence over glass decoration.
-        if reduceTransparency || colorSchemeContrast == .increased {
+        // Increased contrast gets an opaque shape first; visual legibility
+        // takes precedence over glass decoration.
+        if colorSchemeContrast == .increased {
             content.highLegibilityGlass(
                 theme: theme.colors,
                 contrast: colorSchemeContrast,
@@ -716,6 +760,23 @@ extension View {
                 isInteractive: true
             )
         )
+    }
+
+    /// Gives comparable report and planning actions one native presentation.
+    /// On iOS 26 this is Apple's interactive Liquid Glass capsule; earlier
+    /// deployments retain the closest native bordered control instead of a
+    /// hand-built material imitation.
+    @ViewBuilder
+    func weatherGlassActionStyle() -> some View {
+        if #available(iOS 26.0, *) {
+            self
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+        } else {
+            self
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+        }
     }
 
     /// Keeps system List/Form behavior while replacing only its canvas color.

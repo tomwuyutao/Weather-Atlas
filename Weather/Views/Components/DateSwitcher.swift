@@ -27,11 +27,29 @@ struct TopForecastDateSwitcher: View {
     @Environment(\.locale) private var locale
     // The toolbar's date label and hit targets must grow with the surrounding
     // body text instead of remaining a fixed, harder-to-read control.
-    @ScaledMetric(relativeTo: .body) private var dateLabelWidth: CGFloat = 104
+    @ScaledMetric(relativeTo: .body) private var dateLabelWidth: CGFloat = 96
     @ScaledMetric(relativeTo: .body) private var dateLabelHeight: CGFloat = 32
     @ScaledMetric(relativeTo: .body) private var controlHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .body) private var stepperWidth: CGFloat = 28
     @ScaledMetric(relativeTo: .body) private var stepperHeight: CGFloat = 36
+
+    /// Dynamic Type may shrink scaled metrics below their base value at the
+    /// smallest text sizes. Keep the artwork scalable, but never let an
+    /// individual toolbar control fall below Apple's 44-point tap target.
+    private var minimumTapDimension: CGFloat {
+        max(44, controlHeight)
+    }
+
+    /// The visual chevrons retain the earlier compact 28-point layout. Their
+    /// actual button frames extend outward into unused toolbar space, keeping
+    /// 44-point targets without widening the date capsule or covering its label.
+    private var stepperHitTargetOutset: CGFloat {
+        max(0, (minimumTapDimension - stepperWidth) / 2)
+    }
+
+    /// Keep the visual chevrons tucked toward the date while their invisible
+    /// 44-point button frames continue to extend into the outer toolbar space.
+    private let chevronVisualInset: CGFloat = 9
 
     // MARK: Normalized Date Navigation
 
@@ -83,9 +101,13 @@ struct TopForecastDateSwitcher: View {
                     .contentShape(Capsule())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(Text("Forecast Date"))
-            .accessibilityValue(dateText(for: normalizedSelection))
-            .accessibilityHint(Text("Open Forecast Date Picker"))
+            // The visual date label remains compact, but this independent
+            // toolbar button keeps the standard 44-point minimum hit area.
+            .frame(minWidth: dateLabelWidth, minHeight: minimumTapDimension)
+            .contentShape(Rectangle())
+
+
+
             .popover(isPresented: $showsDatePicker) {
                 datePicker
                     // On iPhone retain the anchored calendar instead of
@@ -101,7 +123,7 @@ struct TopForecastDateSwitcher: View {
         .padding(.horizontal, 2)
         // The native toolbar provides this control's glass container. Adding
         // a second custom glass background here creates a nested capsule.
-        .frame(minHeight: controlHeight)
+        .frame(minHeight: minimumTapDimension)
         .fixedSize(horizontal: true, vertical: false)
     }
 
@@ -109,30 +131,43 @@ struct TopForecastDateSwitcher: View {
         systemImage: String,
         targetDate: Date?
     ) -> some View {
-        Button {
-            guard let targetDate else { return }
-            withAnimation(.smooth(duration: 0.2)) {
-                selection = targetDate
-            }
-        } label: {
-            Image(systemName: systemImage)
-                .font(.caption.weight(.semibold))
-                .frame(width: stepperWidth, height: stepperHeight)
+        Color.clear
+            .frame(width: stepperWidth, height: stepperHeight)
+            .overlay {
+                Button {
+                    guard let targetDate else { return }
+                    withAnimation(.smooth(duration: 0.2)) {
+                        selection = targetDate
+                    }
+                } label: {
+                    Image(systemName: systemImage)
+                        .font(.caption.weight(.semibold))
+                        .frame(width: stepperWidth, height: stepperHeight)
+                        .offset(
+                            x: systemImage == "chevron.left"
+                                ? chevronVisualInset
+                                : -chevronVisualInset
+                        )
+                }
+                .buttonStyle(.plain)
+                // Preserve the original compact visual spacing while each
+                // chevron's real hit target expands away from the date label.
+                .frame(width: minimumTapDimension, height: minimumTapDimension)
                 .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(
-            targetDate == nil
-                ? theme.colors.primaryText.opacity(0.28)
-                : theme.colors.primaryText
-        )
-        .disabled(targetDate == nil)
-        .accessibilityLabel(
-            systemImage == "chevron.left"
-                ? Text("Previous Forecast Date")
-                : Text("Next Forecast Date")
-        )
-        .accessibilityValue(targetDate.map(dateText(for:)) ?? "")
+                .offset(
+                    x: systemImage == "chevron.left"
+                        ? -stepperHitTargetOutset
+                        : stepperHitTargetOutset
+                )
+                .foregroundStyle(
+                    targetDate == nil
+                        ? theme.colors.primaryText.opacity(0.28)
+                        : theme.colors.primaryText
+                )
+                .disabled(targetDate == nil)
+
+
+            }
     }
 
     // MARK: Calendar Picker
@@ -174,6 +209,18 @@ struct TopForecastDateSwitcher: View {
     }
 
     private func dateText(for date: Date) -> String {
+        // Keep the compact toolbar wording familiar for the two most useful
+        // forecast days. The calendar comes from WeatherModel, so “Today” and
+        // “Tomorrow” follow the app's active forecast time zone rather than
+        // accidentally following a different device time zone.
+        if calendar.isDateInToday(date) {
+            return localizedString("Today", locale: locale)
+        }
+
+        if calendar.isDateInTomorrow(date) {
+            return localizedString("Tomorrow", locale: locale)
+        }
+
         return date.formatted(
             Date.FormatStyle.dateTime
                 .weekday(.abbreviated)

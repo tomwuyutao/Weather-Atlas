@@ -9,11 +9,11 @@ import SwiftUI
 
 // MARK: - Date Summary Model
 
-/// A weighted sunlight summary for one forecast date across Saved Places.
+/// An average sunny-hours summary for one forecast date across Saved Places.
 struct BestSunnyDateSummary: Identifiable {
     let date: Date
-    /// Weighted count derived from the person's partly-sunny policy.
-    let weightedSunnyPlaceCount: Double
+    /// Mean selected-day sunny hours across available Saved Places.
+    let averageSunnyHours: Double
     let availableCityCount: Int
 
     var id: Date { date }
@@ -115,7 +115,10 @@ struct BestSunnyDatesCard: View {
     var body: some View {
         // Every planning card uses the same shared header, padding, corner
         // radius, and translucent material as the rest of the app.
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(
+            alignment: .leading,
+            spacing: WeatherCardLayout.contentSpacing
+        ) {
             WeatherCardHeader(
                 icon: "calendar",
                 title: "Best Sunny Dates"
@@ -145,15 +148,19 @@ struct BestSunnyDatesCard: View {
             if presentationState == .loading {
                 ProgressView()
                     .controlSize(.small)
-                    .accessibilityHidden(true)
+
             }
 
             Text(statusMessage)
         }
         .font(.callout)
         .foregroundStyle(theme.colors.secondaryText)
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: WeatherCardFallbackLayout.savedDatesContentHeight,
+            alignment: .leading
+        )
+
     }
 
     private var statusMessage: LocalizedStringKey {
@@ -184,7 +191,7 @@ struct BestSunnyDatesCard: View {
                         // Adjacent selectable dates include full localized
                         // labels and values; weekday headings are visual grid
                         // scaffolding rather than useful focus stops.
-                        .accessibilityHidden(true)
+
                 }
             }
 
@@ -216,13 +223,13 @@ struct BestSunnyDatesCard: View {
                 )
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(accessibilityDateLabel(for: summary.date))
-            .accessibilityValue(accessibilityValue(for: summary))
-            .accessibilityHint(Text("Select this forecast date"))
-            .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+
+
+
         } else {
             calendarDayCell(day, isSelected: false)
-                .accessibilityHidden(true)
+
         }
     }
 
@@ -264,38 +271,6 @@ struct BestSunnyDatesCard: View {
         .contentShape(shape)
     }
 
-    private func accessibilityDateLabel(for date: Date) -> String {
-        date.formatted(
-            .dateTime
-                .weekday(.wide)
-                .month(.wide)
-                .day()
-                .locale(locale)
-        )
-    }
-
-    private func accessibilityValue(
-        for summary: BestSunnyDateSummary
-    ) -> String {
-        let sunnyPlaceCount = summary.weightedSunnyPlaceCount.formatted(
-            .number
-                .precision(.fractionLength(0...1))
-                .locale(locale)
-        )
-        let availablePlaceCount = summary.availableCityCount.formatted(
-            .number.locale(locale)
-        )
-        return String(
-            format: localizedString(
-                "%@ of %@ saved places with sunny hours",
-                locale: locale
-            ),
-            locale: locale,
-            sunnyPlaceCount,
-            availablePlaceCount
-        )
-    }
-
     private func heatmapFill(for day: BestSunnyCalendarDate) -> Color {
         guard day.isForecastDate,
               let summary = day.summary else {
@@ -304,25 +279,16 @@ struct BestSunnyDatesCard: View {
             )
         }
 
-        guard summary.weightedSunnyPlaceCount > 0,
-              summary.availableCityCount > 0 else {
+        guard summary.availableCityCount > 0 else {
             return theme.colors.glassFill.opacity(
                 colorScheme == .dark ? 0.34 : 0.56
             )
         }
 
-        let fraction = max(
-            0,
-            min(
-                1,
-                summary.weightedSunnyPlaceCount
-                    / Double(summary.availableCityCount)
-            )
+        return theme.colors.sunnyHoursColor(
+            for: summary.averageSunnyHours,
+            colorScheme: colorScheme
         )
-        // A slight curve makes high-sun days noticeably warmer without making
-        // low but nonzero fractions look as strong as fully sunny dates.
-        let curvedFraction = pow(fraction, 1.55)
-        return theme.colors.dotSun.opacity(0.16 + 0.79 * curvedFraction)
     }
 
     private func leadingCalendarCellCount(for date: Date) -> Int {

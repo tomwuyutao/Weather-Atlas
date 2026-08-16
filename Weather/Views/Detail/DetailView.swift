@@ -14,8 +14,12 @@ import SwiftUI
 /// current physical location. The owning screen still supplies its own loading,
 /// permission, retry, and supplementary content; this type only owns the
 /// report UI that is genuinely identical between those flows.
-struct DetailReportContent<SupplementaryContent: View>: View {
+struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: View {
+    /// The large report and navigation heading. A direct map query can retain
+    /// its fuller locality-and-area name here.
     let locationName: String
+    /// Ordinary labels within the report retain the concise locality.
+    let placeDisplayName: String
     let weather: CityWeather?
     let forecast: DailyForecast?
     @Binding private var selectedDate: Date
@@ -26,23 +30,28 @@ struct DetailReportContent<SupplementaryContent: View>: View {
     let showsTimeZoneFootnote: Bool
     private let onHeaderVisibilityChange: (Bool) -> Void
     private let supplementaryContent: SupplementaryContent
+    private let footerContent: FooterContent
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.locale) private var locale
 
     init(
         locationName: String,
+        placeDisplayName: String? = nil,
         weather: CityWeather?,
         forecast: DailyForecast?,
         selectedDate: Binding<Date>,
         dailySunnyHoursCard: SunnyHoursTimeline,
         tenDaySunnyHoursTimeline: TenDaySunnyHoursTimeline,
         temperatureUnit: TemperatureUnit,
-        maximumContentWidth: CGFloat = .infinity,
+        maximumContentWidth: CGFloat = 760,
         showsTimeZoneFootnote: Bool,
         onHeaderVisibilityChange: @escaping (Bool) -> Void = { _ in },
-        @ViewBuilder supplementaryContent: () -> SupplementaryContent
+        @ViewBuilder supplementaryContent: () -> SupplementaryContent,
+        @ViewBuilder footerContent: () -> FooterContent
     ) {
         self.locationName = locationName
+        self.placeDisplayName = placeDisplayName ?? locationName
         self.weather = weather
         self.forecast = forecast
         _selectedDate = selectedDate
@@ -53,11 +62,13 @@ struct DetailReportContent<SupplementaryContent: View>: View {
         self.showsTimeZoneFootnote = showsTimeZoneFootnote
         self.onHeaderVisibilityChange = onHeaderVisibilityChange
         self.supplementaryContent = supplementaryContent()
+        self.footerContent = footerContent()
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 14) {
+        GeometryReader { geometry in
+            ScrollView {
+                LazyVStack(spacing: 14) {
                 LocationReportHeader(
                     locationName: locationName,
                     weather: weather,
@@ -73,7 +84,7 @@ struct DetailReportContent<SupplementaryContent: View>: View {
 
                 DetailMetricGrid(
                     city: weather,
-                    placeDisplayName: locationName,
+                    placeDisplayName: placeDisplayName,
                     forecast: forecast,
                     temperatureUnit: temperatureUnit,
                     usesLandscapeIPadLayout: false,
@@ -87,20 +98,36 @@ struct DetailReportContent<SupplementaryContent: View>: View {
                     != TimeZone.autoupdatingCurrent.identifier {
                     WeatherTimeZoneFootnote(
                         text: SunnyHoursFormatting.localTimeDisclosure(
-                            placeName: locationName,
+                            placeName: placeDisplayName,
                             timeZone: weather.timeZone,
                             at: forecast.date,
                             locale: locale
                         )
                     )
                 }
+
+                footerContent
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+                .frame(maxWidth: reportContentWidth(for: geometry.size))
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 24)
-            .frame(maxWidth: maximumContentWidth)
-            .frame(maxWidth: .infinity)
         }
+    }
+
+    /// Every forecast report uses the same focused landscape-iPad column.
+    /// Phone and portrait layouts retain the established 760-point maximum,
+    /// while landscape iPad narrows to 640 points across Your Location, Saved
+    /// Places, and place Detail.
+    private func reportContentWidth(for size: CGSize) -> CGFloat {
+        guard horizontalSizeClass == .regular,
+              size.width > size.height,
+              maximumContentWidth.isFinite else {
+            return maximumContentWidth
+        }
+        return min(maximumContentWidth, 640)
     }
 }
 
@@ -117,6 +144,9 @@ struct CurrentLocationReportContent: View {
 
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
+    /// Mirrors a place report's compact title once its in-content hero scrolls
+    /// away, without showing a duplicate title while the hero is visible.
+    @State private var showsLargeTitle = true
     @AppStorage("temperatureUnit")
     private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
 
@@ -141,12 +171,19 @@ struct CurrentLocationReportContent: View {
         model.nearbyRecommendationAssessment(on: selectedDate)
     }
 
-    private var locationSunniness: LocationSunninessAssessment {
-        model.locationSunninessAssessment(on: selectedDate)
-    }
-
     private var temperatureUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
+    }
+
+    /// Prefer the resolved locality, while retaining a meaningful label during
+    /// the short interval before reverse geocoding finishes.
+    private var navigationTitle: String {
+        let trimmedName = locationName.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        return trimmedName.isEmpty
+            ? localizedString("Your Location", locale: locale)
+            : trimmedName
     }
 
     private var metadataRecoveryKey: String {
@@ -204,36 +241,46 @@ struct CurrentLocationReportContent: View {
             ),
             temperatureUnit: temperatureUnit,
             maximumContentWidth: 760,
-            showsTimeZoneFootnote: true
-        ) {
-            switch locationSunniness {
-            case .sunny:
-                EmptyView()
-            case .notSunny, .unavailable:
-                NearbySunnyPlacesCard(
-                    recommendations: nearbyAssessment.recommendations,
-                    locationStatus: model.locationProvider.status,
-                    isLoading: model.isRefreshingLocation,
-                    hasCompletedSearch: model.didSearchNearby,
-                    errorMessage: model.nearbySearchError,
-                    requestLocation: requestCurrentLocation,
-                    openSettings: openLocationSettings,
-                    retry: refreshLocation,
-                    viewOnMap: {
-                        router.showNearbyOnMap(
-                            nearbyAssessment.recommendations
-                        )
-                    }
-                )
+            showsTimeZoneFootnote: true,
+            onHeaderVisibilityChange: { isVisible in
+                showsLargeTitle = isVisible
             }
+        ) {
+            NearbySunnyPlacesCard(
+                recommendations: nearbyAssessment.recommendations,
+                locationStatus: model.locationProvider.status,
+                isLoading: model.isRefreshingLocation,
+                hasCompletedSearch: model.didSearchNearby,
+                errorMessage: model.nearbySearchError,
+                requestLocation: requestCurrentLocation,
+                openSettings: openLocationSettings,
+                retry: refreshLocation,
+                viewOnMap: {
+                    router.showNearbyOnMap(
+                        nearbyAssessment.recommendations
+                    )
+                }
+            )
+        } footerContent: {
+            EmptyView()
         }
         .scrollIndicators(.hidden)
         .weatherConditionScreenBackground(
             for: selectedForecast?.condition?.iconTone
         )
-        .navigationTitle("")
+        .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if showsLargeTitle {
+                // Match `DetailView`: reserve the compact title slot while
+                // the same title is already represented by the report hero.
+                ToolbarItem(placement: .principal) {
+                    Color.clear
+                        .frame(width: 1, height: 1)
+
+                }
+            }
+
             ToolbarItem(placement: .topBarLeading) {
                 Button("Settings", systemImage: "slider.horizontal.3") {
                     router.presentedSheet = .settings
@@ -320,6 +367,15 @@ struct DetailView: View {
             ?? ""
     }
 
+    /// A fuller reverse-geocoded locality belongs only in the report's title.
+    /// A custom saved-place name still takes precedence when the person chose
+    /// one explicitly.
+    private var detailTitle: String {
+        savedPlace?.customName
+            ?? city?.titleDisplayName
+            ?? displayName
+    }
+
     private var temperatureUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
     }
@@ -360,7 +416,8 @@ struct DetailView: View {
         // and recovery copy, so the screen never collapses into a standalone
         // spinner or retry button.
         DetailReportContent(
-            locationName: displayName,
+            locationName: detailTitle,
+            placeDisplayName: displayName,
             weather: cityWeather,
             forecast: forecast,
             selectedDate: $selectedDate,
@@ -383,12 +440,15 @@ struct DetailView: View {
                     : nil
             ),
             temperatureUnit: temperatureUnit,
+            maximumContentWidth: 760,
             showsTimeZoneFootnote: true,
             onHeaderVisibilityChange: { isVisible in
                 showsLargeTitle = isVisible
             }
         ) {
             EmptyView()
+        } footerContent: {
+            savedPlaceAction
         }
         .background(
             theme.colors.weatherBackgroundColor(
@@ -402,7 +462,7 @@ struct DetailView: View {
         .weatherConditionScreenBackground(
             for: forecast?.condition?.iconTone
         )
-        .navigationTitle(displayName)
+        .navigationTitle(detailTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if showsLargeTitle {
@@ -411,7 +471,7 @@ struct DetailView: View {
                 ToolbarItem(placement: .principal) {
                     Color.clear
                         .frame(width: 1, height: 1)
-                        .accessibilityHidden(true)
+
                 }
             }
 
@@ -474,6 +534,34 @@ struct DetailView: View {
 
     // MARK: Saved-Place Actions
 
+    /// The report ends with the same quiet secondary text-action language as
+    /// Saved Places. Saving or deleting updates this control in place without
+    /// leaving the detail screen.
+    @ViewBuilder
+    private var savedPlaceAction: some View {
+        if savedPlace == nil {
+            Button {
+                savePlace()
+            } label: {
+                SecondaryTextActionLabel(
+                    title: "Save Place",
+                    systemImage: "bookmark"
+                )
+            }
+            .buttonStyle(.plain)
+        } else {
+            Button(role: .destructive) {
+                deleteSavedPlace()
+            } label: {
+                SecondaryTextActionLabel(
+                    title: "Delete from Saved Places",
+                    systemImage: "trash"
+                )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
     /// Unsaved discovered places can be added from Detail. Saved-place editing
     /// stays in Manage Saved Places, keeping this report toolbar focused.
     @ViewBuilder
@@ -482,11 +570,11 @@ struct DetailView: View {
             savePlace()
         } label: {
             Image(systemName: "bookmark")
-                .accessibilityHidden(true)
+
         }
         .disabled(city == nil)
-        .accessibilityLabel(Text("Save Place"))
-        .accessibilityHint(Text("Adds this place to Saved Places"))
+
+
     }
 
     private var showsMutationError: Binding<Bool> {
@@ -518,6 +606,20 @@ struct DetailView: View {
         }
     }
 
+    private func deleteSavedPlace() {
+        guard let savedPlace else { return }
+        do {
+            try model.placesStore.deletePlace(id: savedPlace.id)
+        } catch {
+            mutationError = PlaceDetailMutationError(
+                message: localizedPlacesErrorDescription(
+                    error,
+                    locale: locale
+                )
+            )
+        }
+    }
+
 }
 
 // MARK: - Mutation Alert Payload
@@ -539,7 +641,6 @@ struct LocationReportHeader: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @ScaledMetric(relativeTo: .largeTitle)
     private var conditionIconSize: CGFloat = 52
     @ScaledMetric(relativeTo: .largeTitle)
@@ -551,7 +652,10 @@ struct LocationReportHeader: View {
     @ScaledMetric(relativeTo: .largeTitle)
     private var titleMinimumHeight: CGFloat = 44
 
-    private var sunStatusText: String? {
+    /// Retain the live sun-status vocabulary for today's forecast. Only the
+    /// original “Sunny for …” result (a non-today total) takes the shared Map
+    /// card treatment below.
+    private var sunStatus: SunnyHoursCalculation.DailySunStatus? {
         guard let weather,
               let forecast,
               case .success(let data) = SunnyHoursCalculation.sunnyHoursData(
@@ -560,27 +664,23 @@ struct LocationReportHeader: View {
               ) else {
             return nil
         }
-
-        switch SunnyHoursCalculation.dailySunStatus(
+        return SunnyHoursCalculation.dailySunStatus(
             in: data,
             selectedDate: forecast.date,
             timeZone: weather.timeZone,
             selectionCalendar: calendar
-        ) {
+        )
+    }
+
+    private var sunStatusText: String? {
+        guard let sunStatus else { return nil }
+        switch sunStatus {
         case .sunnyForHours(let count):
-            return String(
-                localized: "Sunny for \(SunnyHoursFormatting.hourCountText(count, locale: locale)) hours",
-                locale: locale,
-                comment: "Sun-status message shown beneath the location hero for a non-today date. The number counts clear and partly-sunny daylight hours, which need not be consecutive."
-            )
+            return SunnyHoursStatusLine.statusText(hours: count, locale: locale)
         case .sunOutNow:
-            return localizedString("Sun Out Now", locale: locale)
+            return sunOutNowText
         case .sunOutIn(let date):
-            return String(
-                format: localizedString("Sun Out in %@", locale: locale),
-                locale: locale,
-                countdownText(to: date)
-            )
+            return "\(sunOutInPrefix) \(countdownText(to: date))"
         case .noSunToday:
             return localizedString("No Sun Today", locale: locale)
         case .noMoreSunToday:
@@ -590,22 +690,14 @@ struct LocationReportHeader: View {
         }
     }
 
-    private var accessibilityLocationName: String {
-        let trimmedName = locationName.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        )
-        return trimmedName.isEmpty
-            ? localizedString("Current Location", locale: locale)
-            : trimmedName
+    /// Detail-only sentence casing keeps the status line calm beneath the
+    /// large weather icon without changing the title-style widget strings.
+    private var sunOutNowText: String {
+        localizedString("Sun out now", locale: locale)
     }
 
-    private var accessibilityWeatherSummary: String {
-        [
-            forecast?.condition?.localizedDisplayName(locale: locale),
-            sunStatusText
-        ]
-        .compactMap { $0 }
-        .joined(separator: ". ")
+    private var sunOutInPrefix: String {
+        localizedString("Sun out in", locale: locale)
     }
 
     var body: some View {
@@ -635,37 +727,76 @@ struct LocationReportHeader: View {
                             height: conditionIconHeight
                         )
                         .padding(.vertical, 8)
-                        .contentTransition(
-                            reduceMotion ? .opacity : .symbolEffect(.replace)
-                        )
+                        .contentTransition(.symbolEffect(.replace))
                         .animation(
-                            reduceMotion
-                                ? nil
-                                : .spring(
-                                    response: 0.34,
-                                    dampingFraction: 0.78
-                                ),
+                            .spring(
+                                response: 0.34,
+                                dampingFraction: 0.78
+                            ),
                             value: icon
                         )
-                        .accessibilityHidden(true)
+
                 } else {
                     Color.clear
                         .frame(
                             width: conditionIconWidth,
                             height: conditionPlaceholderHeight
                         )
-                        .accessibilityHidden(true)
+
                 }
 
-                if let sunStatusText {
-                    Text(sunStatusText)
-                        .font(.subheadline.weight(.regular))
-                        .foregroundStyle(theme.colors.secondaryText)
-                        .multilineTextAlignment(.center)
+                if let sunStatus {
+                    switch sunStatus {
+                    case .sunnyForHours(let count):
+                        SunnyHoursStatusLine(hours: count)
+                    case .sunOutNow:
+                        HStack(spacing: 3) {
+                            Image(systemName: "sun.max")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(theme.colors.dotSun)
+
+
+                            Text(sunOutNowText)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(theme.colors.dotSun)
+                        }
+
+
+                    case .sunOutIn(let date):
+                        HStack(spacing: 3) {
+                            Image(systemName: "sun.max")
+                                .font(.body.weight(.regular))
+                                .foregroundStyle(theme.colors.secondaryText)
+
+
+                            HStack(spacing: 0) {
+                                Text("\(sunOutInPrefix) ")
+                                    .font(.body)
+                                    .foregroundStyle(theme.colors.secondaryText)
+
+                                Text(countdownText(to: date))
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(theme.colors.dotSun)
+                            }
+                        }
+
+
+                    default:
+                        if let sunStatusText {
+                            Text(sunStatusText)
+                                // Keep the neutral status copy on the same
+                                // body baseline as the non-emphasized text in
+                                // the other status variants. The yellow,
+                                // emphasized spans retain their own styling.
+                                .font(.body)
+                                .foregroundStyle(theme.colors.secondaryText)
+                                .multilineTextAlignment(.center)
+                        }
+                    }
                 } else {
                     Color.clear
                         .frame(height: 20)
-                        .accessibilityHidden(true)
+
                 }
             } else {
                 Color.clear
@@ -673,20 +804,20 @@ struct LocationReportHeader: View {
                         width: conditionIconWidth,
                         height: conditionPlaceholderHeight
                     )
-                    .accessibilityHidden(true)
+
 
                 Color.clear
                     .frame(height: 20)
-                    .accessibilityHidden(true)
+
             }
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 4)
         .padding(.bottom, 4)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityLocationName)
-        .accessibilityValue(accessibilityWeatherSummary)
-        .accessibilityAddTraits(.isHeader)
+
+
+
+
     }
 
     private func countdownText(to date: Date) -> String {
@@ -700,4 +831,5 @@ struct LocationReportHeader: View {
             from: max(0, date.timeIntervalSinceNow)
         ) ?? localizedString("less than one minute", locale: locale)
     }
+
 }

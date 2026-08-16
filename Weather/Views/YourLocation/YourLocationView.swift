@@ -55,7 +55,7 @@ struct YourLocationView: View {
     }
 
     private func requestCurrentLocation() {
-        model.locationProvider.requestCurrentLocation(preferredLocale: locale)
+        model.useCurrentLocation(preferredLocale: locale)
     }
 
     private func openLocationSettings() {

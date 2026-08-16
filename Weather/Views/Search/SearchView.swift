@@ -37,6 +37,10 @@ private enum PlaceSearchScope: String, CaseIterable, Identifiable {
 struct PlaceSearchView: View {
     let model: WeatherModel
     @Bindable var router: AppNavigation
+    /// Search is the one entry point that deliberately resets the shared
+    /// forecast day: a newly selected city always opens on its own local
+    /// calendar day, rather than inheriting a non-today date from another tab.
+    @Binding var selectedDate: Date
 
     // MARK: Search-local state
 
@@ -56,7 +60,6 @@ struct PlaceSearchView: View {
     @State private var selectionTask: Task<Void, Never>?
     @State private var selectionError: (key: String, message: String)?
     @State private var allCountries: [CountryPlacesOption] = []
-    @State private var recommendedCountries: [CountryPlacesOption] = []
     @State private var countryResults: [CountryPlacesOption] = []
     @State private var hasLoadedCountries = false
     @FocusState private var isSearchFocused: Bool
@@ -79,7 +82,14 @@ struct PlaceSearchView: View {
             searchManager.appleErrorMessage,
             searchManager.openMeteoErrorMessage
         ].compactMap { $0 }
-        guard !messages.isEmpty, !isSearchInProgress else { return nil }
+        // Each provider already owns an inline unavailable row. Do not cover a
+        // usable provider's results with a blocking alert just because its
+        // sibling failed; reserve that alert for a complete provider outage.
+        guard !messages.isEmpty,
+              !isSearchInProgress,
+              hasNoResults else {
+            return nil
+        }
         return MissingDataAlertReport(
             key: "search-providers:\(normalizedQuery):\(messages.joined(separator: "|"))",
             title: localizedString("Search Data Missing", locale: locale),
@@ -90,16 +100,7 @@ struct PlaceSearchView: View {
     // MARK: Lifecycle and presentation
 
     var body: some View {
-        searchableScopeContent
-            // Keep one native search-field host mounted across every scope.
-            // Reattaching `.searchable` inside each switch branch made its
-            // navigation-bar placement jump when the segmented control changed.
-            .searchable(
-                text: $query,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: searchPrompt
-            )
-            .searchFocused($isSearchFocused)
+        searchFieldHost
             .safeAreaInset(edge: .top, spacing: 0) {
                 scopePicker
                     .padding(.horizontal)
@@ -148,6 +149,27 @@ struct PlaceSearchView: View {
             .reportingMissingData(missingDataReport)
     }
 
+    /// City and country have native text filtering. Continents remain a short,
+    /// direct picker list, so mounting a search field there would imply an
+    /// interaction that deliberately does not exist.
+    @ViewBuilder
+    private var searchFieldHost: some View {
+        if searchScope == .continent {
+            searchableScopeContent
+        } else {
+            searchableScopeContent
+                // Keep one native search-field host mounted while moving
+                // between the two text-searchable scopes. That preserves its
+                // navigation-bar placement instead of recreating it per list.
+                .searchable(
+                    text: $query,
+                    placement: .navigationBarDrawer(displayMode: .always),
+                    prompt: searchPrompt
+                )
+                .searchFocused($isSearchFocused)
+        }
+    }
+
     /// Scope content owns only its results. The enclosing view owns the one
     /// persistent native search field, so it never appears or shifts while a
     /// person changes between City, Country, and Continent.
@@ -167,7 +189,9 @@ struct PlaceSearchView: View {
         switch searchScope {
         case .city: "Search cities"
         case .country: "Search countries"
-        case .continent: "Search continents"
+        // The direct continent picker does not mount a search field. Retain a
+        // stable fallback only because this computed property is exhaustive.
+        case .continent: "Search"
         }
     }
 
@@ -178,7 +202,7 @@ struct PlaceSearchView: View {
             }
         }
         .pickerStyle(.segmented)
-        .accessibilityLabel(Text("Search Scope"))
+
     }
 
     // MARK: Result states and rows
@@ -196,12 +220,12 @@ struct PlaceSearchView: View {
         } else if hasNoResults && isSearchInProgress && !hasProviderError {
             VStack(spacing: 12) {
                 ProgressView()
-                    .accessibilityHidden(true)
+
                 Text("Searching…")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(theme.colors.secondaryText)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .accessibilityElement(children: .combine)
+
         } else if hasNoResults && !hasProviderError {
             ContentUnavailableView.search(text: normalizedQuery)
         } else {
@@ -212,14 +236,19 @@ struct PlaceSearchView: View {
     @ViewBuilder
     private var countrySearchContent: some View {
         if !hasLoadedCountries {
-            ProgressView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .accessibilityLabel(Text("Loading countries"))
+            VStack(spacing: 12) {
+                ProgressView()
+
+                Text("Loading countries…")
+                    .foregroundStyle(theme.colors.secondaryText)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
         } else if countryResults.isEmpty {
             if normalizedQuery.isEmpty {
                 ContentUnavailableView(
                     "Search countries",
-                    systemImage: "flag.fill"
+                    systemImage: "flag"
                 )
             } else {
                 ContentUnavailableView.search(text: normalizedQuery)
@@ -273,19 +302,19 @@ struct PlaceSearchView: View {
         Button(action: action) {
             HStack {
                 Text(title)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(theme.colors.primaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Image(systemName: "chevron.right")
                     .font(.subheadline.weight(.medium))
-                    .foregroundStyle(.tertiary)
-                    .accessibilityHidden(true)
+                    .foregroundStyle(theme.colors.secondaryText.opacity(0.7))
+
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(title)
-        .accessibilityHint(Text("Find sunny places in this region"))
+
+
     }
 
     /// Separate sections preserve each provider's provenance instead of
@@ -327,18 +356,38 @@ struct PlaceSearchView: View {
                 if isSearching {
                     HStack(spacing: 12) {
                         ProgressView()
-                            .accessibilityHidden(true)
+
                         Text("Searching…")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.colors.secondaryText)
                     }
-                    .accessibilityElement(children: .combine)
+
                 } else if errorMessage != nil {
-                    Color.clear
-                        .frame(height: 1)
-                        .accessibilityHidden(true)
+                    providerUnavailableRow
                 }
             }
         }
+    }
+
+    /// An unavailable provider remains visibly distinct from an empty search.
+    /// Retrying repeats the current query immediately rather than requiring a
+    /// person to edit the native search field to trigger another request.
+    private var providerUnavailableRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Search Unavailable", systemImage: "exclamationmark.triangle")
+                .font(.headline)
+                .foregroundStyle(theme.colors.primaryText)
+
+            Text("This provider could not return results. Try again.")
+                .font(.subheadline)
+                .foregroundStyle(theme.colors.secondaryText)
+
+            Button("Try Again", systemImage: "arrow.clockwise") {
+                retryCitySearch()
+            }
+            .buttonStyle(.bordered)
+            .tint(theme.colors.accent)
+        }
+        .padding(.vertical, 4)
     }
 
     private func resultButton(_ result: CitySearchResult) -> some View {
@@ -347,17 +396,17 @@ struct PlaceSearchView: View {
         } label: {
             HStack(spacing: 12) {
                 Image(systemName: "mappin.and.ellipse")
-                    .foregroundStyle(.tint)
-                    .accessibilityHidden(true)
+                    .foregroundStyle(theme.colors.accent)
+
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(result.title)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(theme.colors.primaryText)
 
                     if !result.subtitle.isEmpty {
                         Text(result.subtitle)
                             .font(.subheadline)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.colors.secondaryText)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -365,13 +414,13 @@ struct PlaceSearchView: View {
                 if loadingID == result.id {
                     ProgressView()
                         .controlSize(.small)
-                        .accessibilityHidden(true)
+
                 }
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityHint(Text("Open place preview"))
+
         // This also prevents a second button from cancelling and replacing the
         // in-flight resolution while its row's progress indicator is visible.
         .disabled(loadingID != nil)
@@ -412,7 +461,7 @@ struct PlaceSearchView: View {
     ) -> some View {
         Text(description)
             .font(.body)
-            .foregroundStyle(.primary)
+            .foregroundStyle(theme.colors.primaryText)
             .textCase(nil)
     }
 
@@ -452,18 +501,16 @@ struct PlaceSearchView: View {
         }
     }
 
-    /// Country data is bundled with the app, so suggestions arrive without a
-    /// network request. A fresh location coordinate re-ranks only the compact
-    /// six-item starter list; typing still searches the complete catalog.
+    /// Country data is bundled with the app, so the complete list appears
+    /// without a network request. A fresh location coordinate reorders every
+    /// country by its nearest catalog city rather than showing a short subset.
     @MainActor
     private func refreshCountryOptions() {
-        let countries = CountryCityCatalog.countries(locale: locale)
-        allCountries = countries
-        recommendedCountries = CountryCityCatalog.recommendedCountries(
+        let countries = CountryCityCatalog.countries(
             near: currentLocationCoordinate,
-            locale: locale,
-            limit: 6
+            locale: locale
         )
+        allCountries = countries
         hasLoadedCountries = true
         updateCountrySearchResults()
     }
@@ -472,7 +519,7 @@ struct PlaceSearchView: View {
     private func updateCountrySearchResults() {
         let trimmedQuery = normalizedQuery
         guard !trimmedQuery.isEmpty else {
-            countryResults = recommendedCountries
+            countryResults = allCountries
             return
         }
 
@@ -519,6 +566,18 @@ struct PlaceSearchView: View {
         isSettled = true
     }
 
+    /// Restarts both providers for the currently visible query after a provider
+    /// section reports that it could not return results.
+    @MainActor
+    private func retryCitySearch() {
+        guard searchScope == .city, !normalizedQuery.isEmpty else { return }
+        selectionTask?.cancel()
+        loadingID = nil
+        selectionError = nil
+        isSettled = true
+        searchManager.search(query: normalizedQuery, locale: locale)
+    }
+
     /// A result first resolves to concrete coordinates/time zone. Existing
     /// saved places open directly; new ones use the map preview as an explicit
     /// opportunity to inspect and save rather than being persisted implicitly.
@@ -557,6 +616,12 @@ struct PlaceSearchView: View {
                 longitude: resolvedPlace.coordinate.longitude,
                 timeZoneIdentifier: resolvedPlace.timeZoneIdentifier
             )
+            // `CityWeather.forecastIfAvailable` compares literal day
+            // components using the app's selection calendar. Convert the
+            // selected city's local "today" components into that calendar
+            // before navigating, so a future/past date selected elsewhere
+            // cannot make this freshly searched forecast disappear on Map.
+            selectToday(for: resolvedPlace.timeZoneIdentifier)
             if let savedPlaceID = model.placesStore.savedPlaceID(matching: city) {
                 isSearchFocused = false
                 router.showMap(placeID: savedPlaceID)
@@ -567,5 +632,30 @@ struct PlaceSearchView: View {
             isSearchFocused = false
             router.showMap(previewing: city)
         }
+    }
+
+    /// Produces a shared-selector date whose year/month/day are today's values
+    /// in the searched city's IANA time zone. It intentionally does not use
+    /// that city's midnight instant directly: the selector is interpreted in
+    /// `model.forecastCalendar`, so only matching civil-date components keep
+    /// the Map preview aligned with the city forecast.
+    @MainActor
+    private func selectToday(for timeZoneIdentifier: String) {
+        guard let cityTimeZone = TimeZone(identifier: timeZoneIdentifier) else {
+            return
+        }
+
+        var cityCalendar = model.forecastCalendar
+        cityCalendar.timeZone = cityTimeZone
+        let cityToday = cityCalendar.dateComponents(
+            [.year, .month, .day],
+            from: .now
+        )
+
+        let selectionCalendar = model.forecastCalendar
+        guard let selectionDate = selectionCalendar.date(from: cityToday) else {
+            return
+        }
+        selectedDate = selectionCalendar.startOfDay(for: selectionDate)
     }
 }

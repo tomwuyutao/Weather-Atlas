@@ -51,10 +51,13 @@ struct BestSunnyPlacesCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(
+            alignment: .leading,
+            spacing: WeatherCardLayout.contentSpacing
+        ) {
             WeatherCardHeader(
-                icon: "bookmark",
-                title: "Longest Sunny Hours"
+                icon: "mappin.and.ellipse",
+                title: "Best Sunny Places"
             )
 
             if !orderedRows.isEmpty {
@@ -104,15 +107,19 @@ struct BestSunnyPlacesCard: View {
             if presentationState == .loading {
                 ProgressView()
                     .controlSize(.small)
-                    .accessibilityHidden(true)
+
             }
 
             Text(statusMessage)
         }
         .font(.callout)
         .foregroundStyle(theme.colors.secondaryText)
-        .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
-        .accessibilityElement(children: .combine)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: WeatherCardFallbackLayout.savedPlacesContentHeight,
+            alignment: .leading
+        )
+
     }
 
     private var statusMessage: LocalizedStringKey {
@@ -175,9 +182,9 @@ private struct SavedPlacesPlaceRow: View {
                     width: SavedPlacesSunnyListLayout.leadingIconWidth,
                     alignment: .leading
                 )
-                // The row's VoiceOver value supplies the localized condition;
+                // The row displays the localized condition;
                 // the weather symbol itself would otherwise be a duplicate.
-                .accessibilityHidden(true)
+
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(cityName)
@@ -202,10 +209,8 @@ private struct SavedPlacesPlaceRow: View {
         }
         .padding(.vertical, 8)
         .contentShape(.rect)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(cityName)
-        .accessibilityValue(
-            "\(recommendation.condition.localizedDisplayName(locale: locale)), \(SunnyHoursFormatting.hourCountLabel(recommendation.sunnyHourCount, locale: locale))"
-        )
+
+
+
     }
 }

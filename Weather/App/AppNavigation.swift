@@ -77,37 +77,60 @@ final class AppNavigation {
     /// Monotonic trigger Map observes even when the next result array matches
     /// the previous array exactly.
     var nearbyMapToken = 0
+    /// Every external Map request receives a fresh generation. Map consumes
+    /// this before showing the new marker, preview, or Find Sun scope, so a
+    /// prior session's card or asynchronous query cannot mask the hand-off.
+    var mapHandoffToken = 0
 
     /// Selects Map and optionally tells it which saved or temporary place to
-    /// focus. The actual camera work remains owned by `MapView`.
+    /// focus. Every hand-off first returns the Map tab to its root, so a
+    /// preview can never be presented behind a previously pushed detail view.
+    /// The actual camera work remains owned by `MapView`.
     func showMap(placeID: City.ID? = nil, previewing city: City? = nil) {
+        beginMapHandoff()
         selectedMapPlaceID = placeID
         mapPreviewCity = city
-        pendingMapSunQuery = nil
         selectedTab = .map
     }
 
     /// Sends a geographic Find Sun scope to Map, which remains the sole owner
     /// of candidate selection, weather loading, ranking, and result display.
     func showMap(findingSunIn scope: MapSunQueryScope) {
-        // A country or continent choice must reveal Map itself even when a
-        // previous Map visit left a detail route on that tab's navigation path.
-        // Otherwise the hand-off would run behind that detail screen.
-        mapPath = []
-        selectedMapPlaceID = nil
-        mapPreviewCity = nil
-        selectedTab = .map
+        beginMapHandoff()
         pendingMapSunQuery = scope
         mapSunQueryToken &+= 1
+        selectedTab = .map
     }
 
     /// Moves the existing nearby-sun result set to Map without fetching it
     /// again, then increments the request token so Map applies the hand-off.
+    /// Clear a prior Map detail route first so the result panel is immediately
+    /// visible at the Map root.
     func showNearbyOnMap(_ results: [NearestSunnyPlaceResult]) {
-        pendingMapSunQuery = nil
+        beginMapHandoff()
         nearbyMapResults = results
         nearbyMapToken &+= 1
         selectedTab = .map
+    }
+
+    /// Clears routing values which belong to the previous Map session. The
+    /// caller establishes its replacement target immediately afterward and
+    /// Map observes the generation to cancel any in-flight presentation state.
+    private func beginMapHandoff() {
+        mapPath = []
+        selectedMapPlaceID = nil
+        mapPreviewCity = nil
+        pendingMapSunQuery = nil
+        nearbyMapResults = []
+        mapHandoffToken &+= 1
+    }
+
+    /// Opens the Search tab at its root rather than restoring a previous
+    /// pushed result. Empty-state calls to action should always begin at the
+    /// place-search screen where the person can start a new query.
+    func showSearchRoot() {
+        searchPath = []
+        selectedTab = .search
     }
 
     /// Opens the full saved-city manager from an external entry point such as

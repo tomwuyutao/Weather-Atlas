@@ -25,8 +25,6 @@ struct TenDaySunnyHoursTimeline: View {
     private let unavailableMessage: String?
     private let retry: (() -> Void)?
 
-    @Environment(\.accessibilityDifferentiateWithoutColor)
-    private var differentiateWithoutColor
     @Environment(\.appTheme) private var theme
     @Environment(\.calendar) private var calendar
     @Environment(\.colorScheme) private var colorScheme
@@ -207,7 +205,7 @@ struct TenDaySunnyHoursTimeline: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: WeatherCardLayout.contentSpacing) {
             WeatherCardHeader(
                 icon: "calendar",
                 title: "10-Day Sunny Hours"
@@ -239,19 +237,18 @@ struct TenDaySunnyHoursTimeline: View {
                                 theme: theme.colors,
                                 noSunColor: theme.colors.weatherNoSunTimelineColor(
                                     for: screenTone
-                                ),
-                                differentiateWithoutColor:
-                                    differentiateWithoutColor
+                                )
                             )
                         }
                         .buttonStyle(.plain)
+                        // Keep the original compact 27-point row rhythm: the
+                        // chart is primarily a dense visual forecast, with
+                        // selection as a secondary interaction.
                         .contentShape(.rect)
-                        .accessibilityLabel(dayLabel(for: row.forecastDate))
-                        .accessibilityValue(accessibilityValue(for: row))
-                        .accessibilityHint("Select this forecast date")
-                        .accessibilityAddTraits(
-                            isSelected ? .isSelected : []
-                        )
+
+
+
+
                     }
                 }
 
@@ -261,7 +258,7 @@ struct TenDaySunnyHoursTimeline: View {
                     // Every selectable row already names the precise
                     // destination-local weather states. The color key would
                     // otherwise repeat those values as an extra focus stop.
-                    .accessibilityHidden(true)
+
             } else {
                 unavailableContent
             }
@@ -309,23 +306,6 @@ struct TenDaySunnyHoursTimeline: View {
         )
     }
 
-    /// Replaces color-only chart exploration with explicit city-local clock
-    /// values. Every time is already converted from its forecast instant using
-    /// `city.timeZone`, so VoiceOver never falls back to the device time zone.
-    private func accessibilityValue(for row: SunnyHoursDayRow) -> String {
-        let hourlyDetails = row.hours.map { cell in
-            let hour = SunnyHoursFormatting.chartHourLabel(cell.hour)
-            return "\(hour):00 \(cell.condition.localizedDisplayName(locale: locale))"
-        }
-        .joined(separator: ", ")
-
-        guard !hourlyDetails.isEmpty else {
-            return localTimeDisclosure ?? ""
-        }
-        guard let localTimeDisclosure else { return hourlyDetails }
-        return "\(localTimeDisclosure). \(hourlyDetails)"
-    }
-
     @ViewBuilder
     private var unavailableContent: some View {
         if isLoading {
@@ -335,13 +315,13 @@ struct TenDaySunnyHoursTimeline: View {
                         width: WeatherCardLayout.leadingIconWidth,
                         alignment: .leading
                     )
-                    .accessibilityHidden(true)
+
                 Text("Loading 10-day forecast…")
                     .font(.callout)
                     .foregroundStyle(theme.colors.secondaryText)
             }
             .frame(maxWidth: .infinity, minHeight: 300, alignment: .leading)
-            .accessibilityElement(children: .combine)
+
         } else {
             VStack(spacing: 12) {
                 Text(resolvedUnavailableMessage)
@@ -353,10 +333,14 @@ struct TenDaySunnyHoursTimeline: View {
                     Button("Try Again", systemImage: "arrow.clockwise") {
                         retry()
                     }
-                    .buttonStyle(.bordered)
+                    .weatherGlassActionStyle()
                 }
             }
-            .frame(maxWidth: .infinity, minHeight: 300, alignment: .center)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: WeatherCardFallbackLayout.tenDayTimelineContentHeight,
+                alignment: .center
+            )
         }
     }
 
@@ -467,8 +451,8 @@ private struct SunnyHoursAxis: View {
         }
         .frame(height: axisHeight)
         // Axis labels are visual anchors only; each adjacent button exposes
-        // the full hourly value in a concise VoiceOver summary.
-        .accessibilityHidden(true)
+        // the full hourly value in a concise local-time summary.
+
     }
 }
 
@@ -483,7 +467,6 @@ private struct SunnyHoursDayTrack: View {
     let label: String
     let theme: ThemeColors
     let noSunColor: Color
-    let differentiateWithoutColor: Bool
 
     @ScaledMetric(relativeTo: .caption) private var labelWidth: CGFloat = 58
     @ScaledMetric(relativeTo: .caption) private var trackHeight: CGFloat = 13
@@ -504,41 +487,28 @@ private struct SunnyHoursDayTrack: View {
                     Capsule()
                         .fill(noSunColor)
 
-                    ForEach(row.hours) { cell in
-                        // Use one rectangle per actual hourly reading. The
-                        // offset and width map the cell's hour into the domain.
-                        Rectangle()
-                            .fill(color(for: cell.condition))
+                    ForEach(colorSegments) { segment in
+                        // Weather runs keep a square join when the adjacent
+                        // hour has another color, so the timeline remains one
+                        // continuous bar. Only a run exposed to empty space
+                        // gets the rounded capsule end.
+                        segmentShape(for: segment)
+                            .fill(color(for: segment.condition))
                             .frame(
                                 width: bounds.width(
-                                    for: cell.hour...cell.hour,
+                                    for: segment.startHour...segment.endHour,
                                     timelineWidth: proxy.size.width,
                                     minimumWidth: 1
                                 )
                             )
-                            .overlay {
-                                if differentiateWithoutColor,
-                                   cell.condition == .partlySunny
-                                    || cell.condition == .drizzle {
-                                    Rectangle()
-                                        .stroke(
-                                            theme.primaryText.opacity(0.75),
-                                            style: StrokeStyle(
-                                                lineWidth: 0.7,
-                                                dash: [2, 2]
-                                            )
-                                        )
-                                }
-                            }
                             .offset(
                                 x: bounds.xPosition(
-                                    for: Double(cell.hour),
+                                    for: Double(segment.startHour),
                                     width: proxy.size.width
                                 )
                             )
                     }
                 }
-                .clipShape(Capsule())
                 .overlay {
                     if selected {
                         Capsule()
@@ -550,6 +520,63 @@ private struct SunnyHoursDayTrack: View {
         }
         .frame(height: rowHeight)
         .contentShape(.rect)
+    }
+
+    /// Adjacent hours with the same condition read as one weather run. A
+    /// differently colored adjacent run remains separate, but they meet along
+    /// a square shared edge so there is never a gap in the forecast timeline.
+    private var colorSegments: [SunnyHoursColorSegment] {
+        row.hours.reduce(into: []) { segments, cell in
+            if let previous = segments.last,
+               previous.condition == cell.condition,
+               cell.hour == previous.endHour + 1 {
+                segments[segments.count - 1].endHour = cell.hour
+            } else {
+                segments.append(
+                    SunnyHoursColorSegment(
+                        id: cell.id,
+                        startHour: cell.hour,
+                        endHour: cell.hour,
+                        condition: cell.condition
+                    )
+                )
+            }
+        }
+    }
+
+    /// The cloudy track is the neutral default canvas. A coloured run therefore
+    /// rounds where it meets cloud, while two adjacent non-cloudy weather
+    /// sections keep a square shared edge and visually stick together.
+    private func segmentShape(
+        for segment: SunnyHoursColorSegment
+    ) -> UnevenRoundedRectangle {
+        let previousCondition = row.hours.first {
+            $0.hour == segment.startHour - 1
+        }?.condition
+        let nextCondition = row.hours.first {
+            $0.hour == segment.endHour + 1
+        }?.condition
+        let squaresLeadingEdge = previousCondition.map(isColoredCondition) == true
+        let squaresTrailingEdge = nextCondition.map(isColoredCondition) == true
+        let radius = trackHeight / 2
+        return UnevenRoundedRectangle(
+            cornerRadii: .init(
+                topLeading: squaresLeadingEdge ? 0 : radius,
+                bottomLeading: squaresLeadingEdge ? 0 : radius,
+                bottomTrailing: squaresTrailingEdge ? 0 : radius,
+                topTrailing: squaresTrailingEdge ? 0 : radius
+            ),
+            style: .continuous
+        )
+    }
+
+    private func isColoredCondition(_ condition: AppWeatherCondition) -> Bool {
+        switch condition {
+        case .clear, .partlySunny, .rain, .drizzle:
+            true
+        case .partlyCloudy, .cloudy, .snow, .fog, .wind:
+            false
+        }
     }
 
     private func color(for condition: AppWeatherCondition) -> Color {
@@ -587,5 +614,13 @@ private struct SunnyHoursDayRow: Identifiable {
 private struct SunnyHoursDayCell: Identifiable {
     let id: Date
     let hour: Int
+    let condition: AppWeatherCondition
+}
+
+/// A contiguous same-condition run rendered as one rounded capsule.
+private struct SunnyHoursColorSegment: Identifiable {
+    let id: Date
+    let startHour: Int
+    var endHour: Int
     let condition: AppWeatherCondition
 }

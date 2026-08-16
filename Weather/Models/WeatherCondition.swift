@@ -10,7 +10,7 @@
 //  ranking, cards, maps, and widgets all make the same interpretation.
 //
 
-import SwiftUI
+import Foundation
 import WeatherKit
 
 // MARK: - Normalized Weather Conditions
@@ -47,14 +47,8 @@ enum AppWeatherCondition: String, Codable {
         }
     }
 
-    /// Selects the shared semantic tint for both Map dots and weather symbols.
-    /// ThemeColors owns the actual colors; this enum chooses their meaning.
-    func dotColor(for theme: ThemeColors) -> Color {
-        theme.weatherIconColor(for: iconTone)
-    }
-
-    /// Preserves the condition's exact marker tint when its display symbol is
-    /// also used for another condition, such as `cloud.sun`.
+    /// Chooses the weather symbol's semantic tint. Map markers deliberately
+    /// use sunny-hour totals instead of the condition category.
     var iconTone: WeatherIconTone {
         switch self {
         case .clear: return .clear

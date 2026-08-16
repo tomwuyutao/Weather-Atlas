@@ -75,7 +75,7 @@ final class WeatherService {
     var resolvedTimeZones: [String: TimeZone] = [:]
     /// In-process place cache keyed by exact coordinates plus app locale.
     var resolvedPlaces: [String: ResolvedPlace] = [:]
-    
+
     // MARK: WeatherKit
 
     /// Shared Apple WeatherKit client.
@@ -102,7 +102,7 @@ final class WeatherService {
             timeZone: timeZone
         )
     }
-    
+
     /// Converts WeatherKit source values without filling omitted optional fields.
     ///
     /// WeatherKit uses `Measurement` values and its own condition enums. This
@@ -204,9 +204,9 @@ final class WeatherService {
         let dayHourlyData = allHourly.filter { hourWeather in
             hourWeather.date >= dayStart && hourWeather.date < dayEnd
         }
-        
+
         if dayHourlyData.isEmpty { return [] }
-        
+
         return dayHourlyData.map { hourWeather in
             // Classification is resolved exactly once at this adapter boundary.
             HourlyForecast(
@@ -288,7 +288,7 @@ final class WeatherService {
             } else {
                 weather = try await weatherKitService.weather(for: location)
             }
-            
+
             // Convert Apple SDK objects at this boundary; views only see the
             // app's own stable models after this point.
             return try await convertWeatherKitData(

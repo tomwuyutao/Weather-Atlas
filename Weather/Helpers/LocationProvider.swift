@@ -61,9 +61,7 @@ nonisolated struct CurrentLocationMetadata: Equatable, Hashable, Sendable {
     let timeZoneIdentifier: String?
 
     /// Current-location labels show the locality rather than a composite
-    /// locality-and-city result returned by a reverse geocoder. This rule is
-    /// exclusive to transient device-location metadata, so saved-place names
-    /// retain their original spelling and hierarchy.
+    /// locality-and-area result returned by a reverse geocoder.
     init(
         displayName: String?,
         countryName: String?,
@@ -75,7 +73,8 @@ nonisolated struct CurrentLocationMetadata: Equatable, Hashable, Sendable {
     }
 
     /// Apple can return values such as "Southwark, London" for a precise
-    /// current location. Keep the locality before a geographic separator.
+    /// location. Keep the locality before a geographic separator for ordinary
+    /// place labels; callers that need a report title retain the original.
     static func localityName(from value: String?) -> String? {
         guard let trimmed = value?.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -169,6 +168,10 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         }
     }
 
+    /// True while a manually chosen home location is supplying the app's
+    /// location. Core Location callbacks must not replace that choice later.
+    private(set) var isUsingHomeLocation = false
+
     // MARK: - Core Location Dependencies and Task State
 
     /// System manager retained for delegate callbacks.
@@ -209,6 +212,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     func requestCurrentLocation(
         preferredLocale: Locale = .autoupdatingCurrent
     ) {
+        isUsingHomeLocation = false
         self.preferredLocale = preferredLocale
         // A newer request supersedes pending availability/metadata work. This
         // prevents an old location from replacing a more recent user action.
@@ -240,8 +244,44 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     func requestLocationIfAuthorized(
         preferredLocale: Locale = .autoupdatingCurrent
     ) {
+        guard !isUsingHomeLocation else { return }
         guard hasLocationAuthorization else { return }
         requestCurrentLocation(preferredLocale: preferredLocale)
+    }
+
+    /// Publishes a resolved city as the app's stable home location without
+    /// requesting system permission. This lets every current-location surface
+    /// share its existing weather and map workflow with a manual home choice.
+    func useHomeLocation(_ city: City) {
+        availabilityTask?.cancel()
+        metadataTask?.cancel()
+        geocoder.cancelGeocode()
+        locateAfterAuthorization = false
+        isUsingHomeLocation = true
+        coordinate = CLLocationCoordinate2D(
+            latitude: city.latitude,
+            longitude: city.longitude
+        )
+        metadata = CurrentLocationMetadata(
+            displayName: city.name,
+            countryName: city.country,
+            timeZoneIdentifier: city.timeZoneIdentifier
+        )
+        status = .ready
+    }
+
+    /// Clears a previously published device or home coordinate. System
+    /// authorization itself remains untouched, which is the only state iOS
+    /// permits an app to retain during a reset.
+    func clearLocation() {
+        availabilityTask?.cancel()
+        metadataTask?.cancel()
+        geocoder.cancelGeocode()
+        locateAfterAuthorization = false
+        isUsingHomeLocation = false
+        coordinate = nil
+        metadata = nil
+        syncAuthorizationStatus()
     }
 
     // MARK: - CLLocationManager Delegate Callbacks
@@ -250,6 +290,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
     /// Core Location may call this both after the initial system prompt and when
     /// the person later changes permission in Settings.
     func locationManagerDidChangeAuthorization(_ manager: CLLocationManager) {
+        guard !isUsingHomeLocation else { return }
         switch manager.authorizationStatus {
         case .authorizedAlways, .authorizedWhenInUse:
             if locateAfterAuthorization {
@@ -279,6 +320,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         _ manager: CLLocationManager,
         didUpdateLocations locations: [CLLocation]
     ) {
+        guard !isUsingHomeLocation else { return }
         guard let location = locations.last(where: {
             $0.horizontalAccuracy >= 0
                 && CLLocationCoordinate2DIsValid($0.coordinate)
@@ -301,6 +343,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         _ manager: CLLocationManager,
         didFailWithError error: Error
     ) {
+        guard !isUsingHomeLocation else { return }
         if let locationError = error as? CLError,
            locationError.code == .denied {
             syncAuthorizationStatus()

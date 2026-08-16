@@ -50,13 +50,16 @@ enum MapCardLayout {
     static let largeCornerRadius: CGFloat = 24
 }
 
-/// One motion rule is shared by state mutations and the surface itself, which
-/// prevents its content and geometry from animating with different timings.
+/// Motion is scoped to the bottom surface itself. Map annotation and selection
+/// mutations must stay outside this transaction so MapKit never interpolates
+/// marker positions while the surface morphs.
 enum MapCardMotion {
-    static func morph(reduceMotion: Bool) -> Animation? {
-        reduceMotion
-            ? nil
-            : .spring(response: 0.36, dampingFraction: 0.84)
+    static func morph() -> Animation {
+        .spring(response: 0.36, dampingFraction: 0.84)
+    }
+
+    static func resultsResize() -> Animation {
+        .smooth(duration: 0.36)
     }
 }
 
@@ -73,15 +76,9 @@ struct MapCard<Content: View>: View {
     /// Older-system matched geometry uses one shared identity instead.
     let fallbackGeometryID: String
     let glassNamespace: Namespace.ID
-    /// Reports the right edge of the visible glass, rather than the expanded
-    /// layout container. Map uses it to keep a long compact status capsule
-    /// from colliding with its trailing utility controls.
-    let onSurfaceTrailingEdgeChange: (CGFloat) -> Void
     let content: Content
 
     @Environment(\.appTheme) private var theme
-    @Environment(\.accessibilityReduceTransparency)
-    private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     init(
@@ -91,7 +88,6 @@ struct MapCard<Content: View>: View {
         glassEffectID: String,
         fallbackGeometryID: String,
         glassNamespace: Namespace.ID,
-        onSurfaceTrailingEdgeChange: @escaping (CGFloat) -> Void = { _ in },
         @ViewBuilder content: () -> Content
     ) {
         self.size = size
@@ -100,7 +96,6 @@ struct MapCard<Content: View>: View {
         self.glassEffectID = glassEffectID
         self.fallbackGeometryID = fallbackGeometryID
         self.glassNamespace = glassNamespace
-        self.onSurfaceTrailingEdgeChange = onSurfaceTrailingEdgeChange
         self.content = content()
     }
 
@@ -108,11 +103,9 @@ struct MapCard<Content: View>: View {
     var body: some View {
         let shape = MapCardShape(cornerRadius: size.cornerRadius)
 
-        if reduceTransparency || colorSchemeContrast == .increased {
-            // Accessibility settings take precedence over translucency. The
-            // same geometry match still gives the opaque fallback a coherent
-            // compact-to-large movement.
-            measuredGlassSurface
+        if colorSchemeContrast == .increased {
+            glassSurface
+                .contentShape(shape)
                 .background(theme.colors.glassFill, in: shape)
                 .overlay(
                     shape.stroke(
@@ -136,7 +129,7 @@ struct MapCard<Content: View>: View {
             // `glassEffectID` must be attached directly to the Glass effect.
             // Applying it outside a custom modifier looks valid in source but
             // gives iOS no material to pair, producing the old pop/fade.
-            measuredGlassSurface
+            glassSurface
                 .background(
                     theme.colors.glassFill.opacity(
                         colorScheme == .dark ? 0.18 : 0.22
@@ -172,7 +165,8 @@ struct MapCard<Content: View>: View {
                     maximumWidth: maximumWidth
                 )
         } else {
-            measuredGlassSurface
+            glassSurface
+                .contentShape(shape)
                 .background(.ultraThinMaterial, in: shape)
                 .background(
                     theme.colors.glassFill.opacity(
@@ -211,17 +205,6 @@ struct MapCard<Content: View>: View {
             )
     }
 
-    /// The outer layout wrapper expands to the map's maximum card width, even
-    /// for a compact capsule. Measure the material itself so collision handling
-    /// responds only to the width people can actually see.
-    private var measuredGlassSurface: some View {
-        glassSurface
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                proxy.frame(in: .global).maxX
-            } action: { newTrailingEdge in
-                onSurfaceTrailingEdgeChange(newTrailingEdge)
-            }
-    }
 }
 
 private extension View {
@@ -274,8 +257,8 @@ private struct MapCardShape: InsettableShape {
 struct MapCardSmallContent<Content: View>: View {
     let content: Content
     private let horizontalPadding: CGFloat
-
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
 
     init(
         horizontalPadding: CGFloat = MapCardLayout.compactHorizontalPadding,
@@ -300,7 +283,7 @@ struct MapCardSmallContent<Content: View>: View {
                 ? 60
                 : MapCardLayout.compactHeight
         )
-        // Match `MapCardSize.small` exactly. At accessibility text sizes this
+        // Match `MapCardSize.small` exactly. At larger text sizes this
         // surface grows taller than a capsule, so a literal `Capsule` would
         // create a mismatched long-press highlight below the glass.
         .contentShape(
@@ -309,7 +292,7 @@ struct MapCardSmallContent<Content: View>: View {
                 style: .continuous
             )
         )
-        .accessibilityElement(children: .contain)
+
     }
 }
 
@@ -317,34 +300,41 @@ struct MapCardSmallContent<Content: View>: View {
 struct MapCardIconButton: View {
     let title: LocalizedStringKey
     let systemImage: String
-    /// Standard map recovery actions keep a 44-point layout width. A compact
-    /// dismissal may opt into a narrower slot so a long status label remains
-    /// readable without changing the button's native icon-only treatment.
-    var layoutWidth: CGFloat = 44
     let action: () -> Void
 
     var body: some View {
         Button(title, systemImage: systemImage, action: action)
             .labelStyle(.iconOnly)
             .font(.body.weight(.semibold))
-            .frame(width: layoutWidth, height: 44)
+            .frame(width: 44, height: 44)
             .contentShape(Rectangle())
             .buttonStyle(.plain)
-            .accessibilityLabel(Text(title))
+
     }
 }
 
 // MARK: - Large Content
 
-/// Geometry shared by saved-place, Find Sun, and current-location card bodies.
+/// Horizontal alignment shared by the Find Sun results panel and its rows.
 enum MapCardContentLayout {
     static let horizontalPadding: CGFloat = 22
-    static let verticalPadding: CGFloat = 16
-    static let iconWidth: CGFloat = 48
-    static let iconHeight: CGFloat = 48
-    static let closeClearance: CGFloat = 30
+}
 
-    static func height(for dynamicTypeSize: DynamicTypeSize) -> CGFloat {
+/// Geometry owned solely by the selected-place context card. Its more generous
+/// edge insets must not also widen the Find Sun results panel.
+private enum MapPlaceContextCardLayout {
+    static let horizontalPadding: CGFloat = 28
+    static let verticalPadding: CGFloat = 20
+    static let closeButtonSize: CGFloat = 44
+    /// Action rows end with a 24-point glyph inside the 28-point card inset.
+    /// A 44-point close target needs a 10-point smaller trailing inset for
+    /// its centre to land on that same vertical trailing-glyph column.
+    static let closeButtonTrailingInset: CGFloat = 18
+    /// Align the close glyph with the title baseline rather than pinning it
+    /// to the card's top edge.
+    static let closeButtonTopInset: CGFloat = 12
+
+    static func minimumHeight(for dynamicTypeSize: DynamicTypeSize) -> CGFloat {
         if dynamicTypeSize.isAccessibilitySize {
             return 150
         }
@@ -362,325 +352,280 @@ enum MapCardContentLayout {
 /// Standard close affordance shared by every large Map-card body.
 struct MapCardCloseButton: View {
     let title: LocalizedStringKey
+    let diameter: CGFloat
     let action: () -> Void
+
+    init(
+        title: LocalizedStringKey,
+        diameter: CGFloat = 44,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.diameter = diameter
+        self.action = action
+    }
+
+    @Environment(\.appTheme) private var theme
 
     var body: some View {
         Button(title, systemImage: "xmark", action: action)
             .labelStyle(.iconOnly)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .frame(width: 44, height: 44)
+            .font(.system(size: diameter >= 52 ? 24 : 16, weight: .semibold))
+            .foregroundStyle(theme.colors.primaryText)
+            .frame(width: diameter, height: diameter)
             .contentShape(Circle())
-            .accessibilityLabel(Text(title))
+            .buttonStyle(.plain)
+
     }
 }
 
-/// Formats the sunny interval consistently for every large Map-card body.
-func mapCardSunnyHoursText(
+/// Formats the selected day's total sunny time for a Map-card summary.
+func mapCardSunnyHoursTotalText(
     for recommendation: PlaceRecommendation,
     locale: Locale
 ) -> String {
-    guard let range = recommendation.bestSunnyWindow else {
+    guard recommendation.sunnyHourCount > 0 else {
         return localizedString("No Sun", locale: locale)
     }
 
-    let start = SunnyHoursFormatting.compactHourLabel(
-        range.lowerBound,
-        locale: locale
+    return String(
+        format: localizedString("Sunny for %@ hours", locale: locale),
+        locale: locale,
+        SunnyHoursFormatting.hourCountText(
+            recommendation.sunnyHourCount,
+            locale: locale
+        )
     )
-    let end = SunnyHoursFormatting.compactHourLabel(
-        range.upperBound + 1,
-        locale: locale
-    )
-    return "\(start) – \(end)"
+}
+
+/// The selected-place header follows the same information hierarchy as the
+/// Map card reference: place first, then the selected day's total sunny time.
+/// It is shared by saved, transient, and current-location Map selections.
+private struct MapPlaceCardHeader: View {
+    let placeName: String
+    let weather: MapPlaceWeatherPresentation
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(placeName)
+                .font(.title2.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                // The top-right actions reserve their real footprint below.
+                // Keep the locality to one predictable header line and use a
+                // tail ellipsis rather than allowing a long name to continue
+                // underneath the enlarged close control.
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .layoutPriority(1)
+
+            statusLine
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+
+
+
+    }
+
+    @ViewBuilder
+    private var statusLine: some View {
+        if let recommendation = weather.recommendation {
+            if recommendation.sunnyHourCount > 0 {
+                SunnyHoursStatusLine(hours: recommendation.sunnyHourCount)
+            } else {
+                Text(localizedString("No Sun", locale: locale))
+                    .font(.body)
+                    .foregroundStyle(theme.colors.secondaryText)
+            }
+        } else if weather.isLoading {
+            HStack(spacing: 3) {
+                ProgressView()
+                    .controlSize(.small)
+                    .frame(width: 18)
+
+
+                Text(localizedString("Loading Forecast", locale: locale))
+            }
+            .font(.body)
+            .foregroundStyle(theme.colors.secondaryText)
+        } else {
+            HStack(spacing: 3) {
+                Image(systemName: "cloud.slash")
+                    .font(.body)
+                    .frame(width: 18)
+
+
+                Text(localizedString("Forecast unavailable", locale: locale))
+            }
+            .font(.body)
+            .foregroundStyle(theme.colors.secondaryText)
+        }
+    }
+
 }
 
 // MARK: - Large Card Bodies
 
-/// Uses the same floating-card material and hierarchy as a saved-place card;
-/// the top-right action differs because this transient result can be saved.
-struct MapSunResultCard: View {
-    let result: MapSunSearchResult
-    let isSaved: Bool
-    let viewDetails: () -> Void
-    let save: () -> Void
-    let clearSelection: () -> Void
+/// One compact, plain row makes every Map floating-card action use the same
+/// icon, title, full-width divider treatment, and at-least-44-point hit
+/// target. Icons stay
+/// directly on the card surface so the action list remains lighter than the
+/// card header rather than becoming a stack of circular controls.
+private struct MapCardActionRow: View {
+    static let iconWidth: CGFloat = 24
+    static let iconSpacing: CGFloat = 12
+    static let minimumHeight: CGFloat = 44
+
+    let title: String
+    let systemImage: String
+    let trailingSystemImage: String?
+    let action: () -> Void
 
     @Environment(\.appTheme) private var theme
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.locale) private var locale
+
+    init(
+        title: String,
+        systemImage: String,
+        trailingSystemImage: String? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.trailingSystemImage = trailingSystemImage
+        self.action = action
+    }
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            Button(action: viewDetails) {
-                cardContent
-                    .padding(.horizontal, MapCardContentLayout.horizontalPadding)
-                    .padding(.vertical, MapCardContentLayout.verticalPadding)
-                    // Reserve a second 44-point action slot for the bookmark
-                    // that sits immediately before Close.
-                    .padding(
-                        .trailing,
-                        MapCardContentLayout.closeClearance + 44
-                    )
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: cardHeight)
-                    .contentShape(
-                        RoundedRectangle(
-                            cornerRadius: MapCardLayout.largeCornerRadius,
-                            style: .continuous
-                        )
-                    )
-            }
-            .buttonStyle(.plain)
+        Button(action: action) {
+            HStack(spacing: Self.iconSpacing) {
+                Image(systemName: systemImage)
+                    .font(.body)
+                    .frame(width: Self.iconWidth)
 
-            HStack(spacing: 0) {
-                if isSaved {
-                    // The filled symbol acknowledges the completed save while
-                    // keeping the same footprint as the original button.
-                    Image(systemName: "bookmark.fill")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(theme.colors.accent)
-                        .frame(width: 44, height: 44)
-                        .accessibilityLabel(
-                            localizedString("Saved", locale: locale)
-                        )
-                } else {
-                    Button("Save", systemImage: "bookmark", action: save)
-                        .labelStyle(.iconOnly)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Circle())
-                        .accessibilityLabel(
-                            localizedString("Save", locale: locale)
-                        )
+
+                Text(title)
+                    .font(.body)
+                    // Context-card actions stay compact. Preserve their
+                    // 44-point row rhythm by tail-truncating long city or
+                    // country names instead of allowing a second line.
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .layoutPriority(1)
+
+                Spacer(minLength: 0)
+
+                if let trailingSystemImage {
+                    Image(systemName: trailingSystemImage)
+                        .font(.body)
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .frame(width: 24, height: Self.minimumHeight)
+
                 }
-
-                MapCardCloseButton(
-                    title: "Close",
-                    action: clearSelection
-                )
             }
-            .zIndex(1)
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    private var cardHeight: CGFloat {
-        MapCardContentLayout.height(for: dynamicTypeSize)
-    }
-
-    private var cardContent: some View {
-        HStack(alignment: .center, spacing: 16) {
-            let icon = "sun.max.fill"
-            Image(systemName: icon)
-                .font(.system(size: 40, weight: .medium))
-                .weatherIconStyle(for: icon)
-                .frame(
-                    width: MapCardContentLayout.iconWidth,
-                    height: MapCardContentLayout.iconHeight
-                )
-                .accessibilityHidden(true)
-
-            VStack(alignment: .leading, spacing: 6) {
-                Text(mapCardSunnyHoursText(for: result.recommendation, locale: locale))
-                    .font(.title2.weight(.semibold))
-                    .monospacedDigit()
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .minimumScaleFactor(
-                        dynamicTypeSize.isAccessibilitySize ? 1 : 0.74
-                    )
-
-                Text(
-                    "\(result.city.displayName) · \(localizedString("Sunny Hours", locale: locale))"
-                )
-                .font(.headline.weight(.regular))
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                .minimumScaleFactor(
-                    dynamicTypeSize.isAccessibilitySize ? 1 : 0.72
-                )
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            Spacer(minLength: 4)
-        }
-    }
-}
-
-/// Read-only weather preview for the device location; it never saves a place.
-struct MapCurrentLocationCard: View {
-    let name: String
-    let recommendation: PlaceRecommendation?
-    let isLoading: Bool
-    let clearSelection: () -> Void
-
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.locale) private var locale
-
-    var body: some View {
-        ZStack(alignment: .topTrailing) {
-            HStack(alignment: .center, spacing: 16) {
-                if let recommendation {
-                    let icon = recommendation.condition.displayIcon
-                    Image(systemName: icon)
-                        .font(.system(size: 40, weight: .medium))
-                        // Map-card symbols match the selected place's dot.
-                        .weatherIconStyle(for: recommendation.condition.iconTone)
-                        .frame(
-                            width: MapCardContentLayout.iconWidth,
-                            height: MapCardContentLayout.iconHeight
-                        )
-                        .accessibilityHidden(true)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(mapCardSunnyHoursText(for: recommendation, locale: locale))
-                            .font(.title2.weight(.semibold))
-                            .monospacedDigit()
-                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                            .minimumScaleFactor(
-                                dynamicTypeSize.isAccessibilitySize ? 1 : 0.74
-                            )
-
-                        Text(name.isEmpty
-                            ? localizedString("Sunny Hours", locale: locale)
-                            : "\(name) · \(localizedString("Sunny Hours", locale: locale))")
-                        .font(.headline.weight(.regular))
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                        .minimumScaleFactor(
-                            dynamicTypeSize.isAccessibilitySize ? 1 : 0.72
-                        )
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Group {
-                        if isLoading {
-                            ProgressView()
-                                .controlSize(.regular)
-                                .accessibilityHidden(true)
-                        } else {
-                            Image(systemName: "cloud.slash")
-                                .font(.system(size: 36, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .accessibilityHidden(true)
-                        }
-                    }
-                    .frame(
-                        width: MapCardContentLayout.iconWidth,
-                        height: MapCardContentLayout.iconHeight
-                    )
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(
-                            localizedString(
-                                isLoading
-                                    ? "Loading Forecast"
-                                    : "Forecast unavailable",
-                                locale: locale
-                            )
-                        )
-                        .font(.title2.weight(.semibold))
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                        .minimumScaleFactor(
-                            dynamicTypeSize.isAccessibilitySize ? 1 : 0.74
-                        )
-
-                        Text(
-                            name.isEmpty
-                                ? localizedString("Current Location", locale: locale)
-                                : name
-                        )
-                        .font(.headline.weight(.regular))
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                        .minimumScaleFactor(
-                            dynamicTypeSize.isAccessibilitySize ? 1 : 0.72
-                        )
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                Spacer(minLength: 4)
-            }
-            .padding(.horizontal, MapCardContentLayout.horizontalPadding)
-            .padding(.vertical, MapCardContentLayout.verticalPadding)
-            .padding(.trailing, MapCardContentLayout.closeClearance)
-            .frame(maxWidth: .infinity)
+            .foregroundStyle(theme.colors.primaryText)
             .frame(
-                minHeight: MapCardContentLayout.height(for: dynamicTypeSize)
+                maxWidth: .infinity,
+                minHeight: Self.minimumHeight,
+                alignment: .leading
             )
-
-            MapCardCloseButton(
-                title: "Close",
-                action: clearSelection
-            )
+            .contentShape(Rectangle())
         }
-        .accessibilityElement(children: .contain)
+        .buttonStyle(.plain)
+
     }
 }
 
-/// Contextual regional search shown only after the user taps the map itself.
-struct MapRegionContextCard: View {
-    let context: MapTapRegionContext
-    let viewDetails: (City) -> Void
+/// Owns the one collapsed Find Sun row used by all place-context cards. The
+/// regional options are intentionally inserted only after an explicit tap so
+/// the initial card remains quick to scan and doesn't expose overlapping
+/// search actions by default.
+private struct MapFindSunDisclosure: View {
+    let city: City
+    let displayName: String
+    let country: CountryPlacesOption?
+    let continent: ContinentPlacesOption?
+    @Binding var isExpanded: Bool
+    let findSunNear: (City) -> Void
     let findSun: (MapSunQueryScope) -> Void
-    let clearSelection: () -> Void
 
-    @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text(context.title(locale: locale))
-                    .font(.title3.weight(.semibold))
-                    .lineLimit(2)
-                    .foregroundStyle(theme.colors.primaryText)
-                    .padding(.trailing, MapCardContentLayout.closeClearance)
+        VStack(spacing: 0) {
+            MapCardActionRow(
+                title: localizedString("Find Sun", locale: locale),
+                systemImage: "magnifyingglass",
+                trailingSystemImage: isExpanded ? "chevron.up" : "chevron.down",
+                action: toggleExpansion
+            )
 
-                VStack(spacing: 0) {
-                    actionRow(
-                        title: localizedString("View Details", locale: locale),
-                        systemImage: "arrow.right"
-                    ) {
-                        viewDetails(context.city)
-                    }
+            if isExpanded {
+                expandedOptions
+                    .transition(
+                        .opacity.combined(with: .move(edge: .top))
+                    )
+            }
+        }
+    }
 
-                    Divider()
-                        .padding(.leading, 36)
+    private var expandedOptions: some View {
+        VStack(spacing: 0) {
+            divider
 
-                    actionRow(
-                        title: findSunTitle(
-                            for: context.country.localizedName(locale: locale)
-                        ),
-                        systemImage: "flag.fill"
-                    ) {
-                        findSun(.country(context.country))
-                    }
+            MapCardActionRow(
+                title: findNearTitle,
+                systemImage: "location.magnifyingglass"
+            ) {
+                findSunNear(city)
+            }
 
-                    if let continent = context.continent {
-                        Divider()
-                            .padding(.leading, 36)
+            if let country {
+                divider
 
-                        actionRow(
-                            title: findSunTitle(
-                                for: continent.localizedName(locale: locale)
-                            ),
-                            systemImage: "globe.europe.africa"
-                        ) {
-                            findSun(.continent(continent))
-                        }
-                    }
+                MapCardActionRow(
+                    title: findSunTitle(
+                        for: country.localizedName(locale: locale)
+                    ),
+                    systemImage: "flag"
+                ) {
+                    findSun(.country(country))
                 }
             }
-            .padding(.horizontal, MapCardContentLayout.horizontalPadding)
-            .padding(.vertical, MapCardContentLayout.verticalPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
 
-            MapCardCloseButton(
-                title: "Close",
-                action: clearSelection
-            )
+            if let continent {
+                divider
+
+                MapCardActionRow(
+                    title: findSunTitle(
+                        for: continent.localizedName(locale: locale)
+                    ),
+                    systemImage: "globe.europe.africa"
+                ) {
+                    findSun(.continent(continent))
+                }
+            }
         }
-        .accessibilityElement(children: .contain)
+    }
+
+    private var divider: some View {
+        Divider()
+    }
+
+    private var findNearTitle: String {
+        String(
+            format: localizedString("Find Sun near %@", locale: locale),
+            locale: locale,
+            primaryPlaceName
+        )
+    }
+
+    /// Map providers sometimes include a district after the locality. The
+    /// nearby action needs a short, scannable place reference rather than
+    /// repeating that full administrative label across two wrapped lines.
+    private var primaryPlaceName: String {
+        CurrentLocationMetadata.localityName(from: displayName) ?? displayName
     }
 
     private func findSunTitle(for regionName: String) -> String {
@@ -691,34 +636,264 @@ struct MapRegionContextCard: View {
         )
     }
 
-    private func actionRow(
-        title: String,
-        systemImage: String,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
+    private func toggleExpansion() {
+        withAnimation(MapCardMotion.morph()) {
+            isExpanded.toggle()
+        }
+    }
+}
+
+/// One weather presentation value lets selected saved places, Find Sun
+/// results, and reverse-geocoded map taps all use the same card shell without
+/// pretending that an unfinished forecast is already available.
+struct MapPlaceWeatherPresentation {
+    let recommendation: PlaceRecommendation?
+    let isLoading: Bool
+}
+
+/// The common large Map selection card. It keeps a place's weather facts and
+/// all possible follow-up actions together whether the place came from the
+/// saved library, Find Sun, Search, or a direct map tap.
+struct MapPlaceContextCard: View {
+    let city: City
+    let displayName: String
+    let weather: MapPlaceWeatherPresentation
+    let country: CountryPlacesOption?
+    let continent: ContinentPlacesOption?
+    /// Non-nil only for transient places, which may be added to Saved Places.
+    let save: (() -> Bool)?
+    let isSaved: Bool
+    let viewDetails: () -> Void
+    let findSunNear: (City) -> Void
+    let findSun: (MapSunQueryScope) -> Void
+    let clearSelection: () -> Void
+
+    @State private var isFindSunExpanded = false
+    /// Remains true only while this card presentation is visible. This gives a
+    /// just-saved transient location a stable filled-bookmark acknowledgement,
+    /// while a later opening of the already-saved card omits the save row.
+    @State private var wasSavedInThisPresentation = false
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                MapPlaceCardHeader(
+                    placeName: displayName,
+                    weather: weather
+                )
+                    .padding(.trailing, headerTrailingReservation)
+
+                if let save, showsSaveLocationRow {
+                    firstRowDivider
+
+                    MapCardActionRow(
+                        title: localizedString(
+                            wasSavedInThisPresentation ? "Saved" : "Save Place",
+                            locale: locale
+                        ),
+                        systemImage: wasSavedInThisPresentation
+                            ? "bookmark.fill"
+                            : "bookmark"
+                    ) {
+                        // The store reports failures through the app's normal
+                        // error path. Only a successful persistence gets the
+                        // in-place filled-bookmark acknowledgement.
+                        guard !wasSavedInThisPresentation, save() else {
+                            return
+                        }
+                        wasSavedInThisPresentation = true
+                    }
+
+                    rowDivider
+                } else {
+                    // Saved places do not have a Save Place row, but the
+                    // first remaining action still receives the same native
+                    // top separator.
+                    firstRowDivider
+                }
+
+                MapCardActionRow(
+                    title: localizedString("View Details", locale: locale),
+                    systemImage: "list.bullet.rectangle",
+                    trailingSystemImage: "arrow.right"
+                ) {
+                    viewDetails()
+                }
+
+                rowDivider
+
+                MapFindSunDisclosure(
+                    city: city,
+                    displayName: displayName,
+                    country: country,
+                    continent: continent,
+                    isExpanded: $isFindSunExpanded,
+                    findSunNear: findSunNear,
+                    findSun: findSun
+                )
+            }
+            .padding(.horizontal, MapPlaceContextCardLayout.horizontalPadding)
+            .padding(.vertical, MapPlaceContextCardLayout.verticalPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(
+                minHeight: MapPlaceContextCardLayout.minimumHeight(for: dynamicTypeSize)
+            )
+
+            MapCardCloseButton(
+                title: "Close",
+                diameter: MapPlaceContextCardLayout.closeButtonSize,
+                action: clearSelection
+            )
+                .padding(.top, MapPlaceContextCardLayout.closeButtonTopInset)
+                // Centre the larger 44-point close target on the same trailing
+                // column as the 24-point arrows in the action rows below.
+                .padding(
+                    .trailing,
+                    MapPlaceContextCardLayout.closeButtonTrailingInset
+                )
+                .zIndex(1)
+        }
+
+        // The outer MapCard preserves its identity while a marker changes.
+        // Resetting this private disclosure state prevents a newly tapped
+        // place from inheriting another place's expanded regional menu.
+        .onChange(of: city.id) {
+            isFindSunExpanded = false
+            wasSavedInThisPresentation = false
+        }
+    }
+
+    private var showsSaveLocationRow: Bool {
+        save != nil && (!isSaved || wasSavedInThisPresentation)
+    }
+
+    private var headerTrailingReservation: CGFloat {
+        // The close button is the only top-right action. Unsaved locations use
+        // the explicit Save Place row below the header, avoiding duplicate
+        // bookmark affordances in the same card.
+        MapPlaceContextCardLayout.closeButtonSize
+            + MapPlaceContextCardLayout.closeButtonTrailingInset
+    }
+
+    /// Separates the header from the first action without visually attaching a
+    /// divider to the sunny-hours status line above it.
+    private var firstRowDivider: some View {
+        Divider()
+            .padding(.top, 16)
+    }
+
+    /// Full-width separators run beneath row icons as well as their labels,
+    /// matching the compact native-list treatment requested for this card.
+    private var rowDivider: some View {
+        Divider()
+    }
+}
+
+/// Presentation context for a reverse-geocoded map tap.
+///
+/// Keeping this value beside its card makes the direct-tap surface a complete
+/// MapCard concern: MapView resolves factual location metadata and owns the
+/// selection state, while this file defines how that state is shown.
+struct MapTapRegionContext: Identifiable {
+    /// The coordinate-backed city stays transient until the person chooses to
+    /// save it from the card or its Detail report.
+    let city: City
+    /// The reverse-geocoded locality makes a tap-card identity stable while
+    /// the selected coordinate remains on screen.
+    let locality: String?
+    /// The factual country scope available from the tapped coordinate.
+    let country: CountryPlacesOption
+    /// The continent scope is optional because the catalog deliberately omits
+    /// unsupported or unknown regional mappings rather than guessing.
+    let continent: ContinentPlacesOption?
+
+    var id: String { "\(country.id)-\(locality ?? "")" }
+}
+
+/// Immediate acknowledgement for a bare map tap while reverse geocoding finds
+/// its exact city, country, and time zone. It uses the normal large selected
+/// surface so the resolved place card can replace it without a separate alert
+/// or a delayed visual response.
+struct MapLocationLoadingCard: View {
+    let clearSelection: () -> Void
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        ZStack(alignment: .topTrailing) {
             HStack(spacing: 12) {
-                Image(systemName: systemImage)
-                    .font(.body)
-                    .frame(width: 24, height: 44)
+                ProgressView()
+                    .controlSize(.regular)
+                    .tint(theme.colors.accent)
                     .accessibilityHidden(true)
 
-                Text(title)
-                    // Match the regular body styling used by the cities in
-                    // Longest Sunny Hours; the queried place name above owns
-                    // the card's emphasis.
-                    .font(.body)
-                    .lineLimit(2)
-                    .multilineTextAlignment(.leading)
+                Text("Loading Location")
+                    .font(.title3.weight(.semibold))
+                    .foregroundStyle(theme.colors.primaryText)
 
-                Spacer(minLength: 0)
+                Spacer(minLength: MapPlaceContextCardLayout.closeButtonSize)
             }
-            .foregroundStyle(theme.colors.primaryText)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-            .contentShape(Rectangle())
+            .padding(.horizontal, MapPlaceContextCardLayout.horizontalPadding)
+            .padding(.vertical, MapPlaceContextCardLayout.verticalPadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .frame(
+                minHeight: MapPlaceContextCardLayout.minimumHeight(
+                    for: dynamicTypeSize
+                )
+            )
+
+            MapCardCloseButton(
+                title: "Close",
+                diameter: MapPlaceContextCardLayout.closeButtonSize,
+                action: clearSelection
+            )
+            .padding(.top, MapPlaceContextCardLayout.closeButtonTopInset)
+            .padding(.trailing, MapPlaceContextCardLayout.horizontalPadding)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(title)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text("Loading Location"))
+    }
+}
+
+/// Contextual regional search shown only after the user taps the map itself.
+struct MapRegionContextCard: View {
+    let context: MapTapRegionContext
+    let weather: MapPlaceWeatherPresentation
+    /// A direct map tap is transient until the person saves it. Keeping this
+    /// optional action separate from the card's selected identity lets the
+    /// row acknowledge that save in place without replacing the card surface.
+    let save: (() -> Bool)?
+    let isSaved: Bool
+    let viewDetails: (City) -> Void
+    /// The Map parent owns the query execution. This card only exposes the
+    /// tapped city as the geographic origin for a nearby Find Sun request.
+    let findSunNear: (City) -> Void
+    let findSun: (MapSunQueryScope) -> Void
+    let clearSelection: () -> Void
+
+    var body: some View {
+        MapPlaceContextCard(
+            city: context.city,
+            // The direct-tap card is one of the two dedicated places that may
+            // show the reverse-geocoded locality plus area. Its marker and
+            // every ordinary place label still use `displayName`.
+            displayName: context.city.titleDisplayName,
+            weather: weather,
+            country: context.country,
+            continent: context.continent,
+            save: save,
+            isSaved: isSaved,
+            viewDetails: {
+                viewDetails(context.city)
+            },
+            findSunNear: findSunNear,
+            findSun: findSun,
+            clearSelection: clearSelection
+        )
     }
 }
 
@@ -736,307 +911,411 @@ struct PlacesMapPlacePresentation: Identifiable {
     var failureMessage: String? { presentation.failureMessage }
 }
 
-/// A compact, scrollable result surface keeps every ranked Find Sun result
-/// reachable even when its marker is outside a dense cluster. Choosing a row
-/// selects the same annotation/card state used by tapping its map dot.
+/// The Find Sun results use the Map's two shared surface sizes. The compact
+/// state previews three ranked rows; the expanded state reveals the fixed-height
+/// full list. Keeping the state discrete avoids treating this floating card like
+/// a sheet and leaves vertical map gestures entirely to MapKit.
 struct MapSunResultsPanel: View {
+    enum Size: Equatable {
+        case compact
+        case expanded
+    }
+
     let results: [MapSunSearchResult]
     let title: String
-    let select: (MapSunSearchResult) -> Void
+    let size: Size
+    /// MapView owns the shared surface and its scoped morph animation. This
+    /// panel only requests one of its two allowed states.
+    let setSize: (Size) -> Void
+    let openDetails: (MapSunSearchResult) -> Void
     let clear: () -> Void
 
     @Environment(\.appTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
 
-    static func height(for dynamicTypeSize: DynamicTypeSize) -> CGFloat {
-        dynamicTypeSize.isAccessibilitySize ? 310 : 238
+    /// The compact results card is intentionally taller than the one-line
+    /// Find Sun capsule: it previews the first three ranked cities before the
+    /// person chooses to open the full list.
+    static func compactHeight(for dynamicTypeSize: DynamicTypeSize) -> CGFloat {
+        dynamicTypeSize.isAccessibilitySize
+            ? 330
+            : 264
+    }
+
+    private static func expandedHeight(
+        for dynamicTypeSize: DynamicTypeSize
+    ) -> CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 540 : 460
     }
 
     var body: some View {
+        ZStack(alignment: .bottom) {
+            switch size {
+            case .compact:
+                compactSummary
+            case .expanded:
+                expandedResults
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .bottom)
+        .frame(
+            height: size == .compact
+                ? Self.compactHeight(for: dynamicTypeSize)
+                : Self.expandedHeight(for: dynamicTypeSize),
+            alignment: .bottom
+        )
+        .animation(MapCardMotion.resultsResize(), value: size)
+    }
+
+    /// The compact card previews the same ranked rows as the expanded card.
+    /// Keeping the header, row grid, and action placement identical makes the
+    /// expansion read as disclosure of more content rather than a different
+    /// result component.
+    private var compactSummary: some View {
         ZStack(alignment: .topTrailing) {
             VStack(spacing: 0) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.headline)
-                    Text(
-                        localizedString(
-                            "\(results.count) sunny places",
-                            locale: locale
-                        )
+                Text(title)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(
+                        .trailing,
+                        MapPlaceContextCardLayout.closeButtonSize
+                            + MapPlaceContextCardLayout.closeButtonTrailingInset
                     )
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-                .padding(.horizontal, MapCardContentLayout.horizontalPadding)
-                .padding(.top, MapCardContentLayout.verticalPadding)
-                .padding(.trailing, MapCardContentLayout.closeClearance)
-                .padding(.bottom, 12)
-                .frame(maxWidth: .infinity, alignment: .leading)
 
                 Divider()
+                    .padding(.top, 16)
 
-                ScrollView {
-                    LazyVStack(spacing: 0) {
-                        ForEach(results) { result in
-                            let sunnyHours = SunnyHoursFormatting.hourCountLabel(
-                                result.recommendation.sunnyHourCount,
-                                locale: locale
-                            )
-
-                            VStack(spacing: 0) {
-                                Button {
-                                    select(result)
-                                } label: {
-                                    // Use the same icon/name/value grid as the
-                                    // Saved Places sunny-hours ranking.
-                                    HStack(spacing: WeatherCardLayout.headerSpacing) {
-                                        Image(
-                                            systemName: result.recommendation
-                                                .condition.displayIcon
-                                        )
-                                        .weatherIconStyle(
-                                            for: result.recommendation
-                                                .condition.iconTone
-                                        )
-                                        .font(.callout.weight(.medium))
-                                        .frame(
-                                            width: WeatherCardLayout.leadingIconWidth,
-                                            alignment: .leading
-                                        )
-                                        .accessibilityHidden(true)
-
-                                        Text(result.city.displayName)
-                                            .font(.body)
-                                            .foregroundStyle(
-                                                theme.colors.primaryText
-                                            )
-                                            .lineLimit(1)
-                                            .layoutPriority(1)
-
-                                        Spacer(minLength: 8)
-
-                                        Text(sunnyHours)
-                                            .font(.body)
-                                            .foregroundStyle(
-                                                theme.colors.primaryText
-                                            )
-                                            .monospacedDigit()
-                                            .lineLimit(1)
-                                            .fixedSize(
-                                                horizontal: true,
-                                                vertical: false
-                                            )
-                                    }
-                                    .padding(
-                                        .horizontal,
-                                        MapCardContentLayout.horizontalPadding
-                                    )
-                                    .frame(
-                                        maxWidth: .infinity,
-                                        minHeight: 52
-                                    )
-                                    .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(result.city.displayName)
-                                .accessibilityValue(sunnyHours)
-                                .accessibilityHint(
-                                    localizedString(
-                                        "Shows this place on the map.",
-                                        locale: locale
-                                    )
-                                )
-
-                                Divider()
-                                    .padding(
-                                        .leading,
-                                        MapCardContentLayout.horizontalPadding
-                                            + WeatherCardLayout.leadingIconWidth
-                                            + WeatherCardLayout.headerSpacing
-                                    )
-                                    .opacity(
-                                        result.id == results.last?.id ? 0 : 1
-                                    )
-                            }
-                        }
-                    }
+                ForEach(Array(results.prefix(3))) { result in
+                    resultRow(result)
+                    Divider()
                 }
+
+                resultsToggleRow
             }
+            .padding(.horizontal, MapPlaceContextCardLayout.horizontalPadding)
+            .padding(.vertical, MapPlaceContextCardLayout.verticalPadding)
+            .frame(maxWidth: .infinity, alignment: .bottom)
 
             MapCardCloseButton(
                 title: "Clear Results",
                 action: clear
             )
+            .padding(.top, MapPlaceContextCardLayout.closeButtonTopInset)
+            .padding(.trailing, MapPlaceContextCardLayout.closeButtonTrailingInset)
         }
-        .frame(height: Self.height(for: dynamicTypeSize))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(Text(title))
+    }
+
+    private var expandedResults: some View {
+        ZStack(alignment: .topTrailing) {
+            VStack(spacing: 0) {
+                Text(title)
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, MapPlaceContextCardLayout.closeButtonSize + 44)
+
+                Divider()
+                    .padding(.top, 16)
+
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(results) { result in
+                            resultRow(result)
+                            if result.id != results.last?.id {
+                                Divider()
+                            }
+                        }
+                    }
+                }
+                .frame(maxHeight: .infinity)
+
+                Divider()
+                resultsToggleRow
+            }
+            .padding(.horizontal, MapPlaceContextCardLayout.horizontalPadding)
+            .padding(.vertical, MapPlaceContextCardLayout.verticalPadding)
+
+            MapCardCloseButton(
+                title: "Clear Results",
+                action: clear
+            )
+            .padding(.top, MapPlaceContextCardLayout.closeButtonTopInset)
+            .padding(.trailing, MapPlaceContextCardLayout.closeButtonTrailingInset)
+        }
+        .frame(maxWidth: .infinity, alignment: .bottom)
+    }
+
+    private var resultsToggleRow: some View {
+        Button {
+            setSize(size == .compact ? .expanded : .compact)
+        } label: {
+            HStack(spacing: MapCardActionRow.iconSpacing) {
+                Text(
+                    localizedString(
+                        size == .compact ? "View More" : "View Less",
+                        locale: locale
+                    )
+                )
+                .font(.body)
+                .foregroundStyle(theme.colors.primaryText)
+
+                Image(systemName: size == .compact ? "chevron.down" : "chevron.up")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .frame(
+                        width: MapCardActionRow.iconWidth,
+                        height: MapCardActionRow.minimumHeight
+                    )
+            }
+            .frame(
+                maxWidth: .infinity,
+                minHeight: MapCardActionRow.minimumHeight,
+                alignment: .center
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func resultRow(_ result: MapSunSearchResult) -> some View {
+        let sunnyHours = SunnyHoursFormatting.hourCountLabel(
+            result.recommendation.sunnyHourCount,
+            locale: locale
+        )
+
+        return VStack(spacing: 0) {
+            Button {
+                openDetails(result)
+            } label: {
+                HStack(spacing: MapCardActionRow.iconSpacing) {
+                    Image(
+                        systemName: result.recommendation.condition.displayIcon
+                    )
+                    .weatherIconStyle(
+                        for: result.recommendation.condition.iconTone
+                    )
+                    .font(.callout.weight(.medium))
+                    .frame(
+                        width: MapCardActionRow.iconWidth,
+                        alignment: .leading
+                    )
+
+
+                    Text(result.city.displayName)
+                        .font(.body)
+                        .foregroundStyle(theme.colors.primaryText)
+                        .lineLimit(1)
+                        .layoutPriority(1)
+
+                    Spacer(minLength: 8)
+
+                    Text(sunnyHours)
+                        .font(.body)
+                        .foregroundStyle(theme.colors.primaryText)
+                        .monospacedDigit()
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
+
+                }
+                .frame(
+                    maxWidth: .infinity,
+                    minHeight: MapCardActionRow.minimumHeight,
+                    alignment: .leading
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+        }
     }
 }
 
+// MARK: - Preview
 
-/// The saved-place variant of the map card. Its `NavigationLink` opens the
-/// full detail route, while the close button remains a separate hit target.
-struct MapPlaceSelectionCard: View {
-    let presentation: PlacesMapPlacePresentation
-    let displayName: String
-    let sortMode: WeatherMetricMode
-    let clearSelection: () -> Void
+/// Self-contained canvas fixture for reviewing the shared direct-tap card
+/// without loading WeatherKit, reverse-geocoding, or a saved Places document.
+private struct MapPlaceContextCardPreview: View {
+    @State private var isSaved = false
+    @Namespace private var glassNamespace
 
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.locale) private var locale
-    @AppStorage("temperatureUnit")
-    private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
-    @AppStorage("distanceUnit")
-    private var distanceUnitRaw = DistanceUnit.defaultRawValue
+    private static let city = City(
+        name: "Berlin",
+        country: "Germany",
+        latitude: 52.5200,
+        longitude: 13.4050,
+        timeZoneIdentifier: "Europe/Berlin"
+    )
+
+    private static let forecast = DailyForecast(
+        date: Date(timeIntervalSince1970: 1_786_233_600),
+        dailyLow: 13,
+        dailyHigh: 24,
+        symbolName: "cloud.sun.fill",
+        condition: .partlySunny,
+        isFullyClear: false,
+        hourlyForecasts: [],
+        cloudCover: 0.25,
+        precipitationChance: 0.05,
+        uvIndex: 5,
+        sunrise: nil,
+        sunset: nil
+    )
+
+    private static let weather = CityWeather(
+        city: city,
+        dailyForecasts: [forecast],
+        timeZone: TimeZone(secondsFromGMT: 3_600)!
+    )
+
+    private static let recommendation = PlaceRecommendation(
+        cityWeather: weather,
+        forecast: forecast,
+        condition: .partlySunny,
+        cloudCover: 0.25,
+        precipitationChance: 0.05,
+        sunnyHourCount: 11,
+        bestSunnyWindow: 8...18,
+        maximumFeelsLike: 24,
+        maximumVisibilityKilometers: 20
+    )
+
+    private static let country = CountryPlacesOption(
+        iso2: "DE",
+        englishName: "Germany",
+        cities: []
+    )
 
     var body: some View {
-        ZStack(alignment: .topTrailing) {
-            NavigationLink(value: AppRoute.place(id: presentation.id)) {
-                cardContent
-                    .padding(.horizontal, MapCardContentLayout.horizontalPadding)
-                    .padding(.vertical, MapCardContentLayout.verticalPadding)
-                    .padding(.trailing, MapCardContentLayout.closeClearance)
-                    .frame(maxWidth: .infinity)
-                    .frame(minHeight: cardHeight)
-                    .contentShape(
-                        RoundedRectangle(
-                            cornerRadius:
-                                MapCardLayout.largeCornerRadius,
-                            style: .continuous
-                        )
-                    )
-            }
-            .buttonStyle(.plain)
+        ZStack(alignment: .bottom) {
+            AppPalette.light.background
 
-            MapCardCloseButton(
-                title: "Close",
-                action: clearSelection
+            MapCard(
+                size: .large(horizontalPadding: 16),
+                colorScheme: .light,
+                maximumWidth: 390,
+                glassEffectID: "preview-tapped-place-card",
+                fallbackGeometryID: "preview-tapped-place-card",
+                glassNamespace: glassNamespace
+            ) {
+                MapPlaceContextCard(
+                    city: Self.city,
+                    displayName: Self.city.displayName,
+                    weather: MapPlaceWeatherPresentation(
+                        recommendation: Self.recommendation,
+                        isLoading: false
+                    ),
+                    country: Self.country,
+                    continent: .europe,
+                    save: {
+                        isSaved = true
+                        return true
+                    },
+                    isSaved: isSaved,
+                    viewDetails: {},
+                    findSunNear: { _ in },
+                    findSun: { _ in },
+                    clearSelection: {}
+                )
+            }
+        }
+        .frame(width: 390, height: 520)
+    }
+}
+
+#Preview("Map Place Sunny Hours Card", traits: .fixedLayout(width: 390, height: 520)) {
+    MapPlaceContextCardPreview()
+        .environment(\.appTheme, .shared)
+}
+
+/// Self-contained Find Sun result fixture. Keeping this beside the result
+/// panel makes its one-line header, rows, and chevrons previewable without
+/// loading the MapKit canvas or starting a weather request.
+private struct MapSunResultsPanelPreview: View {
+    @State private var size: MapSunResultsPanel.Size = .expanded
+    @Namespace private var glassNamespace
+
+    private static let cities: [(String, String, Double)] = [
+        ("Rome", "Italy", 12),
+        ("Naples", "Italy", 10),
+        ("Palermo", "Italy", 9),
+        ("Bari", "Italy", 8)
+    ]
+
+    private static var results: [MapSunSearchResult] {
+        cities.map { name, country, sunnyHours in
+            let city = City(
+                name: name,
+                country: country,
+                latitude: 41.9,
+                longitude: 12.5,
+                timeZoneIdentifier: "Europe/Rome"
             )
-                .zIndex(1)
-        }
-        .accessibilityElement(children: .contain)
-    }
-
-    @ViewBuilder
-    private var cardContent: some View {
-        if let recommendation = presentation.recommendation {
-            if dynamicTypeSize.isAccessibilitySize {
-                // At large text sizes vertical content avoids forcing the city
-                // name and selected metric into one unreadably narrow row.
-                VStack(alignment: .leading, spacing: 10) {
-                    Image(systemName: recommendation.condition.displayIcon)
-                        .font(.title2.weight(.medium))
-                        .weatherIconStyle(for: recommendation.condition.iconTone)
-                        .accessibilityHidden(true)
-
-                    Text(metricValue(for: recommendation))
-                        .font(.title2.weight(.semibold))
-                        .monospacedDigit()
-
-                    Text(displayName)
-                        .font(.headline)
-
-                    HStack(spacing: 6) {
-                        Image(systemName: recommendation.condition.displayIcon)
-                            .weatherIconStyle(for: recommendation.condition.iconTone)
-                            .accessibilityHidden(true)
-
-                        Text(sortMode.title(locale: locale))
-                            .foregroundStyle(.secondary)
-                    }
-                    .font(.subheadline)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else {
-                HStack(alignment: .center, spacing: 16) {
-                    Image(systemName: recommendation.condition.displayIcon)
-                        .font(.system(size: 40, weight: .medium))
-                        .weatherIconStyle(
-                            for: recommendation.condition.iconTone
-                        )
-                        .frame(
-                            width: MapCardContentLayout.iconWidth,
-                            height: MapCardContentLayout.iconHeight
-                        )
-                        .accessibilityHidden(true)
-
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(metricValue(for: recommendation))
-                            .font(.system(size: 32, weight: .semibold))
-                            .monospacedDigit()
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.74)
-
-                        Text(
-                            "\(displayName) · \(sortMode.title(locale: locale))"
-                        )
-                        .font(.headline.weight(.regular))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-
-                    }
-
-                    Spacer(minLength: 8)
-                }
-            }
-        } else {
-            VStack(alignment: .leading, spacing: 5) {
-                Text(displayName)
-                    .font(.headline)
-
-                if presentation.isLoading {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityHidden(true)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-    }
-
-    private var cardHeight: CGFloat {
-        MapCardContentLayout.height(for: dynamicTypeSize)
-    }
-
-    private func metricValue(
-        for recommendation: PlaceRecommendation
-    ) -> String {
-        switch sortMode {
-        case .sunny:
-            return mapCardSunnyHoursText(for: recommendation, locale: locale)
-        case .temperature:
-            return temperatureUnit.display(
-                recommendation.forecast.dailyHigh
+            let forecast = DailyForecast(
+                date: Date(timeIntervalSince1970: 1_786_233_600),
+                dailyLow: 18,
+                dailyHigh: 30,
+                symbolName: "sun.max.fill",
+                condition: .clear,
+                isFullyClear: true,
+                hourlyForecasts: [],
+                cloudCover: 0.1,
+                precipitationChance: 0,
+                uvIndex: 7,
+                sunrise: nil,
+                sunset: nil
             )
-        case .feelsLike:
-            return recommendation.maximumFeelsLike.map(
-                temperatureUnit.display
-            ) ?? ""
-        case .cloud:
-            return recommendation.cloudCover.map(percentage) ?? ""
-        case .rainChance:
-            return recommendation.precipitationChance.map(percentage) ?? ""
-        case .visibility:
-            return recommendation.maximumVisibilityKilometers.map(
-                distanceUnit.display
-            ) ?? ""
-        case .uvIndex:
-            return recommendation.forecast.uvIndex.map(String.init) ?? ""
+            let weather = CityWeather(
+                city: city,
+                dailyForecasts: [forecast],
+                timeZone: TimeZone(identifier: "Europe/Rome")!
+            )
+            return MapSunSearchResult(
+                city: city,
+                recommendation: PlaceRecommendation(
+                    cityWeather: weather,
+                    forecast: forecast,
+                    condition: .clear,
+                    cloudCover: 0.1,
+                    precipitationChance: 0,
+                    sunnyHourCount: sunnyHours,
+                    bestSunnyWindow: 8...18,
+                    maximumFeelsLike: 30,
+                    maximumVisibilityKilometers: 20
+                )
+            )
         }
     }
 
-    private var temperatureUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
-    }
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            AppPalette.light.background
 
-    private var distanceUnit: DistanceUnit {
-        DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+            MapCard(
+                size: .large(horizontalPadding: 16),
+                colorScheme: .light,
+                maximumWidth: 390,
+                glassEffectID: "preview-sun-results-card",
+                fallbackGeometryID: "preview-sun-results-card",
+                glassNamespace: glassNamespace
+            ) {
+                MapSunResultsPanel(
+                    results: Self.results,
+                    title: "Italy",
+                    size: size,
+                    setSize: { size = $0 },
+                    openDetails: { _ in },
+                    clear: {}
+                )
+            }
+        }
+        .frame(width: 390, height: 560)
     }
+}
 
-    private func percentage(_ value: Double) -> String {
-        "\(Int((value * 100).rounded()))%"
-    }
+#Preview("Map Find Sun Results Card", traits: .fixedLayout(width: 390, height: 560)) {
+    MapSunResultsPanelPreview()
+        .environment(\.appTheme, .shared)
 }

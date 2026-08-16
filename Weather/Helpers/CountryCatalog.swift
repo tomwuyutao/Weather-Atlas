@@ -216,6 +216,49 @@ enum CountryCityCatalog {
         }
     }
 
+    /// Returns every catalog country ordered by distance from the supplied
+    /// coordinate to that country's nearest bundled city. This is a factual
+    /// proximity proxy: it avoids pretending that an irregular country has one
+    /// authoritative centre point while still making nearby choices easy to
+    /// reach. Without a usable coordinate, it preserves localized A–Z order.
+    static func countries(
+        near coordinate: CLLocationCoordinate2D?,
+        locale: Locale
+    ) -> [CountryPlacesOption] {
+        let allCountries = countries(locale: locale)
+        guard let coordinate,
+              CLLocationCoordinate2DIsValid(coordinate) else {
+            return allCountries
+        }
+
+        let location = CLLocation(
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude
+        )
+        return allCountries
+            .map { country in
+                let nearestDistance = country.cities.reduce(
+                    CLLocationDistance.greatestFiniteMagnitude
+                ) { nearestDistance, city in
+                    let cityLocation = CLLocation(
+                        latitude: city.latitude,
+                        longitude: city.longitude
+                    )
+                    return min(nearestDistance, location.distance(from: cityLocation))
+                }
+                return (country, nearestDistance)
+            }
+            .sorted { lhs, rhs in
+                if lhs.1 != rhs.1 {
+                    return lhs.1 < rhs.1
+                }
+                return lhs.0.localizedName(locale: locale)
+                    .localizedStandardCompare(rhs.0.localizedName(locale: locale))
+                    == .orderedAscending
+            }
+            .map(\.0)
+    }
+
     /// Returns a compact, location-aware country starter list for Search. The
     /// nearest catalog city is used as the factual proximity signal rather
     /// than inventing country centroids for irregular or overseas territories.
@@ -227,45 +270,18 @@ enum CountryCityCatalog {
         limit: Int = 6
     ) -> [CountryPlacesOption] {
         guard limit > 0 else { return [] }
-        let allCountries = countries(locale: locale)
-
         guard let coordinate,
               CLLocationCoordinate2DIsValid(coordinate) else {
             return fallbackRecommendedCountries(
-                from: allCountries,
+                from: countries(locale: locale),
                 locale: locale,
                 limit: limit
             )
         }
-
-        let location = CLLocation(
-            latitude: coordinate.latitude,
-            longitude: coordinate.longitude
+        return Array(
+            countries(near: coordinate, locale: locale)
+                .prefix(limit)
         )
-        let rankedCountries = allCountries.map { country in
-            let nearestDistance = country.cities.reduce(
-                CLLocationDistance.greatestFiniteMagnitude
-            ) { nearestDistance, city in
-                let cityLocation = CLLocation(
-                    latitude: city.latitude,
-                    longitude: city.longitude
-                )
-                return min(nearestDistance, location.distance(from: cityLocation))
-            }
-            return (country, nearestDistance)
-        }
-
-        return rankedCountries
-            .sorted { lhs, rhs in
-                if lhs.1 != rhs.1 {
-                    return lhs.1 < rhs.1
-                }
-                return lhs.0.localizedName(locale: locale)
-                    .localizedStandardCompare(rhs.0.localizedName(locale: locale))
-                    == .orderedAscending
-            }
-            .prefix(limit)
-            .map { $0.0 }
     }
 
     /// Resolves one bundled country from an ISO 3166-1 alpha-2 code.

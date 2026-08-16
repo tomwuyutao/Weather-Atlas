@@ -83,12 +83,28 @@ enum DistanceUnit: String, CaseIterable {
 
     /// Converts and formats WeatherKit's kilometre-based visibility value.
     func display(_ kilometers: Double) -> String {
+        "\(displayValue(kilometers)) \(symbol)"
+    }
+
+    /// Formats a visibility value without repeating its unit in a range.
+    func displayValue(_ kilometers: Double) -> String {
         switch self {
         case .kilometers:
-            return "\(Int(kilometers.rounded())) km"
+            return "\(Int(kilometers.rounded()))"
         case .miles:
-            return "\(Int((kilometers * 0.621_371).rounded())) mi"
+            return "\(Int((kilometers * 0.621_371).rounded()))"
         }
+    }
+
+    var symbol: String {
+        switch self {
+        case .kilometers: "km"
+        case .miles: "mi"
+        }
+    }
+
+    func displayRange(_ low: Double, _ high: Double) -> String {
+        "\(displayValue(low)) – \(displayValue(high)) \(symbol)"
     }
 
     /// Converts stored kilometre values into the selected display unit.
@@ -102,11 +118,11 @@ enum DistanceUnit: String, CaseIterable {
 
 // MARK: - App Text Size
 
-    /// Supported steps for the app-specific text-size slider.
+    /// Supported steps for the app-specific text-size menu.
     ///
-    /// These are deliberately semantic slider steps rather than font sizes.
+    /// These are deliberately semantic menu choices rather than font sizes.
     /// SwiftUI maps them to Dynamic Type categories, so text still follows the
-    /// platform's scaling and accessibility behavior.
+    /// platform's scaling behavior.
 enum AppTextSizeLevel: Int, CaseIterable {
     case small = 1
     case medium = 2
@@ -114,11 +130,11 @@ enum AppTextSizeLevel: Int, CaseIterable {
     case xLarge = 4
     case xxLarge = 5
 
-    /// Default slider step for new preferences.
+    /// Default text-size choice for new preferences.
     static let defaultRawValue = AppTextSizeLevel.large.rawValue
-    /// Lowest raw value selectable by the Settings slider.
+    /// Lowest raw value selectable by the Settings menu.
     static let minimumSelectableRawValue = AppTextSizeLevel.small.rawValue
-    /// Highest raw value selectable by the Settings slider.
+    /// Highest raw value selectable by the Settings menu.
     static let maximumSelectableRawValue = AppTextSizeLevel.xxLarge.rawValue
 
     /// Normalizes out-of-range or corrupt raw values into the supported range.

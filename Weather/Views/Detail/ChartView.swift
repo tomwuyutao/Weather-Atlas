@@ -73,90 +73,6 @@ private struct ChartConditionIcon: Identifiable {
     let condition: AppWeatherCondition?
 }
 
-/// One explicitly described chart series used by VoiceOver's Chart Detail and
-/// Audio Graph. X values are numeric reference-date seconds so the axis closure
-/// can format every point in the destination timezone instead of inheriting the
-/// device timezone from Swift Charts' default date descriptor.
-private struct DetailChartAccessibilitySeries {
-    let name: String
-    let points: [(date: Date, value: Double)]
-}
-
-private struct DetailChartAccessibilityDescriptor: AXChartDescriptorRepresentable {
-    let title: String
-    let summary: String
-    let localTimeDisclosure: String
-    let series: [DetailChartAccessibilitySeries]
-    let yRange: ClosedRange<Double>
-    let metric: DetailChartMetric
-    let isHourly: Bool
-    let timeZone: TimeZone
-    let locale: Locale
-
-    func makeChartDescriptor() -> AXChartDescriptor {
-        let allPoints = series.flatMap(\.points)
-        let xValues = allPoints.map { $0.date.timeIntervalSinceReferenceDate }
-        let minimumX = xValues.min() ?? 0
-        let maximumX = xValues.max() ?? 1
-        // Accessibility numeric axes require a nonempty range even when only
-        // one forecast point is available.
-        let xRange = minimumX...max(maximumX, minimumX + 1)
-
-        let xAxis = AXNumericDataAxisDescriptor(
-            title: localTimeDisclosure,
-            range: xRange,
-            gridlinePositions: []
-        ) { value in
-            let date = Date(timeIntervalSinceReferenceDate: value)
-            var style = isHourly
-                ? Date.FormatStyle.dateTime
-                    .weekday(.wide)
-                    .month(.abbreviated)
-                    .day()
-                    .hour()
-                    .minute()
-                    .locale(locale)
-                : Date.FormatStyle.dateTime
-                    .weekday(.wide)
-                    .month(.abbreviated)
-                    .day()
-                    .locale(locale)
-            style.timeZone = timeZone
-            return date.formatted(style)
-        }
-
-        let yAxis = AXNumericDataAxisDescriptor(
-            title: metric.title(locale: locale),
-            range: yRange,
-            gridlinePositions: []
-        ) { value in
-            metric.axisLabel(for: value, locale: locale)
-        }
-
-        let describedSeries = series.map { item in
-            AXDataSeriesDescriptor(
-                name: item.name,
-                isContinuous: true,
-                dataPoints: item.points.map {
-                    AXDataPoint(
-                        x: $0.date.timeIntervalSinceReferenceDate,
-                        y: $0.value
-                    )
-                }
-            )
-        }
-
-        return AXChartDescriptor(
-            title: title,
-            summary: "\(summary). \(localTimeDisclosure)",
-            xAxis: xAxis,
-            yAxis: yAxis,
-            additionalAxes: [],
-            series: describedSeries
-        )
-    }
-}
-
 // MARK: - Detail Metric Grid
 
 /// Six-card Detail selector that presents the chart sheet at the tapped metric.
@@ -202,7 +118,7 @@ struct DetailMetricGrid: View {
     }
 
     /// Persistent report surfaces can pass unavailable values without removing
-    /// the grid; each metric then renders a disabled em-dash placeholder.
+    /// the grid; each metric then renders an explicit unavailable state.
     init(
         city: CityWeather?,
         placeDisplayName: String,
@@ -297,7 +213,7 @@ struct DetailMetricGrid: View {
         presentation: DetailMetricValuePresentation?,
         action: @escaping (DetailChartMetric) -> Void
     ) -> some View {
-        // Accessibility text sizes receive a single column so neither metric
+        // Larger text sizes receive a single column so neither metric
         // names nor values have to shrink below a readable size.
         let columns = dynamicTypeSize.isAccessibilitySize
             ? [GridItem(.flexible())]
@@ -321,7 +237,10 @@ struct DetailMetricGrid: View {
                 DetailMetricCard(
                     metric: metric,
                     value: value,
-                    isEnabled: value != nil,
+                    // Missing values remain selectable when the city itself
+                    // is known: the chart sheet can now explain that field's
+                    // unavailable state instead of leaving a dead card.
+                    isEnabled: city != nil,
                     isSelected: selectedMetric == metric,
                     action: { action(metric) }
                 )
@@ -437,7 +356,9 @@ private struct DetailMetricCard: View {
 
     var body: some View {
         // A plain button preserves the custom glass card while retaining native
-        // button semantics and a single full-card hit target.
+        // button semantics and a single full-card hit target. A card remains
+        // actionable for a known city even when its selected metric is missing,
+        // because the chart sheet now shows a matching explicit state.
         Button(action: action) {
             HStack(spacing: 10) {
                 Image(systemName: metric.systemImage)
@@ -445,26 +366,43 @@ private struct DetailMetricCard: View {
                     .foregroundStyle(theme.colors.primaryText)
                     .frame(width: 24)
                     // The card's text already names the metric. Keeping this
-                    // symbol out of the accessibility tree avoids a duplicate
+                    // symbol out of the chart header avoids a duplicate
                     // weather/thermometer announcement before every value.
-                    .accessibilityHidden(true)
+
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(metric.title(locale: locale))
                         .font(.caption)
                         .foregroundStyle(theme.colors.secondaryText)
-                    Text(value ?? "—")
-                        .font(.callout.weight(.semibold))
-                        .foregroundStyle(
-                            value == nil
-                                ? theme.colors.secondaryText
-                                : theme.colors.primaryText
+                    if let value {
+                        Text(value)
+                            .font(.callout.weight(.semibold))
+                            .foregroundStyle(theme.colors.primaryText)
+                            .lineLimit(
+                                dynamicTypeSize.isAccessibilitySize ? nil : 1
+                            )
+                            .minimumScaleFactor(
+                                dynamicTypeSize.isAccessibilitySize ? 1 : 0.65
+                            )
+                            .frame(minHeight: 20, alignment: .leading)
+                    } else {
+                        // A literal em dash looked like a loading artifact.
+                        // Keep the unavailable card disabled, but make the
+                        // missing-data state clear in the card itself.
+                        Label(
+                            localizedString(
+                                "Weather Data Missing",
+                                locale: locale
+                            ),
+                            systemImage: "exclamationmark.triangle"
                         )
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
-                        .minimumScaleFactor(
-                            dynamicTypeSize.isAccessibilitySize ? 1 : 0.65
+                        .font(.caption.weight(.medium))
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .lineLimit(
+                            dynamicTypeSize.isAccessibilitySize ? nil : 2
                         )
                         .frame(minHeight: 20, alignment: .leading)
+                    }
                 }
 
                 Spacer(minLength: 0)
@@ -475,10 +413,10 @@ private struct DetailMetricCard: View {
         .buttonStyle(.plain)
         .disabled(!isEnabled)
         // Treat the title and value as one native control. The full card is the
-        // action that opens its chart, so VoiceOver and Voice Control should not
-        // have to traverse its decorative symbol separately.
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        // action that opens its chart, so the card does not create a competing
+        // secondary interaction target.
+
+
         // Match Daily and 10-Day Sunny Hours exactly. The Button still owns
         // the full hit target; using the regular report surface prevents the
         // interactive glass variant from introducing a brighter card tint.
@@ -531,7 +469,6 @@ struct DetailChartView: View {
     @Environment(\.locale) private var locale
     @Environment(\.dismiss) private var dismiss
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Persisted display unit for visibility values.
     @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
 
@@ -723,7 +660,10 @@ struct DetailChartView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(theme.colors.secondaryText)
 
-            Text(chartSummary ?? "")
+            Text(
+                chartSummary
+                    ?? localizedString("Forecast Unavailable", locale: locale)
+            )
                 .font(.system(.title, design: .rounded).weight(.semibold))
                 .foregroundStyle(theme.colors.primaryText)
 
@@ -765,12 +705,48 @@ struct DetailChartView: View {
                     forecastChart
                 }
             } else {
-                Color.clear
-                    .frame(maxWidth: .infinity, minHeight: chartHeight)
-                    .accessibilityHidden(true)
+                chartUnavailableContent
             }
 
         }
+    }
+
+    /// Uses the same explicit missing-data language as report cards instead of
+    /// reserving a blank plot-sized area when a metric cannot be charted.
+    private var chartUnavailableContent: some View {
+        VStack(spacing: 8) {
+            Image(systemName: "chart.line.downtrend.xyaxis")
+                .font(.title2)
+                .foregroundStyle(theme.colors.secondaryText)
+
+
+            Text("Forecast Unavailable")
+                .font(.callout.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+
+            Text(chartUnavailableMessage)
+                .font(.caption)
+                .foregroundStyle(theme.colors.secondaryText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity, minHeight: chartHeight)
+
+
+
+    }
+
+    private var chartUnavailableMessage: String {
+        guard let chartDataIssue else {
+            return localizedString(
+                "Forecast data is unavailable for the selected date.",
+                locale: locale
+            )
+        }
+        return weatherDataIssueMessage(
+            chartDataIssue,
+            cityName: placeDisplayName,
+            locale: locale
+        )
     }
 
     /// Hourly line chart for one forecast page in the native date pager.
@@ -788,6 +764,13 @@ struct DetailChartView: View {
         let icons = hourlyConditionIcons(for: forecast, at: points.map(\.date))
 
         return Chart {
+            if let currentTime = currentTimeIndicator(for: forecast) {
+                RuleMark(x: .value("Current time", currentTime))
+                    .foregroundStyle(theme.colors.primaryText.opacity(0.72))
+                    .lineStyle(StrokeStyle(lineWidth: 1.5))
+
+            }
+
             if selectedMetric.usesTemperatureLines {
                 // Hourly temperature and feels-like plots are one series. The
                 // separate high/low treatment applies only to daily forecasts.
@@ -800,7 +783,7 @@ struct DetailChartView: View {
                         )
                     )
                     .foregroundStyle(metricColor)
-                    .accessibilityHidden(true)
+
 
                     PointMark(
                         x: .value("Time", point.date),
@@ -812,19 +795,8 @@ struct DetailChartView: View {
                     .foregroundStyle(metricColor)
                     .symbolSize(24)
                     .symbol(.circle)
-                    .accessibilityLabel(
-                        pointAccessibilityLabel(
-                            for: point,
-                            seriesName: selectedMetric.title(locale: locale),
-                            isHourly: true
-                        )
-                    )
-                    .accessibilityValue(
-                        selectedMetric.axisLabel(
-                            for: point.value,
-                            locale: locale
-                        )
-                    )
+
+
                 }
             } else {
                 ForEach(points) { point in
@@ -836,7 +808,7 @@ struct DetailChartView: View {
                         )
                     )
                     .foregroundStyle(metricColor)
-                    .accessibilityHidden(true)
+
 
                     PointMark(
                         x: .value("Time", point.date),
@@ -848,19 +820,8 @@ struct DetailChartView: View {
                     .foregroundStyle(metricColor)
                     .symbolSize(24)
                     .symbol(.circle)
-                    .accessibilityLabel(
-                        pointAccessibilityLabel(
-                            for: point,
-                            seriesName: selectedMetric.title(locale: locale),
-                            isHourly: true
-                        )
-                    )
-                    .accessibilityValue(
-                        selectedMetric.axisLabel(
-                            for: point.value,
-                            locale: locale
-                        )
-                    )
+
+
                 }
             }
         }
@@ -905,14 +866,29 @@ struct DetailChartView: View {
                 .offset(y: 7)
             }
         }
-        .accessibilityChartDescriptor(
-            accessibilityDescriptor(
-                for: points,
-                yRange: domain,
-                isHourly: true
-            )
-        )
+
         .frame(height: chartHeight)
+    }
+
+    /// A live-time rule is meaningful only for the forecast page that is
+    /// today in this city's local time. Keeping it inside the represented
+    /// hourly range prevents an out-of-range rule from expanding the chart.
+    private func currentTimeIndicator(
+        for forecast: DailyForecast
+    ) -> Date? {
+        var cityCalendar = Calendar.autoupdatingCurrent
+        cityCalendar.timeZone = city.timeZone
+        let now = Date.now
+
+        guard cityCalendar.isDate(forecast.date, inSameDayAs: now),
+              let firstHour = forecast.hourlyForecasts.map(\.date).min(),
+              let lastHour = forecast.hourlyForecasts.map(\.date).max(),
+              now >= firstHour,
+              now <= lastHour else {
+            return nil
+        }
+
+        return now
     }
 
     /// Available-days chart using every real forecast returned for the city.
@@ -942,7 +918,7 @@ struct DetailChartView: View {
                         )
                         .foregroundStyle(metricColor)
                         .lineStyle(StrokeStyle(lineWidth: 2))
-                        .accessibilityHidden(true)
+
 
                         PointMark(
                             x: .value("Date", point.date),
@@ -951,19 +927,8 @@ struct DetailChartView: View {
                         .foregroundStyle(metricColor)
                         .symbolSize(28)
                         .symbol(.circle)
-                        .accessibilityLabel(
-                            pointAccessibilityLabel(
-                                for: point,
-                                seriesName: localizedString("High", locale: locale),
-                                isHourly: false
-                            )
-                        )
-                        .accessibilityValue(
-                            selectedMetric.axisLabel(
-                                for: upper,
-                                locale: locale
-                            )
-                        )
+
+
 
                         LineMark(
                             x: .value("Date", point.date),
@@ -979,7 +944,7 @@ struct DetailChartView: View {
                                 dash: [6, 4]
                             )
                         )
-                        .accessibilityHidden(true)
+
 
                         PointMark(
                             x: .value("Date", point.date),
@@ -988,19 +953,8 @@ struct DetailChartView: View {
                         .foregroundStyle(dailyLowTemperatureColor)
                         .symbolSize(28)
                         .symbol(.diamond)
-                        .accessibilityLabel(
-                            pointAccessibilityLabel(
-                                for: point,
-                                seriesName: localizedString("Low", locale: locale),
-                                isHourly: false
-                            )
-                        )
-                        .accessibilityValue(
-                            selectedMetric.axisLabel(
-                                for: lower,
-                                locale: locale
-                            )
-                        )
+
+
                     }
                 }
             } else {
@@ -1013,7 +967,7 @@ struct DetailChartView: View {
                         )
                     )
                     .foregroundStyle(metricColor)
-                    .accessibilityHidden(true)
+
 
                     PointMark(
                         x: .value("Date", point.date),
@@ -1025,19 +979,8 @@ struct DetailChartView: View {
                     .foregroundStyle(metricColor)
                     .symbolSize(28)
                     .symbol(.circle)
-                    .accessibilityLabel(
-                        pointAccessibilityLabel(
-                            for: point,
-                            seriesName: selectedMetric.title(locale: locale),
-                            isHourly: false
-                        )
-                    )
-                    .accessibilityValue(
-                        selectedMetric.axisLabel(
-                            for: point.value,
-                            locale: locale
-                        )
-                    )
+
+
                 }
             }
         }
@@ -1079,20 +1022,14 @@ struct DetailChartView: View {
                 .offset(y: 7)
             }
         }
-        .accessibilityChartDescriptor(
-            accessibilityDescriptor(
-                for: points,
-                yRange: domain,
-                isHourly: false
-            )
-        )
+
         .frame(height: chartHeight)
     }
 
     /// The same six cards become an in-sheet metric switcher.
     private var chartMetricCards: some View {
         // iPad has room for wider adaptive cards; iPhone uses two columns until
-        // accessibility sizing requests the single-column fallback.
+        // larger text sizing requests the single-column fallback.
         let columns = dynamicTypeSize.isAccessibilitySize
             ? [GridItem(.flexible())]
             : UIDevice.current.userInterfaceIdiom == .pad
@@ -1110,14 +1047,12 @@ struct DetailChartView: View {
                 DetailMetricCard(
                     metric: metric,
                     value: value,
-                    isEnabled: value != nil,
+                    isEnabled: true,
                     isSelected: selectedMetric == metric,
                     action: {
                         // Animate only the local metric switch. The selected
                         // date remains untouched so the user's context stays.
-                        withAnimation(
-                            reduceMotion ? nil : .smooth(duration: 0.2)
-                        ) {
+                        withAnimation(.smooth(duration: 0.2)) {
                             selectedMetric = metric
                         }
                     }
@@ -1226,111 +1161,6 @@ struct DetailChartView: View {
         return style
     }
 
-    /// Visible and spoken timezone context for the selected forecast instant.
-    /// `secondsFromGMT(for:)` inside the formatter makes the offset respond to
-    /// daylight-saving transitions when the selected day changes.
-    private var localTimeDisclosure: String? {
-        let referenceDate: Date?
-        switch selectedRange {
-        case .day:
-            referenceDate = chartForecast?.date
-        case .forecast:
-            referenceDate = availableForecasts.first?.date
-        }
-        guard let referenceDate else { return nil }
-        return SunnyHoursFormatting.localTimeDisclosure(
-            placeName: placeDisplayName,
-            timeZone: city.timeZone,
-            at: referenceDate,
-            locale: locale
-        )
-    }
-
-    /// Overrides Swift Charts' default Date accessibility formatting, which
-    /// otherwise follows the device timezone even when the visible axis does
-    /// not. Every exposed point now names its destination-local date or time.
-    private func pointAccessibilityLabel(
-        for point: DetailChartPoint,
-        seriesName: String,
-        isHourly: Bool
-    ) -> String {
-        let localDate = accessibilityDateLabel(
-            for: point.date,
-            isHourly: isHourly
-        )
-        return localizedString(
-            "\(seriesName), \(localDate)",
-            locale: locale
-        )
-    }
-
-    private func accessibilityDateLabel(
-        for date: Date,
-        isHourly: Bool
-    ) -> String {
-        var style = isHourly
-            ? Date.FormatStyle.dateTime
-                .weekday(.wide)
-                .month(.abbreviated)
-                .day()
-                .hour()
-                .minute()
-                .locale(locale)
-            : Date.FormatStyle.dateTime
-                .weekday(.wide)
-                .month(.abbreviated)
-                .day()
-                .locale(locale)
-        style.timeZone = city.timeZone
-        return date.formatted(style)
-    }
-
-    /// Replaces the automatic AX date axis with a numeric instant axis whose
-    /// formatter is explicitly pinned to `city.timeZone`. This controls Chart
-    /// Detail, Describe Chart, and Audio Graph—not only the visible axis labels.
-    private func accessibilityDescriptor(
-        for points: [DetailChartPoint],
-        yRange: ClosedRange<Double>,
-        isHourly: Bool
-    ) -> DetailChartAccessibilityDescriptor {
-        let series: [DetailChartAccessibilitySeries]
-        if !isHourly && selectedMetric.usesTemperatureLines {
-            series = [
-                DetailChartAccessibilitySeries(
-                    name: localizedString("High", locale: locale),
-                    points: points.compactMap { point in
-                        point.upperValue.map { (point.date, $0) }
-                    }
-                ),
-                DetailChartAccessibilitySeries(
-                    name: localizedString("Low", locale: locale),
-                    points: points.compactMap { point in
-                        point.lowerValue.map { (point.date, $0) }
-                    }
-                )
-            ]
-        } else {
-            series = [
-                DetailChartAccessibilitySeries(
-                    name: selectedMetric.title(locale: locale),
-                    points: points.map { ($0.date, $0.value) }
-                )
-            ]
-        }
-
-        return DetailChartAccessibilityDescriptor(
-            title: selectedMetric.title(locale: locale),
-            summary: chartSummary ?? "",
-            localTimeDisclosure: localTimeDisclosure ?? "",
-            series: series,
-            yRange: yRange,
-            metric: selectedMetric,
-            isHourly: isHourly,
-            timeZone: city.timeZone,
-            locale: locale
-        )
-    }
-
     /// Places weather symbols on the chart's top axis so their centers share
     /// the exact x-coordinate of their associated point marks.
     @AxisContentBuilder
@@ -1354,7 +1184,7 @@ struct DetailChartView: View {
                             // chart. The chart descriptor exposes the same
                             // forecast samples through Chart Detail and Audio
                             // Graph without duplicating every icon.
-                            .accessibilityHidden(true)
+
                     }
                 }
             }
@@ -1747,7 +1577,7 @@ private extension DetailChartMetric {
               let high = values.max() else {
             return nil
         }
-        return "\(unit.display(low)) – \(unit.display(high))"
+        return unit.displayRange(low, high)
     }
 
     /// Aggregate value range across the actual available forecast horizon.
@@ -1909,7 +1739,7 @@ private extension DetailChartMetric {
 
     func visibilityRange(_ values: [Double], unit: DistanceUnit) -> String? {
         guard let low = values.min(), let high = values.max() else { return nil }
-        return "\(unit.display(low)) – \(unit.display(high))"
+        return unit.displayRange(low, high)
     }
 }
 

@@ -28,6 +28,7 @@ struct SavedPlacesView: View {
     @Binding var selectedDate: Date
 
     @Environment(\.appTheme) private var theme
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.locale) private var locale
 
     // MARK: Derived Planning Data
@@ -59,14 +60,13 @@ struct SavedPlacesView: View {
             let recommendations = assessment.recommendations.filter {
                 !excludedIDs.contains($0.id)
             }
-            let weightedSunnyPlaceCount = Double(
-                recommendations.count(where: {
-                    $0.condition.isSunnyOrPartlySunny
-                })
-            )
+            let averageSunnyHours = recommendations.isEmpty
+                ? 0
+                : recommendations.map(\.sunnyHourCount).reduce(0, +)
+                    / Double(recommendations.count)
             return BestSunnyDateSummary(
                 date: date,
-                weightedSunnyPlaceCount: weightedSunnyPlaceCount,
+                averageSunnyHours: averageSunnyHours,
                 availableCityCount: recommendations.count
             )
         }
@@ -207,9 +207,20 @@ struct SavedPlacesView: View {
         )
     }
 
+    /// Preserve the established phone and portrait layout. A full-width
+    /// landscape iPad gets a more focused planning column with generous space
+    /// on either side of the two comparison cards.
+    private func contentWidth(for size: CGSize) -> CGFloat {
+        guard horizontalSizeClass == .regular, size.width > size.height else {
+            return 760
+        }
+        return 640
+    }
+
     var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 20) {
+        GeometryReader { geometry in
+            ScrollView {
+                LazyVStack(spacing: 20) {
                 // Planning cards retain their structure through first load,
                 // empty-library, partial-data, and failure states. Their own
                 // fallback content explains why weather values are absent.
@@ -225,25 +236,22 @@ struct SavedPlacesView: View {
                     presentationState: forecastPresentationState
                 )
 
-                VStack(spacing: 0) {
+                VStack(spacing: 10) {
                     if let timeZoneExclusionNotice {
                         WeatherTimeZoneFootnote(text: timeZoneExclusionNotice)
                     }
 
                     // The dashboard stays focused on planning. Renaming and
                     // deleting places live in the pushed Saved Places manager.
-                    NavigationLink(value: AppRoute.savedPlacesLibrary) {
-                        libraryLink
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(Text("Manage Saved Places"))
+                    manageSavedPlacesLink
                 }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+                .frame(maxWidth: contentWidth(for: geometry.size))
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 24)
-            .frame(maxWidth: 760)
-            .frame(maxWidth: .infinity)
         }
         .scrollIndicators(.hidden)
         .background(theme.colors.background)
@@ -276,23 +284,16 @@ struct SavedPlacesView: View {
         // second load here used to rebuild and visibly reshuffle the ranking.
     }
 
-    private var libraryLink: some View {
-        // Keep the dashboard action compact and visibly actionable while
-        // maintaining Apple's 44-point minimum touch target.
-        HStack(spacing: 5) {
-            Text("Manage Saved Places")
-            Image(systemName: "chevron.right")
-                .font(.caption.weight(.semibold))
-                .accessibilityHidden(true)
+    /// A quiet footer link shares Place Detail's secondary text-action style
+    /// rather than competing with the forecast cards as another capsule.
+    private var manageSavedPlacesLink: some View {
+        NavigationLink(value: AppRoute.savedPlacesLibrary) {
+            SecondaryTextActionLabel(
+                title: "Manage Saved Places",
+                systemImage: "chevron.right"
+            )
         }
-        .font(.callout.weight(.medium))
-        .foregroundStyle(theme.colors.primaryText)
-        .padding(.horizontal, 18)
-        .frame(minHeight: 44)
-        .background(.thinMaterial, in: Capsule())
-        .overlay(
-            Capsule().stroke(theme.colors.secondaryText.opacity(0.18), lineWidth: 0.8)
-        )
-        .contentShape(Capsule())
+        .buttonStyle(.plain)
+
     }
 }

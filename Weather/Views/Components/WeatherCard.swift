@@ -15,8 +15,29 @@ import SwiftUI
 enum WeatherCardLayout {
     static let leadingIconWidth: CGFloat = 32
     static let headerSpacing: CGFloat = 5
+    /// The gap between a card header and its primary content. Every report and
+    /// planning card uses this single value so their titles sit on the same
+    /// vertical rhythm.
+    static let contentSpacing: CGFloat = 12
     static let padding: CGFloat = 18
     static let cornerRadius: CGFloat = 24
+}
+
+/// Reserves the ordinary content footprint of each card family while weather
+/// data is loading or unavailable. These are minimums—not fixed heights—so
+/// longer localized recovery text and Dynamic Type can still expand naturally.
+enum WeatherCardFallbackLayout {
+    /// Daily timelines consist of a 44-point track and a 14-point axis.
+    static let dailyTimelineContentHeight: CGFloat = 62
+    /// Ten-day timelines retain room for their axis, forecast rows, and key.
+    static let tenDayTimelineContentHeight: CGFloat = 300
+    /// The usual two-week Saved Places heat map remains visually anchored.
+    static let savedDatesContentHeight: CGFloat = 144
+    /// The planning preview normally presents up to three saved-place rows.
+    static let savedPlacesContentHeight: CGFloat = 132
+    /// Nearby recommendations retain a useful comparison-card footprint while
+    /// a search is in progress or needs recovery.
+    static let nearbyPlacesContentHeight: CGFloat = 144
 }
 
 /// Consistent primary-card header with an optional secondary line and trailing
@@ -57,7 +78,7 @@ struct WeatherCardHeader<Trailing: View>: View {
                 )
                 // Every card already names its content in text. Repeating an
                 // SF Symbol's generic name adds noise without adding meaning.
-                .accessibilityHidden(true)
+
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
@@ -65,7 +86,7 @@ struct WeatherCardHeader<Trailing: View>: View {
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-                    .accessibilityAddTraits(.isHeader)
+
 
                 if let subtitle {
                     Text(verbatim: subtitle)

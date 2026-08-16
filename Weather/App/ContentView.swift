@@ -7,6 +7,7 @@
 //  shared routes, modal destinations, quick actions, and widget deep links.
 //
 
+import CoreLocation
 import SwiftUI
 
 /// Native app shell with local weather, saved-place planning, and an immersive Map.
@@ -19,6 +20,8 @@ struct ContentView: View {
     @Bindable var router: AppNavigation
     @Bindable var missingDataAlerts: MissingDataAlertCenter
     @Bindable var networkConnectivity: NetworkConnectivity
+    /// App-level state for first-run gating, replay, and contextual tips.
+    let tutorial: TutorialPresentationState
 
     // MARK: Environment and View-Owned State
 
@@ -39,19 +42,27 @@ struct ContentView: View {
     // MARK: Tab Shell
 
     var body: some View {
-        tabShell
-            .safeAreaInset(edge: .bottom, spacing: 10) {
-                if router.selectedTab != .map,
-                   networkConnectivity.isOffline,
-                   !networkConnectivity.isOfflineBannerDismissed {
-                    OfflineBanner(
-                        lastUpdated: model.weatherStore.latestCachedWeatherDate,
-                        dismiss: networkConnectivity.dismissOfflineBanner
-                    )
-                    .padding(.horizontal, 16)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
+        Group {
+            if tutorial.shouldPresent {
+                TutorialFlow(
+                    model: model,
+                    complete: {
+                        tutorial.complete()
+                        router.selectedTab = .yourLocation
+                    }
+                )
+            } else {
+                appShell
             }
+        }
+        .environment(model)
+        .environment(model.placesStore)
+        .environment(model.weatherStore)
+        .environment(model.locationProvider)
+    }
+
+    private var appShell: some View {
+        tabShell
             // Forecast APIs and date formatting use the resolved current-location
             // calendar, so dates stay anchored to the place being forecast.
             .environment(\.calendar, model.forecastCalendar)
@@ -87,12 +98,35 @@ struct ContentView: View {
             .onChange(of: model.placesStore.document) {
                 handlePlacesDocumentChange()
             }
+            // The Current Location entry is a stable widget configuration, but
+            // its coordinate and locality are live. Republish that one small
+            // contract whenever the app receives a new location or its weather
+            // response supplies the authoritative city/timezone.
+            .onChange(of: widgetCurrentLocationIdentity) {
+                model.publishWidgetCatalog(locale: locale)
+            }
             .onChange(
                 of: model.placesStore.loadErrorDescription,
                 initial: true,
                 handlePlacesLoadErrorChange
             )
             .onChange(of: scenePhase, handleScenePhaseChange)
+            .onChange(of: router.selectedTab, initial: true) { _, newTab in
+                tutorial.presentFeatureTipIfNeeded(
+                    for: newTab,
+                    hasActiveNativeAlert: missingDataAlerts.currentAlert != nil
+                )
+            }
+            .onChange(of: missingDataAlerts.currentAlert) { _, alert in
+                // A first-visit explanation should never appear behind a
+                // native data alert. Recheck the current tab after that alert
+                // is dismissed instead.
+                guard alert == nil else { return }
+                tutorial.presentFeatureTipIfNeeded(
+                    for: router.selectedTab,
+                    hasActiveNativeAlert: missingDataAlerts.currentAlert != nil
+                )
+            }
             .onReceive(
                 NotificationCenter.default.publisher(
                     for: .weatherOpenMainViewShortcut
@@ -100,10 +134,6 @@ struct ContentView: View {
                 perform: handleShortcutNotification
             )
             .onOpenURL(perform: handleExternalURL)
-            .environment(model)
-            .environment(model.placesStore)
-            .environment(model.weatherStore)
-            .environment(model.locationProvider)
     }
 
     private var tabShell: some View {
@@ -117,11 +147,11 @@ struct ContentView: View {
                 value: AppTab.yourLocation
             ) {
                 NavigationStack(path: $router.yourLocationPath) {
-                    YourLocationView(
+                    screenWithOfflineBanner(YourLocationView(
                         model: model,
                         router: router,
                         selectedDate: $selectedDate
-                    )
+                    ))
                     .navigationDestination(for: AppRoute.self) {
                         destination(for: $0)
                     }
@@ -134,13 +164,21 @@ struct ContentView: View {
                 value: AppTab.savedPlaces
             ) {
                 NavigationStack(path: $router.savedPlacesPath) {
-                    SavedPlacesView(
+                    screenWithOfflineBanner(SavedPlacesView(
                         model: model,
                         selectedDate: $selectedDate
-                    )
+                    ))
                     .navigationDestination(for: AppRoute.self) {
                         destination(for: $0)
                     }
+                }
+                .overlay {
+                    TutorialFeatureTipOverlay(
+                        tip: tutorial.activeFeatureTip,
+                        tab: .savedPlaces,
+                        isSelected: router.selectedTab == .savedPlaces,
+                        dismiss: tutorial.dismissActiveFeatureTip
+                    )
                 }
             }
 
@@ -155,6 +193,14 @@ struct ContentView: View {
                         destination(for: $0)
                     }
                 }
+                .overlay {
+                    TutorialFeatureTipOverlay(
+                        tip: tutorial.activeFeatureTip,
+                        tab: .map,
+                        isSelected: router.selectedTab == .map,
+                        dismiss: tutorial.dismissActiveFeatureTip
+                    )
+                }
             }
 
             Tab(
@@ -164,10 +210,11 @@ struct ContentView: View {
                 role: .search
             ) {
                 NavigationStack(path: $router.searchPath) {
-                    PlaceSearchView(
+                    screenWithOfflineBanner(PlaceSearchView(
                         model: model,
-                        router: router
-                    )
+                        router: router,
+                        selectedDate: $selectedDate
+                    ))
                     .navigationTitle("Search")
                     .navigationBarTitleDisplayMode(.inline)
                     .navigationDestination(for: AppRoute.self) {
@@ -176,6 +223,39 @@ struct ContentView: View {
                 }
             }
         }
+    }
+
+    /// Non-map tabs use the same bottom control lane as Map's Find Sun button.
+    /// The child safe area already excludes the native tab bar, so this never
+    /// overlaps the tab controls.
+    @ViewBuilder
+    private func screenWithOfflineBanner<Content: View>(
+        _ content: Content
+    ) -> some View {
+        content.safeAreaInset(edge: .bottom, spacing: MapCardLayout.bottomPadding) {
+            if networkConnectivity.isOffline,
+               !networkConnectivity.isOfflineBannerDismissed {
+                OfflineBanner(
+                    lastUpdated: model.weatherStore.latestCachedWeatherDate,
+                    dismiss: networkConnectivity.dismissOfflineBanner
+                )
+                .padding(.horizontal, 16)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+    }
+
+    /// Equatable facts that change the widget's Current Location identity or
+    /// display name. Keeping it value-based avoids publishing on unrelated
+    /// `WeatherModel` updates.
+    private var widgetCurrentLocationIdentity: WidgetCurrentLocationIdentity {
+        WidgetCurrentLocationIdentity(
+            latitude: model.locationProvider.coordinate?.latitude,
+            longitude: model.locationProvider.coordinate?.longitude,
+            metadata: model.locationProvider.metadata,
+            weatherCityName: model.locationWeather?.city.name,
+            weatherTimeZoneIdentifier: model.locationWeather?.timeZone.identifier
+        )
     }
 
     // MARK: Root Lifecycle
@@ -200,18 +280,22 @@ struct ContentView: View {
         model.retainWeatherScope()
         await model.loadSavedWeather(locale: locale)
         model.publishWidgetCatalog(locale: locale)
-        model.locationProvider.requestLocationIfAuthorized(
-            preferredLocale: locale
-        )
+        if !model.isUsingHomeLocation {
+            model.locationProvider.requestLocationIfAuthorized(
+                preferredLocale: locale
+            )
+        }
         handlePendingShortcut()
     }
 
     private func refreshLocaleDependencies() {
         AppDelegate.updateHomeScreenShortcuts()
         model.publishWidgetCatalog(locale: locale)
-        model.locationProvider.requestLocationIfAuthorized(
-            preferredLocale: locale
-        )
+        if !model.isUsingHomeLocation {
+            model.locationProvider.requestLocationIfAuthorized(
+                preferredLocale: locale
+            )
+        }
     }
 
     private func handlePlacesDocumentChange() {
@@ -263,9 +347,11 @@ struct ContentView: View {
     ) {
         guard newPhase == .active else { return }
         handlePendingShortcut()
-        model.locationProvider.requestLocationIfAuthorized(
-            preferredLocale: locale
-        )
+        if !model.isUsingHomeLocation {
+            model.locationProvider.requestLocationIfAuthorized(
+                preferredLocale: locale
+            )
+        }
         Task {
             await model.loadSavedWeather(locale: locale)
             model.publishWidgetCatalog(locale: locale)
@@ -327,7 +413,11 @@ struct ContentView: View {
         case .settings:
             SettingsView(
                 model: model,
-                onResetApp: resetApp
+                onResetApp: resetApp,
+                onReplayTutorial: {
+                    tutorial.replay()
+                    router.presentedSheet = nil
+                }
             )
         }
     }
@@ -442,6 +532,8 @@ struct ContentView: View {
         defaults.set(true, forKey: "showLegend")
         theme.style = .automatic
 
+        tutorial.resetForFullAppReset()
+
         selectedDate = Calendar.current.startOfDay(for: Date())
         router.yourLocationPath = []
         router.savedPlacesPath = []
@@ -488,26 +580,78 @@ struct ContentView: View {
         }
     }
 
-    /// Opens Places from a widget URL.
+    /// Routes app and widget URLs to their native destination. Older generic
+    /// Places URLs still open the manager; city widget URLs now open the city's
+    /// forecast directly when that saved place still exists.
     private func handleExternalURL(_ url: URL) {
         guard url.scheme == "weatheratlas" else { return }
 
-        if url.host == "places" {
+        switch url.host {
+        case "place":
+            openWidgetPlace(url)
+        case "places":
+            router.savedPlacesPath = []
+            router.showPlacesLibrary()
+            showWidgetIssue(url)
+        case "home":
+            handleShortcut(.home)
+        case "map":
+            handleShortcut(.map)
+        default:
+            break
+        }
+    }
+
+    /// Opens a widget's configured Saved Place in the same Detail destination
+    /// used by city rows. Current Location is not a saved-place route, so its
+    /// widget correctly opens the Your Location report instead.
+    private func openWidgetPlace(_ url: URL) {
+        guard let components = URLComponents(
+            url: url,
+            resolvingAgainstBaseURL: false
+        ),
+        let cityIdentifier = components.queryItems?
+            .first(where: { $0.name == "cityID" })?.value else {
+            // A malformed or stale city widget should still leave the person at
+            // the useful generic Places destination rather than doing nothing.
             router.savedPlacesPath = []
             router.showPlacesLibrary()
             showWidgetIssue(url)
             return
         }
 
-        switch url.host {
-        case "home":
-            handleShortcut(.home)
-        case "map":
-            handleShortcut(.map)
-        case "places":
-            handleShortcut(.places)
-        default:
-            break
+        if cityIdentifier == WidgetDataStore.currentLocationIdentifier {
+            router.yourLocationPath = []
+            router.selectedTab = .yourLocation
+            showWidgetIssue(url)
+            return
+        }
+
+        guard let savedPlace = savedPlace(forWidgetCityIdentifier: cityIdentifier) else {
+            // The widget can outlive a delete or rename. Preserve the historic
+            // Places behavior as the safe fallback when its city no longer
+            // resolves in the app's current library.
+            router.savedPlacesPath = []
+            router.showPlacesLibrary()
+            showWidgetIssue(url)
+            return
+        }
+
+        router.selectedTab = .savedPlaces
+        router.savedPlacesPath = [.place(id: savedPlace.id)]
+        showWidgetIssue(url)
+    }
+
+    /// Resolves the stable cross-process widget identifier to the app's saved
+    /// UUID. Widget identifiers intentionally derive from coordinates because
+    /// they must survive between the app and widget extension processes.
+    private func savedPlace(forWidgetCityIdentifier identifier: String) -> SavedPlace? {
+        model.placesStore.allPlaces.first { place in
+            WidgetDataStore.cityIdentifier(
+                country: place.city.country,
+                latitude: place.city.latitude,
+                longitude: place.city.longitude
+            ) == identifier
         }
     }
 
@@ -559,15 +703,8 @@ struct ContentView: View {
             )
         )
 
-        let savedPlace = cityIdentifier.flatMap { identifier in
-            model.placesStore.allPlaces.first { place in
-                WidgetDataStore.cityIdentifier(
-                    country: place.city.country,
-                    latitude: place.city.latitude,
-                    longitude: place.city.longitude
-                ) == identifier
-            }
-        } ?? model.placesStore.allPlaces.first {
+        let savedPlace = cityIdentifier.flatMap(savedPlace(forWidgetCityIdentifier:))
+            ?? model.placesStore.allPlaces.first {
             $0.displayName.localizedCaseInsensitiveCompare(cityName)
                 == .orderedSame
         }
@@ -616,4 +753,15 @@ struct ContentView: View {
             }
         )
     }
+}
+
+/// Minimal app-side trigger for publishing the special widget Current Location
+/// entry. It intentionally excludes live forecast arrays so ordinary weather
+/// updates do not force unnecessary WidgetKit timeline reloads.
+private struct WidgetCurrentLocationIdentity: Equatable {
+    let latitude: Double?
+    let longitude: Double?
+    let metadata: CurrentLocationMetadata?
+    let weatherCityName: String?
+    let weatherTimeZoneIdentifier: String?
 }

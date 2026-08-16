@@ -10,8 +10,9 @@ import SwiftUI
 
 // MARK: - Nearby Sunny Recommendations
 
-/// Fallback card shown when the selected day is not sunny at the person's
-/// location. It displays already-fetched recommendations; it does not search.
+/// A persistent card showing nearby places with more selected-day sunny hours
+/// than the person's location. It displays already-fetched recommendations;
+/// it does not search.
 struct NearbySunnyPlacesCard: View {
     /// Your Location is a quick local scan, not a second full results screen.
     private static let maxRecommendations = 3
@@ -32,32 +33,31 @@ struct NearbySunnyPlacesCard: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
-    @AppStorage("temperatureUnit")
-    private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
     @AppStorage("distanceUnit")
     private var distanceUnitRaw = DistanceUnit.defaultRawValue
 
     // MARK: Display Formatting
-
-    private var temperatureUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
-    }
 
     private var distanceUnit: DistanceUnit {
         DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
     }
 
     private var shownRecommendations: [NearestSunnyPlaceResult] {
-        // Your Location is a preview. Map receives the full result list through the
+        // `WeatherModel` has already excluded places that do not improve on the
+        // current location's sunny-hour total. This report is only a compact
+        // preview; the Map receives the full eligible result list through the
         // action closure when the person wants to explore more choices.
         Array(recommendations.prefix(Self.maxRecommendations))
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(
+            alignment: .leading,
+            spacing: WeatherCardLayout.contentSpacing
+        ) {
             WeatherCardHeader(
                 icon: "location.magnifyingglass",
-                title: "Nearby Sunny Places"
+                title: "Nearby Sunnier Places"
             )
 
             cardContent
@@ -96,20 +96,15 @@ struct NearbySunnyPlacesCard: View {
             // fails. Keep those rows, but surface the partial failure and its
             // recovery action inside this same card instead of hiding it.
             if let errorMessage {
-                messageWithAction(
-                    errorMessage,
-                    actionTitle: "Try Again",
-                    systemImage: "arrow.clockwise",
-                    action: retry
-                )
+                message(errorMessage)
                 .padding(.top, 4)
             }
 
             Button(action: viewOnMap) {
                 Label("View on Map", systemImage: "map")
-                    .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.bordered)
+            .weatherGlassActionStyle()
+            .frame(maxWidth: .infinity, alignment: .center)
             .padding(.top, 8)
         } else if isLoading {
             // Loading is separate from an empty completed search, avoiding a
@@ -120,32 +115,26 @@ struct NearbySunnyPlacesCard: View {
                         width: WeatherCardLayout.leadingIconWidth,
                         alignment: .leading
                     )
-                    .accessibilityHidden(true)
-                Text("Loading nearby sunny places…")
+
+                Text("Loading nearby sunnier places…")
                     .font(.callout)
                     .foregroundStyle(theme.colors.secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 14)
-            .accessibilityElement(children: .combine)
+
         } else if let errorMessage {
-            messageWithAction(
-                errorMessage,
-                actionTitle: "Try Again",
-                systemImage: "arrow.clockwise",
-                action: retry
-            )
+            message(errorMessage)
         } else if locationStatus.requiresSettings {
             messageWithAction(
                 locationStatus == .denied
                     ? localizedString(
-                        "Location access is off. Allow it in Settings to show your local timeline and nearest sunny place.",
+                        "Location access is off. Allow it in Settings to show your local timeline and nearby sunnier places.",
                         locale: locale
                     )
                     : localizedString(
                         "Current location is unavailable on this device.",
                         locale: locale
-                    ),
+                ),
                 actionTitle: "Open Settings",
                 systemImage: "gearshape",
                 action: openSettings
@@ -153,7 +142,7 @@ struct NearbySunnyPlacesCard: View {
         } else if !locationStatus.hasResolvedCoordinate {
             messageWithAction(
                 localizedString(
-                    "Use your location to find the nearest fully sunny city.",
+                    "Use your location to find nearby places with more sunny hours.",
                     locale: locale
                 ),
                 actionTitle: "Use Current Location",
@@ -163,18 +152,17 @@ struct NearbySunnyPlacesCard: View {
         } else if hasCompletedSearch {
             Text(
                 localizedString(
-                    "No sunny city was found on this date.",
+                    "No nearby place has more sunny hours on this date.",
                     locale: locale
                 )
             )
             .font(.callout)
             .foregroundStyle(theme.colors.secondaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
         } else {
             messageWithAction(
                 localizedString(
-                    "Find nearby World Cities with sunny conditions.",
+                    "Find nearby World Cities with more sunny hours.",
                     locale: locale
                 ),
                 actionTitle: "Find Sunny Place",
@@ -188,7 +176,7 @@ struct NearbySunnyPlacesCard: View {
         _ recommendation: NearestSunnyPlaceResult
     ) -> some View {
         // The row mirrors `SavedPlacesSunnyPlaceRow`: fixed icon column, regular city
-        // name, trailing temperature. Its one extra line is the local distance.
+        // name, and a trailing total of sunny hours. Its extra line is the local distance.
         NavigationLink(value: AppRoute.place(id: recommendation.id)) {
             HStack(spacing: WeatherCardLayout.headerSpacing) {
                 let icon = recommendation.recommendation.condition.displayIcon
@@ -200,7 +188,7 @@ struct NearbySunnyPlacesCard: View {
                         width: WeatherCardLayout.leadingIconWidth,
                         alignment: .leading
                     )
-                    .accessibilityHidden(true)
+
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(recommendation.cityWeather.city.displayName)
@@ -218,7 +206,12 @@ struct NearbySunnyPlacesCard: View {
 
                 Spacer(minLength: 8)
 
-                Text(temperatureUnit.display(recommendation.forecast.dailyHigh))
+                Text(
+                    SunnyHoursFormatting.hourCountLabel(
+                        recommendation.recommendation.sunnyHourCount,
+                        locale: locale
+                    )
+                )
                     .font(.body)
                     .monospacedDigit()
                     .foregroundStyle(theme.colors.primaryText)
@@ -228,29 +221,9 @@ struct NearbySunnyPlacesCard: View {
         }
         .buttonStyle(.plain)
         .padding(.vertical, 6)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(recommendation.cityWeather.city.displayName)
-        .accessibilityValue(
-            accessibilityValue(for: recommendation)
-        )
-    }
 
-    private func accessibilityValue(
-        for recommendation: NearestSunnyPlaceResult
-    ) -> String {
-        let distance = String(
-            format: localizedString("%@ from your location", locale: locale),
-            locale: locale,
-            distanceUnit.display(recommendation.distanceKilometers)
-        )
-        return [
-            recommendation.recommendation.condition.localizedDisplayName(
-                locale: locale
-            ),
-            temperatureUnit.display(recommendation.forecast.dailyHigh),
-            distance
-        ]
-        .joined(separator: ", ")
+
+
     }
 
     private func messageWithAction(
@@ -269,10 +242,16 @@ struct NearbySunnyPlacesCard: View {
             Button(action: action) {
                 Label(actionTitle, systemImage: systemImage)
             }
-            .buttonStyle(.bordered)
+            .weatherGlassActionStyle()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, 4)
+    }
+
+    private func message(_ message: String) -> some View {
+        Text(message)
+            .font(.callout)
+            .foregroundStyle(theme.colors.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
@@ -304,4 +283,5 @@ private extension LocationProviderStatus {
             false
         }
     }
+
 }

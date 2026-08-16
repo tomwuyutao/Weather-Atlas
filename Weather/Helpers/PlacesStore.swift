@@ -503,6 +503,15 @@ final class PlacesStore {
         }
     }
 
+    /// Creates a storage-free store for Xcode previews and deterministic UI
+    /// fixtures. It deliberately has no backing document store, so a preview
+    /// cannot read or change a person's Saved Places library.
+    init(inMemoryDocument document: PlacesLibraryDocument) {
+        self.document = document
+        documentStore = nil
+        loadErrorDescription = nil
+    }
+
     /// Read-only convenience used by screens that should not edit the document.
     var allPlaces: [SavedPlace] { document.places }
 

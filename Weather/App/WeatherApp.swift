@@ -71,6 +71,8 @@ struct WeatherApp: App {
     @State private var missingDataAlerts: MissingDataAlertCenter
     /// Shared system reachability state used by the offline-cache presentation.
     @State private var networkConnectivity: NetworkConnectivity
+    /// Shared first-run and contextual-tip state for every app window.
+    @State private var tutorial: TutorialPresentationState
 
     /// Creates the app's shared stores and navigation state.
     init() {
@@ -94,6 +96,7 @@ struct WeatherApp: App {
         _router = State(initialValue: AppNavigation())
         _missingDataAlerts = State(initialValue: missingDataAlerts)
         _networkConnectivity = State(initialValue: networkConnectivity)
+        _tutorial = State(initialValue: TutorialPresentationState())
     }
 
     /// Creates themed app windows backed by the shared place-owned model.
@@ -107,7 +110,8 @@ struct WeatherApp: App {
                 appModel: appModel,
                 router: router,
                 missingDataAlerts: missingDataAlerts,
-                networkConnectivity: networkConnectivity
+                networkConnectivity: networkConnectivity,
+                tutorial: tutorial
             )
         }
     }
@@ -129,6 +133,8 @@ struct ThemeRoot: View {
     let missingDataAlerts: MissingDataAlertCenter
     /// Shared system reachability state.
     let networkConnectivity: NetworkConnectivity
+    /// Shared first-run and contextual-tip state.
+    let tutorial: TutorialPresentationState
     /// Applies the theme's scheme preference before constructing inner content.
     var body: some View {
         // Apply the preferred scheme outside `ThemeContent`. That lets the
@@ -139,7 +145,8 @@ struct ThemeRoot: View {
             appModel: appModel,
             router: router,
             missingDataAlerts: missingDataAlerts,
-            networkConnectivity: networkConnectivity
+            networkConnectivity: networkConnectivity,
+            tutorial: tutorial
         )
         .preferredColorScheme(theme.preferredColorScheme)
     }
@@ -159,15 +166,15 @@ private struct ThemeContent: View {
     let missingDataAlerts: MissingDataAlertCenter
     /// Shared system reachability state injected into every root screen.
     let networkConnectivity: NetworkConnectivity
+    /// Shared first-run and contextual-tip state.
+    let tutorial: TutorialPresentationState
     /// Effective scheme after the outer preferred-scheme override.
     @Environment(\.colorScheme) private var colorScheme
     /// Propagates Increase Contrast into the app's custom color palettes.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    /// Current system text category, including accessibility categories.
+    /// Current system text category.
     @Environment(\.dynamicTypeSize) private var systemDynamicTypeSize
-    /// Reads Reduce Motion once so every feature follows the same policy.
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Whether typography should follow the system rather than the in-app slider.
+    /// Whether typography should follow the system rather than the in-app menu.
     @AppStorage("useSystemTextSize") private var useSystemTextSize: Bool = true
     /// Persisted in-app text-size step used when system sizing is disabled.
     @AppStorage("appTextSizeLevel") private var appTextSizeLevel: Int = AppTextSizeLevel.defaultRawValue
@@ -181,11 +188,12 @@ private struct ThemeContent: View {
             model: appModel,
             router: router,
             missingDataAlerts: missingDataAlerts,
-            networkConnectivity: networkConnectivity
+            networkConnectivity: networkConnectivity,
+            tutorial: tutorial
         )
             .environment(\.locale, appLocale)
             // Preserve the complete system Dynamic Type range. Only the explicit
-            // in-app slider uses the app's smaller set of custom steps.
+            // in-app menu uses the app's smaller set of custom steps.
             .environment(
                 \.dynamicTypeSize,
                 useSystemTextSize
@@ -196,14 +204,6 @@ private struct ThemeContent: View {
             .environment(missingDataAlerts)
             .environment(networkConnectivity)
             .tint(resolvedColors.accent)
-            // Reduce Motion suppresses only app-supplied animation; the state
-            // still changes normally and system navigation remains native.
-            .transaction { transaction in
-                if reduceMotion {
-                    transaction.animation = nil
-                    transaction.disablesAnimations = true
-                }
-            }
             .onChange(of: colorScheme, initial: true) { _, newScheme in
                 // Retain the latest resolved system inputs so `AppTheme` can
                 // compute its palette consistently outside this view as well.

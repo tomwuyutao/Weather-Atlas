@@ -19,6 +19,9 @@ struct City: Identifiable, Hashable, Codable {
     let id: UUID
     /// User-facing place name, preserving the selected search result when applicable.
     let name: String
+    /// Optional fuller locality returned by reverse geocoding, reserved for
+    /// the Map information card and forecast-report heading.
+    let titleName: String?
     /// Canonical country or region name returned by reverse geocoding.
     let country: String
     /// Geographic latitude used by WeatherKit and MapKit.
@@ -33,6 +36,7 @@ struct City: Identifiable, Hashable, Codable {
     init(
         id: UUID = UUID(),
         name: String,
+        titleName: String? = nil,
         country: String,
         latitude: Double,
         longitude: Double,
@@ -41,6 +45,7 @@ struct City: Identifiable, Hashable, Codable {
     ) {
         self.id = id
         self.name = name
+        self.titleName = titleName
         self.country = country
         self.latitude = latitude
         self.longitude = longitude
@@ -51,6 +56,15 @@ struct City: Identifiable, Hashable, Codable {
     /// Missing source data remains blank; presentation decides how to label it.
     var displayName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The richer reverse-geocoded locality is intentionally limited to
+    /// primary headings; all ordinary place labels use `displayName`.
+    var titleDisplayName: String {
+        let trimmedTitle = titleName?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ) ?? ""
+        return trimmedTitle.isEmpty ? displayName : trimmedTitle
     }
 }
 
@@ -351,14 +365,6 @@ struct SavedRecommendationsAssessment {
     let issuesByPlaceID: [City.ID: [WeatherDataIssue]]
 }
 
-/// Tri-state current-location result. This prevents an unavailable condition
-/// from being treated as an ordinary cloudy/non-sunny day.
-enum LocationSunninessAssessment {
-    case sunny
-    case notSunny
-    case unavailable([WeatherDataIssue])
-}
-
 /// Stable inputs that make rebuilding Home or changing tabs a no-op.
 /// Coordinates are intentionally rounded before becoming this key: minor GPS
 /// jitter should not repeat an expensive nearby-city WeatherKit search.
@@ -370,8 +376,8 @@ nonisolated private struct NearestSunnySearchKey: Equatable, Sendable {
 }
 
 /// One preloaded nearby city. The population-ranked candidate set stays stable
-/// while users compare forecast dates, then the nearest clear city is selected
-/// locally from its already loaded WeatherKit snapshot.
+/// while users compare forecast dates, then cached sunny-hour totals determine
+/// which cities outrank the current location on that selected date.
 private struct NearbySunnyCityCandidate {
     /// Resolved city identity used to retrieve its cached weather snapshot.
     let city: City
@@ -379,14 +385,14 @@ private struct NearbySunnyCityCandidate {
     let distanceKilometers: Double
 }
 
-/// Compass buckets used to make outer nearby-sun suggestions geographically
-/// varied. `CaseIterable` lets the algorithm visit all four without a second
-/// manually maintained list.
-private enum NearbySunnyQuadrant: CaseIterable {
-    case northeast
-    case southeast
-    case southwest
-    case northwest
+/// The single shared geographic sampling contract for Nearby Sunnier Places and
+/// Find Sun's Near Me scope. Keeping it here prevents the two entry points
+/// from slowly acquiring different radii or weather-request budgets.
+enum NearbySunSearchPolicy {
+    /// Search a practical day-trip radius around the current coordinate.
+    static let radiusKilometers = 200
+    /// Request forecasts only for the most populous cities inside that radius.
+    static let candidateLimit = 25
 }
 
 // MARK: - Shared App Model
@@ -418,6 +424,13 @@ final class WeatherModel {
     private(set) var locationWeather: CityWeather?
     /// Completion time of the most recent current-location weather lookup.
     private(set) var lastLocalRefresh: Date?
+    /// Optional resolved city selected during onboarding instead of device
+    /// location. When present, it supplies every current-location surface
+    /// until the person explicitly chooses device location again.
+    private(set) var homeLocation: City?
+
+    /// Whether the app is currently using a permanent, manually chosen home.
+    var isUsingHomeLocation: Bool { homeLocation != nil }
 
     // MARK: - Calendar Policy
 
@@ -441,6 +454,10 @@ final class WeatherModel {
     /// WeatherKit-resolved city zone, with the device zone only as a safe
     /// fallback before a current location exists.
     var locationTimeZone: TimeZone? {
+        if let identifier = homeLocation?.timeZoneIdentifier,
+           let timeZone = TimeZone(identifier: identifier) {
+            return timeZone
+        }
         if let identifier = locationProvider.metadata?.timeZoneIdentifier,
            let timeZone = TimeZone(identifier: identifier) {
             return timeZone
@@ -502,22 +519,15 @@ final class WeatherModel {
     private var foundCitiesByID: [City.ID: City] = [:]
     // MARK: - Nearby-Sun Sampling Policy
 
-    /// The inner ring begins far enough away to avoid neighbourhood-scale
-    /// duplicates of the current location.
-    private static let nearbyMinDistance = 25.0
-    /// Separates the small local ring from the broader day-trip search area.
-    private static let nearbyInnerRadius = 50.0
-    /// Farthest accepted nearby-sun suggestion, measured from the device.
-    private static let nearbySearchRadius = 200.0
-    /// Population-ranked places retained from the 25–50 km ring.
-    private static let nearbyCandidateLimit = 5
-    /// Maximum population-ranked places retained from each outer compass bucket.
-    private static let quadrantLimit = 5
-    /// Total outer-ring WeatherKit budget: four quadrants × five places.
-    private static let outerCandidateLimit = 20
-    /// Catalog records examined before quadrant selection. This can be larger
-    /// than the WeatherKit budget because no forecast request happens here.
-    private static let catalogScanLimit = 10_000
+    /// Every nearby surface evaluates the same local area: a 200 km circle
+    /// around the current coordinate. There is intentionally no minimum
+    /// distance, ring, or geographic-quadrant rule.
+    private static let nearbySearchRadius = Double(
+        NearbySunSearchPolicy.radiusKilometers
+    )
+    /// The bounded WeatherKit budget. The catalog orders this complete local
+    /// pool by population before a forecast is requested for each city.
+    private static let nearbyCandidateLimit = NearbySunSearchPolicy.candidateLimit
     /// Reuse successful nearby results for the same 0.001-degree coordinate for
     /// at most one WeatherKit freshness window.
     private static let nearbySearchTimeToLive: TimeInterval = 30 * 60
@@ -529,12 +539,35 @@ final class WeatherModel {
         placesStore: PlacesStore,
         weatherStore: PlaceWeatherStore,
         locationProvider: LocationProvider,
-        citiesCatalog: CitiesCatalog = .shared
+        citiesCatalog: CitiesCatalog = .shared,
+        initialHomeLocation: City?
     ) {
         self.placesStore = placesStore
         self.weatherStore = weatherStore
         self.locationProvider = locationProvider
         self.citiesCatalog = citiesCatalog
+        homeLocation = initialHomeLocation
+        if let homeLocation {
+            locationProvider.useHomeLocation(homeLocation)
+        }
+    }
+
+    /// Production construction with a supplied location provider. Keeping the
+    /// preference lookup inside this main-actor initializer avoids making a
+    /// default argument perform isolated UserDefaults work.
+    convenience init(
+        placesStore: PlacesStore,
+        weatherStore: PlaceWeatherStore,
+        locationProvider: LocationProvider,
+        citiesCatalog: CitiesCatalog = .shared
+    ) {
+        self.init(
+            placesStore: placesStore,
+            weatherStore: weatherStore,
+            locationProvider: locationProvider,
+            citiesCatalog: citiesCatalog,
+            initialHomeLocation: HomeLocationStore.load()
+        )
     }
 
     /// Live convenience that creates Core Location on the owning main actor.
@@ -547,7 +580,8 @@ final class WeatherModel {
         self.init(
             placesStore: placesStore,
             weatherStore: weatherStore,
-            locationProvider: LocationProvider()
+            locationProvider: LocationProvider(),
+            initialHomeLocation: HomeLocationStore.load()
         )
     }
 
@@ -759,8 +793,9 @@ final class WeatherModel {
         }
 
         do {
-            // Candidate choice uses population and geographic diversity only;
-            // actual weather decides which of those candidates are recommended.
+            // Candidate choice uses only population inside the fixed 200 km
+            // radius; actual weather decides which of those candidates are
+            // recommended.
             let candidateResult = try await loadNearbyCandidates(
                 centeredAt: coordinate
             )
@@ -883,117 +918,25 @@ final class WeatherModel {
 
     // MARK: - Nearby-Sun Candidate Selection
 
-    /// Builds a geographically balanced, population-first candidate set before
-    /// making WeatherKit calls: five places in the 25–50 km ring, then up to
-    /// five places in each compass quadrant from 50–200 km. Empty quadrants
-    /// donate their unused slots to the remaining outer-ring candidates.
+    /// Builds the one population-first candidate set used by Nearby Sunnier
+    /// Places: up to 25 catalog cities within 200 km of the current coordinate.
+    /// Weather is deliberately not considered until after this fixed local pool
+    /// is selected, so switching the selected date only re-ranks cached data.
     private func loadNearbyCandidates(
         centeredAt coordinate: CLLocationCoordinate2D
     ) async throws -> (
         candidates: [CatalogCityDistanceCandidate],
         issues: [CitiesCatalogIssue]
     ) {
-        // The catalog already orders its result by population. This inner query
-        // intentionally leaves room for genuinely local alternatives without
-        // consuming the more geographically diverse outer-ring allocation.
-        let closeCandidates = try await citiesCatalog.mostPopulousCities(
-            centeredAt: coordinate,
-            withinKilometers: Self.nearbyInnerRadius,
-            fartherThanKilometers: Self.nearbyMinDistance,
-            limit: Self.nearbyCandidateLimit
-        )
-        // Fetch a wider catalog sample first, then partition it locally. This
-        // lets an empty quadrant donate its unused slots to other directions.
-        let outerCandidates = try await citiesCatalog.mostPopulousCities(
+        let candidates = try await citiesCatalog.mostPopulousCities(
             centeredAt: coordinate,
             withinKilometers: Self.nearbySearchRadius,
-            fartherThanKilometers: Self.nearbyInnerRadius,
-            limit: Self.catalogScanLimit
+            limit: Self.nearbyCandidateLimit
         )
-
-        // `Dictionary(grouping:by:)` turns one flat list into four lists while
-        // preserving each list's existing population order.
-        var candidatesByQuadrant = Dictionary(
-            grouping: outerCandidates,
-            by: { quadrant(for: $0.city, from: coordinate) }
-        )
-        var selectedOuterCandidates: [CatalogCityDistanceCandidate] = []
-
-        // Give every compass direction an equal first claim on five slots.
-        for quadrant in NearbySunnyQuadrant.allCases {
-            let candidates = candidatesByQuadrant[quadrant] ?? []
-            selectedOuterCandidates.append(contentsOf: candidates.prefix(
-                Self.quadrantLimit
-            ))
-            // Keep only the unselected tail for potential cross-quadrant
-            // backfill below. `prefix`/`dropFirst` return slices, so `Array`
-            // materializes an independently stored remaining list.
-            candidatesByQuadrant[quadrant] = Array(
-                candidates.dropFirst(Self.quadrantLimit)
-            )
-        }
-
-        // Sparse regions may not populate every quadrant. Reclaim those vacant
-        // slots instead of reducing useful candidate coverage for the user.
-        let unfilledSlots = max(
-            0,
-            Self.outerCandidateLimit - selectedOuterCandidates.count
-        )
-        if unfilledSlots > 0 {
-            // Flatten all remaining quadrant tails, deduplicate by catalog ID,
-            // then restore global population order before taking only the gap.
-            let selectedIDs = Set(selectedOuterCandidates.map(\.city.id))
-            selectedOuterCandidates.append(contentsOf: candidatesByQuadrant.values
-                .flatMap { $0 }
-                .filter { !selectedIDs.contains($0.city.id) }
-                .sorted(by: populationOrder)
-                .prefix(unfilledSlots)
-            )
-        }
-
-        // Close-ring candidates come first only as an input order; weather
-        // ranking later establishes the presentation order seen by the user.
         return (
-            closeCandidates + selectedOuterCandidates,
+            candidates,
             try await citiesCatalog.dataIssues()
         )
-    }
-
-    private func quadrant(
-        for city: CatalogCity,
-        from coordinate: CLLocationCoordinate2D
-    ) -> NearbySunnyQuadrant {
-        // Normalize longitude to -180...180 before comparing east/west. This
-        // avoids assigning a city across the international date line to the
-        // wrong side of a coordinate near ±180°.
-        let longitudeDifference = (city.longitude - coordinate.longitude + 540)
-            .truncatingRemainder(dividingBy: 360) - 180
-        // Tuple pattern matching keeps the four latitude/longitude sign cases
-        // explicit and exhaustive.
-        switch (city.latitude >= coordinate.latitude, longitudeDifference >= 0) {
-        case (true, true): return .northeast
-        case (false, true): return .southeast
-        case (false, false): return .southwest
-        case (true, false): return .northwest
-        }
-    }
-
-    private func populationOrder(
-        _ lhs: CatalogCityDistanceCandidate,
-        _ rhs: CatalogCityDistanceCandidate
-    ) -> Bool {
-        // This comparator is used only for filling unused quadrant slots. It
-        // intentionally mirrors the catalog's population-first ordering.
-        if lhs.city.population != rhs.city.population {
-            return CitiesCatalog.populationRanksBefore(
-                lhs.city.population,
-                rhs.city.population
-            )
-        }
-        if lhs.distanceKilometers != rhs.distanceKilometers {
-            return lhs.distanceKilometers < rhs.distanceKilometers
-        }
-        return lhs.city.id < rhs.city.id
     }
 
     // MARK: - Derived Recommendations
@@ -1019,22 +962,35 @@ final class WeatherModel {
         )
     }
 
-    /// Ranks every sunny nearby city from the stable preloaded candidate set
-    /// with the exact ranking used by Best Sunny Places. This is local
-    /// filtering only—no network request occurs when the date switcher changes.
+    /// Ranks nearby cities whose total sunny hours are strictly greater than
+    /// the current location on the selected date. A caller may request a
+    /// compact preview without creating a second search.
     func nearbyRecommendations(
-        on selectedDate: Date
+        on selectedDate: Date,
+        limit: Int? = nil
     ) -> [NearestSunnyPlaceResult] {
-        nearbyRecommendationAssessment(on: selectedDate).recommendations
+        nearbyRecommendationAssessment(
+            on: selectedDate,
+            limit: limit
+        ).recommendations
     }
 
     /// Assesses every preloaded nearby candidate without conflating a missing
-    /// source field with an ordinary non-sunny result.
+    /// source field with an ordinary non-sunny result. The optional `limit` is
+    /// applied only after the shared sunny-hours ranking, so a Home preview can
+    /// safely request its top three while Map receives the complete ranking.
     func nearbyRecommendationAssessment(
-        on selectedDate: Date
+        on selectedDate: Date,
+        limit: Int? = nil
     ) -> NearbyRecommendationsAssessment {
         var candidates: [NearestSunnyPlaceResult] = []
         var issuesByPlaceID: [City.ID: [WeatherDataIssue]] = [:]
+        // A comparison cannot be honest without a usable current-location
+        // sunny-hours total. Still assess loaded candidates below so existing
+        // missing-data diagnostics remain available to presentation.
+        let currentSunnyHourCount = locationRecommendationAssessment(
+            on: selectedDate
+        ).recommendation?.sunnyHourCount
 
         for candidate in nearbyCandidates {
             guard let weather = weatherStore.weather(for: candidate.city.id) else {
@@ -1050,8 +1006,8 @@ final class WeatherModel {
                 issuesByPlaceID[candidate.city.id] = assessment.issues
             }
             guard let recommendation = assessment.recommendation,
-                  recommendation.condition == .clear
-                    || recommendation.condition == .partlySunny else {
+                  let currentSunnyHourCount,
+                  recommendation.sunnyHourCount > currentSunnyHourCount else {
                 continue
             }
             candidates.append(
@@ -1072,33 +1028,22 @@ final class WeatherModel {
             candidates.map(\.recommendation)
         ).compactMap { candidatesByID[$0.id] }
         return NearbyRecommendationsAssessment(
-            recommendations: ranked,
+            recommendations: nearbyRecommendationLimit(
+                ranked,
+                limit: limit
+            ),
             issuesByPlaceID: issuesByPlaceID
         )
     }
 
-    /// Whether the current location is shown as sunny in the app's condition
-    /// vocabulary. The nearby card is unnecessary once this is already true.
-    func isLocationSunny(on date: Date) -> Bool {
-        switch locationSunninessAssessment(on: date) {
-        case .sunny:
-            return true
-        case .notSunny, .unavailable:
-            // Compatibility for existing visibility checks. New presentation
-            // must use the tri-state method below before showing a no-sun UI.
-            return false
-        }
-    }
-
-    /// Distinguishes a real non-sunny forecast from missing recommendation data.
-    func locationSunninessAssessment(
-        on date: Date
-    ) -> LocationSunninessAssessment {
-        let assessment = locationRecommendationAssessment(on: date)
-        guard let recommendation = assessment.recommendation else {
-            return .unavailable(assessment.issues)
-        }
-        return recommendation.condition.isSunnyOrPartlySunny ? .sunny : .notSunny
+    /// Caps a presentation-specific preview after ranking. Negative limits are
+    /// treated as zero rather than trapping in `prefix` or exposing rows.
+    private func nearbyRecommendationLimit(
+        _ recommendations: [NearestSunnyPlaceResult],
+        limit: Int?
+    ) -> [NearestSunnyPlaceResult] {
+        guard let limit else { return recommendations }
+        return Array(recommendations.prefix(max(0, limit)))
     }
 
     /// Saved-place recommendations ranked for one literal calendar date.
@@ -1293,19 +1238,47 @@ final class WeatherModel {
 
     /// Invalidates the completed key when an explicit app reset occurs.
     func resetLocation() {
+        homeLocation = nil
+        HomeLocationStore.clear()
         clearLocationState(keepingTransientCities: false)
+        locationProvider.clearLocation()
+    }
+
+    /// Selects a resolved city as the app's permanent location. The existing
+    /// current-location report, map marker, and nearby-place lookup all read
+    /// the provider's published coordinate, so they immediately adopt it.
+    func setHomeLocation(_ city: City) {
+        guard PlacesLibraryValidator.isValidCity(city) else { return }
+        clearLocationState(keepingTransientCities: true)
+        homeLocation = city
+        HomeLocationStore.save(city)
+        locationProvider.useHomeLocation(city)
+    }
+
+    /// Leaves manual-home mode and explicitly begins the device-location flow.
+    /// This is called only from a user action, so the system permission prompt
+    /// remains contextual rather than appearing on launch.
+    func useCurrentLocation(preferredLocale: Locale = .autoupdatingCurrent) {
+        homeLocation = nil
+        HomeLocationStore.clear()
+        clearLocationState(keepingTransientCities: true)
+        locationProvider.clearLocation()
+        locationProvider.requestCurrentLocation(preferredLocale: preferredLocale)
     }
 
     // MARK: - Widget Publishing
 
-    /// Publishes Saved Places to the widget extension.
+    /// Publishes the default Current Location plus Saved Places to every widget
+    /// configuration. WidgetKit owns fresh weather requests after receiving
+    /// this lightweight coordinate contract.
     func publishWidgetCatalog(locale: Locale) {
-        // Widgets receive only the lightweight place contract here; their own
-        // extension code owns producing and refreshing weather presentation data.
+        // Widgets receive only lightweight place identities here; their own
+        // extension code owns fetching and refreshing forecast presentation.
         WidgetDataStore.save(
             WidgetDataCatalog(
                 cities: placesStore.allPlaces.map { widgetCity(for: $0) },
-                appLanguageIdentifier: locale.identifier
+                appLanguageIdentifier: locale.identifier,
+                currentLocation: widgetCurrentLocation(locale: locale)
             )
         )
     }
@@ -1506,6 +1479,42 @@ final class WeatherModel {
             timeZoneIdentifier: timeZoneID,
             latitude: city.latitude,
             longitude: city.longitude,
+            daytimeHours: [],
+            sunnyHours: [],
+            partlySunnyHours: [],
+            currentConditionSymbolName: nil,
+            daylightBounds: nil,
+            sunnyWindowDays: nil,
+            dataIssue: nil
+        )
+    }
+
+    /// Builds the special default widget location from the app's most recent
+    /// physical or chosen-home coordinate. It is intentionally not saved to
+    /// Saved Places: the stable widget ID means configuration remains on
+    /// Current Location even when the device moves.
+    private func widgetCurrentLocation(locale: Locale) -> WidgetDataCity? {
+        guard let coordinate = locationProvider.coordinate,
+              CLLocationCoordinate2DIsValid(coordinate) else {
+            return nil
+        }
+
+        let metadata = locationProvider.metadata
+        let displayName = CurrentLocationMetadata.localityName(
+            from: metadata?.displayName
+        ) ?? CurrentLocationMetadata.localityName(
+            from: locationWeather?.city.name
+        ) ?? localizedString("Current Location", locale: locale)
+        let timeZoneID = locationWeather?.timeZone.identifier
+            ?? metadata?.timeZoneIdentifier
+            ?? TimeZone.autoupdatingCurrent.identifier
+
+        return WidgetDataCity(
+            id: WidgetDataStore.currentLocationIdentifier,
+            cityName: displayName,
+            timeZoneIdentifier: timeZoneID,
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
             daytimeHours: [],
             sunnyHours: [],
             partlySunnyHours: [],

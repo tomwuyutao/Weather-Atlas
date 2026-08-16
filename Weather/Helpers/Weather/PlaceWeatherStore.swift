@@ -119,6 +119,18 @@ final class PlaceWeatherStore {
         )
     }
 
+    /// Isolated repository used by Xcode previews. Its cache is intentionally
+    /// in memory so opening a canvas never reads or writes user forecast data.
+    static func preview(
+        networkConnectivity: NetworkConnectivity
+    ) -> PlaceWeatherStore {
+        PlaceWeatherStore(
+            weatherService: WeatherService(),
+            cache: .preview,
+            networkConnectivity: networkConnectivity
+        )
+    }
+
     // MARK: - Public Forecast Access
 
     /// Returns the latest usable weather for a stable place identity.
@@ -685,6 +697,17 @@ struct PlaceWeatherSnapshotCache {
         fileURL = cachesDirectory?
             .appending(path: "WeatherAtlas", directoryHint: .isDirectory)
             .appending(path: "place-weather-v2.json")
+    }
+
+    /// Keeps Xcode previews isolated from the on-device forecast cache.
+    static var preview: PlaceWeatherSnapshotCache {
+        PlaceWeatherSnapshotCache(fileURL: nil)
+    }
+
+    /// Internal construction used when a caller deliberately wants a cache
+    /// that has no backing file, such as a self-contained SwiftUI preview.
+    private init(fileURL: URL?) {
+        self.fileURL = fileURL
     }
 
     /// Restores only valid current-schema snapshots. A malformed city is dropped

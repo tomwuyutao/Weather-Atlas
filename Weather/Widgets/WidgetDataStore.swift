@@ -31,6 +31,24 @@ enum WidgetDaylightRegime: String, Codable, Hashable {
     case polarNight
 }
 
+/// One normalized daylight-hour condition persisted for the widget charts.
+///
+/// The date keeps repeated local clock hours distinct on daylight-saving
+/// transitions, while the local hour makes chart layout independent of the
+/// device's timezone. Widgets used to retain only sunny and partly-sunny
+/// buckets, which made rain and drizzle indistinguishable from no sun.
+struct WidgetHourlyCondition: Codable, Hashable, Identifiable {
+    /// Absolute forecast instant; unique even when a local hour repeats.
+    let date: Date
+    /// City-local clock hour used by the chart layout.
+    let hour: Int
+    /// The shared app/widget semantic weather condition.
+    let condition: AppWeatherCondition
+
+    /// Stable view identity derived from the source forecast instant.
+    var id: Date { date }
+}
+
 /// App-group city payload used for widget selection and current rendering.
 /// This deliberately contains enough identity and display metadata to configure
 /// a widget even when the main app is not running.
@@ -53,6 +71,10 @@ struct WidgetDataCity: Codable, Hashable, Identifiable {
     let sunnyHours: [Int]
     /// Current-day hours classified as partly sunny.
     let partlySunnyHours: [Int]
+    /// Current-day normalized conditions for every available daylight hour.
+    /// Optional keeps previously persisted three-bucket widget data decodable
+    /// until WidgetKit performs its next forecast refresh.
+    var hourlyConditions: [WidgetHourlyCondition]? = nil
     /// Raw current WeatherKit symbol; absent data remains absent.
     var currentConditionSymbolName: String? = nil
     /// Current-day sunrise/sunset-derived chart bounds.
@@ -77,6 +99,9 @@ struct WidgetSunnyWindowDay: Codable, Hashable, Identifiable {
     let sunnyHours: [Int]
     /// Partly sunny hours for the day.
     let partlySunnyHours: [Int]
+    /// Normalized conditions for every available daylight hour in this row.
+    /// Optional supports snapshots written before five-condition charts.
+    var hourlyConditions: [WidgetHourlyCondition]? = nil
     /// Real daylight domain for the row.
     var daylightBounds: SunnyHoursChartBounds? = nil
     /// Validated astronomical regime used to construct the row.
@@ -102,6 +127,12 @@ struct WidgetWeatherSnapshot: Codable, Hashable {
     let representedLocalDate: Date?
     /// City timezone copied from the catalog at fetch time.
     let timeZoneIdentifier: String?
+    /// Coordinate used for the WeatherKit request. Keeping this with the
+    /// snapshot prevents a moved Current Location widget from reusing weather
+    /// fetched for an earlier physical location.
+    var latitude: Double? = nil
+    /// Longitude paired with `latitude` for snapshot identity validation.
+    var longitude: Double? = nil
     /// Cached current-condition source symbol.
     var currentConditionSymbolName: String? = nil
     /// Cached current-day daylight hours.
@@ -110,6 +141,9 @@ struct WidgetWeatherSnapshot: Codable, Hashable {
     let sunnyHours: [Int]
     /// Cached current-day partly-sunny hours.
     let partlySunnyHours: [Int]
+    /// Cached normalized conditions for every current-day daylight hour.
+    /// Optional preserves backward decoding of existing on-device snapshots.
+    var hourlyConditions: [WidgetHourlyCondition]? = nil
     /// Cached current-day chart bounds.
     var daylightBounds: SunnyHoursChartBounds? = nil
     /// Cached validated astronomical regime for the represented local day.
@@ -128,6 +162,10 @@ struct WidgetDataCatalog: Codable, Hashable {
     let cities: [WidgetDataCity]
     /// Main-app language used for widget localization consistency.
     let appLanguageIdentifier: String
+    /// Latest app-published coordinate for the default Current Location
+    /// selection. It stays separate from Saved Places so a person never has to
+    /// save their current position just to configure a widget.
+    var currentLocation: WidgetDataCity? = nil
     /// Widget-only copy resolved by the localized main app before publication.
     var localizedStrings: [String: String] = [:]
 }
@@ -146,6 +184,10 @@ enum WidgetDataStore {
     static let catalogKey = "bestSunnyPlacesWidgetCatalog"
     /// WidgetKit kind for the unified Home Screen widget.
     static let kind = "BestSunnyPlacesWidget"
+    /// Stable App Intent identity for the shared default selection. The
+    /// catalog updates its coordinate and display name as the device location
+    /// changes, while widget configurations keep referring to this one ID.
+    static let currentLocationIdentifier = "current-location"
     /// Prefix for widget-owned timestamped per-city weather snapshots.
     static let weatherCacheKeyPrefix = "widgetWeatherSnapshot."
     /// Maximum accepted age of a normal widget weather snapshot.
@@ -313,18 +355,28 @@ enum WidgetDataStore {
                 "Track sunny daytime hours for a chosen city.",
                 locale: locale
             ),
+            "Current Location": localizedString("Current Location", locale: locale),
             "Today": localizedString("Today", locale: locale),
             "Sunny": localizedString("Sunny", locale: locale),
             "Partly Sunny": localizedString("Partly Sunny", locale: locale),
             "No Sun": localizedString("No Sun", locale: locale),
+            "Rain": localizedString("Rain", locale: locale),
+            "Drizzle": localizedString("Drizzle", locale: locale),
+            "Sun Out Now": localizedString("Sun Out Now", locale: locale),
+            "Sun Out in %@": localizedString("Sun Out in %@", locale: locale),
+            "No Sun Today": localizedString("No Sun Today", locale: locale),
+            "No More Sun Today": localizedString(
+                "No More Sun Today",
+                locale: locale
+            ),
+            "Weather unavailable.": localizedString(
+                "Weather unavailable.",
+                locale: locale
+            ),
             "Sunny Hours for %@: %@": localizedString(
                 "Sunny Hours for %@: %@",
                 locale: locale
             ),
-            "Open Weather Atlas to refresh.": localizedString(
-                "Open Weather Atlas to refresh.",
-                locale: locale
-            )
         ]
     }
 }
