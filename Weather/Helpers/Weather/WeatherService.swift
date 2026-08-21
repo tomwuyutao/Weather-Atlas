@@ -17,9 +17,7 @@ import WeatherKit
 enum WeatherServiceError: LocalizedError {
     case requestFailed(city: String, detail: String)
     case undefinedTimeZone(city: String)
-    case unresolvedPlace(city: String)
     case missingForecastData(city: String)
-    case invalidWeatherData(city: String, issue: WeatherDataIssue)
 
     /// Diagnostic description forwarded to the native warning pipeline.
     var errorDescription: String? {
@@ -28,12 +26,8 @@ enum WeatherServiceError: LocalizedError {
             return "Weather request failed for \(city): \(detail)"
         case .undefinedTimeZone(let city):
             return "Timezone undefined for \(city)"
-        case .unresolvedPlace(let city):
-            return "Place unresolved for \(city)"
         case .missingForecastData(let city):
             return "Forecast data missing for \(city)"
-        case .invalidWeatherData(let city, let issue):
-            return "Invalid weather data for \(city): \(issue.detail ?? "unknown numeric value")"
         }
     }
 
@@ -44,18 +38,13 @@ enum WeatherServiceError: LocalizedError {
             return .weatherRequestFailed(detail)
         case .undefinedTimeZone:
             return .missingTimeZone
-        case .unresolvedPlace(let city):
-            return .unresolvedPlace(city)
         case .missingForecastData:
             return .missingForecastData
-        case .invalidWeatherData(_, let issue):
-            return issue
         }
     }
 }
 
-/// Successful WeatherKit conversion. Response-wide structure is evaluated later
-/// by ForecastValidation; hourly consumers validate only the records they use.
+/// Successful conversion of WeatherKit's typed response into app-owned models.
 struct WeatherServiceResponse {
     let weather: CityWeather
 }
@@ -130,12 +119,11 @@ final class WeatherService {
                 dailyLow: day.lowTemperature.value,
                 dailyHigh: day.highTemperature.value,
                 symbolName: daySymbol,
-                condition: resolvedCondition(
-                    day.condition,
+                condition: AppWeatherCondition.resolve(
+                    weatherKit: day.condition,
                     isDaylight: true,
                     symbolName: daySymbol
                 ),
-                isFullyClear: day.condition == .clear,
                 hourlyForecasts: hourlyForecasts,
                 cloudCover: daytimeForecast.cloudCover,
                 precipitationChance: daytimeForecast.precipitationChance,
@@ -151,38 +139,13 @@ final class WeatherService {
             )
         }
 
-        let cityWeather = CityWeather(
-            city: city,
-            dailyForecasts: Array(dailyForecasts),
-            timeZone: timeZone
-        )
-        // WeatherKit values are strongly typed but still cross a provider
-        // boundary. Reject non-finite, out-of-domain, or internally inconsistent
-        // numeric readings before any view can clamp or format them as plausible.
-        if let issue = cityWeather.numericDataIssues.first {
-            throw WeatherServiceError.invalidWeatherData(
-                city: city.displayName,
-                issue: issue
+        return WeatherServiceResponse(
+            weather: CityWeather(
+                city: city,
+                dailyForecasts: dailyForecasts,
+                timeZone: timeZone
             )
-        }
-        return WeatherServiceResponse(weather: cityWeather)
-    }
-
-    /// Resolves WeatherKit's semantic enum first, then its separately supplied
-    /// raw symbol only when that symbol has an explicit known classification.
-    /// Both are real WeatherKit fields; an unrecognized value remains nil.
-    private func resolvedCondition(
-        _ condition: WeatherKit.WeatherCondition,
-        isDaylight: Bool,
-        symbolName: String
-    ) -> AppWeatherCondition? {
-        if let semanticCondition = AppWeatherCondition.fromWeatherKit(
-            condition,
-            isDaylight: isDaylight
-        ) {
-            return semanticCondition
-        }
-        return AppWeatherCondition.fromWeatherSymbol(symbolName)
+        )
     }
 
     /// Selects hourly records whose absolute instants fall in one city-local day.
@@ -212,8 +175,8 @@ final class WeatherService {
             HourlyForecast(
                 date: hourWeather.date,
                 symbolName: hourWeather.symbolName,
-                condition: resolvedCondition(
-                    hourWeather.condition,
+                condition: AppWeatherCondition.resolve(
+                    weatherKit: hourWeather.condition,
                     isDaylight: hourWeather.isDaylight,
                     symbolName: hourWeather.symbolName
                 ),

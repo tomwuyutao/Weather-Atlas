@@ -1,0 +1,15 @@
+{
+  "originHash" : "ea7e1b6ed656b48c01be0a3a31eaae44ad2e1880402507d0b9f40c3eab01547c",
+  "pins" : [
+    {
+      "identity" : "swifttimezonelookup",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/patrick-zippenfenig/SwiftTimeZoneLookup.git",
+      "state" : {
+        "revision" : "e4db6c3ad57b58d472a05b73cf8ea78352957500",
+        "version" : "1.0.8"
+      }
+    }
+  ],
+  "version" : 3
+}

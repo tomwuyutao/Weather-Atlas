@@ -13,6 +13,10 @@ enum SunnyHoursCalculation {
     struct SunnyHoursData {
         let hours: [HourlyForecast]
         let bounds: SunnyHoursChartBounds
+        /// The actual astronomical events remain available to live status copy;
+        /// chart bounds are rounded to whole hours and must not decide whether
+        /// the sun is currently above the horizon.
+        let daylightRegime: DaylightRegime
     }
 
     enum DailySunStatus: Equatable {
@@ -63,26 +67,63 @@ enum SunnyHoursCalculation {
                 .unknownWeatherSymbol(unknownHour.symbolName, at: unknownHour.date)
             )
         }
-        return .success(SunnyHoursData(hours: sourceData.hours, bounds: bounds))
+        return .success(
+            SunnyHoursData(
+                hours: sourceData.hours,
+                bounds: bounds,
+                daylightRegime: sourceData.regime
+            )
+        )
     }
 
     static func sunnyHourCount(in data: SunnyHoursData) -> Double {
         Double(data.hours.count(where: { $0.condition?.isSunnyOrPartlySunny == true }))
     }
 
-    static func longestSunnyHourRange(
-        in forecasts: [HourlyForecast],
-        timeZone: TimeZone
-    ) -> ClosedRange<Int>? {
-        guard forecasts.allSatisfy({ $0.condition != nil }) else { return nil }
-        let hours = forecasts.compactMap { forecast in
-            forecast.condition?.isSunnyOrPartlySunny == true
-                ? forecast.hour(in: timeZone)
-                : nil
+    /// Finds the first later city-local forecast day with at least one clear or
+    /// partly sunny daylight hour. A gap or invalid intervening day stops the
+    /// search so callers never describe a merely later forecast as the next
+    /// sunny day when an earlier day could not be assessed.
+    static func nextSunnyForecastDate(
+        after forecast: DailyForecast,
+        in forecasts: [DailyForecast],
+        timeZone: TimeZone,
+        selectionCalendar: Calendar,
+        referenceDate: Date = .now
+    ) -> Date? {
+        var cityCalendar = selectionCalendar
+        cityCalendar.timeZone = timeZone
+        let selectedDay = cityCalendar.startOfDay(for: forecast.date)
+        var precedingDay = selectedDay
+        let laterForecasts = forecasts
+            .filter {
+                cityCalendar.startOfDay(for: $0.date) > selectedDay
+            }
+            .sorted { $0.date < $1.date }
+
+        for laterForecast in laterForecasts {
+            guard let expectedDay = cityCalendar.date(
+                byAdding: .day,
+                value: 1,
+                to: precedingDay
+            ), cityCalendar.isDate(
+                laterForecast.date,
+                inSameDayAs: expectedDay
+            ), case .success(let data) = sunnyHoursData(
+                for: laterForecast,
+                timeZone: timeZone,
+                referenceDate: referenceDate
+            ) else {
+                return nil
+            }
+
+            if sunnyHourCount(in: data) > 0 {
+                return laterForecast.date
+            }
+            precedingDay = expectedDay
         }
-        return SunnyHoursFormatting.contiguousRanges(in: hours).max { lhs, rhs in
-            lhs.upperBound - lhs.lowerBound < rhs.upperBound - rhs.lowerBound
-        }
+
+        return nil
     }
 
     static func dailySunStatus(
@@ -103,7 +144,32 @@ enum SunnyHoursCalculation {
                 ? .noSunOnSelectedDay
                 : .sunnyForHours(sunnyHourCount(in: data))
         }
+
+        // The last chartable hourly record can overlap a small part of the
+        // final daylight hour, so it remains in `data.hours` after the real
+        // sunset instant. Status copy must use that exact astronomical instant,
+        // not the rounded hourly chart boundary or the last cached condition.
+        if sunsetHasPassed(in: data.daylightRegime, at: referenceDate) {
+            return sunnyHours.isEmpty ? .noSunToday : .noMoreSunToday
+        }
         guard !sunnyHours.isEmpty else { return .noSunToday }
+
+        // The first hourly cell can begin before the real sunrise while still
+        // overlapping it. Before sunrise, its favorable condition describes
+        // the upcoming daylight interval—not the current dark sky—so report
+        // the exact astronomical event rather than "Sun out now."
+        if let sunrise = upcomingSunrise(
+            in: data.daylightRegime,
+            after: referenceDate
+        ) {
+            if sunnyHours.contains(where: { hourlyInterval($0, contains: sunrise) }) {
+                return .sunOutIn(sunrise)
+            }
+            if let nextHour = sunnyHours.first(where: { $0.date > referenceDate }) {
+                return .sunOutIn(nextHour.date)
+            }
+            return .noSunToday
+        }
 
         if let currentHour = data.hours.last(where: { $0.date <= referenceDate }),
            currentHour.condition?.isSunnyOrPartlySunny == true {
@@ -113,6 +179,52 @@ enum SunnyHoursCalculation {
             return .sunOutIn(nextHour.date)
         }
         return .noMoreSunToday
+    }
+
+    /// Returns today's still-future real sunrise for normal and sunrise-only
+    /// regimes. Polar days have no sunrise event to count down to.
+    private static func upcomingSunrise(
+        in regime: DaylightRegime,
+        after referenceDate: Date
+    ) -> Date? {
+        let sunrise: Date?
+        switch regime {
+        case .normal(let event, _), .sunriseOnly(let event):
+            sunrise = event
+        case .sunsetOnly, .polarDay, .polarNight:
+            sunrise = nil
+        }
+        guard let sunrise, sunrise > referenceDate else { return nil }
+        return sunrise
+    }
+
+    /// WeatherKit's hourly values describe one-hour intervals beginning at
+    /// their timestamp. This preserves a precise solar-event countdown even
+    /// when the interval starts before the event.
+    private static func hourlyInterval(
+        _ forecast: HourlyForecast,
+        contains date: Date
+    ) -> Bool {
+        forecast.date <= date
+            && date < forecast.date.addingTimeInterval(60 * 60)
+    }
+
+    /// A sunset closes an ordinary city-local day. A normal regime whose
+    /// sunset precedes sunrise wraps across midnight at high latitudes, so the
+    /// later sunrise can still begin a second daylight interval and must not
+    /// be treated as an all-day sunset cutoff.
+    private static func sunsetHasPassed(
+        in regime: DaylightRegime,
+        at referenceDate: Date
+    ) -> Bool {
+        switch regime {
+        case .normal(let sunrise, let sunset):
+            sunset >= sunrise && referenceDate > sunset
+        case .sunsetOnly(let sunset):
+            referenceDate > sunset
+        case .sunriseOnly, .polarDay, .polarNight:
+            false
+        }
     }
 }
 

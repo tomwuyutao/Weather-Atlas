@@ -17,8 +17,6 @@ struct TenDaySunnyHoursTimeline: View {
     /// Optional for report surfaces that must preserve the card while their
     /// forecast request is still loading or has failed.
     let city: CityWeather?
-    /// The name already chosen by the owning report (including a saved alias).
-    let placeDisplayName: String
     /// Shared Detail selection; every chart row can change the active day.
     @Binding var selectedDate: Date
     private let isLoading: Bool
@@ -30,33 +28,16 @@ struct TenDaySunnyHoursTimeline: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
 
-    /// Existing Detail callers already own loaded weather and keep their
-    /// original concise initializer.
-    init(
-        city: CityWeather,
-        placeDisplayName: String,
-        selectedDate: Binding<Date>
-    ) {
-        self.city = city
-        self.placeDisplayName = placeDisplayName
-        _selectedDate = selectedDate
-        isLoading = false
-        unavailableMessage = nil
-        retry = nil
-    }
-
     /// Your Location uses this state-aware initializer so the ten-day card has
     /// stable identity through loading, failure, and retry episodes.
     init(
         city: CityWeather?,
-        placeDisplayName: String,
         selectedDate: Binding<Date>,
         isLoading: Bool,
         unavailableMessage: String?,
         retry: (() -> Void)?
     ) {
         self.city = city
-        self.placeDisplayName = placeDisplayName
         _selectedDate = selectedDate
         self.isLoading = isLoading
         self.unavailableMessage = unavailableMessage
@@ -67,105 +48,68 @@ struct TenDaySunnyHoursTimeline: View {
 
     private struct PreparedChart {
         let rows: [SunnyHoursDayRow]
-        let issues: [WeatherDataIssue]
     }
 
     private var preparedChart: PreparedChart {
         var rows: [SunnyHoursDayRow] = []
-        var issues: [WeatherDataIssue] = []
 
         // A missing city is a request-level presentation state, not malformed
         // forecast content. The owning report supplies its loading/error copy.
         guard let city else {
-            return PreparedChart(rows: [], issues: [])
+            return PreparedChart(rows: [])
         }
 
-        let horizon: ForecastValidation.TenDayForecastData
-        switch ForecastValidation.tenDayForecastData(
-            for: city,
-            selectionCalendar: calendar
-        ) {
-        case .success(let validatedHorizon):
-            horizon = validatedHorizon
-        case .failure(let issue):
-            return PreparedChart(
-                rows: [],
-                issues: [issue]
-            )
-        }
+        let forecasts = Array(
+            city.dailyForecasts
+                .sorted { $0.date < $1.date }
+                .prefix(10)
+        )
 
-        // Validate every eligible row before drawing any of them. A shortened
-        // chart can otherwise make missing source weather look like a shorter
-        // forecast horizon.
-        for forecast in horizon.forecasts {
+        // Build each real forecast row independently. WeatherKit can return a
+        // short or gapped horizon, and one unavailable hourly day must not
+        // hide the usable days around it.
+        for forecast in forecasts {
             guard let selectionDate = city.selectionDate(
                 for: forecast,
                 selectionCalendar: calendar
             ) else {
-                issues.append(
-                    .invalidValue(
-                        "Unable to convert a forecast into the app calendar",
-                        at: forecast.date
-                    )
-                )
                 continue
             }
 
-            let result = SunnyHoursCalculation.sunnyHoursData(
+            guard case .success(let data) = SunnyHoursCalculation.sunnyHoursData(
                 for: forecast,
                 timeZone: city.timeZone
-            )
-            guard case .success(let data) = result else {
-                if case .failure(let issue) = result {
-                    issues.append(issue)
-                }
+            ) else {
                 continue
             }
 
-            var cells: [SunnyHoursDayCell] = []
-            var conditionIssue: WeatherDataIssue?
-            for hour in data.hours {
-                guard let condition = hour.condition else {
-                    let symbol = hour.symbolName.trimmingCharacters(
-                        in: .whitespacesAndNewlines
-                    )
-                    conditionIssue = symbol.isEmpty
-                        ? .missing(.missingConditionData, at: hour.date)
-                        : .unknownWeatherSymbol(symbol, at: hour.date)
-                    break
-                }
-                cells.append(
-                    SunnyHoursDayCell(
-                        id: hour.date,
-                        hour: hour.hour(in: city.timeZone),
-                        condition: condition
-                    )
+            let cells = data.hours.compactMap { hour -> SunnyHoursDayCell? in
+                guard let condition = hour.condition else { return nil }
+                return SunnyHoursDayCell(
+                    id: hour.date,
+                    hour: hour.hour(in: city.timeZone),
+                    condition: condition
                 )
             }
-            if let conditionIssue {
-                issues.append(conditionIssue)
+            guard !cells.isEmpty else {
                 continue
             }
 
-            rows.append(SunnyHoursDayRow(
-                selectionDate: selectionDate,
-                forecastDate: forecast.date,
-                hours: cells,
-                bounds: data.bounds
-            ))
+            rows.append(
+                SunnyHoursDayRow(
+                    selectionDate: selectionDate,
+                    forecastDate: forecast.date,
+                    hours: cells,
+                    bounds: data.bounds
+                )
+            )
         }
 
-        if rows.isEmpty, issues.isEmpty {
-            issues.append(.missingForecastData(at: selectedDate))
-        }
-        return PreparedChart(
-            rows: rows,
-            issues: issues
-        )
+        return PreparedChart(rows: rows)
     }
 
     private var rows: [SunnyHoursDayRow] {
-        preparedChart.issues.isEmpty ? preparedChart.rows : []
+        preparedChart.rows
     }
 
     private var chartBounds: SunnyHoursChartBounds? {
@@ -181,27 +125,6 @@ struct TenDaySunnyHoursTimeline: View {
             on: selectedDate,
             selectionCalendar: calendar
         )?.condition?.iconTone
-    }
-
-    private var missingDataReport: MissingDataAlertReport? {
-        guard let city else { return nil }
-        let issues = Array(Set(preparedChart.issues)).sorted {
-            $0.kind.rawValue < $1.kind.rawValue
-        }
-        guard !issues.isEmpty else { return nil }
-        let issueIdentity = issues.map(\.kind.rawValue).joined(separator: ",")
-        let messages = issues.map {
-            weatherDataIssueMessage(
-                $0,
-                cityName: placeDisplayName,
-                locale: locale
-            )
-        }
-        return MissingDataAlertReport(
-            key: "ten-day-sunny-hours:\(city.id.uuidString):\(issueIdentity)",
-            title: localizedString("Weather Data Missing", locale: locale),
-            message: Array(Set(messages)).sorted().joined(separator: "\n")
-        )
     }
 
     var body: some View {
@@ -255,9 +178,6 @@ struct TenDaySunnyHoursTimeline: View {
                 legend
                     .frame(maxWidth: .infinity)
                     .padding(.top, 2)
-                    // Every selectable row already names the precise
-                    // destination-local weather states. The color key would
-                    // otherwise repeat those values as an extra focus stop.
 
             } else {
                 unavailableContent
@@ -287,23 +207,6 @@ struct TenDaySunnyHoursTimeline: View {
             .locale(locale)
         style.timeZone = city?.timeZone ?? .autoupdatingCurrent
         return date.formatted(style)
-    }
-
-    /// The selected forecast instant supplies the date-sensitive UTC offset.
-    private var localTimeDisclosure: String? {
-        guard let city,
-              let referenceDate = city.forecastIfAvailable(
-            on: selectedDate,
-            selectionCalendar: calendar
-        )?.date ?? rows.first?.forecastDate else {
-            return nil
-        }
-        return SunnyHoursFormatting.localTimeDisclosure(
-            placeName: placeDisplayName,
-            timeZone: city.timeZone,
-            at: referenceDate,
-            locale: locale
-        )
     }
 
     @ViewBuilder

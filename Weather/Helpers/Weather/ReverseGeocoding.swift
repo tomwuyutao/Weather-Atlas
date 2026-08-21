@@ -10,6 +10,7 @@
 import Foundation
 import CoreLocation
 import MapKit
+import SwiftTimeZoneLookup
 
 /// Canonical place metadata assembled from geocoding services.
 /// It is intentionally a small value type: it is cached in memory but never
@@ -48,6 +49,22 @@ struct ResolvedPlace {
 // MARK: - Reverse Geocoding
 
 extension WeatherService {
+    /// Coordinate-to-IANA-zone lookup backed by bundled timezone boundaries.
+    /// It is intentionally separate from reverse geocoding: catalog cities
+    /// already supply their names and countries, so they need only this local
+    /// lookup before WeatherKit can fetch a forecast.
+    private static let coordinateTimeZoneLookup: SwiftTimeZoneLookup? = {
+        do {
+            return try SwiftTimeZoneLookup()
+        } catch {
+            DeveloperDiagnostics.show(
+                title: "Time Zone Lookup Unavailable",
+                message: "The bundled coordinate time-zone database could not be opened: \(error.localizedDescription)"
+            )
+            return nil
+        }
+    }()
+
     // MARK: - Cache Keys and Locale
 
     /// Builds an exact coordinate key for in-process place and timezone caches.
@@ -76,7 +93,8 @@ extension WeatherService {
 
     // MARK: - Reverse Geocoding
 
-    /// Resolves place metadata through caller data, cache, MapKit, then CLGeocoder.
+    /// Resolves place metadata through caller data, cache, local time-zone
+    /// boundaries, MapKit, then CLGeocoder.
     ///
     /// The order is cache → modern MapKit → established Core Location. Each
     /// later step is a graceful fallback, not a second source that overwrites a
@@ -101,7 +119,17 @@ extension WeatherService {
         if let cachedPlace = resolvedPlaces[placeKey] {
             place = place.fillingMissingFields(from: cachedPlace)
         }
+        if place.timeZone == nil,
+           let timeZone = coordinateTimeZone(for: city) {
+            place = ResolvedPlace(
+                name: place.name,
+                country: place.country,
+                timeZone: timeZone
+            )
+            resolvedTimeZones[coordinateKey] = timeZone
+        }
         if place.isComplete {
+            resolvedPlaces[placeKey] = place
             return place
         }
 
@@ -241,6 +269,22 @@ extension WeatherService {
         return TimeZone(identifier: identifier)
     }
 
+    /// Resolves only an IANA timezone from a coordinate. This stays local to
+    /// the device and makes no MapKit or Core Location reverse-geocoding call.
+    private func coordinateTimeZone(for city: City) -> TimeZone? {
+        guard city.latitude.isFinite,
+              city.longitude.isFinite,
+              (-90...90).contains(city.latitude),
+              (-180...180).contains(city.longitude),
+              let identifier = Self.coordinateTimeZoneLookup?.simple(
+                  latitude: Float(city.latitude),
+                  longitude: Float(city.longitude)
+              ) else {
+            return nil
+        }
+        return TimeZone(identifier: identifier)
+    }
+
     // MARK: - City and Time Zone Resolution
 
     /// Returns a canonically named city while preserving stable identity and coordinates.
@@ -253,6 +297,7 @@ extension WeatherService {
         return City(
             id: city.id,
             name: place?.name ?? "",
+            titleName: city.titleName,
             country: place?.country ?? "",
             latitude: city.latitude,
             longitude: city.longitude,
@@ -261,7 +306,8 @@ extension WeatherService {
         )
     }
 
-    /// Resolves a timezone from saved metadata, cache, or reverse geocoding.
+    /// Resolves a timezone from saved metadata, cache, local coordinate
+    /// boundaries, or finally reverse geocoding.
     ///
     /// The ordered sources reflect confidence and cost: an IANA identifier saved
     /// with the city is authoritative, an in-memory result is free, and reverse
@@ -298,7 +344,7 @@ extension WeatherService {
 
         reportDeveloperWarning(
             title: "Time Zone Missing",
-            message: "No Apple-provided time zone was available for \(city.displayName) at \(city.latitude), \(city.longitude)."
+            message: "No valid time zone was available for \(city.displayName) at \(city.latitude), \(city.longitude)."
         )
         throw WeatherServiceError.undefinedTimeZone(city: city.displayName)
     }

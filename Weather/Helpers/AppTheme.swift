@@ -48,8 +48,6 @@ enum AppPalette {
         let destructive: Color
         /// Fully sunny semantic color.
         let dotSun: Color
-        /// Contrast-safe sunny foreground for symbols and charts.
-        let sunForeground: Color
         /// Partly sunny semantic color.
         let dotPartlyCloudy: Color
         /// Cloudy semantic color.
@@ -75,7 +73,6 @@ enum AppPalette {
         background: Color(hex: 0xFAF8F2),
         destructive: Color(hex: 0xD14D30),
         dotSun: Color(hex: 0xFBC056),
-        sunForeground: Color(hex: 0xFBC056),
         dotPartlyCloudy: Color(hex: 0xFAE38E),
         dotCloudy: Color(hex: 0xC8C8C8),
         dotRain: Color(hex: 0x5AA4F3),
@@ -92,7 +89,6 @@ enum AppPalette {
         background: Color(hex: 0x262626),
         destructive: Color(hex: 0xD14D30),
         dotSun: Color(hex: 0xFBC056),
-        sunForeground: Color(hex: 0xFBC056),
         dotPartlyCloudy: Color(hex: 0xFAE38E),
         dotCloudy: Color(hex: 0xC8C8C8),
         dotRain: Color(hex: 0x5AA4F3),
@@ -111,7 +107,6 @@ enum AppPalette {
         background: Color(hex: 0x000000),
         destructive: dark.destructive,
         dotSun: dark.dotSun,
-        sunForeground: dark.sunForeground,
         dotPartlyCloudy: dark.dotPartlyCloudy,
         dotCloudy: dark.dotCloudy,
         dotRain: dark.dotRain,
@@ -155,7 +150,6 @@ enum AppPalette {
                 background: palette.background,
                 destructive: palette.destructive.interpolated(with: palette.titleText, by: 0.12),
                 dotSun: palette.dotSun,
-                sunForeground: palette.sunForeground,
                 dotPartlyCloudy: palette.dotPartlyCloudy,
                 dotCloudy: palette.dotCloudy,
                 dotRain: palette.dotRain,
@@ -172,10 +166,6 @@ enum AppPalette {
             background: palette.background,
             destructive: palette.destructive.interpolated(with: palette.titleText, by: 0.12),
             dotSun: palette.dotSun.interpolated(with: palette.titleText, by: 0.48),
-            sunForeground: palette.sunForeground.interpolated(
-                with: palette.titleText,
-                by: 0.12
-            ),
             dotPartlyCloudy: palette.dotPartlyCloudy.interpolated(with: palette.titleText, by: 0.55),
             dotCloudy: palette.dotCloudy.interpolated(with: palette.titleText, by: 0.66),
             dotRain: palette.dotRain.interpolated(with: palette.titleText, by: 0.10),
@@ -284,8 +274,6 @@ struct ThemeColors {
     let destructive: Color
     /// Fully sunny weather mark.
     let dotSun: Color
-    /// Contrast-safe sunny foreground.
-    let sunForeground: Color
     /// Partly sunny weather mark.
     let dotPartlyCloudy: Color
     /// Cloudy weather mark.
@@ -312,8 +300,6 @@ struct ThemeColors {
 
     /// Tint participating in translucent glass surfaces.
     var glassFill: Color { background }
-    /// Highlight used by the sunny-only filter.
-    var filterSunny: Color { dotSun }
 
     /// The upper bound for the shared sunny-hours color scale used by the map
     /// and Saved Places heatmap. Longer days intentionally share the same
@@ -345,20 +331,20 @@ struct ThemeColors {
     /// Fully opaque Map-dot equivalent of `sunnyHoursColor(for:colorScheme:)`.
     ///
     /// MapKit draws dots over variable terrain, so applying alpha directly can
-    /// make lower-sun dots look transparent. Pre-blending the same ramp with a
-    /// very light neutral gray preserves its soft progression while keeping
-    /// every marker solid and legible above the map.
+    /// make lower-sun dots look transparent. The solid neutral endpoint uses
+    /// the central cloudy-dot color, then follows the same curved progression
+    /// toward sunny yellow.
     func sunnyHoursMapDotColor(for sunnyHours: Double) -> Color {
         let fraction = min(
             max(sunnyHours / Self.sunnyHoursColorScaleMaximum, 0),
             1
         )
-        let lightGrayBase = Color.white.interpolated(with: dotCloudy, by: 0.55)
-        guard fraction > 0 else { return lightGrayBase }
+        let neutralBase = dotCloudy
+        guard fraction > 0 else { return neutralBase }
 
         let curvedFraction = pow(fraction, 1.55)
         let sunnyOpacity = 0.16 + 0.79 * curvedFraction
-        return lightGrayBase.interpolated(with: dotSun, by: sunnyOpacity)
+        return neutralBase.interpolated(with: dotSun, by: sunnyOpacity)
     }
 
     /// Returns the exact semantic marker color for a normalized weather tone.
@@ -379,15 +365,6 @@ struct ThemeColors {
         case .drizzle:
             return dotDrizzle
         }
-    }
-
-    /// Returns the semantic marker color for a raw weather SF Symbol name.
-    ///
-    /// This is a fallback for source symbols that have not yet been normalized.
-    /// New weather views should pass the normalized condition's `iconTone` so a
-    /// partly-cloudy icon does not lose its distinct neutral map-dot color.
-    func weatherIconColor(for iconName: String) -> Color {
-        weatherIconColor(for: WeatherIconTone(symbolName: iconName))
     }
 
     /// Returns a low-saturation canvas color derived from the same condition
@@ -464,7 +441,6 @@ private extension ThemeColors {
             background: palette.background,
             destructive: palette.destructive,
             dotSun: palette.dotSun,
-            sunForeground: palette.sunForeground,
             dotPartlyCloudy: palette.dotPartlyCloudy,
             dotCloudy: palette.dotCloudy,
             dotRain: palette.dotRain,
@@ -722,12 +698,6 @@ private struct WeatherConditionScreenBackgroundModifier: ViewModifier {
 // MARK: - Public View Modifier APIs
 
 extension View {
-    /// Applies the Map marker's semantic color to a raw weather SF Symbol.
-    /// Prefer the tone overload when the caller has normalized weather.
-    func weatherIconStyle(for iconName: String) -> some View {
-        modifier(WeatherIconStyleModifier(tone: WeatherIconTone(symbolName: iconName)))
-    }
-
     /// Applies the exact Map marker color for a normalized weather tone.
     /// This avoids losing condition detail when multiple conditions share one
     /// canonical SF Symbol, such as partly sunny and partly cloudy.
@@ -744,20 +714,6 @@ extension View {
                 colorScheme: colorScheme,
                 shape: shape,
                 isInteractive: false
-            )
-        )
-    }
-
-    /// Wraps an input surface in the app's interactive floating glass treatment.
-    func weatherInteractiveGlass<Shape: InsettableShape>(
-        colorScheme: ColorScheme,
-        in shape: Shape
-    ) -> some View {
-        modifier(
-            GlassCardModifier(
-                colorScheme: colorScheme,
-                shape: shape,
-                isInteractive: true
             )
         )
     }

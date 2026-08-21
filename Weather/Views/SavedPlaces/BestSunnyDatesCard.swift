@@ -12,9 +12,8 @@ import SwiftUI
 /// An average sunny-hours summary for one forecast date across Saved Places.
 struct BestSunnyDateSummary: Identifiable {
     let date: Date
-    /// Mean selected-day sunny hours across available Saved Places.
+    /// Mean selected-day sunny hours across concrete recommendations.
     let averageSunnyHours: Double
-    let availableCityCount: Int
 
     var id: Date { date }
 }
@@ -42,9 +41,9 @@ struct BestSunnyDatesCard: View {
         Array(repeating: GridItem(.flexible(), spacing: 7), count: 7)
     }
 
-    /// The forecast horizon rendered as complete calendar weeks. Dates with no
-    /// saved-place forecast stay visible but inert, preserving the heatmap's
-    /// calendar rhythm without implying that weather data exists for them.
+    /// The supplied forecast range rendered as complete calendar weeks. Dates
+    /// with no saved-place forecast stay visible but inert, preserving the
+    /// heatmap's calendar rhythm without implying that weather data exists.
     private var calendarDates: [BestSunnyCalendarDate] {
         // Associate forecasts with normalized local days before filling the
         // leading/trailing cells required to complete calendar weeks.
@@ -92,12 +91,12 @@ struct BestSunnyDatesCard: View {
     }
 
     private var weekdayLabels: [String] {
-        // Weekday symbols and `firstWeekday` are both locale dependent. Rotate
-        // the system names so headings align with the constructed grid.
+        // Localize the weekday names without replacing the system calendar's
+        // First Day of Week preference. The same value also positions dates.
+        let firstWeekdayIndex = calendar.firstWeekday - 1
         var localizedCalendar = calendar
         localizedCalendar.locale = locale
         let symbols = localizedCalendar.shortStandaloneWeekdaySymbols
-        let firstWeekdayIndex = localizedCalendar.firstWeekday - 1
 
         guard symbols.count == 7,
               symbols.indices.contains(firstWeekdayIndex) else {
@@ -188,9 +187,6 @@ struct BestSunnyDatesCard: View {
                         .frame(maxWidth: .infinity)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
-                        // Adjacent selectable dates include full localized
-                        // labels and values; weekday headings are visual grid
-                        // scaffolding rather than useful focus stops.
 
                 }
             }
@@ -279,12 +275,6 @@ struct BestSunnyDatesCard: View {
             )
         }
 
-        guard summary.availableCityCount > 0 else {
-            return theme.colors.glassFill.opacity(
-                colorScheme == .dark ? 0.34 : 0.56
-            )
-        }
-
         return theme.colors.sunnyHoursColor(
             for: summary.averageSunnyHours,
             colorScheme: colorScheme
@@ -329,6 +319,6 @@ private struct BestSunnyCalendarDate: Identifiable {
     var id: Date { date }
 
     var isForecastDate: Bool {
-        (summary?.availableCityCount ?? 0) > 0
+        summary != nil
     }
 }

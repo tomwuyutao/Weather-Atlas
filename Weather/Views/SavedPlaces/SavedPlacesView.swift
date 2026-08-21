@@ -42,7 +42,10 @@ struct SavedPlacesView: View {
     }
 
     private var recommendationAssessment: SavedRecommendationsAssessment {
-        model.savedRecommendationAssessment(on: selectedDate)
+        model.savedRecommendationAssessment(
+            on: selectedDate,
+            locale: locale
+        )
     }
 
     /// Places where the selected literal date has already passed stay visible
@@ -51,23 +54,73 @@ struct SavedPlacesView: View {
         model.savedPlaceDateExclusions(on: selectedDate)
     }
 
+    /// Every literal selector day backed by at least one saved city's retained
+    /// daily forecast. Forecasts are stored in each city's local time zone, so
+    /// convert them into the shared location-calendar day before comparing or
+    /// presenting them.
+    private var savedForecastDates: [Date] {
+        let calendar = model.forecastCalendar
+        var dates = Set<Date>()
+
+        for place in model.placesStore.allPlaces {
+            guard let weather = model.weatherStore.weather(for: place.id) else {
+                continue
+            }
+
+            for forecast in weather.dailyForecasts {
+                guard let date = weather.selectionDate(
+                    for: forecast,
+                    selectionCalendar: calendar
+                ) else {
+                    continue
+                }
+                dates.insert(calendar.startOfDay(for: date))
+            }
+        }
+
+        return dates.sorted()
+    }
+
+    /// Keep the global day intact when this tab opens from another surface.
+    /// Once weather arrives, every real daily forecast date remains selectable,
+    /// even when no place is sunny on that date.
+    private var dateSwitcherDates: [Date] {
+        let calendar = model.forecastCalendar
+        let sourceDates = savedForecastDates.isEmpty
+            ? ForecastDateHorizon.dates(in: calendar)
+            : savedForecastDates
+
+        return Array(
+            Set(
+                (sourceDates + [selectedDate]).map(calendar.startOfDay(for:))
+            )
+        )
+        .sorted()
+    }
+
     private var dateSummaries: [BestSunnyDateSummary] {
-        ForecastDateHorizon.dates(in: model.forecastCalendar).compactMap { date in
-            let assessment = model.savedRecommendationAssessment(on: date)
+        return savedForecastDates.compactMap { date in
+            let assessment = model.savedRecommendationAssessment(
+                on: date,
+                locale: locale
+            )
             let excludedIDs = Set(
                 model.savedPlaceDateExclusions(on: date).map(\.id)
             )
             let recommendations = assessment.recommendations.filter {
                 !excludedIDs.contains($0.id)
             }
-            let averageSunnyHours = recommendations.isEmpty
-                ? 0
-                : recommendations.map(\.sunnyHourCount).reduce(0, +)
-                    / Double(recommendations.count)
+
+            // A calendar summary exists only for concrete recommendations.
+            // This prevents an unexpected assessment gap from being displayed
+            // as an apparently factual zero-sun day.
+            guard !recommendations.isEmpty else { return nil }
+
+            let averageSunnyHours = recommendations.map(\.sunnyHourCount)
+                .reduce(0, +) / Double(recommendations.count)
             return BestSunnyDateSummary(
                 date: date,
-                averageSunnyHours: averageSunnyHours,
-                availableCityCount: recommendations.count
+                averageSunnyHours: averageSunnyHours
             )
         }
     }
@@ -106,30 +159,16 @@ struct SavedPlacesView: View {
     }
 
     private var timeZoneExclusionNotice: String? {
-        switch dateExclusions.count {
-        case 0:
-            return nil
-        case 1:
-            return localizedString(
-                "1 city is excluded from this overview due to time zone differences.",
-                locale: locale
-            )
-        default:
-            return String(
-                format: localizedString(
-                    "%d cities are excluded from this overview due to time zone differences.",
-                    locale: locale
-                ),
-                locale: locale,
-                dateExclusions.count
-            )
-        }
+        guard !dateExclusions.isEmpty else { return nil }
+        return localizedString(
+            "Excluded due to time zone differences.",
+            locale: locale
+        )
     }
 
-    /// The repository performs its one immediate repair request before it
-    /// commits an incomplete response. Only then may Saved Places present a
-    /// consolidated alert. A date already passed in the destination's local
-    /// timezone is an expected exclusion, so it remains a quiet footer only.
+    /// Feature-local checks may report a settled missing input without rejecting
+    /// the city's otherwise usable forecast. A date already passed in the
+    /// destination's timezone is expected, so it remains a quiet footer only.
     private var settledMissingData: [SettledSavedPlaceIssue] {
         let excludedIDs = Set(dateExclusions.map(\.id))
 
@@ -144,7 +183,7 @@ struct SavedPlacesView: View {
             // An absent snapshot is not a settled failure while its initial
             // request has not happened. It becomes eligible only after the
             // repository records a final failure. A loaded snapshot, by
-            // contrast, is final partial data after the repository repair.
+            // contrast, can be assessed immediately by the consuming feature.
             let hasSettledSource = model.weatherStore.weather(for: place.id) != nil
                 || model.weatherStore.failuresByID[place.id] != nil
             guard hasSettledSource else { return nil }
@@ -233,18 +272,13 @@ struct SavedPlacesView: View {
                 BestSunnyPlacesCard(
                     recommendations: recommendationAssessment.recommendations,
                     savedPlaces: model.placesStore.allPlaces,
-                    presentationState: forecastPresentationState
+                    presentationState: forecastPresentationState,
+                    timeZoneExclusionNotice: timeZoneExclusionNotice
                 )
 
-                VStack(spacing: 10) {
-                    if let timeZoneExclusionNotice {
-                        WeatherTimeZoneFootnote(text: timeZoneExclusionNotice)
-                    }
-
-                    // The dashboard stays focused on planning. Renaming and
-                    // deleting places live in the pushed Saved Places manager.
-                    manageSavedPlacesLink
-                }
+                // The dashboard stays focused on planning. Renaming and
+                // deleting places live in the pushed Saved Places manager.
+                manageSavedPlacesLink
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
@@ -265,18 +299,18 @@ struct SavedPlacesView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 TopForecastDateSwitcher(
                     selection: $selectedDate,
-                    availableDates: ForecastDateHorizon.dates(in: model.forecastCalendar)
+                    availableDates: dateSwitcherDates
                 )
             }
         }
         .refreshable {
-            await model.loadSavedWeather(forceRefresh: true, locale: locale)
+            await model.loadSavedWeather(forceRefresh: true)
         }
         .reportingMissingData(
             missingDataReport,
             recoveryKey: "saved-places-systemic-weather",
             retrying: {
-                await model.loadSavedWeather(forceRefresh: true, locale: locale)
+                await model.loadSavedWeather(forceRefresh: true)
             }
         )
         // ContentView owns initial hydration and foreground freshness checks.

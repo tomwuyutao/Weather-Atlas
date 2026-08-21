@@ -18,12 +18,11 @@ struct ManageSavedPlaces: View {
 
     /// The store owns persistence. This screen creates only transient UI state,
     /// then asks the shared store to perform mutations.
-    let placesStore: PlacesStore
+    let placesStore: SavedPlacesStore
 
     @Bindable var router: AppNavigation
 
     @Environment(\.appTheme) private var theme
-    @Environment(\.locale) private var locale
 
     // MARK: View state
 
@@ -281,6 +280,7 @@ struct ManageSavedPlaces: View {
         } catch {
             present(error)
         }
+        leaveEditModeIfLibraryIsEmpty()
     }
 
     private func deletePlace(_ place: SavedPlace) {
@@ -289,6 +289,14 @@ struct ManageSavedPlaces: View {
         } catch {
             present(error)
         }
+        leaveEditModeIfLibraryIsEmpty()
+    }
+
+    /// An empty library has no editable rows. Returning to the ordinary state
+    /// keeps a later newly added place from inheriting stale edit controls.
+    private func leaveEditModeIfLibraryIsEmpty() {
+        guard savedPlaces.isEmpty else { return }
+        editMode = .inactive
     }
 
     @ViewBuilder
@@ -308,10 +316,7 @@ struct ManageSavedPlaces: View {
 
     private func present(_ error: Error) {
         presentedError = PlacesUIError(
-            message: localizedPlacesErrorDescription(
-                error,
-                locale: locale
-            )
+            message: localizedPlacesErrorDescription(error)
         )
     }
 }

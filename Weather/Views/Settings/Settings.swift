@@ -82,9 +82,7 @@ struct SettingsView: View {
         .background(theme.colors.background.ignoresSafeArea())
         .preferredColorScheme(theme.preferredColorScheme)
         .presentationBackground(theme.colors.background)
-        // A system alert is the widest native, modal confirmation surface
-        // available here. Its size remains system-controlled, while its focus
-        // and explicit cancel/destructive actions work with assistive input.
+        // A system alert provides the native modal confirmation surface here.
         .alert(
             "Clear Data and Reset App?",
             isPresented: $showsResetAlert
@@ -475,7 +473,7 @@ struct SettingsView: View {
                 useSystemTextSize = true
             } label: {
                 textSizeMenuOption(
-                    localizedString("System", locale: locale),
+                    localizedString("Follow System", locale: locale),
                     isSelected: useSystemTextSize
                 )
             }
@@ -500,7 +498,7 @@ struct SettingsView: View {
                 Spacer(minLength: 8)
                 Text(
                     useSystemTextSize
-                        ? localizedString("System", locale: locale)
+                        ? localizedString("Follow System", locale: locale)
                         : textSizeLevel.displayName(locale: locale)
                 )
                 .foregroundStyle(theme.colors.secondaryText)
@@ -513,13 +511,6 @@ struct SettingsView: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text("Text Size"))
-        .accessibilityValue(
-            useSystemTextSize
-                ? localizedString("System", locale: locale)
-                : textSizeLevel.displayName(locale: locale)
-        )
-        .accessibilityHint(Text("Adjusts the app text size"))
     }
 
     private func textSizeMenuOption(
@@ -695,10 +686,7 @@ struct SettingsView: View {
             try onResetApp()
         } catch {
             resetError = SettingsResetError(
-                message: localizedPlacesErrorDescription(
-                    error,
-                    locale: locale
-                )
+                message: localizedPlacesErrorDescription(error)
             )
         }
     }

@@ -80,16 +80,6 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
 
                 dailySunnyHoursCard
                 tenDaySunnyHoursTimeline
-                supplementaryContent
-
-                DetailMetricGrid(
-                    city: weather,
-                    placeDisplayName: placeDisplayName,
-                    forecast: forecast,
-                    temperatureUnit: temperatureUnit,
-                    usesLandscapeIPadLayout: false,
-                    selectedForecastDate: $selectedDate
-                )
 
                 if showsTimeZoneFootnote,
                    let weather,
@@ -105,6 +95,16 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
                         )
                     )
                 }
+
+                supplementaryContent
+
+                DetailMetricGrid(
+                    city: weather,
+                    forecast: forecast,
+                    temperatureUnit: temperatureUnit,
+                    usesLandscapeIPadLayout: false,
+                    selectedForecastDate: $selectedDate
+                )
 
                 footerContent
                 }
@@ -140,7 +140,9 @@ struct CurrentLocationReportContent: View {
     @Binding var selectedDate: Date
     let requestCurrentLocation: () -> Void
     let openLocationSettings: () -> Void
-    let refreshLocation: () -> Void
+    let refreshCurrentLocation: () -> Void
+    let searchNearby: () -> Void
+    let onNearbyVisibilityChange: (Bool) -> Void
 
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
@@ -165,10 +167,6 @@ struct CurrentLocationReportContent: View {
         let resolvedName = model.locationProvider.metadata?.displayName
             ?? locationWeather?.city.name
         return CurrentLocationMetadata.localityName(from: resolvedName) ?? ""
-    }
-
-    private var nearbyAssessment: NearbyRecommendationsAssessment {
-        model.nearbyRecommendationAssessment(on: selectedDate)
     }
 
     private var temperatureUnit: TemperatureUnit {
@@ -222,16 +220,14 @@ struct CurrentLocationReportContent: View {
             dailySunnyHoursCard: SunnyHoursTimeline(
                 weather: locationWeather,
                 selectedDate: selectedDate,
-                placeDisplayName: locationName,
                 locationStatus: model.locationProvider.status,
                 isLoading: model.isRefreshingLocation,
                 requestLocation: requestCurrentLocation,
                 openSettings: openLocationSettings,
-                retry: refreshLocation
+                retry: refreshCurrentLocation
             ),
             tenDaySunnyHoursTimeline: TenDaySunnyHoursTimeline(
                 city: locationWeather,
-                placeDisplayName: locationName,
                 selectedDate: $selectedDate,
                 isLoading: model.isRefreshingLocation,
                 unavailableMessage: locationWeather == nil
@@ -246,19 +242,15 @@ struct CurrentLocationReportContent: View {
                 showsLargeTitle = isVisible
             }
         ) {
-            NearbySunnyPlacesCard(
-                recommendations: nearbyAssessment.recommendations,
-                locationStatus: model.locationProvider.status,
-                isLoading: model.isRefreshingLocation,
-                hasCompletedSearch: model.didSearchNearby,
-                errorMessage: model.nearbySearchError,
+            NearbySunnyPlacesSection(
+                model: model,
+                selectedDate: selectedDate,
                 requestLocation: requestCurrentLocation,
                 openSettings: openLocationSettings,
-                retry: refreshLocation,
+                retry: searchNearby,
+                onVisibilityChange: onNearbyVisibilityChange,
                 viewOnMap: {
-                    router.showNearbyOnMap(
-                        nearbyAssessment.recommendations
-                    )
+                    router.showMap(findingSunIn: .nearMe)
                 }
             )
         } footerContent: {
@@ -304,6 +296,42 @@ struct CurrentLocationReportContent: View {
                 await model.locationProvider.retryMetadataResolution()
             }
         )
+    }
+}
+
+/// Keeps nearby ranking and repository observation below the lazy report
+/// boundary. Current-weather updates no longer make the whole Home report scan
+/// every candidate while this lower card is offscreen.
+private struct NearbySunnyPlacesSection: View {
+    let model: WeatherModel
+    let selectedDate: Date
+    let requestLocation: () -> Void
+    let openSettings: () -> Void
+    let retry: () -> Void
+    let onVisibilityChange: (Bool) -> Void
+    let viewOnMap: () -> Void
+
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        let assessment = model.nearbyRecommendationAssessment(
+            on: selectedDate,
+            locale: locale
+        )
+        NearbySunnyPlacesCard(
+            recommendations: assessment.recommendations,
+            locationStatus: model.locationProvider.status,
+            isLoading: model.isSearchingNearby,
+            hasCompletedSearch: model.didSearchNearby,
+            errorMessage: model.nearbySearchError,
+            requestLocation: requestLocation,
+            openSettings: openSettings,
+            retry: retry,
+            viewOnMap: viewOnMap
+        )
+        .onScrollVisibilityChange(threshold: 0.05) { isVisible in
+            onVisibilityChange(isVisible)
+        }
     }
 }
 
@@ -424,14 +452,12 @@ struct DetailView: View {
             dailySunnyHoursCard: SunnyHoursTimeline(
                 weather: cityWeather,
                 selectedDate: selectedDate,
-                placeDisplayName: displayName,
                 isLoading: isForecastLoading,
                 unavailableMessage: forecastUnavailableMessage,
                 retry: nil
             ),
             tenDaySunnyHoursTimeline: TenDaySunnyHoursTimeline(
                 city: cityWeather,
-                placeDisplayName: displayName,
                 selectedDate: $selectedDate,
                 isLoading: isForecastLoading,
                 unavailableMessage: forecastUnavailableMessage,
@@ -457,7 +483,7 @@ struct DetailView: View {
         )
         .refreshable {
             guard let city else { return }
-            await model.weatherStore.refresh(city: city, locale: locale)
+            await model.weatherStore.refresh(city: city)
         }
         .weatherConditionScreenBackground(
             for: forecast?.condition?.iconTone
@@ -475,19 +501,9 @@ struct DetailView: View {
                 }
             }
 
-            if savedPlace == nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    placeActionsMenu
-                }
-            }
-
-            if #available(iOS 26.0, *) {
-                ToolbarSpacer(.fixed, placement: .topBarTrailing)
-            }
-
             ToolbarItem(placement: .topBarTrailing) {
-                // The date stepper is separate from place actions so its native
-                // hit target and spacing remain predictable in the toolbar.
+                // Persistence stays in the report footer, leaving forecast
+                // navigation as the toolbar's single trailing control.
                 TopForecastDateSwitcher(
                     selection: $selectedDate,
                     availableDates: ForecastDateHorizon.dates(in: model.forecastCalendar)
@@ -495,18 +511,16 @@ struct DetailView: View {
             }
         }
         .task(id: placeID) {
-            // The repository owns the full missing-data policy: it makes one
-            // repair request before committing an incomplete response. Detail
-            // therefore only starts the normal lookup and never forces a
-            // third WeatherKit request when a card renders blank.
+            // The repository owns caching and transient request retries. Detail
+            // starts the normal lookup once; each card handles an optional input
+            // locally without triggering another WeatherKit request.
             showsLargeTitle = true
             guard let city else {
                 return
             }
 
             _ = await model.weatherStore.lookup(
-                city: city,
-                locale: locale
+                city: city
             )
         }
         // The Store owns the bounded forecast request/retry. This route keeps
@@ -528,7 +542,7 @@ struct DetailView: View {
     private func retryForecast() {
         guard let city else { return }
         Task {
-            await model.weatherStore.refresh(city: city, locale: locale)
+            await model.weatherStore.refresh(city: city)
         }
     }
 
@@ -545,7 +559,8 @@ struct DetailView: View {
             } label: {
                 SecondaryTextActionLabel(
                     title: "Save Place",
-                    systemImage: "bookmark"
+                    systemImage: "bookmark",
+                    iconIsLeading: true
                 )
             }
             .buttonStyle(.plain)
@@ -555,26 +570,12 @@ struct DetailView: View {
             } label: {
                 SecondaryTextActionLabel(
                     title: "Delete from Saved Places",
-                    systemImage: "trash"
+                    systemImage: "trash",
+                    iconIsLeading: true
                 )
             }
             .buttonStyle(.plain)
         }
-    }
-
-    /// Unsaved discovered places can be added from Detail. Saved-place editing
-    /// stays in Manage Saved Places, keeping this report toolbar focused.
-    @ViewBuilder
-    private var placeActionsMenu: some View {
-        Button {
-            savePlace()
-        } label: {
-            Image(systemName: "bookmark")
-
-        }
-        .disabled(city == nil)
-
-
     }
 
     private var showsMutationError: Binding<Bool> {
@@ -598,24 +599,24 @@ struct DetailView: View {
             _ = try model.placesStore.savePlace(city)
         } catch {
             mutationError = PlaceDetailMutationError(
-                message: localizedPlacesErrorDescription(
-                    error,
-                    locale: locale
-                )
+                message: localizedPlacesErrorDescription(error)
             )
         }
     }
 
     private func deleteSavedPlace() {
         guard let savedPlace else { return }
+        // The report may have been opened from the saved-place manager, whose
+        // city is otherwise no longer discoverable once its persistence row is
+        // removed. Retain a transient lookup source so this same report can
+        // immediately offer Save Place again rather than becoming blank.
+        let city = savedPlace.city
         do {
+            model.registerTransientCity(city)
             try model.placesStore.deletePlace(id: savedPlace.id)
         } catch {
             mutationError = PlaceDetailMutationError(
-                message: localizedPlacesErrorDescription(
-                    error,
-                    locale: locale
-                )
+                message: localizedPlacesErrorDescription(error)
             )
         }
     }
@@ -651,6 +652,8 @@ struct LocationReportHeader: View {
     private var conditionPlaceholderHeight: CGFloat = 74
     @ScaledMetric(relativeTo: .largeTitle)
     private var titleMinimumHeight: CGFloat = 44
+    @ScaledMetric(relativeTo: .body)
+    private var sunStatusHeight: CGFloat = 20
 
     /// Retain the live sun-status vocabulary for today's forecast. Only the
     /// original “Sunny for …” result (a non-today total) takes the shared Map
@@ -672,8 +675,9 @@ struct LocationReportHeader: View {
         )
     }
 
-    private var sunStatusText: String? {
-        guard let sunStatus else { return nil }
+    private func sunStatusText(
+        for sunStatus: SunnyHoursCalculation.DailySunStatus
+    ) -> String {
         switch sunStatus {
         case .sunnyForHours(let count):
             return SunnyHoursStatusLine.statusText(hours: count, locale: locale)
@@ -682,12 +686,60 @@ struct LocationReportHeader: View {
         case .sunOutIn(let date):
             return "\(sunOutInPrefix) \(countdownText(to: date))"
         case .noSunToday:
+            if let nextSunnyRelativeDateText {
+                return String(
+                    format: localizedString(
+                        "There’s no sun today. Sun coming out %@.",
+                        locale: locale
+                    ),
+                    locale: locale,
+                    nextSunnyRelativeDateText
+                )
+            }
             return localizedString("No Sun Today", locale: locale)
         case .noMoreSunToday:
+            if let nextSunnyRelativeDateText {
+                return String(
+                    format: localizedString(
+                        "There’s no more sun today. Sun coming out %@.",
+                        locale: locale
+                    ),
+                    locale: locale,
+                    nextSunnyRelativeDateText
+                )
+            }
             return localizedString("No More Sun Today", locale: locale)
         case .noSunOnSelectedDay:
             return localizedString("No Sun on this day", locale: locale)
         }
+    }
+
+    /// Formats the next proven sunny forecast relative to the selected
+    /// city-local day, yielding locale-native copy such as “tomorrow” or
+    /// “in 2 days” without assembling translated date fragments by hand.
+    private var nextSunnyRelativeDateText: String? {
+        guard let weather,
+              let forecast,
+              let nextDate = SunnyHoursCalculation.nextSunnyForecastDate(
+                after: forecast,
+                in: weather.dailyForecasts,
+                timeZone: weather.timeZone,
+                selectionCalendar: calendar
+              ) else {
+            return nil
+        }
+
+        var cityCalendar = calendar
+        cityCalendar.timeZone = weather.timeZone
+        return Date.AnchoredRelativeFormatStyle(
+            anchor: nextDate,
+            allowedFields: [.day],
+            presentation: .named,
+            unitsStyle: .wide,
+            locale: locale,
+            calendar: cityCalendar,
+            capitalizationContext: .middleOfSentence
+        ).format(forecast.date)
     }
 
     /// Detail-only sentence casing keeps the status line calm beneath the
@@ -745,59 +797,56 @@ struct LocationReportHeader: View {
 
                 }
 
-                if let sunStatus {
-                    switch sunStatus {
-                    case .sunnyForHours(let count):
-                        SunnyHoursStatusLine(hours: count)
-                    case .sunOutNow:
-                        HStack(spacing: 3) {
-                            Image(systemName: "sun.max")
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(theme.colors.dotSun)
+                Group {
+                    if let sunStatus {
+                        switch sunStatus {
+                        case .sunnyForHours(let count):
+                            SunnyHoursStatusLine(hours: count)
+                        case .sunOutNow:
+                            HStack(spacing: 3) {
+                                Image(systemName: "sun.max")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(theme.colors.dotSun)
 
 
-                            Text(sunOutNowText)
-                                .font(.body.weight(.semibold))
-                                .foregroundStyle(theme.colors.dotSun)
-                        }
-
-
-                    case .sunOutIn(let date):
-                        HStack(spacing: 3) {
-                            Image(systemName: "sun.max")
-                                .font(.body.weight(.regular))
-                                .foregroundStyle(theme.colors.secondaryText)
-
-
-                            HStack(spacing: 0) {
-                                Text("\(sunOutInPrefix) ")
-                                    .font(.body)
-                                    .foregroundStyle(theme.colors.secondaryText)
-
-                                Text(countdownText(to: date))
+                                Text(sunOutNowText)
                                     .font(.body.weight(.semibold))
                                     .foregroundStyle(theme.colors.dotSun)
                             }
-                        }
 
 
-                    default:
-                        if let sunStatusText {
-                            Text(sunStatusText)
-                                // Keep the neutral status copy on the same
-                                // body baseline as the non-emphasized text in
-                                // the other status variants. The yellow,
-                                // emphasized spans retain their own styling.
+                        case .sunOutIn(let date):
+                            HStack(spacing: 3) {
+                                Image(systemName: "sun.max")
+                                    .font(.body.weight(.regular))
+                                    .foregroundStyle(theme.colors.secondaryText)
+
+
+                                HStack(spacing: 0) {
+                                    Text("\(sunOutInPrefix) ")
+                                        .font(.body)
+                                        .foregroundStyle(theme.colors.secondaryText)
+
+                                    Text(countdownText(to: date))
+                                        .font(.body.weight(.semibold))
+                                        .foregroundStyle(theme.colors.dotSun)
+                                }
+                            }
+
+
+                        default:
+                            Text(sunStatusText(for: sunStatus))
+                                // Keep the neutral status copy on the same body
+                                // baseline as the non-emphasized text in the
+                                // other status variants. The yellow, emphasized
+                                // spans retain their own styling.
                                 .font(.body)
                                 .foregroundStyle(theme.colors.secondaryText)
                                 .multilineTextAlignment(.center)
                         }
                     }
-                } else {
-                    Color.clear
-                        .frame(height: 20)
-
                 }
+                .frame(minHeight: sunStatusHeight)
             } else {
                 Color.clear
                     .frame(
@@ -807,7 +856,7 @@ struct LocationReportHeader: View {
 
 
                 Color.clear
-                    .frame(height: 20)
+                    .frame(height: sunStatusHeight)
 
             }
         }

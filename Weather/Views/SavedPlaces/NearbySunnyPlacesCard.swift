@@ -50,6 +50,10 @@ struct NearbySunnyPlacesCard: View {
         Array(recommendations.prefix(Self.maxRecommendations))
     }
 
+    private var showsLoadingState: Bool {
+        shownRecommendations.isEmpty && isLoading
+    }
+
     var body: some View {
         VStack(
             alignment: .leading,
@@ -62,7 +66,12 @@ struct NearbySunnyPlacesCard: View {
 
             cardContent
         }
-        .padding(WeatherCardLayout.padding)
+        .padding(.top, WeatherCardLayout.padding)
+        .padding(.horizontal, WeatherCardLayout.padding)
+        .padding(
+            .bottom,
+            showsLoadingState ? WeatherCardLayout.padding : 12
+        )
         .frame(maxWidth: .infinity, alignment: .leading)
         .detailTranslucentCard(
             colorScheme: colorScheme,
@@ -79,34 +88,33 @@ struct NearbySunnyPlacesCard: View {
             // Render each discovery as native value navigation. Unlike saved
             // places, no bookmark action appears: these are suggestion rows.
             VStack(spacing: 0) {
-                ForEach(shownRecommendations) { recommendation in
-                    resultRow(recommendation)
-                    if recommendation.id != shownRecommendations.last?.id {
-                        Divider()
-                            .padding(
-                                .leading,
-                                WeatherCardLayout.leadingIconWidth
-                                    + WeatherCardLayout.headerSpacing
-                            )
+                VStack(spacing: 0) {
+                    ForEach(shownRecommendations) { recommendation in
+                        resultRow(recommendation)
+                        if recommendation.id != shownRecommendations.last?.id {
+                            Divider()
+                                .padding(
+                                    .leading,
+                                    WeatherCardLayout.leadingIconWidth
+                                        + WeatherCardLayout.headerSpacing
+                                )
+                        }
                     }
                 }
-            }
 
-            // A nearby batch may retain useful cities even when one candidate
-            // fails. Keep those rows, but surface the partial failure and its
-            // recovery action inside this same card instead of hiding it.
-            if let errorMessage {
-                message(errorMessage)
-                .padding(.top, 4)
+                // A partial forecast failure must not distract from usable nearby
+                // results. The card only explains an error when it has no result
+                // to show, preserving this branch as a concise recommendation list.
+                Button(action: viewOnMap) {
+                    SecondaryTextActionLabel(
+                        title: "View on Map",
+                        systemImage: "chevron.right"
+                    )
+                }
+                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .center)
             }
-
-            Button(action: viewOnMap) {
-                Label("View on Map", systemImage: "map")
-            }
-            .weatherGlassActionStyle()
-            .frame(maxWidth: .infinity, alignment: .center)
-            .padding(.top, 8)
-        } else if isLoading {
+        } else if showsLoadingState {
             // Loading is separate from an empty completed search, avoiding a
             // misleading “no sunny city” message while WeatherKit is working.
             HStack(spacing: WeatherCardLayout.headerSpacing) {
@@ -123,7 +131,12 @@ struct NearbySunnyPlacesCard: View {
             .frame(maxWidth: .infinity, alignment: .leading)
 
         } else if let errorMessage {
-            message(errorMessage)
+            messageWithAction(
+                errorMessage,
+                actionTitle: "Try Again",
+                systemImage: "arrow.clockwise",
+                action: retry
+            )
         } else if locationStatus.requiresSettings {
             messageWithAction(
                 locationStatus == .denied
@@ -247,12 +260,6 @@ struct NearbySunnyPlacesCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func message(_ message: String) -> some View {
-        Text(message)
-            .font(.callout)
-            .foregroundStyle(theme.colors.secondaryText)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
 }
 
 // MARK: - Search Readiness

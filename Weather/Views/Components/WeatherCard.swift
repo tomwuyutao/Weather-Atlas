@@ -35,9 +35,6 @@ enum WeatherCardFallbackLayout {
     static let savedDatesContentHeight: CGFloat = 144
     /// The planning preview normally presents up to three saved-place rows.
     static let savedPlacesContentHeight: CGFloat = 132
-    /// Nearby recommendations retain a useful comparison-card footprint while
-    /// a search is in progress or needs recovery.
-    static let nearbyPlacesContentHeight: CGFloat = 144
 }
 
 /// Consistent primary-card header with an optional secondary line and trailing

@@ -1,4 +1,4 @@
-# Weather Atlas Beta: code organization and reading guide
+# Weather Atlas: code organization and reading guide
 
 This document describes the source tree as it exists now. It is a guide for a
 full read-through by someone who already knows programming but is new to Swift
@@ -80,7 +80,6 @@ Read:
 5. **Weather/Models/SunnyPlacesRanking.swift**
 6. **Weather/Models/SunnyHoursCalculation.swift**
 7. **Weather/Models/DaylightHours.swift**
-8. **Weather/Models/MapOverlayMetric.swift**
 
 This is the best place to understand City, CityWeather, DailyForecast,
 HourlyForecast, normalized weather conditions, unavailable-data reasons,
@@ -125,7 +124,7 @@ Read:
 2. **Weather/Views/Components/DateSwitcher.swift**
 3. **Weather/Views/YourLocation/YourLocationView.swift**
 4. **Weather/Views/Components/SunnyHoursTimeline.swift**
-5. **Weather/Views/YourLocation/NearbySunnyPlacesCard.swift**
+5. **Weather/Views/SavedPlaces/NearbySunnyPlacesCard.swift**
 6. **Weather/Views/Components/TenDaySunnyHoursTimeline.swift**
 7. **Weather/Views/Detail/DetailView.swift**
 8. **Weather/Views/Detail/ChartView.swift**
@@ -154,8 +153,11 @@ Read:
 
 1. **Weather/Views/Search/CitySearch.swift**
 2. **Weather/Views/Search/SearchView.swift**
-3. **Weather/Views/Map/MapCard.swift**
-4. **Weather/Views/Map/MapView.swift**
+3. **Weather/Views/Map/FindSunButton.swift**
+4. **Weather/Views/Map/FindSunListView.swift**
+5. **Weather/Views/Map/MapCard.swift**
+6. **Weather/Views/Map/MapFindSun.swift**
+7. **Weather/Views/Map/MapView.swift**
 
 Search resolves city candidates, Map previews them, and an explicit user
 action saves them. MapCard owns the compact and large forms of Map's single
@@ -216,7 +218,6 @@ AppNavigation owns navigation state that should survive switching tabs.
 | AppTab.savedPlaces | The saved-place dashboard and its editable library. |
 | AppTab.map | The geographic experience. |
 | AppTab.search | The system search-role tab. |
-| AppRoute.currentLocation | Pushes the detailed current-location report. |
 | AppRoute.place(id:) | Pushes a detail report for a saved or temporary City ID. |
 | AppRoute.savedPlacesLibrary | Pushes the editable saved-place manager. |
 | AppSheetDestination.settings | The single root sheet destination today. |
@@ -328,8 +329,7 @@ as Clear or Partly Sunny; each counts as one full sunny hour. SunnyPlacesRanking
 uses that fixed count to order places. DaylightHours supplies provider-neutral
 daylight bounds and formatting shared by the app and widgets, while
 WeatherDataValidation contains both the forecast checks and typed issue values.
-MapOverlayMetric controls only the optional metric displayed on Map; it never
-changes the sunny-hours ranking. Missing hourly coverage is feature-level: it
+Missing hourly coverage is feature-level: it
 does not make an otherwise useful city response retry or fail cache validation.
 
 WeatherDataIssue represents honest missing or invalid weather data. ErrorAlerts
@@ -353,35 +353,6 @@ LocationProvider is a one-shot Core Location state machine:
 The current location is never automatically inserted into Saved Places. Its
 transient City identity is deterministic from the coordinate, which lets its
 forecast be retained safely during the app session.
-
-### Nearby-sun candidate sampling
-
-The nearby result set is designed for day-trip variety rather than a dense
-list of adjacent neighbourhoods. Population only decides which catalog cities
-are worth asking WeatherKit about; forecast data decides which cities are
-actually recommended.
-
-| Distance band | Candidate rule |
-| --- | --- |
-| Under 25 km | Excluded. This avoids neighbourhood-scale duplicates of the current location. |
-| 25 to 50 km | Keep up to 5 highest-population catalog cities. |
-| 50 to 200 km | Partition candidates into northeast, southeast, southwest, and northwest relative to the user. Keep up to 5 highest-population cities in each quadrant. |
-| Empty outer quadrants | Unused quadrant capacity is backfilled from the remaining outer candidates globally, population first. |
-
-The outer scan looks through up to 10,000 catalog records before selection,
-but the WeatherKit budget stays bounded: at most 5 close-ring candidates plus
-20 outer-ring candidates, so at most 25 forecast lookups. Nearby lookups are
-deliberately sequential. This makes the external request budget predictable
-and allows partial failures without throwing away successful results.
-
-The completed candidate weather is reused when the person changes the selected
-date. The app filters and ranks locally instead of re-running the nearby
-search. The Home nearby card appears when the current location is not
-strictly clear; nearby results may be clear or partly sunny. A strict clear
-test is intentionally used where the UI says sunny.
-
-Your Location can hand its already-loaded nearby results to Map through AppNavigation. Map
-then shows those results without another WeatherKit search.
 
 ## Main screen responsibilities
 
@@ -433,11 +404,9 @@ behaviours:
 - a continuously visible MapKit map, even when no place has been saved;
 - saved-place weather annotations and a current-location annotation;
 - previews handed from Search;
-- Home cached nearby-sun results;
 - Find Sun searches;
 - selection and camera movement;
 - a single floating result card at any one time;
-- overlay and legend state; and
 - annotation-label collision avoidance.
 
 The visible floating card has an explicit precedence so Map does not stack
@@ -446,21 +415,11 @@ annotation coordinates into screen space and selects placements that reduce
 overlap. Camera fitting also accounts for geographic edge cases such as the
 international date line.
 
-Find Sun always changes the map weather focus to sunniness. Its scopes are
-separate from Home nearby-sun policy:
-
-| Find Sun scope | Candidate sampling |
-| --- | --- |
-| Visible map area | Up to 25 populous cities in the visible region. |
-| Near me | Up to 25 populous cities within 100 km. |
-| Country | Up to 25 populous cities in the selected country. |
-| Continent | Up to 25 populous cities in the selected continent. |
-
-Map Find Sun uses its selected-date snapshot and keeps clear-condition results,
-then orders results by cloud cover and daily high. It guards asynchronous
-search writes with a generation value, so an older search cannot overwrite a
-newer one. A Find Sun result stays transient unless the person explicitly
-saves it.
+Find Sun guards asynchronous search writes with a generation value, so an
+older search cannot overwrite a newer one. A result stays transient unless
+the person explicitly saves it. FindSunButton.swift owns the menu and
+geographic picker, FindSunListView.swift owns ranked navigation results, and
+MapFindSun.swift contains the MapView workflow extension.
 
 ## Search
 
@@ -494,9 +453,9 @@ needs help preserving the native interactive pop gesture.
 The widget extension cannot assume it shares in-memory state with the main
 app. The handoff is intentionally narrow:
 
-1. WeatherModel publishes a catalog of saved-city identities, display
-   labels, timezone information, and localized widget strings to the app-group
-   store.
+1. WeatherModel publishes saved-city identities plus the default Current
+   Location, display labels, timezone information, and localized widget strings
+   to the app-group store.
 2. WidgetDataStore writes and reads that shared catalog and widget snapshots.
 3. The extension fetches its own WeatherKit forecast, stores a fresh
    WidgetWeatherSnapshot, and falls back to a stale last-known-good snapshot
@@ -531,15 +490,16 @@ Saved Places route.
 | Weather/Models/WeatherDataValidation.swift | Typed unavailable-data reasons and general ten-day forecast validation. |
 | Weather/Models/SunnyPlacesRanking.swift | Fixed Clear/Partly Sunny hourly ranking with deterministic ordering. |
 | Weather/Models/SunnyHoursCalculation.swift | City-local daylight-hour counting, windows, and status. |
-| Weather/Models/DaylightHours.swift | Shared daylight bounds, layout, segments, and formatting for the app and widgets. |
-| Weather/Models/MapOverlayMetric.swift | Optional Map display metric and its map-only ordering. |
+| Weather/Models/DaylightHours.swift | Shared daylight bounds and formatting for the app and widgets. |
 
 ### Helpers: persistence, location, catalogs, and presentation support
 
 | File | Role |
 | --- | --- |
 | Weather/Helpers/PlacesStore.swift | Saved-place document types, validation, JSON persistence, and observable library API. |
+| Weather/Helpers/HomeLocationStore.swift | Persistence boundary for an optional manually chosen home location. |
 | Weather/Helpers/LocationProvider.swift | One-shot Core Location authorization, coordinate, and metadata workflow. |
+| Weather/Helpers/NetworkConnectivity.swift | Observable internet-path state for offline presentation. |
 | Weather/Helpers/CitiesCatalog.swift | Actor-backed bundled global city catalog, population and geographic queries, starter cities. |
 | Weather/Helpers/CountryCatalog.swift | Bundled country/city metadata, country/continent options, and timezone fallback. |
 | Weather/Helpers/AppPreferences.swift | User preference types and formatting/localization helpers. |
@@ -561,6 +521,10 @@ Saved Places route.
 | --- | --- |
 | Weather/Views/Components/WeatherCard.swift | Shared card surface, header alignment, and standard card structure. |
 | Weather/Views/Components/DateSwitcher.swift | Shared ten-day horizon and top forecast-date control. |
+| Weather/Views/Components/OfflineBanner.swift | Shared offline advisory content and geometry. |
+| Weather/Views/Components/SecondaryTextActionLabel.swift | Reusable low-priority text action label. |
+| Weather/Views/Components/SunnyHoursStatusLine.swift | Shared highlighted sunny-hours phrase. |
+| Weather/Views/Components/SunnyHoursTimeline.swift | Compact daily sunny-hours timeline shared with detail reports. |
 | Weather/Views/Components/TenDaySunnyHoursTimeline.swift | Shared ten-day sunny-hours chart. |
 
 ### Views: Your Location and Saved Places
@@ -568,8 +532,7 @@ Saved Places route.
 | File | Role |
 | --- | --- |
 | Weather/Views/YourLocation/YourLocationView.swift | Device-location permission, refresh, and recovery wrapper. |
-| Weather/Views/Components/SunnyHoursTimeline.swift | Compact daily sunny-hours timeline shared with detail reports. |
-| Weather/Views/YourLocation/NearbySunnyPlacesCard.swift | Nearby sunny-city rows, distance labels, and Map handoff. |
+| Weather/Views/SavedPlaces/NearbySunnyPlacesCard.swift | Nearby sunny-city rows, distance labels, and Map handoff. |
 | Weather/Views/SavedPlaces/SavedPlacesView.swift | Saved Places planning dashboard. |
 | Weather/Views/SavedPlaces/BestSunnyDatesCard.swift | Saved-places-only heatmap calendar. |
 | Weather/Views/SavedPlaces/BestSunnyPlacesCard.swift | Best sunny saved-place recommendations. |
@@ -580,12 +543,16 @@ Saved Places route.
 | --- | --- |
 | Weather/Views/Detail/DetailView.swift | Shared detailed report canvas and the place-detail route. |
 | Weather/Views/Detail/ChartView.swift | Forecast metric cards and chart presentation. |
+| Weather/Views/Map/FindSunButton.swift | Find Sun menu and geographic picker. |
+| Weather/Views/Map/FindSunListView.swift | Ranked Find Sun result dashboard. |
 | Weather/Views/Map/MapCard.swift | Shared compact/large Map surface and every floating-card body. |
+| Weather/Views/Map/MapFindSun.swift | MapView's Find Sun workflow extension. |
 | Weather/Views/Map/MapView.swift | MapKit screen, annotations, Find Sun state, preview, selection, and camera logic. |
 | Weather/Views/SavedPlaces/ManageSavedPlaces.swift | Editable full Saved Places library. |
 | Weather/Views/Search/CitySearch.swift | Apple Maps and Open-Meteo city search implementation. |
 | Weather/Views/Search/SearchView.swift | Debounced search UI and explicit preview/save actions. |
 | Weather/Views/Settings/Settings.swift | Preferences, reset, attributions, and navigation-gesture bridge. |
+| Weather/Views/Tutorial/Tutorial.swift | First-run onboarding and contextual feature-tip state. |
 
 ### Widgets
 
@@ -604,7 +571,7 @@ Saved Places route.
 | --- | --- |
 | Weather/Resources/Cities/worldcities.csv | Bundled global city catalog for geographic and population-based candidate queries. |
 | Weather/Resources/Cities/country_city_coordinates.csv | Bundled country/city metadata used by CountryCatalog. |
-| Weather/Resources/Assets.xcassets | App icon, accent color, and introductory graphics. |
+| Weather/Resources/Assets.xcassets | App icon and project-configured color catalog. |
 | Weather/Localizable.xcstrings | Main app localized strings catalog. |
 | Weather/Base.lproj/InfoPlist.strings | Base Info.plist user-facing text. |
 | Weather/de.lproj, en.lproj, es.lproj, fr.lproj, it.lproj, ja.lproj, ko.lproj, pt.lproj, ru.lproj, zh-Hans.lproj, zh-Hant.lproj | Localized Info.plist strings for supported languages. |

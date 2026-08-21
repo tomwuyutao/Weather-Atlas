@@ -75,23 +75,29 @@ struct WidgetDataCity: Codable, Hashable, Identifiable {
     /// Optional keeps previously persisted three-bucket widget data decodable
     /// until WidgetKit performs its next forecast refresh.
     var hourlyConditions: [WidgetHourlyCondition]? = nil
-    /// Raw current WeatherKit symbol; absent data remains absent.
+    /// Raw current WeatherKit symbol retained only for source diagnostics.
     var currentConditionSymbolName: String? = nil
-    /// Current-day sunrise/sunset-derived chart bounds.
+    /// Current condition normalized by the same resolver as the main app.
+    /// Optional keeps older snapshots decodable; the widget refreshes them
+    /// before rendering weather content because the semantic value is missing.
+    var currentCondition: AppWeatherCondition? = nil
+    /// Current-day chart bounds: solar-derived when available, otherwise a
+    /// safe domain derived from available WeatherKit hourly records.
     var daylightBounds: SunnyHoursChartBounds? = nil
-    /// Validated astronomical regime for the current destination-local day.
+    /// Optional astronomical regime when WeatherKit supplied enough solar data.
     var daylightRegime: WidgetDaylightRegime? = nil
-    /// Available rows for the large ten-day chart.
+    /// Available current/future rows for the large chart, capped at ten by its
+    /// presentation capacity. A shorter valid forecast remains displayable.
     var sunnyWindowDays: [WidgetSunnyWindowDay]? = nil
-    /// Exact source issue that should replace widget weather content.
-    /// Keeping it alongside the data prevents an old plausible-looking chart
-    /// from masking a new validation failure.
+    /// Request, place, or basic-forecast issue retained with the snapshot.
+    /// Legacy per-field source issues remain decodable, but do not suppress
+    /// otherwise usable WeatherKit data in widget presentation.
     var dataIssue: WeatherDataIssue? = nil
 }
 
 /// One available local-date row in the large widget timeline.
-/// The row is independent from `WidgetDataCity` so a ten-day chart can keep
-/// incomplete days explicit instead of pretending every daily forecast is valid.
+/// The row is independent from `WidgetDataCity` so the up-to-ten-day chart can
+/// render every WeatherKit forecast row without requiring a full horizon.
 struct WidgetSunnyWindowDay: Codable, Hashable, Identifiable {
     /// Literal selection date represented by this row.
     let date: Date
@@ -102,11 +108,12 @@ struct WidgetSunnyWindowDay: Codable, Hashable, Identifiable {
     /// Normalized conditions for every available daylight hour in this row.
     /// Optional supports snapshots written before five-condition charts.
     var hourlyConditions: [WidgetHourlyCondition]? = nil
-    /// Real daylight domain for the row.
+    /// Solar-derived or safe fallback chart domain for the row.
     var daylightBounds: SunnyHoursChartBounds? = nil
-    /// Validated astronomical regime used to construct the row.
+    /// Optional astronomical regime used to construct the row.
     var daylightRegime: WidgetDaylightRegime? = nil
-    /// Data issue replacing this row's chart content, when present.
+    /// Legacy per-field issue retained for backward decoding. Presentation uses
+    /// available row values and fallback bounds instead of hiding the chart.
     var dataIssue: WeatherDataIssue? = nil
 
     /// Uses the literal local date as row identity.
@@ -133,8 +140,11 @@ struct WidgetWeatherSnapshot: Codable, Hashable {
     var latitude: Double? = nil
     /// Longitude paired with `latitude` for snapshot identity validation.
     var longitude: Double? = nil
-    /// Cached current-condition source symbol.
+    /// Cached current-condition source symbol retained for diagnostics.
     var currentConditionSymbolName: String? = nil
+    /// Cached condition normalized by the shared app/widget WeatherKit adapter.
+    /// Optional preserves backward decoding of snapshots from older releases.
+    var currentCondition: AppWeatherCondition? = nil
     /// Cached current-day daylight hours.
     let daytimeHours: [Int]
     /// Cached current-day sunny hours.
@@ -144,13 +154,15 @@ struct WidgetWeatherSnapshot: Codable, Hashable {
     /// Cached normalized conditions for every current-day daylight hour.
     /// Optional preserves backward decoding of existing on-device snapshots.
     var hourlyConditions: [WidgetHourlyCondition]? = nil
-    /// Cached current-day chart bounds.
+    /// Cached current-day chart bounds, solar-derived when available.
     var daylightBounds: SunnyHoursChartBounds? = nil
-    /// Cached validated astronomical regime for the represented local day.
+    /// Cached optional astronomical regime for the represented local day.
     var daylightRegime: WidgetDaylightRegime? = nil
-    /// Cached available ten-day chart rows.
+    /// Cached available current/future rows for the large chart, capped at ten
+    /// during presentation rather than requiring a full ten-day feed.
     var sunnyWindowDays: [WidgetSunnyWindowDay]? = nil
-    /// Cached precise missing-data issue.
+    /// Cached request, place, or basic-forecast issue. Legacy per-field source
+    /// issues remain decodable but do not hide otherwise usable widget data.
     var dataIssue: WeatherDataIssue? = nil
 }
 
@@ -310,9 +322,9 @@ enum WidgetDataStore {
         return try? JSONDecoder().decode(WidgetWeatherSnapshot.self, from: data)
     }
 
-    /// Persists the widget extension's latest validated response for one city.
-    /// A response may carry a typed missing-data issue; persisting that issue
-    /// keeps placeholder and gallery rendering honest until the next retry.
+    /// Persists the widget extension's latest usable response for one city.
+    /// Request and basic-forecast issues remain available for an honest
+    /// placeholder, while source-field gaps retain their usable weather data.
     static func saveWeatherSnapshot(_ snapshot: WidgetWeatherSnapshot, for cityID: String) {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
         guard let data = try? JSONEncoder().encode(snapshot) else {

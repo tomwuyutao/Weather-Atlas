@@ -58,6 +58,10 @@ struct PlaceSearchView: View {
     /// Keeping the task lets a newer selection cancel resolution of an older
     /// result rather than racing to change the Map preview.
     @State private var selectionTask: Task<Void, Never>?
+    /// A cancellation alone is not enough: a provider can finish just as a
+    /// query changes. Each invalidation gets a new generation so stale work
+    /// cannot update navigation or row state after that race.
+    @State private var selectionGeneration = 0
     @State private var selectionError: (key: String, message: String)?
     @State private var allCountries: [CountryPlacesOption] = []
     @State private var countryResults: [CountryPlacesOption] = []
@@ -136,38 +140,31 @@ struct PlaceSearchView: View {
             .onChange(of: searchScope) { _, newScope in
                 handleScopeChange(to: newScope)
             }
-            .onChange(of: query) {
+            .onChange(of: query) { _, _ in
+                invalidateSelection()
                 guard searchScope == .country else { return }
                 updateCountrySearchResults()
             }
             .onDisappear {
                 // A resolved place should not navigate away from a search tab
                 // the person has already left.
-                selectionTask?.cancel()
+                invalidateSelection()
                 isSearchFocused = false
             }
             .reportingMissingData(missingDataReport)
     }
 
-    /// City and country have native text filtering. Continents remain a short,
-    /// direct picker list, so mounting a search field there would imply an
-    /// interaction that deliberately does not exist.
-    @ViewBuilder
+    /// One native search-field host remains mounted across every scope. Keeping
+    /// its identity stable prevents the navigation-bar field from disappearing
+    /// or shifting while the person changes search modes.
     private var searchFieldHost: some View {
-        if searchScope == .continent {
-            searchableScopeContent
-        } else {
-            searchableScopeContent
-                // Keep one native search-field host mounted while moving
-                // between the two text-searchable scopes. That preserves its
-                // navigation-bar placement instead of recreating it per list.
-                .searchable(
-                    text: $query,
-                    placement: .navigationBarDrawer(displayMode: .always),
-                    prompt: searchPrompt
-                )
-                .searchFocused($isSearchFocused)
-        }
+        searchableScopeContent
+            .searchable(
+                text: $query,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: searchPrompt
+            )
+            .searchFocused($isSearchFocused)
     }
 
     /// Scope content owns only its results. The enclosing view owns the one
@@ -189,9 +186,7 @@ struct PlaceSearchView: View {
         switch searchScope {
         case .city: "Search cities"
         case .country: "Search countries"
-        // The direct continent picker does not mount a search field. Retain a
-        // stable fallback only because this computed property is exhaustive.
-        case .continent: "Search"
+        case .continent: "Search continents"
         }
     }
 
@@ -215,7 +210,10 @@ struct PlaceSearchView: View {
             ContentUnavailableView(
                 "Search for a City",
                 systemImage: "building.2",
-                description: Text("Search for a city to view its weather conditions.")
+                description: Text(
+                    "Search for a city to view its weather conditions."
+                )
+                .font(.body.weight(.bold))
             )
         } else if hasNoResults && isSearchInProgress && !hasProviderError {
             VStack(spacing: 12) {
@@ -268,6 +266,7 @@ struct PlaceSearchView: View {
                         description: "Find which cities are sunny in a country."
                     )
                 }
+                .listRowBackground(theme.colors.settingsRowFill)
             }
             .listStyle(.insetGrouped)
             .scrollDismissesKeyboard(.interactively)
@@ -276,23 +275,31 @@ struct PlaceSearchView: View {
     }
 
     private var continentSearchContent: some View {
-        List {
-            Section {
-                ForEach(ContinentPlacesOption.allCases) { continent in
-                    geographicQueryButton(
-                        title: continent.localizedName(locale: locale)
-                    ) {
-                        openFindSun(in: .continent(continent))
+        Group {
+            if continentResults.isEmpty {
+                ContentUnavailableView.search(text: normalizedQuery)
+            } else {
+                List {
+                    Section {
+                        ForEach(continentResults) { continent in
+                            geographicQueryButton(
+                                title: continent.localizedName(locale: locale)
+                            ) {
+                                openFindSun(in: .continent(continent))
+                            }
+                        }
+                    } header: {
+                        geographicScopeHeader(
+                            description: "Find which cities are sunny across a continent."
+                        )
                     }
+                    .listRowBackground(theme.colors.settingsRowFill)
                 }
-            } header: {
-                geographicScopeHeader(
-                    description: "Find which cities are sunny across a continent."
-                )
+                .listStyle(.insetGrouped)
+                .scrollDismissesKeyboard(.interactively)
+                .weatherScrollableBackground()
             }
         }
-        .listStyle(.insetGrouped)
-        .weatherScrollableBackground()
     }
 
     private func geographicQueryButton(
@@ -302,6 +309,7 @@ struct PlaceSearchView: View {
         Button(action: action) {
             HStack {
                 Text(title)
+                    .font(.body)
                     .foregroundStyle(theme.colors.primaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
@@ -365,6 +373,7 @@ struct PlaceSearchView: View {
                     providerUnavailableRow
                 }
             }
+            .listRowBackground(theme.colors.settingsRowFill)
         }
     }
 
@@ -395,12 +404,9 @@ struct PlaceSearchView: View {
             select(result)
         } label: {
             HStack(spacing: 12) {
-                Image(systemName: "mappin.and.ellipse")
-                    .foregroundStyle(theme.colors.accent)
-
-
                 VStack(alignment: .leading, spacing: 2) {
                     Text(result.title)
+                        .font(.body)
                         .foregroundStyle(theme.colors.primaryText)
 
                     if !result.subtitle.isEmpty {
@@ -460,9 +466,28 @@ struct PlaceSearchView: View {
         description: LocalizedStringKey
     ) -> some View {
         Text(description)
-            .font(.body)
+            .font(.body.weight(.bold))
             .foregroundStyle(theme.colors.primaryText)
             .textCase(nil)
+    }
+
+    /// The continent catalog is deliberately tiny, so filtering its six stable
+    /// values locally is cheaper and more predictable than introducing another
+    /// stored result array or asynchronous task.
+    private var continentResults: [ContinentPlacesOption] {
+        guard !normalizedQuery.isEmpty else {
+            return ContinentPlacesOption.allCases
+        }
+
+        return ContinentPlacesOption.allCases.filter { continent in
+            let localizedName = continent.localizedName(locale: locale)
+            let englishName = continent.localizedName(
+                locale: Locale(identifier: "en")
+            )
+            return localizedName.localizedCaseInsensitiveContains(
+                normalizedQuery
+            ) || englishName.localizedCaseInsensitiveContains(normalizedQuery)
+        }
     }
 
     private var hasNoResults: Bool {
@@ -479,9 +504,7 @@ struct PlaceSearchView: View {
 
     @MainActor
     private func handleScopeChange(to scope: PlaceSearchScope) {
-        selectionTask?.cancel()
-        loadingID = nil
-        selectionError = nil
+        invalidateSelection()
         query = ""
         isSettled = true
         searchManager.search(query: "", locale: locale)
@@ -534,8 +557,7 @@ struct PlaceSearchView: View {
 
     @MainActor
     private func openFindSun(in scope: MapSunQueryScope) {
-        selectionTask?.cancel()
-        selectionError = nil
+        invalidateSelection()
         isSearchFocused = false
         router.showMap(findingSunIn: scope)
     }
@@ -571,11 +593,18 @@ struct PlaceSearchView: View {
     @MainActor
     private func retryCitySearch() {
         guard searchScope == .city, !normalizedQuery.isEmpty else { return }
-        selectionTask?.cancel()
-        loadingID = nil
-        selectionError = nil
+        invalidateSelection()
         isSettled = true
         searchManager.search(query: normalizedQuery, locale: locale)
+    }
+
+    @MainActor
+    private func invalidateSelection() {
+        selectionGeneration &+= 1
+        selectionTask?.cancel()
+        selectionTask = nil
+        loadingID = nil
+        selectionError = nil
     }
 
     /// A result first resolves to concrete coordinates/time zone. Existing
@@ -583,15 +612,19 @@ struct PlaceSearchView: View {
     /// opportunity to inspect and save rather than being persisted implicitly.
     @MainActor
     private func select(_ result: CitySearchResult) {
-        selectionTask?.cancel()
+        invalidateSelection()
+        let generation = selectionGeneration
+        let submittedQuery = normalizedQuery
         selectionTask = Task { @MainActor in
             // `defer` restores the row's enabled state on every exit path,
             // including cancellation and a failed provider resolution.
             loadingID = result.id
             selectionError = nil
             defer {
-                loadingID = nil
-                selectionTask = nil
+                if selectionGeneration == generation {
+                    loadingID = nil
+                    selectionTask = nil
+                }
             }
 
             let resolvedPlace: CitySearchResolvedPlace
@@ -600,14 +633,26 @@ struct PlaceSearchView: View {
             } catch is CancellationError {
                 return
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled,
+                      selectionGeneration == generation,
+                      normalizedQuery == submittedQuery,
+                      searchScope == .city,
+                      router.selectedTab == .search else {
+                    return
+                }
                 selectionError = (
                     key: "\(result.id):\(error.localizedDescription)",
                     message: error.localizedDescription
                 )
                 return
             }
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled,
+                  selectionGeneration == generation,
+                  normalizedQuery == submittedQuery,
+                  searchScope == .city,
+                  router.selectedTab == .search else {
+                return
+            }
 
             let city = City(
                 name: resolvedPlace.cityName,

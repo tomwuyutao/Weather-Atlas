@@ -13,18 +13,32 @@ import SwiftUI
 struct SecondaryTextActionLabel: View {
     let title: LocalizedStringKey
     let systemImage: String
+    /// Navigation links retain their conventional trailing chevron, while
+    /// place mutations use a leading icon that reads as part of the action.
+    var iconIsLeading = false
 
     @Environment(\.appTheme) private var theme
 
     var body: some View {
         HStack(spacing: 5) {
+            if iconIsLeading {
+                actionIcon
+            }
+
             Text(title)
-            Image(systemName: systemImage)
-                .font(.caption.weight(.regular))
+
+            if !iconIsLeading {
+                actionIcon
+            }
         }
-        .font(.footnote.weight(.regular))
+        .font(.body.weight(.regular))
         .foregroundStyle(theme.colors.secondaryText)
         .frame(minHeight: 44)
         .contentShape(Rectangle())
+    }
+
+    private var actionIcon: some View {
+        Image(systemName: systemImage)
+            .font(.body.weight(.regular))
     }
 }

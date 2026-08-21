@@ -2,7 +2,7 @@
 //  WeatherDataValidation.swift
 //  Weather
 //
-//  Purpose: Defines forecast validation and its typed missing/invalid-data results.
+//  Purpose: Defines typed missing/invalid weather-data results.
 //
 //  Reading guide: instead of silently inventing a weather value when WeatherKit
 //  omits a field, this type carries a precise, persistable reason that a card or
@@ -77,24 +77,6 @@ struct WeatherDataIssue: Error, Codable, Hashable {
         detail: nil,
         forecastDate: nil
     )
-    /// Sunrise is absent while another solar field may still exist.
-    static let missingSunriseData = WeatherDataIssue(
-        kind: .missingSunriseData,
-        detail: nil,
-        forecastDate: nil
-    )
-    /// Sunset is absent while another solar field may still exist.
-    static let missingSunsetData = WeatherDataIssue(
-        kind: .missingSunsetData,
-        detail: nil,
-        forecastDate: nil
-    )
-    /// No hourly forecasts are available for the requested daily forecast.
-    static let missingHourlyData = WeatherDataIssue(
-        kind: .missingHourlyData,
-        detail: nil,
-        forecastDate: nil
-    )
     /// No daily forecast exists for the requested city and literal date.
     static let missingForecastData = WeatherDataIssue(
         kind: .missingForecastData,
@@ -165,33 +147,6 @@ struct WeatherDataIssue: Error, Codable, Hashable {
         )
     }
 
-    /// Names the absent solar event when WeatherKit supplies only one side of
-    /// the daylight interval. The combined case is reserved for both missing;
-    /// returns `nil` when both events exist and there is no issue to report.
-    static func missingSunEvent(
-        sunrise: Date?,
-        sunset: Date?,
-        at forecastDate: Date? = nil
-    ) -> WeatherDataIssue? {
-        // Tuple pattern matching makes the four possible optional combinations
-        // explicit: neither event, sunrise only, sunset only, or both present.
-        switch (sunrise, sunset) {
-        case (nil, nil): WeatherDataIssue(
-            kind: .missingSunriseOrSunset,
-            forecastDate: forecastDate
-        )
-        case (nil, _): WeatherDataIssue(
-            kind: .missingSunriseData,
-            forecastDate: forecastDate
-        )
-        case (_, nil): WeatherDataIssue(
-            kind: .missingSunsetData,
-            forecastDate: forecastDate
-        )
-        case (.some, .some): nil
-        }
-    }
-
     /// Removes duplicate issue category/context pairs without reordering the
     /// source diagnostics. Validation and ranking share this one rule so a
     /// missing field produces one truthful state rather than duplicate alerts.
@@ -202,182 +157,4 @@ struct WeatherDataIssue: Error, Codable, Hashable {
         return issues.filter { seen.insert($0).inserted }
     }
 
-    /// Appends only issue category/context pairs that are not already present.
-    /// Callers that carry an earlier diagnostic first retain that source order.
-    static func merging(
-        _ existing: [WeatherDataIssue],
-        _ additional: [WeatherDataIssue]
-    ) -> [WeatherDataIssue] {
-        var seen = Set(existing)
-        return existing + additional.filter { seen.insert($0).inserted }
-    }
 }
-
-// MARK: - Forecast Structure Validation
-
-// Widget snapshots carry `WeatherDataIssue`, but they intentionally do not
-// import the app's live `CityWeather`/`DailyForecast` models. Keep the shared
-// issue vocabulary in this one file while compiling the app-only structural
-// validator out of the extension target.
-#if !WEATHER_WIDGETS
-
-/// Structural checks shared by the weather repository and multi-day charts.
-///
-/// The validator deliberately does not demand a complete set of hourly
-/// timestamps. WeatherKit's hourly response is rolling, so an otherwise useful
-/// current-day forecast may legitimately omit hours that have already passed.
-enum ForecastValidation {
-    /// A contiguous ten-day source horizon prepared for app presentation.
-    struct TenDayForecastData {
-        /// Forecasts visible in the app-wide date selector's calendar.
-        let forecasts: [DailyForecast]
-    }
-
-    /// Combines daily source-field checks with the multi-day sequence required
-    /// by the app's ten-day views.
-    ///
-    /// `missingHourlyData` is deliberately feature-level rather than a reason to
-    /// retry or discard the whole city response. A rolling WeatherKit response
-    /// can still power daily cards, while each hourly feature reports its own
-    /// unavailable state when the selected day has no usable hourly records.
-    static func responseDataIssues(
-        for city: CityWeather,
-        referenceDate: Date = .now
-    ) -> [WeatherDataIssue] {
-        // Hourly rows are a rolling, feature-level feed. Do not inspect their
-        // presence, count, solar overlap, or optional fields when deciding
-        // whether a city response should be retried or retained in the cache.
-        var issues = city.dailyForecasts.flatMap(dailyFieldIssues(for:))
-
-        var cityCalendar = Calendar.autoupdatingCurrent
-        cityCalendar.timeZone = city.timeZone
-        if case .failure(let issue) = tenDayForecastData(
-            for: city,
-            selectionCalendar: cityCalendar,
-            referenceDate: referenceDate
-        ) {
-            issues.append(issue)
-        }
-
-        return WeatherDataIssue.deduplicated(issues)
-    }
-
-    /// Missing or invalid values owned by a daily forecast rather than its
-    /// rolling hourly children. Hour-dependent consumers validate their own
-    /// selected records at the point where those values are actually needed.
-    static func dailyFieldIssues(
-        for forecast: DailyForecast
-    ) -> [WeatherDataIssue] {
-        var issues = forecast.dailyNumericDataIssues
-
-        if forecast.condition == nil {
-            let symbol = forecast.symbolName.trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
-            issues.append(
-                symbol.isEmpty
-                    ? .missing(.missingConditionData, at: forecast.date)
-                    : .unknownWeatherSymbol(
-                        forecast.symbolName,
-                        at: forecast.date
-                    )
-            )
-        }
-        if forecast.cloudCover == nil {
-            issues.append(
-                .missing(.missingCloudCoverData, at: forecast.date)
-            )
-        }
-        if forecast.precipitationChance == nil {
-            issues.append(
-                .missing(
-                    .missingPrecipitationChanceData,
-                    at: forecast.date
-                )
-            )
-        }
-        if forecast.uvIndex == nil {
-            issues.append(.missing(.missingUVIndexData, at: forecast.date))
-        }
-        return issues
-    }
-
-    /// Validates the contiguous daily sequence required by ten-day charts.
-    ///
-    /// A destination far west of the device can legitimately begin on a literal
-    /// date that is yesterday in the app selector. That leading row is excluded
-    /// from presentation, while missing, duplicate, skipped, stale, or shortened
-    /// source horizons still fail explicitly.
-    static func tenDayForecastData(
-        for city: CityWeather,
-        selectionCalendar: Calendar,
-        referenceDate: Date = .now
-    ) -> Result<TenDayForecastData, WeatherDataIssue> {
-        let expectedDayCount = 10
-        var cityCalendar = selectionCalendar
-        cityCalendar.timeZone = city.timeZone
-        let cityToday = cityCalendar.startOfDay(for: referenceDate)
-
-        guard let firstForecast = city.dailyForecasts.first else {
-            return .failure(.missingForecastData(at: cityToday))
-        }
-        guard cityCalendar.isDate(firstForecast.date, inSameDayAs: cityToday) else {
-            return .failure(.missingForecastData(at: cityToday))
-        }
-
-        let sourceForecasts = Array(city.dailyForecasts.prefix(expectedDayCount))
-        for offset in sourceForecasts.indices {
-            guard let expectedDate = cityCalendar.date(
-                byAdding: .day,
-                value: offset,
-                to: cityToday
-            ), cityCalendar.isDate(
-                sourceForecasts[offset].date,
-                inSameDayAs: expectedDate
-            ) else {
-                let missingDate = cityCalendar.date(
-                    byAdding: .day,
-                    value: offset,
-                    to: cityToday
-                )
-                return .failure(.missingForecastData(at: missingDate))
-            }
-        }
-
-        guard sourceForecasts.count == expectedDayCount else {
-            let missingDate = cityCalendar.date(
-                byAdding: .day,
-                value: sourceForecasts.count,
-                to: cityToday
-            )
-            return .failure(.missingForecastData(at: missingDate))
-        }
-
-        let deviceToday = selectionCalendar.startOfDay(for: referenceDate)
-        var visibleForecasts: [DailyForecast] = []
-        for forecast in sourceForecasts {
-            guard let selectionDate = city.selectionDate(
-                for: forecast,
-                selectionCalendar: selectionCalendar
-            ) else {
-                return .failure(
-                    .invalidValue(
-                        "Unable to convert a forecast into the app calendar",
-                        at: forecast.date
-                    )
-                )
-            }
-            if selectionDate >= deviceToday {
-                visibleForecasts.append(forecast)
-            }
-        }
-
-        guard !visibleForecasts.isEmpty else {
-            return .failure(.missingForecastData(at: deviceToday))
-        }
-        return .success(
-            TenDayForecastData(forecasts: visibleForecasts)
-        )
-    }
-}
-#endif

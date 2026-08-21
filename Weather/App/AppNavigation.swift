@@ -6,7 +6,6 @@
 //  lightweight modal destinations for the redesigned app shell.
 //
 
-import Foundation
 import Observation
 
 // MARK: - Navigation Values
@@ -67,26 +66,29 @@ final class AppNavigation {
     /// An unsaved search result that Map presents with the same floating card
     /// language as a Find Sun result.
     var mapPreviewCity: City?
-    /// A country or continent query handed to Map from the Search tab. The
-    /// companion token makes repeated selections of the same scope distinct.
+    /// A Find Sun query handed to Map from another tab. The companion token
+    /// makes repeated selections of the same scope distinct.
     var pendingMapSunQuery: MapSunQueryScope?
     var mapSunQueryToken = 0
-    /// Precomputed local-weather recommendations handed from Home to Map.
-    /// Keeping these avoids repeating the WeatherKit search after tab switch.
-    var nearbyMapResults: [NearestSunnyPlaceResult] = []
-    /// Monotonic trigger Map observes even when the next result array matches
-    /// the previous array exactly.
-    var nearbyMapToken = 0
     /// Every external Map request receives a fresh generation. Map consumes
     /// this before showing the new marker, preview, or Find Sun scope, so a
     /// prior session's card or asynchronous query cannot mask the hand-off.
     var mapHandoffToken = 0
 
     /// Selects Map and optionally tells it which saved or temporary place to
-    /// focus. Every hand-off first returns the Map tab to its root, so a
-    /// preview can never be presented behind a previously pushed detail view.
-    /// The actual camera work remains owned by `MapView`.
+    /// focus. A targeted hand-off first returns the Map tab to its root, so a
+    /// preview can never appear behind a previously pushed detail view. A
+    /// destination-free call simply reopens the current Map session.
     func showMap(placeID: City.ID? = nil, previewing city: City? = nil) {
+        // Destination-free navigation reopens the existing Map session. In
+        // particular, a Home Screen Map shortcut must not silently clear a
+        // completed Find Sun query whose summary owns its explicit close.
+        guard placeID != nil || city != nil else {
+            mapPath = []
+            selectedTab = .map
+            return
+        }
+
         beginMapHandoff()
         selectedMapPlaceID = placeID
         mapPreviewCity = city
@@ -102,17 +104,6 @@ final class AppNavigation {
         selectedTab = .map
     }
 
-    /// Moves the existing nearby-sun result set to Map without fetching it
-    /// again, then increments the request token so Map applies the hand-off.
-    /// Clear a prior Map detail route first so the result panel is immediately
-    /// visible at the Map root.
-    func showNearbyOnMap(_ results: [NearestSunnyPlaceResult]) {
-        beginMapHandoff()
-        nearbyMapResults = results
-        nearbyMapToken &+= 1
-        selectedTab = .map
-    }
-
     /// Clears routing values which belong to the previous Map session. The
     /// caller establishes its replacement target immediately afterward and
     /// Map observes the generation to cancel any in-flight presentation state.
@@ -121,7 +112,6 @@ final class AppNavigation {
         selectedMapPlaceID = nil
         mapPreviewCity = nil
         pendingMapSunQuery = nil
-        nearbyMapResults = []
         mapHandoffToken &+= 1
     }
 
@@ -138,5 +128,17 @@ final class AppNavigation {
     func showPlacesLibrary() {
         selectedTab = .savedPlaces
         savedPlacesPath = [.savedPlacesLibrary]
+    }
+
+    /// Discards every transient Map hand-off during a full app reset. Advancing
+    /// both generations also makes a still-mounted Map session drop any
+    /// in-flight preview or Find Sun work before the new library appears.
+    func resetMapHandoffState() {
+        mapPath = []
+        selectedMapPlaceID = nil
+        mapPreviewCity = nil
+        pendingMapSunQuery = nil
+        mapSunQueryToken &+= 1
+        mapHandoffToken &+= 1
     }
 }

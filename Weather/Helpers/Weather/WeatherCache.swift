@@ -22,7 +22,7 @@ import Foundation
 /// The cache is intentionally separate from `CityWeather`: the live model can
 /// evolve around WeatherKit while this representation stays constrained to
 /// values `JSONEncoder` can serialize predictably.
-struct CachedCityWeather: Codable {
+nonisolated struct CachedCityWeather: Codable, Sendable {
     /// Cached source city metadata.
     let city: City
     /// Available encoded daily forecasts.
@@ -31,34 +31,29 @@ struct CachedCityWeather: Codable {
     let timeZoneIdentifier: String
 
     /// Copies a domain weather aggregate into its cache representation.
+    @MainActor
     init(from cityWeather: CityWeather) {
         city = cityWeather.city
         dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
         timeZoneIdentifier = cityWeather.timeZone.identifier
     }
 
-    /// Restores a domain aggregate only when timezone and every day are valid.
+    /// Restores a domain aggregate when its timezone and forecast collection can
+    /// still be interpreted by the current cache schema.
     ///
-    /// This is all-or-nothing. A cache with one corrupt day is discarded rather
-    /// than showing a deceptively incomplete multi-day forecast as fresh data.
+    /// Malformed JSON or incompatible field types fail during document decoding;
+    /// this conversion keeps WeatherKit's optional measurements unchanged.
+    @MainActor
     func toCityWeather() -> CityWeather? {
         guard let timeZone = TimeZone(identifier: timeZoneIdentifier) else { return nil }
         let forecasts = dailyForecasts.map { $0.toDailyForecast() }
         guard !forecasts.isEmpty else { return nil }
 
-        let weather = CityWeather(
+        return CityWeather(
             city: city,
             dailyForecasts: forecasts,
             timeZone: timeZone
         )
-        // A structurally decodable cache can still contain finite-but-invalid
-        // numbers (for example 150% cloud cover or negative visibility). Reject
-        // the complete disposable snapshot so none of those values is presented;
-        // the repository will request a fresh WeatherKit replacement.
-        guard weather.numericDataIssues.isEmpty else {
-            return nil
-        }
-        return weather
     }
 }
 
@@ -67,7 +62,7 @@ struct CachedCityWeather: Codable {
 /// Codable representation of one daily forecast.
 /// Optional values stay optional in the cache because an omitted WeatherKit
 /// measurement is materially different from a fabricated zero.
-struct CachedDailyForecast: Codable {
+nonisolated struct CachedDailyForecast: Codable, Sendable {
     /// Absolute WeatherKit forecast date.
     let date: Date
     /// Daily low in Celsius.
@@ -78,8 +73,6 @@ struct CachedDailyForecast: Codable {
     let symbolName: String
     /// Normalized native WeatherKit daily condition.
     let condition: AppWeatherCondition?
-    /// Exact clear-state provenance used by strict nearest-sunny matching.
-    let isFullyClear: Bool
     /// Encoded hourly source forecasts.
     let hourlyForecasts: [CachedHourlyForecast]
     /// Optional cloud-cover fraction.
@@ -94,13 +87,13 @@ struct CachedDailyForecast: Codable {
     let sunset: Date?
 
     /// Copies a domain daily forecast into its cache representation.
+    @MainActor
     init(from forecast: DailyForecast) {
         date = forecast.date
         dailyLow = forecast.dailyLow
         dailyHigh = forecast.dailyHigh
         symbolName = forecast.symbolName
         condition = forecast.condition
-        isFullyClear = forecast.isFullyClear
         hourlyForecasts = forecast.hourlyForecasts.map { CachedHourlyForecast(from: $0) }
         cloudCover = forecast.cloudCover
         precipitationChance = forecast.precipitationChance
@@ -111,6 +104,7 @@ struct CachedDailyForecast: Codable {
 
     /// Restores one daily forecast without dropping hours that contain nil
     /// optional metrics.
+    @MainActor
     func toDailyForecast() -> DailyForecast {
         let restoredHours = hourlyForecasts.map { $0.toHourlyForecast() }
         return DailyForecast(
@@ -119,7 +113,6 @@ struct CachedDailyForecast: Codable {
             dailyHigh: dailyHigh,
             symbolName: symbolName,
             condition: condition,
-            isFullyClear: isFullyClear,
             hourlyForecasts: restoredHours,
             cloudCover: cloudCover,
             precipitationChance: precipitationChance,
@@ -133,7 +126,7 @@ struct CachedDailyForecast: Codable {
 // MARK: - Hourly Snapshot
 
 /// Codable representation of one hourly forecast.
-struct CachedHourlyForecast: Codable {
+nonisolated struct CachedHourlyForecast: Codable, Sendable {
     /// Absolute WeatherKit forecast instant.
     let date: Date
     /// Raw WeatherKit condition symbol.
@@ -157,6 +150,7 @@ struct CachedHourlyForecast: Codable {
     let visibilityKilometers: Double?
 
     /// Copies a domain hourly forecast into its cache representation.
+    @MainActor
     init(from forecast: HourlyForecast) {
         date = forecast.date
         symbolName = forecast.symbolName
@@ -174,6 +168,7 @@ struct CachedHourlyForecast: Codable {
     /// Missing UV, visibility, or temperature data must blank only that field;
     /// dropping the whole hour/day/city would hide the actual failure and discard
     /// unrelated valid source data.
+    @MainActor
     func toHourlyForecast() -> HourlyForecast {
         HourlyForecast(
             date: date,

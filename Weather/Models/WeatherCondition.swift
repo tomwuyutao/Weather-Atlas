@@ -10,16 +10,15 @@
 //  ranking, cards, maps, and widgets all make the same interpretation.
 //
 
-import Foundation
 import WeatherKit
 
 // MARK: - Normalized Weather Conditions
 
 /// Finite condition vocabulary shared by analysis and presentation code.
-/// Sunny-hours ranking policy lives in `SunnyPlacesRanking`.
+/// Sunny-place recommendation policy lives with `CityWeather`.
 /// The raw string makes the enum `Codable`, so cached and widget data can store
 /// a condition without depending on WeatherKit's own type at decode time.
-enum AppWeatherCondition: String, Codable {
+nonisolated enum AppWeatherCondition: String, Codable, Sendable {
     case clear
     case partlySunny
     case partlyCloudy
@@ -29,23 +28,6 @@ enum AppWeatherCondition: String, Codable {
     case snow
     case fog
     case wind
-
-    // MARK: - User-Facing Presentation
-
-    /// Returns the condition's user-facing name in the requested locale.
-    func localizedDisplayName(locale: Locale = .current) -> String {
-        switch self {
-        case .clear: return localizedString("Clear", locale: locale)
-        case .partlySunny: return localizedString("Partly Sunny", locale: locale)
-        case .partlyCloudy: return localizedString("Partly Cloudy", locale: locale)
-        case .cloudy: return localizedString("Cloudy", locale: locale)
-        case .rain: return localizedString("Rain", locale: locale)
-        case .drizzle: return localizedString("Drizzle", locale: locale)
-        case .snow: return localizedString("Snow", locale: locale)
-        case .fog: return localizedString("Fog", locale: locale)
-        case .wind: return localizedString("Windy", locale: locale)
-        }
-    }
 
     /// Chooses the weather symbol's semantic tint. Map markers deliberately
     /// use sunny-hour totals instead of the condition category.
@@ -62,12 +44,6 @@ enum AppWeatherCondition: String, Codable {
     }
 
     // MARK: - Sunny Predicates
-
-    /// Whether this condition is fully clear. Use
-    /// `isSunnyOrPartlySunny` for Sunny Places discovery and hourly counts.
-    nonisolated var isSunny: Bool {
-        self == .clear
-    }
 
     /// Whether this condition contributes to a favorable sunny window. Charts
     /// include partly sunny hours even when a strict filter does not.
@@ -159,6 +135,22 @@ enum AppWeatherCondition: String, Codable {
         @unknown default:
             return nil
         }
+    }
+
+    /// Resolves a complete WeatherKit condition at the provider boundary.
+    ///
+    /// WeatherKit's semantic enum is authoritative because it distinguishes
+    /// phenomena that can share similar SF Symbols. The separately supplied
+    /// symbol is used only for semantic cases the app has not classified yet.
+    /// Both the app and widget call this method so their cached condition,
+    /// sunny-hour eligibility, icon, and tint cannot drift apart.
+    nonisolated static func resolve(
+        weatherKit condition: WeatherKit.WeatherCondition,
+        isDaylight: Bool? = nil,
+        symbolName: String
+    ) -> AppWeatherCondition? {
+        fromWeatherKit(condition, isDaylight: isDaylight)
+            ?? fromWeatherSymbol(symbolName)
     }
 
     // MARK: - Canonical Icon

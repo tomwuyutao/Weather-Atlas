@@ -1,5 +1,5 @@
 //
-//  PlaceWeatherStore.swift
+//  SavedPlacesWeatherStore.swift
 //  Weather
 //
 //  Purpose: Owns weather snapshots for stable saved, current-location, and
@@ -20,13 +20,8 @@ import WeatherKit
 struct PlaceWeatherFailure: Identifiable, Equatable {
     /// Stable place identity.
     let id: City.ID
-    /// Place name retained even when no weather snapshot can be rendered.
-    let cityName: String
     /// Exact service/data issue used by native alert presentation.
     let issue: WeatherDataIssue
-    /// User-facing explanation suitable for native alerts and content states.
-    /// Kept for compatibility while views migrate to the structured `issue`.
-    let message: String
 }
 
 /// Observable forecast repository keyed by stable place identity.
@@ -36,18 +31,18 @@ struct PlaceWeatherFailure: Identifiable, Equatable {
 /// handlers from mutating the same place state at the same instant.
 @MainActor
 @Observable
-final class PlaceWeatherStore {
+final class SavedPlacesWeatherStore {
     // MARK: - Observable Forecast State
 
     /// Latest usable forecast snapshot for each stable place identity.
     private(set) var weatherByID: [City.ID: CityWeather] = [:]
     /// Place identities with an in-flight WeatherKit request.
     private(set) var loadingIDs: Set<City.ID> = []
-    /// Most recent failed refresh for each place.
+    /// Most recent failed request for each place.
     private(set) var failuresByID: [City.ID: PlaceWeatherFailure] = [:]
-    /// Missing optional fields retained alongside otherwise usable snapshots.
-    /// Fatal failures are also represented in `failuresByID`; this dictionary
-    /// gives alert orchestration one uniform source of structured issues.
+    /// Request-level issues for places whose latest request did not return a
+    /// usable snapshot. Feature-specific optional fields are checked only by
+    /// their consumers.
     private(set) var issuesByID: [City.ID: [WeatherDataIssue]] = [:]
     /// Explicit render revision ensures refreshed same-ID snapshots invalidate
     /// consumers even though CityWeather's Hashable identity is place-based.
@@ -63,6 +58,9 @@ final class PlaceWeatherStore {
     private let weatherService: WeatherService
     /// File-backed cache used to render useful results before a network refresh.
     private let cache: PlaceWeatherSnapshotCache
+    /// Serial background writer keeps JSON encoding and atomic file replacement
+    /// away from SwiftUI's main actor while preserving write/reset ordering.
+    private let cacheWriter: PlaceWeatherSnapshotWriter
     /// Current request identity for each place. Replacing a token makes any
     /// older overlapping refresh harmless when it eventually returns.
     @ObservationIgnored private var requestTokens: [City.ID: UUID] = [:]
@@ -80,6 +78,20 @@ final class PlaceWeatherStore {
     /// Successful refresh time for each place, so one newly fetched city cannot
     /// make every other cached city appear fresh.
     @ObservationIgnored private var refreshDatesByPlaceID: [City.ID: Date] = [:]
+    /// Cache-only values are built once per changed city. A later persistence
+    /// pass can shallow-copy these Sendable records instead of remapping every
+    /// daily/hourly value on the main actor.
+    @ObservationIgnored
+    private var cachedWeatherByID: [City.ID: CachedCityWeather] = [:]
+    /// Nested batches defer persistence until the outermost group completes.
+    @ObservationIgnored private var cacheBatchDepth = 0
+    @ObservationIgnored private var cacheIsDirty = false
+    /// Monotonic operation identity prevents a delayed save from overtaking an
+    /// explicit reset or a newer snapshot at the background writer.
+    @ObservationIgnored private var cacheOperation = 0
+    /// Wakes when the earliest retained forecast reaches the hard cache-age
+    /// limit, so an app that stays open for a day does not keep rendering it.
+    @ObservationIgnored private var cacheExpiryTask: Task<Void, Never>?
 
     // MARK: - Initialization and Cache Restoration
 
@@ -93,20 +105,26 @@ final class PlaceWeatherStore {
     ) {
         self.weatherService = weatherService
         self.cache = cache
+        self.cacheWriter = PlaceWeatherSnapshotWriter(cache: cache)
         self.networkConnectivity = networkConnectivity
 
         if let snapshot = cache.load() {
             // A dictionary assignment safely handles duplicate IDs in an old or
             // corrupt cache. The last complete record wins instead of crashing.
-            for weather in snapshot.weather {
+            for cachedWeather in snapshot.weather {
+                guard let weather = cachedWeather.toCityWeather() else {
+                    continue
+                }
                 // Optional presentation gaps stay available as cached weather.
                 // The specific card that needs a field explains its absence.
                 weatherByID[weather.id] = weather
+                cachedWeatherByID[weather.id] = cachedWeather
             }
             refreshDatesByPlaceID = snapshot.refreshDatesByPlaceID.filter {
                 weatherByID[$0.key] != nil
             }
         }
+        scheduleCacheExpiry()
     }
 
     /// Convenience used by the live app while preserving main-actor creation of
@@ -123,8 +141,8 @@ final class PlaceWeatherStore {
     /// in memory so opening a canvas never reads or writes user forecast data.
     static func preview(
         networkConnectivity: NetworkConnectivity
-    ) -> PlaceWeatherStore {
-        PlaceWeatherStore(
+    ) -> SavedPlacesWeatherStore {
+        SavedPlacesWeatherStore(
             weatherService: WeatherService(),
             cache: .preview,
             networkConnectivity: networkConnectivity
@@ -161,11 +179,11 @@ final class PlaceWeatherStore {
     /// bulk loads.
     func lookup(
         city: City,
-        forceRefresh: Bool = false,
-        locale: Locale = .autoupdatingCurrent
+        forceRefresh: Bool = false
     ) async -> CityWeather? {
-        // Offline mode reads the last cached value regardless of its normal
-        // 30-minute freshness window; the root banner makes its age explicit.
+        discardExpiredWeather()
+        // Offline mode can reuse a retained forecast beyond the normal
+        // 30-minute refresh window, but never beyond the hard one-day limit.
         guard !networkConnectivity.isOffline else {
             return weatherByID[city.id]
         }
@@ -186,7 +204,6 @@ final class PlaceWeatherStore {
 
         return await startRequest(
             for: city,
-            locale: locale,
             supersedingExisting: forceRefresh
         ).value
     }
@@ -199,9 +216,9 @@ final class PlaceWeatherStore {
     /// matching place through its per-place request token.
     func load(
         cities: [City],
-        forceRefresh: Bool = false,
-        locale: Locale = .autoupdatingCurrent
+        forceRefresh: Bool = false
     ) async {
+        discardExpiredWeather()
         // Preserve caller order while removing repeated IDs so batch requests and
         // the UI's loading state each represent one task per actual place.
         let uniqueCities = deduplicated(cities)
@@ -211,6 +228,8 @@ final class PlaceWeatherStore {
         guard !networkConnectivity.isOffline else { return }
 
         await loadAttributionIfNeeded()
+        beginCacheBatch()
+        defer { endCacheBatch() }
 
         var tasks: [Task<CityWeather?, Never>] = []
         for city in uniqueCities {
@@ -225,7 +244,6 @@ final class PlaceWeatherStore {
             tasks.append(
                 startRequest(
                     for: city,
-                    locale: locale,
                     supersedingExisting: forceRefresh
                 )
             )
@@ -252,50 +270,38 @@ final class PlaceWeatherStore {
     /// over an older background request for this one city only.
     @discardableResult
     func refresh(
-        city: City,
-        locale: Locale = .autoupdatingCurrent
+        city: City
     ) async -> CityWeather? {
+        discardExpiredWeather()
         guard !networkConnectivity.isOffline else {
             return weatherByID[city.id]
         }
         await loadAttributionIfNeeded()
         return await startRequest(
             for: city,
-            locale: locale,
             supersedingExisting: true
         ).value
     }
 
-    /// Starts a new, blank-first missing-data recovery episode for one place.
-    ///
-    /// The normal lookup, batch load, and refresh paths already perform one
-    /// response-level repair fetch automatically. This API is for an explicit
-    /// user-initiated retry after the final result remained incomplete; it never
-    /// reuses a stale snapshot and it still limits that new episode to one repair
-    /// fetch before exposing its final issue.
+    /// Starts an explicit user-initiated refresh for one place.
     @discardableResult
     func retryMissingData(
-        for city: City,
-        locale: Locale = .autoupdatingCurrent
+        for city: City
     ) async -> CityWeather? {
-        await refresh(city: city, locale: locale)
+        await refresh(city: city)
     }
 
-    /// Batch form of the explicit recovery API. Each stable city identity is
-    /// deduplicated and receives the same blank-first, one-repair-attempt policy
-    /// as an individual lookup.
+    /// Batch form of the explicit user-initiated refresh API.
     func retryMissingData(
-        for cities: [City],
-        locale: Locale = .autoupdatingCurrent
+        for cities: [City]
     ) async {
-        await load(cities: cities, forceRefresh: true, locale: locale)
+        await load(cities: cities, forceRefresh: true)
     }
 
-    /// Cancels obsolete work while preserving decoded snapshots as offline
-    /// history. Normal navigation must not erase last-known weather.
+    /// Cancels obsolete work and trims transient forecasts outside the model's
+    /// explicit saved/current/search scope. This prevents successive nearby and
+    /// map searches from making every later cache write progressively larger.
     func retainWeather(for placeIDs: Set<City.ID>) {
-        // Request/failure bookkeeping follows the active route scope. Weather
-        // snapshots and refresh dates deliberately remain available offline.
         loadingIDs.formIntersection(placeIDs)
         failuresByID = failuresByID.filter { placeIDs.contains($0.key) }
         issuesByID = issuesByID.filter { placeIDs.contains($0.key) }
@@ -311,6 +317,25 @@ final class PlaceWeatherStore {
         inFlightByID = inFlightByID.filter {
             placeIDs.contains($0.key)
         }
+
+        let removesWeather = weatherByID.keys.contains {
+            !placeIDs.contains($0)
+        }
+        let removesRefreshDates = refreshDatesByPlaceID.keys.contains {
+            !placeIDs.contains($0)
+        }
+        guard removesWeather || removesRefreshDates else { return }
+
+        weatherByID = weatherByID.filter { placeIDs.contains($0.key) }
+        cachedWeatherByID = cachedWeatherByID.filter {
+            placeIDs.contains($0.key)
+        }
+        refreshDatesByPlaceID = refreshDatesByPlaceID.filter {
+            placeIDs.contains($0.key)
+        }
+        weatherRevision &+= 1
+        markCacheDirty()
+        scheduleCacheExpiry()
     }
 
     /// Deletes all cached weather only for an explicit full app reset.
@@ -323,8 +348,17 @@ final class PlaceWeatherStore {
         inFlightByID.values.forEach { $0.task.cancel() }
         inFlightByID = [:]
         refreshDatesByPlaceID = [:]
+        cachedWeatherByID = [:]
         weatherRevision &+= 1
-        cache.remove()
+        cacheIsDirty = false
+        cacheExpiryTask?.cancel()
+        cacheExpiryTask = nil
+        cacheOperation &+= 1
+        let operation = cacheOperation
+        let writer = cacheWriter
+        Task {
+            await writer.remove(operation: operation)
+        }
     }
 
     /// Loads Apple Weather's legal mark and link once per app process.
@@ -342,7 +376,6 @@ final class PlaceWeatherStore {
     /// safely await the same result.
     private func startRequest(
         for city: City,
-        locale: Locale,
         supersedingExisting: Bool
     ) -> Task<CityWeather?, Never> {
         // Forced refresh replaces only this city's task. A normal lookup instead
@@ -363,8 +396,7 @@ final class PlaceWeatherStore {
             guard let self else { return nil }
             return await self.performRequest(
                 for: city,
-                token: requestToken,
-                locale: locale
+                token: requestToken
             )
         }
         inFlightByID[city.id] = (
@@ -379,12 +411,8 @@ final class PlaceWeatherStore {
     /// service failure, so a failed request cannot leak a slot or spinner.
     private func performRequest(
         for city: City,
-        token: UUID,
-        locale: Locale
+        token: UUID
     ) async -> CityWeather? {
-        // On a failed refresh, return this retained value so callers do not
-        // replace a useful report with an empty state.
-        let cachedWeather = weatherByID[city.id]
         await acquireRequestSlot()
         defer {
             releaseRequestSlot()
@@ -403,7 +431,7 @@ final class PlaceWeatherStore {
 
         let response: WeatherServiceResponse
         do {
-            response = try await fetchResponseWithOneMissingDataRepair(city)
+            response = try await weatherService.fetchWeatherForCity(city)
         } catch is CancellationError {
             return nil
         } catch {
@@ -417,20 +445,14 @@ final class PlaceWeatherStore {
             } else {
                 issue = .weatherRequestFailed(error.localizedDescription)
             }
-            // Retain the older snapshot and record why it could not refresh.
+            // The prior snapshot was removed when this replacement request
+            // began, so publish only the typed unavailable state.
             issuesByID[city.id] = [issue]
             failuresByID[city.id] = PlaceWeatherFailure(
                 id: city.id,
-                cityName: city.displayName,
-                issue: issue,
-                message: missingWeatherMessage(
-                    cityName: city.displayName,
-                    locale: locale
-                )
+                issue: issue
             )
-            weatherRevision &+= 1
-            persistSnapshot()
-            return cachedWeather
+            return nil
         }
 
         guard !Task.isCancelled,
@@ -441,14 +463,15 @@ final class PlaceWeatherStore {
         // Commit only after the second ownership check. Incrementing the separate
         // revision forces dependent SwiftUI views to redraw a same-ID replacement.
         weatherByID[city.id] = response.weather
+        cachedWeatherByID[city.id] = CachedCityWeather(from: response.weather)
         // Wrapping addition makes this monotonic render signal safe even after
         // an impractically large number of refreshes; its exact numeric value is
         // never displayed or used as a business value.
         weatherRevision &+= 1
         failuresByID[city.id] = nil
-        issuesByID[city.id] = completeResponseIssues(for: response)
+        issuesByID[city.id] = nil
         recordRefresh(for: city.id)
-        persistSnapshot()
+        markCacheDirty()
         return response.weather
     }
 
@@ -482,12 +505,8 @@ final class PlaceWeatherStore {
 
     /// Applies the 30-minute refresh window independently to each place.
     /// A future timestamp is corrupt/clock-skewed metadata, never proof that a
-    /// snapshot is fresh. A response that was complete when it arrived can also
-    /// become incomplete at a destination-local midnight, when its ten-day
-    /// horizon no longer starts on today; detect that newly created issue before
-    /// a view gets a chance to alert. A response that already exhausted its one
-    /// repair attempt stays settled until the normal freshness window or an
-    /// explicit user retry, preventing a redraw-driven retry loop.
+    /// snapshot is fresh. The only content check here is whether city-local
+    /// midnight has made the cached forecast start on the previous day.
     private func shouldRefresh(placeID: City.ID, now: Date = Date()) -> Bool {
         guard let weather = weatherByID[placeID],
               let refreshDate = refreshDatesByPlaceID[placeID] else {
@@ -497,10 +516,21 @@ final class PlaceWeatherStore {
         guard age >= 0, age < 30 * 60 else {
             return true
         }
-        guard issuesByID[placeID, default: []].isEmpty else {
+        return !startsOnCurrentLocalDay(weather, now: now)
+    }
+
+    /// Cheap freshness boundary needed to interpret a cached day sequence.
+    /// WeatherKit's typed measurements and optional fields are trusted here.
+    private func startsOnCurrentLocalDay(
+        _ weather: CityWeather,
+        now: Date
+    ) -> Bool {
+        guard let firstForecast = weather.dailyForecasts.first else {
             return false
         }
-        return !completeResponseIssues(for: weather).isEmpty
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = weather.timeZone
+        return calendar.isDate(firstForecast.date, inSameDayAs: now)
     }
 
     /// Starts a request and makes it the only request allowed to mutate the
@@ -508,71 +538,14 @@ final class PlaceWeatherStore {
     private func beginRequest(for placeID: City.ID) -> UUID {
         let requestToken = UUID()
         requestTokens[placeID] = requestToken
+        // A replacement starts from an honest empty/loading state. Do not keep
+        // an older forecast on screen while it is being refreshed or after the
+        // replacement fails.
+        discardCachedWeather(for: placeID)
         loadingIDs.insert(placeID)
-        // Keep the last good snapshot until a successful replacement arrives.
-        // A failed request must not turn cached weather into a blank report.
         failuresByID[placeID] = nil
         issuesByID[placeID] = nil
-        weatherRevision &+= 1
-        persistSnapshot()
         return requestToken
-    }
-
-    /// Compatibility copy for existing views. New alert presenters should use
-    /// `PlaceWeatherFailure.issue` and the centralized issue-message formatter.
-    private func missingWeatherMessage(
-        cityName: String,
-        locale: Locale
-    ) -> String {
-        String(
-            format: localizedString(
-                "Missing weather data for %@.",
-                locale: locale
-            ),
-            locale: locale,
-            cityName
-        )
-    }
-
-    /// Fetches one response and makes exactly one fresh repair request whenever
-    /// that first source attempt fails or proves incomplete. Both attempts
-    /// deliberately disable the adapter's independent transient-network retry,
-    /// so this store owns one bounded two-source-attempt episode rather than
-    /// multiplying retries at two layers.
-    private func fetchResponseWithOneMissingDataRepair(
-        _ city: City
-    ) async throws -> WeatherServiceResponse {
-        let initialResponse: WeatherServiceResponse
-        do {
-            initialResponse = try await weatherService.fetchWeatherForCity(
-                city,
-                retriesOnFailure: false
-            )
-        } catch is CancellationError {
-            throw CancellationError()
-        } catch {
-            // A typed WeatherService error and an ordinary request failure are
-            // both a failed source attempt. Keep the presentation blank and make
-            // the single repair attempt required before an alert can surface.
-            try Task.checkCancellation()
-            return try await weatherService.fetchWeatherForCity(
-                city,
-                retriesOnFailure: false
-            )
-        }
-
-        guard !completeResponseIssues(for: initialResponse).isEmpty else {
-            return initialResponse
-        }
-
-        // A provider response can arrive successfully while omitting one of the
-        // values needed by a chart or ranking. Keep the UI blank and make exactly
-        // one fresh request before committing any incomplete result.
-        try Task.checkCancellation()
-        return try await weatherService.fetchWeatherForCity(
-            city,
-            retriesOnFailure: false
-        )
     }
 
     /// Whether a suspended fetch still owns the place it was started for.
@@ -600,24 +573,92 @@ final class PlaceWeatherStore {
         at date: Date = Date()
     ) {
         refreshDatesByPlaceID[placeID] = date
+        scheduleCacheExpiry()
     }
 
-    /// Applies general forecast-structure validation. `ForecastValidation` owns
-    /// the response-level policy; the rolling hourly series is deliberately
-    /// inspected only by the feature that consumes it.
-    private func completeResponseIssues(
-        for response: WeatherServiceResponse
-    ) -> [WeatherDataIssue] {
-        ForecastValidation.responseDataIssues(for: response.weather)
+    /// Removes every representation of a forecast before a replacement request.
+    /// Keeping the cache and visible dictionary in sync prevents an older
+    /// forecast from reappearing after that replacement fails.
+    private func discardCachedWeather(for placeID: City.ID) {
+        let removedWeather = weatherByID.removeValue(forKey: placeID) != nil
+        let removedCachedWeather = cachedWeatherByID.removeValue(
+            forKey: placeID
+        ) != nil
+        let removedRefreshDate = refreshDatesByPlaceID.removeValue(
+            forKey: placeID
+        ) != nil
+
+        guard removedWeather || removedCachedWeather || removedRefreshDate else {
+            return
+        }
+
+        weatherRevision &+= 1
+        markCacheDirty()
+        scheduleCacheExpiry()
     }
 
-    /// Convenience used for legacy cache validation before a WeatherServiceResponse
-    /// exists. Keeping it on the same path avoids a cold launch treating a stale
-    /// incomplete snapshot more generously than a live response.
-    private func completeResponseIssues(
-        for weather: CityWeather
-    ) -> [WeatherDataIssue] {
-        ForecastValidation.responseDataIssues(for: weather)
+    /// Removes forecasts once their own successful refresh is a day old. A
+    /// missing or future timestamp cannot prove a cache entry is current, so it
+    /// is treated as expired as well.
+    private func discardExpiredWeather(now: Date = Date()) {
+        let cachedIDs = Set(weatherByID.keys)
+            .union(cachedWeatherByID.keys)
+            .union(refreshDatesByPlaceID.keys)
+        let expiredIDs = cachedIDs.filter { placeID in
+            guard let refreshDate = refreshDatesByPlaceID[placeID] else {
+                return true
+            }
+            return !PlaceWeatherSnapshotCache.isWithinRetention(
+                refreshDate,
+                now: now
+            )
+        }
+
+        guard !expiredIDs.isEmpty else {
+            scheduleCacheExpiry(now: now)
+            return
+        }
+
+        weatherByID = weatherByID.filter { !expiredIDs.contains($0.key) }
+        cachedWeatherByID = cachedWeatherByID.filter {
+            !expiredIDs.contains($0.key)
+        }
+        refreshDatesByPlaceID = refreshDatesByPlaceID.filter {
+            !expiredIDs.contains($0.key)
+        }
+        weatherRevision &+= 1
+        markCacheDirty()
+        scheduleCacheExpiry(now: now)
+    }
+
+    /// Schedules exactly one cleanup at the next per-city expiry boundary.
+    /// The task captures the store weakly so it does not extend the model's
+    /// lifetime while the app is backgrounded or reset.
+    private func scheduleCacheExpiry(now: Date = Date()) {
+        cacheExpiryTask?.cancel()
+        guard let nextExpiry = refreshDatesByPlaceID.values
+            .map({
+                $0.addingTimeInterval(
+                    PlaceWeatherSnapshotCache.maximumRetentionInterval
+                )
+            })
+            .min() else {
+            cacheExpiryTask = nil
+            return
+        }
+
+        // Sleep one extra second so a boundary wake cannot reschedule itself
+        // repeatedly due to sub-second Date precision.
+        let delay = max(0, nextExpiry.timeIntervalSince(now)) + 1
+        cacheExpiryTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.discardExpiredWeather()
+        }
     }
 
     /// Keeps the first occurrence of each stable identity in user-visible order.
@@ -639,18 +680,62 @@ final class PlaceWeatherStore {
         }
     }
 
-    // MARK: - Cache Write-Through
+    // MARK: - Coalesced Cache Persistence
 
-    /// Writes every structurally valid snapshot. Offline mode can present old
-    /// data, so optional response gaps must not discard the last known forecast.
-    private func persistSnapshot() {
+    /// Defers persistence until a multi-city load has fully settled. Nested or
+    /// overlapping batches share the same outer boundary, so one nearby search
+    /// cannot schedule one whole-cache write per WeatherKit response.
+    private func beginCacheBatch() {
+        if cacheBatchDepth == 0, cache.canPersist {
+            cacheOperation &+= 1
+            let operation = cacheOperation
+            let writer = cacheWriter
+            Task {
+                await writer.cancelPending(operation: operation)
+            }
+        }
+        cacheBatchDepth += 1
+    }
+
+    private func endCacheBatch() {
+        precondition(cacheBatchDepth > 0)
+        cacheBatchDepth -= 1
+        if cacheBatchDepth == 0 {
+            scheduleCacheWriteIfNeeded()
+        }
+    }
+
+    /// Only weather or freshness changes dirty the disposable cache. Loading and
+    /// failure state are intentionally memory-only and therefore never encode.
+    private func markCacheDirty() {
+        guard cache.canPersist else { return }
+        cacheIsDirty = true
+        if cacheBatchDepth == 0 {
+            scheduleCacheWriteIfNeeded()
+        }
+    }
+
+    /// Captures a cheap Sendable DTO snapshot on the main actor, then hands all
+    /// JSON encoding and file work to the serial background writer.
+    private func scheduleCacheWriteIfNeeded() {
+        guard cache.canPersist,
+              cacheBatchDepth == 0,
+              cacheIsDirty else {
+            return
+        }
+        cacheIsDirty = false
         let snapshot = PlaceWeatherSnapshot(
-            weather: Array(weatherByID.values),
+            weather: Array(cachedWeatherByID.values),
             refreshDatesByPlaceID: refreshDatesByPlaceID.filter {
-                weatherByID[$0.key] != nil
+                cachedWeatherByID[$0.key] != nil
             }
         )
-        cache.save(snapshot)
+        cacheOperation &+= 1
+        let operation = cacheOperation
+        let writer = cacheWriter
+        Task {
+            await writer.schedule(snapshot, operation: operation)
+        }
     }
 }
 
@@ -659,9 +744,9 @@ final class PlaceWeatherStore {
 /// Codable file representation for the place-keyed forecast cache.
 /// This is the in-memory form returned by the cache; its separate `Document`
 /// type below contains only JSON-compatible cached forecast snapshots.
-struct PlaceWeatherSnapshot {
-    /// Decoded domain values.
-    let weather: [CityWeather]
+nonisolated struct PlaceWeatherSnapshot: Sendable {
+    /// Sendable cache values. Domain reconstruction remains on the main actor.
+    let weather: [CachedCityWeather]
     /// Independent freshness timestamp for every decoded place.
     let refreshDatesByPlaceID: [City.ID: Date]
 }
@@ -669,11 +754,10 @@ struct PlaceWeatherSnapshot {
 /// Disposable, atomic cache stored below the system Caches directory.
 /// Caches may be purged by iOS at any time, unlike Saved Places in Application
 /// Support, so every failure in this type is deliberately recoverable.
-@MainActor
-struct PlaceWeatherSnapshotCache {
+nonisolated struct PlaceWeatherSnapshotCache: Sendable {
     /// Versioned file format so incompatible forecast snapshots can be discarded.
     /// UUID dictionary keys become `String` because JSON object keys are strings.
-    private struct Document: Codable {
+    private struct Document: Codable, Sendable {
         let schemaVersion: Int
         let weather: [CachedCityWeather]
         let refreshDatesByPlaceID: [String: Date]
@@ -681,8 +765,14 @@ struct PlaceWeatherSnapshotCache {
 
     /// Current cache schema.
     private static let schemaVersion = 3
+    /// Forecast snapshots are disposable and must not survive beyond one day,
+    /// even when the app has not had a chance to start a network replacement.
+    static let maximumRetentionInterval: TimeInterval = 24 * 60 * 60
     /// Dedicated snapshot file.
     private let fileURL: URL?
+
+    /// Lets preview/in-memory stores skip even constructing a snapshot.
+    var canPersist: Bool { fileURL != nil }
 
     /// Locates the cache without turning a missing directory into app failure.
     /// A nil URL simply turns cache reads/writes into no-ops; fresh WeatherKit
@@ -712,7 +802,9 @@ struct PlaceWeatherSnapshotCache {
 
     /// Restores only valid current-schema snapshots. A malformed city is dropped
     /// independently so it cannot erase unrelated honest cached forecasts.
-    func load() -> PlaceWeatherSnapshot? {
+    /// Entries older than a day (or without a trustworthy refresh timestamp) are
+    /// pruned and persisted immediately, before a view can restore them.
+    func load(now: Date = .now) -> PlaceWeatherSnapshot? {
         guard let fileURL,
               let data = try? Data(contentsOf: fileURL),
               let document = try? JSONDecoder().decode(Document.self, from: data),
@@ -720,44 +812,72 @@ struct PlaceWeatherSnapshotCache {
             return nil
         }
 
-        // Each cached city validates its own timezone and nested forecasts.
-        let decodedWeather = document.weather.compactMap { $0.toCityWeather() }
-
-        var weatherByID: [City.ID: CityWeather] = [:]
+        var weatherByID: [City.ID: CachedCityWeather] = [:]
         var placeOrder: [City.ID] = []
         // Be defensive about duplicate IDs in a cache from an earlier version:
         // preserve first-seen display order, while its final complete snapshot
         // replaces the dictionary value without triggering a duplicate-key trap.
-        for weather in decodedWeather {
-            if weatherByID[weather.id] == nil {
-                placeOrder.append(weather.id)
+        for weather in document.weather {
+            let placeID = weather.city.id
+            if weatherByID[placeID] == nil {
+                placeOrder.append(placeID)
             }
             // Keep the last complete duplicate instead of trapping in
             // Dictionary(uniqueKeysWithValues:).
-            weatherByID[weather.id] = weather
+            weatherByID[placeID] = weather
         }
         var refreshDatesByPlaceID: [City.ID: Date] = [:]
-        // A date is presentation metadata, not a validity deadline. Retain old
-        // timestamps so the app can show cached forecasts offline with an
-        // honest “Last updated” value. Future timestamps remain corrupt.
+        // A refresh date is the evidence that a forecast is still eligible for
+        // the disposable cache. Future timestamps remain corrupt.
         for (rawPlaceID, refreshDate) in document.refreshDatesByPlaceID {
             guard let placeID = UUID(uuidString: rawPlaceID),
-                  refreshDate <= .now else {
+                  refreshDate <= now else {
                 continue
             }
             refreshDatesByPlaceID[placeID] = refreshDate
         }
 
-        let weather = placeOrder.compactMap { weatherByID[$0] }
-        let retainedIDs = Set(weather.map(\.id))
+        let expiredOrUndatedIDs = Set(placeOrder.filter { placeID in
+            guard let refreshDate = refreshDatesByPlaceID[placeID] else {
+                return true
+            }
+            return !Self.isWithinRetention(refreshDate, now: now)
+        })
+        let weather: [CachedCityWeather] = placeOrder.compactMap { placeID in
+            guard !expiredOrUndatedIDs.contains(placeID) else { return nil }
+            return weatherByID[placeID]
+        }
+        let retainedIDs = Set(weather.map(\.city.id))
         refreshDatesByPlaceID = refreshDatesByPlaceID.filter {
             retainedIDs.contains($0.key)
         }
 
-        return PlaceWeatherSnapshot(
+        let snapshot = PlaceWeatherSnapshot(
             weather: weather,
             refreshDatesByPlaceID: refreshDatesByPlaceID
         )
+        guard !expiredOrUndatedIDs.isEmpty else {
+            return snapshot
+        }
+
+        // The store is created before UI hydration. Rewrite or delete now so a
+        // terminated app cannot keep the expired entries in its next launch.
+        if snapshot.weather.isEmpty {
+            remove()
+        } else {
+            save(snapshot)
+        }
+        return snapshot.weather.isEmpty ? nil : snapshot
+    }
+
+    /// A timestamp must be in the past and strictly younger than one day to
+    /// keep its corresponding weather record in memory or on disk.
+    static func isWithinRetention(
+        _ refreshDate: Date,
+        now: Date
+    ) -> Bool {
+        let age = now.timeIntervalSince(refreshDate)
+        return age >= 0 && age < maximumRetentionInterval
     }
 
     /// Atomically replaces the disposable snapshot.
@@ -767,7 +887,7 @@ struct PlaceWeatherSnapshotCache {
         guard let fileURL else { return }
         let document = Document(
             schemaVersion: Self.schemaVersion,
-            weather: snapshot.weather.map(CachedCityWeather.init),
+            weather: snapshot.weather,
             refreshDatesByPlaceID: Dictionary(
                 uniqueKeysWithValues: snapshot.refreshDatesByPlaceID.map {
                     ($0.key.uuidString, $0.value)
@@ -793,5 +913,62 @@ struct PlaceWeatherSnapshotCache {
     func remove() {
         guard let fileURL else { return }
         try? FileManager.default.removeItem(at: fileURL)
+    }
+}
+
+/// Serializes disposable snapshots away from the UI actor. Operation numbers
+/// make delayed writes deterministic even when Task delivery order differs from
+/// the store's scheduling order.
+private actor PlaceWeatherSnapshotWriter {
+    private let cache: PlaceWeatherSnapshotCache
+    private var latestOperation = 0
+    private var pendingSave: Task<Void, Never>?
+
+    init(cache: PlaceWeatherSnapshotCache) {
+        self.cache = cache
+    }
+
+    func schedule(
+        _ snapshot: PlaceWeatherSnapshot,
+        operation: Int
+    ) {
+        guard operation > latestOperation else { return }
+        latestOperation = operation
+        pendingSave?.cancel()
+        pendingSave = Task { [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(500))
+            } catch {
+                return
+            }
+            await self?.persist(snapshot, operation: operation)
+        }
+    }
+
+    func cancelPending(operation: Int) {
+        guard operation > latestOperation else { return }
+        latestOperation = operation
+        pendingSave?.cancel()
+        pendingSave = nil
+    }
+
+    func remove(operation: Int) {
+        guard operation > latestOperation else { return }
+        latestOperation = operation
+        pendingSave?.cancel()
+        pendingSave = nil
+        cache.remove()
+    }
+
+    private func persist(
+        _ snapshot: PlaceWeatherSnapshot,
+        operation: Int
+    ) {
+        guard operation == latestOperation,
+              !Task.isCancelled else {
+            return
+        }
+        cache.save(snapshot)
+        pendingSave = nil
     }
 }

@@ -80,11 +80,11 @@ struct WeatherApp: App {
         // so Your Location, Saved Places, Map, and widgets read the same data.
         AppLanguageDefaults.configureInitialLanguage()
 
-        let placesStore = PlacesStore()
+        let placesStore = SavedPlacesStore()
         let missingDataAlerts = MissingDataAlertCenter()
         let networkConnectivity = NetworkConnectivity()
 
-        let weatherStore = PlaceWeatherStore(
+        let weatherStore = SavedPlacesWeatherStore(
             networkConnectivity: networkConnectivity
         )
         _appModel = State(

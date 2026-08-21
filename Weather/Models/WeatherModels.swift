@@ -14,7 +14,7 @@ import Observation
 // MARK: - Forecast Value Types
 
 /// Persistable place identity used before and after weather is fetched.
-struct City: Identifiable, Hashable, Codable {
+nonisolated struct City: Identifiable, Hashable, Codable, Sendable {
     /// Stable row and persistence identity.
     let id: UUID
     /// User-facing place name, preserving the selected search result when applicable.
@@ -135,10 +135,6 @@ struct CityWeather: Identifiable, Hashable {
         return selectionCalendar.startOfDay(for: date)
     }
 
-    /// Invalid numeric readings retained anywhere in this snapshot.
-    var numericDataIssues: [WeatherDataIssue] {
-        dailyForecasts.flatMap(\.numericDataIssues)
-    }
 }
 
 /// One WeatherKit daily forecast and its associated hourly source values.
@@ -149,7 +145,6 @@ struct DailyForecast: Identifiable {
     let dailyHigh: Double
     let symbolName: String
     let condition: AppWeatherCondition?
-    let isFullyClear: Bool
     let hourlyForecasts: [HourlyForecast]
     let cloudCover: Double?
     let precipitationChance: Double?
@@ -157,73 +152,12 @@ struct DailyForecast: Identifiable {
     let sunrise: Date?
     let sunset: Date?
 
-    var cloudCoverPercent: Int? {
-        guard let cloudCover,
-              cloudCover.isFinite,
-              (0...1).contains(cloudCover) else {
-            return nil
-        }
-        return Int((cloudCover * 100).rounded())
-    }
-
-    /// A daily average is usable only when all represented source hours have
-    /// visibility, so partial source data never becomes a plausible aggregate.
-    var averageVisibilityKilometers: Double? {
-        guard !hourlyForecasts.isEmpty,
-              hourlyForecasts.allSatisfy({ hour in
-                  guard let visibility = hour.visibilityKilometers else {
-                      return false
-                  }
-                  return visibility.isFinite && visibility >= 0
-              }) else {
-            return nil
-        }
-        let values = hourlyForecasts.compactMap(\.visibilityKilometers)
-        return values.reduce(0, +) / Double(values.count)
-    }
-
-    var numericDataIssues: [WeatherDataIssue] {
-        dailyNumericDataIssues + hourlyForecasts.flatMap(\.numericDataIssues)
-    }
-
-    /// Numeric issues owned by this daily record rather than rolling hourly rows.
-    var dailyNumericDataIssues: [WeatherDataIssue] {
-        var issues: [WeatherDataIssue] = []
-
-        if !dailyLow.isFinite {
-            issues.append(.invalidValue("daily low temperature", at: date))
-        }
-        if !dailyHigh.isFinite {
-            issues.append(.invalidValue("daily high temperature", at: date))
-        }
-        if dailyLow.isFinite, dailyHigh.isFinite, dailyLow > dailyHigh {
-            issues.append(.invalidValue(
-                "daily low temperature exceeds daily high temperature",
-                at: date
-            ))
-        }
-        if let cloudCover,
-           (!cloudCover.isFinite || !(0...1).contains(cloudCover)) {
-            issues.append(.invalidValue("daily cloud cover", at: date))
-        }
-        if let precipitationChance,
-           (!precipitationChance.isFinite
-               || !(0...1).contains(precipitationChance)) {
-            issues.append(.invalidValue("daily precipitation chance", at: date))
-        }
-        if let uvIndex, uvIndex < 0 {
-            issues.append(.invalidValue("daily UV index", at: date))
-        }
-        return issues
-    }
-
     init(
         date: Date,
         dailyLow: Double,
         dailyHigh: Double,
         symbolName: String,
         condition: AppWeatherCondition?,
-        isFullyClear: Bool,
         hourlyForecasts: [HourlyForecast],
         cloudCover: Double?,
         precipitationChance: Double?,
@@ -236,7 +170,6 @@ struct DailyForecast: Identifiable {
         self.dailyHigh = dailyHigh
         self.symbolName = symbolName
         self.condition = condition
-        self.isFullyClear = isFullyClear
         self.hourlyForecasts = hourlyForecasts
         self.cloudCover = cloudCover
         self.precipitationChance = precipitationChance
@@ -284,37 +217,111 @@ struct HourlyForecast: Identifiable {
         self.visibilityKilometers = visibilityKilometers
     }
 
-    var numericDataIssues: [WeatherDataIssue] {
-        var issues: [WeatherDataIssue] = []
-        if let temperature, !temperature.isFinite {
-            issues.append(.invalidValue("hourly temperature", at: date))
-        }
-        if let apparentTemperature, !apparentTemperature.isFinite {
-            issues.append(.invalidValue("hourly apparent temperature", at: date))
-        }
-        if let cloudCover,
-           (!cloudCover.isFinite || !(0...1).contains(cloudCover)) {
-            issues.append(.invalidValue("hourly cloud cover", at: date))
-        }
-        if let precipitationChance,
-           (!precipitationChance.isFinite
-               || !(0...1).contains(precipitationChance)) {
-            issues.append(.invalidValue("hourly precipitation chance", at: date))
-        }
-        if let uvIndex, uvIndex < 0 {
-            issues.append(.invalidValue("hourly UV index", at: date))
-        }
-        if let visibilityKilometers,
-           (!visibilityKilometers.isFinite || visibilityKilometers < 0) {
-            issues.append(.invalidValue("hourly visibility", at: date))
-        }
-        return issues
-    }
-
     func hour(in timeZone: TimeZone) -> Int {
         var calendar = Calendar.current
         calendar.timeZone = timeZone
         return calendar.component(.hour, from: date)
+    }
+}
+
+// MARK: - Sunny-Place Recommendations
+
+/// One city's usable weather facts for a selected local date.
+///
+/// A recommendation is valid only when the app has a daily condition and
+/// complete daylight-hour data; missing source data is never represented as a
+/// plausible zero-hour result.
+struct PlaceRecommendation: Identifiable {
+    let cityWeather: CityWeather
+    let condition: AppWeatherCondition
+    let sunnyHourCount: Double
+
+    var id: City.ID { cityWeather.city.id }
+
+    /// Orders every recommendation surface consistently: sunny hours first,
+    /// then city name, then the stable city identity.
+    static func ranked(
+        _ recommendations: [PlaceRecommendation],
+        locale: Locale
+    ) -> [PlaceRecommendation] {
+        recommendations.sorted { lhs, rhs in
+            if lhs.sunnyHourCount != rhs.sunnyHourCount {
+                return lhs.sunnyHourCount > rhs.sunnyHourCount
+            }
+            let order = lhs.cityWeather.city.displayName.compare(
+                rhs.cityWeather.city.displayName,
+                options: [.caseInsensitive, .diacriticInsensitive, .numeric],
+                locale: locale
+            )
+            if order != .orderedSame { return order == .orderedAscending }
+            return lhs.id.uuidString < rhs.id.uuidString
+        }
+    }
+}
+
+/// The result of assessing one city's selected-day forecast without conflating
+/// unavailable source data with an ordinary zero-sun forecast.
+struct PlaceRecommendationAssessment {
+    let recommendation: PlaceRecommendation?
+    let issues: [WeatherDataIssue]
+}
+
+extension CityWeather {
+    /// Assesses this city's selected-date forecast using the app-wide sunny
+    /// hours rule. The computation belongs with the weather value it reads;
+    /// presentation layers receive a compact recommendation plus diagnostics.
+    func recommendationAssessment(
+        on date: Date,
+        selectionCalendar: Calendar = .current
+    ) -> PlaceRecommendationAssessment {
+        guard let forecast = forecastIfAvailable(
+            on: date,
+            selectionCalendar: selectionCalendar
+        ) else {
+            return PlaceRecommendationAssessment(
+                recommendation: nil,
+                issues: [.missingForecastData(at: date)]
+            )
+        }
+
+        guard let condition = forecast.condition else {
+            let symbol = forecast.symbolName.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            return PlaceRecommendationAssessment(
+                recommendation: nil,
+                issues: [
+                    symbol.isEmpty
+                        ? .missing(.missingConditionData, at: forecast.date)
+                        : .unknownWeatherSymbol(symbol, at: forecast.date)
+                ]
+            )
+        }
+
+        let sunnyHoursData: SunnyHoursCalculation.SunnyHoursData
+        switch SunnyHoursCalculation.sunnyHoursData(
+            for: forecast,
+            timeZone: timeZone
+        ) {
+        case .success(let data):
+            sunnyHoursData = data
+        case .failure(let issue):
+            return PlaceRecommendationAssessment(
+                recommendation: nil,
+                issues: [issue]
+            )
+        }
+
+        return PlaceRecommendationAssessment(
+            recommendation: PlaceRecommendation(
+                cityWeather: self,
+                condition: condition,
+                sunnyHourCount: SunnyHoursCalculation.sunnyHourCount(
+                    in: sunnyHoursData
+                )
+            ),
+            issues: []
+        )
     }
 }
 
@@ -335,7 +342,6 @@ struct NearestSunnyPlaceResult: Identifiable {
     var id: City.ID { recommendation.id }
     /// Shortcuts keep call sites expressive without duplicating the stored data.
     var cityWeather: CityWeather { recommendation.cityWeather }
-    var forecast: DailyForecast { recommendation.forecast }
 }
 
 /// One saved destination intentionally omitted from a selected-day ranking
@@ -343,18 +349,13 @@ struct NearestSunnyPlaceResult: Identifiable {
 struct SavedPlaceDateExclusion: Identifiable {
     /// Persisted place retained even though it has no rank for the selected day.
     let place: SavedPlace
-    /// Destination's current local day represented in the app-wide calendar.
-    let localCurrentDate: Date
-
     /// Reuse the persisted place identity for stable SwiftUI rows.
     var id: SavedPlace.ID { place.id }
 }
 
-/// Nearby recommendations plus the place-specific source gaps that prevented
-/// other loaded candidates from being assessed honestly for the selected day.
+/// Nearby recommendations for a selected date.
 struct NearbyRecommendationsAssessment {
     let recommendations: [NearestSunnyPlaceResult]
-    let issuesByPlaceID: [City.ID: [WeatherDataIssue]]
 }
 
 /// Saved-place recommendations plus missing-data reasons for destinations that
@@ -408,9 +409,9 @@ final class WeatherModel {
     // MARK: - Dependencies
 
     /// Independent flat Saved Places source of truth.
-    let placesStore: PlacesStore
+    let placesStore: SavedPlacesStore
     /// Weather snapshots keyed by stable place identity.
-    let weatherStore: PlaceWeatherStore
+    let weatherStore: SavedPlacesWeatherStore
     /// Current location provider that never prompts during initialization.
     let locationProvider: LocationProvider
     /// Bundled world-cities catalog used by Search and nearest-sunny lookup.
@@ -422,8 +423,6 @@ final class WeatherModel {
     private(set) var locationCity: City?
     /// Weather rendered by the Your Location timeline card.
     private(set) var locationWeather: CityWeather?
-    /// Completion time of the most recent current-location weather lookup.
-    private(set) var lastLocalRefresh: Date?
     /// Optional resolved city selected during onboarding instead of device
     /// location. When present, it supplies every current-location surface
     /// until the person explicitly chooses device location again.
@@ -480,8 +479,11 @@ final class WeatherModel {
     /// Population-ranked nearby candidates preloaded once for the current
     /// coordinate and radius; their weather is reused for every selected date.
     private var nearbyCandidates: [NearbySunnyCityCandidate] = []
-    /// Loading state shared by the timeline and nearest-sunny cards.
+    /// Current-location forecast loading, independent of nearby discovery.
     private(set) var isRefreshingLocation = false
+    /// Nearby discovery loading is separate so 25 candidate requests do not
+    /// invalidate or put spinners back onto the already rendered Home report.
+    private(set) var isSearchingNearby = false
     /// Distinguishes an honest no-match result from an unstarted search.
     private(set) var didSearchNearby = false
     /// Recoverable problem limited to the current-location forecast request.
@@ -494,12 +496,6 @@ final class WeatherModel {
     /// independent of the compatibility string above so views never need to
     /// infer a data category by parsing localized copy.
     private(set) var locationIssues: [WeatherDataIssue] = []
-    /// Partial population/row omissions from the catalog used to choose nearby
-    /// candidates. Presentation reports these separately from weather failures.
-    private(set) var nearbyCatalogIssues: [CitiesCatalogIssue] = []
-    /// Fatal bundled-catalog failure kept distinct from network/weather issues
-    /// so the native alert names the actual missing source.
-    private(set) var nearbyCatalogError: CitiesCatalogError?
     /// Invalidates stale writes from overlapping location work. `@ObservationIgnored`
     /// keeps this implementation detail from triggering a SwiftUI redraw.
     @ObservationIgnored private var refreshID = 0
@@ -513,8 +509,8 @@ final class WeatherModel {
     @ObservationIgnored private var lastSearchCompletedAt: Date?
     /// Small transient cache scope for the last candidate walk.
     @ObservationIgnored private var retainedPlaceIDs: Set<City.ID> = []
-    /// Results that have been surfaced remain routable for the life of the app
-    /// session, even if a later radius or date search replaces the Your Location card.
+    /// Explicit Map/Search selections remain routable for the app session.
+    /// Nearby-card rows instead resolve from the current bounded candidate set.
     @ObservationIgnored
     private var foundCitiesByID: [City.ID: City] = [:]
     // MARK: - Nearby-Sun Sampling Policy
@@ -536,8 +532,8 @@ final class WeatherModel {
 
     /// Creates the root model from its independent domain stores.
     init(
-        placesStore: PlacesStore,
-        weatherStore: PlaceWeatherStore,
+        placesStore: SavedPlacesStore,
+        weatherStore: SavedPlacesWeatherStore,
         locationProvider: LocationProvider,
         citiesCatalog: CitiesCatalog = .shared,
         initialHomeLocation: City?
@@ -552,28 +548,10 @@ final class WeatherModel {
         }
     }
 
-    /// Production construction with a supplied location provider. Keeping the
-    /// preference lookup inside this main-actor initializer avoids making a
-    /// default argument perform isolated UserDefaults work.
-    convenience init(
-        placesStore: PlacesStore,
-        weatherStore: PlaceWeatherStore,
-        locationProvider: LocationProvider,
-        citiesCatalog: CitiesCatalog = .shared
-    ) {
-        self.init(
-            placesStore: placesStore,
-            weatherStore: weatherStore,
-            locationProvider: locationProvider,
-            citiesCatalog: citiesCatalog,
-            initialHomeLocation: HomeLocationStore.load()
-        )
-    }
-
     /// Live convenience that creates Core Location on the owning main actor.
     convenience init(
-        placesStore: PlacesStore,
-        weatherStore: PlaceWeatherStore
+        placesStore: SavedPlacesStore,
+        weatherStore: SavedPlacesWeatherStore
     ) {
         // A convenience initializer must ultimately call the designated
         // initializer. It supplies the production Core Location dependency.
@@ -587,26 +565,13 @@ final class WeatherModel {
 
     // MARK: - Saved-Place Forecasts
 
-    /// Forecast snapshots corresponding to the complete saved library.
-    var savedWeather: [CityWeather] {
-        // `compactMap` skips saved places whose forecast has not loaded yet,
-        // rather than manufacturing an empty or misleading weather value.
-        placesStore.allPlaces.compactMap {
-            weatherStore.weather(for: $0.id)
-        }
-    }
-
     /// Loads saved forecasts without requesting or reading current location.
-    func loadSavedWeather(
-        forceRefresh: Bool = false,
-        locale: Locale = .autoupdatingCurrent
-    ) async {
-        // The model coordinates the operation; PlaceWeatherStore owns fetching,
+    func loadSavedWeather(forceRefresh: Bool = false) async {
+        // The model coordinates the operation; SavedPlacesWeatherStore owns fetching,
         // caching, retry policy, and the resulting per-city weather snapshots.
         await weatherStore.load(
             cities: placesStore.allPlaces.map(\.city),
-            forceRefresh: forceRefresh,
-            locale: locale
+            forceRefresh: forceRefresh
         )
 
         // A legacy saved row may have arrived before its authoritative IANA
@@ -645,34 +610,51 @@ final class WeatherModel {
     /// nearby-city prefetch, so selecting the current-location marker is quick
     /// and cannot spend a batch of unnecessary WeatherKit requests.
     func ensureCurrentLocationWeather(
+        forceRefresh: Bool = false,
         locale: Locale = .autoupdatingCurrent
     ) async {
         guard let coordinate = locationProvider.coordinate,
-              CLLocationCoordinate2DIsValid(coordinate),
-              !isRefreshingLocation else {
+              CLLocationCoordinate2DIsValid(coordinate) else {
+            clearLocationResults()
             return
         }
 
         let currentCity = makeLocationCity(coordinate: coordinate)
-        guard locationWeather?.id != currentCity.id else { return }
+        let coordinateChanged = locationCity?.id != currentCity.id
+        if coordinateChanged {
+            // A location change invalidates an older nearby task immediately;
+            // its generation guard will reject any results that arrive later.
+            refreshID &+= 1
+            isSearchingNearby = false
+            nearbyCandidates = []
+            didSearchNearby = false
+            nearbySearchError = nil
+            retainedPlaceIDs = []
+            lastSearchKey = nil
+            lastSearchCompletedAt = nil
+        }
 
         currentWeatherRefreshID &+= 1
         let generation = currentWeatherRefreshID
-
-        // The coordinate identifies the cache entry. Keep a matching cached
-        // forecast visible while a replacement is attempted; a different
-        // coordinate is still never allowed to inherit the prior location.
-        locationCity = currentCity
-        if locationWeather?.id != currentCity.id {
-            locationWeather = weatherStore.weather(for: currentCity.id)
+        isRefreshingLocation = true
+        defer {
+            if currentWeatherRefreshID == generation {
+                isRefreshingLocation = false
+            }
         }
+
+        // A current-location refresh follows the same blank-first policy as
+        // every other replacement request. Keep the coordinate identity, but
+        // do not leave an older forecast visible while the new request settles.
+        locationCity = currentCity
+        locationWeather = nil
         locationError = nil
         locationIssues = []
         retainWeatherScope()
 
         let weather = await weatherStore.lookup(
             city: currentCity,
-            locale: locale
+            forceRefresh: forceRefresh
         )
 
         guard !Task.isCancelled,
@@ -688,7 +670,6 @@ final class WeatherModel {
             // Preserve WeatherKit's authoritative timezone and metadata while
             // retaining the transient current-location identity.
             locationCity = weather.city
-            lastLocalRefresh = .now
             locationIssues = weatherStore.issues(for: weather.id)
         } else {
             locationIssues = unavailableWeatherIssues(
@@ -700,10 +681,9 @@ final class WeatherModel {
         retainWeatherScope()
     }
 
-    /// Loads one current-location forecast and a bounded nearby-city forecast
-    /// set. Date changes deliberately do not call this method: both cards read
-    /// the already loaded forecasts for their newly selected literal date.
-    func refreshLocation(
+    /// Loads a bounded nearby-city forecast set. Current-location weather has a
+    /// separate lifecycle; date changes only re-rank these retained forecasts.
+    func searchNearbyPlaces(
         forceRefresh: Bool = false,
         locale: Locale = .autoupdatingCurrent
     ) async {
@@ -729,23 +709,10 @@ final class WeatherModel {
         // `&+=` is wrapping addition. The exact integer does not matter; it is
         // a monotonically changing token used to reject older async results.
         refreshID &+= 1
-        currentWeatherRefreshID &+= 1
         let generation = refreshID
-        isRefreshingLocation = true
+        isSearchingNearby = true
         didSearchNearby = false
-        locationError = nil
         nearbySearchError = nil
-        locationIssues = []
-        nearbyCatalogIssues = []
-        nearbyCatalogError = nil
-        // Keep only a cache entry for this exact deterministic location ID.
-        // This preserves last-known weather offline without pairing a changed
-        // coordinate with the previous place's forecast.
-        let currentCity = makeLocationCity(coordinate: coordinate)
-        if locationWeather?.id != currentCity.id {
-            locationWeather = weatherStore.weather(for: currentCity.id)
-            lastLocalRefresh = nil
-        }
         nearbyCandidates = []
         retainedPlaceIDs = []
         lastSearchKey = nil
@@ -756,41 +723,14 @@ final class WeatherModel {
         // clearing the loading state of a newer one.
         defer {
             if refreshID == generation {
-                isRefreshingLocation = false
+                isSearchingNearby = false
             }
         }
 
-        // The current location is intentionally not saved to the places library.
-        // It gets a reproducible transient city identity so its forecast cache
-        // remains stable during this app session.
-        locationCity = currentCity
+        // Removing the previous bounded candidate set before starting the next
+        // one prevents transient searches from accumulating in memory or cache.
         retainWeatherScope()
-        // Await the current forecast before the nearby loop, because Home can
-        // render this card independently even if nearby lookups later fail.
-        let currentWeather = await weatherStore.lookup(
-            city: currentCity,
-            forceRefresh: forceRefresh,
-            locale: locale
-        )
-        guard isActiveRefresh(generation) else { return }
-        locationWeather = currentWeather
-        if let currentWeather {
-            // WeatherService returns the authoritatively resolved city while
-            // retaining the transient UUID and exact coordinate supplied above.
-            locationCity = currentWeather.city
-            lastLocalRefresh = .now
-            locationIssues = WeatherDataIssue.merging(
-                locationIssues,
-                weatherStore.issues(for: currentWeather.id)
-            )
-        } else {
-            let issues = unavailableWeatherIssues(
-                for: currentCity.id,
-                selectedDate: nil
-            )
-            locationIssues = WeatherDataIssue.merging(locationIssues, issues)
-            locationError = missingLocationWeatherMessage(locale: locale)
-        }
+        let hasCurrentWeather = hasWeatherForCurrentLocation
 
         do {
             // Candidate choice uses only population inside the fixed 200 km
@@ -801,44 +741,38 @@ final class WeatherModel {
             )
             guard isActiveRefresh(generation) else { return }
             let candidates = candidateResult.candidates
-            nearbyCatalogIssues = candidateResult.issues
 
             // Keep only the transient cache entries needed for this search,
             // rather than allowing every explored catalog city to accumulate.
             var retainedIDs: Set<City.ID> = []
             var failedLookupCount = 0
-            var nearbyIssues: [WeatherDataIssue] = []
             var loadedCandidates: [NearbySunnyCityCandidate] = []
             loadedCandidates.reserveCapacity(candidates.count)
 
-            // Look up candidates sequentially to respect the deliberately small
-            // WeatherKit request budget and to make cancellation inexpensive.
-            for candidate in candidates {
-                guard isActiveRefresh(generation) else {
-                    break
-                }
-
-                // A catalog entry may already be a saved place under a durable
-                // user-visible identity. Reuse it before accessing the cache.
-                let city = resolveCatalogCity(from: candidate.city)
-                let weather = await weatherStore.lookup(
-                    city: city,
-                    forceRefresh: forceRefresh,
-                    locale: locale
+            // Resolve stable identities first, then issue one batch. The weather
+            // store uses at most four requests concurrently and persists the
+            // complete batch once, while this model still publishes results only
+            // after every candidate has settled.
+            let resolvedCandidates = candidates.map { candidate in
+                (
+                    candidate: candidate,
+                    city: resolveCatalogCity(from: candidate.city)
                 )
-                guard isActiveRefresh(generation) else { return }
+            }
+            await weatherStore.load(
+                cities: resolvedCandidates.map { $0.city },
+                forceRefresh: forceRefresh
+            )
+            guard isActiveRefresh(generation) else { return }
+
+            for entry in resolvedCandidates {
+                let city = entry.city
+                let weather = weatherStore.weather(for: city.id)
 
                 // Do not discard the whole search when one city fails. Record
                 // the partial failure and still show every usable result.
                 guard let weather else {
                     failedLookupCount += 1
-                    nearbyIssues = WeatherDataIssue.merging(
-                        nearbyIssues,
-                        unavailableWeatherIssues(
-                            for: city.id,
-                            selectedDate: nil
-                        )
-                    )
                     continue
                 }
                 let resolvedCity = weather.city
@@ -846,21 +780,15 @@ final class WeatherModel {
                 loadedCandidates.append(
                     NearbySunnyCityCandidate(
                         city: resolvedCity,
-                        distanceKilometers: candidate.distanceKilometers
+                        distanceKilometers: entry.candidate.distanceKilometers
                     )
                 )
-                // Nearby search cities are not persisted automatically, but a
-                // surfaced result must keep resolving if a user opens Detail.
-                if placesStore.place(id: resolvedCity.id) == nil {
-                    foundCitiesByID[resolvedCity.id] = resolvedCity
-                }
             }
 
             guard isActiveRefresh(generation) else { return }
             retainedPlaceIDs = retainedIDs
             nearbyCandidates = loadedCandidates
             didSearchNearby = true
-            locationIssues = WeatherDataIssue.merging(locationIssues, nearbyIssues)
             // Surface a non-blocking warning only after retaining successful
             // results, so partial network failures are transparent but useful.
             if failedLookupCount > 0 {
@@ -872,7 +800,7 @@ final class WeatherModel {
             // Only complete, successful work earns the same-coordinate TTL.
             // A partial or current-location failure remains retryable instead of
             // masquerading as an intentionally empty/no-sun result.
-            if currentWeather != nil, failedLookupCount == 0 {
+            if hasCurrentWeather, failedLookupCount == 0 {
                 lastSearchKey = key
                 lastSearchCompletedAt = .now
             }
@@ -881,12 +809,10 @@ final class WeatherModel {
             // Cancellation is expected when a newer location search supersedes
             // this one; the newer generation owns the visible state instead.
             return
-        } catch let catalogError as CitiesCatalogError {
+        } catch is CitiesCatalogError {
             guard isActiveRefresh(generation) else { return }
             retainedPlaceIDs = []
             nearbyCandidates = []
-            nearbyCatalogIssues = []
-            nearbyCatalogError = catalogError
             didSearchNearby = false
             nearbySearchError = localizedString(
                 "Nearby city catalog data is missing.",
@@ -899,16 +825,10 @@ final class WeatherModel {
             guard isActiveRefresh(generation) else { return }
             retainedPlaceIDs = []
             nearbyCandidates = []
-            nearbyCatalogIssues = []
-            nearbyCatalogError = nil
             didSearchNearby = false
             nearbySearchError = localizedString(
                 "Nearby city forecasts are temporarily unavailable.",
                 locale: locale
-            )
-            locationIssues = WeatherDataIssue.merging(
-                locationIssues,
-                [.weatherRequestFailed(error.localizedDescription)]
             )
             lastSearchKey = nil
             lastSearchCompletedAt = nil
@@ -955,58 +875,35 @@ final class WeatherModel {
         for weather: CityWeather,
         on date: Date
     ) -> PlaceRecommendationAssessment {
-        SunnyPlacesRanking.assessment(
-            for: weather,
+        weather.recommendationAssessment(
             on: date,
             selectionCalendar: forecastCalendar
         )
     }
 
-    /// Ranks nearby cities whose total sunny hours are strictly greater than
-    /// the current location on the selected date. A caller may request a
-    /// compact preview without creating a second search.
-    func nearbyRecommendations(
-        on selectedDate: Date,
-        limit: Int? = nil
-    ) -> [NearestSunnyPlaceResult] {
-        nearbyRecommendationAssessment(
-            on: selectedDate,
-            limit: limit
-        ).recommendations
-    }
-
     /// Assesses every preloaded nearby candidate without conflating a missing
     /// source field with an ordinary non-sunny result. The optional `limit` is
     /// applied only after the shared sunny-hours ranking, so a Home preview can
-    /// safely request its top three while Map receives the complete ranking.
+    /// safely request its top three. If current-location weather cannot be
+    /// assessed, the comparison uses zero sunny hours while the location's
+    /// missing-data diagnostics remain available through its normal report.
     func nearbyRecommendationAssessment(
         on selectedDate: Date,
+        locale: Locale,
         limit: Int? = nil
     ) -> NearbyRecommendationsAssessment {
         var candidates: [NearestSunnyPlaceResult] = []
-        var issuesByPlaceID: [City.ID: [WeatherDataIssue]] = [:]
-        // A comparison cannot be honest without a usable current-location
-        // sunny-hours total. Still assess loaded candidates below so existing
-        // missing-data diagnostics remain available to presentation.
         let currentSunnyHourCount = locationRecommendationAssessment(
             on: selectedDate
-        ).recommendation?.sunnyHourCount
+        ).recommendation?.sunnyHourCount ?? 0
 
         for candidate in nearbyCandidates {
             guard let weather = weatherStore.weather(for: candidate.city.id) else {
-                issuesByPlaceID[candidate.city.id] = unavailableWeatherIssues(
-                    for: candidate.city.id,
-                    selectedDate: selectedDate
-                )
                 continue
             }
 
             let assessment = placeAssessment(for: weather, on: selectedDate)
-            if !assessment.issues.isEmpty {
-                issuesByPlaceID[candidate.city.id] = assessment.issues
-            }
             guard let recommendation = assessment.recommendation,
-                  let currentSunnyHourCount,
                   recommendation.sunnyHourCount > currentSunnyHourCount else {
                 continue
             }
@@ -1024,15 +921,15 @@ final class WeatherModel {
         let candidatesByID = Dictionary(
             uniqueKeysWithValues: candidates.map { ($0.id, $0) }
         )
-        let ranked = SunnyPlacesRanking.ranked(
-            candidates.map(\.recommendation)
+        let ranked = PlaceRecommendation.ranked(
+            candidates.map(\.recommendation),
+            locale: locale
         ).compactMap { candidatesByID[$0.id] }
         return NearbyRecommendationsAssessment(
             recommendations: nearbyRecommendationLimit(
                 ranked,
                 limit: limit
-            ),
-            issuesByPlaceID: issuesByPlaceID
+            )
         )
     }
 
@@ -1046,15 +943,11 @@ final class WeatherModel {
         return Array(recommendations.prefix(max(0, limit)))
     }
 
-    /// Saved-place recommendations ranked for one literal calendar date.
-    func savedRecommendations(on date: Date) -> [PlaceRecommendation] {
-        savedRecommendationAssessment(on: date).recommendations
-    }
-
     /// Assesses all saved destinations and retains per-place source failures for
     /// alert presentation instead of silently dropping them from the ranking.
     func savedRecommendationAssessment(
         on date: Date,
+        locale: Locale,
         now: Date = .now
     ) -> SavedRecommendationsAssessment {
         var recommendations: [PlaceRecommendation] = []
@@ -1088,7 +981,10 @@ final class WeatherModel {
         }
 
         return SavedRecommendationsAssessment(
-            recommendations: SunnyPlacesRanking.ranked(recommendations),
+            recommendations: PlaceRecommendation.ranked(
+                recommendations,
+                locale: locale
+            ),
             issuesByPlaceID: issuesByPlaceID
         )
     }
@@ -1122,8 +1018,7 @@ final class WeatherModel {
             }
 
             return SavedPlaceDateExclusion(
-                place: place,
-                localCurrentDate: localCurrentDate
+                place: place
             )
         }
     }
@@ -1146,12 +1041,6 @@ final class WeatherModel {
         return forecastCalendar.startOfDay(for: selectionDate)
     }
 
-    /// Creates the current location's recommendation using the same ranking
-    /// rules as Saved Places, without adding it to the persisted library.
-    func locationRecommendation(on date: Date) -> PlaceRecommendation? {
-        locationRecommendationAssessment(on: date).recommendation
-    }
-
     /// Current-location recommendation plus exact source gaps. This is the
     /// preferred presentation API because a nil recommendation alone cannot say
     /// whether the day was non-sunny or could not be assessed.
@@ -1172,13 +1061,18 @@ final class WeatherModel {
 
     // MARK: - Routing and Persistence Bridges
 
-    /// Resolves a detail route from either the library or a preloaded nearby
-    /// candidate surfaced by Home.
+    /// Resolves a detail route from the library, Home's current nearby batch, or
+    /// an explicitly registered transient Map/Search selection.
     func city(for placeID: City.ID) -> City? {
         // Prefer the persisted library. Transient search entries are a fallback
         // because they exist only to keep a just-tapped result routable.
         if let savedCity = placesStore.place(id: placeID)?.city {
             return savedCity
+        }
+        if let nearbyCity = nearbyCandidates.first(where: {
+            $0.city.id == placeID
+        })?.city {
+            return nearbyCity
         }
         if let transientCity = foundCitiesByID[placeID] {
             return transientCity
@@ -1199,25 +1093,13 @@ final class WeatherModel {
     /// fixed-city metadata. Forecasts load only after Saved Places has been
     /// restored, so a Settings reset never leaves the library empty while a
     /// network place lookup is pending or unavailable.
-    func starterCities(
-        locale _: Locale = .autoupdatingCurrent
-    ) async throws -> [City] {
+    func starterCities() async throws -> [City] {
         let records = try await citiesCatalog.starterCities()
         let cities = records.map(makeCatalogCity)
         guard cities.allSatisfy(PlacesLibraryValidator.isValidCity) else {
             throw WeatherDataIssue.unresolvedPlace("starter places")
         }
         return cities
-    }
-
-    /// Saves a recommendation directly into Saved Places.
-    @discardableResult
-    func saveRecommendation(
-        _ recommendation: NearestSunnyPlaceResult
-    ) throws -> SavedPlace.ID {
-        // PlacesStore owns duplicate validation and disk writes; this façade lets
-        // a nearby-search view save a recommendation without knowing that API.
-        try placesStore.savePlace(recommendation.cityWeather.city)
     }
 
     // MARK: - Cache Retention and Reset
@@ -1229,6 +1111,11 @@ final class WeatherModel {
         var retainedIDs = Set(placesStore.allPlaces.map(\.id))
         if let locationCity {
             retainedIDs.insert(locationCity.id)
+        } else if let coordinate = locationProvider.coordinate,
+                  CLLocationCoordinate2DIsValid(coordinate) {
+            // Initial hydration can trim the cache before Home's task publishes
+            // `locationCity`; preserve the deterministic current-location entry.
+            retainedIDs.insert(makeLocationCity(coordinate: coordinate).id)
         }
         retainedIDs.formUnion(retainedPlaceIDs)
         retainedIDs.formUnion(foundCitiesByID.keys)
@@ -1302,15 +1189,13 @@ final class WeatherModel {
         currentWeatherRefreshID &+= 1
         locationCity = nil
         locationWeather = nil
-        lastLocalRefresh = nil
         nearbyCandidates = []
         isRefreshingLocation = false
+        isSearchingNearby = false
         didSearchNearby = false
         locationError = nil
         nearbySearchError = nil
         locationIssues = []
-        nearbyCatalogIssues = []
-        nearbyCatalogError = nil
         retainedPlaceIDs = []
         if !keepingTransientCities {
             foundCitiesByID = [:]

@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		A10000000000000000000007 /* WeatherWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* WeatherWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		A20000000000000000000001 /* SwiftTimeZoneLookup in Frameworks */ = {isa = PBXBuildFile; productRef = A20000000000000000000002 /* SwiftTimeZoneLookup */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -85,6 +86,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A20000000000000000000001 /* SwiftTimeZoneLookup in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -137,6 +139,7 @@
 			);
 			name = "Weather Atlas";
 			packageProductDependencies = (
+				A20000000000000000000002 /* SwiftTimeZoneLookup */,
 			);
 			productName = Weather;
 			productReference = 59C2E3562F4F06B000877DA8 /* Weather Atlas.app */;
@@ -198,6 +201,9 @@
 			);
 			mainGroup = 59C2E34D2F4F06B000877DA8;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				A20000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftTimeZoneLookup" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 59C2E3572F4F06B000877DA8 /* Products */;
 			projectDirPath = "";
@@ -378,7 +384,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Weather/Weather.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -389,7 +394,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleTypeRole = Editor;\n    CFBundleURLName = \"Yutao-Wu.Weather\";\n    CFBundleURLSchemes =     (\n        weatheratlas\n    );\n}";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.weather";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Weather Atlas uses your location to show your local forecast and find the nearest fully sunny city within your chosen distance.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Weather Atlas uses your location to show your local forecast and find sunnier places within 200 km.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -424,7 +429,6 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
-				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Weather/Weather.entitlements;
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
@@ -435,7 +439,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleURLTypes = "{\n    CFBundleTypeRole = Editor;\n    CFBundleURLName = \"Yutao-Wu.Weather\";\n    CFBundleURLSchemes =     (\n        weatheratlas\n    );\n}";
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.weather";
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Weather Atlas uses your location to show your local forecast and find the nearest fully sunny city within your chosen distance.";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Weather Atlas uses your location to show your local forecast and find sunnier places within 200 km.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -551,6 +555,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		A20000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftTimeZoneLookup" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/patrick-zippenfenig/SwiftTimeZoneLookup.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.8;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		A20000000000000000000002 /* SwiftTimeZoneLookup */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = A20000000000000000000003 /* XCRemoteSwiftPackageReference "SwiftTimeZoneLookup" */;
+			productName = SwiftTimeZoneLookup;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 59C2E34E2F4F06B000877DA8 /* Project object */;
 }

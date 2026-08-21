@@ -1,5 +1,5 @@
 //
-//  PlacesStore.swift
+//  SavedPlacesStore.swift
 //  Weather
 //
 //  Purpose: Owns the flat Saved Places library, its validation rules, and its
@@ -48,13 +48,12 @@ struct SavedPlace: Identifiable, Codable, Equatable, Hashable {
 /// Saved-place forecast state used by Map presentation.
 ///
 /// This is presentation state, not something stored in the JSON library: a
-/// recommendation/loading/error belongs to the current weather request and is
+/// recommendation/loading state belongs to the current weather request and is
 /// allowed to disappear on the next launch.
 struct SavedPlacePresentation: Identifiable {
     let place: SavedPlace
     let recommendation: PlaceRecommendation?
     let isLoading: Bool
-    let failureMessage: String?
 
     var id: SavedPlace.ID { place.id }
 }
@@ -92,12 +91,11 @@ enum PlacesStoreError: LocalizedError {
         }
     }
 
-    func description(locale: Locale) -> String { errorDescription ?? "" }
 }
 
 /// Gives UI code one stable entry point for Places-specific error copy.
-func localizedPlacesErrorDescription(_ error: Error, locale: Locale) -> String {
-    (error as? PlacesStoreError)?.description(locale: locale) ?? error.localizedDescription
+func localizedPlacesErrorDescription(_ error: Error) -> String {
+    (error as? PlacesStoreError)?.errorDescription ?? error.localizedDescription
 }
 
 // MARK: - Document Persistence
@@ -330,9 +328,9 @@ enum PlacesLibraryValidator {
             // record. Older libraries and a temporary geocoder outage can lack
             // a timezone, but that must not hide the entire library or turn a
             // harmless local-date exclusion into a load failure. Leave the
-            // timezone optional here; reverse geocoding re-fetches authoritative
-            // metadata before WeatherKit is queried, and a successfully resolved
-            // city is written back by `WeatherModel.loadSavedWeather`.
+            // timezone optional here; the local coordinate time-zone lookup
+            // resolves it before WeatherKit is queried, and a successfully
+            // resolved city is written back by `WeatherModel.loadSavedWeather`.
             //
             // New places still go through `isValidCity(_:)` at the save boundary,
             // so search/map flows cannot deliberately create incomplete rows.
@@ -480,7 +478,7 @@ private struct SavedPlaceSemanticIdentity {
 /// every successful mutation replaces the complete `document` value.
 @MainActor
 @Observable
-final class PlacesStore {
+final class SavedPlacesStore {
     /// The verified in-memory copy of the complete JSON document.
     private(set) var document: PlacesLibraryDocument
     /// A persistent failure shown by settings/UI instead of causing a crash.
@@ -538,10 +536,20 @@ final class PlacesStore {
     }
 
     /// Lets the UI retry a transient file-system failure without recreating data.
+    /// If the initial failure was resolving Application Support itself, acquire a
+    /// new live store before attempting the normal document load again.
     func retryLoading() {
-        guard let documentStore else { return }
+        guard loadErrorDescription != nil else { return }
         do {
-            document = try Self.loadOrCreate(documentStore: documentStore)
+            let store: PlacesDocumentStore
+            if let documentStore {
+                store = documentStore
+            } else {
+                let liveStore = try PlacesDocumentStore.live()
+                documentStore = liveStore
+                store = liveStore
+            }
+            document = try Self.loadOrCreate(documentStore: store)
             loadErrorDescription = nil
         } catch { loadErrorDescription = error.localizedDescription }
     }
@@ -698,6 +706,7 @@ final class PlacesStore {
         existing.city = City(
             id: current.id,
             name: incoming.name.isEmpty ? current.name : incoming.name,
+            titleName: incoming.titleName ?? current.titleName,
             country: incoming.country.isEmpty ? current.country : incoming.country,
             latitude: current.latitude,
             longitude: current.longitude,

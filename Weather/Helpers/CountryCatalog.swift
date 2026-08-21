@@ -259,74 +259,18 @@ enum CountryCityCatalog {
             .map(\.0)
     }
 
-    /// Returns a compact, location-aware country starter list for Search. The
-    /// nearest catalog city is used as the factual proximity signal rather
-    /// than inventing country centroids for irregular or overseas territories.
-    /// If location is unavailable, the locale's region is followed by a small
-    /// world-spanning fallback so the search remains immediately useful.
-    static func recommendedCountries(
-        near coordinate: CLLocationCoordinate2D?,
-        locale: Locale,
-        limit: Int = 6
-    ) -> [CountryPlacesOption] {
-        guard limit > 0 else { return [] }
-        guard let coordinate,
-              CLLocationCoordinate2DIsValid(coordinate) else {
-            return fallbackRecommendedCountries(
-                from: countries(locale: locale),
-                locale: locale,
-                limit: limit
-            )
-        }
-        return Array(
-            countries(near: coordinate, locale: locale)
-                .prefix(limit)
-        )
-    }
-
     /// Resolves one bundled country from an ISO 3166-1 alpha-2 code.
     static func country(iso2: String) -> CountryPlacesOption? {
         catalog.countriesByCode[iso2.uppercased()]
-    }
-
-    private static func fallbackRecommendedCountries(
-        from countries: [CountryPlacesOption],
-        locale: Locale,
-        limit: Int
-    ) -> [CountryPlacesOption] {
-        let preferredCodes = [
-            locale.region?.identifier,
-            Locale.autoupdatingCurrent.region?.identifier,
-            "GB", "US", "FR", "DE", "SG", "JP"
-        ].compactMap { $0?.uppercased() }
-
-        var selected: [CountryPlacesOption] = []
-        for code in preferredCodes {
-            guard let country = countries.first(where: { $0.iso2 == code }),
-                  !selected.contains(where: { $0.iso2 == country.iso2 }) else {
-                continue
-            }
-            selected.append(country)
-            if selected.count == limit {
-                return selected
-            }
-        }
-
-        for country in countries where !selected.contains(where: { $0.iso2 == country.iso2 }) {
-            selected.append(country)
-            if selected.count == limit {
-                break
-            }
-        }
-        return selected
     }
 
     /// Returns a timezone only when every validated city in the factual bundled
     /// country catalog uses the same IANA identifier. This is not a nearest-city
     /// or coordinate guess: it merely lets another catalog with no timezone
     /// column reuse an unambiguous country-wide source fact (for example, GB).
-    /// Countries spanning more than one zone intentionally return `nil` and
-    /// continue through Apple reverse geocoding.
+    /// Countries spanning more than one zone intentionally return `nil` so
+    /// WeatherService can resolve the exact coordinate through its local
+    /// time-zone boundary database.
     static func unambiguousTimeZoneIdentifier(forISO2 iso2: String) -> String? {
         let identifiers = Set(
             catalog.countriesByCode[iso2.uppercased()]?.cities.map(

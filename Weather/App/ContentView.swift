@@ -38,6 +38,9 @@ struct ContentView: View {
     /// metadata changes the app-wide calendar from the device to local time.
     @State private var dateTimeZone = TimeZone.autoupdatingCurrent
     @State private var resetID = UUID()
+    /// Deep links can arrive while first-run education owns the root view.
+    /// Keep the latest supported intent until the app shell is available.
+    @State private var pendingExternalURL: URL?
 
     // MARK: Tab Shell
 
@@ -46,10 +49,7 @@ struct ContentView: View {
             if tutorial.shouldPresent {
                 TutorialFlow(
                     model: model,
-                    complete: {
-                        tutorial.complete()
-                        router.selectedTab = .yourLocation
-                    }
+                    complete: completeTutorial
                 )
             } else {
                 appShell
@@ -59,6 +59,7 @@ struct ContentView: View {
         .environment(model.placesStore)
         .environment(model.weatherStore)
         .environment(model.locationProvider)
+        .onOpenURL(perform: receiveExternalURL)
     }
 
     private var appShell: some View {
@@ -133,7 +134,6 @@ struct ContentView: View {
                 ),
                 perform: handleShortcutNotification
             )
-            .onOpenURL(perform: handleExternalURL)
     }
 
     private var tabShell: some View {
@@ -215,8 +215,6 @@ struct ContentView: View {
                         router: router,
                         selectedDate: $selectedDate
                     ))
-                    .navigationTitle("Search")
-                    .navigationBarTitleDisplayMode(.inline)
                     .navigationDestination(for: AppRoute.self) {
                         destination(for: $0)
                     }
@@ -261,7 +259,7 @@ struct ContentView: View {
     // MARK: Root Lifecycle
 
     private func handleLocationTimeZoneChange(
-        _ oldIdentifier: String?,
+        _: String?,
         _ newIdentifier: String?
     ) {
         guard let newIdentifier,
@@ -278,7 +276,7 @@ struct ContentView: View {
         // Location only when authorization already exists.
         await seedStarterPlacesIfNeeded()
         model.retainWeatherScope()
-        await model.loadSavedWeather(locale: locale)
+        await model.loadSavedWeather()
         model.publishWidgetCatalog(locale: locale)
         if !model.isUsingHomeLocation {
             model.locationProvider.requestLocationIfAuthorized(
@@ -304,7 +302,7 @@ struct ContentView: View {
     }
 
     private func handlePlacesLoadErrorChange(
-        _ oldDescription: String?,
+        _ previousErrorDescription: String?,
         _ errorDescription: String?
     ) {
         let key = "places-library-load"
@@ -338,11 +336,19 @@ struct ContentView: View {
             }
         } else {
             missingDataAlerts.resolve(key: key)
+            // A first-run store can become available only after its initial
+            // load/retry episode. Resume normal starter seeding once that
+            // recovery clears the storage error; existing libraries and
+            // intentionally empty ones still exit through the seed guards.
+            guard previousErrorDescription != nil else { return }
+            Task {
+                await seedStarterPlacesIfNeeded()
+            }
         }
     }
 
     private func handleScenePhaseChange(
-        _ oldPhase: ScenePhase,
+        _: ScenePhase,
         _ newPhase: ScenePhase
     ) {
         guard newPhase == .active else { return }
@@ -353,7 +359,7 @@ struct ContentView: View {
             )
         }
         Task {
-            await model.loadSavedWeather(locale: locale)
+            await model.loadSavedWeather()
             model.publishWidgetCatalog(locale: locale)
         }
     }
@@ -442,7 +448,7 @@ struct ContentView: View {
             guard !cities.isEmpty else { return }
             _ = try model.placesStore.savePlaces(cities)
             model.retainWeatherScope()
-            await model.weatherStore.load(cities: cities, locale: locale)
+            await model.weatherStore.load(cities: cities)
             model.publishWidgetCatalog(locale: locale)
             didSeedPlaces = true
             missingDataAlerts.resolve(key: alertKey)
@@ -500,10 +506,10 @@ struct ContentView: View {
     /// missing-data alert.
     private func starterCitiesAfterOneCatalogRetry() async throws -> [City] {
         do {
-            return try await model.starterCities(locale: locale)
+            return try await model.starterCities()
         } catch is CitiesCatalogError {
             await model.citiesCatalog.reload()
-            return try await model.starterCities(locale: locale)
+            return try await model.starterCities()
         }
     }
 
@@ -529,7 +535,7 @@ struct ContentView: View {
             AppTextSizeLevel.defaultRawValue,
             forKey: "appTextSizeLevel"
         )
-        defaults.set(true, forKey: "showLegend")
+        defaults.set(true, forKey: "showsMapSunnyHoursLegend")
         theme.style = .automatic
 
         tutorial.resetForFullAppReset()
@@ -537,8 +543,7 @@ struct ContentView: View {
         selectedDate = Calendar.current.startOfDay(for: Date())
         router.yourLocationPath = []
         router.savedPlacesPath = []
-        router.mapPath = []
-        router.selectedMapPlaceID = nil
+        router.resetMapHandoffState()
         router.selectedTab = .yourLocation
         resetID = UUID()
         didSeedPlaces = false
@@ -554,6 +559,18 @@ struct ContentView: View {
 
     // MARK: External Navigation
 
+    private func completeTutorial() {
+        tutorial.complete()
+
+        guard let pendingExternalURL else {
+            router.selectedTab = .yourLocation
+            return
+        }
+
+        self.pendingExternalURL = nil
+        handleExternalURL(pendingExternalURL)
+    }
+
     private func handlePendingShortcut() {
         guard let destination = AppDelegate.takePendingHomeScreenShortcut() else {
             return
@@ -561,14 +578,18 @@ struct ContentView: View {
         handleShortcut(destination)
     }
 
-    /// Maps location, map, and saved-place quick actions to their destinations.
+    /// Maps the current Home Screen quick actions into the existing tab and
+    /// Find Sun routes. A legacy location value remains decode-only so old
+    /// SpringBoard entries never lead to a dead end after an app update.
     private func handleShortcut(
         _ destination: HomeScreenShortcutDestination
     ) {
         router.presentedSheet = nil
 
         switch destination {
-        case .home:
+        case .findSunNearMe:
+            router.showMap(findingSunIn: .nearMe)
+        case .legacyHome:
             router.yourLocationPath = []
             router.selectedTab = .yourLocation
         case .map:
@@ -583,8 +604,24 @@ struct ContentView: View {
     /// Routes app and widget URLs to their native destination. Older generic
     /// Places URLs still open the manager; city widget URLs now open the city's
     /// forecast directly when that saved place still exists.
+    private func receiveExternalURL(_ url: URL) {
+        guard isSupportedExternalURL(url) else { return }
+
+        guard tutorial.shouldPresent else {
+            handleExternalURL(url)
+            return
+        }
+
+        // If the system delivers several URLs before setup completes, the
+        // most recent one represents the person's current navigation intent.
+        pendingExternalURL = url
+    }
+
     private func handleExternalURL(_ url: URL) {
-        guard url.scheme == "weatheratlas" else { return }
+        guard isSupportedExternalURL(url) else { return }
+        // Match Home Screen shortcuts: a URL should reveal its destination,
+        // not navigate underneath an already presented Settings sheet.
+        router.presentedSheet = nil
 
         switch url.host {
         case "place":
@@ -594,11 +631,23 @@ struct ContentView: View {
             router.showPlacesLibrary()
             showWidgetIssue(url)
         case "home":
-            handleShortcut(.home)
+            router.yourLocationPath = []
+            router.selectedTab = .yourLocation
         case "map":
             handleShortcut(.map)
         default:
             break
+        }
+    }
+
+    private func isSupportedExternalURL(_ url: URL) -> Bool {
+        guard url.scheme == "weatheratlas" else { return false }
+
+        switch url.host {
+        case "place", "places", "home", "map":
+            return true
+        default:
+            return false
         }
     }
 
@@ -720,22 +769,15 @@ struct ContentView: View {
                 retry: {
                     guard let savedPlace else { return }
                     _ = await model.weatherStore.retryMissingData(
-                        for: savedPlace.city,
-                        locale: locale
+                        for: savedPlace.city
                     )
                 },
                 isStillMissing: {
-                    guard let savedPlace,
-                          let weather = model.weatherStore.weather(
-                              for: savedPlace.id
-                          ) else {
+                    guard let savedPlace else {
                         return true
                     }
-                    return model.weatherStore.issues(for: weather.id).contains {
-                        $0.kind == issue.kind
-                            && ($0.forecastDate == issue.forecastDate
-                                || issue.forecastDate == nil)
-                    }
+                    return model.weatherStore.weather(for: savedPlace.id) == nil
+                        || model.weatherStore.failuresByID[savedPlace.id] != nil
                 }
             )
         }

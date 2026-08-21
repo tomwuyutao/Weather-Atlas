@@ -254,11 +254,6 @@ struct SunnyHoursChartBounds: Codable, Hashable {
         return result
     }
 
-    /// Whether an integer clock hour begins inside this chart domain.
-    func contains(_ hour: Int) -> Bool {
-        hour >= startHour && hour < endHour
-    }
-
     /// Maps a decimal clock hour into a clamped horizontal chart coordinate.
     /// Clamping makes callers safe even if they pass a current time just outside
     /// the daylight domain.
@@ -319,49 +314,11 @@ struct AvailableDaylightHours<Hour> {
     let hours: [Hour]
 }
 
-/// Three buckets needed by every sunny-hours timeline.
-///
-/// A failable symbol initializer keeps an unknown provider symbol distinct from
-/// a recognized but unfavorable condition. That distinction prevents an
-/// incomplete classification from silently looking like a cloudy hour.
-enum SunnyHourClassification: Hashable {
-    case sunny
-    case partlySunny
-    case other
-
-    init?(symbolName: String) {
-        guard let classification = WeatherSymbolClassification.resolve(symbolName) else {
-            return nil
-        }
-        switch classification {
-        case .clear:
-            self = .sunny
-        case .partlySunny:
-            self = .partlySunny
-        case .partlyCloudy, .cloudy, .rain, .drizzle, .snow, .fog, .wind:
-            self = .other
-        }
-    }
-}
-
-/// Exact unknown-symbol context returned by shared hourly classification.
-struct SunnyHoursUnknownSymbolIssue: Error, Hashable {
-    let symbolName: String
-    let date: Date
-}
-
-/// Integer-hour arrays persisted by the widget and consumed by timeline layout.
-struct SunnyHoursSourceBreakdown: Hashable {
-    let daytimeHours: [Int]
-    let sunnyHours: [Int]
-    let partlySunnyHours: [Int]
-}
-
 /// Dependency-light policy shared by the app and widget weather adapters.
 ///
 /// Generic closures expose only the facts this analysis needs: each record's
-/// instant, daylight flag, and symbol. This keeps WeatherKit and app-owned
-/// forecast models out of the shared target while preventing policy drift.
+/// instant and daylight flag. Condition normalization stays in the shared
+/// `AppWeatherCondition` provider adapter.
 enum SunnyHoursSourceAnalysis {
     /// Filters one city-local day to the source records that overlap real
     /// daylight and resolves legitimate normal, transition, and polar regimes.
@@ -461,52 +418,6 @@ enum SunnyHoursSourceAnalysis {
         return .failure(.missingHourlyData)
     }
 
-    /// Converts already-filtered daylight records into integer chart buckets.
-    /// Unknown symbols stop the conversion and preserve their exact source/date.
-    static func sourceBreakdown<Hour>(
-        for hours: [Hour],
-        calendar: Calendar,
-        dateOf: (Hour) -> Date,
-        symbolName: (Hour) -> String
-    ) -> Result<SunnyHoursSourceBreakdown, SunnyHoursUnknownSymbolIssue> {
-        var daytimeHours: [Int] = []
-        var sunnyHours: [Int] = []
-        var partlySunnyHours: [Int] = []
-
-        for forecast in hours {
-            let sourceSymbol = symbolName(forecast)
-            guard let classification = SunnyHourClassification(
-                symbolName: sourceSymbol
-            ) else {
-                return .failure(
-                    SunnyHoursUnknownSymbolIssue(
-                        symbolName: sourceSymbol,
-                        date: dateOf(forecast)
-                    )
-                )
-            }
-
-            let hour = calendar.component(.hour, from: dateOf(forecast))
-            daytimeHours.append(hour)
-            switch classification {
-            case .sunny:
-                sunnyHours.append(hour)
-            case .partlySunny:
-                partlySunnyHours.append(hour)
-            case .other:
-                break
-            }
-        }
-
-        return .success(
-            SunnyHoursSourceBreakdown(
-                daytimeHours: daytimeHours,
-                sunnyHours: sunnyHours,
-                partlySunnyHours: partlySunnyHours
-            )
-        )
-    }
-
     /// Determines whether a no-daylight-hours result can be explained by the
     /// rolling feed starting after today's final real sunset.
     private static func daylightHasEnded(
@@ -529,198 +440,17 @@ enum SunnyHoursSourceAnalysis {
     }
 }
 
-// MARK: - Renderable Timeline Segments
-
-/// Visual classification for a favorable hourly forecast segment.
-enum SunnyHourKind: String, Hashable {
-    case sunny
-    case partlySunny = "partly"
-}
-
-/// Contiguous run of sunny or partly sunny integer hours.
-struct SunnyHoursTimelineSegment: Identifiable, Hashable {
-    /// Deterministic range-and-kind identity for SwiftUI diffing.
-    let id: String
-    /// Inclusive clock-hour range covered by the segment.
-    let range: ClosedRange<Int>
-    /// Condition treatment used to render the segment.
-    let kind: SunnyHourKind
-
-    /// Convenience flag used by chart fill styling.
-    var isPartlySunny: Bool { kind == .partlySunny }
-}
-
-/// Outer contiguous capsule containing one or more condition segments.
-struct SunnyHoursTimelineSpan: Identifiable, Hashable {
-    /// Deterministic range identity for SwiftUI diffing.
-    let id: String
-    /// Inclusive hours covered without an unfavorable gap.
-    let range: ClosedRange<Int>
-    /// Ordered sunny/partly-sunny runs clipped into this capsule.
-    let segments: [SunnyHoursTimelineSegment]
-}
-
-/// Pure transformations from classified hours into renderable chart spans.
-/// Keeping this layout work free of SwiftUI types makes charts easy to reuse
-/// and test without a live view hierarchy.
-enum SunnyHoursTimelineLayout {
-    // MARK: - Span Construction
-
-    /// Builds spans from separate sunny and partly-sunny hour collections.
-    static func spans(
-        sunnyRanges: [ClosedRange<Int>],
-        partlySunnyRanges: [ClosedRange<Int>]
-    ) -> [SunnyHoursTimelineSpan] {
-        // Keep condition type on each short segment, then calculate outer
-        // capsules separately. That allows a single connected visual track to
-        // contain both sunny and partly-sunny portions.
-        let segments = makeSegments(ranges: partlySunnyRanges, kind: .partlySunny)
-            + makeSegments(ranges: sunnyRanges, kind: .sunny)
-        // Order by start hour, giving the shorter segment precedence on ties.
-        // Stable input order would otherwise make overlapping source arrays
-        // render differently depending on which array was constructed first.
-        return mergeContiguousSegments(segments.sorted {
-            if $0.range.lowerBound == $1.range.lowerBound {
-                return $0.range.upperBound < $1.range.upperBound
-            }
-            return $0.range.lowerBound < $1.range.lowerBound
-        })
-    }
-
-    /// Convenience overload for callers that start with individual integer
-    /// hours rather than already-grouped ranges.
-    static func spans(
-        sunnyHours: [Int],
-        partlySunnyHours: [Int],
-        boundedBy bounds: SunnyHoursChartBounds
-    ) -> [SunnyHoursTimelineSpan] {
-        spans(
-            sunnyRanges: SunnyHoursFormatting.contiguousRanges(in: sunnyHours, boundedBy: bounds),
-            partlySunnyRanges: SunnyHoursFormatting.contiguousRanges(in: partlySunnyHours, boundedBy: bounds)
-        )
-    }
-
-    /// Converts integer hours of one kind into normalized contiguous segments.
-    /// `enumerated()` gives each otherwise identical range a deterministic ID.
-    private static func makeSegments(
-        ranges: [ClosedRange<Int>],
-        kind: SunnyHourKind
-    ) -> [SunnyHoursTimelineSegment] {
-        ranges.enumerated().map { index, range in
-            SunnyHoursTimelineSegment(
-                id: "\(kind.rawValue)-\(index)-\(range.lowerBound)-\(range.upperBound)",
-                range: range,
-                kind: kind
-            )
-        }
-    }
-
-    /// Coalesces touching favorable segments into one outer capsule without
-    /// bridging a real unfavorable gap. Inner segment kinds remain intact.
-    private static func mergeContiguousSegments(
-        _ segments: [SunnyHoursTimelineSegment]
-    ) -> [SunnyHoursTimelineSpan] {
-        guard let firstSegment = segments.first else { return [] }
-
-        var spans: [SunnyHoursTimelineSpan] = []
-        var currentSegments = [firstSegment]
-        var currentStart = firstSegment.range.lowerBound
-        var currentEnd = firstSegment.range.upperBound
-
-        // The first segment seeded the mutable working values above, so loop
-        // only over the remaining collection.
-        for segment in segments.dropFirst() {
-            // Adjacent integer ranges (for example 10...11 and 12...13) have
-            // no missing clock hour between them and therefore share a capsule.
-            if segment.range.lowerBound <= currentEnd + 1 {
-                currentSegments.append(segment)
-                currentEnd = max(currentEnd, segment.range.upperBound)
-            } else {
-                spans.append(
-                    makeSpan(
-                        index: spans.count,
-                        start: currentStart,
-                        end: currentEnd,
-                        segments: currentSegments
-                    )
-                )
-                currentSegments = [segment]
-                currentStart = segment.range.lowerBound
-                currentEnd = segment.range.upperBound
-            }
-        }
-
-        spans.append(
-            makeSpan(
-                index: spans.count,
-                start: currentStart,
-                end: currentEnd,
-                segments: currentSegments
-            )
-        )
-        return spans
-    }
-
-    /// Wraps a connected segment collection in its enclosing capsule range.
-    /// The index distinguishes two spans with the same numerical endpoints in
-    /// malformed-but-recoverable source data.
-    private static func makeSpan(
-        index: Int,
-        start: Int,
-        end: Int,
-        segments: [SunnyHoursTimelineSegment]
-    ) -> SunnyHoursTimelineSpan {
-        SunnyHoursTimelineSpan(
-            id: "\(start)-\(end)-\(index)",
-            range: start...end,
-            segments: segments
-        )
-    }
-}
-
 // MARK: - Sunny-Hour Formatting
 
 /// Shared deterministic formatting for chart ranges and axis labels.
 enum SunnyHoursFormatting {
-    // MARK: - Range Normalization
-
-    /// Converts integer hours into maximal contiguous inclusive ranges.
-    static func contiguousRanges(
-        in sourceHours: [Int],
-        boundedBy bounds: SunnyHoursChartBounds? = nil
-    ) -> [ClosedRange<Int>] {
-        // Filter outside hours when a chart domain was supplied, remove duplicate
-        // WeatherKit samples with `Set`, then sort before walking the sequence.
-        // This normalizes arbitrary input into predictable, ascending ranges.
-        let hours = Array(Set(sourceHours.filter { bounds?.contains($0) ?? true })).sorted()
-        guard let firstHour = hours.first else { return [] }
-
-        var ranges: [ClosedRange<Int>] = []
-        var start = firstHour
-        var end = firstHour
-
-        // Extend the active range only for immediately adjacent clock hours.
-        for hour in hours.dropFirst() {
-            if hour == end + 1 {
-                end = hour
-            } else {
-                ranges.append(start...end)
-                start = hour
-                end = hour
-            }
-        }
-
-        ranges.append(start...end)
-        return ranges
-    }
-
     // MARK: - Sunny-Hour Counts
 
     /// Formats a whole or half sunny-hour total with the active locale's
-    /// decimal separator and the app-wide compact unit convention (for example,
-    /// `11h`, never `11 h`).
+    /// decimal separator and the app-wide spaced unit convention (for example,
+    /// `11 h`, never `11h`).
     static func hourCountLabel(_ hours: Double, locale: Locale) -> String {
-        "\(hourCountText(hours, locale: locale))h"
+        "\(hourCountText(hours, locale: locale)) h"
     }
 
     /// Formats the numeric portion separately for status sentences that supply
@@ -750,37 +480,6 @@ enum SunnyHoursFormatting {
         // Keep the right edge of a full local-day chart distinct from its 00
         // start. This is a boundary label, not another midnight forecast cell.
         hour == 24 ? "24" : String(format: "%02d", ((hour % 24) + 24) % 24)
-    }
-
-    /// Locale-aware compact clock label used by card summaries. The Unicode
-    /// `j` skeleton follows the selected locale's 12-hour or 24-hour convention.
-    static func compactHourLabel(_ hour: Int, locale: Locale) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.dateFormat = DateFormatter.dateFormat(
-            fromTemplate: "j",
-            options: 0,
-            locale: locale
-        )
-
-        var components = DateComponents()
-        components.calendar = Calendar(identifier: .gregorian)
-        components.hour = ((hour % 24) + 24) % 24
-        components.minute = 0
-        guard let date = components.date else {
-            return chartHourLabel(hour)
-        }
-        return formatter.string(from: date)
-    }
-
-    /// Formats one inclusive integer-hour range as a compact start/end label.
-    static func compactRangeLabel(
-        _ range: ClosedRange<Int>,
-        locale: Locale
-    ) -> String {
-        let start = compactHourLabel(range.lowerBound, locale: locale)
-        let end = compactHourLabel(range.upperBound + 1, locale: locale)
-        return "\(start) – \(end)"
     }
 
     /// Explains the clock used by a weather chart, including the destination's

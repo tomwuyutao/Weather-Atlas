@@ -69,7 +69,6 @@ private enum DetailChartRange: String, CaseIterable, Identifiable {
 /// Stable icon identity derived from the represented forecast instant.
 private struct ChartConditionIcon: Identifiable {
     let id: Date
-    let symbolName: String
     let condition: AppWeatherCondition?
 }
 
@@ -82,8 +81,6 @@ struct DetailMetricGrid: View {
     /// Optional inputs let report screens preserve all six card shells before
     /// weather arrives or after a request fails.
     let city: CityWeather?
-    /// Report-owned place name, including any saved custom name.
-    let placeDisplayName: String
     let forecast: DailyForecast?
     let temperatureUnit: TemperatureUnit
     let usesLandscapeIPadLayout: Bool
@@ -95,40 +92,18 @@ struct DetailMetricGrid: View {
 
     @State private var presentedMetric: DetailChartMetric?
 
-    @Environment(\.appTheme) private var theme
-    @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.locale) private var locale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-
-    /// Loaded Detail reports retain their existing call shape.
-    init(
-        city: CityWeather,
-        placeDisplayName: String,
-        forecast: DailyForecast,
-        temperatureUnit: TemperatureUnit,
-        usesLandscapeIPadLayout: Bool,
-        selectedForecastDate: Binding<Date>
-    ) {
-        self.city = city
-        self.placeDisplayName = placeDisplayName
-        self.forecast = forecast
-        self.temperatureUnit = temperatureUnit
-        self.usesLandscapeIPadLayout = usesLandscapeIPadLayout
-        self.selectedForecastDate = selectedForecastDate
-    }
 
     /// Persistent report surfaces can pass unavailable values without removing
     /// the grid; each metric then renders an explicit unavailable state.
     init(
         city: CityWeather?,
-        placeDisplayName: String,
         forecast: DailyForecast?,
         temperatureUnit: TemperatureUnit,
         usesLandscapeIPadLayout: Bool,
         selectedForecastDate: Binding<Date>
     ) {
         self.city = city
-        self.placeDisplayName = placeDisplayName
         self.forecast = forecast
         self.temperatureUnit = temperatureUnit
         self.usesLandscapeIPadLayout = usesLandscapeIPadLayout
@@ -150,7 +125,6 @@ struct DetailMetricGrid: View {
             if let city {
                 DetailChartView(
                     city: city,
-                    placeDisplayName: placeDisplayName,
                     initialMetric: metric,
                     temperatureUnit: temperatureUnit,
                     selectedForecastDate: selectedForecastDate
@@ -174,37 +148,6 @@ struct DetailMetricGrid: View {
 
     private var distanceUnit: DistanceUnit {
         DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
-    }
-
-    private func missingDataReport(
-        for presentation: DetailMetricValuePresentation?
-    ) -> MissingDataAlertReport? {
-        guard let city, let forecast, let presentation else { return nil }
-        let issues = DetailChartMetric.allCases.compactMap { metric in
-            presentation.summary(
-                for: metric,
-                temperatureUnit: temperatureUnit,
-                distanceUnit: distanceUnit,
-                locale: locale
-            ) == nil
-                ? presentation.missingDataIssue(for: metric)
-                : nil
-        }
-        guard !issues.isEmpty else { return nil }
-        let uniqueIssues = Array(Set(issues)).sorted {
-            $0.kind.rawValue < $1.kind.rawValue
-        }
-        return MissingDataAlertReport(
-            key: "metric-grid:\(city.id.uuidString):\(forecast.date.timeIntervalSinceReferenceDate):\(presentation.identity):\(uniqueIssues.map(\.kind.rawValue).joined(separator: ","))",
-            title: localizedString("Weather Data Missing", locale: locale),
-            message: Array(Set(uniqueIssues.map {
-                weatherDataIssueMessage(
-                    $0,
-                    cityName: placeDisplayName,
-                    locale: locale
-                )
-            })).sorted().joined(separator: "\n")
-        )
     }
 
     /// Keeps the card order and appearance identical in Detail and the sheet.
@@ -231,8 +174,7 @@ struct DetailMetricGrid: View {
                 let value = presentation?.summary(
                     for: metric,
                     temperatureUnit: temperatureUnit,
-                    distanceUnit: distanceUnit,
-                    locale: locale
+                    distanceUnit: distanceUnit
                 )
                 DetailMetricCard(
                     metric: metric,
@@ -254,7 +196,6 @@ struct DetailMetricGrid: View {
 /// WeatherKit hourly sample that represents the current local clock hour.
 /// Other selected days retain their existing daily summaries.
 private struct DetailMetricValuePresentation {
-    let city: CityWeather
     let forecast: DailyForecast
     let usesCurrentHourlyValue: Bool
     private let currentHourlyForecast: HourlyForecast?
@@ -264,7 +205,6 @@ private struct DetailMetricValuePresentation {
         forecast: DailyForecast,
         now: Date
     ) {
-        self.city = city
         self.forecast = forecast
 
         var localCalendar = Calendar.autoupdatingCurrent
@@ -292,22 +232,10 @@ private struct DetailMetricValuePresentation {
         }
     }
 
-    /// Stable alert identity for a daily summary or its live hourly sample.
-    var identity: String {
-        guard usesCurrentHourlyValue else { return "daily" }
-        guard let currentHourlyForecast else {
-            return "current-hour-unavailable"
-        }
-        return String(
-            Int(currentHourlyForecast.date.timeIntervalSinceReferenceDate)
-        )
-    }
-
     func summary(
         for metric: DetailChartMetric,
         temperatureUnit: TemperatureUnit,
-        distanceUnit: DistanceUnit,
-        locale: Locale
+        distanceUnit: DistanceUnit
     ) -> String? {
         if usesCurrentHourlyValue {
             return metric.currentHourlySummary(
@@ -319,24 +247,8 @@ private struct DetailMetricValuePresentation {
 
         return metric.summary(
             for: forecast,
-            city: city,
             temperatureUnit: temperatureUnit,
-            distanceUnit: distanceUnit,
-            locale: locale
-        )
-    }
-
-    func missingDataIssue(for metric: DetailChartMetric) -> WeatherDataIssue? {
-        if usesCurrentHourlyValue {
-            guard let currentHourlyForecast else {
-                return .missingHourlyData(at: forecast.date)
-            }
-            return metric.currentHourlySummaryIssue(for: currentHourlyForecast)
-        }
-
-        return metric.dailySummaryIssue(
-            for: forecast,
-            timeZone: city.timeZone
+            distanceUnit: distanceUnit
         )
     }
 }
@@ -365,9 +277,6 @@ private struct DetailMetricCard: View {
                     .font(.system(size: 16, weight: .semibold))
                     .foregroundStyle(theme.colors.primaryText)
                     .frame(width: 24)
-                    // The card's text already names the metric. Keeping this
-                    // symbol out of the chart header avoids a duplicate
-                    // weather/thermometer announcement before every value.
 
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -450,8 +359,6 @@ struct DetailChartView: View {
     // MARK: Immutable Inputs
 
     let city: CityWeather
-    let placeDisplayName: String
-    let initialMetric: DetailChartMetric
     let temperatureUnit: TemperatureUnit
 
     // MARK: View-Owned Selection State
@@ -474,7 +381,6 @@ struct DetailChartView: View {
 
     init(
         city: CityWeather,
-        placeDisplayName: String,
         initialMetric: DetailChartMetric,
         temperatureUnit: TemperatureUnit,
         selectedForecastDate: Binding<Date>
@@ -482,8 +388,6 @@ struct DetailChartView: View {
         // `@State` must be initialized through its backing storage so the
         // opening metric becomes persistent local sheet state after creation.
         self.city = city
-        self.placeDisplayName = placeDisplayName
-        self.initialMetric = initialMetric
         self.temperatureUnit = temperatureUnit
         _selectedMetric = State(initialValue: initialMetric)
         _selectedForecastDate = selectedForecastDate
@@ -550,105 +454,17 @@ struct DetailChartView: View {
         // keep that field blank and avoid a second modal error.
     }
 
-    private var chartDataIssue: WeatherDataIssue? {
+    /// A chart needs only the values it actually plots. WeatherKit can return
+    /// partial hourly or daily metric coverage, so one absent value must not
+    /// make the rest of the selected range unavailable.
+    private var hasChartData: Bool {
         switch selectedRange {
         case .day:
-            guard let chartForecast else {
-                return .missingForecastData(at: selectedForecastDate)
-            }
-            return selectedMetric.hourlyChartIssue(
-                for: chartForecast,
-                timeZone: city.timeZone
-            )
+            guard let chartForecast else { return false }
+            return !hourlyPoints(for: chartForecast).isEmpty
         case .forecast:
-            if let forecastHorizonIssue {
-                return forecastHorizonIssue
-            }
-            guard !availableForecasts.isEmpty else {
-                return .missingForecastData(at: selectedForecastDate)
-            }
-            return availableForecasts.lazy.compactMap {
-                selectedMetric.dailyChartIssue(
-                    for: $0,
-                    timeZone: city.timeZone
-                )
-            }.first
+            return !forecastPoints.isEmpty
         }
-    }
-
-    /// Current-hour card diagnostics are separate from chart diagnostics: the
-    /// hourly chart can be valid even when the one city-local current sample
-    /// is absent or missing one metric.
-    private var metricCardDataIssues: [WeatherDataIssue] {
-        guard selectedRange == .day,
-              let metricPresentation else {
-            return []
-        }
-
-        return DetailChartMetric.allCases.compactMap { metric in
-            metricPresentation.summary(
-                for: metric,
-                temperatureUnit: temperatureUnit,
-                distanceUnit: distanceUnit,
-                locale: locale
-            ) == nil
-                ? metricPresentation.missingDataIssue(for: metric)
-                : nil
-        }
-    }
-
-    private var chartConditionIssue: WeatherDataIssue? {
-        switch selectedRange {
-        case .day:
-            guard let chartForecast,
-                  let forecast = chartForecast.hourlyForecasts.first(where: {
-                      $0.condition == nil
-                  }) else { return nil }
-            return conditionIssue(
-                symbolName: forecast.symbolName,
-                date: forecast.date
-            )
-        case .forecast:
-            guard let forecast = availableForecasts.first(where: {
-                $0.condition == nil
-            }) else { return nil }
-            return conditionIssue(
-                symbolName: forecast.symbolName,
-                date: forecast.date
-            )
-        }
-    }
-
-    private func conditionIssue(
-        symbolName: String,
-        date: Date
-    ) -> WeatherDataIssue {
-        let symbol = symbolName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return symbol.isEmpty
-            ? .missing(.missingConditionData, at: date)
-            : .unknownWeatherSymbol(symbol, at: date)
-    }
-
-    private var missingDataReport: MissingDataAlertReport? {
-        let issues = Array(
-            Set(
-                [chartDataIssue, chartConditionIssue].compactMap { $0 }
-                    + metricCardDataIssues
-            )
-        )
-            .sorted { $0.kind.rawValue < $1.kind.rawValue }
-        guard !issues.isEmpty else { return nil }
-        return MissingDataAlertReport(
-            key: "detail-chart:\(city.id.uuidString):\(selectedForecastDate.timeIntervalSinceReferenceDate):\(selectedRange.rawValue):\(selectedMetric.rawValue):\(metricPresentation?.identity ?? "no-metric-presentation"):\(issues.map(\.kind.rawValue).joined(separator: ","))",
-            title: localizedString("Weather Data Missing", locale: locale),
-            message: Array(Set(issues.map {
-                weatherDataIssueMessage(
-                    $0,
-                    cityName: placeDisplayName,
-                    locale: locale
-                )
-            })).sorted().joined(separator: "\n")
-        )
     }
 
     /// Title, selected range value, and literal date context above the plot.
@@ -677,7 +493,7 @@ struct DetailChartView: View {
     private var temperatureSeriesLegend: some View {
         if selectedRange == .forecast,
            selectedMetric.usesTemperatureLines,
-           chartDataIssue == nil {
+           hasChartData {
             HStack(spacing: 18) {
                 Label("High", systemImage: "circle.fill")
                     .foregroundStyle(metricColor)
@@ -695,7 +511,7 @@ struct DetailChartView: View {
     @ViewBuilder
     private var metricChart: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if chartDataIssue == nil {
+            if hasChartData {
                 switch selectedRange {
                 case .day:
                     if let chartForecast {
@@ -736,15 +552,8 @@ struct DetailChartView: View {
     }
 
     private var chartUnavailableMessage: String {
-        guard let chartDataIssue else {
-            return localizedString(
-                "Forecast data is unavailable for the selected date.",
-                locale: locale
-            )
-        }
-        return weatherDataIssueMessage(
-            chartDataIssue,
-            cityName: placeDisplayName,
+        localizedString(
+            "Forecast data is unavailable for the selected date.",
             locale: locale
         )
     }
@@ -753,13 +562,7 @@ struct DetailChartView: View {
     private func hourlyChart(for forecast: DailyForecast) -> some View {
         // Convert domain forecasts to lightweight numeric points once before
         // entering `Chart`; absent metric values simply do not plot a point.
-        let points = forecast.hourlyForecasts.compactMap {
-            DetailChartPoint.hourly(
-                $0,
-                metric: selectedMetric,
-                distanceUnit: DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
-            )
-        }
+        let points = hourlyPoints(for: forecast)
         let domain = yAxisDomain(for: points)
         let icons = hourlyConditionIcons(for: forecast, at: points.map(\.date))
 
@@ -828,8 +631,24 @@ struct DetailChartView: View {
         // The scale's real upper bound is also the uppermost native axis grid
         // line. Do not add a separate cap mark, which can drift from the plot.
         .chartYScale(domain: domain, range: .plotDimension(startPadding: 0, endPadding: 0))
-        // Keep endpoint symbols and the trailing scale clear of the plot edges.
-        .chartXScale(range: .plotDimension(startPadding: 12, endPadding: 18))
+        .chartPlotStyle { plotArea in
+            plotArea
+                // Close the grid at the plot bounds so horizontal rules never
+                // appear to run past the chart's first or last vertical edge.
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(theme.colors.secondaryText.opacity(0.18))
+                        .frame(width: 1)
+                }
+                .overlay(alignment: .trailing) {
+                    Rectangle()
+                        .fill(theme.colors.secondaryText.opacity(0.18))
+                        .frame(width: 1)
+                }
+        }
+        // Anchor midnight directly on the plot's leading edge. This avoids a
+        // blank chart region before the first (12 AM) x-axis label.
+        .chartXScale(range: .plotDimension(startPadding: 0, endPadding: 18))
         .chartXAxis {
             // Symbols occupy the top axis, leaving bottom labels free for time
             // while sharing the same x values as their plotted points.
@@ -895,13 +714,7 @@ struct DetailChartView: View {
     private var forecastChart: some View {
         // Forecast-range points use one point per real daily forecast. For
         // temperature-like metrics each point also carries low/high values.
-        let points = availableForecasts.compactMap {
-            DetailChartPoint.daily(
-                $0,
-                metric: selectedMetric,
-                distanceUnit: DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
-            )
-        }
+        let points = forecastPoints
         let domain = yAxisDomain(for: points)
         let icons = dailyConditionIcons(at: points.map(\.date))
 
@@ -985,6 +798,21 @@ struct DetailChartView: View {
             }
         }
         .chartYScale(domain: domain, range: .plotDimension(startPadding: 0, endPadding: 0))
+        .chartPlotStyle { plotArea in
+            plotArea
+                // Match the hourly chart: explicit vertical bounds seal the
+                // horizontal grid at both ends of the daily plot.
+                .overlay(alignment: .leading) {
+                    Rectangle()
+                        .fill(theme.colors.secondaryText.opacity(0.18))
+                        .frame(width: 1)
+                }
+                .overlay(alignment: .trailing) {
+                    Rectangle()
+                        .fill(theme.colors.secondaryText.opacity(0.18))
+                        .frame(width: 1)
+                }
+        }
         .chartXScale(range: .plotDimension(startPadding: 12, endPadding: 18))
         .chartXAxis {
             conditionIconAxisMarks(for: icons)
@@ -1041,8 +869,7 @@ struct DetailChartView: View {
                 let value = metricPresentation?.summary(
                     for: metric,
                     temperatureUnit: temperatureUnit,
-                    distanceUnit: distanceUnit,
-                    locale: locale
+                    distanceUnit: distanceUnit
                 )
                 DetailMetricCard(
                     metric: metric,
@@ -1061,33 +888,21 @@ struct DetailChartView: View {
         }
     }
 
-    /// Valid multi-day source horizon after any explicit timezone-edge omission.
+    /// Up to ten real daily forecasts returned for this city. The chart
+    /// intentionally accepts gaps and short horizons rather than treating a
+    /// non-ten-day response as unusable.
     private var availableForecasts: [DailyForecast] {
-        validatedForecastHorizon?.forecasts ?? []
-    }
-
-    private var validatedForecastHorizon: ForecastValidation.TenDayForecastData? {
-        guard case .success(let horizon) = forecastHorizonResult else {
-            return nil
-        }
-        return horizon
-    }
-
-    private var forecastHorizonIssue: WeatherDataIssue? {
-        guard case .failure(let issue) = forecastHorizonResult else {
-            return nil
-        }
-        return issue
-    }
-
-    private var forecastHorizonResult: Result<
-        ForecastValidation.TenDayForecastData,
-        WeatherDataIssue
-    > {
-        ForecastValidation.tenDayForecastData(
-            for: city,
-            selectionCalendar: forecastCalendar
+        Array(
+            city.dailyForecasts
+                .sorted { $0.date < $1.date }
+                .prefix(10)
         )
+        .filter { forecast in
+            city.selectionDate(
+                for: forecast,
+                selectionCalendar: forecastCalendar
+            ) != nil
+        }
     }
 
     private var metricPresentation: DetailMetricValuePresentation? {
@@ -1104,6 +919,28 @@ struct DetailChartView: View {
         DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
     }
 
+    private func hourlyPoints(
+        for forecast: DailyForecast
+    ) -> [DetailChartPoint] {
+        forecast.hourlyForecasts.compactMap {
+            DetailChartPoint.hourly(
+                $0,
+                metric: selectedMetric,
+                distanceUnit: distanceUnit
+            )
+        }
+    }
+
+    private var forecastPoints: [DetailChartPoint] {
+        availableForecasts.compactMap {
+            DetailChartPoint.daily(
+                $0,
+                metric: selectedMetric,
+                distanceUnit: distanceUnit
+            )
+        }
+    }
+
     /// Value range printed above the selected chart.
     private var chartSummary: String? {
         switch selectedRange {
@@ -1111,19 +948,15 @@ struct DetailChartView: View {
             return chartForecast.flatMap {
                 selectedMetric.summary(
                     for: $0,
-                    city: city,
                     temperatureUnit: temperatureUnit,
-                    distanceUnit: DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers,
-                    locale: locale
+                    distanceUnit: DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
                 )
             }
         case .forecast:
             return selectedMetric.forecastSummary(
                 availableForecasts,
-                city: city,
                 temperatureUnit: temperatureUnit,
-                distanceUnit: DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers,
-                locale: locale
+                distanceUnit: DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
             )
         }
     }
@@ -1203,7 +1036,6 @@ struct DetailChartView: View {
             guard plottedDates.contains(forecast.id) else { return nil }
             return ChartConditionIcon(
                 id: forecast.id,
-                symbolName: forecast.symbolName,
                 condition: forecast.condition
             )
         }
@@ -1223,7 +1055,6 @@ struct DetailChartView: View {
             guard plottedDates.contains(forecast.id) else { return nil }
             return ChartConditionIcon(
                 id: forecast.id,
-                symbolName: forecast.symbolName,
                 condition: forecast.condition
             )
         }
@@ -1260,12 +1091,10 @@ struct DetailChartView: View {
     private var chartSelectionDates: [Date] {
         // Convert each forecast instant through CityWeather before using it in
         // the date stepper: the city may live in another time zone.
-        let today = forecastCalendar.startOfDay(for: Date())
         return Array(
-            Set(city.dailyForecasts.compactMap {
+            Set(availableForecasts.compactMap {
                 city.selectionDate(for: $0, selectionCalendar: forecastCalendar)
             })
-            .filter { $0 >= today }
         )
         .sorted()
     }
@@ -1374,61 +1203,49 @@ private extension DetailChartMetric {
     /// Card value for one selected day.
     func summary(
         for forecast: DailyForecast,
-        city: CityWeather,
         temperatureUnit: TemperatureUnit,
-        distanceUnit: DistanceUnit,
-        locale: Locale
+        distanceUnit: DistanceUnit
     ) -> String? {
-        // Missing fields remain an empty value in the card; the owning grid
-        // reports their structured issue through the native alert queue.
+        // WeatherKit's numeric values are used as delivered. Optional readings
+        // are omitted only where this specific presentation needs them.
         switch self {
         case .temperature:
-            guard forecast.dailyLow.isFinite, forecast.dailyHigh.isFinite else {
-                return nil
-            }
             return temperatureRange(
                 low: forecast.dailyLow,
                 high: forecast.dailyHigh,
                 unit: temperatureUnit
             )
         case .feelsLike:
-            guard let values = completeHourlyValues(
-                from: forecast.hourlyForecasts,
-                transform: \.apparentTemperature,
-                isValid: \.isFinite
-            ) else { return nil }
             return hourlyTemperatureRange(
-                values,
+                forecast.hourlyForecasts.compactMap(\.apparentTemperature),
                 unit: temperatureUnit
             )
         case .cloudCover:
-            guard let values = completeHourlyValues(
-                from: forecast.hourlyForecasts,
-                transform: { $0.cloudCover.map { $0 * 100 } },
-                isValid: { $0.isFinite && (0...100).contains($0) }
-            ) else { return nil }
-            return hourlyNumericRange(values, suffix: "%")
+            return hourlyNumericRange(
+                forecast.hourlyForecasts.compactMap {
+                    $0.cloudCover.map { $0 * 100 }
+                },
+                suffix: "%"
+            )
         case .rainChance:
-            guard let values = completeHourlyValues(
-                from: forecast.hourlyForecasts,
-                transform: { $0.precipitationChance.map { $0 * 100 } },
-                isValid: { $0.isFinite && (0...100).contains($0) }
-            ) else { return nil }
-            return hourlyNumericRange(values, suffix: "%")
+            return hourlyNumericRange(
+                forecast.hourlyForecasts.compactMap {
+                    $0.precipitationChance.map { $0 * 100 }
+                },
+                suffix: "%"
+            )
         case .visibility:
-            guard let values = completeHourlyValues(
-                from: forecast.hourlyForecasts,
-                transform: \.visibilityKilometers,
-                isValid: { $0.isFinite && $0 >= 0 }
-            ) else { return nil }
-            return hourlyVisibilityRange(values, unit: distanceUnit)
+            return hourlyVisibilityRange(
+                forecast.hourlyForecasts.compactMap(\.visibilityKilometers),
+                unit: distanceUnit
+            )
         case .uvIndex:
-            guard let values = completeHourlyValues(
-                from: forecast.hourlyForecasts,
-                transform: { $0.uvIndex.map(Double.init) },
-                isValid: { $0.isFinite && $0 >= 0 }
-            ) else { return nil }
-            return hourlyNumericRange(values, suffix: "")
+            return hourlyNumericRange(
+                forecast.hourlyForecasts.compactMap {
+                    $0.uvIndex.map(Double.init)
+                },
+                suffix: ""
+            )
         }
     }
 
@@ -1444,104 +1261,32 @@ private extension DetailChartMetric {
 
         switch self {
         case .temperature:
-            guard let value = hour.temperature, value.isFinite else { return nil }
+            guard let value = hour.temperature else { return nil }
             return temperatureUnit.display(value)
         case .feelsLike:
-            guard let value = hour.apparentTemperature, value.isFinite else {
+            guard let value = hour.apparentTemperature else {
                 return nil
             }
             return temperatureUnit.display(value)
         case .cloudCover:
-            guard let value = hour.cloudCover,
-                  value.isFinite,
-                  (0...1).contains(value) else {
+            guard let value = hour.cloudCover else {
                 return nil
             }
             return "\(Int((value * 100).rounded()))%"
         case .rainChance:
-            guard let value = hour.precipitationChance,
-                  value.isFinite,
-                  (0...1).contains(value) else {
+            guard let value = hour.precipitationChance else {
                 return nil
             }
             return "\(Int((value * 100).rounded()))%"
         case .visibility:
-            guard let value = hour.visibilityKilometers,
-                  value.isFinite,
-                  value >= 0 else {
+            guard let value = hour.visibilityKilometers else {
                 return nil
             }
             return distanceUnit.display(value)
         case .uvIndex:
-            guard let value = hour.uvIndex, value >= 0 else { return nil }
+            guard let value = hour.uvIndex else { return nil }
             return String(value)
         }
-    }
-
-    /// Field-specific reason the current city-local hour cannot render.
-    func currentHourlySummaryIssue(
-        for hour: HourlyForecast
-    ) -> WeatherDataIssue? {
-        switch self {
-        case .temperature:
-            guard let value = hour.temperature else {
-                return .missing(.missingTemperatureData, at: hour.date)
-            }
-            return value.isFinite
-                ? nil
-                : .invalidValue("hourly temperature", at: hour.date)
-        case .feelsLike:
-            guard let value = hour.apparentTemperature else {
-                return .missing(.missingApparentTemperatureData, at: hour.date)
-            }
-            return value.isFinite
-                ? nil
-                : .invalidValue("hourly apparent temperature", at: hour.date)
-        case .cloudCover:
-            guard let value = hour.cloudCover else {
-                return .missing(.missingCloudCoverData, at: hour.date)
-            }
-            return value.isFinite && (0...1).contains(value)
-                ? nil
-                : .invalidValue("hourly cloud cover", at: hour.date)
-        case .rainChance:
-            guard let value = hour.precipitationChance else {
-                return .missing(.missingPrecipitationChanceData, at: hour.date)
-            }
-            return value.isFinite && (0...1).contains(value)
-                ? nil
-                : .invalidValue("hourly precipitation chance", at: hour.date)
-        case .visibility:
-            guard let value = hour.visibilityKilometers else {
-                return .missing(.missingVisibilityData, at: hour.date)
-            }
-            return value.isFinite && value >= 0
-                ? nil
-                : .invalidValue("hourly visibility", at: hour.date)
-        case .uvIndex:
-            return hour.uvIndex == nil
-                ? .missing(.missingUVIndexData, at: hour.date)
-                : hour.uvIndex! >= 0
-                ? nil
-                : .invalidValue("hourly UV index", at: hour.date)
-        }
-    }
-
-    /// Non-today cards are daily ranges. Require a complete selected-day
-    /// hourly set for every metric so a partial rolling feed cannot imply a
-    /// trustworthy min–max range.
-    private func completeHourlyValues(
-        from hours: [HourlyForecast],
-        transform: (HourlyForecast) -> Double?,
-        isValid: (Double) -> Bool
-    ) -> [Double]? {
-        guard !hours.isEmpty else { return nil }
-        let values = hours.compactMap(transform)
-        guard values.count == hours.count,
-              values.allSatisfy(isValid) else {
-            return nil
-        }
-        return values
     }
 
     private func hourlyTemperatureRange(
@@ -1583,10 +1328,8 @@ private extension DetailChartMetric {
     /// Aggregate value range across the actual available forecast horizon.
     func forecastSummary(
         _ forecasts: [DailyForecast],
-        city: CityWeather,
         temperatureUnit: TemperatureUnit,
-        distanceUnit: DistanceUnit,
-        locale: Locale
+        distanceUnit: DistanceUnit
     ) -> String? {
         // Forecast summaries summarize only available values, never substitute
         // zero for missing weather readings.
@@ -1597,134 +1340,29 @@ private extension DetailChartMetric {
                   let high = forecasts.map(\.dailyHigh).max() else { return nil }
             return temperatureRange(low: low, high: high, unit: temperatureUnit)
         case .feelsLike:
-            // WeatherKit provides no daily apparent-temperature aggregate, but
-            // each forecast day retains its own real hourly readings. Keep the
-            // 10-day headline consistent with the plotted daily low/high data.
-            guard forecasts.allSatisfy({ forecast in
-                !forecast.hourlyForecasts.isEmpty
-                    && forecast.hourlyForecasts.allSatisfy {
-                        $0.apparentTemperature != nil
-                    }
-            }) else { return nil }
-            let dailyRanges = forecasts.compactMap { forecast -> (Double, Double)? in
-                let values = forecast.hourlyForecasts.compactMap(\.apparentTemperature)
-                guard let low = values.min(), let high = values.max() else { return nil }
-                return (low, high)
-            }
-            guard let low = dailyRanges.map(\.0).min(),
-                  let high = dailyRanges.map(\.1).max() else { return nil }
-            return temperatureRange(low: low, high: high, unit: temperatureUnit)
+            return hourlyTemperatureRange(
+                forecasts
+                    .flatMap(\.hourlyForecasts)
+                    .compactMap(\.apparentTemperature),
+                unit: temperatureUnit
+            )
         case .cloudCover:
-            guard forecasts.allSatisfy({ $0.cloudCover != nil }) else {
-                return nil
-            }
-            return numericRange(forecasts.compactMap { $0.cloudCover.map { $0 * 100 } }, suffix: "%")
+            return numericRange(
+                forecasts.compactMap { $0.cloudCover.map { $0 * 100 } },
+                suffix: "%"
+            )
         case .rainChance:
-            guard forecasts.allSatisfy({ $0.precipitationChance != nil }) else {
-                return nil
-            }
             return numericRange(
                 forecasts.compactMap { $0.precipitationChance.map { $0 * 100 } },
                 suffix: "%"
             )
         case .visibility:
-            guard forecasts.allSatisfy({ forecast in
-                forecast.averageVisibilityKilometers != nil
-            }) else {
-                return nil
-            }
             return visibilityRange(
-                forecasts.compactMap(\.averageVisibilityKilometers),
+                forecasts.compactMap(\.chartAverageVisibilityKilometers),
                 unit: distanceUnit
             )
         case .uvIndex:
-            guard forecasts.allSatisfy({ $0.uvIndex != nil }) else {
-                return nil
-            }
             return numericRange(forecasts.compactMap { $0.uvIndex.map(Double.init) }, suffix: "")
-        }
-    }
-
-    func dailySummaryIssue(
-        for forecast: DailyForecast,
-        timeZone: TimeZone
-    ) -> WeatherDataIssue? {
-        // Temperature has authoritative daily low/high values. The remaining
-        // cards now display min–max ranges derived from hourly readings, so
-        // their diagnostics must validate that same source instead of the
-        // older single daily aggregate.
-        self == .temperature
-            ? nil
-            : hourlyChartIssue(for: forecast, timeZone: timeZone)
-    }
-
-    func hourlyChartIssue(
-        for forecast: DailyForecast,
-        timeZone: TimeZone
-    ) -> WeatherDataIssue? {
-        guard !forecast.hourlyForecasts.isEmpty else {
-            return .missingHourlyData(at: forecast.date)
-        }
-        let missingHour = forecast.hourlyForecasts.first { hour in
-            switch self {
-            case .temperature: hour.temperature == nil
-            case .feelsLike: hour.apparentTemperature == nil
-            case .cloudCover: hour.cloudCover == nil
-            case .rainChance: hour.precipitationChance == nil
-            case .visibility: hour.visibilityKilometers == nil
-            case .uvIndex: hour.uvIndex == nil
-            }
-        }
-        guard let missingHour else { return nil }
-        return .missing(missingKind, at: missingHour.date)
-    }
-
-    func dailyChartIssue(
-        for forecast: DailyForecast,
-        timeZone: TimeZone
-    ) -> WeatherDataIssue? {
-        switch self {
-        case .temperature:
-            return nil
-        case .feelsLike:
-            guard !forecast.hourlyForecasts.isEmpty else {
-                return .missingHourlyData(at: forecast.date)
-            }
-            guard let hour = forecast.hourlyForecasts.first(where: {
-                $0.apparentTemperature == nil
-            }) else { return nil }
-            return .missing(.missingApparentTemperatureData, at: hour.date)
-        case .cloudCover:
-            return forecast.cloudCover == nil
-                ? .missing(.missingCloudCoverData, at: forecast.date)
-                : nil
-        case .rainChance:
-            return forecast.precipitationChance == nil
-                ? .missing(.missingPrecipitationChanceData, at: forecast.date)
-                : nil
-        case .visibility:
-            guard !forecast.hourlyForecasts.isEmpty else {
-                return .missingHourlyData(at: forecast.date)
-            }
-            guard let hour = forecast.hourlyForecasts.first(where: {
-                $0.visibilityKilometers == nil
-            }) else { return nil }
-            return .missing(.missingVisibilityData, at: hour.date)
-        case .uvIndex:
-            return forecast.uvIndex == nil
-                ? .missing(.missingUVIndexData, at: forecast.date)
-                : nil
-        }
-    }
-
-    private var missingKind: WeatherDataIssue.Kind {
-        switch self {
-        case .temperature: .missingTemperatureData
-        case .feelsLike: .missingApparentTemperatureData
-        case .cloudCover: .missingCloudCoverData
-        case .rainChance: .missingPrecipitationChanceData
-        case .visibility: .missingVisibilityData
-        case .uvIndex: .missingUVIndexData
         }
     }
 
@@ -1740,6 +1378,17 @@ private extension DetailChartMetric {
     func visibilityRange(_ values: [Double], unit: DistanceUnit) -> String? {
         guard let low = values.min(), let high = values.max() else { return nil }
         return unit.displayRange(low, high)
+    }
+}
+
+/// This chart's daily visibility point is computed from whatever hourly values
+/// WeatherKit supplied. A missing hour should omit only that reading rather
+/// than suppressing the full day from the available forecast chart.
+private extension DailyForecast {
+    var chartAverageVisibilityKilometers: Double? {
+        let values = hourlyForecasts.compactMap(\.visibilityKilometers)
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +) / Double(values.count)
     }
 }
 
@@ -1810,7 +1459,9 @@ private struct DetailChartPoint: Identifiable {
             guard let value = forecast.precipitationChance else { return nil }
             return DetailChartPoint(date: forecast.date, value: value * 100, lowerValue: nil, upperValue: nil)
         case .visibility:
-            guard let value = forecast.averageVisibilityKilometers else { return nil }
+            guard let value = forecast.chartAverageVisibilityKilometers else {
+                return nil
+            }
             return DetailChartPoint(
                 date: forecast.date,
                 value: distanceUnit.value(fromKilometers: value),

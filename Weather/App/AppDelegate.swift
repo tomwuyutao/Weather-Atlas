@@ -14,25 +14,39 @@ import UIKit
 enum HomeScreenShortcutDestination: String, CaseIterable {
     /// Raw values are persisted in `UserDefaults`, so keep them stable across
     /// releases even if the visible tab labels change.
-    case home
+    case findSunNearMe
     case map
     case places
+
+    /// Retains decoding support for Home Screen shortcuts created by earlier
+    /// app versions without publishing a fourth action in the current menu.
+    case legacyHome = "home"
+
+    static var allCases: [HomeScreenShortcutDestination] {
+        [.findSunNearMe, .places, .map]
+    }
 
     /// The SF Symbol paired with this destination in the system shortcut menu.
     var iconName: String {
         switch self {
-        case .home: return "location.fill"
+        case .findSunNearMe: return "sun.max.fill"
         case .map: return "map"
         case .places: return "bookmark"
+        case .legacyHome: return "location.fill"
         }
     }
 
     /// Returns the user-facing destination name in the app-selected locale.
     func localizedTitle(locale: Locale) -> String {
         switch self {
-        case .home: return localizedString("Your Location", locale: locale)
+        case .findSunNearMe:
+            return [
+                localizedString("Find Sun", locale: locale),
+                localizedString("Near Me", locale: locale)
+            ].joined(separator: " ")
         case .map: return localizedString("Map", locale: locale)
         case .places: return localizedString("Saved Places", locale: locale)
+        case .legacyHome: return localizedString("Your Location", locale: locale)
         }
     }
 }

@@ -18,6 +18,9 @@ struct BestSunnyPlacesCard: View {
     let savedPlaces: [SavedPlace]
     /// Describes why the ranking may not yet contain a usable row.
     let presentationState: SavedPlacesForecastPresentationState
+    /// Explains when saved places were omitted because the selected date has
+    /// already passed in their local time zone.
+    let timeZoneExclusionNotice: String?
 
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
@@ -30,11 +33,18 @@ struct BestSunnyPlacesCard: View {
     }
 
     private var orderedRows: [SavedPlaceSunnyRow] {
-        let orderedPlaces = SunnyPlacesRanking.savedPlacesBySunnyHours(
-            savedPlaces,
-            recommendations: recommendations,
-            locale: locale
+        let rankByPlaceID = Dictionary(
+            uniqueKeysWithValues: PlaceRecommendation.ranked(
+                recommendations,
+                locale: locale
+            ).enumerated().map { ($0.element.id, $0.offset) }
         )
+        let orderedPlaces = savedPlaces
+            .filter { rankByPlaceID[$0.id] != nil }
+            .sorted {
+                rankByPlaceID[$0.id, default: .max]
+                    < rankByPlaceID[$1.id, default: .max]
+            }
 
         // The engine already excludes unavailable recommendations. `compactMap`
         // also makes that invariant explicit in the row type, preventing a
@@ -66,9 +76,9 @@ struct BestSunnyPlacesCard: View {
                         NavigationLink(
                             value: AppRoute.place(id: row.id)
                         ) {
-                            SavedPlacesPlaceRow(
+                            SunnyPlaceRecommendationRow(
                                 recommendation: row.recommendation,
-                                place: row.place
+                                displayName: row.place.displayName
                             )
                         }
                         .buttonStyle(.plain)
@@ -87,6 +97,12 @@ struct BestSunnyPlacesCard: View {
                 }
             } else {
                 statusContent
+            }
+
+            // Keep this context attached to the comparison it qualifies,
+            // rather than leaving an orphaned note below the dashboard.
+            if let timeZoneExclusionNotice {
+                WeatherTimeZoneFootnote(text: timeZoneExclusionNotice)
             }
         }
         .padding(WeatherCardLayout.padding)
@@ -149,7 +165,7 @@ private struct SavedPlaceSunnyRow: Identifiable {
 
 /// The row grid deliberately shares the header's icon width and spacing, so
 /// recommendation names and the card title begin on the same visual column.
-private enum SavedPlacesSunnyListLayout {
+enum SavedPlacesSunnyListLayout {
     static let leadingIconWidth = WeatherCardLayout.leadingIconWidth
     static let columnSpacing = WeatherCardLayout.headerSpacing
     static let cityNameLeadingInset = leadingIconWidth + columnSpacing
@@ -157,16 +173,12 @@ private enum SavedPlacesSunnyListLayout {
 
 /// One saved-place row. The parent omits a place when this selected date has no
 /// usable recommendation, so every visible row has meaningful weather values.
-private struct SavedPlacesPlaceRow: View {
+struct SunnyPlaceRecommendationRow: View {
     let recommendation: PlaceRecommendation
-    let place: SavedPlace
+    let displayName: String
 
     @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
-
-    private var cityName: String {
-        place.displayName
-    }
 
     var body: some View {
         // The spacer pushes only the numeric value to the trailing edge; the
@@ -187,7 +199,7 @@ private struct SavedPlacesPlaceRow: View {
 
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(cityName)
+                Text(displayName)
                     .font(.body)
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(2)

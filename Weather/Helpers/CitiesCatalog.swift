@@ -43,10 +43,6 @@ nonisolated struct CatalogCity: Identifiable, Hashable, Sendable {
     /// their place metadata has been resolved.
     let timeZoneIdentifier: String?
 
-    /// Core Location coordinate used by MapKit and WeatherKit integrations.
-    var coordinate: CLLocationCoordinate2D {
-        CLLocationCoordinate2D(latitude: latitude, longitude: longitude)
-    }
 }
 
 /// A geographically eligible city plus its distance from the query center.
@@ -197,73 +193,6 @@ actor CitiesCatalog {
     func reload() {
         loadTask?.cancel()
         loadTask = nil
-    }
-
-    /// Returns catalog cities inside a geographic radius, ordered nearest
-    /// first so a caller can stop network work as soon as it finds a match.
-    /// The catalog query itself is local and performs no WeatherKit requests.
-    func cities(
-        centeredAt center: CLLocationCoordinate2D,
-        withinKilometers radiusKilometers: Double,
-        fartherThanKilometers minimumDistanceKilometers: Double = 0,
-        limit: Int
-    ) async throws -> [CatalogCityDistanceCandidate] {
-        // Treat invalid user/configuration values as an empty local query. This
-        // avoids constructing nonsensical coordinates or throwing for a normal
-        // empty-search UI state.
-        guard CLLocationCoordinate2DIsValid(center),
-              radiusKilometers.isFinite,
-              radiusKilometers > 0,
-              minimumDistanceKilometers.isFinite,
-              minimumDistanceKilometers >= 0,
-              limit > 0 else {
-            return []
-        }
-
-        // A latitude-only bounding box is much cheaper than a Haversine distance.
-        // It is deliberately conservative: cities that pass still get the exact
-        // great-circle calculation in the loop below.
-        let maximumLatitudeDelta = radiusKilometers / Self.minimumKilometersPerLatitudeDegree
-        let cities = try await allCities()
-
-        var candidates: [CatalogCityDistanceCandidate] = []
-        candidates.reserveCapacity(min(limit * 8, cities.count))
-        for (index, city) in cities.enumerated() {
-            // The dataset is large enough that a cancelled sheet/search should
-            // stop promptly instead of finishing a useless full scan.
-            if index.isMultiple(of: 256) {
-                try Task.checkCancellation()
-            }
-            // This inexpensive geographic bound removes most of the dataset
-            // before the more precise great-circle calculation.
-            guard abs(city.latitude - center.latitude) <= maximumLatitudeDelta else {
-                continue
-            }
-
-            let distance = Self.distanceKilometers(
-                fromLatitude: center.latitude,
-                longitude: center.longitude,
-                toLatitude: city.latitude,
-                longitude: city.longitude
-            )
-            guard distance <= radiusKilometers,
-                  distance > minimumDistanceKilometers else {
-                continue
-            }
-
-            candidates.append(
-                CatalogCityDistanceCandidate(
-                    city: city,
-                    distanceKilometers: distance
-                )
-            )
-        }
-
-        // Sorting after filtering is simpler and deterministic. `prefix` limits
-        // only the returned candidates, not the geographic correctness of scan.
-        return Array(
-            candidates.sorted(by: Self.isNearerCandidate).prefix(limit)
-        )
     }
 
     /// Returns the most populous catalog cities inside a radius while retaining
@@ -433,19 +362,6 @@ actor CitiesCatalog {
     }
 
     // MARK: - Query Helpers
-
-    /// Orders candidates strictly by distance and stable identity. Population
-    /// is irrelevant to this query, so a missing population is never replaced
-    /// merely to break a geographic tie.
-    nonisolated private static func isNearerCandidate(
-        _ lhs: CatalogCityDistanceCandidate,
-        _ rhs: CatalogCityDistanceCandidate
-    ) -> Bool {
-        if lhs.distanceKilometers != rhs.distanceKilometers {
-            return lhs.distanceKilometers < rhs.distanceKilometers
-        }
-        return lhs.id < rhs.id
-    }
 
     /// Known populations rank high-to-low; nil remains an unknown value at the
     /// end instead of being converted into a real population of zero.

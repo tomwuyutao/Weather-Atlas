@@ -164,7 +164,7 @@ enum AppTextSizeLevel: Int, CaseIterable {
         switch self {
         case .small: return localizedString("Small", locale: locale)
         case .medium: return localizedString("Medium", locale: locale)
-        case .large: return localizedString("Default", locale: locale)
+        case .large: return localizedString("Large (System)", locale: locale)
         case .xLarge: return localizedString("Large", locale: locale)
         case .xxLarge: return localizedString("Extra Large", locale: locale)
         }

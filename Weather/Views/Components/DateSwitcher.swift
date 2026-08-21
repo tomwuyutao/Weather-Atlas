@@ -244,9 +244,4 @@ enum ForecastDateHorizon {
         }
     }
 
-    /// Default only for previews and isolated callers. App destinations pass
-    /// the current-location calendar explicitly.
-    static var dates: [Date] {
-        dates(in: .current)
-    }
 }

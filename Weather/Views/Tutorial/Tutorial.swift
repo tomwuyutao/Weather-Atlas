@@ -78,13 +78,12 @@ struct TutorialFlow: View {
 
     private var tutorialContent: some View {
         TabView(selection: $step) {
-            TutorialWelcomeStage(currentPage: 0) {
+            TutorialWelcomeStage {
                 advanceToLocation()
             }
             .tag(TutorialStep.welcome)
 
             TutorialLocationStage(
-                currentPage: 1,
                 isRequestingDeviceLocation: isRequestingDeviceLocation,
                 deviceLocationMessage: deviceLocationMessage,
                 useCurrentLocation: useCurrentLocation,
@@ -172,11 +171,10 @@ private enum TutorialStep: Hashable {
 /// The bright first tutorial page. It has no dependency on live app state so
 /// it can be previewed exactly as it appears after the launch animation.
 struct TutorialWelcomeStage: View {
-    let currentPage: Int
     let continueAction: () -> Void
 
     var body: some View {
-        TutorialStageLayout(currentPage: currentPage) {
+        TutorialStageLayout {
             tutorialWelcomeIntro
         } actions: {
             Button("Continue", action: continueAction)
@@ -203,14 +201,13 @@ struct TutorialWelcomeStage: View {
 /// The required location page. It is parameterised by state owned by
 /// `TutorialFlow`, keeping the visual stage independently previewable.
 struct TutorialLocationStage: View {
-    let currentPage: Int
     let isRequestingDeviceLocation: Bool
     let deviceLocationMessage: LocalizedStringKey?
     let useCurrentLocation: () -> Void
     let chooseHomeLocation: () -> Void
 
     var body: some View {
-        TutorialStageLayout(currentPage: currentPage) {
+        TutorialStageLayout {
             tutorialLocationIntro
         } actions: {
             VStack(spacing: 12) {
@@ -269,7 +266,6 @@ struct TutorialLocationStage: View {
 /// Both full-screen stages use the same relative intro anchor, so their title
 /// and subtitle align vertically while their action counts can differ.
 private struct TutorialStageLayout<Intro: View, Actions: View>: View {
-    let currentPage: Int
     @ViewBuilder let intro: () -> Intro
     @ViewBuilder let actions: () -> Actions
 
@@ -282,45 +278,9 @@ private struct TutorialStageLayout<Intro: View, Actions: View>: View {
                 Spacer(minLength: 32)
 
                 actions()
-
-                TutorialPageIndicator(currentPage: currentPage)
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 16)
             }
             .padding(28)
         }
-    }
-}
-
-/// A compact, persistent indicator for the two swipeable first-run screens.
-/// It stays below the actions so the current page remains clear without
-/// competing with the primary button.
-private struct TutorialPageIndicator: View {
-    let currentPage: Int
-
-    var body: some View {
-        // Keep the indicator's footprint fixed. Only the active capsule moves
-        // between the two page positions, so the indicator itself never slides
-        // as its active page changes.
-        ZStack(alignment: .leading) {
-            HStack(spacing: 8) {
-                pageDot()
-                pageDot()
-            }
-
-            Capsule()
-                .fill(AppPalette.light.titleText)
-                .frame(width: 24, height: 8)
-                .offset(x: currentPage == 0 ? 0 : 16)
-        }
-        .frame(width: 40, height: 8)
-        .animation(.smooth, value: currentPage)
-    }
-
-    private func pageDot() -> some View {
-        Circle()
-            .fill(AppPalette.light.titleText.opacity(0.3))
-            .frame(width: 8, height: 8)
     }
 }
 
@@ -334,11 +294,15 @@ private struct TutorialHomeLocationPicker: View {
 
     @Environment(\.dismiss) private var dismiss
     @Environment(\.locale) private var locale
+    @Environment(\.appTheme) private var theme
 
     @State private var searchManager = CitySearchManager()
     @State private var query = ""
     @State private var isSettled = true
     @State private var selectionTask: Task<Void, Never>?
+    /// Cancellation can race a provider completion. A generation also blocks
+    /// stale results when the person changes then restores the same query.
+    @State private var selectionGeneration = 0
     @State private var loadingID: CitySearchResult.ID?
     @State private var selectionMessage: String?
 
@@ -351,8 +315,11 @@ private struct TutorialHomeLocationPicker: View {
                 .task(id: "\(normalizedQuery)|\(locale.identifier)") {
                     await updateSearch()
                 }
+                .onChange(of: query) { _, _ in
+                    invalidateSelection()
+                }
                 .onDisappear {
-                    selectionTask?.cancel()
+                    invalidateSelection()
                 }
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -374,29 +341,33 @@ private struct TutorialHomeLocationPicker: View {
             )
         } else if isSearching && hasNoResults {
             ProgressView("Searching…")
-        } else if !isSearching && hasNoResults {
+        } else if !isSearching && hasNoResults && !hasProviderError {
             ContentUnavailableView.search(text: normalizedQuery)
         } else {
             List {
                 if let selectionMessage {
                     Section {
                         Label(selectionMessage, systemImage: "exclamationmark.circle")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.colors.secondaryText)
                     }
+                    .listRowBackground(theme.colors.settingsRowFill)
                 }
 
                 resultSection(
                     "Apple Maps",
                     results: searchManager.appleResults,
-                    isSearching: searchManager.isAppleSearching
+                    isSearching: searchManager.isAppleSearching,
+                    errorMessage: searchManager.appleErrorMessage
                 )
                 resultSection(
                     "Open-Meteo",
                     results: searchManager.openMeteoResults,
-                    isSearching: searchManager.isOpenMeteoSearching
+                    isSearching: searchManager.isOpenMeteoSearching,
+                    errorMessage: searchManager.openMeteoErrorMessage
                 )
             }
             .listStyle(.insetGrouped)
+            .weatherScrollableBackground()
         }
     }
 
@@ -404,26 +375,26 @@ private struct TutorialHomeLocationPicker: View {
     private func resultSection(
         _ title: LocalizedStringKey,
         results: [CitySearchResult],
-        isSearching: Bool
+        isSearching: Bool,
+        errorMessage: String?
     ) -> some View {
-        if !results.isEmpty || isSearching {
+        if !results.isEmpty || isSearching || errorMessage != nil {
             Section(title) {
                 ForEach(results) { result in
                     Button {
                         select(result)
                     } label: {
                         HStack(spacing: 12) {
-                            Image(systemName: "mappin.and.ellipse")
-                                .foregroundStyle(.tint)
-
-
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(result.title)
-                                    .foregroundStyle(.primary)
+                                    .font(.body)
+                                    .foregroundStyle(theme.colors.primaryText)
                                 if !result.subtitle.isEmpty {
                                     Text(result.subtitle)
                                         .font(.subheadline)
-                                        .foregroundStyle(.secondary)
+                                        .foregroundStyle(
+                                            theme.colors.secondaryText
+                                        )
                                 }
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -446,11 +417,35 @@ private struct TutorialHomeLocationPicker: View {
                         ProgressView()
 
                         Text("Searching…")
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(theme.colors.secondaryText)
                     }
+                } else if errorMessage != nil {
+                    providerUnavailableRow
                 }
             }
+            .listRowBackground(theme.colors.settingsRowFill)
         }
+    }
+
+    /// Mirrors the main Search screen: a failed provider stays distinct from
+    /// an ordinary empty search and can retry the current query in place.
+    private var providerUnavailableRow: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Search Unavailable", systemImage: "exclamationmark.triangle")
+                .font(.headline)
+                .foregroundStyle(theme.colors.primaryText)
+
+            Text("This provider could not return results. Try again.")
+                .font(.subheadline)
+                .foregroundStyle(theme.colors.secondaryText)
+
+            Button("Try Again", systemImage: "arrow.clockwise") {
+                retryCitySearch()
+            }
+            .buttonStyle(.bordered)
+            .tint(theme.colors.accent)
+        }
+        .padding(.vertical, 4)
     }
 
     private var normalizedQuery: String {
@@ -463,6 +458,11 @@ private struct TutorialHomeLocationPicker: View {
 
     private var isSearching: Bool {
         !isSettled || searchManager.isAppleSearching || searchManager.isOpenMeteoSearching
+    }
+
+    private var hasProviderError: Bool {
+        searchManager.appleErrorMessage != nil
+            || searchManager.openMeteoErrorMessage != nil
     }
 
     private func updateSearch() async {
@@ -485,19 +485,47 @@ private struct TutorialHomeLocationPicker: View {
         isSettled = true
     }
 
-    private func select(_ result: CitySearchResult) {
+    /// Restarts both providers for the current query, matching the main Search
+    /// screen's recovery behavior.
+    @MainActor
+    private func retryCitySearch() {
+        guard !normalizedQuery.isEmpty else { return }
+        invalidateSelection()
+        isSettled = true
+        searchManager.search(query: normalizedQuery, locale: locale)
+    }
+
+    @MainActor
+    private func invalidateSelection() {
+        selectionGeneration &+= 1
         selectionTask?.cancel()
+        selectionTask = nil
+        loadingID = nil
+        selectionMessage = nil
+    }
+
+    @MainActor
+    private func select(_ result: CitySearchResult) {
+        invalidateSelection()
+        let generation = selectionGeneration
+        let submittedQuery = normalizedQuery
         selectionTask = Task { @MainActor in
             loadingID = result.id
             selectionMessage = nil
             defer {
-                loadingID = nil
-                selectionTask = nil
+                if selectionGeneration == generation {
+                    loadingID = nil
+                    selectionTask = nil
+                }
             }
 
             do {
                 let resolved = try await searchManager.resolvePlace(for: result)
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled,
+                      selectionGeneration == generation,
+                      normalizedQuery == submittedQuery else {
+                    return
+                }
                 let city = City(
                     name: resolved.cityName,
                     country: resolved.country,
@@ -509,7 +537,11 @@ private struct TutorialHomeLocationPicker: View {
             } catch is CancellationError {
                 return
             } catch {
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled,
+                      selectionGeneration == generation,
+                      normalizedQuery == submittedQuery else {
+                    return
+                }
                 selectionMessage = "We could not set that location. Try another result."
             }
         }
@@ -573,15 +605,27 @@ struct TutorialFeatureTipCard: View {
                 .foregroundStyle(panelPalette.titleText.opacity(0.84))
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button("Done", action: dismiss)
-                .font(.headline.weight(.semibold))
-                .foregroundStyle(AppPalette.light.titleText)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 14)
-                .background(
-                    AppPalette.light.dotSun,
-                    in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-                )
+            Button(action: dismiss) {
+                Text("Done")
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(AppPalette.light.titleText)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(
+                        AppPalette.light.dotSun,
+                        in: RoundedRectangle(
+                            cornerRadius: 16,
+                            style: .continuous
+                        )
+                    )
+                    // The visible background belongs to the label, so this
+                    // shape makes the entire yellow control tappable rather
+                    // than only the word “Done”.
+                    .contentShape(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    )
+            }
+            .buttonStyle(.plain)
         }
         .padding(24)
         .frame(maxWidth: 360)
@@ -615,58 +659,6 @@ struct TutorialFeatureTipOverlay: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .animation(.smooth, value: isSelected)
         .animation(.smooth, value: tip)
-    }
-}
-
-/// Treats the first direct interaction with a tab as acknowledgement of its
-/// tutorial. The gestures run alongside the tab's own controls, so selecting a
-/// place, changing a date, scrolling, panning, pinching, or rotating the map
-/// still performs its intended action while the explanatory card disappears.
-private struct TutorialFeatureTipInteractionDismissal: ViewModifier {
-    let isPresented: Bool
-    let dismiss: () -> Void
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if isPresented {
-            content
-                .simultaneousGesture(
-                    TapGesture().onEnded {
-                        dismiss()
-                    }
-                )
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 1).onChanged { _ in
-                        dismiss()
-                    }
-                )
-                .simultaneousGesture(
-                    MagnifyGesture().onChanged { _ in
-                        dismiss()
-                    }
-                )
-                .simultaneousGesture(
-                    RotateGesture().onChanged { _ in
-                        dismiss()
-                    }
-                )
-        } else {
-            content
-        }
-    }
-}
-
-extension View {
-    func dismissTutorialFeatureTipOnInteraction(
-        isPresented: Bool,
-        dismiss: @escaping () -> Void
-    ) -> some View {
-        modifier(
-            TutorialFeatureTipInteractionDismissal(
-                isPresented: isPresented,
-                dismiss: dismiss
-            )
-        )
     }
 }
 
@@ -785,13 +777,6 @@ final class TutorialPresentationState {
         activeFeatureTip = nil
     }
 
-    /// Dismisses one specific tab's card when the person begins using that
-    /// tab. The tab check keeps a gesture from an off-screen tab affecting the
-    /// currently visible tutorial.
-    func dismissFeatureTip(for tab: AppTab) {
-        guard activeFeatureTip?.tab == tab else { return }
-        dismissActiveFeatureTip()
-    }
 }
 
 // MARK: - Tutorial Styling
@@ -831,14 +816,13 @@ private struct TutorialSecondaryButtonStyle: ButtonStyle {
 // MARK: - Xcode Previews
 
 #Preview("Tutorial – Welcome", traits: .fixedLayout(width: 390, height: 844)) {
-    TutorialWelcomeStage(currentPage: 0, continueAction: {})
+    TutorialWelcomeStage(continueAction: {})
         .background(AppPalette.light.dotSun)
         .preferredColorScheme(.light)
 }
 
 #Preview("Tutorial – Select Location", traits: .fixedLayout(width: 390, height: 844)) {
     TutorialLocationStage(
-        currentPage: 1,
         isRequestingDeviceLocation: false,
         deviceLocationMessage: nil,
         useCurrentLocation: {},
@@ -917,8 +901,8 @@ private final class TutorialPreviewState {
     let model: WeatherModel
 
     init() {
-        let placesStore = PlacesStore(inMemoryDocument: .empty)
-        let weatherStore = PlaceWeatherStore.preview(
+        let placesStore = SavedPlacesStore(inMemoryDocument: .empty)
+        let weatherStore = SavedPlacesWeatherStore.preview(
             networkConnectivity: networkConnectivity
         )
         model = WeatherModel(

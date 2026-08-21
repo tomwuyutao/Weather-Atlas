@@ -90,14 +90,11 @@ Editing rule:
 
 Weather/Resources/Assets.xcassets is source input for Xcode's asset catalog compiler. A folder ending in .appiconset, .imageset, or .colorset is an asset declaration, not an arbitrary file directory. Its Contents.json tells Xcode which source image belongs to which named asset and appearance.
 
-No tracked Swift source directly requests IntroGraphics, IntroGraphicsBlack, or IntroGraphicsLandscape by Image(name) at the time of this audit. They remain source assets and should not be removed merely because no current direct call was found.
-
-### Catalog Metadata and Accent Color
+### Catalog Metadata
 
 | Exact source file | Role / format | Why it is not edited in a built product |
 | --- | --- | --- |
 | Weather/Resources/Assets.xcassets/Contents.json | Root Xcode asset-catalog metadata JSON. | The compiled asset catalog is generated; update this source manifest through Xcode if needed. |
-| Weather/Resources/Assets.xcassets/AccentColor.colorset/Contents.json | Manifest for the universal named AccentColor color asset. The current manifest has no explicit light/dark component values. | This JSON is the source declaration; do not fabricate or edit a compiled color resource. |
 
 ### App Icon Source Files
 
@@ -109,21 +106,6 @@ All three icon PNGs are 1024x1024 RGB source art. The manifest, not the filename
 | Weather/Resources/Assets.xcassets/AppIcon.appiconset/icon-iOS-Default-1024x1024@1x.png | Default universal iOS icon PNG. | Main app visual source art; replace only in the source catalog. |
 | Weather/Resources/Assets.xcassets/AppIcon.appiconset/icon-iOS-Dark-1024x1024@1x.png | Dark-luminosity universal iOS icon PNG. | Main app visual source art; replace only in the source catalog. |
 | Weather/Resources/Assets.xcassets/AppIcon.appiconset/icon-iOS-Dark-1024x1024@1x 1.png | Tinted-luminosity universal iOS icon PNG. The space and trailing 1 are part of the real filename. | Main app visual source art; if renamed, update the manifest in the same change. |
-
-### Intro Image Source Files
-
-All five PNGs below are 1179x2556 RGB source images. Each associated JSON manifest determines the named asset and appearance mapping.
-
-| Exact source file | Role / format | Ownership and edit rule |
-| --- | --- | --- |
-| Weather/Resources/Assets.xcassets/IntroGraphics.imageset/Contents.json | JSON manifest for the named IntroGraphics image asset with light/dark luminosity variants. | Xcode asset-catalog source. Keep image filenames in sync with this manifest. |
-| Weather/Resources/Assets.xcassets/IntroGraphics.imageset/IntroGraphics_Light.png | Light-appearance source PNG for IntroGraphics. | App visual source art; do not edit a compiled asset copy. |
-| Weather/Resources/Assets.xcassets/IntroGraphics.imageset/IntroGraphics_Dark.png.png | Dark-appearance source PNG for IntroGraphics. The doubled .png.png is the real manifest-referenced filename. | App visual source art; rename only with its manifest update. |
-| Weather/Resources/Assets.xcassets/IntroGraphicsBlack.imageset/Contents.json | JSON manifest for the single universal IntroGraphicsBlack asset. | Xcode asset-catalog source. |
-| Weather/Resources/Assets.xcassets/IntroGraphicsBlack.imageset/IntroGraphicsBlack.png | Universal source PNG for IntroGraphicsBlack. | App visual source art; compiled output is regenerated. |
-| Weather/Resources/Assets.xcassets/IntroGraphicsLandscape.imageset/Contents.json | JSON manifest for named IntroGraphicsLandscape light/dark variants. | Xcode asset-catalog source. |
-| Weather/Resources/Assets.xcassets/IntroGraphicsLandscape.imageset/IntroGraphicsLandscape_Light.png | Light-appearance source PNG for IntroGraphicsLandscape. | App visual source art; compiled output is regenerated. |
-| Weather/Resources/Assets.xcassets/IntroGraphicsLandscape.imageset/IntroGraphicsLandscape_Dark.png | Dark-appearance source PNG for IntroGraphicsLandscape. | App visual source art; compiled output is regenerated. |
 
 Asset-catalog editing rule:
 - Modify source PNGs and matching Contents.json files in the repository, preferably using Xcode's asset-catalog editor.
@@ -139,8 +121,8 @@ de, en, es, fr, it, ja, ko, pt, ru, zh-Hans, and zh-Hant.
 
 | Exact source file | Owner and role | Audited coverage | Why it is not edited inline in a built product |
 | --- | --- | --- | --- |
-| Weather/Localizable.xcstrings | Main Weather Atlas app catalog for UI, formatting templates, messages, and app-level feature copy. | 350 source entries; 333 translated entries in each supported locale; 3,681 translated units total. | The catalog is compiled into the app; edit the source catalog, preferably in Xcode. |
-| Weather/Widgets/Localizable.xcstrings | WeatherWidgets extension catalog for widget configuration and presentation copy. | 17 source entries; all 17 translated in every supported locale; 187 translated units total. | The extension bundle contains generated localization output; edit this catalog source. |
+| Weather/Localizable.xcstrings | Main Weather Atlas app catalog for UI, formatting templates, messages, and app-level feature copy. | 278 source keys; 3,003 translated units across the supported locales. | The catalog is compiled into the app; edit the source catalog, preferably in Xcode. |
+| Weather/Widgets/Localizable.xcstrings | WeatherWidgets extension catalog for widget configuration and presentation copy. | 40 source keys; 429 translated units across the supported locales. | The extension bundle contains generated localization output; edit this catalog source. |
 | Weather/Widgets/WeatherWidgets-InfoPlist.xcstrings | WeatherWidgets extension Info.plist string catalog. | Two keys, CFBundleDisplayName and CFBundleName, translated in all eleven supported locales; 22 translated units total. | The extension bundle copy is generated from this source catalog. |
 
 String-catalog editing rule:
@@ -181,12 +163,12 @@ Info.plist localization editing rule:
 
 ## Complete Coverage Checklist
 
-This guide explicitly covers all 31 requested tracked non-commentable resource files:
+This guide explicitly covers all 22 tracked non-commentable resource files:
 
 | Family | Count | Exact coverage |
 | --- | ---: | --- |
 | City CSV files | 2 | Weather/Resources/Cities/worldcities.csv; Weather/Resources/Cities/country_city_coordinates.csv |
-| Asset catalog files | 14 | Six JSON manifests: root, AccentColor, AppIcon, IntroGraphics, IntroGraphicsBlack, and IntroGraphicsLandscape; plus eight PNGs: three app icons and five intro images. |
+| Asset catalog files | 5 | Two JSON manifests: root and AppIcon; plus three app-icon PNGs. |
 | String Catalog files | 3 | Weather/Localizable.xcstrings; Weather/Widgets/Localizable.xcstrings; Weather/Widgets/WeatherWidgets-InfoPlist.xcstrings |
 | Main-app Info.plist strings files | 12 | Base, de, en, es, fr, it, ja, ko, pt, ru, zh-Hans, and zh-Hant InfoPlist.strings |
 

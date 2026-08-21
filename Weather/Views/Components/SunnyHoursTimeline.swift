@@ -35,8 +35,6 @@ struct SunnyHoursTimeline: View {
 
     let weather: CityWeather?
     let selectedDate: Date
-    /// The report-owned name, preserving saved aliases and current-place names.
-    let placeDisplayName: String
     private let locationStatus: LocationProviderStatus?
     private let isLoading: Bool
     private let unavailableMessage: String?
@@ -51,30 +49,11 @@ struct SunnyHoursTimeline: View {
 
     // MARK: Selected Forecast
 
-    /// Standard Detail reports have weather already. Their unavailable state
-    /// is informational, rather than a request for device-location access.
-    init(
-        weather: CityWeather,
-        selectedDate: Date,
-        placeDisplayName: String
-    ) {
-        self.weather = weather
-        self.selectedDate = selectedDate
-        self.placeDisplayName = placeDisplayName
-        locationStatus = nil
-        isLoading = false
-        unavailableMessage = nil
-        requestLocation = nil
-        openSettings = nil
-        retry = nil
-    }
-
     /// Your Location includes recovery actions because its forecast depends on
     /// Core Location authorization and a fresh physical coordinate.
     init(
         weather: CityWeather?,
         selectedDate: Date,
-        placeDisplayName: String,
         locationStatus: LocationProviderStatus,
         isLoading: Bool,
         requestLocation: @escaping () -> Void,
@@ -83,7 +62,6 @@ struct SunnyHoursTimeline: View {
     ) {
         self.weather = weather
         self.selectedDate = selectedDate
-        self.placeDisplayName = placeDisplayName
         self.locationStatus = locationStatus
         self.isLoading = isLoading
         unavailableMessage = nil
@@ -99,14 +77,12 @@ struct SunnyHoursTimeline: View {
     init(
         weather: CityWeather?,
         selectedDate: Date,
-        placeDisplayName: String,
         isLoading: Bool,
         unavailableMessage: String?,
         retry: (() -> Void)?
     ) {
         self.weather = weather
         self.selectedDate = selectedDate
-        self.placeDisplayName = placeDisplayName
         locationStatus = nil
         self.isLoading = isLoading
         self.unavailableMessage = unavailableMessage
@@ -140,55 +116,6 @@ struct SunnyHoursTimeline: View {
         return SunnyHoursFormatting.hourCountLabel(
             SunnyHoursCalculation.sunnyHourCount(in: data),
             locale: locale
-        )
-    }
-
-    private var selectedDataIssue: WeatherDataIssue? {
-        if let weather {
-            guard let forecast = selectedForecast else {
-                return .missingForecastData(at: selectedDate)
-            }
-            if case .failure(let issue) = SunnyHoursCalculation.sunnyHoursData(
-                for: forecast,
-                timeZone: weather.timeZone
-            ) {
-                return issue
-            }
-            return nil
-        }
-
-        guard !isLoading,
-              locationStatus?.isActivelyLocating != true else {
-            return nil
-        }
-
-        switch locationStatus {
-        case .none:
-            return .missingForecastData(at: selectedDate)
-        case .failed, .ready, .readyWithoutMetadata, .denied, .restricted,
-                .servicesDisabled, .idle,
-                .checkingAvailability, .requestingAuthorization, .locating,
-                .resolvingPlace:
-            // Your Location owns one aggregate report for current weather and
-            // nearby search issues; avoid queuing a duplicate card-level alert.
-            return nil
-        }
-    }
-
-    private var missingDataReport: MissingDataAlertReport? {
-        guard let issue = selectedDataIssue else { return nil }
-        let placeName = placeDisplayName.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        ).isEmpty ? localizedString("the selected place", locale: locale) : placeDisplayName
-        let identity = weather?.id.uuidString ?? "current-location"
-        return MissingDataAlertReport(
-            key: "daily-sunny-hours:\(identity):\(selectedDate.timeIntervalSinceReferenceDate):\(issue.kind.rawValue)",
-            title: localizedString("Weather Data Missing", locale: locale),
-            message: weatherDataIssueMessage(
-                issue,
-                cityName: placeName,
-                locale: locale
-            )
         )
     }
 
@@ -299,21 +226,10 @@ struct SunnyHoursTimeline: View {
         weather: CityWeather,
         data: SunnyHoursCalculation.SunnyHoursData
     ) -> some View {
-        // The sun-state sentence belongs under the large hero icon, where it
-        // describes the place; this card remains a concise visual timeline.
-        let disclosure = SunnyHoursFormatting.localTimeDisclosure(
-            placeName: placeDisplayName,
-            timeZone: weather.timeZone,
-            at: data.hours.first?.date ?? selectedDate,
-            locale: locale
-        )
-
         return DailySunnyHoursTrack(
             data: data,
             selectedDate: selectedDate,
             timeZone: weather.timeZone,
-            placeDisplayName: placeDisplayName,
-            localTimeDisclosure: disclosure,
             screenTone: selectedForecast?.condition?.iconTone
         )
     }
@@ -426,14 +342,11 @@ private struct DailySunnyHoursTrack: View {
     let data: SunnyHoursCalculation.SunnyHoursData
     let selectedDate: Date
     let timeZone: TimeZone
-    let placeDisplayName: String
-    let localTimeDisclosure: String
     /// The selected report condition also tints inactive timeline slots.
     let screenTone: WeatherIconTone?
 
     @Environment(\.appTheme) private var theme
     @Environment(\.calendar) private var calendar
-    @Environment(\.locale) private var locale
     @ScaledMetric(relativeTo: .caption) private var capsuleSpacing: CGFloat = 7
     @ScaledMetric(relativeTo: .caption) private var timelineMinimumHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .caption) private var axisHeight: CGFloat = 14
@@ -642,32 +555,6 @@ private struct DailySunnyHoursTrack: View {
         }
     }
 
-    /// Supplies the same redundant solid/dashed sunny-state cues as the
-    /// widget when a person asks iOS not to rely on color alone.
-    @ViewBuilder
-    private func segmentDifferentiator(
-        for condition: AppWeatherCondition?
-    ) -> some View {
-        switch condition {
-        case .clear:
-            Capsule().strokeBorder(
-                theme.colors.primaryText.opacity(0.9),
-                lineWidth: 1.2
-            )
-        case .partlySunny:
-            Capsule().strokeBorder(
-                theme.colors.primaryText.opacity(0.9),
-                style: StrokeStyle(lineWidth: 1.2, dash: [2, 2])
-            )
-        case .drizzle:
-            Capsule().strokeBorder(
-                theme.colors.primaryText.opacity(0.9),
-                style: StrokeStyle(lineWidth: 1.2, dash: [2, 2])
-            )
-        default:
-            EmptyView()
-        }
-    }
 }
 
 // MARK: - Location Status Helpers
