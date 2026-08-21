@@ -690,6 +690,15 @@ struct MapView: View {
 
     @ToolbarContentBuilder
     private var mapToolbar: some ToolbarContent {
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Settings", systemImage: "slider.horizontal.3") {
+                    router.presentedSheet = .settings
+                }
+                .labelStyle(.iconOnly)
+            }
+        }
+
         // The top bar stays dedicated to date navigation. Camera recentering
         // belongs with the lower Map actions, where it reads as a map command
         // rather than a second, unlabeled date-toolbar control.
@@ -1404,6 +1413,22 @@ private struct PlacesMapCanvas: View {
         dynamicTypeSize.isAccessibilitySize ? 12 : 18
     }
 
+    /// iPad has no bottom tab bar beneath the Map canvas, so the compact Map
+    /// controls can sit closer to the safe-area edge. Keep the established
+    /// spacing on iPhone, where the native tab bar occupies that lower lane.
+    private var compactSurfaceBottomPadding: CGFloat {
+        UIDevice.current.userInterfaceIdiom == .pad
+            ? 8
+            : MapCardLayout.bottomPadding
+    }
+
+    /// Only iPad separates the trailing recenter action from the centred
+    /// surface across the full canvas. Preserve the established compact iPhone
+    /// cluster by leaving its overlay at its intrinsic width.
+    private var compactSurfaceOverlayMaximumWidth: CGFloat? {
+        UIDevice.current.userInterfaceIdiom == .pad ? .infinity : nil
+    }
+
     // MARK: Floating-card selection
 
     /// Only one selection card is produced at a time. The `if` order is also
@@ -1665,6 +1690,13 @@ private struct PlacesMapCanvas: View {
                         .transition(.opacity.combined(with: .move(edge: .bottom)))
                 }
             }
+            // The centred Find Sun surface must not define this overlay's
+            // width. Fill the Map so the location action is truly trailing on
+            // iPad instead of trailing relative to the compact capsule.
+            .frame(
+                maxWidth: compactSurfaceOverlayMaximumWidth,
+                alignment: .bottom
+            )
 
             // Recenter is a standalone Map action, not part of the centred
             // Find Sun capsule. It remains on the capsule's baseline and uses
@@ -1675,9 +1707,13 @@ private struct PlacesMapCanvas: View {
                     action: focusCurrentLocation
                 )
                 .padding(.trailing, 16)
-                .padding(.bottom, MapCardLayout.bottomPadding)
+                .padding(.bottom, compactSurfaceBottomPadding)
             }
         }
+        .frame(
+            maxWidth: compactSurfaceOverlayMaximumWidth,
+            alignment: .bottomTrailing
+        )
     }
 
     /// Offline status supplements the Map controls instead of replacing them:
@@ -1697,6 +1733,7 @@ private struct PlacesMapCanvas: View {
             size: .offline,
             colorScheme: colorScheme,
             maximumWidth: cardMaximumWidth,
+            bottomPadding: compactSurfaceBottomPadding,
             glassEffectID: Self.BottomSurfaceGlassID.offlineBanner,
             fallbackGeometryID: Self.offlineBannerFallbackGeometryID,
             glassNamespace: bottomSurfaceNamespace
@@ -1727,6 +1764,7 @@ private struct PlacesMapCanvas: View {
                 size: .small,
                 colorScheme: colorScheme,
                 maximumWidth: cardMaximumWidth,
+                bottomPadding: compactSurfaceBottomPadding,
                 glassEffectID: Self.BottomSurfaceGlassID.surface,
                 fallbackGeometryID: Self.bottomSurfaceFallbackGeometryID,
                 glassNamespace: bottomSurfaceNamespace

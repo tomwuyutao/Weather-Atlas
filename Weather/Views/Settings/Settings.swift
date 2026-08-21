@@ -191,6 +191,7 @@ struct SettingsView: View {
         }
         .scrollContentBackground(.hidden)
         .background(theme.colors.background)
+        .weatherContentColumn(standardMaximumWidth: .infinity)
         .task {
             // Attribution is provider data and may not be immediately present
             // in the weather store, so load it independently of forecasts.
@@ -403,6 +404,7 @@ struct SettingsView: View {
         Form(content: content)
             .scrollContentBackground(.hidden)
             .background(theme.colors.background)
+            .weatherContentColumn(standardMaximumWidth: .infinity)
     }
 
     private func settingsLabel(

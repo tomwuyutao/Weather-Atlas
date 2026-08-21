@@ -8,6 +8,7 @@
 
 import CoreLocation
 import SwiftUI
+import UIKit
 
 // MARK: - Search Scope
 
@@ -111,7 +112,18 @@ struct PlaceSearchView: View {
                     .padding(.vertical, 8)
                     .background(theme.colors.background)
             }
+            .weatherContentColumn(standardMaximumWidth: .infinity)
             .weatherScreenBackground()
+            .toolbar {
+                if UIDevice.current.userInterfaceIdiom == .pad {
+                    ToolbarItem(placement: .topBarLeading) {
+                        Button("Settings", systemImage: "slider.horizontal.3") {
+                            router.presentedSheet = .settings
+                        }
+                        .labelStyle(.iconOnly)
+                    }
+                }
+            }
             .task(id: citySearchTaskID) {
                 // SwiftUI cancels this task when the normalized query changes,
                 // which makes the debounce naturally track the latest typing.

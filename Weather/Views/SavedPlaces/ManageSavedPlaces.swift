@@ -40,6 +40,7 @@ struct ManageSavedPlaces: View {
 
     var body: some View {
         placesContent
+            .weatherContentColumn(standardMaximumWidth: .infinity)
             .environment(\.editMode, $editMode)
             .weatherScreenBackground()
             .navigationTitle("Manage Saved Places")

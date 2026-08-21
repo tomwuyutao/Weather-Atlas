@@ -159,13 +159,14 @@ struct ContentView: View {
             }
 
             Tab(
-                "Saved Places",
+                "Saved",
                 systemImage: "bookmark",
                 value: AppTab.savedPlaces
             ) {
                 NavigationStack(path: $router.savedPlacesPath) {
                     screenWithOfflineBanner(SavedPlacesView(
                         model: model,
+                        router: router,
                         selectedDate: $selectedDate
                     ))
                     .navigationDestination(for: AppRoute.self) {

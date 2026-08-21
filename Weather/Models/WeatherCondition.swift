@@ -20,6 +20,8 @@ import WeatherKit
 /// a condition without depending on WeatherKit's own type at decode time.
 nonisolated enum AppWeatherCondition: String, Codable, Sendable {
     case clear
+    /// Legacy persisted value retained so older forecast caches remain
+    /// decodable. New WeatherKit data never creates this case.
     case partlySunny
     case partlyCloudy
     case cloudy
@@ -30,12 +32,13 @@ nonisolated enum AppWeatherCondition: String, Codable, Sendable {
     case wind
 
     /// Chooses the weather symbol's semantic tint. Map markers deliberately
-    /// use sunny-hour totals instead of the condition category.
+    /// use sunny-hour totals instead of the condition category. `partlySunny`
+    /// remains decodable for legacy snapshots, but shares the neutral cloudy
+    /// presentation because WeatherKit's partly-cloudy condition is not sun.
     var iconTone: WeatherIconTone {
         switch self {
         case .clear: return .clear
-        case .partlySunny: return .partlySunny
-        case .partlyCloudy, .cloudy: return .cloudy
+        case .partlySunny, .partlyCloudy, .cloudy: return .cloudy
         case .rain: return .rain
         case .drizzle: return .drizzle
         // Snow, fog, and wind share the neutral cloudy mark.
@@ -45,10 +48,11 @@ nonisolated enum AppWeatherCondition: String, Codable, Sendable {
 
     // MARK: - Sunny Predicates
 
-    /// Whether this condition contributes to a favorable sunny window. Charts
-    /// include partly sunny hours even when a strict filter does not.
+    /// Whether this condition contributes to a favorable sunny window. The
+    /// name remains source-compatible with persisted snapshots, but only clear
+    /// conditions count: partly-cloudy weather is never treated as sun.
     nonisolated var isSunnyOrPartlySunny: Bool {
-        self == .clear || self == .partlySunny
+        self == .clear
     }
 
     // MARK: - Source Classification
@@ -86,7 +90,9 @@ nonisolated enum AppWeatherCondition: String, Codable, Sendable {
         if symbol.contains("moon") {
             return symbol.contains("cloud") ? .partlyCloudy : .clear
         }
-        if symbol.contains("cloud") && symbol.contains("sun") { return .partlySunny }
+        // A source symbol with both a cloud and sun is still partly cloudy. It
+        // uses the gray cloud.sun presentation and contributes no sunny hours.
+        if symbol.contains("cloud") && symbol.contains("sun") { return .partlyCloudy }
         if symbol.contains("sun.max") || symbol == "sun" || symbol == "sun.fill" {
             return .clear
         }
@@ -99,17 +105,17 @@ nonisolated enum AppWeatherCondition: String, Codable, Sendable {
 
     /// Maps WeatherKit's semantic condition into the app's smaller presentation
     /// vocabulary. Source-symbol parsing handles conditions outside this map.
-    /// `isDaylight` distinguishes WeatherKit's one partly-cloudy semantic value
-    /// into the app's sunny daytime versus ordinary cloudy nighttime treatment.
+    /// WeatherKit's partly-cloudy condition always remains partly cloudy; the
+    /// daylight flag is used separately for chart bounds and never changes sky
+    /// classification or sunny-hour eligibility.
     nonisolated static func fromWeatherKit(
-        _ condition: WeatherKit.WeatherCondition,
-        isDaylight: Bool? = nil
+        _ condition: WeatherKit.WeatherCondition
     ) -> AppWeatherCondition? {
         switch condition {
         case .clear, .mostlyClear:
             return .clear
         case .partlyCloudy:
-            return isDaylight == true ? .partlySunny : .partlyCloudy
+            return .partlyCloudy
         case .cloudy, .mostlyCloudy:
             return .cloudy
         case .drizzle, .freezingDrizzle:
@@ -146,10 +152,9 @@ nonisolated enum AppWeatherCondition: String, Codable, Sendable {
     /// sunny-hour eligibility, icon, and tint cannot drift apart.
     nonisolated static func resolve(
         weatherKit condition: WeatherKit.WeatherCondition,
-        isDaylight: Bool? = nil,
         symbolName: String
     ) -> AppWeatherCondition? {
-        fromWeatherKit(condition, isDaylight: isDaylight)
+        fromWeatherKit(condition)
             ?? fromWeatherSymbol(symbolName)
     }
 

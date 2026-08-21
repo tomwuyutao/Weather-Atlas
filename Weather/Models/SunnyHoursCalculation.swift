@@ -2,7 +2,7 @@
 //  SunnyHoursCalculation.swift
 //  Weather
 //
-//  Purpose: Counts city-local daylight hours that are Clear or Partly Sunny.
+//  Purpose: Counts city-local daylight hours that are clear.
 //
 
 import Foundation
@@ -194,8 +194,8 @@ enum SunnyHoursCalculation {
         Double(data.hours.count(where: { $0.condition?.isSunnyOrPartlySunny == true }))
     }
 
-    /// Finds the first later city-local forecast day with at least one clear or
-    /// partly sunny WeatherKit daylight hour. Available forecast rows are
+    /// Finds the first later city-local forecast day with at least one clear
+    /// WeatherKit daylight hour. Available forecast rows are
     /// independent: a short horizon or a skipped date must not hide a later
     /// useful result.
     static func nextSunnyForecastDate(

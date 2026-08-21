@@ -184,10 +184,10 @@ struct FindSunListView: View {
     }
 
     private func contentWidth(for size: CGSize) -> CGFloat {
-        guard horizontalSizeClass == .regular, size.width > size.height else {
-            return 760
-        }
-        return 640
+        AppContentLayout.maximumWidth(
+            for: size,
+            horizontalSizeClass: horizontalSizeClass
+        )
     }
 
     private func showDetails(_ result: MapSunSearchResult) {

@@ -239,10 +239,6 @@ struct TenDaySunnyHoursTimeline: View {
             HStack(spacing: 14) {
                 legendItem("Sunny", color: theme.colors.dotSun)
                 legendItem(
-                    "Partly Sunny",
-                    color: theme.colors.dotPartlyCloudy
-                )
-                legendItem(
                     "No Sun",
                     color: theme.colors.weatherNoSunTimelineColor(
                         for: screenTone
@@ -255,10 +251,6 @@ struct TenDaySunnyHoursTimeline: View {
             VStack(spacing: 6) {
                 HStack(spacing: 14) {
                     legendItem("Sunny", color: theme.colors.dotSun)
-                    legendItem(
-                        "Partly Sunny",
-                        color: theme.colors.dotPartlyCloudy
-                    )
                     legendItem(
                         "No Sun",
                         color: theme.colors.weatherNoSunTimelineColor(
@@ -447,9 +439,9 @@ private struct SunnyHoursDayTrack: View {
 
     private func isColoredCondition(_ condition: AppWeatherCondition) -> Bool {
         switch condition {
-        case .clear, .partlySunny, .rain, .drizzle:
+        case .clear, .rain, .drizzle:
             true
-        case .partlyCloudy, .cloudy, .snow, .fog, .wind:
+        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
             false
         }
     }
@@ -458,13 +450,11 @@ private struct SunnyHoursDayTrack: View {
         switch condition {
         case .clear:
             theme.dotSun
-        case .partlySunny:
-            theme.dotPartlyCloudy
         case .rain:
             theme.dotRain
         case .drizzle:
             theme.dotDrizzle
-        case .partlyCloudy, .cloudy, .snow, .fog, .wind:
+        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
             noSunColor
         }
     }

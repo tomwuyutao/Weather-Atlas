@@ -356,6 +356,8 @@ private struct TutorialStageLayout<Intro: View, Actions: View>: View {
     @ViewBuilder let intro: () -> Intro
     @ViewBuilder let actions: () -> Actions
 
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
     var body: some View {
         GeometryReader { geometry in
             VStack(alignment: .leading, spacing: 0) {
@@ -367,7 +369,20 @@ private struct TutorialStageLayout<Intro: View, Actions: View>: View {
                 actions()
             }
             .padding(28)
+            .frame(maxWidth: contentWidth(for: geometry.size))
+            .frame(maxWidth: .infinity)
         }
+    }
+
+    /// Match the focused 640-point content column used throughout the app in
+    /// landscape on iPad. Phone and portrait onboarding retain their existing
+    /// edge-to-edge stage layout.
+    private func contentWidth(for size: CGSize) -> CGFloat {
+        AppContentLayout.maximumWidth(
+            for: size,
+            horizontalSizeClass: horizontalSizeClass,
+            standardMaximumWidth: .infinity
+        )
     }
 }
 
@@ -396,6 +411,8 @@ private struct TutorialHomeLocationPicker: View {
     var body: some View {
         NavigationStack {
             pickerContent
+                .weatherContentColumn(standardMaximumWidth: .infinity)
+                .weatherScreenBackground()
                 .navigationTitle("Choose Home Location")
                 .navigationBarTitleDisplayMode(.inline)
                 .searchable(text: $query, prompt: "Search cities")
@@ -938,6 +955,7 @@ private struct TutorialSavedPlacesTipPreview: View {
         NavigationStack {
             SavedPlacesView(
                 model: previewState.model,
+                router: previewState.router,
                 selectedDate: $selectedDate
             )
         }

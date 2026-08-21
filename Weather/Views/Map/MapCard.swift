@@ -68,6 +68,7 @@ struct MapCard<Content: View>: View {
     let size: MapCardSize
     let colorScheme: ColorScheme
     let maximumWidth: CGFloat
+    let bottomPadding: CGFloat
     /// A unique Liquid Glass identity for this physical surface on iOS 26.
     let glassEffectID: String
     /// Older-system matched geometry uses one shared identity instead.
@@ -82,6 +83,7 @@ struct MapCard<Content: View>: View {
         size: MapCardSize,
         colorScheme: ColorScheme,
         maximumWidth: CGFloat,
+        bottomPadding: CGFloat = MapCardLayout.bottomPadding,
         glassEffectID: String,
         fallbackGeometryID: String,
         glassNamespace: Namespace.ID,
@@ -90,6 +92,7 @@ struct MapCard<Content: View>: View {
         self.size = size
         self.colorScheme = colorScheme
         self.maximumWidth = maximumWidth
+        self.bottomPadding = bottomPadding
         self.glassEffectID = glassEffectID
         self.fallbackGeometryID = fallbackGeometryID
         self.glassNamespace = glassNamespace
@@ -120,7 +123,8 @@ struct MapCard<Content: View>: View {
                 )
                 .mapCardPositioned(
                     horizontalPadding: size.horizontalPadding,
-                    maximumWidth: maximumWidth
+                    maximumWidth: maximumWidth,
+                    bottomPadding: bottomPadding
                 )
         } else if #available(iOS 26.0, *) {
             glassSurface
@@ -136,7 +140,8 @@ struct MapCard<Content: View>: View {
                 )
                 .mapCardPositioned(
                     horizontalPadding: size.horizontalPadding,
-                    maximumWidth: maximumWidth
+                    maximumWidth: maximumWidth,
+                    bottomPadding: bottomPadding
                 )
         } else {
             glassSurface
@@ -144,7 +149,8 @@ struct MapCard<Content: View>: View {
                 .background(.ultraThinMaterial, in: shape)
                 .mapCardPositioned(
                     horizontalPadding: size.horizontalPadding,
-                    maximumWidth: maximumWidth
+                    maximumWidth: maximumWidth,
+                    bottomPadding: bottomPadding
                 )
         }
     }
@@ -164,10 +170,11 @@ private extension View {
     /// the effect ID describes the visible material, not its safe-area inset.
     func mapCardPositioned(
         horizontalPadding: CGFloat,
-        maximumWidth: CGFloat
+        maximumWidth: CGFloat,
+        bottomPadding: CGFloat
     ) -> some View {
         padding(.horizontal, horizontalPadding)
-            .padding(.bottom, MapCardLayout.bottomPadding)
+            .padding(.bottom, bottomPadding)
             .frame(maxWidth: maximumWidth, alignment: .bottom)
     }
 }
@@ -799,7 +806,7 @@ private struct MapPlaceContextCardPreview: View {
         dailyLow: 13,
         dailyHigh: 24,
         symbolName: "cloud.sun.fill",
-        condition: .partlySunny,
+        condition: .partlyCloudy,
         hourlyForecasts: [],
         cloudCover: 0.25,
         precipitationChance: 0.05,
@@ -816,7 +823,7 @@ private struct MapPlaceContextCardPreview: View {
 
     private static let recommendation = PlaceRecommendation(
         cityWeather: weather,
-        condition: .partlySunny,
+        condition: .partlyCloudy,
         sunnyHourCount: 11
     )
 

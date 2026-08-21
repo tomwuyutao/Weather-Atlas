@@ -446,7 +446,7 @@ private struct SunnyWindowLargeChart: View {
         }
     }
 
-    /// Builds date labels and contiguous sunny/partly-sunny capsules.
+    /// Builds date labels and contiguous hourly-weather capsules.
     private func rowsView(
         _ visibleDays: [WidgetSunnyWindowDay],
         timelineWidth: CGFloat,
@@ -485,9 +485,9 @@ private struct SunnyWindowLargeChart: View {
                             )
                             .frame(height: capsuleHeight)
 
-                        // Draw every source hour directly, matching the Detail
-                        // chart's five-condition renderer instead of reducing
-                        // precipitation to an undifferentiated no-sun track.
+                        // Draw every source hour directly, retaining distinct
+                        // rain and drizzle treatment instead of reducing all
+                        // non-sunny conditions to one no-sun track.
                         ForEach(day.chartHourlyConditions) { hour in
                             Rectangle()
                                 .fill(segmentColor(for: hour.condition))
@@ -592,8 +592,10 @@ private struct SunnyWindowLargeChart: View {
 
     // MARK: - Rendering Colors and Local Time
 
-    /// Returns the shared five-condition chart color for one source hour.
+    /// Returns the shared timeline color for one source hour. Legacy
+    /// `.partlySunny` values are normalized to neutral partly-cloudy first.
     private func segmentColor(for condition: AppWeatherCondition) -> Color {
+        let condition = condition.widgetPresentationCondition
         if usesSystemColors {
             return monochromeColor(for: condition)
         }
@@ -604,20 +606,17 @@ private struct SunnyWindowLargeChart: View {
         return chartColor(for: condition, colors: palette)
     }
 
-    /// Retains five distinguishable weights when WidgetKit enforces a
-    /// monochrome or tinted rendering mode and custom chart colors are not
-    /// permitted by the system.
+    /// Retains clear, precipitation, and neutral no-sun weights when WidgetKit
+    /// enforces a monochrome or tinted rendering mode.
     private func monochromeColor(for condition: AppWeatherCondition) -> Color {
         switch condition {
         case .clear:
             .primary.opacity(1)
-        case .partlySunny:
-            .primary.opacity(0.62)
         case .rain:
             .primary.opacity(0.82)
         case .drizzle:
             .primary.opacity(0.38)
-        case .partlyCloudy, .cloudy, .snow, .fog, .wind:
+        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
             .primary.opacity(colorSchemeContrast == .increased ? 0.24 : 0.14)
         }
     }
@@ -631,13 +630,11 @@ private struct SunnyWindowLargeChart: View {
         switch condition {
         case .clear:
             colors.dotSun
-        case .partlySunny:
-            colors.dotPartlyCloudy
         case .rain:
             colors.dotRain
         case .drizzle:
             colors.dotDrizzle
-        case .partlyCloudy, .cloudy, .snow, .fog, .wind:
+        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
             noSunColor(in: colors)
         }
     }
@@ -659,9 +656,7 @@ private struct SunnyWindowLargeChart: View {
         switch tone {
         case .clear:
             colors.dotSun
-        case .partlySunny:
-            colors.dotPartlyCloudy
-        case .cloudy:
+        case .partlySunny, .cloudy:
             colors.dotCloudy
         case .rain:
             colors.dotRain
@@ -1084,11 +1079,12 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
         // The header describes current weather, so use WeatherKit's current
         // record rather than substituting the daily condition.
         let currentWeather = weather.currentWeather
-        let currentCondition = AppWeatherCondition.resolve(
-            weatherKit: currentWeather.condition,
-            isDaylight: currentWeather.isDaylight,
-            symbolName: currentWeather.symbolName
-        ) ?? .cloudy
+        let currentCondition = (
+            AppWeatherCondition.resolve(
+                weatherKit: currentWeather.condition,
+                symbolName: currentWeather.symbolName
+            ) ?? .cloudy
+        ).widgetPresentationCondition
 
         // Group WeatherKit's available daylight records once. Both the current
         // card and every large-widget row then reuse the same local-day data.
@@ -1144,9 +1140,9 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
 
 // MARK: - Widget Forecast Classification
 
-/// Widget-specific output adds full normalized conditions to the shared sunny
-/// and partly-sunny buckets. The buckets remain for range summaries and older
-/// cache compatibility; the conditions let charts render all five categories.
+/// Widget-specific output adds full normalized conditions to the sunny bucket.
+/// The partly-sunny bucket remains only for decoding payloads from earlier
+/// versions; partly cloudy is now a neutral, non-sunny chart condition.
 private struct WidgetForecastHourBreakdown {
     let daytimeHours: [Int]
     let sunnyHours: [Int]
@@ -1165,22 +1161,23 @@ private func widgetForecastHourBreakdown(
 ) -> WidgetForecastHourBreakdown {
     var daytimeHours: [Int] = []
     var sunnyHours: [Int] = []
-    var partlySunnyHours: [Int] = []
+    // Preserve the serialized bucket's shape for widget payload compatibility,
+    // while ensuring fresh snapshots never classify an hour as partly sunny.
+    let partlySunnyHours: [Int] = []
     var hourlyConditions: [WidgetHourlyCondition] = []
 
     for forecast in hours {
-        let condition = AppWeatherCondition.resolve(
-            weatherKit: forecast.condition,
-            isDaylight: forecast.isDaylight,
-            symbolName: forecast.symbolName
-        ) ?? .cloudy
+        let condition = (
+            AppWeatherCondition.resolve(
+                weatherKit: forecast.condition,
+                symbolName: forecast.symbolName
+            ) ?? .cloudy
+        ).widgetPresentationCondition
 
         let hour = calendar.component(.hour, from: forecast.date)
         daytimeHours.append(hour)
         if condition == .clear {
             sunnyHours.append(hour)
-        } else if condition == .partlySunny {
-            partlySunnyHours.append(hour)
         }
         hourlyConditions.append(
             WidgetHourlyCondition(
@@ -1352,7 +1349,10 @@ private func widgetSunnyHoursTotalText(
     locale: Locale
 ) -> String? {
     guard city.widgetCurrentIssue == nil else { return nil }
-    let favorableHours = Set(city.sunnyHours + city.partlySunnyHours)
+    // `partlySunnyHours` is a legacy cache bucket. It represents neutral
+    // partly-cloudy data under the current weather policy and must not inflate
+    // the displayed sunny-hour total.
+    let favorableHours = Set(city.sunnyHours)
     guard !favorableHours.isEmpty else {
         return widgetLocalizedString("No Sun")
     }
@@ -1378,13 +1378,13 @@ private func widgetSunStatusText(
     if let conditions = city.hourlyConditions,
        !conditions.isEmpty {
         let sunnyConditions = conditions.filter {
-            $0.condition.isSunnyOrPartlySunny
+            $0.condition.widgetPresentationCondition == .clear
         }
         guard !sunnyConditions.isEmpty else {
             return widgetLocalizedString("No Sun Today")
         }
         if let current = conditions.last(where: { $0.date <= referenceDate }),
-           current.condition.isSunnyOrPartlySunny {
+           current.condition.widgetPresentationCondition == .clear {
             return widgetLocalizedString("Sun Out Now")
         }
         if let next = sunnyConditions.first(where: { $0.date > referenceDate }) {
@@ -1403,7 +1403,7 @@ private func widgetSunStatusText(
     var calendar = Calendar.current
     calendar.timeZone = timeZone
     let currentHour = calendar.component(.hour, from: referenceDate)
-    let sunnyHours = Array(Set(city.sunnyHours + city.partlySunnyHours)).sorted()
+    let sunnyHours = Array(Set(city.sunnyHours)).sorted()
     guard !sunnyHours.isEmpty else {
         return widgetLocalizedString("No Sun Today")
     }
@@ -1571,9 +1571,10 @@ private struct SunnyHoursTimeline: View {
 
     // MARK: - Timeline Rendering
 
-    /// Returns the shared five-condition chart color for one displayed hour.
+    /// Returns the shared timeline color for one displayed hour. Any legacy
+    /// partly-sunny cache value is normalized to neutral partly cloudy first.
     private func segmentColor(for hour: Int) -> Color {
-        guard let condition = condition(for: hour) else {
+        guard let condition = condition(for: hour)?.widgetPresentationCondition else {
             return noSunColor
         }
         if usesSystemColors {
@@ -1589,16 +1590,16 @@ private struct SunnyHoursTimeline: View {
     }
 
     /// Reads the precise cached weather condition. Older persisted widget
-    /// snapshots fall back to their existing sunny/partly-sunny buckets until
-    /// the provider refreshes them with the five-condition payload.
+    /// snapshots retain their partly-sunny bucket for decoding, but render that
+    /// legacy state as neutral partly cloudy rather than as a sunny interval.
     private func condition(for hour: Int) -> AppWeatherCondition? {
         if let cachedCondition = city.hourlyConditions?.first(where: {
             $0.hour == hour
         })?.condition {
-            return cachedCondition
+            return cachedCondition.widgetPresentationCondition
         }
         if city.sunnyHours.contains(hour) { return .clear }
-        if city.partlySunnyHours.contains(hour) { return .partlySunny }
+        if city.partlySunnyHours.contains(hour) { return .partlyCloudy }
         return nil
     }
 
@@ -1621,19 +1622,17 @@ private struct SunnyHoursTimeline: View {
         switch condition {
         case .clear:
             .primary.opacity(1)
-        case .partlySunny:
-            .primary.opacity(0.62)
         case .rain:
             .primary.opacity(0.82)
         case .drizzle:
             .primary.opacity(0.38)
-        case .partlyCloudy, .cloudy, .snow, .fog, .wind:
+        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
             noSunColor
         }
     }
 
-    /// Uses the exact full-color palette mapping from Detail's five-state
-    /// daily and ten-day timeline renderers.
+    /// Uses the widget's full-color timeline mapping: clear, rain, drizzle,
+    /// and the neutral no-sun treatment.
     private func chartColor(
         for condition: AppWeatherCondition,
         colors: AppPalette.Values
@@ -1641,13 +1640,11 @@ private struct SunnyHoursTimeline: View {
         switch condition {
         case .clear:
             colors.dotSun
-        case .partlySunny:
-            colors.dotPartlyCloudy
         case .rain:
             colors.dotRain
         case .drizzle:
             colors.dotDrizzle
-        case .partlyCloudy, .cloudy, .snow, .fog, .wind:
+        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
             conditionAwareNoSunColor(in: colors)
         }
     }
@@ -1669,9 +1666,7 @@ private struct SunnyHoursTimeline: View {
         switch tone {
         case .clear:
             colors.dotSun
-        case .partlySunny:
-            colors.dotPartlyCloudy
-        case .cloudy:
+        case .partlySunny, .cloudy:
             colors.dotCloudy
         case .rain:
             colors.dotRain
@@ -1809,7 +1804,7 @@ private struct SunnyHoursTimeline: View {
 
 }
 
-/// Centered five-state key shared by medium and large Home Screen timelines.
+/// Centered four-state key shared by medium and large Home Screen timelines.
 /// It mirrors the timeline's rendering mode, so the explanatory key remains
 /// consistent with the chart.
 private struct SunnyHoursLegend: View {
@@ -1827,7 +1822,7 @@ private struct SunnyHoursLegend: View {
 
     // MARK: - Legend Layout
 
-    /// Builds the same five condition categories as Detail's ten-day legend.
+    /// Builds the timeline's sunny, neutral, rain, and drizzle categories.
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 14) {
@@ -1839,10 +1834,6 @@ private struct SunnyHoursLegend: View {
                     item(
                         color: color(for: .clear),
                         title: widgetLocalizedString("Sunny")
-                    )
-                    item(
-                        color: color(for: .partlySunny),
-                        title: widgetLocalizedString("Partly Sunny")
                     )
                     item(
                         color: color(for: .cloudy),
@@ -1876,10 +1867,6 @@ private struct SunnyHoursLegend: View {
                 title: widgetLocalizedString("Sunny")
             )
             item(
-                color: color(for: .partlySunny),
-                title: widgetLocalizedString("Partly Sunny")
-            )
-            item(
                 color: color(for: .cloudy),
                 title: widgetLocalizedString("No Sun")
             )
@@ -1894,7 +1881,7 @@ private struct SunnyHoursLegend: View {
         }
     }
 
-    /// Matches the five full-color palette categories used by Detail. In
+    /// Matches the four timeline color categories used by the widget. In
     /// system-controlled widget rendering modes, use distinct monochrome
     /// weights because WidgetKit does not permit custom tint colors.
     private func color(for condition: AppWeatherCondition) -> Color {
@@ -1902,13 +1889,11 @@ private struct SunnyHoursLegend: View {
             switch condition {
             case .clear:
                 return .primary.opacity(1)
-            case .partlySunny:
-                return .primary.opacity(0.62)
             case .rain:
                 return .primary.opacity(0.82)
             case .drizzle:
                 return .primary.opacity(0.38)
-            case .partlyCloudy, .cloudy, .snow, .fog, .wind:
+            case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
                 return .primary.opacity(
                     colorSchemeContrast == .increased ? 0.24 : 0.14
                 )
@@ -1921,13 +1906,11 @@ private struct SunnyHoursLegend: View {
         switch condition {
         case .clear:
             return colors.dotSun
-        case .partlySunny:
-            return colors.dotPartlyCloudy
         case .rain:
             return colors.dotRain
         case .drizzle:
             return colors.dotDrizzle
-        case .partlyCloudy, .cloudy, .snow, .fog, .wind:
+        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
             return noSunColor(in: colors)
         }
     }
@@ -1949,9 +1932,7 @@ private struct SunnyHoursLegend: View {
         switch tone {
         case .clear:
             colors.dotSun
-        case .partlySunny:
-            colors.dotPartlyCloudy
-        case .cloudy:
+        case .partlySunny, .cloudy:
             colors.dotCloudy
         case .rain:
             colors.dotRain
@@ -2026,12 +2007,10 @@ private func widgetConditionIconColor(
     for condition: AppWeatherCondition,
     colors: AppPalette.Values
 ) -> Color {
-    switch condition.iconTone {
+    switch condition.widgetPresentationCondition.iconTone {
     case .clear:
         return colors.dotSun
-    case .partlySunny:
-        return colors.dotPartlyCloudy
-    case .cloudy:
+    case .partlySunny, .cloudy:
         return colors.dotCloudy
     case .rain:
         return colors.dotRain
@@ -2081,12 +2060,18 @@ private func widgetPlaceURL(for city: WidgetDataCity, issue: WeatherDataIssue?) 
 // MARK: - Widget Presentation Models
 
 private extension WidgetSunnyWindowDay {
-    /// Full source conditions for a five-color row. Existing snapshots created
-    /// before this payload was added continue to draw their known sunny states
-    /// over the neutral track until the next WidgetKit refresh replaces them.
+    /// Full source conditions for a four-color row. Existing snapshots created
+    /// before this payload was added retain their known partly-sunny buckets,
+    /// but those intervals now draw as neutral partly cloudy.
     var chartHourlyConditions: [WidgetHourlyCondition] {
         if let hourlyConditions {
-            return hourlyConditions
+            return hourlyConditions.map { hour in
+                WidgetHourlyCondition(
+                    date: hour.date,
+                    hour: hour.hour,
+                    condition: hour.condition.widgetPresentationCondition
+                )
+            }
         }
 
         let knownHours = Array(Set(sunnyHours + partlySunnyHours)).sorted()
@@ -2094,7 +2079,7 @@ private extension WidgetSunnyWindowDay {
             WidgetHourlyCondition(
                 date: date.addingTimeInterval(TimeInterval(hour * 3_600)),
                 hour: hour,
-                condition: sunnyHours.contains(hour) ? .clear : .partlySunny
+                condition: sunnyHours.contains(hour) ? .clear : .partlyCloudy
             )
         }
     }
@@ -2115,7 +2100,7 @@ private extension WidgetDataCity {
             longitude: 2.1686,
             daytimeHours: Array(6...21),
             sunnyHours: Array(8...19),
-            partlySunnyHours: [7, 20]
+            partlySunnyHours: []
         )
         city.hourlyConditions = (6...21).compactMap { hour in
             guard let date = calendar.date(
@@ -2131,7 +2116,7 @@ private extension WidgetDataCity {
             case 8...17:
                 condition = .clear
             case 7, 20:
-                condition = .partlySunny
+                condition = .partlyCloudy
             case 18:
                 condition = .rain
             case 19:
@@ -2146,8 +2131,8 @@ private extension WidgetDataCity {
             )
         }
         city.currentCondition = .clear
-        // Vary hours by day so previews exercise differing span widths and both
-        // sunny/partly-sunny treatments without requiring WeatherKit access.
+        // Vary hours by day so previews exercise differing span widths and the
+        // neutral partly-cloudy treatment without requiring WeatherKit access.
         city.sunnyWindowDays = (0..<10).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: offset, to: .now) else { return nil }
             let sunnyStart = 7 + (offset % 4)
@@ -2155,7 +2140,7 @@ private extension WidgetDataCity {
             return WidgetSunnyWindowDay(
                 date: calendar.startOfDay(for: date),
                 sunnyHours: Array(sunnyStart...sunnyEnd),
-                partlySunnyHours: offset.isMultiple(of: 2) ? [6, sunnyEnd + 1] : [sunnyEnd + 1],
+                partlySunnyHours: [],
                 hourlyConditions: (6...21).compactMap { hour in
                     guard let hourDate = calendar.date(
                         bySettingHour: hour,
@@ -2169,7 +2154,7 @@ private extension WidgetDataCity {
                     if (sunnyStart...sunnyEnd).contains(hour) {
                         condition = .clear
                     } else if hour == 6 || hour == sunnyEnd + 1 {
-                        condition = .partlySunny
+                        condition = .partlyCloudy
                     } else if hour == 18, offset.isMultiple(of: 3) {
                         condition = .rain
                     } else if hour == 19, offset.isMultiple(of: 3) {
@@ -2207,7 +2192,7 @@ private extension WidgetDataCity {
     /// Uses the same condition-derived no-sun fill as Detail's currently
     /// selected forecast, based on the widget's current destination condition.
     var widgetScreenTone: WeatherIconTone? {
-        currentCondition?.iconTone
+        currentCondition?.widgetPresentationCondition.iconTone
     }
 
     /// A rendering-safe current-day domain derived from WeatherKit's available
@@ -2302,7 +2287,7 @@ private extension WidgetDataCity {
             sunnyHours: snapshot.sunnyHours,
             partlySunnyHours: snapshot.partlySunnyHours,
             hourlyConditions: snapshot.hourlyConditions,
-            currentCondition: snapshot.currentCondition,
+            currentCondition: snapshot.currentCondition?.widgetPresentationCondition,
             sunnyWindowDays: snapshot.sunnyWindowDays,
             dataIssue: snapshot.dataIssue
         )

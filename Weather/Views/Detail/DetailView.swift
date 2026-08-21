@@ -44,7 +44,7 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
         dailySunnyHoursCard: SunnyHoursTimeline,
         tenDaySunnyHoursTimeline: TenDaySunnyHoursTimeline,
         temperatureUnit: TemperatureUnit,
-        maximumContentWidth: CGFloat = 760,
+        maximumContentWidth: CGFloat = AppContentLayout.standardMaximumWidth,
         showsTimeZoneFootnote: Bool,
         onHeaderVisibilityChange: @escaping (Bool) -> Void = { _ in },
         @ViewBuilder supplementaryContent: () -> SupplementaryContent,
@@ -122,12 +122,11 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
     /// while landscape iPad narrows to 640 points across Your Location, Saved
     /// Places, and place Detail.
     private func reportContentWidth(for size: CGSize) -> CGFloat {
-        guard horizontalSizeClass == .regular,
-              size.width > size.height,
-              maximumContentWidth.isFinite else {
-            return maximumContentWidth
-        }
-        return min(maximumContentWidth, 640)
+        AppContentLayout.maximumWidth(
+            for: size,
+            horizontalSizeClass: horizontalSizeClass,
+            standardMaximumWidth: maximumContentWidth
+        )
     }
 }
 
@@ -141,8 +140,6 @@ struct CurrentLocationReportContent: View {
     let requestCurrentLocation: () -> Void
     let openLocationSettings: () -> Void
     let refreshCurrentLocation: () -> Void
-    let searchNearby: () -> Void
-    let onNearbyVisibilityChange: (Bool) -> Void
 
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
@@ -237,7 +234,7 @@ struct CurrentLocationReportContent: View {
                 retry: nil
             ),
             temperatureUnit: temperatureUnit,
-            maximumContentWidth: 760,
+            maximumContentWidth: AppContentLayout.standardMaximumWidth,
             showsTimeZoneFootnote: true,
             onHeaderVisibilityChange: { isVisible in
                 showsLargeTitle = isVisible
@@ -248,8 +245,6 @@ struct CurrentLocationReportContent: View {
                 selectedDate: selectedDate,
                 requestLocation: requestCurrentLocation,
                 openSettings: openLocationSettings,
-                retry: searchNearby,
-                onVisibilityChange: onNearbyVisibilityChange,
                 viewOnMap: {
                     router.showMap(findingSunIn: .nearMe)
                 }
@@ -308,8 +303,6 @@ private struct NearbySunnyPlacesSection: View {
     let selectedDate: Date
     let requestLocation: () -> Void
     let openSettings: () -> Void
-    let retry: () -> Void
-    let onVisibilityChange: (Bool) -> Void
     let viewOnMap: () -> Void
 
     @Environment(\.locale) private var locale
@@ -327,12 +320,8 @@ private struct NearbySunnyPlacesSection: View {
             errorMessage: model.nearbySearchError,
             requestLocation: requestLocation,
             openSettings: openSettings,
-            retry: retry,
             viewOnMap: viewOnMap
         )
-        .onScrollVisibilityChange(threshold: 0.05) { isVisible in
-            onVisibilityChange(isVisible)
-        }
     }
 }
 
@@ -467,7 +456,7 @@ struct DetailView: View {
                     : nil
             ),
             temperatureUnit: temperatureUnit,
-            maximumContentWidth: 760,
+            maximumContentWidth: AppContentLayout.standardMaximumWidth,
             showsTimeZoneFootnote: true,
             onHeaderVisibilityChange: { isVisible in
                 showsLargeTitle = isVisible

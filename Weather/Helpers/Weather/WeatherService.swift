@@ -104,7 +104,6 @@ final class WeatherService {
                 symbolName: daySymbol,
                 condition: AppWeatherCondition.resolve(
                     weatherKit: day.condition,
-                    isDaylight: true,
                     symbolName: daySymbol
                 ),
                 hourlyForecasts: hourlyForecasts,
@@ -158,7 +157,6 @@ final class WeatherService {
                 symbolName: hourWeather.symbolName,
                 condition: AppWeatherCondition.resolve(
                     weatherKit: hourWeather.condition,
-                    isDaylight: hourWeather.isDaylight,
                     symbolName: hourWeather.symbolName
                 ),
                 isDaylight: hourWeather.isDaylight,
@@ -221,10 +219,21 @@ final class WeatherService {
         _ city: City,
         retriesOnFailure: Bool = true
     ) async throws -> WeatherServiceResponse {
+#if DEBUG
+        let debugStartedAt = Date()
+        func debugLog(_ message: String) {
+            let elapsed = Date().timeIntervalSince(debugStartedAt)
+            print("[WeatherRequest \(city.canonicalDisplayName) +\(String(format: "%.2f", elapsed))s] \(message)")
+        }
+        debugLog("started")
+#endif
         do {
             // Resolve a display-only city into coordinates/name metadata before
             // requesting WeatherKit. WeatherKit itself ultimately uses location.
             let resolved = try await resolvedCityAndTimeZone(for: city)
+#if DEBUG
+            debugLog("place and timezone resolved")
+#endif
             let location = CLLocation(
                 latitude: resolved.city.latitude,
                 longitude: resolved.city.longitude
@@ -235,23 +244,39 @@ final class WeatherService {
             } else {
                 weather = try await weatherKitService.weather(for: location)
             }
+#if DEBUG
+            debugLog("WeatherKit response received")
+#endif
 
             // Convert Apple SDK objects at this boundary; views only see the
             // app's own stable models after this point.
-            return try convertWeatherKitData(
+            let response = try convertWeatherKitData(
                 weather: weather,
                 for: resolved.city,
                 timeZone: resolved.timeZone
             )
+#if DEBUG
+            debugLog("forecast converted")
+#endif
+            return response
         } catch is CancellationError {
+#if DEBUG
+            debugLog("cancelled")
+#endif
             throw CancellationError()
         } catch let serviceError as WeatherServiceError {
+#if DEBUG
+            debugLog("failed: \(serviceError.localizedDescription)")
+#endif
             reportDeveloperWarning(
                 title: "Weather Request Failed",
                 message: serviceError.localizedDescription
             )
             throw serviceError
         } catch {
+#if DEBUG
+            debugLog("failed: \(error.localizedDescription)")
+#endif
             let serviceError = WeatherServiceError.requestFailed(
                 city: city.displayName,
                 detail: error.localizedDescription

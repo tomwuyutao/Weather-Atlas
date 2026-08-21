@@ -17,7 +17,7 @@
 nonisolated enum WeatherIconSymbol {
     /// Icon for clear conditions.
     static let clear = "sun.max.fill"
-    /// Icon for partly cloudy or partly sunny conditions.
+    /// Gray cloud-and-sun icon for partly cloudy conditions.
     static let partlyCloudy = "cloud.sun"
     /// Icon for overcast conditions.
     static let cloudy = "cloud"

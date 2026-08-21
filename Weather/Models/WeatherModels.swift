@@ -639,14 +639,27 @@ final class WeatherModel {
         forceRefresh: Bool = false,
         locale: Locale = .autoupdatingCurrent
     ) async {
+#if DEBUG
+        let debugStartedAt = Date()
+        func debugLog(_ message: String) {
+            let elapsed = Date().timeIntervalSince(debugStartedAt)
+            print("[NearbySearch +\(String(format: "%.2f", elapsed))s] \(message)")
+        }
+#endif
         // Do not ask Core Location from here. The UI requests permission and
         // updates the provider separately; this method only consumes a usable
         // coordinate when one is already available.
         guard let coordinate = locationProvider.coordinate,
               CLLocationCoordinate2DIsValid(coordinate) else {
+#if DEBUG
+            debugLog("stopped: no valid current coordinate")
+#endif
             clearLocationResults()
             return
         }
+#if DEBUG
+        debugLog("started for \(coordinate.latitude), \(coordinate.longitude)")
+#endif
 
         // A recent, fully successful search is reusable while the user remains
         // at effectively the same coordinate. Date changes filter its forecasts
@@ -655,6 +668,9 @@ final class WeatherModel {
             coordinate: coordinate
         )
         if !forceRefresh, canReuseNearbySearch(for: key) {
+#if DEBUG
+            debugLog("reused the recent completed search")
+#endif
             return
         }
 
@@ -691,6 +707,9 @@ final class WeatherModel {
             let candidates = try await loadNearbyCandidates(
                 centeredAt: coordinate
             )
+#if DEBUG
+            debugLog("catalog returned \(candidates.count) candidates")
+#endif
             guard isActiveRefresh(generation) else { return }
 
             // Keep only the transient cache entries needed for this search,
@@ -701,7 +720,7 @@ final class WeatherModel {
             loadedCandidates.reserveCapacity(candidates.count)
 
             // Resolve stable identities first, then issue one batch. The weather
-            // store uses at most four requests concurrently and persists the
+            // store uses at most five requests concurrently and persists the
             // complete batch once, while this model still publishes results only
             // after every candidate has settled.
             let resolvedCandidates = candidates.map { candidate in
@@ -710,10 +729,16 @@ final class WeatherModel {
                     city: resolveCatalogCity(from: candidate.city)
                 )
             }
+#if DEBUG
+            debugLog("starting forecast batch for \(resolvedCandidates.count) cities")
+#endif
             await weatherStore.load(
                 cities: resolvedCandidates.map { $0.city },
                 forceRefresh: forceRefresh
             )
+#if DEBUG
+            debugLog("forecast batch settled")
+#endif
             guard isActiveRefresh(generation) else { return }
 
             for entry in resolvedCandidates {
@@ -740,6 +765,11 @@ final class WeatherModel {
             retainedPlaceIDs = retainedIDs
             nearbyCandidates = loadedCandidates
             didSearchNearby = true
+#if DEBUG
+            debugLog(
+                "assembled \(loadedCandidates.count) forecasts; \(failedLookupCount) unavailable"
+            )
+#endif
             // Surface a non-blocking warning only after retaining successful
             // results, so partial network failures are transparent but useful.
             if failedLookupCount > 0 {
@@ -756,11 +786,20 @@ final class WeatherModel {
                 lastSearchCompletedAt = .now
             }
             retainWeatherScope()
+#if DEBUG
+            debugLog("completed")
+#endif
         } catch is CancellationError {
             // Cancellation is expected when a newer location search supersedes
             // this one; the newer generation owns the visible state instead.
+#if DEBUG
+            debugLog("cancelled")
+#endif
             return
         } catch is CitiesCatalogError {
+#if DEBUG
+            debugLog("failed: city catalog error")
+#endif
             guard isActiveRefresh(generation) else { return }
             retainedPlaceIDs = []
             nearbyCandidates = []
@@ -773,6 +812,9 @@ final class WeatherModel {
             lastSearchCompletedAt = nil
             retainWeatherScope()
         } catch {
+#if DEBUG
+            debugLog("failed: \(error.localizedDescription)")
+#endif
             guard isActiveRefresh(generation) else { return }
             retainedPlaceIDs = []
             nearbyCandidates = []
@@ -806,7 +848,7 @@ final class WeatherModel {
     // MARK: - Derived Recommendations
 
     /// Builds one recommendation using the fixed app-wide sunny-hours rule:
-    /// Clear and Partly Sunny each count as one full sunny hour.
+    /// only clear daylight hours count as sunny.
     func placeRecommendation(
         for weather: CityWeather,
         on date: Date

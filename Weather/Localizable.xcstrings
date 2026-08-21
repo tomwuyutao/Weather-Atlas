@@ -501,6 +501,197 @@
         }
       }
     },
+    "%lld cities excluded due to time zone differences." : {
+      "comment" : "Notice shown when saved cities cannot participate in the selected-date overview because their local date has already passed. The argument is the number of excluded cities.",
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Stadt aufgrund von Zeitzonenunterschieden ausgeschlossen."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Städte aufgrund von Zeitzonenunterschieden ausgeschlossen."
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld city excluded due to time zone differences."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld cities excluded due to time zone differences."
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ciudad excluida debido a diferencias de zona horaria."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ciudades excluidas debido a diferencias de zona horaria."
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ville exclue en raison des différences de fuseau horaire."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld villes exclues en raison des différences de fuseau horaire."
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld città esclusa a causa delle differenze di fuso orario."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld città escluse a causa delle differenze di fuso orario."
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "タイムゾーンの違いにより%lld都市を除外しました。"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "시간대 차이로 인해 도시 %lld곳이 제외되었습니다."
+                }
+              }
+            }
+          }
+        },
+        "pt" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld cidade excluída devido a diferenças de fuso horário."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld cidades excluídas devido a diferenças de fuso horário."
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld города исключены из-за разницы часовых поясов."
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld городов исключено из-за разницы часовых поясов."
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld город исключён из-за разницы часовых поясов."
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld города исключено из-за разницы часовых поясов."
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "因时区差异排除了%lld个城市。"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "因時區差異排除了%lld個城市。"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld h" : {
       "comment" : "A label inside a Map dot that shows how many hours of sunshine are expected in a given location. The argument is the number of hours of sunshine expected.",
       "isCommentAutoGenerated" : true,
@@ -4988,77 +5179,6 @@
         }
       }
     },
-    "Excluded due to time zone differences." : {
-      "comment" : "Notice shown when one or more saved cities cannot participate in the selected-date overview because their local date has already passed.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aufgrund von Zeitzonenunterschieden ausgeschlossen."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Excluded due to time zone differences."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Excluidas por diferencias de zona horaria."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Exclues en raison des différences de fuseau horaire."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Escluse a causa delle differenze di fuso orario."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "タイムゾーンの違いにより除外されています。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "시간대 차이로 인해 제외되었습니다."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Excluídas devido a diferenças de fuso horário."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Исключены из-за разницы часовых поясов."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "因时区差异而排除。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "因時區差異而排除。"
-          }
-        }
-      }
-    },
     "Explore Sun on a Map" : {
       "comment" : "A tip title for a feature that lets users explore the sun's position on a map.",
       "isCommentAutoGenerated" : true,
@@ -5413,78 +5533,6 @@
         }
       }
     },
-    "Find nearby World Cities with more sunny hours." : {
-      "comment" : "Text shown when nearby places have not been searched yet. It explains that results must have more selected-day sunny hours than the current location.",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Finden Sie nahegelegene Weltstädte mit mehr Sonnenstunden."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Find nearby World Cities with more sunny hours."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Encuentra ciudades del mundo cercanas con más horas de sol."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trouvez des villes du monde à proximité avec davantage d’heures de soleil."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trova città del mondo vicine con più ore di sole."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "近くで日照時間がより長い世界の都市を探します。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "주변에서 일조 시간이 더 긴 세계 도시를 찾습니다."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Encontre cidades do mundo próximas com mais horas de sol."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Найдите поблизости города мира с большим количеством солнечных часов."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查找附近日照时长更长的世界城市。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尋找附近日照時數更長的世界城市。"
-          }
-        }
-      }
-    },
     "Find Sun" : {
       "comment" : "A button that, when tapped, presents a sheet for finding sunny places.",
       "isCommentAutoGenerated" : true,
@@ -5767,78 +5815,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尋找附近的陽光"
-          }
-        }
-      }
-    },
-    "Find Sunny Place" : {
-      "comment" : "A button that triggers a search for the nearest World Cities location with fully clear conditions.",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Finden Sie Sunny Place"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Find Sunny Place"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Encuentra un lugar soleado"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trouver un endroit ensoleillé"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Trova un posto soleggiato"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "日当たりの良い場所を探す"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "써니 플레이스 찾기"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Encontre um lugar ensolarado"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Найдите солнечное место"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "寻找阳光明媚的地方"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "尋找陽光明媚的地方"
           }
         }
       }
@@ -12748,6 +12724,7 @@
       }
     },
     "Partly Sunny" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -14160,7 +14137,6 @@
       }
     },
     "Saved" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

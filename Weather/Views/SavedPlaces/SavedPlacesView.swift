@@ -7,6 +7,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// Shared presentation state for the two Saved Places planning cards.
 ///
@@ -25,6 +26,7 @@ struct SavedPlacesView: View {
     // MARK: Shared Inputs
 
     @Bindable var model: WeatherModel
+    @Bindable var router: AppNavigation
     @Binding var selectedDate: Date
 
     @Environment(\.appTheme) private var theme
@@ -144,21 +146,25 @@ struct SavedPlacesView: View {
     }
 
     private var timeZoneExclusionNotice: String? {
-        guard !dateExclusions.isEmpty else { return nil }
-        return localizedString(
-            "Excluded due to time zone differences.",
-            locale: locale
-        )
+        let excludedCityCount = dateExclusions.count
+        guard excludedCityCount > 0 else { return nil }
+
+        // Keep the count inside the localized resource so String Catalog plural
+        // rules can select singular, plural, and language-specific forms.
+        var resource: LocalizedStringResource =
+            "\(excludedCityCount) cities excluded due to time zone differences."
+        resource.locale = locale
+        return String(localized: resource)
     }
 
     /// Preserve the established phone and portrait layout. A full-width
     /// landscape iPad gets a more focused planning column with generous space
     /// on either side of the two comparison cards.
     private func contentWidth(for size: CGSize) -> CGFloat {
-        guard horizontalSizeClass == .regular, size.width > size.height else {
-            return 760
-        }
-        return 640
+        AppContentLayout.maximumWidth(
+            for: size,
+            horizontalSizeClass: horizontalSizeClass
+        )
     }
 
     var body: some View {
@@ -199,6 +205,15 @@ struct SavedPlacesView: View {
         .navigationTitle("Saved Places")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if UIDevice.current.userInterfaceIdiom == .pad {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Settings", systemImage: "slider.horizontal.3") {
+                        router.presentedSheet = .settings
+                    }
+                    .labelStyle(.iconOnly)
+                }
+            }
+
             // This is intentionally the same shared root date binding used by
             // Your Location, Map, and detail charts.
             ToolbarItem(placement: .topBarTrailing) {

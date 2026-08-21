@@ -27,7 +27,6 @@ struct NearbySunnyPlacesCard: View {
     let errorMessage: String?
     let requestLocation: () -> Void
     let openSettings: () -> Void
-    let retry: () -> Void
     let viewOnMap: () -> Void
 
     @Environment(\.appTheme) private var theme
@@ -50,8 +49,19 @@ struct NearbySunnyPlacesCard: View {
         Array(recommendations.prefix(Self.maxRecommendations))
     }
 
-    private var showsLoadingState: Bool {
-        shownRecommendations.isEmpty && isLoading
+    /// The card can be waiting for a search in two phases: while its task is
+    /// actively running, and briefly after location resolution hands the
+    /// search off. Both use the same compact loading layout.
+    private var showsLoadingContent: Bool {
+        shownRecommendations.isEmpty
+            && (
+                isLoading
+                    || (
+                        locationStatus.hasResolvedCoordinate
+                            && !hasCompletedSearch
+                            && errorMessage == nil
+                    )
+            )
     }
 
     var body: some View {
@@ -70,7 +80,7 @@ struct NearbySunnyPlacesCard: View {
         .padding(.horizontal, WeatherCardLayout.padding)
         .padding(
             .bottom,
-            showsLoadingState ? WeatherCardLayout.padding : 12
+            showsLoadingContent ? WeatherCardLayout.padding : 12
         )
         .frame(maxWidth: .infinity, alignment: .leading)
         .detailTranslucentCard(
@@ -114,29 +124,11 @@ struct NearbySunnyPlacesCard: View {
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .center)
             }
-        } else if showsLoadingState {
-            // Loading is separate from an empty completed search, avoiding a
-            // misleading “no sunny city” message while WeatherKit is working.
-            HStack(spacing: WeatherCardLayout.headerSpacing) {
-                ProgressView()
-                    .frame(
-                        width: WeatherCardLayout.leadingIconWidth,
-                        alignment: .leading
-                    )
-
-                Text("Loading nearby sunnier places…")
-                    .font(.callout)
-                    .foregroundStyle(theme.colors.secondaryText)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if showsLoadingContent {
+            loadingContent
 
         } else if let errorMessage {
-            messageWithAction(
-                errorMessage,
-                actionTitle: "Try Again",
-                systemImage: "arrow.clockwise",
-                action: retry
-            )
+            message(errorMessage)
         } else if locationStatus.requiresSettings {
             messageWithAction(
                 locationStatus == .denied
@@ -173,16 +165,30 @@ struct NearbySunnyPlacesCard: View {
             .foregroundStyle(theme.colors.secondaryText)
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            messageWithAction(
-                localizedString(
-                    "Find nearby World Cities with more sunny hours.",
-                    locale: locale
-                ),
-                actionTitle: "Find Sunny Place",
-                systemImage: "sun.max",
-                action: retry
-            )
+            loadingContent
         }
+    }
+
+    private var loadingContent: some View {
+        HStack(spacing: WeatherCardLayout.headerSpacing) {
+            ProgressView()
+                .frame(
+                    width: WeatherCardLayout.leadingIconWidth,
+                    alignment: .leading
+                )
+
+            Text("Loading nearby sunnier places…")
+                .font(.callout)
+                .foregroundStyle(theme.colors.secondaryText)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func message(_ text: String) -> some View {
+        Text(text)
+            .font(.callout)
+            .foregroundStyle(theme.colors.secondaryText)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func resultRow(
@@ -260,6 +266,29 @@ struct NearbySunnyPlacesCard: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+}
+
+// MARK: - Xcode Previews
+
+#Preview(
+    "Nearby Sunnier Places – Loading",
+    traits: .fixedLayout(width: 390, height: 150)
+) {
+    NearbySunnyPlacesCard(
+        recommendations: [],
+        locationStatus: .ready,
+        isLoading: true,
+        hasCompletedSearch: false,
+        errorMessage: nil,
+        requestLocation: {},
+        openSettings: {},
+        viewOnMap: {}
+    )
+    .padding()
+    .background(AppPalette.light.background)
+    .environment(\.appTheme, .shared)
+    .environment(\.locale, Locale(identifier: "en"))
+    .preferredColorScheme(.light)
 }
 
 // MARK: - Search Readiness

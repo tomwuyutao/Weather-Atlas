@@ -7,7 +7,7 @@
 //
 //  Reading guide: this is the app's forecast repository. It first restores a
 //  disposable cache, then coordinates per-city WeatherKit requests so screens
-//  can share work, avoid stale responses, and never exceed four live requests.
+//  can share work, avoid stale responses, and never exceed five live requests.
 //
 
 import Foundation
@@ -65,7 +65,7 @@ final class SavedPlacesWeatherStore {
     private var inFlightByID: [
         City.ID: (token: UUID, task: Task<CityWeather?, Never>)
     ] = [:]
-    /// Actor-isolated gate enforcing four concurrent WeatherKit requests.
+    /// Actor-isolated gate enforcing five concurrent WeatherKit requests.
     /// Unlike a thread semaphore, these continuations suspend async tasks rather
     /// than blocking the main actor while waiting for a network slot.
     @ObservationIgnored private var activeRequests = 0
@@ -209,16 +209,29 @@ final class SavedPlacesWeatherStore {
         cities: [City],
         forceRefresh: Bool = false
     ) async {
+#if DEBUG
+        let debugStartedAt = Date()
+        func debugLog(_ message: String) {
+            let elapsed = Date().timeIntervalSince(debugStartedAt)
+            print("[WeatherBatch +\(String(format: "%.2f", elapsed))s] \(message)")
+        }
+#endif
         discardExpiredWeather()
         // Preserve caller order while removing repeated IDs so batch requests and
         // the UI's loading state each represent one task per actual place.
         let uniqueCities = deduplicated(cities)
         guard !uniqueCities.isEmpty else { return }
+#if DEBUG
+        debugLog("started for \(uniqueCities.count) cities")
+#endif
 
         // Do not begin a blanking refresh without a viable network path.
         guard !networkConnectivity.isOffline else { return }
 
         await loadAttributionIfNeeded()
+#if DEBUG
+        debugLog("WeatherKit attribution ready")
+#endif
         beginCacheBatch()
         defer { endCacheBatch() }
 
@@ -239,11 +252,17 @@ final class SavedPlacesWeatherStore {
                 )
             )
         }
+#if DEBUG
+        debugLog("awaiting \(tasks.count) new or coalesced forecast requests")
+#endif
 
         // Await all started/coalesced tasks. They were created before this loop,
         // so requests can run concurrently up to the internal four-slot limit.
-        for task in tasks {
+        for (index, task) in tasks.enumerated() {
             _ = await task.value
+#if DEBUG
+            debugLog("request \(index + 1)/\(tasks.count) settled")
+#endif
         }
 
         // A forced refresh from another screen can supersede one of the tasks
@@ -254,6 +273,9 @@ final class SavedPlacesWeatherStore {
         for city in uniqueCities {
             await awaitCurrentRequest(for: city.id)
         }
+#if DEBUG
+        debugLog("completed")
+#endif
     }
 
     /// Refreshes one place immediately, preserving its stable saved identity.
@@ -466,7 +488,7 @@ final class SavedPlacesWeatherStore {
 
     /// Suspends excess place requests without blocking the main actor.
     private func acquireRequestSlot() async {
-        if activeRequests < 4 {
+        if activeRequests < 5 {
             activeRequests += 1
             return
         }
@@ -479,7 +501,7 @@ final class SavedPlacesWeatherStore {
 
     /// Hands a completed request's slot directly to the next waiter.
     /// If nobody waits, decrement the count; otherwise the resumed task takes
-    /// over the existing slot and the count remains exactly four.
+    /// over the existing slot and the count remains exactly five.
     private func releaseRequestSlot() {
         if slotWaiters.isEmpty {
             activeRequests = max(0, activeRequests - 1)

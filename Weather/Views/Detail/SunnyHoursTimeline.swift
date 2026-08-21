@@ -313,10 +313,8 @@ struct SunnyHoursTimeline: View {
 /// Low-level graphical track shared by the daily card in both report types.
 /// It aligns hourly segments, the current-time marker, and sparse axis labels.
 private struct DailySunnyHoursTrack: View {
-    /// The daily chart deliberately stops growing once it reaches the width of
-    /// a phone report. On a landscape iPad, stretching each hourly capsule
-    /// across the entire card made the compact timeline read as large dots
-    /// rather than the vertical, discrete hour marks used on phone and widget.
+    /// Wider cards scale the compact timeline's capsule width and gap together,
+    /// preserving the visual rhythm instead of stretching only one dimension.
     private static let maximumPhoneTimelineWidth: CGFloat = 360
     /// One data-backed hourly capsule in the discrete daily timeline.
     private struct TimelineSlot: Identifiable {
@@ -337,6 +335,12 @@ private struct DailySunnyHoursTrack: View {
         let capsuleIndex: Int
 
         var id: Int { hour }
+    }
+
+    /// The shared dimensions for both the capsule row and its time axis.
+    private struct TimelineMetrics {
+        let capsuleWidth: CGFloat
+        let spacing: CGFloat
     }
 
     let data: SunnyHoursCalculation.SunnyHoursData
@@ -373,21 +377,20 @@ private struct DailySunnyHoursTrack: View {
             VStack(spacing: 4) {
                 GeometryReader { proxy in
                     let capsuleHeight = proxy.size.height
-                    // The widget divides the available width after reserving
-                    // inter-capsule gaps; reuse that calculation verbatim so
-                    // the axis and live marker share the same coordinates.
-                    let capsuleWidth = (
-                        proxy.size.width
-                            - capsuleSpacing * CGFloat(slots.count - 1)
-                    ) / CGFloat(slots.count)
+                    let metrics = timelineMetrics(
+                        for: slots.count,
+                        availableWidth: proxy.size.width
+                    )
 
                     ZStack(alignment: .leading) {
-                        HStack(spacing: capsuleSpacing) {
+                        HStack(spacing: metrics.spacing) {
                             ForEach(slots) { slot in
                                 Capsule()
                                     .fill(color(for: slot.condition))
+                                    .frame(width: metrics.capsuleWidth)
                             }
                         }
+                        .frame(maxWidth: .infinity, alignment: .leading)
 
                         if selectedDateIsToday,
                            let boundaryIndex = currentTimeBoundaryIndex(in: slots) {
@@ -400,8 +403,9 @@ private struct DailySunnyHoursTrack: View {
                                     // nearest clock-hour boundary between capsules.
                                     x: currentTimeMarkerX(
                                         for: boundaryIndex,
-                                        capsuleWidth: capsuleWidth,
-                                        slotCount: slots.count
+                                        capsuleWidth: metrics.capsuleWidth,
+                                        slotCount: slots.count,
+                                        spacing: metrics.spacing
                                     ),
                                     y: capsuleHeight / 2
                                 )
@@ -420,10 +424,10 @@ private struct DailySunnyHoursTrack: View {
                     through: endHour
                 )
                 GeometryReader { proxy in
-                    let capsuleWidth = (
-                        proxy.size.width
-                            - capsuleSpacing * CGFloat(slots.count - 1)
-                    ) / CGFloat(slots.count)
+                    let metrics = timelineMetrics(
+                        for: slots.count,
+                        availableWidth: proxy.size.width
+                    )
 
                     ZStack(alignment: .leading) {
                         ForEach(axisMarkers) { marker in
@@ -432,8 +436,8 @@ private struct DailySunnyHoursTrack: View {
                                     // Put every label directly under a real
                                     // capsule center, including each endpoint.
                                     x: CGFloat(marker.capsuleIndex)
-                                        * (capsuleWidth + capsuleSpacing)
-                                        + capsuleWidth / 2,
+                                        * (metrics.capsuleWidth + metrics.spacing)
+                                        + metrics.capsuleWidth / 2,
                                     y: proxy.size.height / 2
                                 )
                         }
@@ -444,13 +448,7 @@ private struct DailySunnyHoursTrack: View {
                 .foregroundStyle(theme.colors.secondaryText)
                 .lineLimit(1)
             }
-
-
-
-            .frame(
-                maxWidth: Self.maximumPhoneTimelineWidth,
-                alignment: .leading
-            )
+            .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             EmptyView()
         }
@@ -493,14 +491,48 @@ private struct DailySunnyHoursTrack: View {
     private func currentTimeMarkerX(
         for boundaryIndex: Int,
         capsuleWidth: CGFloat,
-        slotCount: Int
+        slotCount: Int,
+        spacing: CGFloat
     ) -> CGFloat {
         if boundaryIndex >= slotCount {
             return CGFloat(slotCount) * capsuleWidth
-                + CGFloat(max(slotCount - 1, 0)) * capsuleSpacing
+                + CGFloat(max(slotCount - 1, 0)) * spacing
         }
         return CGFloat(boundaryIndex) * capsuleWidth
-            + (CGFloat(boundaryIndex) - 0.5) * capsuleSpacing
+            + (CGFloat(boundaryIndex) - 0.5) * spacing
+    }
+
+    /// Starts with the compact phone layout, then proportionally scales both
+    /// its vertical capsules and their gaps to fill a wider iPad card.
+    private func timelineMetrics(
+        for slotCount: Int,
+        availableWidth: CGFloat
+    ) -> TimelineMetrics {
+        guard slotCount > 0, availableWidth > 0 else {
+            return TimelineMetrics(capsuleWidth: 0, spacing: 0)
+        }
+        let compactWidth = min(
+            availableWidth,
+            Self.maximumPhoneTimelineWidth
+        )
+        let compactSpacing = slotCount > 1
+            ? min(
+                capsuleSpacing,
+                compactWidth / CGFloat(slotCount - 1)
+            )
+            : 0
+        let compactCapsuleWidth = max(
+            0,
+            (
+                compactWidth
+                    - compactSpacing * CGFloat(slotCount - 1)
+            ) / CGFloat(slotCount)
+        )
+        let scale = availableWidth / compactWidth
+        return TimelineMetrics(
+            capsuleWidth: compactCapsuleWidth * scale,
+            spacing: compactSpacing * scale
+        )
     }
 
     /// Maps four evenly spaced clock labels back to actual capsule centers.
@@ -537,20 +569,18 @@ private struct DailySunnyHoursTrack: View {
         }
     }
 
-    /// Uses the same five semantic chart colors as the ten-day chart and
-    /// widgets. Non-precipitation conditions retain the neutral no-sun track,
-    /// while rain and drizzle stay visible as their own forecast states.
+    /// Only clear conditions occupy the sunny track. Partly cloudy retains its
+    /// distinct icon elsewhere, but is neutral here just like cloud cover.
+    /// Rain and drizzle stay visible as their own forecast states.
     private func color(for condition: AppWeatherCondition?) -> Color {
         switch condition {
         case .clear:
             theme.colors.dotSun
-        case .partlySunny:
-            theme.colors.dotPartlyCloudy
         case .rain:
             theme.colors.dotRain
         case .drizzle:
             theme.colors.dotDrizzle
-        case .partlyCloudy, .cloudy, .snow, .fog, .wind, .none:
+        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind, .none:
             theme.colors.weatherNoSunTimelineColor(for: screenTone)
         }
     }

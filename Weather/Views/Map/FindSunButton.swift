@@ -10,8 +10,8 @@ import SwiftUI
 import UIKit
 
 /// A single compact control for all Find Sun entry points. Immediate searches
-/// stay in the menu, while the full country and continent catalogs open in a
-/// dedicated full-screen picker so they remain easy to browse and search.
+/// stay in the menu, while the country and continent catalogs open in a
+/// dedicated picker that floats on iPad and remains full screen on iPhone.
 struct FindSunButton: View {
     let currentLocationCoordinate: CLLocationCoordinate2D?
     let locale: Locale
@@ -30,6 +30,39 @@ struct FindSunButton: View {
     @State private var latestSessionGeneration = 0
 
     var body: some View {
+        pickerPresentation
+            .onAppear {
+                latestSessionGeneration = sessionGeneration
+            }
+            .onChange(of: sessionGeneration) { _, newGeneration in
+                latestSessionGeneration = newGeneration
+                presentedPicker = nil
+                cancelPendingCommit()
+            }
+            .onDisappear {
+                cancelPendingCommit()
+            }
+    }
+
+    /// Full-screen presentation remains a focused phone experience. On iPad,
+    /// native sheets are centered floating panels that keep the map visible
+    /// behind the country or continent catalog.
+    @ViewBuilder
+    private var pickerPresentation: some View {
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            findSunMenu
+                .sheet(item: $presentedPicker) { picker in
+                    geographicPicker(for: picker)
+                }
+        } else {
+            findSunMenu
+                .fullScreenCover(item: $presentedPicker) { picker in
+                    geographicPicker(for: picker)
+                }
+        }
+    }
+
+    private var findSunMenu: some View {
         Menu {
             Button(action: { runAfterMenuDismissal(findSunHere) }) {
                 MapContextMenuLabel(
@@ -67,28 +100,20 @@ struct FindSunButton: View {
                 .frame(minHeight: 44)
                 .contentShape(Rectangle())
         }
-        .fullScreenCover(item: $presentedPicker) { picker in
-            FindSunGeographicSearchSheet(
-                picker: picker,
-                currentLocationCoordinate: currentLocationCoordinate,
-                locale: locale,
-                sessionGeneration: sessionGeneration,
-                isSessionCurrent: isSessionCurrent,
-                findSunInCountry: findSunInCountry,
-                findSunInContinent: findSunInContinent
-            )
-        }
-        .onAppear {
-            latestSessionGeneration = sessionGeneration
-        }
-        .onChange(of: sessionGeneration) { _, newGeneration in
-            latestSessionGeneration = newGeneration
-            presentedPicker = nil
-            cancelPendingCommit()
-        }
-        .onDisappear {
-            cancelPendingCommit()
-        }
+    }
+
+    private func geographicPicker(
+        for picker: GeographicPicker
+    ) -> FindSunGeographicSearchSheet {
+        FindSunGeographicSearchSheet(
+            picker: picker,
+            currentLocationCoordinate: currentLocationCoordinate,
+            locale: locale,
+            sessionGeneration: sessionGeneration,
+            isSessionCurrent: isSessionCurrent,
+            findSunInCountry: findSunInCountry,
+            findSunInContinent: findSunInContinent
+        )
     }
 
     private var thisAreaSystemImage: String {
@@ -168,9 +193,9 @@ struct MapContextMenuLabel: View {
     }
 }
 
-/// The two catalog surfaces deliberately use full-screen navigation instead
-/// of nested menus: countries can be searched, and both lists stay usable at
-/// every Dynamic Type size.
+/// The two catalog surfaces use dedicated navigation instead of nested menus:
+/// countries can be searched, and both lists stay usable at every Dynamic Type
+/// size.
 private enum GeographicPicker: String, Identifiable {
     case country
     case continent
@@ -178,7 +203,7 @@ private enum GeographicPicker: String, Identifiable {
     var id: String { rawValue }
 }
 
-/// Full-screen catalog picker for broad Find Sun searches.
+/// Catalog picker for broad Find Sun searches.
 private struct FindSunGeographicSearchSheet: View {
     let picker: GeographicPicker
     let currentLocationCoordinate: CLLocationCoordinate2D?
@@ -191,7 +216,7 @@ private struct FindSunGeographicSearchSheet: View {
     @State private var query = ""
     /// A row selection should start dismissal before it changes the Map's
     /// bottom surface. This prevents the presenting Find Sun control from
-    /// being replaced while the full-screen catalog is still on screen.
+    /// being replaced while the catalog is still on screen.
     @State private var isCommittingSelection = false
 
     @Environment(\.appTheme) private var theme
@@ -243,6 +268,8 @@ private struct FindSunGeographicSearchSheet: View {
             }
             .listStyle(.insetGrouped)
             .weatherScrollableBackground()
+            .weatherContentColumn(standardMaximumWidth: .infinity)
+            .weatherScreenBackground()
             .tint(theme.colors.accent)
             .navigationTitle(
                 picker == .country

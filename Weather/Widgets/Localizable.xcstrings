@@ -1652,6 +1652,7 @@
       }
     },
     "Partly Sunny" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {

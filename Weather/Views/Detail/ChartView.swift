@@ -427,9 +427,9 @@ struct DetailChartView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
                 .padding(.bottom, 28)
-                .frame(maxWidth: 760)
                 .frame(maxWidth: .infinity)
             }
+            .weatherContentColumn()
             .background(theme.colors.background.ignoresSafeArea())
             .navigationTitle(selectedMetric.title(locale: locale))
             .navigationBarTitleDisplayMode(.inline)
@@ -638,9 +638,17 @@ struct DetailChartView: View {
                         isEndpoint ? 0.28 : 0.18
                     )
                 )
-                AxisValueLabel(format: hourlyAxisFormat, centered: true)
+                // Anchor the label's leading edge immediately to the right of
+                // its tick rather than centering it in the following interval.
+                AxisValueLabel(
+                    format: hourlyAxisFormat,
+                    centered: false,
+                    anchor: .leading,
+                    collisionResolution: .disabled,
+                    offsetsMarks: false
+                )
                     .foregroundStyle(theme.colors.secondaryText)
-                    .offset(y: 7)
+                    .offset(y: -1)
             }
         }
         .chartYAxis {
@@ -791,9 +799,14 @@ struct DetailChartView: View {
                         isEndpoint ? 0.28 : 0.18
                     )
                 )
-                AxisValueLabel(format: weekdayAxisFormat, centered: true)
+                AxisValueLabel(
+                    format: weekdayAxisFormat,
+                    centered: false,
+                    anchor: .leading,
+                    offsetsMarks: false
+                )
                     .foregroundStyle(theme.colors.secondaryText)
-                    .offset(y: 7)
+                    .offset(y: -1)
             }
         }
         .chartYAxis {
@@ -960,7 +973,15 @@ struct DetailChartView: View {
         // Axis values supply dates rather than indexes, which ensures weather
         // icons stay aligned if some missing readings were filtered out.
         AxisMarks(position: .top, values: icons.map(\.id)) { value in
-            AxisValueLabel(centered: true) {
+            // `centered: true` positions a continuous-axis label in the
+            // interval after a tick. Keep the image centered on the tick
+            // itself so its x-coordinate is exactly the point's x-coordinate.
+            AxisValueLabel(
+                centered: false,
+                anchor: .center,
+                collisionResolution: .disabled,
+                offsetsMarks: false
+            ) {
                 if let date = value.as(Date.self),
                    let icon = icons.first(where: { $0.id == date }) {
                     Image(systemName: icon.condition.displayIcon)
@@ -978,9 +999,9 @@ struct DetailChartView: View {
         }
     }
 
-    /// One symbol for every other plotted hourly point. The source of truth is
-    /// the plotted date list, so each icon always shares a coordinate with a
-    /// visible dot even when a metric has gaps.
+    /// One symbol for every other plotted hourly point, plus both endpoints.
+    /// The source of truth is the plotted date list, so each icon always shares
+    /// a coordinate with a visible dot even when a metric has gaps.
     private func hourlyConditionIcons(
         for forecast: DailyForecast,
         at dates: [Date]
@@ -988,21 +1009,21 @@ struct DetailChartView: View {
         let forecastsByDate = Dictionary(
             uniqueKeysWithValues: forecast.hourlyForecasts.map { ($0.id, $0) }
         )
-        return dates.sorted().compactMap { date in
-            guard let forecast = forecastsByDate[date] else { return nil }
+        let icons = dates.sorted().map { date in
             return ChartConditionIcon(
                 id: date,
                 // Keep an icon visible and semantically tinted even when a
                 // source condition is unavailable; neutral cloud is the
                 // established non-sunny fallback throughout the app.
-                condition: forecast.condition ?? .cloudy
+                condition: forecastsByDate[date]?.condition ?? .cloudy
             )
         }
-        .enumerated()
-        // Draw alternate symbols only: hourly data can have 24 points and a
-        // symbol on every point would make the chart header unreadable.
-        .compactMap { index, icon in
-            index.isMultiple(of: 2) ? icon : nil
+
+        // Drawing alternate symbols keeps the header legible, while explicitly
+        // retaining the final point guarantees an icon above the trailing plot
+        // edge even when it falls on an odd hourly index.
+        return icons.enumerated().compactMap { index, icon in
+            index.isMultiple(of: 2) || index == icons.count - 1 ? icon : nil
         }
     }
 
@@ -1012,11 +1033,10 @@ struct DetailChartView: View {
         let forecastsByDate = Dictionary(
             uniqueKeysWithValues: availableForecasts.map { ($0.id, $0) }
         )
-        return dates.sorted().compactMap { date in
-            guard let forecast = forecastsByDate[date] else { return nil }
+        return dates.sorted().map { date in
             return ChartConditionIcon(
                 id: date,
-                condition: forecast.condition ?? .cloudy
+                condition: forecastsByDate[date]?.condition ?? .cloudy
             )
         }
     }
@@ -1487,7 +1507,7 @@ private struct DetailChartPoint: Identifiable {
 
 /// Fixed chart fixtures keep the Canvas independent from WeatherKit, location,
 /// cache state, and the current date. The conditions deliberately span clear,
-/// partly sunny, cloudy, rain, and drizzle so icon positioning and tinting are
+/// partly cloudy, cloudy, rain, and drizzle so icon positioning and tinting are
 /// easy to inspect while refining the chart.
 @MainActor
 private enum DetailChartPreviewData {
@@ -1588,9 +1608,7 @@ private enum DetailChartPreviewData {
         switch condition(for: hour, dayOffset: dayOffset) {
         case .clear:
             return 0.08
-        case .partlySunny:
-            return 0.34
-        case .partlyCloudy, .cloudy:
+        case .partlySunny, .partlyCloudy, .cloudy:
             return 0.76
         case .rain, .drizzle:
             return 0.9
@@ -1615,9 +1633,9 @@ private enum DetailChartPreviewData {
         case 0...5:
             return .cloudy
         case 6...8:
-            return .partlySunny
+            return .partlyCloudy
         case 9...15:
-            return dayOffset.isMultiple(of: 3) ? .clear : .partlySunny
+            return dayOffset.isMultiple(of: 3) ? .clear : .partlyCloudy
         case 16...18:
             return .partlyCloudy
         case 19...21:

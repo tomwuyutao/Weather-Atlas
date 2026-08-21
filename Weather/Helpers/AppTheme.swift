@@ -28,6 +28,27 @@ func localizedString(_ key: String.LocalizationValue, locale: Locale) -> String 
     return String(localized: resource)
 }
 
+// MARK: - Shared Screen Layout
+
+/// One content-width rule keeps every information screen visually consistent
+/// in a regular-width iPad landscape window. Backgrounds, navigation chrome,
+/// and intentionally immersive canvases remain full width around the column.
+enum AppContentLayout {
+    static let standardMaximumWidth: CGFloat = 760
+    static let landscapeIPadMaximumWidth: CGFloat = 640
+
+    static func maximumWidth(
+        for size: CGSize,
+        horizontalSizeClass: UserInterfaceSizeClass?,
+        standardMaximumWidth: CGFloat = AppContentLayout.standardMaximumWidth
+    ) -> CGFloat {
+        guard horizontalSizeClass == .regular, size.width > size.height else {
+            return standardMaximumWidth
+        }
+        return min(standardMaximumWidth, landscapeIPadMaximumWidth)
+    }
+}
+
 // MARK: - Shared App Palette
 
 /// Primitive semantic colors shared by the app and widget extension.
@@ -681,6 +702,30 @@ private struct ScreenBackgroundModifier: ViewModifier {
     }
 }
 
+/// Centers content in the shared landscape-iPad column while preserving the
+/// caller's established width everywhere else. Geometry is local to the
+/// presented screen, so Split View and Stage Manager windows adapt correctly.
+private struct AppContentColumnModifier: ViewModifier {
+    let standardMaximumWidth: CGFloat
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    func body(content: Content) -> some View {
+        GeometryReader { geometry in
+            content
+                .frame(
+                    maxWidth: AppContentLayout.maximumWidth(
+                        for: geometry.size,
+                        horizontalSizeClass: horizontalSizeClass,
+                        standardMaximumWidth: standardMaximumWidth
+                    ),
+                    maxHeight: .infinity
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+}
+
 /// Applies a muted, condition-derived canvas behind an entire weather report.
 /// A missing condition deliberately falls back to the normal app canvas rather
 /// than implying a weather state that the source did not provide.
@@ -700,7 +745,7 @@ private struct WeatherConditionScreenBackgroundModifier: ViewModifier {
 extension View {
     /// Applies the exact Map marker color for a normalized weather tone.
     /// This avoids losing condition detail when multiple conditions share one
-    /// canonical SF Symbol, such as partly sunny and partly cloudy.
+    /// canonical SF Symbol, such as the gray partly-cloudy `cloud.sun` mark.
     func weatherIconStyle(for tone: WeatherIconTone) -> some View {
         modifier(WeatherIconStyleModifier(tone: tone))
     }
@@ -743,6 +788,19 @@ extension View {
     /// Uses the active Weather Atlas canvas behind native screen content.
     func weatherScreenBackground() -> some View {
         modifier(ScreenBackgroundModifier())
+    }
+
+    /// Applies the app-wide 640-point content column in landscape on iPad.
+    /// Pass `.infinity` when the view is intentionally full width in phone and
+    /// portrait layouts; landscape iPad will still resolve to 640 points.
+    func weatherContentColumn(
+        standardMaximumWidth: CGFloat = AppContentLayout.standardMaximumWidth
+    ) -> some View {
+        modifier(
+            AppContentColumnModifier(
+                standardMaximumWidth: standardMaximumWidth
+            )
+        )
     }
 
     /// Uses the selected condition's muted semantic color as a report canvas.

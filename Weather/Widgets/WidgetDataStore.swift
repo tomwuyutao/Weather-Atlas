@@ -34,6 +34,17 @@ struct WidgetHourlyCondition: Codable, Hashable, Identifiable {
     var id: Date { date }
 }
 
+// MARK: - Widget Weather Presentation Policy
+
+extension AppWeatherCondition {
+    /// Widgets retain the legacy `.partlySunny` raw value solely so existing
+    /// App Group payloads remain decodable. It now represents the same
+    /// non-sunny state as partly cloudy when rendered or counted.
+    nonisolated var widgetPresentationCondition: AppWeatherCondition {
+        self == .partlySunny ? .partlyCloudy : self
+    }
+}
+
 /// App-group city payload used for widget selection and current rendering.
 /// This deliberately contains enough identity and display metadata to configure
 /// a widget even when the main app is not running.
@@ -54,7 +65,9 @@ struct WidgetDataCity: Codable, Hashable, Identifiable {
     let daytimeHours: [Int]
     /// Current-day hours classified as sunny.
     let sunnyHours: [Int]
-    /// Current-day hours classified as partly sunny.
+    /// Legacy current-day partly-sunny bucket. It remains Codable for payloads
+    /// written by earlier versions, but is no longer counted as sunny or drawn
+    /// with the yellow timeline color.
     let partlySunnyHours: [Int]
     /// Current-day normalized conditions for every available daylight hour.
     /// Optional keeps previously persisted three-bucket widget data decodable
@@ -102,10 +115,11 @@ struct WidgetSunnyWindowDay: Codable, Hashable, Identifiable {
     let date: Date
     /// Fully sunny hours for the day.
     let sunnyHours: [Int]
-    /// Partly sunny hours for the day.
+    /// Legacy partly-sunny bucket retained for backward-compatible decoding.
+    /// Its values are now rendered as neutral partly-cloudy intervals.
     let partlySunnyHours: [Int]
     /// Normalized conditions for every available daylight hour in this row.
-    /// Optional supports snapshots written before five-condition charts.
+    /// Optional supports snapshots written before detailed condition charts.
     var hourlyConditions: [WidgetHourlyCondition]? = nil
 
     /// Uses the literal local date as row identity.
@@ -139,7 +153,8 @@ struct WidgetWeatherSnapshot: Codable, Hashable {
     let daytimeHours: [Int]
     /// Cached current-day sunny hours.
     let sunnyHours: [Int]
-    /// Cached current-day partly-sunny hours.
+    /// Legacy cached partly-sunny bucket retained for backward-compatible
+    /// decoding. Its values are no longer included in sunny-hour totals.
     let partlySunnyHours: [Int]
     /// Cached normalized conditions for every current-day daylight hour.
     /// Optional preserves backward decoding of existing on-device snapshots.
@@ -366,7 +381,6 @@ enum WidgetDataStore {
             "Home Location": localizedString("Home Location", locale: locale),
             "Today": localizedString("Today", locale: locale),
             "Sunny": localizedString("Sunny", locale: locale),
-            "Partly Sunny": localizedString("Partly Sunny", locale: locale),
             "No Sun": localizedString("No Sun", locale: locale),
             "Rain": localizedString("Rain", locale: locale),
             "Drizzle": localizedString("Drizzle", locale: locale),
