@@ -126,19 +126,14 @@ extension MapView {
                             return
                         }
                         _ = cityID
-                        _ = rebuildSunSearchResults(
-                            for: selectedSunSearchDate
-                        )
+                        rebuildSunSearchResults(for: selectedSunSearchDate)
                     }
                 }
                 guard !Task.isCancelled,
                       generation == sunSearchID else { return }
 
-                let namedIssues = rebuildSunSearchResults(
-                    for: selectedSunSearchDate
-                )
-                await reportFindSunWeatherIssuesIfNeeded(
-                    namedIssues,
+                rebuildSunSearchResults(for: selectedSunSearchDate)
+                await reportFindSunWeatherFailureIfNeeded(
                     candidates: candidates,
                     generation: generation
                 )
@@ -195,44 +190,17 @@ extension MapView {
         }
     }
 
-    /// Evaluates one completed candidate. Every usable forecast remains on the
-    /// Map, including zero-sun days; only the result-card subset filters to
-    /// positive sunny-hour totals.
+    /// Evaluates one completed candidate. Every available forecast remains on
+    /// the Map, including zero-sun days; only the result-card subset filters to
+    /// positive sunny-hour totals. A short forecast horizon simply leaves a
+    /// city out for dates it does not contain.
     private func sunSearchRecommendation(
         for city: City,
-        on requestedDate: Date,
-        namedIssues: inout [MapNamedWeatherIssue]
+        on requestedDate: Date
     ) -> PlaceRecommendation? {
-        if let failure = weatherStore.failuresByID[city.id] {
-            namedIssues.append(
-                MapNamedWeatherIssue(
-                    cityName: city.displayName,
-                    issue: failure.issue
-                )
-            )
-            return nil
-        }
-        guard let weather = weatherStore.weather(for: city.id) else {
-            namedIssues.append(
-                MapNamedWeatherIssue(
-                    cityName: city.displayName,
-                    issue: .missingForecastData(at: requestedDate)
-                )
-            )
-            return nil
-        }
-
-        let assessment = model.placeAssessment(for: weather, on: requestedDate)
-        namedIssues.append(contentsOf: assessment.issues.compactMap { issue in
-            guard isRelevantMapIssue(
-                issue,
-                recommendationAvailable: assessment.recommendation != nil
-            ) else {
-                return nil
-            }
-            return MapNamedWeatherIssue(cityName: weather.city.displayName, issue: issue)
-        })
-        return assessment.recommendation
+        guard weatherStore.failuresByID[city.id] == nil else { return nil }
+        guard let weather = weatherStore.weather(for: city.id) else { return nil }
+        return model.placeRecommendation(for: weather, on: requestedDate)
     }
 
     private func mapSunSearchResults(
@@ -257,11 +225,11 @@ extension MapView {
             guard let weather = weatherStore.weather(for: city.id) else {
                 return []
             }
-            return weather.dailyForecasts.compactMap { forecast in
+            return weather.dailyForecasts.map { forecast in
                 weather.selectionDate(
                     for: forecast,
                     selectionCalendar: forecastCalendar
-                )
+                ) ?? forecastCalendar.startOfDay(for: forecast.date)
             }
         }
         return Array(Set(dates)).sorted()
@@ -278,9 +246,9 @@ extension MapView {
         .sorted()
     }
 
-    /// A Find Sun weather response contains the full forecast horizon. Moving
-    /// the shared date therefore only needs a synchronous reassessment of the
-    /// existing candidates; it must not clear dots or repeat the city search.
+    /// The cached response holds every currently returned forecast row. Moving
+    /// the shared date only needs a synchronous reassessment of those rows; it
+    /// must not clear dots or repeat the city search.
     func rerankSunSearchForSelectedDate() {
         guard let activeSunQuery else { return }
 
@@ -301,7 +269,7 @@ extension MapView {
             return
         }
 
-        let namedIssues = rebuildSunSearchResults(for: selectedSunSearchDate)
+        rebuildSunSearchResults(for: selectedSunSearchDate)
 
         // A running batch will make a final missing-data decision only after
         // all of its candidate loads have completed. For a completed query,
@@ -311,8 +279,7 @@ extension MapView {
         let generation = sunSearchID
         let candidates = sunCandidateCities
         Task { @MainActor in
-            await reportFindSunWeatherIssuesIfNeeded(
-                namedIssues,
+            await reportFindSunWeatherFailureIfNeeded(
                 candidates: candidates,
                 generation: generation
             )
@@ -322,16 +289,13 @@ extension MapView {
     /// Rebuilds marker and ranking values from the already retained candidate
     /// forecasts. Candidates without a cached forecast remain absent rather
     /// than requesting data during a date switch.
-    @discardableResult
     private func rebuildSunSearchResults(
         for requestedDate: Date
-    ) -> [MapNamedWeatherIssue] {
-        var namedIssues: [MapNamedWeatherIssue] = []
+    ) {
         let recommendations = sunCandidateCities.compactMap {
             sunSearchRecommendation(
                 for: $0,
-                on: requestedDate,
-                namedIssues: &namedIssues
+                on: requestedDate
             )
         }
         let results = mapSunSearchResults(from: recommendations)
@@ -345,14 +309,12 @@ extension MapView {
             self.selectedSunID = nil
         }
 
-        return Array(Set(namedIssues))
     }
 
     /// Keeps Find Sun's best-effort behavior: valid zero-sun forecasts remain
-    /// ordinary results, while a completely blank result set caused by missing
-    /// or failed weather data receives one native recovery/report path.
-    private func reportFindSunWeatherIssuesIfNeeded(
-        _ namedIssues: [MapNamedWeatherIssue],
+    /// ordinary results. A retry/alert is reserved for a total request failure,
+    /// not a partial forecast horizon or a date absent from some candidates.
+    private func reportFindSunWeatherFailureIfNeeded(
         candidates: [City],
         generation: Int
     ) async {
@@ -361,8 +323,24 @@ extension MapView {
             return
         }
 
-        guard !namedIssues.isEmpty,
-              sunSearchResults.isEmpty else {
+        guard !candidates.isEmpty,
+              candidates.allSatisfy({ candidate in
+                  weatherStore.failuresByID[candidate.id] != nil
+              }) else {
+            missingDataAlerts.resolve(key: "map-find-sun-weather")
+            return
+        }
+
+        let namedIssues = candidates.compactMap { city -> MapNamedWeatherIssue? in
+            guard let failure = weatherStore.failuresByID[city.id] else {
+                return nil
+            }
+            return MapNamedWeatherIssue(
+                cityName: city.displayName,
+                issue: failure.issue
+            )
+        }
+        guard !namedIssues.isEmpty else {
             missingDataAlerts.resolve(key: "map-find-sun-weather")
             return
         }
@@ -373,18 +351,6 @@ extension MapView {
             message: consolidatedMapWeatherMessage(namedIssues)
         )
 
-        guard !candidates.isEmpty,
-              candidates.allSatisfy({ candidate in
-                  weatherStore.failuresByID[candidate.id] != nil
-              }) else {
-            missingDataAlerts.report(
-                key: report.key,
-                title: report.title,
-                message: report.message
-            )
-            return
-        }
-
         // Every candidate ended in a request failure. Retry this explicit
         // batch once before showing one systemic-failure alert. Rebuild after
         // recovery so a repaired forecast is published immediately.
@@ -394,7 +360,7 @@ extension MapView {
             retry: {
                 await weatherStore.retryMissingData(for: candidates)
                 guard generation == sunSearchID else { return }
-                _ = rebuildSunSearchResults(for: selectedSunSearchDate)
+                rebuildSunSearchResults(for: selectedSunSearchDate)
             },
             isStillMissing: {
                 generation == sunSearchID

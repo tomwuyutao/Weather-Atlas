@@ -492,9 +492,9 @@ struct MapView: View {
         localizedString("Map", locale: locale)
     }
 
-    /// Re-evaluates only after a source revision, date, layer, preview, or
-    /// current-location state changes. The task waits for active loads to finish
-    /// before deciding whether this failure episode recovered or needs one alert.
+    /// Re-evaluates only when the visible Map request set or its request state
+    /// changes. Metric, daylight, and selected-date changes do not affect a
+    /// real request failure and therefore do not need another alert pass.
     private var mapWeatherAlertContextID: String {
         let loadingPlaceIDs = mapCities
             .filter { weatherStore.isLoading($0.id) }
@@ -502,12 +502,10 @@ struct MapView: View {
             .sorted()
             .joined(separator: ",")
         return [
+            weatherLoadID.map(\.uuidString).joined(separator: ","),
             String(weatherStore.weatherRevision),
             loadingPlaceIDs,
-            String(selectedDate.timeIntervalSinceReferenceDate),
-            router.mapPreviewCity?.id.uuidString ?? "",
-            String(describing: model.locationProvider.status),
-            model.isRefreshingLocation ? "loading" : "settled"
+            router.mapPreviewCity?.id.uuidString ?? ""
         ].joined(separator: "|")
     }
 
@@ -519,125 +517,28 @@ struct MapView: View {
 
     private func updateVisibleMapWeatherAlert() async {
         let alertKey = "map-visible-weather"
-        guard !mapCities.contains(where: { weatherStore.isLoading($0.id) }),
-              !model.isRefreshingLocation else {
+        guard !mapCities.contains(where: { weatherStore.isLoading($0.id) }) else {
             return
         }
 
-        let dateExcludedIDs = Set(
-            model.savedPlaceDateExclusions(on: selectedDate).map(\.id)
-        )
-        var namedIssues: [MapNamedWeatherIssue] = []
-
-        for place in savedPlaces {
-            if let failure = weatherStore.failuresByID[place.id] {
-                namedIssues.append(
-                    MapNamedWeatherIssue(
-                        cityName: displayName(for: place),
-                        issue: failure.issue
-                    )
-                )
-                continue
-            }
-            guard let weather = weatherStore.weather(for: place.id) else {
-                continue
-            }
-            let assessment = model.placeAssessment(for: weather, on: selectedDate)
-            namedIssues.append(contentsOf: assessment.issues.compactMap { issue in
-                if issue.kind == .missingForecastData,
-                   dateExcludedIDs.contains(place.id) {
-                    return nil
-                }
-                // Search can resolve to a city that is already saved. In that
-                // case the router selects the saved marker rather than creating
-                // `mapPreviewCity`; still surface the hourly issue that prevents
-                // this explicit foreground request from producing a card.
-                let explainsExplicitSelection =
-                    place.id == router.selectedMapPlaceID
-                    && issue.kind == .missingHourlyData
-                guard explainsExplicitSelection
-                        || isRelevantMapIssue(
-                            issue,
-                            recommendationAvailable:
-                                assessment.recommendation != nil
-                        ) else {
-                    return nil
-                }
-                return MapNamedWeatherIssue(
-                    cityName: displayName(for: place),
-                    issue: issue
-                )
-            })
-        }
-
-        if let previewCity = router.mapPreviewCity {
-            if let failure = weatherStore.failuresByID[previewCity.id] {
-                namedIssues.append(
-                    MapNamedWeatherIssue(
-                        cityName: previewCity.displayName,
-                        issue: failure.issue
-                    )
-                )
-            } else if let weather = weatherStore.weather(for: previewCity.id) {
-                let assessment = model.placeAssessment(for: weather, on: selectedDate)
-                namedIssues.append(contentsOf: assessment.issues.compactMap { issue in
-                    let explainsExplicitPreview =
-                        issue.kind == .missingHourlyData
-                    guard explainsExplicitPreview
-                            || isRelevantMapIssue(
-                                issue,
-                                recommendationAvailable:
-                                    assessment.recommendation != nil
-                            ) else {
-                        return nil
-                    }
-                    return MapNamedWeatherIssue(
-                        cityName: weather.city.displayName,
-                        issue: issue
-                    )
-                })
-            }
-        }
-
-        if let weather = model.locationWeather {
-            let assessment = model.placeAssessment(for: weather, on: selectedDate)
-            namedIssues.append(contentsOf: assessment.issues.compactMap { issue in
-                guard isRelevantMapIssue(
-                    issue,
-                    recommendationAvailable: assessment.recommendation != nil
-                ) else {
-                    return nil
-                }
-                return MapNamedWeatherIssue(
-                    cityName: CurrentLocationMetadata.localityName(
-                        from: weather.city.displayName
-                    ) ?? weather.city.displayName,
-                    issue: issue
-                )
-            })
-        } else if let locationCity = model.locationCity,
-                  let failure = weatherStore.failuresByID[locationCity.id] {
-            namedIssues.append(
-                MapNamedWeatherIssue(
-                    cityName: CurrentLocationMetadata.localityName(
-                        from: locationCity.displayName
-                    ) ?? locationCity.displayName,
-                    issue: failure.issue
-                )
-            )
-        }
-
-        let deduplicatedIssues = Array(Set(namedIssues))
-        guard !deduplicatedIssues.isEmpty else {
+        // Ordinary partial forecasts remain visible on the Map. Only a total
+        // failure of the visible request set needs an automatic retry/alert.
+        guard hasSystemicMapWeatherFailure else {
             missingDataAlerts.resolve(key: alertKey)
             return
         }
 
-        // A single unavailable marker is represented on the map itself. A
-        // full visible-map failure is different: retry the whole real request
-        // set once, then surface one diagnostic alert only if every forecast
-        // remains unavailable.
-        guard hasSystemicMapWeatherFailure else {
+        let cities = mapCities
+        let namedIssues = cities.compactMap { city -> MapNamedWeatherIssue? in
+            guard let failure = weatherStore.failuresByID[city.id] else {
+                return nil
+            }
+            return MapNamedWeatherIssue(
+                cityName: city.displayName,
+                issue: failure.issue
+            )
+        }
+        guard !namedIssues.isEmpty else {
             missingDataAlerts.resolve(key: alertKey)
             return
         }
@@ -645,9 +546,8 @@ struct MapView: View {
         let report = MissingDataAlertReport(
             key: alertKey,
             title: localizedString("Data Missing", locale: locale),
-            message: consolidatedMapWeatherMessage(deduplicatedIssues)
+            message: consolidatedMapWeatherMessage(namedIssues)
         )
-        let cities = mapCities
         await missingDataAlerts.retryThenReport(
             report,
             recoveryKey: "map-visible-systemic-weather",
@@ -658,40 +558,6 @@ struct MapView: View {
                 hasSystemicMapWeatherFailure
             }
         )
-    }
-
-    /// The Map uses only sunny-hours data, so auxiliary metric gaps never
-    /// affect marker eligibility or trigger a foreground weather alert.
-    func isRelevantMapIssue(
-        _ issue: WeatherDataIssue,
-        recommendationAvailable: Bool
-    ) -> Bool {
-        switch issue.kind {
-        case .weatherRequestFailed,
-             .unresolvedPlace,
-             .missingForecastData,
-             .missingTimeZone,
-             .missingConditionData,
-             .unknownWeatherSymbol,
-             .missingCloudCoverData,
-             .missingSunriseOrSunset,
-             .missingSunriseData,
-             .missingSunsetData,
-             .invalidWeatherValue:
-            return true
-        case .missingApparentTemperatureData,
-             .missingPrecipitationChanceData,
-             .missingVisibilityData,
-             .missingUVIndexData,
-             .missingTemperatureData:
-            return false
-        case .missingHourlyData:
-            // Background markers stay quiet when their hourly series cannot
-            // support a recommendation. The explicit saved-selection and Search-
-            // preview branches above promote this issue when it blocks a requested
-            // card, so that a foreground action never appears to do nothing.
-            return recommendationAvailable
-        }
     }
 
     func consolidatedMapWeatherMessage(
@@ -869,8 +735,11 @@ struct MapView: View {
             locationCoordinate: locationCoordinate,
             locationCity: model.locationCity ?? model.locationWeather?.city,
             locationName: CurrentLocationMetadata.localityName(
-                from: model.locationProvider.metadata?.displayName
-                    ?? model.locationWeather?.city.displayName
+                from: model.homeLocation?.localizedDisplayName(locale: locale)
+                    ?? model.locationProvider.metadata?.displayName
+                    ?? model.locationWeather?.city.localizedDisplayName(
+                        locale: locale
+                    )
             ) ?? "",
             locationRecommendation: locationRecommendation,
             isLocationWeatherLoading: isLocationWeatherLoading,
@@ -1201,11 +1070,13 @@ private struct PlacesMapCanvas: View {
     /// between their capsule and rounded-rectangle shapes.
     private enum BottomSurfaceGlassID {
         static let surface = "map-bottom.surface"
+        static let offlineBanner = "map-bottom.offline-banner"
     }
     /// Before iOS 26, the same two surfaces use SwiftUI's conventional matched
     /// geometry effect instead of Liquid Glass, which does require one shared
     /// identity.
     private static let bottomSurfaceFallbackGeometryID = "map-bottom.surface"
+    private static let offlineBannerFallbackGeometryID = "map-bottom.offline-banner"
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -1498,7 +1369,10 @@ private struct PlacesMapCanvas: View {
         selectedPresentation != nil
             || selectedSunResult != nil
             || selectedPreviewCity != nil
-            || isLocationSelected
+            // Without a resolved coordinate there is no city card to show.
+            // Keep the persistent compact Map capsule visible instead of
+            // replacing it with an empty expanded surface.
+            || (isLocationSelected && currentLocationCardCity != nil)
             || tappedRegionContext != nil
             || isResolvingTappedRegion
     }
@@ -1511,6 +1385,13 @@ private struct PlacesMapCanvas: View {
         visiblePresentations.isEmpty
             && transientSunResults.isEmpty
             && previewCity == nil
+    }
+
+    /// Forecast refreshes can briefly leave the selected-date marker layer
+    /// empty. This is a compact Map-surface state, not an absence of UI.
+    private var isLoadingMapWeatherData: Bool {
+        presentations.contains(where: \.isLoading)
+            && layerPresentations.isEmpty
     }
 
     private var sunResultsTitle: String {
@@ -1755,20 +1636,34 @@ private struct PlacesMapCanvas: View {
     @ViewBuilder
     private var activeBottomSurface: some View {
         ZStack(alignment: .bottomTrailing) {
-            if #available(iOS 26.0, *) {
-                GlassEffectContainer(spacing: MapCardLayout.surfaceSpacing) {
-                    bottomSurface
-                }
-                .animation(
-                    MapCardMotion.morph(),
-                    value: bottomSurfacePresentationID
-                )
-            } else {
-                bottomSurface
+            ZStack(alignment: .bottom) {
+                if #available(iOS 26.0, *) {
+                    GlassEffectContainer(spacing: MapCardLayout.surfaceSpacing) {
+                        bottomSurface
+                    }
                     .animation(
                         MapCardMotion.morph(),
                         value: bottomSurfacePresentationID
                     )
+                } else {
+                    bottomSurface
+                        .animation(
+                            MapCardMotion.morph(),
+                            value: bottomSurfacePresentationID
+                        )
+                }
+
+                if showsMapOfflineBanner {
+                    mapOfflineBanner
+                        // MapCard owns its bottom safe-area inset. Offset this
+                        // second surface by only the capsule height and gap so
+                        // its visible material lands immediately above it.
+                        .padding(
+                            .bottom,
+                            compactMapSurfaceHeight + MapCardLayout.surfaceSpacing
+                        )
+                        .transition(.opacity.combined(with: .move(edge: .bottom)))
+                }
             }
 
             // Recenter is a standalone Map action, not part of the centred
@@ -1782,6 +1677,35 @@ private struct PlacesMapCanvas: View {
                 .padding(.trailing, 16)
                 .padding(.bottom, MapCardLayout.bottomPadding)
             }
+        }
+    }
+
+    /// Offline status supplements the Map controls instead of replacing them:
+    /// Find Sun stays available and the recenter action remains on its baseline.
+    private var showsMapOfflineBanner: Bool {
+        networkConnectivity.isOffline
+            && !networkConnectivity.isOfflineBannerDismissed
+            && !usesLargeBottomSurface
+    }
+
+    private var compactMapSurfaceHeight: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 60 : MapCardLayout.compactHeight
+    }
+
+    private var mapOfflineBanner: some View {
+        MapCard(
+            size: .offline,
+            colorScheme: colorScheme,
+            maximumWidth: cardMaximumWidth,
+            glassEffectID: Self.BottomSurfaceGlassID.offlineBanner,
+            fallbackGeometryID: Self.offlineBannerFallbackGeometryID,
+            glassNamespace: bottomSurfaceNamespace
+        ) {
+            OfflineBannerContent(
+                lastUpdated: latestCachedWeatherDate,
+                dismiss: networkConnectivity.dismissOfflineBanner
+            )
+            .padding(.horizontal, MapCardLayout.compactHorizontalPadding)
         }
     }
 
@@ -1800,7 +1724,7 @@ private struct PlacesMapCanvas: View {
             }
         } else {
             MapCard(
-                size: networkConnectivity.isOffline ? .offline : .small,
+                size: .small,
                 colorScheme: colorScheme,
                 maximumWidth: cardMaximumWidth,
                 glassEffectID: Self.BottomSurfaceGlassID.surface,
@@ -1831,7 +1755,8 @@ private struct PlacesMapCanvas: View {
         if let selectedPreviewCity {
             return "search-preview-\(selectedPreviewCity.id.uuidString)"
         }
-        if isLocationSelected {
+        if isLocationSelected,
+           currentLocationCardCity != nil {
             return "current-location"
         }
         if let tappedRegionContext {
@@ -1848,16 +1773,15 @@ private struct PlacesMapCanvas: View {
         if isFindingSun {
             return "finding-sun"
         }
+        if isLoadingMapWeatherData {
+            return "loading-weather-data"
+        }
         if hasEmptyMapContentState {
             if loadError != nil {
                 return "places-unavailable"
             }
             if presentations.isEmpty {
                 return "no-saved-places"
-            }
-            if presentations.contains(where: \.isLoading),
-               layerPresentations.isEmpty {
-                return "loading-forecasts"
             }
             return "forecast-unavailable"
         }
@@ -1868,16 +1792,7 @@ private struct PlacesMapCanvas: View {
     /// treatment. Recovery actions stay available as 44-point icon buttons.
     @ViewBuilder
     private var compactBottomSurface: some View {
-        if networkConnectivity.isOffline,
-           !networkConnectivity.isOfflineBannerDismissed {
-            // This occupies the exact Find Sun lane, rather than becoming a
-            // second bottom overlay that could compete with map controls.
-            OfflineBannerContent(
-                lastUpdated: latestCachedWeatherDate,
-                dismiss: networkConnectivity.dismissOfflineBanner
-            )
-            .padding(.horizontal, MapCardLayout.compactHorizontalPadding)
-        } else if isFindingSun {
+        if isFindingSun {
             MapSunSearchCapsule(
                 state: .finding(
                     title: sunLoadingTitle
@@ -1887,10 +1802,10 @@ private struct PlacesMapCanvas: View {
                         )
                 )
             )
+        } else if isLoadingMapWeatherData {
+            loadingWeatherDataBanner
         } else if showsSunResultsSummary {
             sunResultsSummary
-        } else if hasEmptyMapContentState {
-            emptyMapBanner
         } else {
             findSunBanner
         }
@@ -1923,24 +1838,13 @@ private struct PlacesMapCanvas: View {
         }
     }
 
-    /// The compact surface only interrupts Find Sun while forecasts are actively
-    /// loading. Empty and unavailable states return to the normal Find Sun
-    /// control rather than presenting an error banner.
-    @ViewBuilder
-    private var emptyMapBanner: some View {
-        if presentations.isEmpty {
-            findSunBanner
-        } else if presentations.contains(where: \.isLoading),
-                  layerPresentations.isEmpty {
-            // Forecast loading is status, not a second Find Sun action. Keep
-            // it as one compact text-and-spinner capsule.
-            MapCapsule(horizontalPadding: 12) {
-                Text("Loading Forecasts")
-                ProgressView()
-                    .controlSize(.small)
-            }
-        } else {
-            findSunBanner
+    /// Loading keeps the same compact lower surface in place until forecasts
+    /// yield selected-date recommendations or settle unavailable.
+    private var loadingWeatherDataBanner: some View {
+        MapCapsule(horizontalPadding: 12) {
+            ProgressView()
+                .controlSize(.small)
+            Text("Loading weather data")
         }
     }
 
@@ -2748,60 +2652,92 @@ private struct PlacesMapCanvas: View {
         }
 
         var occupiedLabelRects: [CGRect] = []
+        var pendingLabels = projectedLabels
         var newPlacements: [City.ID: PlacesMapLabelPlacement] = [:]
-        var hidesLowerPriorities = false
 
-        for projectedLabel in projectedLabels {
-            guard !hidesLowerPriorities else {
+        // Choose the least-flexible label next rather than letting the first
+        // high-ranked dot reserve its preferred side unconditionally. This
+        // small constraint pass produces more visible labels in dense rows:
+        // one dot can use its spare above position while a neighbour keeps the
+        // only below position it can actually occupy.
+        while !pendingLabels.isEmpty {
+            let candidatesByIndex = Dictionary(
+                uniqueKeysWithValues: pendingLabels.indices.map { index in
+                    (
+                        index,
+                        labelPlacementCandidates(
+                            for: pendingLabels[index],
+                            occupiedLabelRects: occupiedLabelRects,
+                            markerObstacles: markerObstacles,
+                            viewportBounds: viewportBounds
+                        )
+                    )
+                }
+            )
+
+            guard let nextIndex = pendingLabels.indices.min(by: { lhs, rhs in
+                let left = pendingLabels[lhs]
+                let right = pendingLabels[rhs]
+                // An actively selected place still wins over every ordinary
+                // marker, even if it has two legal sides.
+                if left.input.isSelected != right.input.isSelected {
+                    return left.input.isSelected
+                }
+
+                let leftCount = candidatesByIndex[lhs]?.count ?? 0
+                let rightCount = candidatesByIndex[rhs]?.count ?? 0
+                if leftCount != rightCount {
+                    return leftCount < rightCount
+                }
+                if left.input.priority != right.input.priority {
+                    return left.input.priority > right.input.priority
+                }
+                return left.input.id.uuidString < right.input.id.uuidString
+            }) else {
+                break
+            }
+
+            let projectedLabel = pendingLabels.remove(at: nextIndex)
+            let candidates = candidatesByIndex[nextIndex] ?? []
+
+            guard !candidates.isEmpty else {
                 newPlacements[projectedLabel.input.id] = .hidden
+                if projectedLabel.input.isSelected,
+                   viewportBounds.contains(projectedLabel.point) {
+                    // A selected marker must never lose its label while lower
+                    // priority labels remain visible.
+                    for placedID in Array(newPlacements.keys) {
+                        newPlacements[placedID] = .hidden
+                    }
+                    for remainingLabel in pendingLabels {
+                        newPlacements[remainingLabel.input.id] = .hidden
+                    }
+                    break
+                }
                 continue
             }
 
-            let belowRect = projectedLabel.rect(
-                for: PlacesMapLabelPlacement.below
-            )
-            let aboveRect = projectedLabel.rect(
-                for: PlacesMapLabelPlacement.above
-            )
-            let placement: PlacesMapLabelPlacement
-            let placedRect: CGRect?
-            if canPlaceLabel(
-                for: belowRect,
-                labelID: projectedLabel.input.id,
-                occupiedLabelRects: occupiedLabelRects,
-                markerObstacles: markerObstacles,
-                viewportBounds: viewportBounds
-            ) {
-                placement = .below
-                placedRect = belowRect
-            } else if canPlaceLabel(
-                for: aboveRect,
-                labelID: projectedLabel.input.id,
-                occupiedLabelRects: occupiedLabelRects,
-                markerObstacles: markerObstacles,
-                viewportBounds: viewportBounds
-            ) {
-                placement = .above
-                placedRect = aboveRect
-            } else {
-                placement = .hidden
-                placedRect = nil
-                if projectedLabel.input.isSelected,
-                   viewportBounds.contains(projectedLabel.point) {
-                    // Never leave ordinary labels visible while the selected
-                    // destination's label was the one sacrificed.
-                    hidesLowerPriorities = true
-                    occupiedLabelRects.removeAll()
-                    for id in Array(newPlacements.keys) {
-                        newPlacements[id] = .hidden
-                    }
+            let remainingCandidates = candidatesByIndex
+                .filter { $0.key != nextIndex }
+                .flatMap(\.value)
+            let chosenCandidate = candidates.min { lhs, rhs in
+                let leftConflicts = remainingCandidates.filter {
+                    $0.collisionRect.intersects(lhs.collisionRect)
+                }.count
+                let rightConflicts = remainingCandidates.filter {
+                    $0.collisionRect.intersects(rhs.collisionRect)
+                }.count
+                if leftConflicts != rightConflicts {
+                    return leftConflicts < rightConflicts
                 }
-            }
+                // Preserve the former visual default when both positions are
+                // equally good: names appear below their dots first.
+                return lhs.placement == .below
+                    && rhs.placement != .below
+            }!
 
-            newPlacements[projectedLabel.input.id] = placement
-            if let placedRect {
-                occupiedLabelRects.append(placedRect.insetBy(dx: -2, dy: -2))
-            }
+            newPlacements[projectedLabel.input.id] = chosenCandidate.placement
+            occupiedLabelRects.append(chosenCandidate.collisionRect)
         }
 
         guard newPlacements != labelPlacements else { return }
@@ -2842,6 +2778,30 @@ private struct PlacesMapCanvas: View {
         return !markerObstacles.contains { obstacle in
             obstacle.id != labelID
                 && obstacle.rect.intersects(collisionRect)
+        }
+    }
+
+    private func labelPlacementCandidates(
+        for projectedLabel: PlacesMapProjectedLabel,
+        occupiedLabelRects: [CGRect],
+        markerObstacles: [(id: City.ID, rect: CGRect)],
+        viewportBounds: CGRect
+    ) -> [PlacesMapLabelCandidate] {
+        [PlacesMapLabelPlacement.below, .above].compactMap { placement in
+            let rect = projectedLabel.rect(for: placement)
+            guard canPlaceLabel(
+                for: rect,
+                labelID: projectedLabel.input.id,
+                occupiedLabelRects: occupiedLabelRects,
+                markerObstacles: markerObstacles,
+                viewportBounds: viewportBounds
+            ) else {
+                return nil
+            }
+            return PlacesMapLabelCandidate(
+                placement: placement,
+                collisionRect: rect.insetBy(dx: -2, dy: -2)
+            )
         }
     }
 
@@ -3102,6 +3062,12 @@ private struct PlacesMapProjectedLabel {
             height: size.height
         )
     }
+}
+
+/// One legal above/below result in the collision-placement pass.
+private struct PlacesMapLabelCandidate {
+    let placement: PlacesMapLabelPlacement
+    let collisionRect: CGRect
 }
 
 /// The two candidate positions plus an explicit collision-hidden state.

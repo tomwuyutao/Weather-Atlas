@@ -240,10 +240,12 @@ struct BestSunnyDatesCard: View {
         return ZStack {
             shape.fill(heatmapFill(for: day))
 
+            // A calendar cell should contain the day number only. Date
+            // formatting appends locale-specific units such as Japanese 日,
+            // which makes the compact grid visually inconsistent.
             Text(
-                day.date.formatted(
-                    .dateTime.day().locale(locale)
-                )
+                calendar.component(.day, from: day.date),
+                format: .number.locale(locale)
             )
             .font(.body.weight(isSelected ? .semibold : .medium).monospacedDigit())
             .foregroundStyle(

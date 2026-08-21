@@ -58,10 +58,6 @@ struct WeatherServiceResponse {
 final class WeatherService {
     // MARK: Resolution State
 
-    /// In-process timezone cache keyed by exact coordinate bit patterns.
-    /// These are performance caches only: they are not persisted and may be
-    /// rebuilt after every launch without changing the app's correctness.
-    var resolvedTimeZones: [String: TimeZone] = [:]
     /// In-process place cache keyed by exact coordinates plus app locale.
     var resolvedPlaces: [String: ResolvedPlace] = [:]
 
@@ -78,19 +74,6 @@ final class WeatherService {
     }
 
     // MARK: WeatherKit Conversion
-
-    /// Resolves timezone before converting WeatherKit data for a city.
-    func convertWeatherKitData(
-        weather: Weather,
-        for city: City
-    ) async throws -> WeatherServiceResponse {
-        let timeZone = try await resolvedTimeZoneOrThrow(for: city)
-        return try convertWeatherKitData(
-            weather: weather,
-            for: city,
-            timeZone: timeZone
-        )
-    }
 
     /// Converts WeatherKit source values without filling omitted optional fields.
     ///
@@ -168,8 +151,6 @@ final class WeatherService {
             hourWeather.date >= dayStart && hourWeather.date < dayEnd
         }
 
-        if dayHourlyData.isEmpty { return [] }
-
         return dayHourlyData.map { hourWeather in
             // Classification is resolved exactly once at this adapter boundary.
             HourlyForecast(
@@ -243,8 +224,11 @@ final class WeatherService {
         do {
             // Resolve a display-only city into coordinates/name metadata before
             // requesting WeatherKit. WeatherKit itself ultimately uses location.
-            let resolvedCity = try await resolvedCity(for: city)
-            let location = CLLocation(latitude: resolvedCity.latitude, longitude: resolvedCity.longitude)
+            let resolved = try await resolvedCityAndTimeZone(for: city)
+            let location = CLLocation(
+                latitude: resolved.city.latitude,
+                longitude: resolved.city.longitude
+            )
             let weather: Weather
             if retriesOnFailure {
                 weather = try await weatherWithOneRetry(for: location)
@@ -254,9 +238,10 @@ final class WeatherService {
 
             // Convert Apple SDK objects at this boundary; views only see the
             // app's own stable models after this point.
-            return try await convertWeatherKitData(
+            return try convertWeatherKitData(
                 weather: weather,
-                for: resolvedCity
+                for: resolved.city,
+                timeZone: resolved.timeZone
             )
         } catch is CancellationError {
             throw CancellationError()

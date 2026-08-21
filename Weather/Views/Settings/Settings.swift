@@ -384,6 +384,11 @@ struct SettingsView: View {
                     systemImage: "doc.text",
                     url: URL(string: "https://simplemaps.com/data/world-cities")
                 )
+                linkRow(
+                    "GeoNames",
+                    systemImage: "character.bubble",
+                    url: URL(string: "https://www.geonames.org/")
+                )
             }
             .listRowBackground(theme.colors.settingsRowFill)
         }

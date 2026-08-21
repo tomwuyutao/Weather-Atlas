@@ -77,11 +77,11 @@ struct FindSunListView: View {
     /// responsive if another candidate finishes loading after navigation.
     private var candidateForecastDates: [Date] {
         let dates = candidateWeathers.flatMap { weather in
-            weather.dailyForecasts.compactMap { forecast in
+            weather.dailyForecasts.map { forecast in
                 weather.selectionDate(
                     for: forecast,
                     selectionCalendar: forecastCalendar
-                )
+                ) ?? forecastCalendar.startOfDay(for: forecast.date)
             }
         }
         return Array(Set(dates)).sorted()
@@ -103,13 +103,7 @@ struct FindSunListView: View {
 
     private var dateSummaries: [BestSunnyDateSummary] {
         candidateForecastDates.compactMap { date in
-            let availableWeather = candidateWeathers.filter {
-                $0.forecastIfAvailable(
-                    on: date,
-                    selectionCalendar: forecastCalendar
-                ) != nil
-            }
-            let recommendations = availableWeather.compactMap {
+            let recommendations = candidateWeathers.compactMap {
                 $0.recommendationAssessment(
                     on: date,
                     selectionCalendar: forecastCalendar

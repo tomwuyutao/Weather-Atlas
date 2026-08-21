@@ -56,7 +56,7 @@
 			membershipExceptions = (
 				Helpers/AppPreferences.swift,
 				Helpers/AppTheme.swift,
-				Models/DaylightHours.swift,
+				Models/SunnyHoursCalculation.swift,
 				Models/WeatherCondition.swift,
 				Models/WeatherDataValidation.swift,
 				Models/WeatherSymbols.swift,

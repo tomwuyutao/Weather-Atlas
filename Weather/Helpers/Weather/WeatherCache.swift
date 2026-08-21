@@ -133,8 +133,7 @@ nonisolated struct CachedHourlyForecast: Codable, Sendable {
     let symbolName: String
     /// Normalized native WeatherKit hourly condition.
     let condition: AppWeatherCondition?
-    /// Source daylight bit required to distinguish polar day/night from missing
-    /// sunrise or sunset timestamps.
+    /// WeatherKit's daylight bit used to select the day's sunny-hour rows.
     let isDaylight: Bool
     /// Optional hourly air temperature in Celsius.
     let temperature: Double?

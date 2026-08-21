@@ -1,0 +1,40 @@
+{
+  "catalogRows": 49992,
+  "acceptedMatches": 49025,
+  "matchCounts": {
+    "alternate-name-within-10km": 1893,
+    "name-too-distant": 398,
+    "primary-name-10-to-50km": 1323,
+    "primary-name-within-10km": 45809,
+    "unmatched": 569
+  },
+  "localizedEntries": 22981,
+  "localeCoverage": {
+    "en": 49992,
+    "fr": 2444,
+    "de": 2941,
+    "it": 1227,
+    "ja": 11474,
+    "ko": 6529,
+    "pt": 1735,
+    "ru": 17639,
+    "es": 2188,
+    "zh-Hans": 13991,
+    "zh-Hant": 13852
+  },
+  "missingByLocale": {
+    "en": 0,
+    "fr": 47548,
+    "de": 47051,
+    "it": 48765,
+    "ja": 38518,
+    "ko": 43463,
+    "pt": 48257,
+    "ru": 32353,
+    "es": 47804,
+    "zh-Hans": 36001,
+    "zh-Hant": 36140
+  },
+  "genericChineseConvertedWithOpenCC": true,
+  "unmatchedRows": 967
+}

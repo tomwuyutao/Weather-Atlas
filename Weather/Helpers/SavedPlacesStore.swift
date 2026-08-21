@@ -37,6 +37,12 @@ struct SavedPlace: Identifiable, Codable, Equatable, Hashable {
     /// geographic `City`; it only changes what saved-place surfaces lead with.
     var displayName: String { customName ?? city.displayName }
 
+    /// Resolves the underlying catalog label for an explicit locale while
+    /// preserving a person's custom saved-place name verbatim.
+    func localizedDisplayName(locale: Locale) -> String {
+        customName ?? city.localizedDisplayName(locale: locale)
+    }
+
     /// Treats blank names as absent, so the UI naturally falls back to the city.
     static func normalizedCustomName(_ name: String?) -> String? {
         guard let name else { return nil }

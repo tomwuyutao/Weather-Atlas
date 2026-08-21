@@ -69,7 +69,7 @@ private enum DetailChartRange: String, CaseIterable, Identifiable {
 /// Stable icon identity derived from the represented forecast instant.
 private struct ChartConditionIcon: Identifiable {
     let id: Date
-    let condition: AppWeatherCondition?
+    let condition: AppWeatherCondition
 }
 
 // MARK: - Detail Metric Grid
@@ -379,17 +379,19 @@ struct DetailChartView: View {
     /// Persisted display unit for visibility values.
     @AppStorage("distanceUnit") private var distanceUnitRaw: String = DistanceUnit.defaultRawValue
 
-    init(
+    fileprivate init(
         city: CityWeather,
         initialMetric: DetailChartMetric,
         temperatureUnit: TemperatureUnit,
-        selectedForecastDate: Binding<Date>
+        selectedForecastDate: Binding<Date>,
+        initialRange: DetailChartRange = .day
     ) {
         // `@State` must be initialized through its backing storage so the
         // opening metric becomes persistent local sheet state after creation.
         self.city = city
         self.temperatureUnit = temperatureUnit
         _selectedMetric = State(initialValue: initialMetric)
+        _selectedRange = State(initialValue: initialRange)
         _selectedForecastDate = selectedForecastDate
     }
 
@@ -564,106 +566,79 @@ struct DetailChartView: View {
         // entering `Chart`; absent metric values simply do not plot a point.
         let points = hourlyPoints(for: forecast)
         let domain = yAxisDomain(for: points)
+        let xDomain = chartDateDomain(for: points, minimumSpan: 60 * 60)
         let icons = hourlyConditionIcons(for: forecast, at: points.map(\.date))
+        let xAxisDates = hourlyAxisDates(for: points)
 
         return Chart {
-            if let currentTime = currentTimeIndicator(for: forecast) {
-                RuleMark(x: .value("Current time", currentTime))
-                    .foregroundStyle(theme.colors.primaryText.opacity(0.72))
-                    .lineStyle(StrokeStyle(lineWidth: 1.5))
-
-            }
-
-            if selectedMetric.usesTemperatureLines {
-                // Hourly temperature and feels-like plots are one series. The
-                // separate high/low treatment applies only to daily forecasts.
-                ForEach(points) { point in
-                    LineMark(
-                        x: .value("Time", point.date),
-                        y: .value(
-                            selectedMetric.title(locale: locale),
-                            point.value
-                        )
+            // Every hourly metric is one series. Daily temperature alone needs
+            // the separate high/low treatment in `forecastChart` below.
+            ForEach(points) { point in
+                LineMark(
+                    x: .value("Time", point.date),
+                    y: .value(
+                        selectedMetric.title(locale: locale),
+                        point.value
                     )
-                    .foregroundStyle(metricColor)
+                )
+                .foregroundStyle(metricColor)
 
-
-                    PointMark(
-                        x: .value("Time", point.date),
-                        y: .value(
-                            selectedMetric.title(locale: locale),
-                            point.value
-                        )
+                PointMark(
+                    x: .value("Time", point.date),
+                    y: .value(
+                        selectedMetric.title(locale: locale),
+                        point.value
                     )
-                    .foregroundStyle(metricColor)
-                    .symbolSize(24)
-                    .symbol(.circle)
-
-
-                }
-            } else {
-                ForEach(points) { point in
-                    LineMark(
-                        x: .value("Time", point.date),
-                        y: .value(
-                            selectedMetric.title(locale: locale),
-                            point.value
-                        )
-                    )
-                    .foregroundStyle(metricColor)
-
-
-                    PointMark(
-                        x: .value("Time", point.date),
-                        y: .value(
-                            selectedMetric.title(locale: locale),
-                            point.value
-                        )
-                    )
-                    .foregroundStyle(metricColor)
-                    .symbolSize(24)
-                    .symbol(.circle)
-
-
-                }
+                )
+                .foregroundStyle(metricColor)
+                .symbolSize(24)
+                .symbol(.circle)
             }
         }
         // The scale's real upper bound is also the uppermost native axis grid
         // line. Do not add a separate cap mark, which can drift from the plot.
         .chartYScale(domain: domain, range: .plotDimension(startPadding: 0, endPadding: 0))
-        .chartPlotStyle { plotArea in
-            plotArea
-                // Close the grid at the plot bounds so horizontal rules never
-                // appear to run past the chart's first or last vertical edge.
-                .overlay(alignment: .leading) {
-                    Rectangle()
-                        .fill(theme.colors.secondaryText.opacity(0.18))
-                        .frame(width: 1)
-                }
-                .overlay(alignment: .trailing) {
-                    Rectangle()
-                        .fill(theme.colors.secondaryText.opacity(0.18))
-                        .frame(width: 1)
-                }
-        }
-        // Anchor midnight directly on the plot's leading edge. This avoids a
-        // blank chart region before the first (12 AM) x-axis label.
-        .chartXScale(range: .plotDimension(startPadding: 0, endPadding: 18))
+        // Use the actual first and last readings as the plot edges. This keeps
+        // the endpoint guides, dots, labels, and top weather icons on one
+        // shared x-coordinate without a blank region at either side.
+        .chartXScale(
+            domain: xDomain,
+            range: .plotDimension(startPadding: 0, endPadding: 0)
+        )
         .chartXAxis {
             // Symbols occupy the top axis, leaving bottom labels free for time
             // while sharing the same x values as their plotted points.
             conditionIconAxisMarks(for: icons)
 
-            AxisMarks(position: .bottom, values: .stride(by: .hour, count: 6)) { value in
-                AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
-                // Extend each vertical division below the plot before its label.
+            AxisMarks(position: .bottom, values: xAxisDates) { value in
+                let isEndpoint = value.as(Date.self).map {
+                    $0 == xDomain.lowerBound || $0 == xDomain.upperBound
+                } ?? false
+                let guideStroke = StrokeStyle(
+                    lineWidth: 1,
+                    dash: isEndpoint ? [] : [2, 3]
+                )
+
+                // Endpoint rules frame the chart; every interior major time
+                // division is deliberately quieter. The matching AxisTick
+                // continues each guide below the plot toward its x label.
+                AxisGridLine(stroke: guideStroke)
+                    .foregroundStyle(
+                        theme.colors.secondaryText.opacity(
+                            isEndpoint ? 0.28 : 0.18
+                        )
+                    )
                 AxisTick(
                     centered: true,
                     length: 10,
-                    stroke: StrokeStyle(lineWidth: 1)
+                    stroke: guideStroke
                 )
-                .foregroundStyle(theme.colors.secondaryText.opacity(0.28))
-                AxisValueLabel(format: hourlyAxisFormat)
+                .foregroundStyle(
+                    theme.colors.secondaryText.opacity(
+                        isEndpoint ? 0.28 : 0.18
+                    )
+                )
+                AxisValueLabel(format: hourlyAxisFormat, centered: true)
                     .foregroundStyle(theme.colors.secondaryText)
                     .offset(y: 7)
             }
@@ -689,33 +664,13 @@ struct DetailChartView: View {
         .frame(height: chartHeight)
     }
 
-    /// A live-time rule is meaningful only for the forecast page that is
-    /// today in this city's local time. Keeping it inside the represented
-    /// hourly range prevents an out-of-range rule from expanding the chart.
-    private func currentTimeIndicator(
-        for forecast: DailyForecast
-    ) -> Date? {
-        var cityCalendar = Calendar.autoupdatingCurrent
-        cityCalendar.timeZone = city.timeZone
-        let now = Date.now
-
-        guard cityCalendar.isDate(forecast.date, inSameDayAs: now),
-              let firstHour = forecast.hourlyForecasts.map(\.date).min(),
-              let lastHour = forecast.hourlyForecasts.map(\.date).max(),
-              now >= firstHour,
-              now <= lastHour else {
-            return nil
-        }
-
-        return now
-    }
-
     /// Available-days chart using every real forecast returned for the city.
     private var forecastChart: some View {
         // Forecast-range points use one point per real daily forecast. For
         // temperature-like metrics each point also carries low/high values.
         let points = forecastPoints
         let domain = yAxisDomain(for: points)
+        let xDomain = chartDateDomain(for: points, minimumSpan: 24 * 60 * 60)
         let icons = dailyConditionIcons(at: points.map(\.date))
 
         return Chart {
@@ -798,22 +753,13 @@ struct DetailChartView: View {
             }
         }
         .chartYScale(domain: domain, range: .plotDimension(startPadding: 0, endPadding: 0))
-        .chartPlotStyle { plotArea in
-            plotArea
-                // Match the hourly chart: explicit vertical bounds seal the
-                // horizontal grid at both ends of the daily plot.
-                .overlay(alignment: .leading) {
-                    Rectangle()
-                        .fill(theme.colors.secondaryText.opacity(0.18))
-                        .frame(width: 1)
-                }
-                .overlay(alignment: .trailing) {
-                    Rectangle()
-                        .fill(theme.colors.secondaryText.opacity(0.18))
-                        .frame(width: 1)
-                }
-        }
-        .chartXScale(range: .plotDimension(startPadding: 12, endPadding: 18))
+        // The forecast chart follows the same endpoint geometry as the hourly
+        // chart: the first and last date labels sit directly below their dots
+        // and the plot's leading/trailing rules.
+        .chartXScale(
+            domain: xDomain,
+            range: .plotDimension(startPadding: 0, endPadding: 0)
+        )
         .chartXAxis {
             conditionIconAxisMarks(for: icons)
 
@@ -821,14 +767,31 @@ struct DetailChartView: View {
             // can resolve in a different time zone from the city's forecasts,
             // which offsets grid lines and labels from their dots.
             AxisMarks(position: .bottom, values: points.map(\.date)) { value in
-                AxisGridLine().foregroundStyle(theme.colors.secondaryText.opacity(0.16))
+                let isEndpoint = value.as(Date.self).map {
+                    $0 == xDomain.lowerBound || $0 == xDomain.upperBound
+                } ?? false
+                let guideStroke = StrokeStyle(
+                    lineWidth: 1,
+                    dash: isEndpoint ? [] : [2, 3]
+                )
+
+                AxisGridLine(stroke: guideStroke)
+                    .foregroundStyle(
+                        theme.colors.secondaryText.opacity(
+                            isEndpoint ? 0.28 : 0.18
+                        )
+                    )
                 AxisTick(
                     centered: true,
                     length: 10,
-                    stroke: StrokeStyle(lineWidth: 1)
+                    stroke: guideStroke
                 )
-                .foregroundStyle(theme.colors.secondaryText.opacity(0.28))
-                AxisValueLabel(format: weekdayAxisFormat)
+                .foregroundStyle(
+                    theme.colors.secondaryText.opacity(
+                        isEndpoint ? 0.28 : 0.18
+                    )
+                )
+                AxisValueLabel(format: weekdayAxisFormat, centered: true)
                     .foregroundStyle(theme.colors.secondaryText)
                     .offset(y: 7)
             }
@@ -897,12 +860,6 @@ struct DetailChartView: View {
                 .sorted { $0.date < $1.date }
                 .prefix(10)
         )
-        .filter { forecast in
-            city.selectionDate(
-                for: forecast,
-                selectionCalendar: forecastCalendar
-            ) != nil
-        }
     }
 
     private var metricPresentation: DetailMetricValuePresentation? {
@@ -949,14 +906,14 @@ struct DetailChartView: View {
                 selectedMetric.summary(
                     for: $0,
                     temperatureUnit: temperatureUnit,
-                    distanceUnit: DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+                    distanceUnit: distanceUnit
                 )
             }
         case .forecast:
             return selectedMetric.forecastSummary(
                 availableForecasts,
                 temperatureUnit: temperatureUnit,
-                distanceUnit: DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
+                distanceUnit: distanceUnit
             )
         }
     }
@@ -1003,40 +960,42 @@ struct DetailChartView: View {
         // Axis values supply dates rather than indexes, which ensures weather
         // icons stay aligned if some missing readings were filtered out.
         AxisMarks(position: .top, values: icons.map(\.id)) { value in
-            AxisValueLabel {
+            AxisValueLabel(centered: true) {
                 if let date = value.as(Date.self),
                    let icon = icons.first(where: { $0.id == date }) {
-                    if let condition = icon.condition {
-                        let symbolName = condition.displayIcon
-                        Image(systemName: symbolName)
-                            // Axis symbols use the same condition color as
-                            // cards and Map markers.
-                            .weatherIconStyle(for: condition.iconTone)
-                            .font(.caption2.weight(.semibold))
-                            // These symbols are a visual annotation for the
-                            // chart. The chart descriptor exposes the same
-                            // forecast samples through Chart Detail and Audio
-                            // Graph without duplicating every icon.
-
-                    }
+                    Image(systemName: icon.condition.displayIcon)
+                        // Axis symbols use the same condition color as cards
+                        // and Map markers, including the neutral-cloud fallback
+                        // when WeatherKit did not classify an hour.
+                        .weatherIconStyle(for: icon.condition.iconTone)
+                        .font(.caption2.weight(.semibold))
+                        // These symbols are a visual annotation for the
+                        // chart. The chart descriptor exposes the same
+                        // forecast samples through Chart Detail and Audio
+                        // Graph without duplicating every icon.
                 }
             }
         }
     }
 
-    /// One symbol for every other plotted hourly point, excluding missing
-    /// readings that have no corresponding dot in the chart. This keeps the
-    /// Day chart's top axis legible without changing its plotted data.
+    /// One symbol for every other plotted hourly point. The source of truth is
+    /// the plotted date list, so each icon always shares a coordinate with a
+    /// visible dot even when a metric has gaps.
     private func hourlyConditionIcons(
         for forecast: DailyForecast,
         at dates: [Date]
     ) -> [ChartConditionIcon] {
-        let plottedDates = Set(dates)
-        return forecast.hourlyForecasts.compactMap { forecast in
-            guard plottedDates.contains(forecast.id) else { return nil }
+        let forecastsByDate = Dictionary(
+            uniqueKeysWithValues: forecast.hourlyForecasts.map { ($0.id, $0) }
+        )
+        return dates.sorted().compactMap { date in
+            guard let forecast = forecastsByDate[date] else { return nil }
             return ChartConditionIcon(
-                id: forecast.id,
-                condition: forecast.condition
+                id: date,
+                // Keep an icon visible and semantically tinted even when a
+                // source condition is unavailable; neutral cloud is the
+                // established non-sunny fallback throughout the app.
+                condition: forecast.condition ?? .cloudy
             )
         }
         .enumerated()
@@ -1050,14 +1009,48 @@ struct DetailChartView: View {
     /// One symbol for every plotted daily point, excluding unavailable metric
     /// values that do not produce a dot.
     private func dailyConditionIcons(at dates: [Date]) -> [ChartConditionIcon] {
-        let plottedDates = Set(dates)
-        return availableForecasts.compactMap { forecast in
-            guard plottedDates.contains(forecast.id) else { return nil }
+        let forecastsByDate = Dictionary(
+            uniqueKeysWithValues: availableForecasts.map { ($0.id, $0) }
+        )
+        return dates.sorted().compactMap { date in
+            guard let forecast = forecastsByDate[date] else { return nil }
             return ChartConditionIcon(
-                id: forecast.id,
-                condition: forecast.condition
+                id: date,
+                condition: forecast.condition ?? .cloudy
             )
         }
+    }
+
+    /// Pins both chart bounds to real plotted dates. A one-point series gets a
+    /// minimal trailing span so Charts can still render a valid temporal scale.
+    private func chartDateDomain(
+        for points: [DetailChartPoint],
+        minimumSpan: TimeInterval
+    ) -> ClosedRange<Date> {
+        let dates = points.map(\.date).sorted()
+        guard let first = dates.first else {
+            return Date.now...Date.now.addingTimeInterval(minimumSpan)
+        }
+        guard let last = dates.last, last > first else {
+            return first...first.addingTimeInterval(minimumSpan)
+        }
+        return first...last
+    }
+
+    /// Emits regular six-hour labels plus the true first and last reading.
+    /// Including the endpoints guarantees the outer labels share the vertical
+    /// plot boundaries rather than leaving the final reading unlabeled.
+    private func hourlyAxisDates(for points: [DetailChartPoint]) -> [Date] {
+        let dates = points.map(\.date).sorted()
+        guard let first = dates.first, let last = dates.last else { return [] }
+
+        var cityCalendar = Calendar.autoupdatingCurrent
+        cityCalendar.timeZone = city.timeZone
+        let sixHourlyDates = dates.filter {
+            cityCalendar.component(.hour, from: $0).isMultiple(of: 6)
+        }
+
+        return Array(Set(sixHourlyDates + [first, last])).sorted()
     }
 
     /// Reuses only Weather Atlas palette colors and follows the resolved theme.
@@ -1091,9 +1084,12 @@ struct DetailChartView: View {
     private var chartSelectionDates: [Date] {
         // Convert each forecast instant through CityWeather before using it in
         // the date stepper: the city may live in another time zone.
-        return Array(
-            Set(availableForecasts.compactMap {
-                city.selectionDate(for: $0, selectionCalendar: forecastCalendar)
+        Array(
+            Set(availableForecasts.map { forecast in
+                city.selectionDate(
+                    for: forecast,
+                    selectionCalendar: forecastCalendar
+                ) ?? forecastCalendar.startOfDay(for: forecast.date)
             })
         )
         .sorted()
@@ -1143,6 +1139,18 @@ struct DetailChartView: View {
         var values = stride(from: lower, through: upper, by: interval).map(Double.init)
         if values.last != Double(upper) {
             values.append(Double(upper))
+        }
+
+        // `upper` is sometimes appended after the regular stride. When that
+        // leaves a final interval no larger than half the nominal one (for
+        // example, 18, 21, 22), omit the preceding intermediate tick instead
+        // of crowding two labels at the chart cap. A wider final gap is clearer
+        // than forcing evenly spaced labels that cannot be read independently.
+        if values.count > 2,
+           let penultimate = values.dropLast().last,
+           let final = values.last,
+           final - penultimate <= Double(interval) / 2 {
+            values.remove(at: values.count - 2)
         }
         return values
     }
@@ -1473,4 +1481,224 @@ private struct DetailChartPoint: Identifiable {
             return DetailChartPoint(date: forecast.date, value: value, lowerValue: nil, upperValue: nil)
         }
     }
+}
+
+// MARK: - Xcode Previews
+
+/// Fixed chart fixtures keep the Canvas independent from WeatherKit, location,
+/// cache state, and the current date. The conditions deliberately span clear,
+/// partly sunny, cloudy, rain, and drizzle so icon positioning and tinting are
+/// easy to inspect while refining the chart.
+@MainActor
+private enum DetailChartPreviewData {
+    static let timeZone = TimeZone(identifier: "Europe/London")!
+
+    static var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZone
+        return calendar
+    }
+
+    static let firstDate = calendar.date(
+        from: DateComponents(year: 2026, month: 8, day: 21, hour: 0)
+    )!
+
+    static let city = City(
+        id: UUID(uuidString: "5BDFD497-4587-46FC-B381-0EA0285213DE")!,
+        name: "London",
+        country: "United Kingdom",
+        latitude: 51.5072,
+        longitude: -0.1276,
+        timeZoneIdentifier: "Europe/London"
+    )
+
+    static let cityWeather = CityWeather(
+        city: city,
+        dailyForecasts: (0..<10).map(forecast(for:)),
+        timeZone: timeZone
+    )
+
+    static let unavailableCityWeather = CityWeather(
+        city: city,
+        dailyForecasts: [
+            DailyForecast(
+                date: firstDate,
+                dailyLow: 14,
+                dailyHigh: 18,
+                symbolName: WeatherIconSymbol.cloudy,
+                condition: .cloudy,
+                hourlyForecasts: [],
+                cloudCover: nil,
+                precipitationChance: nil,
+                uvIndex: nil,
+                sunrise: nil,
+                sunset: nil
+            )
+        ],
+        timeZone: timeZone
+    )
+
+    static func date(dayOffset: Int) -> Date {
+        calendar.date(byAdding: .day, value: dayOffset, to: firstDate)!
+    }
+
+    static func forecast(for dayOffset: Int) -> DailyForecast {
+        let day = date(dayOffset: dayOffset)
+        let hourlyForecasts = (0..<24).map { hour in
+            let condition = condition(for: hour, dayOffset: dayOffset)
+            return HourlyForecast(
+                date: calendar.date(byAdding: .hour, value: hour, to: day)!,
+                symbolName: condition.displayIcon,
+                condition: condition,
+                isDaylight: (6...20).contains(hour),
+                temperature: temperature(for: hour, dayOffset: dayOffset),
+                apparentTemperature: temperature(for: hour, dayOffset: dayOffset) - 1,
+                cloudCover: cloudCover(for: hour, dayOffset: dayOffset),
+                precipitationChance: precipitationChance(for: hour),
+                uvIndex: (6...19).contains(hour) ? max(0, 7 - abs(13 - hour)) : 0,
+                visibilityKilometers: condition == .rain ? 9 : 24
+            )
+        }
+        let temperatures = hourlyForecasts.compactMap(\.temperature)
+
+        return DailyForecast(
+            date: day,
+            dailyLow: temperatures.min() ?? 0,
+            dailyHigh: temperatures.max() ?? 0,
+            symbolName: condition(for: 13, dayOffset: dayOffset).displayIcon,
+            condition: condition(for: 13, dayOffset: dayOffset),
+            hourlyForecasts: hourlyForecasts,
+            cloudCover: hourlyForecasts.compactMap(\.cloudCover).reduce(0, +)
+                / Double(hourlyForecasts.count),
+            precipitationChance: hourlyForecasts
+                .compactMap(\.precipitationChance)
+                .max(),
+            uvIndex: hourlyForecasts.compactMap(\.uvIndex).max(),
+            sunrise: calendar.date(byAdding: .hour, value: 5, to: day),
+            sunset: calendar.date(byAdding: .hour, value: 20, to: day)
+        )
+    }
+
+    private static func temperature(for hour: Int, dayOffset: Int) -> Double {
+        let daytimeLift = max(0, 7 - abs(13 - hour))
+        return 13 + Double(daytimeLift) + Double(dayOffset % 3)
+    }
+
+    private static func cloudCover(for hour: Int, dayOffset: Int) -> Double {
+        switch condition(for: hour, dayOffset: dayOffset) {
+        case .clear:
+            return 0.08
+        case .partlySunny:
+            return 0.34
+        case .partlyCloudy, .cloudy:
+            return 0.76
+        case .rain, .drizzle:
+            return 0.9
+        case .snow, .fog, .wind:
+            return 0.68
+        }
+    }
+
+    private static func precipitationChance(for hour: Int) -> Double {
+        switch hour {
+        case 19...21:
+            return 0.65
+        case 22...23:
+            return 0.35
+        default:
+            return 0.05
+        }
+    }
+
+    private static func condition(for hour: Int, dayOffset: Int) -> AppWeatherCondition {
+        switch hour {
+        case 0...5:
+            return .cloudy
+        case 6...8:
+            return .partlySunny
+        case 9...15:
+            return dayOffset.isMultiple(of: 3) ? .clear : .partlySunny
+        case 16...18:
+            return .partlyCloudy
+        case 19...21:
+            return .rain
+        default:
+            return .drizzle
+        }
+    }
+}
+
+/// Gives each Canvas configuration its own mutable selected date while keeping
+/// the preview call sites concise and fully representative of the sheet.
+private struct DetailChartPreview: View {
+    let city: CityWeather
+    let metric: DetailChartMetric
+    let range: DetailChartRange
+
+    @State private var selectedForecastDate: Date
+
+    init(
+        city: CityWeather,
+        metric: DetailChartMetric,
+        range: DetailChartRange,
+        selectedForecastDate: Date
+    ) {
+        self.city = city
+        self.metric = metric
+        self.range = range
+        _selectedForecastDate = State(initialValue: selectedForecastDate)
+    }
+
+    var body: some View {
+        DetailChartView(
+            city: city,
+            initialMetric: metric,
+            temperatureUnit: .celsius,
+            selectedForecastDate: $selectedForecastDate,
+            initialRange: range
+        )
+        .environment(\.appTheme, .shared)
+        .environment(\.calendar, DetailChartPreviewData.calendar)
+        .environment(\.locale, Locale(identifier: "en_GB"))
+    }
+}
+
+#Preview("Chart – Day Temperature", traits: .fixedLayout(width: 390, height: 844)) {
+    DetailChartPreview(
+        city: DetailChartPreviewData.cityWeather,
+        metric: .temperature,
+        range: .day,
+        selectedForecastDate: DetailChartPreviewData.firstDate
+    )
+    .preferredColorScheme(.light)
+}
+
+#Preview("Chart – 10 Days", traits: .fixedLayout(width: 390, height: 844)) {
+    DetailChartPreview(
+        city: DetailChartPreviewData.cityWeather,
+        metric: .temperature,
+        range: .forecast,
+        selectedForecastDate: DetailChartPreviewData.firstDate
+    )
+    .preferredColorScheme(.light)
+}
+
+#Preview("Chart – Rain Chance Dark", traits: .fixedLayout(width: 390, height: 844)) {
+    DetailChartPreview(
+        city: DetailChartPreviewData.cityWeather,
+        metric: .rainChance,
+        range: .day,
+        selectedForecastDate: DetailChartPreviewData.date(dayOffset: 2)
+    )
+    .preferredColorScheme(.dark)
+}
+
+#Preview("Chart – Unavailable", traits: .fixedLayout(width: 390, height: 844)) {
+    DetailChartPreview(
+        city: DetailChartPreviewData.unavailableCityWeather,
+        metric: .cloudCover,
+        range: .day,
+        selectedForecastDate: DetailChartPreviewData.firstDate
+    )
+    .preferredColorScheme(.light)
 }

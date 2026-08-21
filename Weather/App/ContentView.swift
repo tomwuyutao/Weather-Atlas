@@ -243,11 +243,14 @@ struct ContentView: View {
         }
     }
 
-    /// Equatable facts that change the widget's Current Location identity or
-    /// display name. Keeping it value-based avoids publishing on unrelated
-    /// `WeatherModel` updates.
+    /// Equatable facts that change the widget's default-location identity,
+    /// mode, or display name. Keeping it value-based avoids publishing on
+    /// unrelated `WeatherModel` updates.
     private var widgetCurrentLocationIdentity: WidgetCurrentLocationIdentity {
         WidgetCurrentLocationIdentity(
+            defaultLocationKind: model.isUsingHomeLocation
+                ? .homeLocation
+                : .currentLocation,
             latitude: model.locationProvider.coordinate?.latitude,
             longitude: model.locationProvider.coordinate?.longitude,
             metadata: model.locationProvider.metadata,
@@ -431,6 +434,8 @@ struct ContentView: View {
     // MARK: First-Run and Reset
 
     /// Seeds a first-run library with a fixed, globally recognisable overview.
+    /// A starter city within 20 km of the location chosen during onboarding is
+    /// omitted so that the library never duplicates the person's local area.
     /// Existing and intentionally emptied libraries are left untouched.
     private func seedStarterPlacesIfNeeded() async {
         let alertKey = "starter-places-seed"
@@ -444,7 +449,9 @@ struct ContentView: View {
         do {
             // Restore the fixed library first, then load its forecasts. A
             // reset should never depend on WeatherKit before places reappear.
-            let cities = try await starterCitiesAfterOneCatalogRetry()
+            let cities = starterCitiesExcludingInitialLocation(
+                try await starterCitiesAfterOneCatalogRetry()
+            )
             guard !cities.isEmpty else { return }
             _ = try model.placesStore.savePlaces(cities)
             model.retainWeatherScope()
@@ -513,6 +520,42 @@ struct ContentView: View {
         }
     }
 
+    /// Onboarding always resolves either a saved home city or a usable device
+    /// coordinate before the app shell begins first-run seeding. Keep this
+    /// filtering here, rather than in the catalog, because the catalog itself
+    /// remains the same fixed global overview for every user.
+    private func starterCitiesExcludingInitialLocation(
+        _ cities: [City]
+    ) -> [City] {
+        guard let initialLocationCoordinate else { return cities }
+
+        let initialLocation = CLLocation(
+            latitude: initialLocationCoordinate.latitude,
+            longitude: initialLocationCoordinate.longitude
+        )
+        return cities.filter { city in
+            CLLocation(latitude: city.latitude, longitude: city.longitude)
+                .distance(from: initialLocation) >= 20_000
+        }
+    }
+
+    /// Prefer the explicit home selection. Otherwise use the live coordinate
+    /// obtained from the mandatory current-location tutorial step.
+    private var initialLocationCoordinate: CLLocationCoordinate2D? {
+        if let homeLocation = model.homeLocation {
+            return CLLocationCoordinate2D(
+                latitude: homeLocation.latitude,
+                longitude: homeLocation.longitude
+            )
+        }
+
+        guard let coordinate = model.locationProvider.coordinate,
+              CLLocationCoordinate2DIsValid(coordinate) else {
+            return nil
+        }
+        return coordinate
+    }
+
     /// Clears user-owned state, then restores the fixed first-run overview.
     private func resetApp() throws {
         // First clear data owned by the user and cache, then reset lightweight
@@ -524,12 +567,13 @@ struct ContentView: View {
         missingDataAlerts.reset()
 
         let defaults = UserDefaults.standard
+        let resetLanguage = AppLanguageDefaults.preferredDeviceLanguage()
         defaults.set(
             TemperatureUnit.defaultRawValue,
             forKey: "temperatureUnit"
         )
         defaults.set(DistanceUnit.defaultRawValue, forKey: "distanceUnit")
-        defaults.set("en", forKey: AppLanguageDefaults.storageKey)
+        defaults.set(resetLanguage, forKey: AppLanguageDefaults.storageKey)
         defaults.set(true, forKey: "useSystemTextSize")
         defaults.set(
             AppTextSizeLevel.defaultRawValue,
@@ -547,7 +591,7 @@ struct ContentView: View {
         router.selectedTab = .yourLocation
         resetID = UUID()
         didSeedPlaces = false
-        model.publishWidgetCatalog(locale: locale)
+        model.publishWidgetCatalog(locale: Locale(identifier: resetLanguage))
         router.presentedSheet = nil
 
         Task {
@@ -797,10 +841,11 @@ struct ContentView: View {
     }
 }
 
-/// Minimal app-side trigger for publishing the special widget Current Location
+/// Minimal app-side trigger for publishing the special widget default-location
 /// entry. It intentionally excludes live forecast arrays so ordinary weather
 /// updates do not force unnecessary WidgetKit timeline reloads.
 private struct WidgetCurrentLocationIdentity: Equatable {
+    let defaultLocationKind: WidgetDefaultLocationKind
     let latitude: Double?
     let longitude: Double?
     let metadata: CurrentLocationMetadata?

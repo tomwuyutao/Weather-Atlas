@@ -40,10 +40,6 @@ final class SavedPlacesWeatherStore {
     private(set) var loadingIDs: Set<City.ID> = []
     /// Most recent failed request for each place.
     private(set) var failuresByID: [City.ID: PlaceWeatherFailure] = [:]
-    /// Request-level issues for places whose latest request did not return a
-    /// usable snapshot. Feature-specific optional fields are checked only by
-    /// their consumers.
-    private(set) var issuesByID: [City.ID: [WeatherDataIssue]] = [:]
     /// Explicit render revision ensures refreshed same-ID snapshots invalidate
     /// consumers even though CityWeather's Hashable identity is place-based.
     private(set) var weatherRevision = 0
@@ -162,11 +158,6 @@ final class SavedPlacesWeatherStore {
     /// Whether one place is currently waiting for a WeatherKit response.
     func isLoading(_ placeID: City.ID) -> Bool {
         loadingIDs.contains(placeID)
-    }
-
-    /// Structured partial or fatal issues for one place.
-    func issues(for placeID: City.ID) -> [WeatherDataIssue] {
-        issuesByID[placeID] ?? []
     }
 
     /// The newest retained forecast timestamp supports the shared offline copy.
@@ -304,7 +295,6 @@ final class SavedPlacesWeatherStore {
     func retainWeather(for placeIDs: Set<City.ID>) {
         loadingIDs.formIntersection(placeIDs)
         failuresByID = failuresByID.filter { placeIDs.contains($0.key) }
-        issuesByID = issuesByID.filter { placeIDs.contains($0.key) }
         requestTokens = requestTokens.filter {
             placeIDs.contains($0.key)
         }
@@ -343,7 +333,6 @@ final class SavedPlacesWeatherStore {
         weatherByID = [:]
         loadingIDs = []
         failuresByID = [:]
-        issuesByID = [:]
         requestTokens = [:]
         inFlightByID.values.forEach { $0.task.cancel() }
         inFlightByID = [:]
@@ -447,7 +436,6 @@ final class SavedPlacesWeatherStore {
             }
             // The prior snapshot was removed when this replacement request
             // began, so publish only the typed unavailable state.
-            issuesByID[city.id] = [issue]
             failuresByID[city.id] = PlaceWeatherFailure(
                 id: city.id,
                 issue: issue
@@ -469,7 +457,6 @@ final class SavedPlacesWeatherStore {
         // never displayed or used as a business value.
         weatherRevision &+= 1
         failuresByID[city.id] = nil
-        issuesByID[city.id] = nil
         recordRefresh(for: city.id)
         markCacheDirty()
         return response.weather
@@ -544,7 +531,6 @@ final class SavedPlacesWeatherStore {
         discardCachedWeather(for: placeID)
         loadingIDs.insert(placeID)
         failuresByID[placeID] = nil
-        issuesByID[placeID] = nil
         return requestToken
     }
 

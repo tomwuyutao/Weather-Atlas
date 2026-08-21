@@ -53,19 +53,6 @@ nonisolated struct City: Identifiable, Hashable, Codable, Sendable {
         self.catalogIdentifier = catalogIdentifier
     }
 
-    /// Missing source data remains blank; presentation decides how to label it.
-    var displayName: String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    /// The richer reverse-geocoded locality is intentionally limited to
-    /// primary headings; all ordinary place labels use `displayName`.
-    var titleDisplayName: String {
-        let trimmedTitle = titleName?.trimmingCharacters(
-            in: .whitespacesAndNewlines
-        ) ?? ""
-        return trimmedTitle.isEmpty ? displayName : trimmedTitle
-    }
 }
 
 /// Resolved city plus its daily WeatherKit-backed forecast values.
@@ -228,9 +215,9 @@ struct HourlyForecast: Identifiable {
 
 /// One city's usable weather facts for a selected local date.
 ///
-/// A recommendation is valid only when the app has a daily condition and
-/// complete daylight-hour data; missing source data is never represented as a
-/// plausible zero-hour result.
+/// A recommendation uses the available hourly daylight data. The daily
+/// condition is display-only, so an unclassified daily symbol falls back to a
+/// neutral icon instead of suppressing an otherwise usable place.
 struct PlaceRecommendation: Identifiable {
     let cityWeather: CityWeather
     let condition: AppWeatherCondition
@@ -248,8 +235,10 @@ struct PlaceRecommendation: Identifiable {
             if lhs.sunnyHourCount != rhs.sunnyHourCount {
                 return lhs.sunnyHourCount > rhs.sunnyHourCount
             }
-            let order = lhs.cityWeather.city.displayName.compare(
-                rhs.cityWeather.city.displayName,
+            let order = lhs.cityWeather.city.localizedDisplayName(
+                locale: locale
+            ).compare(
+                rhs.cityWeather.city.localizedDisplayName(locale: locale),
                 options: [.caseInsensitive, .diacriticInsensitive, .numeric],
                 locale: locale
             )
@@ -284,38 +273,15 @@ extension CityWeather {
             )
         }
 
-        guard let condition = forecast.condition else {
-            let symbol = forecast.symbolName.trimmingCharacters(
-                in: .whitespacesAndNewlines
-            )
-            return PlaceRecommendationAssessment(
-                recommendation: nil,
-                issues: [
-                    symbol.isEmpty
-                        ? .missing(.missingConditionData, at: forecast.date)
-                        : .unknownWeatherSymbol(symbol, at: forecast.date)
-                ]
-            )
-        }
-
-        let sunnyHoursData: SunnyHoursCalculation.SunnyHoursData
-        switch SunnyHoursCalculation.sunnyHoursData(
+        let sunnyHoursData = SunnyHoursCalculation.sunnyHoursData(
             for: forecast,
             timeZone: timeZone
-        ) {
-        case .success(let data):
-            sunnyHoursData = data
-        case .failure(let issue):
-            return PlaceRecommendationAssessment(
-                recommendation: nil,
-                issues: [issue]
-            )
-        }
+        )
 
         return PlaceRecommendationAssessment(
             recommendation: PlaceRecommendation(
                 cityWeather: self,
-                condition: condition,
+                condition: forecast.condition ?? .cloudy,
                 sunnyHourCount: SunnyHoursCalculation.sunnyHourCount(
                     in: sunnyHoursData
                 )
@@ -358,12 +324,11 @@ struct NearbyRecommendationsAssessment {
     let recommendations: [NearestSunnyPlaceResult]
 }
 
-/// Saved-place recommendations plus missing-data reasons for destinations that
-/// could not be assessed for the selected day. Valid non-sunny forecasts remain
-/// recommendations so each presentation can apply its own honest filter.
+/// Saved-place recommendations for the selected day. Non-sunny forecasts stay
+/// in the result with a zero sunny-hour count so each presentation can apply
+/// its own filter.
 struct SavedRecommendationsAssessment {
     let recommendations: [PlaceRecommendation]
-    let issuesByPlaceID: [City.ID: [WeatherDataIssue]]
 }
 
 /// Stable inputs that make rebuilding Home or changing tabs a no-op.
@@ -492,10 +457,6 @@ final class WeatherModel {
     /// it separate prevents a current-forecast failure from being presented as
     /// if the nearby search itself failed (and vice versa).
     private(set) var nearbySearchError: String?
-    /// Structured missing-data reasons for native alert presentation. This is
-    /// independent of the compatibility string above so views never need to
-    /// infer a data category by parsing localized copy.
-    private(set) var locationIssues: [WeatherDataIssue] = []
     /// Invalidates stale writes from overlapping location work. `@ObservationIgnored`
     /// keeps this implementation detail from triggering a SwiftUI redraw.
     @ObservationIgnored private var refreshID = 0
@@ -579,16 +540,13 @@ final class WeatherModel {
         // persist WeatherKit/Apple-resolved metadata when it is complete. This
         // repairs the library in place without replacing a user alias or making
         // a missing timezone a global Saved Places load error.
-        let resolvedCities = placesStore.allPlaces.compactMap { place -> City? in
-            guard let weather = weatherStore.weather(for: place.id),
-                  PlacesLibraryValidator.isValidCity(weather.city) else {
-                return nil
-            }
-            return weather.city
-        }
-        for city in resolvedCities {
-            _ = try? placesStore.savePlace(city)
-        }
+        let resolvedCities = placesStore.allPlaces.compactMap { place in
+            weatherStore.weather(for: place.id)?.city
+        }.filter(PlacesLibraryValidator.isValidCity)
+        // `savePlaces` applies the same city validation at its persistence
+        // boundary, but commits all valid repaired metadata in one atomic write.
+        // This avoids a read-back transaction for every saved city.
+        _ = try? placesStore.savePlaces(resolvedCities)
     }
 
     // MARK: - Home Refresh Workflow
@@ -649,7 +607,6 @@ final class WeatherModel {
         locationCity = currentCity
         locationWeather = nil
         locationError = nil
-        locationIssues = []
         retainWeatherScope()
 
         let weather = await weatherStore.lookup(
@@ -670,12 +627,7 @@ final class WeatherModel {
             // Preserve WeatherKit's authoritative timezone and metadata while
             // retaining the transient current-location identity.
             locationCity = weather.city
-            locationIssues = weatherStore.issues(for: weather.id)
         } else {
-            locationIssues = unavailableWeatherIssues(
-                for: currentCity.id,
-                selectedDate: nil
-            )
             locationError = missingLocationWeatherMessage(locale: locale)
         }
         retainWeatherScope()
@@ -736,11 +688,10 @@ final class WeatherModel {
             // Candidate choice uses only population inside the fixed 200 km
             // radius; actual weather decides which of those candidates are
             // recommended.
-            let candidateResult = try await loadNearbyCandidates(
+            let candidates = try await loadNearbyCandidates(
                 centeredAt: coordinate
             )
             guard isActiveRefresh(generation) else { return }
-            let candidates = candidateResult.candidates
 
             // Keep only the transient cache entries needed for this search,
             // rather than allowing every explored catalog city to accumulate.
@@ -844,18 +795,11 @@ final class WeatherModel {
     /// is selected, so switching the selected date only re-ranks cached data.
     private func loadNearbyCandidates(
         centeredAt coordinate: CLLocationCoordinate2D
-    ) async throws -> (
-        candidates: [CatalogCityDistanceCandidate],
-        issues: [CitiesCatalogIssue]
-    ) {
-        let candidates = try await citiesCatalog.mostPopulousCities(
+    ) async throws -> [CatalogCityDistanceCandidate] {
+        try await citiesCatalog.mostPopulousCities(
             centeredAt: coordinate,
             withinKilometers: Self.nearbySearchRadius,
             limit: Self.nearbyCandidateLimit
-        )
-        return (
-            candidates,
-            try await citiesCatalog.dataIssues()
         )
     }
 
@@ -943,40 +887,23 @@ final class WeatherModel {
         return Array(recommendations.prefix(max(0, limit)))
     }
 
-    /// Assesses all saved destinations and retains per-place source failures for
-    /// alert presentation instead of silently dropping them from the ranking.
+    /// Assesses all saved destinations that have weather for the selected day.
     func savedRecommendationAssessment(
         on date: Date,
-        locale: Locale,
-        now: Date = .now
+        locale: Locale
     ) -> SavedRecommendationsAssessment {
         var recommendations: [PlaceRecommendation] = []
-        var issuesByPlaceID: [City.ID: [WeatherDataIssue]] = [:]
 
         for place in placesStore.allPlaces {
             guard let weather = weatherStore.weather(for: place.id) else {
-                issuesByPlaceID[place.id] = unavailableWeatherIssues(
-                    for: place.id,
-                    selectedDate: date
-                )
                 continue
             }
 
-            let assessment = placeAssessment(for: weather, on: date)
-            if let recommendation = assessment.recommendation {
+            if let recommendation = placeAssessment(
+                for: weather,
+                on: date
+            ).recommendation {
                 recommendations.append(recommendation)
-            }
-
-            // A selected literal day that has already passed at an eastbound
-            // destination is an expected timezone exclusion, not missing data.
-            let isExpectedDateExclusion = assessment.recommendation == nil
-                && selectedDateHasPassed(
-                    date,
-                    in: weather.timeZone,
-                    now: now
-                )
-            if !assessment.issues.isEmpty, !isExpectedDateExclusion {
-                issuesByPlaceID[place.id] = assessment.issues
             }
         }
 
@@ -984,8 +911,7 @@ final class WeatherModel {
             recommendations: PlaceRecommendation.ranked(
                 recommendations,
                 locale: locale
-            ),
-            issuesByPlaceID: issuesByPlaceID
+            )
         )
     }
 
@@ -1155,17 +1081,36 @@ final class WeatherModel {
 
     // MARK: - Widget Publishing
 
-    /// Publishes the default Current Location plus Saved Places to every widget
-    /// configuration. WidgetKit owns fresh weather requests after receiving
-    /// this lightweight coordinate contract.
+    /// Publishes the default Current/Home Location plus Saved Places to every
+    /// widget configuration. WidgetKit owns fresh weather requests after
+    /// receiving this lightweight coordinate contract.
     func publishWidgetCatalog(locale: Locale) {
+        let defaultLocationKind: WidgetDefaultLocationKind = isUsingHomeLocation
+            ? .homeLocation
+            : .currentLocation
+        let previousCatalog = WidgetDataStore.catalog()
+        let retainedDefaultLocation: WidgetDataCity?
+        if previousCatalog?.resolvedDefaultLocationKind == defaultLocationKind {
+            // Core Location is intentionally asynchronous. Preserve a confirmed
+            // coordinate while a same-mode app launch or refresh is in flight so
+            // publishing Saved Places never makes an autonomous widget depend on
+            // reopening the app.
+            retainedDefaultLocation = previousCatalog?.currentLocation
+        } else {
+            retainedDefaultLocation = nil
+        }
+
         // Widgets receive only lightweight place identities here; their own
         // extension code owns fetching and refreshing forecast presentation.
         WidgetDataStore.save(
             WidgetDataCatalog(
-                cities: placesStore.allPlaces.map { widgetCity(for: $0) },
+                cities: placesStore.allPlaces.map {
+                    widgetCity(for: $0, locale: locale)
+                },
                 appLanguageIdentifier: locale.identifier,
                 currentLocation: widgetCurrentLocation(locale: locale)
+                    ?? retainedDefaultLocation,
+                defaultLocationKind: defaultLocationKind
             )
         )
     }
@@ -1195,7 +1140,6 @@ final class WeatherModel {
         didSearchNearby = false
         locationError = nil
         nearbySearchError = nil
-        locationIssues = []
         retainedPlaceIDs = []
         if !keepingTransientCities {
             foundCitiesByID = [:]
@@ -1243,22 +1187,15 @@ final class WeatherModel {
         selectedDate: Date?
     ) -> [WeatherDataIssue] {
         guard let placeID else {
-            return locationIssues.isEmpty
-                ? [.missingForecastData(at: selectedDate)]
-                : locationIssues
+            return [.missingForecastData(at: selectedDate)]
         }
-        var issues = weatherStore.issues(for: placeID)
         if let failure = weatherStore.failuresByID[placeID] {
-            issues.insert(failure.issue, at: 0)
+            return [failure.issue]
         }
-        if issues.isEmpty {
-            issues = [.missingForecastData(at: selectedDate)]
-        }
-        return WeatherDataIssue.deduplicated(issues)
+        return [.missingForecastData(at: selectedDate)]
     }
 
-    /// Compatibility copy for the existing nearby card while structured alert
-    /// presentation migrates to `locationIssues`.
+    /// Compatibility copy for the existing nearby card.
     private func missingLocationWeatherMessage(locale: Locale) -> String {
         localizedString(
             "Current-location weather data is missing.",
@@ -1266,28 +1203,16 @@ final class WeatherModel {
         )
     }
 
-    /// True only when the selected literal day precedes today's literal day in
-    /// the destination timezone.
-    private func selectedDateHasPassed(
-        _ selectedDate: Date,
-        in timeZone: TimeZone,
-        now: Date
-    ) -> Bool {
-        guard let localCurrentDate = selectionDate(
-            forLocalDayContaining: now,
-            in: timeZone
-        ) else { return false }
-        let selectedDay = forecastCalendar.startOfDay(for: selectedDate)
-        return forecastCalendar.compare(
-            selectedDay,
-            to: localCurrentDate,
-            toGranularity: .day
-        ) == .orderedAscending
-    }
-
     private func makeLocationCity(
         coordinate: CLLocationCoordinate2D
     ) -> City {
+        // A manually selected home already has a durable catalog identity.
+        // Retaining it here lets the same localized label reach Your Location,
+        // the Map marker, and the Current Location widget.
+        if let homeLocation {
+            return homeLocation
+        }
+
         // The coordinate string is deliberately formatted in a fixed POSIX
         // locale so its decimal separator remains stable across app languages.
         let metadata = locationProvider.metadata
@@ -1345,7 +1270,10 @@ final class WeatherModel {
 
     /// Creates the lightweight identity contract whose weather remains owned by
     /// the widget extension.
-    private func widgetCity(for place: SavedPlace) -> WidgetDataCity {
+    private func widgetCity(
+        for place: SavedPlace,
+        locale: Locale
+    ) -> WidgetDataCity {
         // Prefer a timezone learned from the actual weather response; fall back
         // to the saved city metadata when weather has not loaded yet.
         let city = place.city
@@ -1360,15 +1288,13 @@ final class WeatherModel {
                 latitude: city.latitude,
                 longitude: city.longitude
             ),
-            cityName: place.displayName,
+            cityName: place.localizedDisplayName(locale: locale),
             timeZoneIdentifier: timeZoneID,
             latitude: city.latitude,
             longitude: city.longitude,
             daytimeHours: [],
             sunnyHours: [],
             partlySunnyHours: [],
-            currentConditionSymbolName: nil,
-            daylightBounds: nil,
             sunnyWindowDays: nil,
             dataIssue: nil
         )
@@ -1376,8 +1302,8 @@ final class WeatherModel {
 
     /// Builds the special default widget location from the app's most recent
     /// physical or chosen-home coordinate. It is intentionally not saved to
-    /// Saved Places: the stable widget ID means configuration remains on
-    /// Current Location even when the device moves.
+    /// Saved Places: the stable widget ID lets configurations follow the chosen
+    /// default mode without being invalidated when the device moves.
     private func widgetCurrentLocation(locale: Locale) -> WidgetDataCity? {
         guard let coordinate = locationProvider.coordinate,
               CLLocationCoordinate2DIsValid(coordinate) else {
@@ -1385,11 +1311,10 @@ final class WeatherModel {
         }
 
         let metadata = locationProvider.metadata
-        let displayName = CurrentLocationMetadata.localityName(
-            from: metadata?.displayName
-        ) ?? CurrentLocationMetadata.localityName(
-            from: locationWeather?.city.name
-        ) ?? localizedString("Current Location", locale: locale)
+        let displayName = homeLocation?.localizedDisplayName(locale: locale)
+            ?? locationWeather?.city.localizedDisplayName(locale: locale)
+            ?? CurrentLocationMetadata.localityName(from: metadata?.displayName)
+            ?? localizedString("Current Location", locale: locale)
         let timeZoneID = locationWeather?.timeZone.identifier
             ?? metadata?.timeZoneIdentifier
             ?? TimeZone.autoupdatingCurrent.identifier
@@ -1403,8 +1328,6 @@ final class WeatherModel {
             daytimeHours: [],
             sunnyHours: [],
             partlySunnyHours: [],
-            currentConditionSymbolName: nil,
-            daylightBounds: nil,
             sunnyWindowDays: nil,
             dataIssue: nil
         )

@@ -33,14 +33,6 @@ struct SavedPlacesView: View {
 
     // MARK: Derived Planning Data
 
-    /// One place's settled source issues. Keeping the place alongside its
-    /// issues lets the overview present one concise, city-specific alert while
-    /// the visible list continues to retain every saved destination.
-    private struct SettledSavedPlaceIssue {
-        let place: SavedPlace
-        let issues: [WeatherDataIssue]
-    }
-
     private var recommendationAssessment: SavedRecommendationsAssessment {
         model.savedRecommendationAssessment(
             on: selectedDate,
@@ -68,12 +60,10 @@ struct SavedPlacesView: View {
             }
 
             for forecast in weather.dailyForecasts {
-                guard let date = weather.selectionDate(
+                let date = weather.selectionDate(
                     for: forecast,
                     selectionCalendar: calendar
-                ) else {
-                    continue
-                }
+                ) ?? calendar.startOfDay(for: forecast.date)
                 dates.insert(calendar.startOfDay(for: date))
             }
         }
@@ -104,12 +94,7 @@ struct SavedPlacesView: View {
                 on: date,
                 locale: locale
             )
-            let excludedIDs = Set(
-                model.savedPlaceDateExclusions(on: date).map(\.id)
-            )
-            let recommendations = assessment.recommendations.filter {
-                !excludedIDs.contains($0.id)
-            }
+            let recommendations = assessment.recommendations
 
             // A calendar summary exists only for concrete recommendations.
             // This prevents an unexpected assessment gap from being displayed
@@ -163,86 +148,6 @@ struct SavedPlacesView: View {
         return localizedString(
             "Excluded due to time zone differences.",
             locale: locale
-        )
-    }
-
-    /// Feature-local checks may report a settled missing input without rejecting
-    /// the city's otherwise usable forecast. A date already passed in the
-    /// destination's timezone is expected, so it remains a quiet footer only.
-    private var settledMissingData: [SettledSavedPlaceIssue] {
-        let excludedIDs = Set(dateExclusions.map(\.id))
-
-        return model.placesStore.allPlaces.compactMap { place in
-            guard !excludedIDs.contains(place.id),
-                  !model.weatherStore.isLoading(place.id),
-                  let issues = recommendationAssessment.issuesByPlaceID[place.id],
-                  !issues.isEmpty else {
-                return nil
-            }
-
-            // An absent snapshot is not a settled failure while its initial
-            // request has not happened. It becomes eligible only after the
-            // repository records a final failure. A loaded snapshot, by
-            // contrast, can be assessed immediately by the consuming feature.
-            let hasSettledSource = model.weatherStore.weather(for: place.id) != nil
-                || model.weatherStore.failuresByID[place.id] != nil
-            guard hasSettledSource else { return nil }
-
-            return SettledSavedPlaceIssue(
-                place: place,
-                issues: Array(Set(issues)).sorted { lhs, rhs in
-                    if lhs.kind.rawValue != rhs.kind.rawValue {
-                        return lhs.kind.rawValue < rhs.kind.rawValue
-                    }
-                    return (lhs.forecastDate?.timeIntervalSinceReferenceDate ?? 0)
-                        < (rhs.forecastDate?.timeIntervalSinceReferenceDate ?? 0)
-                }
-            )
-        }
-    }
-
-    private var missingDataReport: MissingDataAlertReport? {
-        // A single unavailable city is represented honestly in its own row.
-        // Only an all-library outage is systemic enough to interrupt with one
-        // post-retry alert.
-        let comparablePlaceIDs = Set(
-            model.placesStore.allPlaces.map(\.id)
-        ).subtracting(Set(dateExclusions.map(\.id)))
-        let missingPlaceIDs = Set(settledMissingData.map(\.place.id))
-        guard !comparablePlaceIDs.isEmpty,
-              missingPlaceIDs == comparablePlaceIDs else {
-            return nil
-        }
-
-        let entries = settledMissingData.sorted {
-            $0.place.displayName.localizedCaseInsensitiveCompare(
-                $1.place.displayName
-            ) == .orderedAscending
-        }
-        let identity = entries.map { entry in
-            let issueIdentity = entry.issues.map { issue in
-                let date = issue.forecastDate?.timeIntervalSinceReferenceDate ?? 0
-                return "\(issue.kind.rawValue):\(date):\(issue.detail ?? "")"
-            }
-            .joined(separator: ",")
-            return "\(entry.place.id.uuidString):\(issueIdentity)"
-        }
-        .joined(separator: "|")
-
-        let messages = entries.flatMap { entry in
-            entry.issues.map {
-                weatherDataIssueMessage(
-                    $0,
-                    cityName: entry.place.displayName,
-                    locale: locale
-                )
-            }
-        }
-
-        return MissingDataAlertReport(
-            key: "saved-places:\(selectedDate.timeIntervalSinceReferenceDate):\(identity)",
-            title: localizedString("Weather Data Missing", locale: locale),
-            message: Array(Set(messages)).sorted().joined(separator: "\n")
         )
     }
 
@@ -306,13 +211,6 @@ struct SavedPlacesView: View {
         .refreshable {
             await model.loadSavedWeather(forceRefresh: true)
         }
-        .reportingMissingData(
-            missingDataReport,
-            recoveryKey: "saved-places-systemic-weather",
-            retrying: {
-                await model.loadSavedWeather(forceRefresh: true)
-            }
-        )
         // ContentView owns initial hydration and foreground freshness checks.
         // Re-entering this tab must only read that shared state; launching a
         // second load here used to rebuild and visibly reshuffle the ranking.

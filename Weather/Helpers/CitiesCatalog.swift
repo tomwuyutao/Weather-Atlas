@@ -69,20 +69,6 @@ nonisolated enum CitiesCatalogError: Error, Equatable, Sendable {
     case missingStarterCities([String])
 }
 
-/// Partial bundled-data omissions that leave affected metadata blank while
-/// allowing unrelated, fully sourced catalog rows to remain useful.
-nonisolated enum CitiesCatalogIssue: Hashable, Sendable {
-    case missingPopulation(Int)
-    case invalidRows(Int)
-}
-
-/// One validated catalog load plus aggregate omissions retained for native
-/// alert presentation by the feature that actually uses this source.
-nonisolated private struct CitiesCatalogData: Sendable {
-    let cities: [CatalogCity]
-    let issues: [CitiesCatalogIssue]
-}
-
 // MARK: - Catalog
 
 /// Lazily loads and queries the complete bundled world-cities dataset.
@@ -98,7 +84,7 @@ actor CitiesCatalog {
     /// The retained task ensures the 50,000-row resource is parsed at most once.
     /// Multiple callers arriving during the first load await this same task,
     /// rather than independently parsing the large CSV on separate threads.
-    private var loadTask: Task<CitiesCatalogData, Error>?
+    private var loadTask: Task<[CatalogCity], Error>?
     /// A deliberately curated, world-spanning starter collection for a new
     /// Saved Places library. The names resolve to their canonical rows in the
     /// bundled catalog; the zones are factual metadata for this fixed set so
@@ -178,11 +164,6 @@ actor CitiesCatalog {
             throw CitiesCatalogError.missingStarterCities(missingLabels)
         }
         return resolved
-    }
-
-    /// Aggregate partial omissions from the already shared catalog load.
-    func dataIssues() async throws -> [CitiesCatalogIssue] {
-        try await catalogData().issues
     }
 
     /// Discards one previously failed or partial parsing task so a caller can
@@ -321,10 +302,10 @@ actor CitiesCatalog {
 
     /// Returns parsed rows, starting and retaining one utility-priority task.
     private func allCities() async throws -> [CatalogCity] {
-        try await catalogData().cities
+        try await catalogData()
     }
 
-    private func catalogData() async throws -> CitiesCatalogData {
+    private func catalogData() async throws -> [CatalogCity] {
         // Actor isolation makes this check-and-store sequence serial. Once one
         // caller creates the task, every later caller awaits its same `value`.
         if let loadTask {
@@ -384,7 +365,7 @@ actor CitiesCatalog {
     /// helper without hopping back to the `CitiesCatalog` actor.
     nonisolated private static func decodeCities(
         at url: URL
-    ) throws -> CitiesCatalogData {
+    ) throws -> [CatalogCity] {
         guard let csv = try? String(contentsOf: url, encoding: .utf8) else {
             throw CitiesCatalogError.unreadableResource
         }
@@ -415,8 +396,6 @@ actor CitiesCatalog {
 
         var cities: [CatalogCity] = []
         cities.reserveCapacity(max(0, lines.count - 1))
-        var missingPopulationCount = 0
-        var invalidRowCount = 0
 
         // Skip malformed rows individually. A large public dataset can contain
         // imperfect records, but valid cities should remain available to Map.
@@ -444,7 +423,6 @@ actor CitiesCatalog {
                 (-90...90).contains(latitude),
                 (-180...180).contains(longitude)
             else {
-                invalidRowCount += 1
                 continue
             }
 
@@ -458,7 +436,6 @@ actor CitiesCatalog {
                   !name.isEmpty,
                   !countryName.isEmpty,
                   iso2.count == 2 else {
-                invalidRowCount += 1
                 continue
             }
 
@@ -482,9 +459,6 @@ actor CitiesCatalog {
             } else {
                 population = nil
             }
-            if population == nil {
-                missingPopulationCount += 1
-            }
             cities.append(
                 CatalogCity(
                     id: identifier,
@@ -502,14 +476,7 @@ actor CitiesCatalog {
         guard !cities.isEmpty else {
             throw CitiesCatalogError.noValidCities
         }
-        var issues: [CitiesCatalogIssue] = []
-        if missingPopulationCount > 0 {
-            issues.append(.missingPopulation(missingPopulationCount))
-        }
-        if invalidRowCount > 0 {
-            issues.append(.invalidRows(invalidRowCount))
-        }
-        return CitiesCatalogData(cities: cities, issues: issues)
+        return cities
     }
 
     /// Parses one quoted CSV row, including escaped quote pairs.

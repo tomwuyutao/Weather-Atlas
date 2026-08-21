@@ -105,13 +105,13 @@ struct SunnyHoursTimeline: View {
     /// The chart itself still exposes the hours' positions within the day.
     private var selectedSunnyHours: String? {
         guard let weather,
-              let forecast = selectedForecast,
-              case .success(let data) = SunnyHoursCalculation.sunnyHoursData(
-                for: forecast,
-                timeZone: weather.timeZone
-              ) else {
+              let forecast = selectedForecast else {
             return nil
         }
+        let data = SunnyHoursCalculation.sunnyHoursData(
+            for: forecast,
+            timeZone: weather.timeZone
+        )
 
         return SunnyHoursFormatting.hourCountLabel(
             SunnyHoursCalculation.sunnyHourCount(in: data),
@@ -151,14 +151,14 @@ struct SunnyHoursTimeline: View {
 
     @ViewBuilder
     private var cardContent: some View {
-        // `sunnyHoursData` validates that hourly data is coherent before the
-        // timeline is drawn. Every other state explains how to recover.
+        // The forecast's available daylight rows are enough to render a
+        // timeline; an empty result is an ordinary zero-sun day.
         if let weather,
-           let forecast = selectedForecast,
-           case .success(let data) = SunnyHoursCalculation.sunnyHoursData(
-            for: forecast,
-            timeZone: weather.timeZone
-           ) {
+           let forecast = selectedForecast {
+            let data = SunnyHoursCalculation.sunnyHoursData(
+                for: forecast,
+                timeZone: weather.timeZone
+            )
             loadedTimeline(weather: weather, data: data)
         } else if isLoading || locationStatus?.isActivelyLocating == true {
             HStack(spacing: WeatherCardLayout.headerSpacing) {
@@ -351,7 +351,7 @@ private struct DailySunnyHoursTrack: View {
     @ScaledMetric(relativeTo: .caption) private var timelineMinimumHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .caption) private var axisHeight: CGFloat = 14
 
-    /// Converts validated daylight forecasts into the same data-backed
+    /// Converts the available daylight forecasts into the same data-backed
     /// discrete capsule sequence used by the medium widget.
     private var displayedSlots: [TimelineSlot] {
         data.hours.map { forecast in
@@ -368,7 +368,7 @@ private struct DailySunnyHoursTrack: View {
         // chart is therefore visually identical to the medium widget below its
         // header, while the app can retain its own card chrome above it.
         let slots = displayedSlots
-        if let startHour = slots.first?.hour, !slots.isEmpty {
+        if let startHour = slots.first?.hour {
             let endHour = data.bounds.endHour
             VStack(spacing: 4) {
                 GeometryReader { proxy in

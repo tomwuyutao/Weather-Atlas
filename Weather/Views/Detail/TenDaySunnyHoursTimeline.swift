@@ -46,70 +46,42 @@ struct TenDaySunnyHoursTimeline: View {
 
     // MARK: Chart Data Preparation
 
-    private struct PreparedChart {
-        let rows: [SunnyHoursDayRow]
-    }
+    private var rows: [SunnyHoursDayRow] {
+        // Render every real WeatherKit daily forecast independently. A short
+        // (for example, nine-day) horizon simply produces the same number of
+        // rows; an incomplete daylight slice stays a neutral row instead of
+        // hiding that forecast date.
+        guard let city else { return [] }
 
-    private var preparedChart: PreparedChart {
-        var rows: [SunnyHoursDayRow] = []
-
-        // A missing city is a request-level presentation state, not malformed
-        // forecast content. The owning report supplies its loading/error copy.
-        guard let city else {
-            return PreparedChart(rows: [])
-        }
-
-        let forecasts = Array(
-            city.dailyForecasts
-                .sorted { $0.date < $1.date }
-                .prefix(10)
-        )
-
-        // Build each real forecast row independently. WeatherKit can return a
-        // short or gapped horizon, and one unavailable hourly day must not
-        // hide the usable days around it.
-        for forecast in forecasts {
-            guard let selectionDate = city.selectionDate(
-                for: forecast,
-                selectionCalendar: calendar
-            ) else {
-                continue
-            }
-
-            guard case .success(let data) = SunnyHoursCalculation.sunnyHoursData(
-                for: forecast,
-                timeZone: city.timeZone
-            ) else {
-                continue
-            }
-
-            let cells = data.hours.compactMap { hour -> SunnyHoursDayCell? in
-                guard let condition = hour.condition else { return nil }
-                return SunnyHoursDayCell(
-                    id: hour.date,
-                    hour: hour.hour(in: city.timeZone),
-                    condition: condition
+        return city.dailyForecasts
+            .sorted { $0.date < $1.date }
+            .prefix(10)
+            .map { forecast in
+                let data = SunnyHoursCalculation.sunnyHoursData(
+                    for: forecast,
+                    timeZone: city.timeZone
                 )
-            }
-            guard !cells.isEmpty else {
-                continue
-            }
+                let selectionDate = city.selectionDate(
+                    for: forecast,
+                    selectionCalendar: calendar
+                ) ?? calendar.startOfDay(for: forecast.date)
 
-            rows.append(
-                SunnyHoursDayRow(
+                return SunnyHoursDayRow(
                     selectionDate: selectionDate,
                     forecastDate: forecast.date,
-                    hours: cells,
+                    hours: data.hours.map { hour in
+                        SunnyHoursDayCell(
+                            id: hour.date,
+                            hour: hour.hour(in: city.timeZone),
+                            // A missing icon classification should not reject
+                            // an otherwise usable forecast row. Cloudy is the
+                            // app's established neutral timeline appearance.
+                            condition: hour.condition ?? .cloudy
+                        )
+                    },
                     bounds: data.bounds
                 )
-            )
-        }
-
-        return PreparedChart(rows: rows)
-    }
-
-    private var rows: [SunnyHoursDayRow] {
-        preparedChart.rows
+            }
     }
 
     private var chartBounds: SunnyHoursChartBounds? {
@@ -134,7 +106,7 @@ struct TenDaySunnyHoursTimeline: View {
                 title: "10-Day Sunny Hours"
             )
 
-            if let chartBounds, !rows.isEmpty {
+            if let chartBounds {
                 SunnyHoursAxis(bounds: chartBounds)
 
                 VStack(spacing: 0) {
@@ -513,7 +485,8 @@ private struct SunnyHoursDayRow: Identifiable {
     var id: Date { forecastDate }
 }
 
-/// One hour's condition after it has been converted to the city's local hour.
+/// One available daylight hour after conversion to the city's local hour.
+/// Unknown source conditions are represented by the neutral cloudy appearance.
 private struct SunnyHoursDayCell: Identifiable {
     let id: Date
     let hour: Int

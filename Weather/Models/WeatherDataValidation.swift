@@ -71,12 +71,6 @@ struct WeatherDataIssue: Error, Codable, Hashable {
     // Shared constants prevent call sites from repeating a category/detail pair
     // whenever the reason has no additional source-specific information.
 
-    /// Both solar events needed to define daylight are absent.
-    static let missingSunriseOrSunset = WeatherDataIssue(
-        kind: .missingSunriseOrSunset,
-        detail: nil,
-        forecastDate: nil
-    )
     /// No daily forecast exists for the requested city and literal date.
     static let missingForecastData = WeatherDataIssue(
         kind: .missingForecastData,
@@ -92,19 +86,6 @@ struct WeatherDataIssue: Error, Codable, Hashable {
 
     // MARK: - Contextual Issue Factories
 
-    /// Preserves an unknown source symbol rather than coercing it to cloudy.
-    /// The detail is diagnostic data, not user-facing localized text.
-    static func unknownWeatherSymbol(
-        _ symbolName: String,
-        at forecastDate: Date? = nil
-    ) -> WeatherDataIssue {
-        WeatherDataIssue(
-            kind: .unknownWeatherSymbol,
-            detail: symbolName,
-            forecastDate: forecastDate
-        )
-    }
-
     /// A WeatherKit request failed after the one permitted retry.
     static func weatherRequestFailed(_ detail: String? = nil) -> WeatherDataIssue {
         WeatherDataIssue(kind: .weatherRequestFailed, detail: detail)
@@ -118,43 +99,6 @@ struct WeatherDataIssue: Error, Codable, Hashable {
     /// No daily record matches the requested literal forecast date.
     static func missingForecastData(at date: Date?) -> WeatherDataIssue {
         WeatherDataIssue(kind: .missingForecastData, forecastDate: date)
-    }
-
-    /// No hourly source records exist for the affected daily forecast.
-    static func missingHourlyData(at date: Date?) -> WeatherDataIssue {
-        WeatherDataIssue(kind: .missingHourlyData, forecastDate: date)
-    }
-
-    /// Creates a field-specific missing-value issue without converting the
-    /// absence into a numeric zero or generic condition.
-    static func missing(
-        _ kind: Kind,
-        at date: Date?
-    ) -> WeatherDataIssue {
-        WeatherDataIssue(kind: kind, forecastDate: date)
-    }
-
-    /// Preserves malformed source/cache values for diagnostics while ensuring
-    /// they are never promoted into presentation as valid readings.
-    static func invalidValue(
-        _ detail: String,
-        at date: Date? = nil
-    ) -> WeatherDataIssue {
-        WeatherDataIssue(
-            kind: .invalidWeatherValue,
-            detail: detail,
-            forecastDate: date
-        )
-    }
-
-    /// Removes duplicate issue category/context pairs without reordering the
-    /// source diagnostics. Validation and ranking share this one rule so a
-    /// missing field produces one truthful state rather than duplicate alerts.
-    static func deduplicated(
-        _ issues: [WeatherDataIssue]
-    ) -> [WeatherDataIssue] {
-        var seen: Set<WeatherDataIssue> = []
-        return issues.filter { seen.insert($0).inserted }
     }
 
 }

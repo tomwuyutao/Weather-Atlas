@@ -164,8 +164,9 @@ struct CurrentLocationReportContent: View {
     }
 
     private var locationName: String {
-        let resolvedName = model.locationProvider.metadata?.displayName
-            ?? locationWeather?.city.name
+        let resolvedName = model.homeLocation?.localizedDisplayName(locale: locale)
+            ?? model.locationProvider.metadata?.displayName
+            ?? locationWeather?.city.localizedDisplayName(locale: locale)
         return CurrentLocationMetadata.localityName(from: resolvedName) ?? ""
     }
 
@@ -660,13 +661,13 @@ struct LocationReportHeader: View {
     /// card treatment below.
     private var sunStatus: SunnyHoursCalculation.DailySunStatus? {
         guard let weather,
-              let forecast,
-              case .success(let data) = SunnyHoursCalculation.sunnyHoursData(
-                for: forecast,
-                timeZone: weather.timeZone
-              ) else {
+              let forecast else {
             return nil
         }
+        let data = SunnyHoursCalculation.sunnyHoursData(
+            for: forecast,
+            timeZone: weather.timeZone
+        )
         return SunnyHoursCalculation.dailySunStatus(
             in: data,
             selectedDate: forecast.date,
@@ -686,10 +687,15 @@ struct LocationReportHeader: View {
         case .sunOutIn(let date):
             return "\(sunOutInPrefix) \(countdownText(to: date))"
         case .noSunToday:
+            if let sunlessForecastHorizonText = sunlessForecastHorizonText(
+                "No sun in the next %lld days."
+            ) {
+                return sunlessForecastHorizonText
+            }
             if let nextSunnyRelativeDateText {
                 return String(
                     format: localizedString(
-                        "There’s no sun today. Sun coming out %@.",
+                        "No sun today. Sun coming out %@.",
                         locale: locale
                     ),
                     locale: locale,
@@ -698,10 +704,15 @@ struct LocationReportHeader: View {
             }
             return localizedString("No Sun Today", locale: locale)
         case .noMoreSunToday:
+            if let sunlessForecastHorizonText = sunlessForecastHorizonText(
+                "No more sun in the next %lld days."
+            ) {
+                return sunlessForecastHorizonText
+            }
             if let nextSunnyRelativeDateText {
                 return String(
                     format: localizedString(
-                        "There’s no more sun today. Sun coming out %@.",
+                        "No more sun today. Sun coming out %@.",
                         locale: locale
                     ),
                     locale: locale,
@@ -712,6 +723,33 @@ struct LocationReportHeader: View {
         case .noSunOnSelectedDay:
             return localizedString("No Sun on this day", locale: locale)
         }
+    }
+
+    /// A forecast-wide sunless message is only safe when every later forecast
+    /// day is present, assessable, and has no sunny interval. The current day
+    /// is included in the displayed horizon, so this reads naturally as “the
+    /// next 10 days” for a ten-day forecast beginning today.
+    private func sunlessForecastHorizonText(
+        _ key: String.LocalizationValue
+    ) -> String? {
+        guard let weather,
+              let forecast,
+              let followingDayCount = SunnyHoursCalculation
+                .followingSunlessForecastDayCount(
+                    after: forecast,
+                    in: weather.dailyForecasts,
+                    timeZone: weather.timeZone,
+                    selectionCalendar: calendar
+                ), followingDayCount > 0 else {
+            return nil
+        }
+
+        let horizonDayCount = followingDayCount + 1
+        return String(
+            format: localizedString(key, locale: locale),
+            locale: locale,
+            Int64(horizonDayCount)
+        )
     }
 
     /// Formats the next proven sunny forecast relative to the selected

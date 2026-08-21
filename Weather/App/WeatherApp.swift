@@ -23,14 +23,20 @@ enum AppLanguageDefaults {
     static func configureInitialLanguage() {
         // Do this once only. From then on, Settings owns the explicit choice.
         guard UserDefaults.standard.object(forKey: storageKey) == nil else { return }
+        UserDefaults.standard.set(preferredDeviceLanguage(), forKey: storageKey)
+    }
+
+    /// Returns the first supported language in the device preference order.
+    /// A full app reset uses this too, so it restores the same language a new
+    /// installation would choose instead of arbitrarily returning to English.
+    static func preferredDeviceLanguage() -> String {
         // Use the first device preference the bundled localization table supports.
         for identifier in Locale.preferredLanguages {
             if let supportedCode = supportedLanguageCode(for: identifier) {
-                UserDefaults.standard.set(supportedCode, forKey: storageKey)
-                return
+                return supportedCode
             }
         }
-        UserDefaults.standard.set("en", forKey: storageKey)
+        return "en"
     }
 
     /// Normalizes an Apple locale identifier to a bundled language code.

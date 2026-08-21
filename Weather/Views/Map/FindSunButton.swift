@@ -135,17 +135,26 @@ struct FindSunButton: View {
 /// compact line so unusually long localized place names never create a tall
 /// context menu item.
 struct MapContextMenuLabel: View {
-    let title: String
+    private let title: Text
     let systemImage: String
 
-    init(_ title: String, systemImage: String) {
-        self.title = title
+    /// Keeps literal menu titles as catalog keys instead of eagerly converting
+    /// them to `String`, which would make `Text` render the English source.
+    init(_ title: LocalizedStringKey, systemImage: String) {
+        self.title = Text(title)
+        self.systemImage = systemImage
+    }
+
+    /// Dynamic city, country, and continent names have already been resolved
+    /// for the active locale by their caller and must not be looked up again.
+    init(resolved title: String, systemImage: String) {
+        self.title = Text(verbatim: title)
         self.systemImage = systemImage
     }
 
     var body: some View {
         Label {
-            Text(title)
+            title
                 .lineLimit(1)
                 .truncationMode(.tail)
                 // Let UIKit measure the complete single-line title when it

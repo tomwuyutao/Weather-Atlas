@@ -16,21 +16,6 @@ import WidgetKit
 
 // MARK: - Widget Data Models
 
-/// Persisted summary of the shared `DaylightRegime` used to validate widgets.
-///
-/// Widget snapshots cannot persist WeatherKit values directly. This compact
-/// representation records whether an empty daylight-hour array is a truthful
-/// polar-night result or missing source data. One-event transition regimes are
-/// retained only after the shared resolver validates them against hourly
-/// daylight flags; calendar edges are clipping boundaries, not invented events.
-enum WidgetDaylightRegime: String, Codable, Hashable {
-    case normal
-    case sunriseOnly
-    case sunsetOnly
-    case polarDay
-    case polarNight
-}
-
 /// One normalized daylight-hour condition persisted for the widget charts.
 ///
 /// The date keeps repeated local clock hours distinct on daylight-saving
@@ -75,17 +60,10 @@ struct WidgetDataCity: Codable, Hashable, Identifiable {
     /// Optional keeps previously persisted three-bucket widget data decodable
     /// until WidgetKit performs its next forecast refresh.
     var hourlyConditions: [WidgetHourlyCondition]? = nil
-    /// Raw current WeatherKit symbol retained only for source diagnostics.
-    var currentConditionSymbolName: String? = nil
     /// Current condition normalized by the same resolver as the main app.
     /// Optional keeps older snapshots decodable; the widget refreshes them
     /// before rendering weather content because the semantic value is missing.
     var currentCondition: AppWeatherCondition? = nil
-    /// Current-day chart bounds: solar-derived when available, otherwise a
-    /// safe domain derived from available WeatherKit hourly records.
-    var daylightBounds: SunnyHoursChartBounds? = nil
-    /// Optional astronomical regime when WeatherKit supplied enough solar data.
-    var daylightRegime: WidgetDaylightRegime? = nil
     /// Available current/future rows for the large chart, capped at ten by its
     /// presentation capacity. A shorter valid forecast remains displayable.
     var sunnyWindowDays: [WidgetSunnyWindowDay]? = nil
@@ -93,6 +71,27 @@ struct WidgetDataCity: Codable, Hashable, Identifiable {
     /// Legacy per-field source issues remain decodable, but do not suppress
     /// otherwise usable WeatherKit data in widget presentation.
     var dataIssue: WeatherDataIssue? = nil
+}
+
+/// App-owned choice that supplies the widget's stable default-location slot.
+///
+/// The App Intent identifier remains `current-location` for compatibility with
+/// widgets configured by earlier releases. This value controls the label and
+/// tells a newly launched app whether an existing published coordinate belongs
+/// to device location or to the person's fixed home location.
+enum WidgetDefaultLocationKind: String, Codable, Hashable {
+    case currentLocation
+    case homeLocation
+
+    /// Localization key shown for the default option in WidgetKit's editor.
+    var displayNameKey: String {
+        switch self {
+        case .currentLocation:
+            "Current Location"
+        case .homeLocation:
+            "Home Location"
+        }
+    }
 }
 
 /// One available local-date row in the large widget timeline.
@@ -108,13 +107,6 @@ struct WidgetSunnyWindowDay: Codable, Hashable, Identifiable {
     /// Normalized conditions for every available daylight hour in this row.
     /// Optional supports snapshots written before five-condition charts.
     var hourlyConditions: [WidgetHourlyCondition]? = nil
-    /// Solar-derived or safe fallback chart domain for the row.
-    var daylightBounds: SunnyHoursChartBounds? = nil
-    /// Optional astronomical regime used to construct the row.
-    var daylightRegime: WidgetDaylightRegime? = nil
-    /// Legacy per-field issue retained for backward decoding. Presentation uses
-    /// available row values and fallback bounds instead of hiding the chart.
-    var dataIssue: WeatherDataIssue? = nil
 
     /// Uses the literal local date as row identity.
     /// `Identifiable` gives SwiftUI a stable key when it renders rows in a
@@ -140,8 +132,6 @@ struct WidgetWeatherSnapshot: Codable, Hashable {
     var latitude: Double? = nil
     /// Longitude paired with `latitude` for snapshot identity validation.
     var longitude: Double? = nil
-    /// Cached current-condition source symbol retained for diagnostics.
-    var currentConditionSymbolName: String? = nil
     /// Cached condition normalized by the shared app/widget WeatherKit adapter.
     /// Optional preserves backward decoding of snapshots from older releases.
     var currentCondition: AppWeatherCondition? = nil
@@ -154,10 +144,6 @@ struct WidgetWeatherSnapshot: Codable, Hashable {
     /// Cached normalized conditions for every current-day daylight hour.
     /// Optional preserves backward decoding of existing on-device snapshots.
     var hourlyConditions: [WidgetHourlyCondition]? = nil
-    /// Cached current-day chart bounds, solar-derived when available.
-    var daylightBounds: SunnyHoursChartBounds? = nil
-    /// Cached optional astronomical regime for the represented local day.
-    var daylightRegime: WidgetDaylightRegime? = nil
     /// Cached available current/future rows for the large chart, capped at ten
     /// during presentation rather than requiring a full ten-day feed.
     var sunnyWindowDays: [WidgetSunnyWindowDay]? = nil
@@ -174,12 +160,21 @@ struct WidgetDataCatalog: Codable, Hashable {
     let cities: [WidgetDataCity]
     /// Main-app language used for widget localization consistency.
     let appLanguageIdentifier: String
-    /// Latest app-published coordinate for the default Current Location
+    /// Latest app-published coordinate for the default Current/Home Location
     /// selection. It stays separate from Saved Places so a person never has to
-    /// save their current position just to configure a widget.
+    /// save that location just to configure a widget.
     var currentLocation: WidgetDataCity? = nil
+    /// Whether the stable default slot represents the device or a fixed home.
+    /// Optional keeps catalogs written by older app versions decodable; those
+    /// payloads predate Home Location and therefore mean Current Location.
+    var defaultLocationKind: WidgetDefaultLocationKind? = nil
     /// Widget-only copy resolved by the localized main app before publication.
     var localizedStrings: [String: String] = [:]
+
+    /// Backward-compatible interpretation of the optional persisted mode.
+    var resolvedDefaultLocationKind: WidgetDefaultLocationKind {
+        defaultLocationKind ?? .currentLocation
+    }
 }
 
 // MARK: - Shared Widget Persistence
@@ -196,9 +191,9 @@ enum WidgetDataStore {
     static let catalogKey = "bestSunnyPlacesWidgetCatalog"
     /// WidgetKit kind for the unified Home Screen widget.
     static let kind = "BestSunnyPlacesWidget"
-    /// Stable App Intent identity for the shared default selection. The
-    /// catalog updates its coordinate and display name as the device location
-    /// changes, while widget configurations keep referring to this one ID.
+    /// Stable App Intent identity for the shared default selection. The catalog
+    /// updates its coordinate, mode, and display name while widget
+    /// configurations keep referring to this one backward-compatible ID.
     static let currentLocationIdentifier = "current-location"
     /// Prefix for widget-owned timestamped per-city weather snapshots.
     static let weatherCacheKeyPrefix = "widgetWeatherSnapshot."
@@ -368,6 +363,7 @@ enum WidgetDataStore {
                 locale: locale
             ),
             "Current Location": localizedString("Current Location", locale: locale),
+            "Home Location": localizedString("Home Location", locale: locale),
             "Today": localizedString("Today", locale: locale),
             "Sunny": localizedString("Sunny", locale: locale),
             "Partly Sunny": localizedString("Partly Sunny", locale: locale),
@@ -383,10 +379,6 @@ enum WidgetDataStore {
             ),
             "Weather unavailable.": localizedString(
                 "Weather unavailable.",
-                locale: locale
-            ),
-            "Sunny Hours for %@: %@": localizedString(
-                "Sunny Hours for %@: %@",
                 locale: locale
             ),
         ]

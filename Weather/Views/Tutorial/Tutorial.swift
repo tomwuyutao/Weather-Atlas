@@ -185,16 +185,102 @@ struct TutorialWelcomeStage: View {
 
     private var tutorialWelcomeIntro: some View {
         VStack(alignment: .leading, spacing: 18) {
-            Text("Welcome to Weather Atlas")
+            Text("Welcome!")
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
                 .foregroundStyle(AppPalette.light.titleText)
                 .fixedSize(horizontal: false, vertical: true)
 
-            Text("See when the sun is out, compare places, and plan ahead.")
+            Text("Here are the three ways to find sun using Weather Atlas:")
                 .font(.title3)
                 .foregroundStyle(AppPalette.light.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
+
+            TutorialFindSunSteps()
+                .padding(.top, 4)
         }
+    }
+}
+
+/// Reuses the original tutorial's numbered-card treatment to introduce the
+/// three levels of Find Sun before the person chooses their location.
+private struct TutorialFindSunSteps: View {
+    private let steps: [TutorialFindSunStep] = [
+        .init(
+            number: 1,
+            title: "Find Sun Near You",
+            subtitle: "See nearby sunny places from Your Location."
+        ),
+        .init(
+            number: 2,
+            title: "Track Your Saved Places",
+            subtitle: "Compare the cities you care about in Saved Places."
+        ),
+        .init(
+            number: 3,
+            title: "Explore the Map",
+            subtitle: "Search new areas and discover sunny places."
+        )
+    ]
+
+    var body: some View {
+        VStack(spacing: 14) {
+            ForEach(steps) { step in
+                TutorialFindSunStepCard(step: step)
+            }
+        }
+    }
+}
+
+private struct TutorialFindSunStep: Identifiable {
+    let number: Int
+    let title: LocalizedStringKey
+    let subtitle: LocalizedStringKey
+
+    var id: Int { number }
+}
+
+/// Original three-card tutorial styling, adapted for the current light
+/// onboarding presentation.
+private struct TutorialFindSunStepCard: View {
+    let step: TutorialFindSunStep
+
+    var body: some View {
+        HStack(alignment: .center, spacing: 16) {
+            Text(step.number, format: .number)
+                .font(.callout.weight(.bold))
+                .foregroundStyle(AppPalette.light.titleText)
+                .frame(width: 34, height: 34)
+                .background(
+                    AppPalette.light.titleText.opacity(0.12),
+                    in: Circle()
+                )
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(step.title)
+                    .font(.headline.weight(.bold))
+                    .foregroundStyle(AppPalette.light.titleText)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text(step.subtitle)
+                    .font(.body)
+                    .foregroundStyle(AppPalette.light.titleText.opacity(0.64))
+                    .lineSpacing(4)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 18)
+        .background(
+            AppPalette.light.titleText.opacity(0.06),
+            in: RoundedRectangle(cornerRadius: 18, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(AppPalette.light.titleText.opacity(0.14), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -263,8 +349,9 @@ struct TutorialLocationStage: View {
     }
 }
 
-/// Both full-screen stages use the same relative intro anchor, so their title
-/// and subtitle align vertically while their action counts can differ.
+/// Both full-screen stages share one elevated intro anchor. Actions remain
+/// pinned to the bottom, leaving the welcome cards room without shifting the
+/// location choices upward with them.
 private struct TutorialStageLayout<Intro: View, Actions: View>: View {
     @ViewBuilder let intro: () -> Intro
     @ViewBuilder let actions: () -> Actions
@@ -273,7 +360,7 @@ private struct TutorialStageLayout<Intro: View, Actions: View>: View {
         GeometryReader { geometry in
             VStack(alignment: .leading, spacing: 0) {
                 intro()
-                    .padding(.top, geometry.size.height * 0.16)
+                    .padding(.top, max(24, geometry.size.height * 0.10))
 
                 Spacer(minLength: 32)
 
@@ -572,9 +659,9 @@ enum TutorialFeatureTip: Equatable {
     var message: LocalizedStringKey {
         switch self {
         case .savedPlaces:
-            "Find the best sunny places in your saved locations for the selected forecast date."
+            "Save prospective holiday destinations, and Weather Atlas will find the best dates and best places for each date."
         case .map:
-            "Tap anywhere on the map to query that area, or use Find Sun to search more broadly."
+            "Tap anywhere on the map to search that area. Or use the Find Sun button to search more broadly."
         }
     }
 

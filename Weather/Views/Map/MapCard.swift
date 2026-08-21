@@ -123,40 +123,17 @@ struct MapCard<Content: View>: View {
                     maximumWidth: maximumWidth
                 )
         } else if #available(iOS 26.0, *) {
-            // `glassEffectID` must be attached directly to the Glass effect.
-            // Applying it outside a custom modifier looks valid in source but
-            // gives iOS no material to pair, producing the old pop/fade.
             glassSurface
-                .background(
-                    theme.colors.glassFill.opacity(
-                        colorScheme == .dark ? 0.18 : 0.22
-                    ),
-                    in: shape
-                )
-                // The compact surface is itself a direct action. The expanded
-                // surface is a rounded card containing its own controls, so
-                // it must not apply a capsule-style direct press response.
                 .contentShape(shape)
+                // Keep the Map surface intentionally native: Liquid Glass is
+                // the complete visual treatment, without an extra tint, edge
+                // stroke, or custom glass-transition outline layered on top.
                 .glassEffect(
                     size.expandsToMaximumWidth
                         ? .regular
                         : .regular.interactive(),
                     in: shape
                 )
-                .glassEffectID(glassEffectID, in: glassNamespace)
-                // The transition belongs on the actual glass effect. Applying
-                // it to the container does not animate the inserted and
-                // removed surfaces themselves.
-                .glassEffectTransition(.matchedGeometry)
-                .overlay(
-                    shape.stroke(
-                        theme.colors.primaryText.opacity(0.16),
-                        lineWidth: 0.6
-                    )
-                )
-                // Keep the outer positioning outside the material. The
-                // compact Find Sun control must retain its intrinsic capsule
-                // width instead of inheriting the card's maximum-width frame.
                 .mapCardPositioned(
                     horizontalPadding: size.horizontalPadding,
                     maximumWidth: maximumWidth
@@ -165,28 +142,6 @@ struct MapCard<Content: View>: View {
             glassSurface
                 .contentShape(shape)
                 .background(.ultraThinMaterial, in: shape)
-                .background(
-                    theme.colors.glassFill.opacity(
-                        colorScheme == .dark ? 0.30 : 0.38
-                    ),
-                    in: shape
-                )
-                .overlay(
-                    shape.stroke(
-                        theme.colors.primaryText.opacity(0.16),
-                        lineWidth: 0.6
-                    )
-                )
-                // Older OS releases do not have `glassEffectID`, but keeping
-                // the geometry match on the visible surface still makes the
-                // capsule expand upward into the card rather than appear
-                // separately.
-                .matchedGeometryEffect(
-                    id: fallbackGeometryID,
-                    in: glassNamespace,
-                    properties: .frame,
-                    anchor: .bottom
-                )
                 .mapCardPositioned(
                     horizontalPadding: size.horizontalPadding,
                     maximumWidth: maximumWidth
@@ -461,7 +416,7 @@ private struct MapFindSunDisclosure: View {
                 findSunNear(city)
             } label: {
                 MapContextMenuLabel(
-                    findNearTitle,
+                    resolved: findNearTitle,
                     systemImage: "location"
                 )
             }
@@ -473,7 +428,7 @@ private struct MapFindSunDisclosure: View {
                     findSun(.country(country))
                 } label: {
                     MapContextMenuLabel(
-                        findSunTitle(
+                        resolved: findSunTitle(
                             for: country.localizedName(locale: locale)
                         ),
                         systemImage: "flag"
@@ -486,7 +441,7 @@ private struct MapFindSunDisclosure: View {
                     findSun(.continent(continent))
                 } label: {
                     MapContextMenuLabel(
-                        findSunTitle(
+                        resolved: findSunTitle(
                             for: continent.localizedName(locale: locale)
                         ),
                         systemImage: "globe.europe.africa"
