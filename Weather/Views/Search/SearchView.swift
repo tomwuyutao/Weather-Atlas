@@ -43,7 +43,7 @@ struct PlaceSearchView: View {
     /// calendar day, rather than inheriting a non-today date from another tab.
     @Binding var selectedDate: Date
 
-    // MARK: Search-local state
+    // MARK: - Search State
 
     /// The manager is observable but owned by this view, so `@State` preserves
     /// one instance for the screen's lifetime rather than recreating it in body.
@@ -65,8 +65,11 @@ struct PlaceSearchView: View {
     @State private var selectionGeneration = 0
     @State private var selectionError: (key: String, message: String)?
     @State private var allCountries: [CountryPlacesOption] = []
-    @State private var countryResults: [CountryPlacesOption] = []
     @State private var hasLoadedCountries = false
+    /// The highest-population cities in the active current/home country. This
+    /// intentionally preserves the catalog's literal rank; it does not apply
+    /// the spatial clustering used by nearby-destination workflows.
+    @State private var countryCitySuggestions: [City] = []
     @FocusState private var isSearchFocused: Bool
 
     @Environment(\.locale) private var locale
@@ -98,11 +101,14 @@ struct PlaceSearchView: View {
         return MissingDataAlertReport(
             key: "search-providers:\(normalizedQuery):\(messages.joined(separator: "|"))",
             title: localizedString("Search Data Missing", locale: locale),
-            message: Array(Set(messages)).sorted().joined(separator: "\n")
+            message: localizedString(
+                "This provider could not return results. Try again.",
+                locale: locale
+            )
         )
     }
 
-    // MARK: Lifecycle and presentation
+    // MARK: - Lifecycle and Search Field
 
     var body: some View {
         searchFieldHost
@@ -134,6 +140,10 @@ struct PlaceSearchView: View {
                 guard searchScope == .country else { return }
                 refreshCountryOptions()
             }
+            .task(id: citySuggestionTaskID) {
+                guard searchScope == .city else { return }
+                refreshCountryCitySuggestions()
+            }
             .task(id: router.selectedTab) {
                 // The system search tab may morph into its field after the
                 // screen appears, so yield once before requesting focus.
@@ -154,8 +164,6 @@ struct PlaceSearchView: View {
             }
             .onChange(of: query) { _, _ in
                 invalidateSelection()
-                guard searchScope == .country else { return }
-                updateCountrySearchResults()
             }
             .onDisappear {
                 // A resolved place should not navigate away from a search tab
@@ -209,24 +217,27 @@ struct PlaceSearchView: View {
             }
         }
         .pickerStyle(.segmented)
-
     }
 
-    // MARK: Result states and rows
+    // MARK: - Scope Result States
 
     /// Empty, loading, no-result, and populated results are mutually exclusive
     /// states derived from the normalized query and both provider states.
     @ViewBuilder
     private var citySearchContent: some View {
         if normalizedQuery.isEmpty {
-            ContentUnavailableView(
-                "Search for a City",
-                systemImage: "building.2",
-                description: Text(
-                    "Search for a city to view its weather conditions."
+            if countryCitySuggestions.isEmpty {
+                ContentUnavailableView(
+                    "Search for a City",
+                    systemImage: "building.2",
+                    description: Text(
+                        "Search for a city to view its weather conditions."
+                    )
+                    .font(.body.weight(.bold))
                 )
-                .font(.body.weight(.bold))
-            )
+            } else {
+                countryCitySuggestionsList
+            }
         } else if hasNoResults && isSearchInProgress && !hasProviderError {
             VStack(spacing: 12) {
                 ProgressView()
@@ -235,7 +246,6 @@ struct PlaceSearchView: View {
                     .foregroundStyle(theme.colors.secondaryText)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
         } else if hasNoResults && !hasProviderError {
             ContentUnavailableView.search(text: normalizedQuery)
         } else {
@@ -253,7 +263,6 @@ struct PlaceSearchView: View {
                     .foregroundStyle(theme.colors.secondaryText)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-
         } else if countryResults.isEmpty {
             if normalizedQuery.isEmpty {
                 ContentUnavailableView(
@@ -328,14 +337,13 @@ struct PlaceSearchView: View {
                 Image(systemName: "chevron.right")
                     .font(.subheadline.weight(.medium))
                     .foregroundStyle(theme.colors.secondaryText.opacity(0.7))
-
             }
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-
-
     }
+
+    // MARK: - Provider Result Rows
 
     /// Separate sections preserve each provider's provenance instead of
     /// silently merging heterogeneous geographic results into one list.
@@ -360,6 +368,25 @@ struct PlaceSearchView: View {
         .weatherScrollableBackground()
     }
 
+    private var countryCitySuggestionsList: some View {
+        List {
+            Section {
+                ForEach(countryCitySuggestions) { city in
+                    geographicQueryButton(title: city.displayName) {
+                        selectSuggestedCity(city)
+                    }
+                }
+            } header: {
+                geographicScopeHeader(
+                    description: "Find when the sun comes out in a city."
+                )
+            }
+            .listRowBackground(theme.colors.settingsRowFill)
+        }
+        .listStyle(.insetGrouped)
+        .weatherScrollableBackground()
+    }
+
     @ViewBuilder
     private func providerSection(
         _ title: LocalizedStringKey,
@@ -380,7 +407,6 @@ struct PlaceSearchView: View {
                         Text("Searching…")
                             .foregroundStyle(theme.colors.secondaryText)
                     }
-
                 } else if errorMessage != nil {
                     providerUnavailableRow
                 }
@@ -432,7 +458,6 @@ struct PlaceSearchView: View {
                 if loadingID == result.id {
                     ProgressView()
                         .controlSize(.small)
-
                 }
             }
             .contentShape(.rect)
@@ -444,11 +469,22 @@ struct PlaceSearchView: View {
         .disabled(loadingID != nil)
     }
 
-    // MARK: Search timing and selection
+    // MARK: - Query Derivations
 
     /// Whitespace-only queries behave like no query and never hit a provider.
     private var normalizedQuery: String {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var countryResults: [CountryPlacesOption] {
+        guard !normalizedQuery.isEmpty else { return allCountries }
+        return allCountries.filter { country in
+            country.localizedName(locale: locale)
+                .localizedCaseInsensitiveContains(normalizedQuery)
+                || country.englishName.localizedCaseInsensitiveContains(
+                    normalizedQuery
+                )
+        }
     }
 
     private var citySearchTaskID: String {
@@ -457,6 +493,16 @@ struct PlaceSearchView: View {
 
     private var countryRecommendationTaskID: String {
         "\(searchScope.rawValue)|\(locationIdentifier)|\(locale.identifier)"
+    }
+
+    private var citySuggestionTaskID: String {
+        "\(searchScope.rawValue)|\(locationCountryName ?? "unavailable")|\(locale.identifier)"
+    }
+
+    private var locationCountryName: String? {
+        model.homeLocation?.country
+            ?? model.locationProvider.metadata?.countryName
+            ?? model.locationCity?.country
     }
 
     private var currentLocationCoordinate: CLLocationCoordinate2D? {
@@ -514,6 +560,8 @@ struct PlaceSearchView: View {
         searchManager.appleErrorMessage != nil || searchManager.openMeteoErrorMessage != nil
     }
 
+    // MARK: - Scope Changes and Catalog Loading
+
     @MainActor
     private func handleScopeChange(to scope: PlaceSearchScope) {
         invalidateSelection()
@@ -547,32 +595,34 @@ struct PlaceSearchView: View {
         )
         allCountries = countries
         hasLoadedCountries = true
-        updateCountrySearchResults()
     }
 
     @MainActor
-    private func updateCountrySearchResults() {
-        let trimmedQuery = normalizedQuery
-        guard !trimmedQuery.isEmpty else {
-            countryResults = allCountries
+    private func refreshCountryCitySuggestions() {
+        guard let locationCountryName,
+              let country = CountryCityCatalog.countries(locale: locale).first(where: {
+                  $0.englishName.compare(
+                      locationCountryName,
+                      options: [.caseInsensitive, .diacriticInsensitive]
+                  ) == .orderedSame
+        }) else {
+            countryCitySuggestions = []
             return
         }
-
-        countryResults = allCountries.filter { country in
-            country.localizedName(locale: locale)
-                .localizedCaseInsensitiveContains(trimmedQuery)
-                || country.englishName.localizedCaseInsensitiveContains(
-                    trimmedQuery
-                )
-        }
+        countryCitySuggestions = CountryCityCatalog.topCities(
+            for: country,
+            limit: 8
+        )
     }
 
     @MainActor
     private func openFindSun(in scope: MapSunQueryScope) {
         invalidateSelection()
         isSearchFocused = false
-        router.showMap(findingSunIn: scope)
+        router.showMap(findingSunIn: scope, on: selectedDate)
     }
+
+    // MARK: - Provider Search Timing
 
     /// A short cancellable debounce means only the final pause in typing starts
     /// a lookup. The second query check prevents an older task from settling a
@@ -609,6 +659,8 @@ struct PlaceSearchView: View {
         isSettled = true
         searchManager.search(query: normalizedQuery, locale: locale)
     }
+
+    // MARK: - Selection and Navigation
 
     @MainActor
     private func invalidateSelection() {
@@ -654,7 +706,10 @@ struct PlaceSearchView: View {
                 }
                 selectionError = (
                     key: "\(result.id):\(error.localizedDescription)",
-                    message: error.localizedDescription
+                    message: localizedCitySearchResolutionErrorDescription(
+                        error,
+                        locale: locale
+                    )
                 )
                 return
             }
@@ -689,6 +744,24 @@ struct PlaceSearchView: View {
             isSearchFocused = false
             router.showMap(previewing: city)
         }
+    }
+
+    @MainActor
+    private func selectSuggestedCity(_ city: City) {
+        guard loadingID == nil else { return }
+        invalidateSelection()
+        loadingID = "country-suggestion-\(city.id.uuidString)"
+        defer { loadingID = nil }
+
+        selectToday(for: city.timeZoneIdentifier ?? TimeZone.autoupdatingCurrent.identifier)
+        if let savedPlaceID = model.placesStore.savedPlaceID(matching: city) {
+            isSearchFocused = false
+            router.showMap(placeID: savedPlaceID)
+            return
+        }
+        model.registerTransientCity(city)
+        isSearchFocused = false
+        router.showMap(previewing: city)
     }
 
     /// Produces a shared-selector date whose year/month/day are today's values

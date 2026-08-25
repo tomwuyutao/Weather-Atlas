@@ -16,6 +16,7 @@ import UIKit
 
 // MARK: - App Locale Lookup
 
+#if !WEATHER_WIDGETS
 /// Looks up a localized string for a specific locale supplied by SwiftUI.
 ///
 /// `String.LocalizationValue` preserves the lookup key for the String Catalog.
@@ -27,6 +28,7 @@ func localizedString(_ key: String.LocalizationValue, locale: Locale) -> String 
     resource.locale = locale
     return String(localized: resource)
 }
+#endif
 
 // MARK: - Shared Screen Layout
 
@@ -81,11 +83,13 @@ enum AppPalette {
         let dotDrizzle: Color
         /// Contrast-safe drizzle foreground.
         let drizzleForeground: Color
+        /// Night-condition symbol tint, restored from the previous palette.
+        let moonIcon: Color
         /// Subdued row and panel fill.
         let settingsRow: Color
     }
 
-    // MARK: Base Palettes
+    // MARK: - Base Palettes
 
     /// Standard light-appearance palette.
     static let light = Values(
@@ -100,6 +104,7 @@ enum AppPalette {
         rainForeground: Color(hex: 0x5AA4F3),
         dotDrizzle: Color(hex: 0x67D1F0),
         drizzleForeground: Color(hex: 0x67D1F0),
+        moonIcon: Color(hex: 0xC985DE),
         settingsRow: Color(hex: 0xF4EFE4)
     )
 
@@ -116,6 +121,7 @@ enum AppPalette {
         rainForeground: Color(hex: 0x5AA4F3),
         dotDrizzle: Color(hex: 0x67D1F0),
         drizzleForeground: Color(hex: 0x67D1F0),
+        moonIcon: Color(hex: 0xC985DE),
         settingsRow: Color(hex: 0x303030)
     )
 
@@ -134,12 +140,25 @@ enum AppPalette {
         rainForeground: dark.rainForeground,
         dotDrizzle: dark.dotDrizzle,
         drizzleForeground: dark.drizzleForeground,
+        moonIcon: dark.moonIcon,
         settingsRow: Color(hex: 0x181818)
     )
 
     /// Returns the standard palette matching a resolved color scheme.
     static func values(for colorScheme: ColorScheme) -> Values {
         colorScheme == .dark ? dark : light
+    }
+
+    /// Resolves the complete palette for a system appearance and contrast
+    /// preference. App and widget surfaces use this same entry point so a
+    /// full-colour widget cannot accidentally retain the standard palette.
+    static func values(
+        for colorScheme: ColorScheme,
+        contrast: ColorSchemeContrast
+    ) -> Values {
+        contrast == .increased
+            ? increasedContrastValues(for: colorScheme)
+            : values(for: colorScheme)
     }
 
     /// Returns a WCAG-stronger variant for the system contrast preference.
@@ -167,9 +186,15 @@ enum AppPalette {
         if colorScheme == .dark {
             return Values(
                 titleText: palette.titleText,
-                secondaryText: palette.secondaryText,
+                secondaryText: palette.secondaryText.interpolated(
+                    with: palette.titleText,
+                    by: 0.16
+                ),
                 background: palette.background,
-                destructive: palette.destructive.interpolated(with: palette.titleText, by: 0.12),
+                destructive: palette.destructive.interpolated(
+                    with: palette.titleText,
+                    by: 0.28
+                ),
                 dotSun: palette.dotSun,
                 dotPartlyCloudy: palette.dotPartlyCloudy,
                 dotCloudy: palette.dotCloudy,
@@ -177,27 +202,44 @@ enum AppPalette {
                 rainForeground: palette.rainForeground,
                 dotDrizzle: palette.dotDrizzle,
                 drizzleForeground: palette.drizzleForeground,
+                moonIcon: palette.moonIcon,
                 settingsRow: palette.settingsRow
             )
         }
 
         return Values(
             titleText: palette.titleText,
-            secondaryText: palette.secondaryText,
+            secondaryText: palette.secondaryText.interpolated(
+                with: palette.titleText,
+                by: 0.12
+            ),
             background: palette.background,
-            destructive: palette.destructive.interpolated(with: palette.titleText, by: 0.12),
+            destructive: palette.destructive.interpolated(
+                with: palette.titleText,
+                by: 0.16
+            ),
             dotSun: palette.dotSun.interpolated(with: palette.titleText, by: 0.48),
             dotPartlyCloudy: palette.dotPartlyCloudy.interpolated(with: palette.titleText, by: 0.55),
             dotCloudy: palette.dotCloudy.interpolated(with: palette.titleText, by: 0.66),
-            dotRain: palette.dotRain.interpolated(with: palette.titleText, by: 0.10),
+            dotRain: palette.dotRain.interpolated(
+                with: palette.titleText,
+                by: 0.16
+            ),
             rainForeground: palette.rainForeground.interpolated(
                 with: palette.titleText,
-                by: 0.08
+                by: 0.40
             ),
-            dotDrizzle: palette.dotDrizzle.interpolated(with: palette.titleText, by: 0.35),
+            dotDrizzle: palette.dotDrizzle.interpolated(
+                with: palette.titleText,
+                by: 0.36
+            ),
             drizzleForeground: palette.drizzleForeground.interpolated(
                 with: palette.titleText,
-                by: 0.08
+                by: 0.54
+            ),
+            moonIcon: palette.moonIcon.interpolated(
+                with: palette.titleText,
+                by: 0.15
             ),
             settingsRow: palette.settingsRow
         )
@@ -267,6 +309,7 @@ enum AppThemeStyle: String, CaseIterable {
     static let defaultRawValue = AppThemeStyle.automatic.rawValue
 
     /// Localized row title for this theme mode.
+#if !WEATHER_WIDGETS
     func displayName(locale: Locale) -> String {
         switch self {
         case .automatic: return localizedString("Automatic", locale: locale)
@@ -276,6 +319,7 @@ enum AppThemeStyle: String, CaseIterable {
         case .black: return localizedString("Black", locale: locale)
         }
     }
+#endif
 }
 
 // MARK: - Theme Colors
@@ -284,6 +328,8 @@ enum AppThemeStyle: String, CaseIterable {
 /// Screens should normally use these names instead of choosing a base palette:
 /// that way changing a palette or contrast policy affects the whole app coherently.
 struct ThemeColors {
+    /// Whether these values were resolved for the system Increase Contrast mode.
+    let usesIncreasedContrast: Bool
     // Palette values
     /// Primary heading and content foreground.
     let titleText: Color
@@ -307,10 +353,12 @@ struct ThemeColors {
     let dotDrizzle: Color
     /// Contrast-safe drizzle foreground.
     let drizzleForeground: Color
+    /// Live night-condition icon tint.
+    let moonIconColor: Color
     /// Subdued settings row and chart panel fill.
     let settingsRowFill: Color
 
-    // MARK: Semantic View Aliases
+    // MARK: - Semantic View Aliases
 
     // Semantic aliases intentionally reuse the compact palette above. They keep
     // call sites readable without duplicating palette storage or values.
@@ -318,6 +366,20 @@ struct ThemeColors {
     var primaryText: Color { titleText }
     /// Global control tint.
     var accent: Color { primaryText }
+
+    /// Neutral grey used for cloudy/no-sun timeline segments.
+    ///
+    /// Standard contrast keeps the original quiet grey. Increased Contrast
+    /// uses that exact same untinted grey recipe, darkened only slightly.
+    var noSunTimelineFill: Color {
+        let standardFill = AppPalette.light.dotCloudy.interpolated(
+            with: background,
+            by: 0.40
+        )
+
+        guard usesIncreasedContrast else { return standardFill }
+        return standardFill.interpolated(with: .black, by: 0.08)
+    }
 
     /// Tint participating in translucent glass surfaces.
     var glassFill: Color { background }
@@ -331,8 +393,8 @@ struct ThemeColors {
     ///
     /// Zero hours uses the plain surface fill. Positive values use the same
     /// curved sunny-yellow opacity, reaching its strongest value at ten
-    /// hours. Keeping this calculation in the theme keeps Map dots and the
-    /// Saved Places heatmap visually identical.
+    /// hours. Increase Contrast changes the resolved sunny hue but deliberately
+    /// keeps this same alpha ramp and surface treatment.
     func sunnyHoursColor(
         for sunnyHours: Double,
         colorScheme: ColorScheme
@@ -373,7 +435,13 @@ struct ThemeColors {
     /// Weather symbols must match their corresponding Map marker rather than
     /// mixing a neutral cloud outline with a colored secondary layer. The shared
     /// tone also lets the widget extension use this visual vocabulary.
-    func weatherIconColor(for tone: WeatherIconTone) -> Color {
+    func weatherIconColor(
+        for tone: WeatherIconTone,
+        symbolName: String? = nil
+    ) -> Color {
+        if symbolName?.localizedCaseInsensitiveContains("moon") == true {
+            return moonIconColor
+        }
         switch tone {
         case .clear:
             return dotSun
@@ -392,9 +460,15 @@ struct ThemeColors {
     /// tone as the matching weather symbol. Blending toward the active app
     /// background preserves the palette in light, dark, and black appearances
     /// without introducing screen-specific color constants.
-    func weatherBackgroundColor(for tone: WeatherIconTone?) -> Color {
+    func weatherBackgroundColor(
+        for tone: WeatherIconTone?,
+        symbolName: String? = nil
+    ) -> Color {
         guard let tone else { return background }
-        return weatherIconColor(for: tone).interpolated(
+        // A condition tint is decorative. In Increase Contrast mode the plain
+        // canvas preserves the guaranteed text contrast of the resolved palette.
+        guard !usesIncreasedContrast else { return background }
+        return weatherIconColor(for: tone, symbolName: symbolName).interpolated(
             with: background,
             by: 0.78
         )
@@ -437,17 +511,20 @@ extension ThemeColors {
 extension ThemeColors {
     /// Increased-contrast light semantic theme.
     static let increasedContrastLight = ThemeColors(
-        palette: AppPalette.increasedContrastValues(for: .light)
+        palette: AppPalette.increasedContrastValues(for: .light),
+        usesIncreasedContrast: true
     )
 
     /// Increased-contrast charcoal dark semantic theme.
     static let increasedContrastDark = ThemeColors(
-        palette: AppPalette.increasedContrastValues(for: .dark)
+        palette: AppPalette.increasedContrastValues(for: .dark),
+        usesIncreasedContrast: true
     )
 
     /// Increased-contrast true-black semantic theme.
     static let increasedContrastBlack = ThemeColors(
-        palette: AppPalette.increasedContrastBlack
+        palette: AppPalette.increasedContrastBlack,
+        usesIncreasedContrast: true
     )
 }
 
@@ -455,8 +532,12 @@ extension ThemeColors {
 /// themes can construct `ThemeColors`; views cannot accidentally omit a color.
 private extension ThemeColors {
     /// Maps primitive shared palette values into app semantic aliases.
-    init(palette: AppPalette.Values) {
+    init(
+        palette: AppPalette.Values,
+        usesIncreasedContrast: Bool = false
+    ) {
         self.init(
+            usesIncreasedContrast: usesIncreasedContrast,
             titleText: palette.titleText,
             secondaryText: palette.secondaryText,
             background: palette.background,
@@ -468,6 +549,7 @@ private extension ThemeColors {
             rainForeground: palette.rainForeground,
             dotDrizzle: palette.dotDrizzle,
             drizzleForeground: palette.drizzleForeground,
+            moonIconColor: palette.moonIcon,
             settingsRowFill: palette.settingsRow
         )
     }
@@ -568,34 +650,42 @@ private struct WeatherIconStyleModifier: ViewModifier {
     @Environment(\.appTheme) private var theme
     /// The semantic weather tone that selects the matching Map-dot tint.
     let tone: WeatherIconTone
+    /// The exact WeatherKit symbol. Moon variants retain their dedicated
+    /// palette tint instead of receiving the daytime clear-sky tint.
+    let symbolName: String?
 
     /// Applies monochrome rendering so every visible part of a condition symbol
     /// uses the same semantic color as its Map marker.
     func body(content: Content) -> some View {
         content
             .symbolRenderingMode(.monochrome)
-            .foregroundStyle(theme.colors.weatherIconColor(for: tone))
+            .foregroundStyle(
+                theme.colors.weatherIconColor(
+                    for: tone,
+                    symbolName: symbolName
+                )
+            )
     }
 }
 
-// MARK: - High-Contrast Translucent Surfaces
+// MARK: - Reduced-Transparency Surfaces
 
 // These surface modifiers replace translucency with opaque, outlined surfaces
-// when Reduce Transparency or Increase Contrast is enabled.
+// only when Reduce Transparency is enabled. Increase Contrast is resolved
+// solely through the palette and never changes Liquid Glass presentation.
 private extension View {
     /// Replaces translucency with an opaque outlined surface when required.
     /// This is a private building block used by the card modifier below, so each
     /// screen gets the same fallback behavior without branching on preferences.
     func highLegibilityGlass<Shape: InsettableShape>(
         theme: ThemeColors,
-        contrast: ColorSchemeContrast,
         in shape: Shape
     ) -> some View {
         background(theme.glassFill, in: shape)
             .overlay(
                 shape.stroke(
-                    theme.primaryText.opacity(contrast == .increased ? 0.90 : 0.18),
-                    lineWidth: contrast == .increased ? 1 : 0.8
+                    theme.primaryText.opacity(0.18),
+                    lineWidth: 0.8
                 )
             )
     }
@@ -607,8 +697,9 @@ private extension View {
 private struct GlassCardModifier<Shape: InsettableShape>: ViewModifier {
     /// Active theme palette.
     @Environment(\.appTheme) private var theme
-    /// System preference requiring a stronger card outline.
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    /// Replaces blur and translucency with an opaque surface.
+    @Environment(\.accessibilityReduceTransparency)
+    private var reduceTransparency
     /// Resolved scheme used to tune translucent fill opacity.
     let colorScheme: ColorScheme
     /// Insettable card boundary.
@@ -617,14 +708,11 @@ private struct GlassCardModifier<Shape: InsettableShape>: ViewModifier {
     let isInteractive: Bool
 
     @ViewBuilder
-    /// Applies the detail-card surface appropriate to the OS and contrast setting.
+    /// Applies the detail-card surface appropriate to the OS and transparency setting.
     func body(content: Content) -> some View {
-        // Increased contrast gets an opaque shape first; visual legibility
-        // takes precedence over glass decoration.
-        if colorSchemeContrast == .increased {
+        if reduceTransparency {
             content.highLegibilityGlass(
                 theme: theme.colors,
-                contrast: colorSchemeContrast,
                 in: shape
             )
         } else if #available(iOS 26.0, *) {
@@ -674,6 +762,29 @@ private struct GlassCardModifier<Shape: InsettableShape>: ViewModifier {
                         lineWidth: 0.6
                     )
                 )
+        }
+    }
+}
+
+/// Adapts shared glass actions to the same display preferences as cards.
+private struct WeatherGlassActionStyleModifier: ViewModifier {
+    @Environment(\.accessibilityReduceTransparency)
+    private var reduceTransparency
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if reduceTransparency {
+            content
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
+        } else if #available(iOS 26.0, *) {
+            content
+                .buttonStyle(.glass)
+                .buttonBorderShape(.capsule)
+        } else {
+            content
+                .buttonStyle(.bordered)
+                .buttonBorderShape(.capsule)
         }
     }
 }
@@ -732,10 +843,15 @@ private struct AppContentColumnModifier: ViewModifier {
 private struct WeatherConditionScreenBackgroundModifier: ViewModifier {
     @Environment(\.appTheme) private var theme
     let tone: WeatherIconTone?
+    let symbolName: String?
 
     func body(content: Content) -> some View {
         content.background(
-            theme.colors.weatherBackgroundColor(for: tone).ignoresSafeArea()
+            theme.colors.weatherBackgroundColor(
+                for: tone,
+                symbolName: symbolName
+            )
+            .ignoresSafeArea()
         )
     }
 }
@@ -746,8 +862,11 @@ extension View {
     /// Applies the exact Map marker color for a normalized weather tone.
     /// This avoids losing condition detail when multiple conditions share one
     /// canonical SF Symbol, such as the gray partly-cloudy `cloud.sun` mark.
-    func weatherIconStyle(for tone: WeatherIconTone) -> some View {
-        modifier(WeatherIconStyleModifier(tone: tone))
+    func weatherIconStyle(
+        for tone: WeatherIconTone,
+        symbolName: String? = nil
+    ) -> some View {
+        modifier(WeatherIconStyleModifier(tone: tone, symbolName: symbolName))
     }
 
     /// Wraps static report content in the shared translucent card treatment.
@@ -767,17 +886,8 @@ extension View {
     /// On iOS 26 this is Apple's interactive Liquid Glass capsule; earlier
     /// deployments retain the closest native bordered control instead of a
     /// hand-built material imitation.
-    @ViewBuilder
     func weatherGlassActionStyle() -> some View {
-        if #available(iOS 26.0, *) {
-            self
-                .buttonStyle(.glass)
-                .buttonBorderShape(.capsule)
-        } else {
-            self
-                .buttonStyle(.bordered)
-                .buttonBorderShape(.capsule)
-        }
+        modifier(WeatherGlassActionStyleModifier())
     }
 
     /// Keeps system List/Form behavior while replacing only its canvas color.
@@ -807,9 +917,15 @@ extension View {
     /// This is paired with `weatherIconStyle(for:)` so the hero icon and
     /// background always share one theme-defined weather vocabulary.
     func weatherConditionScreenBackground(
-        for tone: WeatherIconTone?
+        for tone: WeatherIconTone?,
+        symbolName: String? = nil
     ) -> some View {
-        modifier(WeatherConditionScreenBackgroundModifier(tone: tone))
+        modifier(
+            WeatherConditionScreenBackgroundModifier(
+                tone: tone,
+                symbolName: symbolName
+            )
+        )
     }
 
 }

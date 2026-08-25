@@ -2,11 +2,89 @@
 //  DetailView.swift
 //  Weather
 //
-//  Purpose: Presents the shared card-based Saved Place report.
+//  Purpose: Composes the shared card-based forecast report for current and
+//  saved locations.
 //
 
 import CoreLocation
 import SwiftUI
+
+// MARK: - Report Color Resolution
+
+/// The report canvas must use the same source that powers the large header
+/// symbol. In particular, a clear night has a `.clear` condition but a moon
+/// symbol, which intentionally uses the purple night color.
+private func detailScreenColorSource(
+    weather: CityWeather?,
+    forecast: DailyForecast?
+) -> (tone: WeatherIconTone?, symbolName: String?) {
+    guard let forecast else { return (nil, nil) }
+
+    if let weather,
+       let displayedCondition = weather.displayedCondition(for: forecast) {
+        return (
+            displayedCondition.condition?.iconTone,
+            displayedCondition.symbolName
+        )
+    }
+
+    if weather != nil {
+        // A current-local-day cache without a live observation must not use
+        // the daily forecast to tint the page or imply a condition icon.
+        return (nil, nil)
+    }
+
+    return (
+        forecast.condition?.iconTone,
+        forecast.symbolName.isEmpty ? nil : forecast.symbolName
+    )
+}
+
+/// Keeps every large in-content report heading aligned across Detail, Your
+/// Location, and Saved Places while still leaving phone room for the tab bar.
+func detailStyleTitleTopPadding(
+    for size: CGSize,
+    dynamicTypeSize: DynamicTypeSize
+) -> CGFloat {
+    guard UIDevice.current.userInterfaceIdiom == .phone,
+          !dynamicTypeSize.isAccessibilitySize else {
+        return 8
+    }
+    return min(52, max(8, size.height * 0.055))
+}
+
+/// The split report needs enough room for a readable 40% summary pane and a
+/// 60% detail pane after the latter's horizontal reading insets are applied.
+/// Smaller Stage Manager and Split View windows retain the phone-style flow.
+enum LandscapeReportLayout {
+    static let minimumWidth: CGFloat = 960
+
+    static func usesSplit(for size: CGSize) -> Bool {
+        UIDevice.current.userInterfaceIdiom == .pad
+            && size.width > size.height
+            && size.width >= minimumWidth
+    }
+}
+
+/// Landscape panes have fixed neighbouring content, so iOS 26's default
+/// scroll-edge material reads as an unwanted solid mask rather than a screen
+/// transition. Older systems do not add that effect.
+private struct LandscapePaneScrollEdgeEffectModifier: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content.scrollEdgeEffectHidden(for: .vertical)
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    func hidesLandscapePaneScrollEdgeEffects() -> some View {
+        modifier(LandscapePaneScrollEdgeEffectModifier())
+    }
+}
 
 // MARK: - Shared Detail Report
 
@@ -15,6 +93,8 @@ import SwiftUI
 /// permission, retry, and supplementary content; this type only owns the
 /// report UI that is genuinely identical between those flows.
 struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: View {
+    // MARK: - Inputs and Environment
+
     /// The large report and navigation heading. A direct map query can retain
     /// its fuller locality-and-area name here.
     let locationName: String
@@ -34,6 +114,9 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.locale) private var locale
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    // MARK: - Initialization
 
     init(
         locationName: String,
@@ -65,62 +148,178 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
         self.footerContent = footerContent()
     }
 
+    // MARK: - Presentation
+
     var body: some View {
         GeometryReader { geometry in
-            ScrollView {
-                LazyVStack(spacing: 14) {
-                LocationReportHeader(
-                    locationName: locationName,
-                    weather: weather,
-                    forecast: forecast
+            let usesLandscapeIPadSplit = LandscapeReportLayout.usesSplit(
+                for: geometry.size
+            )
+            let topPadding = detailStyleTitleTopPadding(
+                for: geometry.size,
+                dynamicTypeSize: dynamicTypeSize
+            )
+
+            if usesLandscapeIPadSplit {
+                reportLayout(
+                    usesLandscapeIPadSplit: true,
+                    centersDailyTimeline: UIDevice.current.userInterfaceIdiom == .pad,
+                    landscapeContentWidth: geometry.size.width - 32,
+                    landscapeContentHeight: geometry.size.height - topPadding - 24
                 )
-                .onScrollVisibilityChange(threshold: 0.01) { isVisible in
-                    onHeaderVisibilityChange(isVisible)
-                }
-
-                dailySunnyHoursCard
-                tenDaySunnyHoursTimeline
-
-                if showsTimeZoneFootnote,
-                   let weather,
-                   let forecast,
-                   weather.timeZone.identifier
-                    != TimeZone.autoupdatingCurrent.identifier {
-                    WeatherTimeZoneFootnote(
-                        text: SunnyHoursFormatting.localTimeDisclosure(
-                            placeName: placeDisplayName,
-                            timeZone: weather.timeZone,
-                            at: forecast.date,
-                            locale: locale
-                        )
-                    )
-                }
-
-                supplementaryContent
-
-                DetailMetricGrid(
-                    city: weather,
-                    forecast: forecast,
-                    temperatureUnit: temperatureUnit,
-                    usesLandscapeIPadLayout: false,
-                    selectedForecastDate: $selectedDate
-                )
-
-                footerContent
-                }
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
+                .padding(.top, topPadding)
                 .padding(.bottom, 24)
-                .frame(maxWidth: reportContentWidth(for: geometry.size))
                 .frame(maxWidth: .infinity)
+            } else {
+                ScrollView {
+                    reportLayout(
+                        usesLandscapeIPadSplit: false,
+                        centersDailyTimeline: UIDevice.current.userInterfaceIdiom == .pad,
+                        landscapeContentWidth: 0,
+                        landscapeContentHeight: 0
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, topPadding)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: reportContentWidth(for: geometry.size))
+                    .frame(maxWidth: .infinity)
+                }
             }
         }
     }
 
-    /// Every forecast report uses the same focused landscape-iPad column.
-    /// Phone and portrait layouts retain the established 760-point maximum,
-    /// while landscape iPad narrows to 640 points across Your Location, Saved
-    /// Places, and place Detail.
+    // MARK: - Report Sections
+
+    @ViewBuilder
+    private func reportLayout(
+        usesLandscapeIPadSplit: Bool,
+        centersDailyTimeline: Bool,
+        landscapeContentWidth: CGFloat,
+        landscapeContentHeight: CGFloat
+    ) -> some View {
+        if usesLandscapeIPadSplit {
+            let splitWidth = max(0, landscapeContentWidth - 20)
+            let leftColumnWidth = splitWidth * 0.4
+            let rightColumnWidth = splitWidth - leftColumnWidth
+            let rightColumnContentInset: CGFloat = 80
+            let timelineHeight: CGFloat = 100
+            let timelineTopSpacing: CGFloat = 48
+            let headerHeight = max(
+                0,
+                landscapeContentHeight - timelineHeight - timelineTopSpacing
+            )
+
+            HStack(alignment: .top, spacing: 20) {
+                VStack(spacing: 0) {
+                    reportHeader(landscapeHeight: headerHeight)
+                    dailyTimeline(
+                        centersInItsColumn: centersDailyTimeline,
+                        constrainsLandscapeHeight: true
+                    )
+                        // Preserve the timeline's natural height while giving
+                        // the left column deliberate visual separation.
+                        .padding(.top, 48)
+                }
+                .frame(height: landscapeContentHeight, alignment: .top)
+                .frame(width: leftColumnWidth, alignment: .top)
+                // Balance the visual weight introduced by the right column's
+                // large leading inset without changing either column's width.
+                .offset(x: rightColumnContentInset / 2)
+
+                ScrollView {
+                    LazyVStack(spacing: 14) {
+                        reportDetails
+                    }
+                    // Insets belong inside the fixed 60% column so they limit
+                    // readable line length without widening the split itself.
+                    .padding(.horizontal, rightColumnContentInset)
+                    .frame(width: rightColumnWidth, alignment: .top)
+                }
+                .scrollIndicators(.hidden)
+                .hidesLandscapePaneScrollEdgeEffects()
+                .scrollClipDisabled()
+                .frame(height: landscapeContentHeight)
+                .frame(width: rightColumnWidth, alignment: .top)
+            }
+        } else {
+            LazyVStack(spacing: 14) {
+                reportHeader()
+                dailyTimeline(
+                    centersInItsColumn: centersDailyTimeline,
+                    constrainsLandscapeHeight: false
+                )
+                reportDetails
+            }
+        }
+    }
+
+    private func reportHeader(landscapeHeight: CGFloat? = nil) -> some View {
+        LocationReportHeader(
+            locationName: locationName,
+            weather: weather,
+            forecast: forecast,
+            landscapeHeight: landscapeHeight,
+            landscapeConditionVerticalOffset: landscapeHeight == nil ? 0 : 18
+        )
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible in
+            onHeaderVisibilityChange(isVisible)
+        }
+    }
+
+    @ViewBuilder
+    private func dailyTimeline(
+        centersInItsColumn: Bool,
+        constrainsLandscapeHeight: Bool
+    ) -> some View {
+        dailySunnyHoursCard
+            // The phone-width chart keeps capsule dimensions and gaps stable
+            // on iPad instead of using surplus column width to stretch them.
+            .frame(maxWidth: centersInItsColumn ? 400 : .infinity)
+            .frame(maxWidth: .infinity, alignment: .center)
+            // The shared capsule chart uses GeometryReader for its track. Give
+            // it an explicit landscape height so a split-column proposal never
+            // turns the capsules into a full-height timeline.
+            .frame(height: constrainsLandscapeHeight ? 100 : nil)
+    }
+
+    @ViewBuilder
+    private var reportDetails: some View {
+        tenDaySunnyHoursTimeline
+
+        if showsTimeZoneFootnote,
+           let weather,
+           let forecast,
+           weather.timeZone.identifier
+            != TimeZone.autoupdatingCurrent.identifier {
+            WeatherTimeZoneFootnote(
+                text: SunnyHoursFormatting.localTimeDisclosure(
+                    placeName: placeDisplayName,
+                    timeZone: weather.timeZone,
+                    at: forecast.date,
+                    locale: locale
+                )
+            )
+        }
+
+        DetailMetricGrid(
+            city: weather,
+            forecast: forecast,
+            temperatureUnit: temperatureUnit,
+            usesLandscapeIPadLayout: false,
+            selectedForecastDate: $selectedDate
+        )
+
+        footerContent
+
+        // Recommendations are the final report section, after all six weather
+        // metrics and any saved-place action, on every detail-view route.
+        supplementaryContent
+    }
+
+    // MARK: - Responsive Layout
+
+    /// Phone and portrait layouts retain the established focused report width.
     private func reportContentWidth(for size: CGSize) -> CGFloat {
         AppContentLayout.maximumWidth(
             for: size,
@@ -130,10 +329,22 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
     }
 }
 
+// MARK: - Route Preview
+
+#if DEBUG
+#Preview("Detail View") {
+    DetailViewRoutePreview()
+}
+#endif
+
+// MARK: - Current Location Report
+
 /// Current-location presentation built from the same report canvas as a
 /// saved-place detail. Location permission and refresh lifecycle remain in
 /// `YourLocationView`; this type only adapts their live values into report UI.
 struct CurrentLocationReportContent: View {
+    // MARK: - Inputs and Presentation State
+
     let model: WeatherModel
     let router: AppNavigation
     @Binding var selectedDate: Date
@@ -148,6 +359,8 @@ struct CurrentLocationReportContent: View {
     @State private var showsLargeTitle = true
     @AppStorage("temperatureUnit")
     private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
+
+    // MARK: - Derived Report Values
 
     private var locationWeather: CityWeather? {
         model.locationWeather
@@ -209,6 +422,18 @@ struct CurrentLocationReportContent: View {
         )
     }
 
+    private var screenColorSource: (
+        tone: WeatherIconTone?,
+        symbolName: String?
+    ) {
+        detailScreenColorSource(
+            weather: locationWeather,
+            forecast: selectedForecast
+        )
+    }
+
+    // MARK: - Presentation
+
     var body: some View {
         DetailReportContent(
             locationName: locationName,
@@ -237,6 +462,7 @@ struct CurrentLocationReportContent: View {
             maximumContentWidth: AppContentLayout.standardMaximumWidth,
             showsTimeZoneFootnote: true,
             onHeaderVisibilityChange: { isVisible in
+                guard showsLargeTitle != isVisible else { return }
                 showsLargeTitle = isVisible
             }
         ) {
@@ -246,7 +472,10 @@ struct CurrentLocationReportContent: View {
                 requestLocation: requestCurrentLocation,
                 openSettings: openLocationSettings,
                 viewOnMap: {
-                    router.showMap(findingSunIn: .nearMe)
+                    router.showMap(
+                        findingSunIn: .nearMe,
+                        on: selectedDate
+                    )
                 }
             )
         } footerContent: {
@@ -254,19 +483,20 @@ struct CurrentLocationReportContent: View {
         }
         .scrollIndicators(.hidden)
         .weatherConditionScreenBackground(
-            for: selectedForecast?.condition?.iconTone
+            for: screenColorSource.tone,
+            symbolName: screenColorSource.symbolName
         )
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if showsLargeTitle {
-                // Match `DetailView`: reserve the compact title slot while
-                // the same title is already represented by the report hero.
-                ToolbarItem(placement: .principal) {
-                    Color.clear
-                        .frame(width: 1, height: 1)
-
-                }
+            // Keep the toolbar preference tree stable while scrolling. Adding
+            // and removing the principal item in response to header visibility
+            // can feed layout back into visibility on iPad when report content
+            // changes height (for example, when nearby results arrive).
+            ToolbarItem(placement: .principal) {
+                Text(navigationTitle)
+                    .lineLimit(1)
+                    .opacity(showsLargeTitle ? 0 : 1)
             }
 
             ToolbarItem(placement: .topBarLeading) {
@@ -295,6 +525,8 @@ struct CurrentLocationReportContent: View {
     }
 }
 
+// MARK: - Nearby Recommendation Adapter
+
 /// Keeps nearby ranking and repository observation below the lazy report
 /// boundary. Current-weather updates no longer make the whole Home report scan
 /// every candidate while this lower card is offscreen.
@@ -308,12 +540,12 @@ private struct NearbySunnyPlacesSection: View {
     @Environment(\.locale) private var locale
 
     var body: some View {
-        let assessment = model.nearbyRecommendationAssessment(
+        let recommendations = model.nearbyRecommendations(
             on: selectedDate,
             locale: locale
         )
         NearbySunnyPlacesCard(
-            recommendations: assessment.recommendations,
+            recommendations: recommendations,
             locationStatus: model.locationProvider.status,
             isLoading: model.isSearchingNearby,
             hasCompletedSearch: model.didSearchNearby,
@@ -325,14 +557,19 @@ private struct NearbySunnyPlacesSection: View {
     }
 }
 
+// MARK: - Saved Place Report
+
 /// Shared value-routed report for saved and discovered places.
 struct DetailView: View {
-    // MARK: Route Inputs and View State
+    // MARK: - Route Inputs and View State
 
     /// Stable identity carried by AppRoute rather than a replaceable snapshot.
     let placeID: City.ID
     /// Root domain model used to resolve the latest place and forecast values.
     let model: WeatherModel
+    /// Shared navigation coordinator used by the nearby card's recovery and
+    /// Map actions.
+    let router: AppNavigation
     /// App-wide forecast day controlled by the tab-bar date accessory.
     @Binding private var selectedDate: Date
     /// Optional payload drives the error alert after a persistence mutation.
@@ -349,16 +586,18 @@ struct DetailView: View {
     init(
         placeID: City.ID,
         selectedDate: Binding<Date>,
-        model: WeatherModel
+        model: WeatherModel,
+        router: AppNavigation
     ) {
         // Routes carry only `placeID`; resolve the live model values below so
         // an open report reflects edits and refreshed forecasts immediately.
         self.placeID = placeID
         self.model = model
+        self.router = router
         _selectedDate = selectedDate
     }
 
-    // MARK: Live Model Resolution
+    // MARK: - Live Model Resolution
 
     private var savedPlace: SavedPlace? {
         model.placesStore.place(id: placeID)
@@ -428,6 +667,15 @@ struct DetailView: View {
         )
     }
 
+    private var screenColorSource: (
+        tone: WeatherIconTone?,
+        symbolName: String?
+    ) {
+        detailScreenColorSource(weather: cityWeather, forecast: forecast)
+    }
+
+    // MARK: - Presentation and Loading
+
     var body: some View {
         // The complete report remains mounted through loading, missing-day,
         // and request-failure states. Individual cards own their placeholders
@@ -459,16 +707,33 @@ struct DetailView: View {
             maximumContentWidth: AppContentLayout.standardMaximumWidth,
             showsTimeZoneFootnote: true,
             onHeaderVisibilityChange: { isVisible in
+                guard showsLargeTitle != isVisible else { return }
                 showsLargeTitle = isVisible
             }
         ) {
-            EmptyView()
+            NearbySunnyPlacesSection(
+                model: model,
+                selectedDate: selectedDate,
+                requestLocation: {
+                    model.useCurrentLocation(preferredLocale: locale)
+                },
+                openSettings: {
+                    router.presentedSheet = .settings
+                },
+                viewOnMap: {
+                    router.showMap(
+                        findingSunIn: .nearMe,
+                        on: selectedDate
+                    )
+                }
+            )
         } footerContent: {
             savedPlaceAction
         }
         .background(
             theme.colors.weatherBackgroundColor(
-                for: forecast?.condition?.iconTone
+                for: screenColorSource.tone,
+                symbolName: screenColorSource.symbolName
             )
         )
         .refreshable {
@@ -476,19 +741,18 @@ struct DetailView: View {
             await model.weatherStore.refresh(city: city)
         }
         .weatherConditionScreenBackground(
-            for: forecast?.condition?.iconTone
+            for: screenColorSource.tone,
+            symbolName: screenColorSource.symbolName
         )
         .navigationTitle(detailTitle)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if showsLargeTitle {
-                // Reserve the principal title slot while the large content
-                // heading is visible, preventing a duplicate title in the bar.
-                ToolbarItem(placement: .principal) {
-                    Color.clear
-                        .frame(width: 1, height: 1)
-
-                }
+            // Keep one principal item mounted so scroll-driven title changes
+            // update only its value, not the toolbar preference structure.
+            ToolbarItem(placement: .principal) {
+                Text(detailTitle)
+                    .lineLimit(1)
+                    .opacity(showsLargeTitle ? 0 : 1)
             }
 
             ToolbarItem(placement: .topBarTrailing) {
@@ -529,6 +793,8 @@ struct DetailView: View {
         }
     }
 
+    // MARK: - Forecast Recovery
+
     private func retryForecast() {
         guard let city else { return }
         Task {
@@ -536,7 +802,7 @@ struct DetailView: View {
         }
     }
 
-    // MARK: Saved-Place Actions
+    // MARK: - Saved-Place Actions
 
     /// The report ends with the same quiet secondary text-action language as
     /// Saved Places. Saving or deleting updates this control in place without
@@ -589,7 +855,7 @@ struct DetailView: View {
             _ = try model.placesStore.savePlace(city)
         } catch {
             mutationError = PlaceDetailMutationError(
-                message: localizedPlacesErrorDescription(error)
+                message: localizedPlacesErrorDescription(error, locale: locale)
             )
         }
     }
@@ -606,7 +872,7 @@ struct DetailView: View {
             try model.placesStore.deletePlace(id: savedPlace.id)
         } catch {
             mutationError = PlaceDetailMutationError(
-                message: localizedPlacesErrorDescription(error)
+                message: localizedPlacesErrorDescription(error, locale: locale)
             )
         }
     }
@@ -621,13 +887,42 @@ private struct PlaceDetailMutationError: Identifiable {
     let message: String
 }
 
+/// Shared large heading treatment used by forecast reports and planning views.
+struct DetailStyleReportTitle: View {
+    let title: String
+
+    @Environment(\.appTheme) private var theme
+    @ScaledMetric(relativeTo: .largeTitle)
+    private var titleMinimumHeight: CGFloat = 44
+    @ScaledMetric(relativeTo: .largeTitle)
+    private var titleToContentGap: CGFloat = 8
+
+    var body: some View {
+        Text(title)
+            .font(.system(.largeTitle, design: .serif).weight(.bold))
+            .foregroundStyle(theme.colors.primaryText)
+            .lineLimit(2)
+            .minimumScaleFactor(0.72)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 34)
+            .padding(.bottom, titleToContentGap)
+            .frame(minHeight: titleMinimumHeight)
+    }
+}
+
 // MARK: - Report Header
 
 /// Large in-content heading shared by every forecast report.
 struct LocationReportHeader: View {
+    // MARK: - Inputs and Scaled Layout
+
     let locationName: String
     let weather: CityWeather?
     let forecast: DailyForecast?
+    /// The landscape left column supplies its available header space so the
+    /// condition summary can sit independently of the title and timeline.
+    let landscapeHeight: CGFloat?
+    let landscapeConditionVerticalOffset: CGFloat
 
     @Environment(\.appTheme) private var theme
     @Environment(\.calendar) private var calendar
@@ -640,13 +935,13 @@ struct LocationReportHeader: View {
     private var conditionIconHeight: CGFloat = 58
     @ScaledMetric(relativeTo: .largeTitle)
     private var conditionPlaceholderHeight: CGFloat = 74
-    @ScaledMetric(relativeTo: .largeTitle)
-    private var titleMinimumHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .body)
     private var sunStatusHeight: CGFloat = 20
 
+    // MARK: - Sunny-Hours Status
+
     /// Retain the live sun-status vocabulary for today's forecast. Only the
-    /// original “Sunny for …” result (a non-today total) takes the shared Map
+    /// “Sunny for …” result (a non-today total) takes the shared Map
     /// card treatment below.
     private var sunStatus: SunnyHoursCalculation.DailySunStatus? {
         guard let weather,
@@ -674,7 +969,7 @@ struct LocationReportHeader: View {
         case .sunOutNow:
             return sunOutNowText
         case .sunOutIn(let date):
-            return "\(sunOutInPrefix) \(countdownText(to: date))"
+            return sunOutInText(to: date)
         case .noSunToday:
             if let sunlessForecastHorizonText = sunlessForecastHorizonText(
                 "No sun in the next %lld days."
@@ -775,126 +1070,167 @@ struct LocationReportHeader: View {
         localizedString("Sun out now", locale: locale)
     }
 
-    private var sunOutInPrefix: String {
-        localizedString("Sun out in", locale: locale)
+    /// Treats the duration as a localized placeholder rather than appending it
+    /// to an English-order prefix. This also supplies the unstyled version used
+    /// by fallback status presentation.
+    private func sunOutInText(to date: Date) -> String {
+        let duration = countdownText(to: date)
+        var resource: LocalizedStringResource = "Sun out in \(duration)"
+        resource.locale = locale
+        return String(localized: resource)
     }
 
+    /// The same complete sentence as `sunOutInText(to:)`, with only the
+    /// duration emphasized. Attributed-string interpolation preserves that run
+    /// if a translation moves the placeholder before the surrounding copy.
+    private func attributedSunOutInText(to date: Date) -> AttributedString {
+        var emphasizedDuration = AttributedString(countdownText(to: date))
+        emphasizedDuration.font = .body.weight(.semibold)
+        emphasizedDuration.foregroundColor = theme.colors.dotSun
+
+        var resource: LocalizedStringResource = "Sun out in \(emphasizedDuration)"
+        resource.locale = locale
+        return AttributedString(localized: resource)
+    }
+
+    // MARK: - Displayed Condition
+
+    /// The Detail header is the one report element that represents the live
+    /// observation when the selected forecast is the city's local Today. Do
+    /// not substitute the daily summary if a legacy cache lacks the observation.
+    private var displayedCondition: (
+        symbolName: String,
+        tone: WeatherIconTone
+    )? {
+        guard let forecast else { return nil }
+
+        if let weather,
+           let displayedCondition = weather.displayedCondition(for: forecast) {
+            return (
+                displayedCondition.symbolName,
+                displayedCondition.condition?.iconTone ?? .cloudy
+            )
+        }
+
+        if weather != nil { return nil }
+
+        guard !forecast.symbolName.isEmpty else { return nil }
+        return (forecast.symbolName, forecast.condition?.iconTone ?? .cloudy)
+    }
+
+    // MARK: - Presentation
+
     var body: some View {
+        if let landscapeHeight {
+            ZStack(alignment: .top) {
+                conditionAndStatus
+                    .frame(maxHeight: .infinity, alignment: .center)
+                    .offset(y: landscapeConditionVerticalOffset)
+
+                locationTitle
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: landscapeHeight)
+            .padding(.top, 4)
+            .padding(.bottom, 4)
+        } else {
+            VStack(spacing: 9) {
+                locationTitle
+                conditionAndStatus
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
+            .padding(.bottom, 4)
+        }
+    }
+
+    private var locationTitle: some View {
+        DetailStyleReportTitle(title: locationName)
+    }
+
+    private var conditionAndStatus: some View {
         VStack(spacing: 9) {
-            Text(locationName)
-                .font(.system(.largeTitle, design: .serif).weight(.bold))
-                .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(2)
-                .minimumScaleFactor(0.72)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 34)
-                .frame(minHeight: titleMinimumHeight)
-
-            if let forecast {
-                if let condition = forecast.condition {
-                    let icon = condition.displayIcon
-                    Image(systemName: icon)
-                        .weatherIconStyle(for: condition.iconTone)
-                        .font(
-                            .system(
-                                size: conditionIconSize,
-                                weight: .semibold
-                            )
+            if let displayedCondition {
+                // Today's header uses the exact live WeatherKit observation;
+                // other selected days use their exact daily forecast symbol.
+                let icon = displayedCondition.symbolName
+                Image(systemName: icon)
+                    .weatherIconStyle(
+                        for: displayedCondition.tone,
+                        symbolName: icon
+                    )
+                    .font(
+                        .system(
+                            size: conditionIconSize,
+                            weight: .semibold
                         )
-                        .frame(
-                            width: conditionIconWidth,
-                            height: conditionIconHeight
-                        )
-                        .padding(.vertical, 8)
-                        .contentTransition(.symbolEffect(.replace))
-                        .animation(
-                            .spring(
-                                response: 0.34,
-                                dampingFraction: 0.78
-                            ),
-                            value: icon
-                        )
+                    )
+                    .frame(
+                        width: conditionIconWidth,
+                        height: conditionIconHeight
+                    )
+                    .padding(.vertical, 8)
+                    .contentTransition(.symbolEffect(.replace))
+                    .animation(
+                        .spring(
+                            response: 0.34,
+                            dampingFraction: 0.78
+                        ),
+                        value: icon
+                    )
 
-                } else {
-                    Color.clear
-                        .frame(
-                            width: conditionIconWidth,
-                            height: conditionPlaceholderHeight
-                        )
-
-                }
-
-                Group {
-                    if let sunStatus {
-                        switch sunStatus {
-                        case .sunnyForHours(let count):
-                            SunnyHoursStatusLine(hours: count)
-                        case .sunOutNow:
-                            HStack(spacing: 3) {
-                                Image(systemName: "sun.max")
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(theme.colors.dotSun)
-
-
-                                Text(sunOutNowText)
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(theme.colors.dotSun)
-                            }
-
-
-                        case .sunOutIn(let date):
-                            HStack(spacing: 3) {
-                                Image(systemName: "sun.max")
-                                    .font(.body.weight(.regular))
-                                    .foregroundStyle(theme.colors.secondaryText)
-
-
-                                HStack(spacing: 0) {
-                                    Text("\(sunOutInPrefix) ")
-                                        .font(.body)
-                                        .foregroundStyle(theme.colors.secondaryText)
-
-                                    Text(countdownText(to: date))
-                                        .font(.body.weight(.semibold))
-                                        .foregroundStyle(theme.colors.dotSun)
-                                }
-                            }
-
-
-                        default:
-                            Text(sunStatusText(for: sunStatus))
-                                // Keep the neutral status copy on the same body
-                                // baseline as the non-emphasized text in the
-                                // other status variants. The yellow, emphasized
-                                // spans retain their own styling.
-                                .font(.body)
-                                .foregroundStyle(theme.colors.secondaryText)
-                                .multilineTextAlignment(.center)
-                        }
-                    }
-                }
-                .frame(minHeight: sunStatusHeight)
             } else {
                 Color.clear
                     .frame(
                         width: conditionIconWidth,
                         height: conditionPlaceholderHeight
                     )
-
-
-                Color.clear
-                    .frame(height: sunStatusHeight)
-
             }
+
+            Group {
+                if let sunStatus {
+                    switch sunStatus {
+                    case .sunnyForHours(let count):
+                        SunnyHoursStatusLine(hours: count)
+                    case .sunOutNow:
+                        HStack(spacing: 3) {
+                            Image(systemName: "sun.max")
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(theme.colors.dotSun)
+
+                            Text(sunOutNowText)
+                                .font(.body.weight(.semibold))
+                                .foregroundStyle(theme.colors.dotSun)
+                        }
+
+                    case .sunOutIn(let date):
+                        HStack(spacing: 3) {
+                            Image(systemName: "sun.max")
+                                .font(.body.weight(.regular))
+                                .foregroundStyle(theme.colors.secondaryText)
+
+                            Text(attributedSunOutInText(to: date))
+                                .font(.body)
+                                .foregroundStyle(theme.colors.secondaryText)
+                        }
+
+                    default:
+                        Text(sunStatusText(for: sunStatus))
+                            // Keep the neutral status copy on the same body
+                            // baseline as the non-emphasized text in the
+                            // other status variants. The yellow, emphasized
+                            // spans retain their own styling.
+                            .font(.body)
+                            .foregroundStyle(theme.colors.secondaryText)
+                            .multilineTextAlignment(.center)
+                    }
+                }
+            }
+            .frame(minHeight: sunStatusHeight)
         }
-        .frame(maxWidth: .infinity)
-        .padding(.top, 4)
-        .padding(.bottom, 4)
-
-
-
-
     }
+
+    // MARK: - Countdown Formatting
 
     private func countdownText(to date: Date) -> String {
         let formatter = DateComponentsFormatter()
@@ -902,7 +1238,9 @@ struct LocationReportHeader: View {
         formatter.unitsStyle = .full
         formatter.maximumUnitCount = 2
         formatter.zeroFormattingBehavior = .dropAll
-        formatter.calendar = calendar
+        var localizedCalendar = calendar
+        localizedCalendar.locale = locale
+        formatter.calendar = localizedCalendar
         return formatter.string(
             from: max(0, date.timeIntervalSinceNow)
         ) ?? localizedString("less than one minute", locale: locale)

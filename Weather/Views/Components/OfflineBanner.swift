@@ -8,12 +8,16 @@
 
 import SwiftUI
 
+// MARK: - Shared Banner Geometry
+
 /// Shared geometry keeps the app-level banner and Map replacement surface
 /// visually equivalent even though Map supplies its own morphing glass shell.
 enum OfflineBannerLayout {
     static let height: CGFloat = 62
     static let cornerRadius: CGFloat = height / 2
 }
+
+// MARK: - Floating Banner Shell
 
 /// Full floating banner used on Your Location and Saved Places.
 struct OfflineBanner: View {
@@ -35,10 +39,11 @@ struct OfflineBanner: View {
             in: Capsule()
         )
 
-
         .foregroundStyle(theme.colors.primaryText)
     }
 }
+
+// MARK: - Shared Banner Content
 
 /// Content shared with Map, whose `MapCard` owns the material and morphing.
 struct OfflineBannerContent: View {
@@ -53,7 +58,6 @@ struct OfflineBannerContent: View {
             Image(systemName: "wifi.slash")
                 .font(.title3.weight(.medium))
                 .frame(width: 28)
-
 
             VStack(alignment: .leading, spacing: 1) {
                 Text("No Internet Connection")

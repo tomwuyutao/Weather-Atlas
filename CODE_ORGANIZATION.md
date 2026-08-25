@@ -64,8 +64,8 @@ Read these in order:
 2. **Weather/App/AppNavigation.swift**
 3. **Weather/App/ContentView.swift**
 
-You will learn how the app creates exactly one PlacesStore,
-PlaceWeatherStore, WeatherModel, and AppNavigation; injects them into
+You will learn how the app creates exactly one SavedPlacesStore,
+SavedPlacesWeatherStore, WeatherModel, and AppNavigation; injects them into
 SwiftUI; builds the tab shell; shares one selected forecast date; and handles
 deep links, quick actions, settings, first-run starter places, and reset.
 
@@ -77,9 +77,7 @@ Read:
 2. **Weather/Models/WeatherCondition.swift**
 3. **Weather/Models/WeatherSymbols.swift**
 4. **Weather/Models/WeatherDataValidation.swift**
-5. **Weather/Models/SunnyPlacesRanking.swift**
-6. **Weather/Models/SunnyHoursCalculation.swift**
-7. **Weather/Models/DaylightHours.swift**
+5. **Weather/Models/SunnyHoursCalculation.swift**
 
 This is the best place to understand City, CityWeather, DailyForecast,
 HourlyForecast, normalized weather conditions, unavailable-data reasons,
@@ -91,8 +89,8 @@ user's preferences.
 
 Read:
 
-1. **Weather/Helpers/PlacesStore.swift**
-2. **Weather/Helpers/Weather/PlaceWeatherStore.swift**
+1. **Weather/Helpers/SavedPlacesStore.swift**
+2. **Weather/Helpers/Weather/SavedPlacesWeatherStore.swift**
 3. **Weather/Helpers/Weather/WeatherService.swift**
 4. **Weather/Helpers/Weather/ReverseGeocoding.swift**
 5. **Weather/Helpers/Weather/WeatherCache.swift**
@@ -120,12 +118,12 @@ catalog publication.
 
 Read:
 
-1. **Weather/Views/Components/WeatherCard.swift**
+1. **Weather/Views/Detail/WeatherCard.swift**
 2. **Weather/Views/Components/DateSwitcher.swift**
 3. **Weather/Views/YourLocation/YourLocationView.swift**
-4. **Weather/Views/Components/SunnyHoursTimeline.swift**
-5. **Weather/Views/SavedPlaces/NearbySunnyPlacesCard.swift**
-6. **Weather/Views/Components/TenDaySunnyHoursTimeline.swift**
+4. **Weather/Views/Detail/SunnyHoursTimeline.swift**
+5. **Weather/Views/Detail/NearbySunnyPlacesCard.swift**
+6. **Weather/Views/Detail/TenDaySunnyHoursTimeline.swift**
 7. **Weather/Views/Detail/DetailView.swift**
 8. **Weather/Views/Detail/ChartView.swift**
 
@@ -187,9 +185,9 @@ with its own lifecycle and forecast loading.
     WeatherModel -----------------------------------> AppNavigation
         | coordinates                                  | tab, push, sheet,
         |                                              | Map handoff state
-        +--> PlacesStore --------> Places JSON in Application Support
+        +--> SavedPlacesStore --------> Places JSON in Application Support
         |
-        +--> PlaceWeatherStore --> WeatherService --> WeatherKit
+        +--> SavedPlacesWeatherStore --> WeatherService --> WeatherKit
         |          |
         |          +-------------> disposable weather cache in Caches
         |
@@ -204,7 +202,7 @@ with its own lifecycle and forecast loading.
 
 Read arrows as ownership, not necessarily as a direct call from every screen.
 For example, Your Location reads WeatherModel, which delegates saved-place
-storage to PlacesStore and forecasts to PlaceWeatherStore.
+storage to SavedPlacesStore and forecasts to SavedPlacesWeatherStore.
 
 ## App shell, navigation, and shared state
 
@@ -241,7 +239,7 @@ ContentView is the integration boundary. It owns:
 - one selected forecast date shared by tabs and detail screens;
 - the app-wide forecast calendar, anchored to the current location time zone
   when available;
-- first-run seeding of a fixed global starter list;
+- first-run seeding of a fixed global starter set;
 - reset of user-owned state and recreation of the shell;
 - the root Settings sheet;
 - Home Screen quick actions; and
@@ -284,9 +282,9 @@ Saved places are a flat library, not a hierarchy of collections.
 | PlacesLibraryDocument | Versioned document containing the flat array. |
 | PlacesDocumentStore | Reads and atomically writes the Places JSON file. |
 | PlacesLibraryValidator | Rejects invalid schemas, bad fields, and duplicate places. |
-| PlacesStore | Main-actor observable source of truth and mutation API. |
+| SavedPlacesStore | Main-actor observable source of truth and mutation API. |
 
-Only PlacesStore should change the persistent library. It exposes operations
+Only SavedPlacesStore should change the persistent library. It exposes operations
 such as save or merge, batch save, rename, delete, retry, and reset. Keeping
 persistence behind that one API prevents a view from creating inconsistent
 validation or duplication rules.
@@ -298,7 +296,7 @@ and disposable, so removing cache data never deletes a person's saved places.
 
 ### Weather ownership
 
-PlaceWeatherStore owns city-keyed forecast state:
+SavedPlacesWeatherStore owns city-keyed forecast state:
 
 - loaded CityWeather snapshots;
 - loading and failure state;
@@ -325,9 +323,10 @@ format.
 WeatherCondition reduces the larger WeatherKit condition vocabulary to the
 app weather vocabulary. WeatherSymbols classifies system symbol choices.
 SunnyHoursCalculation counts the available city-local daylight hours classified
-as Clear or Partly Sunny; each counts as one full sunny hour. SunnyPlacesRanking
-uses that fixed count to order places. DaylightHours supplies provider-neutral
-daylight bounds and formatting shared by the app and widgets, while
+as Clear or Partly Sunny; each counts as one full sunny hour. PlaceRecommendation
+in WeatherModels applies the deterministic ordering used by Saved Places, nearby
+results, and Find Sun. SunnyHoursChartBounds and SunnyHoursFormatting provide the
+shared daylight geometry and copy used by the app and widgets, while
 WeatherDataValidation contains both the forecast checks and typed issue values.
 Missing hourly coverage is feature-level: it
 does not make an otherwise useful city response retry or fail cache validation.
@@ -394,7 +393,7 @@ for comparison:
 
 ManageSavedPlaces.swift is where persistent-place management happens. It preserves the
 saved order and supports browsing, renaming, and deleting while continuing to
-use PlacesStore as the only persistence authority.
+use SavedPlacesStore as the only persistence authority.
 
 ## Map and Find Sun
 
@@ -488,19 +487,18 @@ Saved Places route.
 | Weather/Models/WeatherCondition.swift | Normalized weather-condition vocabulary. |
 | Weather/Models/WeatherSymbols.swift | Weather-condition symbol classification. |
 | Weather/Models/WeatherDataValidation.swift | Typed unavailable-data reasons and general ten-day forecast validation. |
-| Weather/Models/SunnyPlacesRanking.swift | Fixed Clear/Partly Sunny hourly ranking with deterministic ordering. |
 | Weather/Models/SunnyHoursCalculation.swift | City-local daylight-hour counting, windows, and status. |
-| Weather/Models/DaylightHours.swift | Shared daylight bounds and formatting for the app and widgets. |
 
 ### Helpers: persistence, location, catalogs, and presentation support
 
 | File | Role |
 | --- | --- |
-| Weather/Helpers/PlacesStore.swift | Saved-place document types, validation, JSON persistence, and observable library API. |
+| Weather/Helpers/SavedPlacesStore.swift | Saved-place document types, validation, JSON persistence, and observable library API. |
 | Weather/Helpers/HomeLocationStore.swift | Persistence boundary for an optional manually chosen home location. |
 | Weather/Helpers/LocationProvider.swift | One-shot Core Location authorization, coordinate, and metadata workflow. |
 | Weather/Helpers/NetworkConnectivity.swift | Observable internet-path state for offline presentation. |
 | Weather/Helpers/CitiesCatalog.swift | Actor-backed bundled global city catalog, population and geographic queries, starter cities. |
+| Weather/Helpers/CityNameTranslation.swift | Locale-aware city-name lookup backed by the bundled translation resource. |
 | Weather/Helpers/CountryCatalog.swift | Bundled country/city metadata, country/continent options, and timezone fallback. |
 | Weather/Helpers/AppPreferences.swift | User preference types and formatting/localization helpers. |
 | Weather/Helpers/AppTheme.swift | Theme state, semantic styling, backgrounds, and shared view modifiers. |
@@ -510,7 +508,7 @@ Saved Places route.
 
 | File | Role |
 | --- | --- |
-| Weather/Helpers/Weather/PlaceWeatherStore.swift | Observable city-keyed forecast repository, request coordination, cache use, and retention. |
+| Weather/Helpers/Weather/SavedPlacesWeatherStore.swift | Observable city-keyed forecast repository, request coordination, cache use, and retention. |
 | Weather/Helpers/Weather/WeatherService.swift | WeatherKit adapter and app-model conversion. |
 | Weather/Helpers/Weather/ReverseGeocoding.swift | Place and timezone resolution around WeatherKit. |
 | Weather/Helpers/Weather/WeatherCache.swift | Codable weather-cache representation and disk cache mechanics. |
@@ -519,20 +517,20 @@ Saved Places route.
 
 | File | Role |
 | --- | --- |
-| Weather/Views/Components/WeatherCard.swift | Shared card surface, header alignment, and standard card structure. |
+| Weather/Views/Detail/WeatherCard.swift | Shared card surface, header alignment, and standard card structure. |
 | Weather/Views/Components/DateSwitcher.swift | Shared ten-day horizon and top forecast-date control. |
 | Weather/Views/Components/OfflineBanner.swift | Shared offline advisory content and geometry. |
 | Weather/Views/Components/SecondaryTextActionLabel.swift | Reusable low-priority text action label. |
-| Weather/Views/Components/SunnyHoursStatusLine.swift | Shared highlighted sunny-hours phrase. |
-| Weather/Views/Components/SunnyHoursTimeline.swift | Compact daily sunny-hours timeline shared with detail reports. |
-| Weather/Views/Components/TenDaySunnyHoursTimeline.swift | Shared ten-day sunny-hours chart. |
+| Weather/Views/Detail/SunnyHoursStatusLine.swift | Shared highlighted sunny-hours phrase. |
+| Weather/Views/Detail/SunnyHoursTimeline.swift | Compact daily sunny-hours timeline shared with detail reports. |
+| Weather/Views/Detail/TenDaySunnyHoursTimeline.swift | Shared ten-day sunny-hours chart. |
 
 ### Views: Your Location and Saved Places
 
 | File | Role |
 | --- | --- |
 | Weather/Views/YourLocation/YourLocationView.swift | Device-location permission, refresh, and recovery wrapper. |
-| Weather/Views/SavedPlaces/NearbySunnyPlacesCard.swift | Nearby sunny-city rows, distance labels, and Map handoff. |
+| Weather/Views/Detail/NearbySunnyPlacesCard.swift | Nearby sunny-city rows, distance labels, and Map handoff. |
 | Weather/Views/SavedPlaces/SavedPlacesView.swift | Saved Places planning dashboard. |
 | Weather/Views/SavedPlaces/BestSunnyDatesCard.swift | Saved-places-only heatmap calendar. |
 | Weather/Views/SavedPlaces/BestSunnyPlacesCard.swift | Best sunny saved-place recommendations. |
@@ -546,8 +544,11 @@ Saved Places route.
 | Weather/Views/Map/FindSunButton.swift | Find Sun menu and geographic picker. |
 | Weather/Views/Map/FindSunListView.swift | Ranked Find Sun result dashboard. |
 | Weather/Views/Map/MapCard.swift | Shared compact/large Map surface and every floating-card body. |
+| Weather/Views/Map/MapCapsule.swift | Shared compact Map status capsule and its presentation states. |
 | Weather/Views/Map/MapFindSun.swift | MapView's Find Sun workflow extension. |
+| Weather/Views/Map/MapLegend.swift | Sunny-hours colour scale and system-contrast/transparency adaptation. |
 | Weather/Views/Map/MapView.swift | MapKit screen, annotations, Find Sun state, preview, selection, and camera logic. |
+| Weather/Views/PreviewFixtures.swift | Debug-only in-memory model and weather fixtures shared by Xcode previews. |
 | Weather/Views/SavedPlaces/ManageSavedPlaces.swift | Editable full Saved Places library. |
 | Weather/Views/Search/CitySearch.swift | Apple Maps and Open-Meteo city search implementation. |
 | Weather/Views/Search/SearchView.swift | Debounced search UI and explicit preview/save actions. |
@@ -558,7 +559,9 @@ Saved Places route.
 
 | File | Role |
 | --- | --- |
-| Weather/Widgets/WidgetDataStore.swift | App-group catalog and widget snapshot persistence. |
+| Weather/Widgets/WidgetDataStore.swift | App-group configuration catalog, locale handoff, and reset generation. |
+| Weather/Widgets/WidgetForecastStore.swift | Widget-extension-private forecast cache and freshness validation. |
+| Weather/Widgets/SunnyHoursChartPrimitives.swift | Shared app/widget capsule timelines and chart geometry. |
 | Weather/Widgets/Widgets.swift | Widget configuration intents, timeline provider, WeatherKit fetching, and widget views. |
 | Weather/Widgets/WeatherWidgets-Info.plist | Widget extension bundle metadata. |
 | Weather/Widgets/WeatherWidgets-InfoPlist.xcstrings | Localized widget extension Info.plist strings. |
@@ -571,6 +574,8 @@ Saved Places route.
 | --- | --- |
 | Weather/Resources/Cities/worldcities.csv | Bundled global city catalog for geographic and population-based candidate queries. |
 | Weather/Resources/Cities/country_city_coordinates.csv | Bundled country/city metadata used by CountryCatalog. |
+| Weather/Resources/Cities/city_name_localizations.json | Bundled city-name translations used without network access. |
+| Weather/Resources/Cities/starter-cities.csv | Explicit first-run starter set, kept separate from the larger discovery catalog. |
 | Weather/Resources/Assets.xcassets | App icon and project-configured color catalog. |
 | Weather/Localizable.xcstrings | Main app localized strings catalog. |
 | Weather/Base.lproj/InfoPlist.strings | Base Info.plist user-facing text. |
@@ -579,6 +584,27 @@ Saved Places route.
 | Weather Atlas.xcodeproj/project.pbxproj | Xcode targets, build settings, memberships, resources, and extension configuration. |
 | .gitignore | Local files and build outputs excluded from version control. |
 
+## Comment and section conventions
+
+Source comments are written for someone following ownership and data flow, not
+for someone who needs every Swift expression translated into English.
+
+- Each substantial file starts with a short purpose or reading guide.
+- `// MARK: - ...` separates top-level subsystems and the major phases of a
+  large type, such as inputs, derived state, rendering, lifecycle, actions,
+  persistence, and private validation.
+- Documentation comments explain shared types, cross-file contracts, persisted
+  fields, compatibility requirements, and non-obvious layout or concurrency
+  invariants.
+- Inline comments explain why a branch or ordering constraint exists. They do
+  not restate the operation visible on the following line.
+- Preview-only fixtures and target-specific code remain clearly bounded by
+  their compile conditions.
+
+Small declarations stay compact when their names already communicate the full
+contract; extra headings or line-by-line narration would make them harder to
+scan rather than easier.
+
 ## Safe ways to change the app
 
 Before changing code, identify the layer first:
@@ -586,9 +612,9 @@ Before changing code, identify the layer first:
 | If you want to change... | Start reading here |
 | --- | --- |
 | A card visual structure | WeatherCard, the relevant card view, then AppTheme. |
-| Which cities are saved | PlacesStore and ManageSavedPlaces.swift. |
-| Forecast fetch/cache behavior | PlaceWeatherStore, WeatherService, WeatherCache. |
-| Sunny-hour analysis or ranking | WeatherCondition, SunnyHoursCalculation, DaylightHours, and SunnyPlacesRanking. |
+| Which cities are saved | SavedPlacesStore and ManageSavedPlaces.swift. |
+| Forecast fetch/cache behavior | SavedPlacesWeatherStore, WeatherService, WeatherCache. |
+| Sunny-hour analysis or ranking | WeatherCondition, SunnyHoursCalculation, and PlaceRecommendation in WeatherModels. |
 | Forecast structural validation | WeatherDataValidation. |
 | Current-location behavior | LocationProvider and WeatherModels. |
 | Nearby-sun geography or request budget | WeatherModel and CitiesCatalog. |
@@ -603,11 +629,11 @@ For one complete end-to-end exercise, trace this path:
 2. ContentView passes the binding to the active screen.
 3. The screen asks WeatherModel for a forecast on that date.
 4. WeatherModel reads an already-loaded CityWeather from
-   PlaceWeatherStore.
+   SavedPlacesWeatherStore.
 5. WeatherModels converts the selected calendar day correctly for that
    forecast time zone.
-6. SunnyHoursCalculation and DaylightHours derive display data, while
-   SunnyPlacesRanking orders place recommendations by sunny hours.
+6. SunnyHoursCalculation derives display data, while PlaceRecommendation in
+   WeatherModels orders place recommendations by sunny hours.
 7. A card formats that value using AppPreferences and AppTheme.
 
 That trace covers the key architectural promise of the app: changing a day

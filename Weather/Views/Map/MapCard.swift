@@ -66,34 +66,28 @@ enum MapCardMotion {
 /// without leaving the prior capsule visible beneath it.
 struct MapCard<Content: View>: View {
     let size: MapCardSize
-    let colorScheme: ColorScheme
     let maximumWidth: CGFloat
     let bottomPadding: CGFloat
-    /// A unique Liquid Glass identity for this physical surface on iOS 26.
-    let glassEffectID: String
     /// Older-system matched geometry uses one shared identity instead.
     let fallbackGeometryID: String
     let glassNamespace: Namespace.ID
     let content: Content
 
     @Environment(\.appTheme) private var theme
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.accessibilityReduceTransparency)
+    private var reduceTransparency
 
     init(
         size: MapCardSize,
-        colorScheme: ColorScheme,
         maximumWidth: CGFloat,
         bottomPadding: CGFloat = MapCardLayout.bottomPadding,
-        glassEffectID: String,
         fallbackGeometryID: String,
         glassNamespace: Namespace.ID,
         @ViewBuilder content: () -> Content
     ) {
         self.size = size
-        self.colorScheme = colorScheme
         self.maximumWidth = maximumWidth
         self.bottomPadding = bottomPadding
-        self.glassEffectID = glassEffectID
         self.fallbackGeometryID = fallbackGeometryID
         self.glassNamespace = glassNamespace
         self.content = content()
@@ -103,16 +97,14 @@ struct MapCard<Content: View>: View {
     var body: some View {
         let shape = MapCardShape(cornerRadius: size.cornerRadius)
 
-        if colorSchemeContrast == .increased {
+        if reduceTransparency {
             glassSurface
                 .contentShape(shape)
                 .background(theme.colors.glassFill, in: shape)
                 .overlay(
                     shape.stroke(
-                        theme.colors.primaryText.opacity(
-                            colorSchemeContrast == .increased ? 0.90 : 0.18
-                        ),
-                        lineWidth: colorSchemeContrast == .increased ? 1 : 0.8
+                        theme.colors.primaryText.opacity(0.18),
+                        lineWidth: 0.8
                     )
                 )
                 .matchedGeometryEffect(
@@ -296,9 +288,6 @@ private struct MapPlaceCardHeader: View {
             statusLine
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-
-
-
     }
 
     @ViewBuilder
@@ -317,7 +306,6 @@ private struct MapPlaceCardHeader: View {
                     .controlSize(.small)
                     .frame(width: 18)
 
-
                 Text(localizedString("Loading Forecast", locale: locale))
             }
             .font(.body)
@@ -335,9 +323,8 @@ private struct MapPlaceCardHeader: View {
 
 /// One compact, plain row makes every Map floating-card action use the same
 /// icon, title, full-width divider treatment, and at-least-44-point hit
-/// target. Icons stay
-/// directly on the card surface so the action list remains lighter than the
-/// card header rather than becoming a stack of circular controls.
+/// target. Icons stay directly on the card surface, keeping the action list
+/// visually lighter than the card header.
 private struct MapCardActionRow: View {
     static let iconWidth: CGFloat = 24
     static let iconSpacing: CGFloat = 12
@@ -368,7 +355,6 @@ private struct MapCardActionRow: View {
                 Image(systemName: systemImage)
                     .font(.body)
                     .frame(width: Self.iconWidth)
-
 
                 Text(title)
                     .font(.body)
@@ -435,9 +421,7 @@ private struct MapFindSunDisclosure: View {
                     findSun(.country(country))
                 } label: {
                     MapContextMenuLabel(
-                        resolved: findSunTitle(
-                            for: country.localizedName(locale: locale)
-                        ),
+                        resolved: country.localizedName(locale: locale),
                         systemImage: "flag"
                     )
                 }
@@ -448,9 +432,7 @@ private struct MapFindSunDisclosure: View {
                     findSun(.continent(continent))
                 } label: {
                     MapContextMenuLabel(
-                        resolved: findSunTitle(
-                            for: continent.localizedName(locale: locale)
-                        ),
+                        resolved: continent.localizedName(locale: locale),
                         systemImage: "globe.europe.africa"
                     )
                 }
@@ -503,10 +485,6 @@ private struct MapFindSunDisclosure: View {
         CurrentLocationMetadata.localityName(from: displayName) ?? displayName
     }
 
-    private func findSunTitle(for regionName: String) -> String {
-        regionName
-    }
-
 }
 
 /// One weather presentation value lets selected saved places, Find Sun
@@ -526,21 +504,18 @@ struct MapPlaceContextCard: View {
     let weather: MapPlaceWeatherPresentation
     let country: CountryPlacesOption?
     let continent: ContinentPlacesOption?
-    /// Non-nil only for transient places, which may be added to Saved Places.
-    let save: (() -> Bool)?
-    /// Deletes the saved counterpart after this transient card has just saved
-    /// its place, returning the action row to its original state in place.
-    let removeSavedPlace: (() -> Bool)?
+    /// Every city card exposes the same persistence action. Its title and
+    /// effect switch between save and delete from the live `isSaved` state.
+    let save: () -> Bool
+    let removeSavedPlace: () -> Bool
+    /// Device location deliberately remains transient, so its card omits the
+    /// shared persistence row while every city card retains it.
+    let showsPersistenceAction: Bool
     let isSaved: Bool
     let viewDetails: () -> Void
     let findSunNear: (City) -> Void
     let findSun: (MapSunQueryScope) -> Void
     let clearSelection: () -> Void
-
-    /// Remains true only while this card presentation is visible. This gives a
-    /// just-saved transient location a stable filled-bookmark acknowledgement,
-    /// while a later opening of the already-saved card omits the save row.
-    @State private var wasSavedInThisPresentation = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.locale) private var locale
@@ -554,41 +529,7 @@ struct MapPlaceContextCard: View {
                 )
                     .padding(.trailing, headerTrailingReservation)
 
-                if showsSaveLocationRow {
-                    firstRowDivider
-
-                    MapCardActionRow(
-                        title: localizedString(
-                            isSaved
-                                ? "Delete from Saved Places"
-                                : "Save Place",
-                            locale: locale
-                        ),
-                        systemImage: isSaved
-                            ? "trash"
-                            : "bookmark"
-                    ) {
-                        if isSaved {
-                            // Keep the selected result and its card in place;
-                            // only its persisted saved-place counterpart is
-                            // removed.
-                            guard removeSavedPlace?() == true else { return }
-                            wasSavedInThisPresentation = false
-                        } else if let save, save() {
-                            // The store reports failures through the app's
-                            // normal error path. A successful save receives an
-                            // immediate in-place filled-bookmark acknowledgement.
-                            wasSavedInThisPresentation = true
-                        }
-                    }
-
-                    rowDivider
-                } else {
-                    // Saved places do not have a Save Place row, but the
-                    // first remaining action still receives the same native
-                    // top separator.
-                    firstRowDivider
-                }
+                firstRowDivider
 
                 MapCardActionRow(
                     title: localizedString("View Details", locale: locale),
@@ -608,6 +549,29 @@ struct MapPlaceContextCard: View {
                     findSunNear: findSunNear,
                     findSun: findSun
                 )
+
+                if showsPersistenceAction {
+                    rowDivider
+
+                    MapCardActionRow(
+                        title: localizedString(
+                            isSaved
+                                ? "Delete from Saved Places"
+                                : "Save Place",
+                            locale: locale
+                        ),
+                        systemImage: isSaved ? "trash" : "bookmark"
+                    ) {
+                        if isSaved {
+                            // Persisted markers use the exact same final row
+                            // as transient ones, so each city card keeps all
+                            // three actions in the same order.
+                            _ = removeSavedPlace()
+                        } else {
+                            _ = save()
+                        }
+                    }
+                }
             }
             .padding(.horizontal, MapPlaceContextCardLayout.horizontalPadding)
             .padding(.vertical, MapPlaceContextCardLayout.verticalPadding)
@@ -631,25 +595,11 @@ struct MapPlaceContextCard: View {
                 .zIndex(1)
         }
 
-        // The outer MapCard preserves its identity while a marker changes.
-        .onChange(of: city.id) {
-            wasSavedInThisPresentation = false
-        }
-        .onChange(of: isSaved) { _, savedNow in
-            if !savedNow {
-                wasSavedInThisPresentation = false
-            }
-        }
-    }
-
-    private var showsSaveLocationRow: Bool {
-        save != nil && (!isSaved || wasSavedInThisPresentation)
     }
 
     private var headerTrailingReservation: CGFloat {
-        // The close button is the only top-right action. Unsaved locations use
-        // the explicit Save Place row below the header, avoiding duplicate
-        // bookmark affordances in the same card.
+        // The close button is the only top-right action. Every persistence
+        // action lives in the shared final row below the header.
         MapPlaceContextCardLayout.closeButtonSize
             + MapPlaceContextCardLayout.closeButtonTrailingInset
     }
@@ -667,6 +617,8 @@ struct MapPlaceContextCard: View {
         Divider()
     }
 }
+
+// MARK: - Reverse-Geocoded Place Cards
 
 /// Presentation context for a reverse-geocoded map tap.
 ///
@@ -736,11 +688,10 @@ struct MapLocationLoadingCard: View {
 struct MapRegionContextCard: View {
     let context: MapTapRegionContext
     let weather: MapPlaceWeatherPresentation
-    /// A direct map tap is transient until the person saves it. Keeping this
-    /// optional action separate from the card's selected identity lets the
-    /// row acknowledge that save in place without replacing the card surface.
-    let save: (() -> Bool)?
-    let removeSavedPlace: (() -> Bool)?
+    /// A direct map tap keeps the same save-or-delete action contract as all
+    /// other place cards.
+    let save: () -> Bool
+    let removeSavedPlace: () -> Bool
     let isSaved: Bool
     let viewDetails: (City) -> Void
     /// The Map parent owns the query execution. This card only exposes the
@@ -761,6 +712,7 @@ struct MapRegionContextCard: View {
             continent: context.continent,
             save: save,
             removeSavedPlace: removeSavedPlace,
+            showsPersistenceAction: true,
             isSaved: isSaved,
             viewDetails: {
                 viewDetails(context.city)
@@ -772,18 +724,19 @@ struct MapRegionContextCard: View {
     }
 }
 
+// MARK: - Saved Marker Presentation
+
 /// A single stable map item using the saved-place presentation contract shared
 /// by cards and weather rows.
 struct PlacesMapPlacePresentation: Identifiable {
-    let presentation: SavedPlacePresentation
+    let place: SavedPlace
+    let recommendation: PlaceRecommendation?
+    let isLoading: Bool
 
-    var id: City.ID { presentation.id }
-    var place: SavedPlace { presentation.place }
-    var recommendation: PlaceRecommendation? {
-        presentation.recommendation
-    }
-    var isLoading: Bool { presentation.isLoading }
+    var id: SavedPlace.ID { place.id }
 }
+
+#if DEBUG
 
 // MARK: - Preview
 
@@ -806,7 +759,7 @@ private struct MapPlaceContextCardPreview: View {
         dailyLow: 13,
         dailyHigh: 24,
         symbolName: "cloud.sun.fill",
-        condition: .partlyCloudy,
+        condition: AppWeatherCondition(rawValue: "partlyCloudy"),
         hourlyForecasts: [],
         cloudCover: 0.25,
         precipitationChance: 0.05,
@@ -823,7 +776,8 @@ private struct MapPlaceContextCardPreview: View {
 
     private static let recommendation = PlaceRecommendation(
         cityWeather: weather,
-        condition: .partlyCloudy,
+        symbolName: forecast.symbolName,
+        condition: forecast.condition,
         sunnyHourCount: 11
     )
 
@@ -839,9 +793,7 @@ private struct MapPlaceContextCardPreview: View {
 
             MapCard(
                 size: .large(horizontalPadding: 16),
-                colorScheme: .light,
                 maximumWidth: 390,
-                glassEffectID: "preview-tapped-place-card",
                 fallbackGeometryID: "preview-tapped-place-card",
                 glassNamespace: glassNamespace
             ) {
@@ -862,6 +814,7 @@ private struct MapPlaceContextCardPreview: View {
                         isSaved = false
                         return true
                     },
+                    showsPersistenceAction: true,
                     isSaved: isSaved,
                     viewDetails: {},
                     findSunNear: { _ in },
@@ -904,7 +857,7 @@ enum MapSunResultsPreviewData {
                 dailyLow: 18,
                 dailyHigh: 30,
                 symbolName: "sun.max.fill",
-                condition: .clear,
+                condition: AppWeatherCondition(rawValue: "clear"),
                 hourlyForecasts: [],
                 cloudCover: 0.1,
                 precipitationChance: 0,
@@ -918,10 +871,10 @@ enum MapSunResultsPreviewData {
                 timeZone: TimeZone(identifier: "Europe/Rome")!
             )
             return MapSunSearchResult(
-                city: city,
                 recommendation: PlaceRecommendation(
                     cityWeather: weather,
-                    condition: .clear,
+                    symbolName: forecast.symbolName,
+                    condition: forecast.condition,
                     sunnyHourCount: sunnyHours
                 )
             )
@@ -941,9 +894,7 @@ private struct MapSunResultsSummaryPreview: View {
 
             MapCard(
                 size: .small,
-                colorScheme: .light,
                 maximumWidth: 390,
-                glassEffectID: "preview-sun-results-summary",
                 fallbackGeometryID: "preview-sun-results-summary",
                 glassNamespace: glassNamespace
             ) {
@@ -971,3 +922,5 @@ private struct MapSunResultsSummaryPreview: View {
     MapSunResultsSummaryPreview(title: "Italy")
         .environment(\.appTheme, .shared)
 }
+
+#endif

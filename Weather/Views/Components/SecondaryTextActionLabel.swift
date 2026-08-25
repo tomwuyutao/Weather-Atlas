@@ -8,6 +8,8 @@
 
 import SwiftUI
 
+// MARK: - Secondary Action Label
+
 /// A quiet 44-point action label for links and non-primary mutations beneath
 /// report content. The caller supplies the `Button` or `NavigationLink`.
 struct SecondaryTextActionLabel: View {

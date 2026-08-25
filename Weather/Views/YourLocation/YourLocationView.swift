@@ -9,18 +9,22 @@ import CoreLocation
 import SwiftUI
 import UIKit
 
+// MARK: - Current Location Screen
+
 /// A deliberately small current-location wrapper. Report presentation lives in
 /// `CurrentLocationReportContent`; this view only starts and refreshes the
 /// device-location workflow, including its permission recovery actions.
 struct YourLocationView: View {
+    // MARK: - Inputs and Environment
+
     let model: WeatherModel
     let router: AppNavigation
     @Binding var selectedDate: Date
 
-    @State private var isNearbySearchQueued = false
-
     @Environment(\.locale) private var locale
     @Environment(\.openURL) private var openURL
+
+    // MARK: - Task Identity
 
     private var weatherTaskID: LocalWeatherTaskID {
         LocalWeatherTaskID(
@@ -28,6 +32,8 @@ struct YourLocationView: View {
             longitude: model.locationProvider.coordinate?.longitude
         )
     }
+
+    // MARK: - Presentation and Loading
 
     var body: some View {
         CurrentLocationReportContent(
@@ -39,6 +45,8 @@ struct YourLocationView: View {
             refreshCurrentLocation: refreshCurrentLocation
         )
         .refreshable {
+            // Pull-to-refresh repeats a nearby search only after the initial
+            // location task has established that feature's first result set.
             let refreshesNearby = model.didSearchNearby
             await model.loadSavedWeather(
                 forceRefresh: true
@@ -58,38 +66,34 @@ struct YourLocationView: View {
             }
         }
         .task(id: weatherTaskID) {
-            guard !Task.isCancelled,
-                  model.locationProvider.hasUsableCoordinate else {
+            guard !Task.isCancelled else {
+                return
+            }
+
+            guard model.locationProvider.hasUsableCoordinate else {
                 await model.ensureCurrentLocationWeather(locale: locale)
                 return
             }
 
-            if !model.didSearchNearby, !isNearbySearchQueued {
-                isNearbySearchQueued = true
-            }
             await model.ensureCurrentLocationWeather(locale: locale)
-        }
-        .task(id: nearbySearchTaskID) {
-            let taskID = nearbySearchTaskID
-            guard taskID.isQueued else { return }
 
-            guard !Task.isCancelled else { return }
+            // Establishing the first current-location forecast can advance the
+            // model's location generation. Starting Nearby Sunnier Places only
+            // after that work settles prevents the search from invalidating
+            // itself and leaving the card in its loading state.
+            guard !Task.isCancelled,
+                  model.locationProvider.hasUsableCoordinate,
+                  !model.didSearchNearby else {
+                return
+            }
             await model.searchNearbyPlaces(
                 forceRefresh: false,
                 locale: locale
             )
-            if nearbySearchTaskID == taskID {
-                isNearbySearchQueued = false
-            }
         }
     }
 
-    private var nearbySearchTaskID: NearbySearchTaskID {
-        NearbySearchTaskID(
-            location: weatherTaskID,
-            isQueued: isNearbySearchQueued
-        )
-    }
+    // MARK: - Location Actions
 
     private func requestCurrentLocation() {
         model.useCurrentLocation(preferredLocale: locale)
@@ -117,14 +121,11 @@ struct YourLocationView: View {
 
 }
 
+// MARK: - Weather Task Identity
+
 /// Coordinate identity makes the initial weather task restart only after Core
 /// Location supplies a materially different physical position.
 private struct LocalWeatherTaskID: Hashable {
     let latitude: Double?
     let longitude: Double?
-}
-
-private struct NearbySearchTaskID: Hashable {
-    let location: LocalWeatherTaskID
-    let isQueued: Bool
 }

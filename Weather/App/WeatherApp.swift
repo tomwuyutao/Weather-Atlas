@@ -8,7 +8,6 @@
 
 import Foundation
 import SwiftUI
-import UIKit
 
 // MARK: - First-Run Language Selection
 
@@ -164,9 +163,9 @@ private struct ThemeContent: View {
     let theme: AppTheme
     /// Locale propagated to formatters and localization lookups.
     let appLocale: Locale
-    /// Shared model supplied to the redesigned root application view.
+    /// Shared model supplied to the root application view.
     let appModel: WeatherModel
-    /// Shared navigation coordinator supplied to the redesigned root.
+    /// Shared navigation coordinator supplied to the root application view.
     let router: AppNavigation
     /// Shared native missing-data alert queue.
     let missingDataAlerts: MissingDataAlertCenter
@@ -178,6 +177,8 @@ private struct ThemeContent: View {
     @Environment(\.colorScheme) private var colorScheme
     /// Propagates Increase Contrast into the app's custom color palettes.
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    /// Disables custom interpolation throughout the app when Reduce Motion is on.
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// Current system text category.
     @Environment(\.dynamicTypeSize) private var systemDynamicTypeSize
     /// Whether typography should follow the system rather than the in-app menu.
@@ -185,7 +186,7 @@ private struct ThemeContent: View {
     /// Persisted in-app text-size step used when system sizing is disabled.
     @AppStorage("appTextSizeLevel") private var appTextSizeLevel: Int = AppTextSizeLevel.defaultRawValue
 
-    /// Injects locale, size, theme, tint, contrast, and motion behavior app-wide.
+    /// Injects locale, text size, theme, tint, and contrast app-wide.
     var body: some View {
         // Resolve the custom palette after reading the system scheme and
         // contrast setting. Every descendant then receives matching colors.
@@ -198,18 +199,28 @@ private struct ThemeContent: View {
             tutorial: tutorial
         )
             .environment(\.locale, appLocale)
-            // Preserve the complete system Dynamic Type range. Only the explicit
-            // in-app menu uses the app's smaller set of custom steps.
+            // The app stops at its largest supported text setting, including
+            // when the person follows the system's text-size preference.
             .environment(
                 \.dynamicTypeSize,
                 useSystemTextSize
                     ? systemDynamicTypeSize
                     : AppTextSizeLevel.level(clamping: appTextSizeLevel).dynamicTypeSize
             )
+            .dynamicTypeSize(...DynamicTypeSize.xLarge)
             .environment(\.appTheme, theme)
             .environment(missingDataAlerts)
             .environment(networkConnectivity)
             .tint(resolvedColors.accent)
+            // One root safeguard covers every current and future SwiftUI
+            // animation in the app. The tutorial and pulsing Map marker also
+            // skip their animation-only timing work at their source.
+            .transaction { transaction in
+                if reduceMotion {
+                    transaction.animation = nil
+                    transaction.disablesAnimations = true
+                }
+            }
             .onChange(of: colorScheme, initial: true) { _, newScheme in
                 // Retain the latest resolved system inputs so `AppTheme` can
                 // compute its palette consistently outside this view as well.

@@ -3,7 +3,7 @@
 //  Weather
 //
 //  Purpose: Provides the compact previous/date/next forecast control in the
-//  trailing navigation area, replacing the experimental scrolling date strip.
+//  trailing navigation area.
 //
 
 import SwiftUI
@@ -13,7 +13,7 @@ import SwiftUI
 /// The control owns no app-wide state: every main destination receives the
 /// same binding from the root, so switching tabs never resets the chosen day.
 struct TopForecastDateSwitcher: View {
-    // MARK: Inputs and Local Presentation State
+    // MARK: - Inputs and Local Presentation State
 
     /// The root owns the selected forecast day; this compact toolbar control
     /// merely mutates that binding when the person steps or picks a date.
@@ -40,7 +40,7 @@ struct TopForecastDateSwitcher: View {
         max(44, controlHeight)
     }
 
-    /// The visual chevrons retain the earlier compact 28-point layout. Their
+    /// The visual chevrons use a compact 28-point layout. Their
     /// actual button frames extend outward into unused toolbar space, keeping
     /// 44-point targets without widening the date capsule or covering its label.
     private var stepperHitTargetOutset: CGFloat {
@@ -51,7 +51,7 @@ struct TopForecastDateSwitcher: View {
     /// 44-point button frames continue to extend into the outer toolbar space.
     private let chevronVisualInset: CGFloat = 9
 
-    // MARK: Normalized Date Navigation
+    // MARK: - Normalized Date Navigation
 
     private var dates: [Date] {
         // Date values may include different times. Normalize them to calendar
@@ -70,6 +70,8 @@ struct TopForecastDateSwitcher: View {
     private var nextDate: Date? {
         dates.first(where: { $0 > normalizedSelection })
     }
+
+    // MARK: - Body and Controls
 
     var body: some View {
         // The toolbar itself supplies the native glass material. This view
@@ -105,8 +107,6 @@ struct TopForecastDateSwitcher: View {
             // toolbar button keeps the standard 44-point minimum hit area.
             .frame(minWidth: dateLabelWidth, minHeight: minimumTapDimension)
             .contentShape(Rectangle())
-
-
 
             .popover(isPresented: $showsDatePicker) {
                 datePicker
@@ -150,7 +150,7 @@ struct TopForecastDateSwitcher: View {
                         )
                 }
                 .buttonStyle(.plain)
-                // Preserve the original compact visual spacing while each
+                // Keep the visual spacing compact while each
                 // chevron's real hit target expands away from the date label.
                 .frame(width: minimumTapDimension, height: minimumTapDimension)
                 .contentShape(Rectangle())
@@ -166,11 +166,10 @@ struct TopForecastDateSwitcher: View {
                 )
                 .disabled(targetDate == nil)
 
-
             }
     }
 
-    // MARK: Calendar Picker
+    // MARK: - Calendar Picker
 
     @ViewBuilder
     private var datePicker: some View {
@@ -187,6 +186,10 @@ struct TopForecastDateSwitcher: View {
                 displayedComponents: .date
             )
             .datePickerStyle(.graphical)
+            // The native graphical calendar uses its tint for the selected-day
+            // circle. Keep that selection aligned with the app's sunny-hours
+            // color instead of inheriting the neutral global control tint.
+            .tint(theme.colors.dotSun)
             .padding()
             .frame(minWidth: 320)
             .presentationCompactAdaptation(.popover)
@@ -233,7 +236,8 @@ struct TopForecastDateSwitcher: View {
 
 // MARK: - Shared Forecast Horizon
 
-/// One literal forecast horizon shared by Your Location, Map, Places, and chart sheets.
+/// One literal forecast horizon shared by Your Location, Map, Saved Places,
+/// and chart sheets.
 enum ForecastDateHorizon {
     static func dates(in calendar: Calendar) -> [Date] {
         // Build local calendar days rather than adding fixed 24-hour intervals,

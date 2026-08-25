@@ -1,216 +1,193 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "" : {
+    "%@ and %lld more places" : {
+      "comment" : "Summary of places affected by one weather-data issue. The first placeholder is a locale-formatted list of up to three place names; the second is the number of additional places.",
       "localizations" : {
         "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ""
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ und %2$lld weiterer Ort"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ und %2$lld weitere Orte"
+                }
+              }
+            }
           }
         },
         "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ""
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ and %2$lld more place"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ and %2$lld more places"
+                }
+              }
+            }
           }
         },
         "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ""
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ y %2$lld lugar más"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ y %2$lld lugares más"
+                }
+              }
+            }
           }
         },
         "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ""
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ et %2$lld lieu supplémentaire"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ et %2$lld lieux supplémentaires"
+                }
+              }
+            }
           }
         },
         "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ""
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ e %2$lld altro luogo"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ e altri %2$lld luoghi"
+                }
+              }
+            }
           }
         },
         "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ""
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@、ほか%2$lld件の場所"
+                }
+              }
+            }
           }
         },
         "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ""
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ 및 기타 %2$lld곳"
+                }
+              }
+            }
           }
         },
         "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ""
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ e mais %2$lld local"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ e mais %2$lld locais"
+                }
+              }
+            }
           }
         },
         "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ""
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ и ещё %2$lld места"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ и ещё %2$lld мест"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ и ещё %2$lld место"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@ и ещё %2$lld места"
+                }
+              }
+            }
           }
         },
         "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ""
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@及另外 %2$lld 个地点"
+                }
+              }
+            }
           }
         },
         "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : ""
-          }
-        }
-      }
-    },
-    " and %d more places" : {
-      "comment" : "A string that appends information about a weather issue to a list of affected places. The argument is a count of additional places.",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " und %d weitere Orte"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " and %d more places"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " y %d lugares más"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " et %d lieux supplémentaires"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " e altri %d luoghi"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "、ほか%d件の場所"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " 및 기타 %d곳"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " e mais %d locais"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : " и ещё %d мест"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "及另外 %d 个地点"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "及另外 %d 個地點"
-          }
-        }
-      }
-    },
-    "%@ " : {
-      "comment" : "A prefix that appears before the countdown text in the \"Sun out in\" status line.",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "In %@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ "
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "En %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dans %@"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@の"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ "
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Em %@"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "В %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%1$@及另外 %2$lld 個地點"
+                }
+              }
+            }
           }
         }
       }
@@ -288,7 +265,7 @@
       }
     },
     "%@ from your location" : {
-      "comment" : "A sublabel below the city name that shows the distance of a recommended city from the user's location. The argument is the distance in kilometers.",
+      "comment" : "A sublabel below the city name that shows the distance of a recommended city from the user's location. The argument is formatted in the selected kilometers or miles unit.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -359,37 +336,37 @@
         }
       }
     },
-    "%@ hour" : {
-      "comment" : "Singular sunny-hour count in the selected Map-place card. The placeholder is a locale-formatted number.",
+    "%@ h" : {
+      "comment" : "Compact sunny-hour total used in rankings, widgets, and Map’s scale. The placeholder is a locale-formatted number.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ Stunde"
+            "value" : "%@ h"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ hour"
+            "value" : "%@ h"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ hora"
+            "value" : "%@ h"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ heure"
+            "value" : "%@ h"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ ora"
+            "value" : "%@ h"
           }
         },
         "ja" : {
@@ -407,13 +384,13 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ hora"
+            "value" : "%@ h"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ час"
+            "value" : "%@ ч"
           }
         },
         "zh-Hans" : {
@@ -430,73 +407,144 @@
         }
       }
     },
-    "%@ hours" : {
-      "comment" : "Sunny-hour count in the selected Map-place card. The placeholder is a locale-formatted number.",
+    "%@ h+" : {
+      "comment" : "Upper endpoint of Map’s sunny-hour scale. The placeholder is a locale-formatted number and the qualifier means that amount or more.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ Stunden"
+            "value" : "%@ h+"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ hours"
+            "value" : "%@ h+"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ horas"
+            "value" : "%@ h+"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ heures"
+            "value" : "%@ h+"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ ore"
+            "value" : "%@ h+"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@時間"
+            "value" : "%@時間以上"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@시간"
+            "value" : "%@시간+"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ horas"
+            "value" : "%@ h+"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ часов"
+            "value" : "%@ ч+"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@小时"
+            "value" : "%@小时以上"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@小時"
+            "value" : "%@小時以上"
+          }
+        }
+      }
+    },
+    "%@ of sun" : {
+      "comment" : "Sunny-hours status shown in Detail and Map. The placeholder is the already localized duration, such as “1 hour” or “5 hours”; keep it and position it naturally.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Sonne"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ of sun"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ de sol"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ de soleil"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ di sole"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@の日差し"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 햇빛"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ de sol"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ солнца"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@的日照"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@的日照"
           }
         }
       }
@@ -692,74 +740,193 @@
         }
       }
     },
-    "%lld h" : {
-      "comment" : "A label inside a Map dot that shows how many hours of sunshine are expected in a given location. The argument is the number of hours of sunshine expected.",
-      "isCommentAutoGenerated" : true,
+    "%lld hours" : {
+      "comment" : "Sunny-hour duration used inside the shared Detail and Map status. The integer placeholder is the number of sunny hourly forecast rows.",
       "localizations" : {
         "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld h"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Stunde"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld Stunden"
+                }
+              }
+            }
           }
         },
         "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld h"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld hour"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld hours"
+                }
+              }
+            }
           }
         },
         "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld h"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld hora"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld horas"
+                }
+              }
+            }
           }
         },
         "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld h"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld heure"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld heures"
+                }
+              }
+            }
           }
         },
         "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld h"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ora"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld ore"
+                }
+              }
+            }
           }
         },
         "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld h"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld時間"
+                }
+              }
+            }
           }
         },
         "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld h"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld시간"
+                }
+              }
+            }
           }
         },
         "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld h"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld hora"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld horas"
+                }
+              }
+            }
           }
         },
         "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld h"
+          "variations" : {
+            "plural" : {
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld часа"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld часов"
+                }
+              },
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld час"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld часа"
+                }
+              }
+            }
           }
         },
         "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 小时"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld小时"
+                }
+              }
+            }
           }
         },
         "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld 小時"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld小時"
+                }
+              }
+            }
           }
         }
       }
@@ -835,78 +1002,8 @@
         }
       }
     },
-    "10 h+" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10 h+"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10 h+"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10 h+"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10 h+"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10 h+"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10時間以上"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10시간+"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10 h+"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10 ч+"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10小时以上"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "10小時以上"
-          }
-        }
-      }
-    },
     "10-Day Sunny Hours" : {
-      "comment" : "Title for the chart that compares sunny hours across the next ten forecast days.",
+      "comment" : "Title for the chart that compares sunny hours across up to ten available forecast days.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -941,13 +1038,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "10日間の晴れ時間"
+            "value" : "10日間の日照時間"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "10일간 맑은 시간"
+            "value" : "10일간의 일조시간"
           }
         },
         "pt" : {
@@ -959,19 +1056,19 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Солнечные часы на 10 дней"
+            "value" : "Солнечное сияние на 10 дней"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "10天晴朗时段"
+            "value" : "未来 10 天的日照时数"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "10天晴朗時段"
+            "value" : "未來 10 天的日照時數"
           }
         }
       }
@@ -1012,13 +1109,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "10日間の晴れ時間は利用できません。"
+            "value" : "10日間の日照時間は利用できません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "10일간의 맑은 시간을 사용할 수 없습니다."
+            "value" : "10일간의 일조시간 정보를 사용할 수 없습니다."
           }
         },
         "pt" : {
@@ -1030,19 +1127,19 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Данные о солнечных часах на 10 дней недоступны."
+            "value" : "Данные о продолжительности солнечного сияния за 10 дней недоступны."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未来 10 天的晴朗时段不可用。"
+            "value" : "未来 10 天的日照时数数据不可用。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "未來 10 天的晴朗時段無法使用。"
+            "value" : "未來 10 天的日照時數資料無法使用。"
           }
         }
       }
@@ -1334,7 +1431,7 @@
       }
     },
     "Africa" : {
-      "comment" : "Localized name for the \"Africa\" city list section.",
+      "comment" : "Localized continent name used by Find Sun scopes.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -1478,7 +1575,7 @@
       }
     },
     "Asia" : {
-      "comment" : "Localized name for the \"Asia\" default city list.",
+      "comment" : "Localized continent name used by Find Sun scopes.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -1622,7 +1719,7 @@
       }
     },
     "Australia" : {
-      "comment" : "Localized name for the Australia geographic collection source.",
+      "comment" : "Localized continent name used by Find Sun scopes.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -1746,7 +1843,7 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Авто"
+            "value" : "Автоматическая"
           }
         },
         "zh-Hans" : {
@@ -1816,7 +1913,7 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Автоматически (чёрная)"
+            "value" : "Автоматическая (чёрная)"
           }
         },
         "zh-Hans" : {
@@ -1840,7 +1937,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Beste sonnige Dates"
+            "value" : "Beste sonnige Tage"
           }
         },
         "en" : {
@@ -1888,7 +1985,7 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Лучшие солнечные свидания"
+            "value" : "Лучшие солнечные дни"
           }
         },
         "zh-Hans" : {
@@ -2307,7 +2404,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Escolha uma cidade para usar como sua localização no Weather Atlas."
+            "value" : "Escolha uma cidade para usar como a sua localização no Weather Atlas."
           }
         },
         "ru" : {
@@ -2612,77 +2709,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "城市名稱"
-          }
-        }
-      }
-    },
-    "Clear" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Klar"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Clear"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Despejado"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dégagé"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sereno"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "快晴"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "맑음"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Limpo"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ясно"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "晴"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "晴朗"
           }
         }
       }
@@ -3041,77 +3067,6 @@
         }
       }
     },
-    "Cloudy" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bewölkt"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cloudy"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nublado"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nuageux"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nuvoloso"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "曇り"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "흐림"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nublado"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Облачно"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "多云"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "多雲"
-          }
-        }
-      }
-    },
     "Compare the cities you care about in Saved Places." : {
       "localizations" : {
         "de" : {
@@ -3183,6 +3138,7 @@
       }
     },
     "Continent" : {
+      "comment" : "One of the six world-region scopes used by Find Sun, such as Asia or Europe; it does not mean a mainland landmass.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -3241,13 +3197,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "大陆"
+            "value" : "大洲"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "大陸"
+            "value" : "大洲"
           }
         }
       }
@@ -3318,77 +3274,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "繼續"
-          }
-        }
-      }
-    },
-    "Côte d’Ivoire" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Côte d’Ivoire"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Côte d’Ivoire"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Costa de Marfil"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Côte d’Ivoire"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Costa d’Avorio"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "コートジボワール"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "코트디부아르"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Costa do Marfim"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Кот-д’Ивуар"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "科特迪瓦"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "象牙海岸"
           }
         }
       }
@@ -3967,79 +3852,6 @@
         }
       }
     },
-    "Current time" : {
-      "comment" : "Label for a vertical line marking the current time in the hourly chart.",
-      "extractionState" : "stale",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aktuelle Uhrzeit"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Current time"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hora actual"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Heure actuelle"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ora attuale"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "現在時刻"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "현재 시간"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hora atual"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Текущее время"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "当前时间"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "目前時間"
-          }
-        }
-      }
-    },
     "Current-location weather data is missing." : {
       "comment" : "Message shown when current-location weather data is missing.",
       "isCommentAutoGenerated" : true,
@@ -4112,77 +3924,6 @@
         }
       }
     },
-    "Daily Sunny Hours" : {
-      "comment" : "Title for the chart that shows sunny hours throughout the selected day.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tägliche Sonnenstunden"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Daily Sunny Hours"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Horas de sol diarias"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Heures d’ensoleillement quotidiennes"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ore di sole giornaliere"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "毎日の晴れ時間"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "일일 맑은 시간"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Horas de sol diárias"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ежедневные солнечные часы"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每日晴朗时段"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每日晴朗時段"
-          }
-        }
-      }
-    },
     "Daily sunny hours are unavailable for the selected date." : {
       "comment" : "Fallback shown inside the daily sunny-hours card when the selected date has no usable timeline.",
       "localizations" : {
@@ -4219,13 +3960,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "選択した日付の晴れ時間は利用できません。"
+            "value" : "選択した日付の日照時間は利用できません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "선택한 날짜의 맑은 시간을 사용할 수 없습니다."
+            "value" : "선택한 날짜의 일조시간 정보를 사용할 수 없습니다."
           }
         },
         "pt" : {
@@ -4237,19 +3978,19 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Данные о солнечных часах на выбранную дату недоступны."
+            "value" : "Данные о продолжительности солнечного сияния на выбранную дату недоступны."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "所选日期的晴朗时段不可用。"
+            "value" : "所选日期的日照时数数据不可用。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "所選日期的晴朗時段無法使用。"
+            "value" : "所選日期的日照時數資料無法使用。"
           }
         }
       }
@@ -4728,7 +4469,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apagar todos os locais salvos?"
+            "value" : "Apagar todos os locais guardados?"
           }
         },
         "ru" : {
@@ -4800,7 +4541,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Remover dos lugares salvos"
+            "value" : "Remover dos locais guardados"
           }
         },
         "ru" : {
@@ -5108,7 +4849,7 @@
       }
     },
     "Europe" : {
-      "comment" : "Localized name for the \"Europe\" default city list.",
+      "comment" : "Localized continent name used by Find Sun scopes.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -5323,6 +5064,7 @@
     },
     "Extra Large" : {
       "comment" : "Text size option.",
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5540,7 +5282,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Finde Sonne"
+            "value" : "Sonne finden"
           }
         },
         "en" : {
@@ -5552,55 +5294,55 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "encontrar sol"
+            "value" : "Encontrar sol"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trouver le soleil"
+            "value" : "Trouver du soleil"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trova Sole"
+            "value" : "Trova il sole"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "太陽を探す"
+            "value" : "日差しを探す"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "태양 찾기"
+            "value" : "햇살 찾기"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Encontre o Sol"
+            "value" : "Encontrar sol"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Найти Солнце"
+            "value" : "Найти солнце"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "寻找太阳"
+            "value" : "查找阳光"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "尋找太陽"
+            "value" : "尋找陽光"
           }
         }
       }
@@ -5749,6 +5491,77 @@
         }
       }
     },
+    "Find Sun Near Me" : {
+      "comment" : "Home Screen quick action that opens a nearby sunny-place search from the person’s current location.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonne in meiner Nähe finden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Find Sun Near Me"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encontrar sol cerca de mí"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trouver du soleil près de moi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trova il sole vicino a me"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "近くで日差しを探す"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내 주변의 햇살 찾기"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Encontrar sol perto de mim"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Найти солнце рядом"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "查找附近的阳光"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尋找附近的陽光"
+          }
+        }
+      }
+    },
     "Find Sun Near You" : {
       "localizations" : {
         "de" : {
@@ -5819,75 +5632,74 @@
         }
       }
     },
-    "Find the best sunny places in your saved locations for the selected forecast date." : {
-      "comment" : "A message describing a feature tip that allows users to find the best sunny places in their saved locations for a selected forecast date.",
-      "extractionState" : "stale",
+    "Find when the sun comes out in a city." : {
+      "comment" : "A header for the list of suggested cities.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Finde die sonnigsten Orte an deinen gespeicherten Standorten für das ausgewählte Vorhersagedatum."
+            "value" : "Finde heraus, wann in einer Stadt die Sonne scheint."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Find the best sunny places in your saved locations for the selected forecast date."
+            "value" : "Find when the sun comes out in a city."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Encuentra los lugares más soleados de tus ubicaciones guardadas para la fecha seleccionada."
+            "value" : "Descubre cuándo sale el sol en una ciudad."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trouvez les lieux les plus ensoleillés parmi vos emplacements enregistrés pour la date choisie."
+            "value" : "Découvrez quand le soleil apparaît dans une ville."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trova i luoghi più soleggiati nelle posizioni salvate per la data selezionata."
+            "value" : "Scopri quando esce il sole in una città."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "選択した予報日の保存場所から、最も晴れた場所を見つけます。"
+            "value" : "都市でいつ晴れるか確認します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "선택한 예보 날짜에 저장된 위치 중 가장 햇빛 좋은 곳을 찾아보세요."
+            "value" : "도시에서 언제 해가 나는지 확인하세요."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Encontre os locais mais ensolarados nas suas localizações guardadas para a data selecionada."
+            "value" : "Descubra quando o sol aparece numa cidade."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Найдите самые солнечные места среди сохранённых локаций на выбранную дату."
+            "value" : "Узнайте, когда в городе выглянет солнце."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "查找所选预报日期中已保存位置里最晴朗的地点。"
+            "value" : "查看某个城市何时会出太阳。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "尋找所選預報日期中已儲存位置裡最晴朗的地點。"
+            "value" : "查看某個城市何時會出太陽。"
           }
         }
       }
@@ -6051,37 +5863,37 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Encontrar lugares soleados"
+            "value" : "Buscando lugares soleados"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trouver des endroits ensoleillés"
+            "value" : "Recherche de lieux ensoleillés"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trovare posti soleggiati"
+            "value" : "Ricerca di luoghi soleggiati"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "日当たりの良い場所を探す"
+            "value" : "晴れた場所を検索中"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "햇볕이 잘 드는 곳 찾기"
+            "value" : "햇살 좋은 장소 찾는 중"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Encontrando lugares ensolarados"
+            "value" : "A procurar locais soalheiros"
           }
         },
         "ru" : {
@@ -6093,13 +5905,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "寻找阳光充足的地方"
+            "value" : "正在寻找阳光充足的地方"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "尋找陽光充足的地方"
+            "value" : "正在尋找陽光充足的地方"
           }
         }
       }
@@ -6296,7 +6108,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Procurando lugares ensolarados perto de %@"
+            "value" : "A procurar locais soalheiros perto de %@"
           }
         },
         "ru" : {
@@ -6463,77 +6275,6 @@
         }
       }
     },
-    "Fog" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nebel"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fog"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Niebla"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Brouillard"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nebbia"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "霧"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "안개"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nevoeiro"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Туман"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "雾"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "霧"
-          }
-        }
-      }
-    },
     "Follow System" : {
       "comment" : "Label for the text size option that",
       "isCommentAutoGenerated" : true,
@@ -6641,13 +6382,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "選択した日付の予測データは利用できません。"
+            "value" : "選択した日付の予報データは利用できません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "선택한 날짜에는 예측 데이터를 사용할 수 없습니다."
+            "value" : "선택한 날짜에는 예보 데이터를 사용할 수 없습니다."
           }
         },
         "pt" : {
@@ -6665,13 +6406,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "所选日期的预测数据不可用。"
+            "value" : "所选日期的预报数据不可用。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "所選日期的預測資料不可用。"
+            "value" : "所選日期的預報資料無法使用。"
           }
         }
       }
@@ -6719,7 +6460,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "예측 날짜"
+            "value" : "예보 날짜"
           }
         },
         "pt" : {
@@ -6737,13 +6478,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "预测日期"
+            "value" : "预报日期"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "預測日期"
+            "value" : "預報日期"
           }
         }
       }
@@ -7212,7 +6953,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "일조 시간 범례 가리기"
+            "value" : "일조시간 범례 가리기"
           }
         },
         "pt" : {
@@ -7224,13 +6965,13 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Скрыть легенду солнечных часов"
+            "value" : "Скрыть легенду солнечного сияния"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "隐藏日照时长图例"
+            "value" : "隐藏日照时数图例"
           }
         },
         "zh-Hant" : {
@@ -7454,6 +7195,77 @@
         }
       }
     },
+    "Keep Original Names" : {
+      "comment" : "Button that changes the app language but keeps Saved Place labels in their original language.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Originalnamen beibehalten"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep Original Names"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantener nombres originales"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conserver les noms d’origine"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mantieni i nomi originali"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "元の名前を保持"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "원래 이름 유지"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Manter nomes originais"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранить исходные названия"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留原始名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保留原始名稱"
+          }
+        }
+      }
+    },
     "Keep places you care about" : {
       "comment" : "A tip title for a feature that allows users to save",
       "isCommentAutoGenerated" : true,
@@ -7573,7 +7385,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Quilômetros (km)"
+            "value" : "Quilómetros (km)"
           }
         },
         "ru" : {
@@ -8376,77 +8188,6 @@
         }
       }
     },
-    "Loading Forecasts" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vorhersagen werden geladen"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Loading Forecasts"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cargando pronósticos"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chargement des prévisions"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Caricamento delle previsioni"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "予報を読み込み中"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "예보 불러오는 중"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "A carregar previsões"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Загрузка прогнозов"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在加载预报"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "正在載入預報"
-          }
-        }
-      }
-    },
     "Loading Location" : {
       "comment" : "A title displayed while reverse geocoding a location.",
       "isCommentAutoGenerated" : true,
@@ -8638,7 +8379,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A carregar as previsões dos locais salvos…"
+            "value" : "A carregar as previsões dos locais guardados…"
           }
         },
         "ru" : {
@@ -9137,7 +8878,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Gerir locais salvos"
+            "value" : "Gerir locais guardados"
           }
         },
         "ru" : {
@@ -9370,76 +9111,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "地圖資料"
-          }
-        }
-      }
-    },
-    "Map Dot · Sunny Hours" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kartenpunkt · Sonnenstunden"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Map Dot · Sunny Hours"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Punto del mapa · horas de sol"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Point sur la carte · heures de soleil"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Punto sulla mappa · ore di sole"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "地図上の点 · 日照時間"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "지도 점 · 햇빛 시간"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ponto no mapa · horas de sol"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Точка на карте · солнечные часы"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "地图标记 · 日照时间"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "地圖標記 · 日照時間"
           }
         }
       }
@@ -10655,77 +10326,6 @@
         }
       }
     },
-    "Missing weather data for %@." : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fehlende Wetterdaten für %@."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Missing weather data for %@."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Faltan datos meteorológicos de %@."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Données météo manquantes pour %@."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dati meteo mancanti per %@."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ の気象データがありません。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@의 날씨 데이터가 없습니다."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Faltam dados meteorológicos para %@."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Отсутствуют данные о погоде для %@."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 缺少天气数据。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 缺少天氣資料。"
-          }
-        }
-      }
-    },
     "Missing weather symbol for %@." : {
       "localizations" : {
         "de" : {
@@ -10797,7 +10397,7 @@
       }
     },
     "Name" : {
-      "comment" : "Placeholder text in a text field used to rename a city list.",
+      "comment" : "Placeholder text in a text field used to rename a saved place.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -11118,13 +10718,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "近隣の都市の天気予報は一時的に利用できなくなります。"
+            "value" : "近隣都市の天気予報は一時的に利用できません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "주변 도시 예측을 일시적으로 사용할 수 없습니다."
+            "value" : "주변 도시 예보를 일시적으로 사용할 수 없습니다."
           }
         },
         "pt" : {
@@ -11172,7 +10772,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lugares más soleados cerca"
+            "value" : "Lugares cercanos más soleados"
           }
         },
         "fr" : {
@@ -11232,7 +10832,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keine Prognosedaten"
+            "value" : "Keine Vorhersagetage"
           }
         },
         "en" : {
@@ -11262,13 +10862,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "予測日なし"
+            "value" : "予報日なし"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "예측 날짜 없음"
+            "value" : "예보 날짜 없음"
           }
         },
         "pt" : {
@@ -11286,13 +10886,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无预测日期"
+            "value" : "无预报日期"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無預測日期"
+            "value" : "無預報日期"
           }
         }
       }
@@ -11511,7 +11111,7 @@
       }
     },
     "No more sun today. Sun coming out %@." : {
-      "comment" : "A message that appears in the weather report when the sun will set today. The argument is a string that will be replaced with a date.",
+      "comment" : "Weather-report message used when today's sunshine has ended but a later forecast day has sun. The argument is a localized relative-day label.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -11606,7 +11206,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aucun lieu à proximité n’a davantage d’heures de soleil à cette date."
+            "value" : "Aucun lieu à proximité n’a davantage d’heures d’ensoleillement à cette date."
           }
         },
         "it" : {
@@ -11624,7 +11224,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 날짜에는 주변에 일조 시간이 더 긴 장소가 없습니다."
+            "value" : "이 날짜에는 주변에 일조시간이 더 긴 장소가 없습니다."
           }
         },
         "pt" : {
@@ -11636,13 +11236,13 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "В эту дату поблизости нет мест с большим количеством солнечных часов."
+            "value" : "В эту дату поблизости нет мест с большей продолжительностью солнечного сияния."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在此日期，附近没有日照时长更长的地点。"
+            "value" : "在此日期，附近没有日照时数更长的地点。"
           }
         },
         "zh-Hant" : {
@@ -11771,7 +11371,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Não existem previsões disponíveis para os locais salvos neste período."
+            "value" : "Não estão disponíveis previsões dos locais guardados para este período."
           }
         },
         "ru" : {
@@ -11795,7 +11395,7 @@
       }
     },
     "No Sun" : {
-      "comment" : "Description of sunny hours when there are no sunny hours in the forecast.",
+      "comment" : "Legend and status label for chart hours with no sunshine.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -11974,13 +11574,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この日は太陽がありません"
+            "value" : "この日は日差しがありません"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이날은 태양이 없습니다"
+            "value" : "이날은 해가 나지 않습니다"
           }
         },
         "pt" : {
@@ -11998,13 +11598,13 @@
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这一天没有太阳"
+            "value" : "这一天没有阳光"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "這一天沒有太陽"
+            "value" : "這一天沒有陽光"
           }
         }
       }
@@ -12153,7 +11753,7 @@
       }
     },
     "No sunny places for this date." : {
-      "comment" : "Empty-state message in Home when no city in the selected list meets the sunny threshold for the selected date.",
+      "comment" : "Empty-state message when no Find Sun result is sunny on the selected date.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -12225,7 +11825,7 @@
       }
     },
     "No sunny-hour comparison is available for this date." : {
-      "comment" : "Fallback shown in the Longest Sunny Hours card when no saved place has a usable comparison for the selected date.",
+      "comment" : "Fallback shown in the Best Sunny Places card when no saved place has a usable comparison for the selected date.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -12260,13 +11860,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この日付に利用できる晴れ時間の比較はありません。"
+            "value" : "この日付では日照時間を比較できません。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 날짜에 사용할 수 있는 맑은 시간 비교가 없습니다."
+            "value" : "이 날짜에는 일조시간을 비교할 수 없습니다."
           }
         },
         "pt" : {
@@ -12278,25 +11878,25 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Для этой даты сравнение солнечных часов недоступно."
+            "value" : "Для этой даты сравнение продолжительности солнечного сияния недоступно."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此日期没有可用的晴朗时段比较。"
+            "value" : "此日期没有可用的日照时数比较。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此日期沒有可用的晴朗時段比較。"
+            "value" : "此日期沒有可用的日照時數比較。"
           }
         }
       }
     },
     "North America" : {
-      "comment" : "Name for the \"North America\" city list section.",
+      "comment" : "Localized continent name used by Find Sun scopes.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -12363,77 +11963,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "北美洲"
-          }
-        }
-      }
-    },
-    "of sun" : {
-      "comment" : "Secondary phrase following the total sunny-hours value in the selected Map-place card.",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sonne"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "of sun"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "de sol"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "de soleil"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "di sole"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "の日差し"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "의 햇빛"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "de sol"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "солнца"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "的日照"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "的日照"
           }
         }
       }
@@ -12605,25 +12134,25 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ouvrir-Météo"
+            "value" : "Open-Meteo"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apri-Meteo"
+            "value" : "Open-Meteo"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "オープンメテオ"
+            "value" : "Open-Meteo"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "오픈메테오"
+            "value" : "Open-Meteo"
           }
         },
         "pt" : {
@@ -12635,96 +12164,24 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Открыть-Метео"
+            "value" : "Open-Meteo"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "开放式气象"
+            "value" : "Open-Meteo"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "開放式氣象"
-          }
-        }
-      }
-    },
-    "Partly Cloudy" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Teilweise bewölkt"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Partly Cloudy"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parcialmente nublado"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Partiellement nuageux"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parzialmente nuvoloso"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "時々曇り"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "구름 조금"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Parcialmente nublado"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Переменная облачность"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "局部多云"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "局部多雲"
+            "value" : "Open-Meteo"
           }
         }
       }
     },
     "Partly Sunny" : {
-      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13783,7 +13240,7 @@
       }
     },
     "Save a place to compare sunny hours." : {
-      "comment" : "Empty-library fallback shown in the Longest Sunny Hours card.",
+      "comment" : "Empty-library fallback shown in the Best Sunny Places card.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13818,13 +13275,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "場所を保存して晴れ時間を比較しましょう。"
+            "value" : "場所を保存して日照時間を比較しましょう。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "장소를 저장하여 맑은 시간을 비교하세요."
+            "value" : "장소를 저장하여 일조시간을 비교하세요."
           }
         },
         "pt" : {
@@ -13836,19 +13293,19 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Сохраните место, чтобы сравнить солнечные часы."
+            "value" : "Сохраните место, чтобы сравнить продолжительность солнечного сияния."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "保存地点以比较晴朗时段。"
+            "value" : "保存地点以比较日照时数。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "儲存地點以比較晴朗時段。"
+            "value" : "儲存地點以比較日照時數。"
           }
         }
       }
@@ -13973,13 +13430,13 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Salve as cidades de seu interesse para comparar o clima em um só lugar."
+            "value" : "Guarde as cidades que lhe interessam para comparar a meteorologia num só local."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Сохраняйте города, которые вам интересны, чтобы сравнивать их погоду в одном месте."
+            "value" : "Сохраняйте интересующие вас города, чтобы сравнивать их погоду в одном месте."
           }
         },
         "zh-Hans" : {
@@ -14183,7 +13640,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Salvo"
+            "value" : "Guardado"
           }
         },
         "ru" : {
@@ -14207,7 +13664,7 @@
       }
     },
     "Saved Places" : {
-      "comment" : "Name for the section of the widget extension that lists saved places.",
+      "comment" : "Tab and navigation title for the app's saved-place library.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -14255,7 +13712,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Locais salvos"
+            "value" : "Locais guardados"
           }
         },
         "ru" : {
@@ -14278,74 +13735,144 @@
         }
       }
     },
-    "Saved Places data is missing because the library could not be loaded: %@" : {
-      "comment" : "A localized string describing an error that might occur when loading saved places. The string includes a placeholder for an error message.",
-      "isCommentAutoGenerated" : true,
+    "Saved Places could not be loaded. Try again." : {
+      "comment" : "Error shown when the saved-places library cannot be loaded. Tell the user they can retry.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Daten zu gespeicherten Orten fehlen, weil die Bibliothek nicht geladen werden konnte: %@"
+            "value" : "Gespeicherte Orte konnten nicht geladen werden. Versuchen Sie es erneut."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Saved Places data is missing because the library could not be loaded: %@"
+            "value" : "Saved Places could not be loaded. Try again."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Faltan los datos de lugares guardados porque no se pudo cargar la biblioteca: %@"
+            "value" : "No se pudieron cargar los lugares guardados. Inténtalo de nuevo."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les données des lieux enregistrés sont manquantes, car la bibliothèque n’a pas pu être chargée : %@"
+            "value" : "Impossible de charger les lieux enregistrés. Réessayez."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mancano i dati dei luoghi salvati perché non è stato possibile caricare la libreria: %@"
+            "value" : "Impossibile caricare i luoghi salvati. Riprova."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ライブラリを読み込めなかったため、保存した場所のデータがありません：%@"
+            "value" : "保存した場所を読み込めませんでした。もう一度お試しください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "라이브러리를 불러올 수 없어 저장된 장소 데이터가 없습니다: %@"
+            "value" : "저장된 장소를 불러올 수 없습니다. 다시 시도하세요."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Faltam os dados dos locais salvos porque não foi possível carregar a biblioteca: %@"
+            "value" : "Não foi possível carregar os locais guardados. Tente novamente."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Данные сохранённых мест отсутствуют, потому что не удалось загрузить библиотеку: %@"
+            "value" : "Не удалось загрузить сохранённые места. Повторите попытку."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "由于无法加载资料库，缺少已保存地点数据：%@"
+            "value" : "无法加载已保存地点。请重试。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "由於無法載入資料庫，缺少已儲存地點資料：%@"
+            "value" : "無法載入已儲存地點。請再試一次。"
+          }
+        }
+      }
+    },
+    "Saved Places could not be updated. Try again." : {
+      "comment" : "Error shown when a saved-places change cannot be persisted. Tell the user they can retry.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gespeicherte Orte konnten nicht aktualisiert werden. Versuchen Sie es erneut."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saved Places could not be updated. Try again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron actualizar los lugares guardados. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de mettre à jour les lieux enregistrés. Réessayez."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile aggiornare i luoghi salvati. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存した場所を更新できませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 장소를 업데이트할 수 없습니다. 다시 시도하세요."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível atualizar os locais guardados. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось обновить сохранённые места. Повторите попытку."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法更新已保存地点。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法更新已儲存地點。請再試一次。"
           }
         }
       }
@@ -14398,7 +13925,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "As previsões dos locais salvos não estão disponíveis."
+            "value" : "As previsões dos locais guardados não estão disponíveis."
           }
         },
         "ru" : {
@@ -14823,7 +14350,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dados de pesquisa ausentes"
+            "value" : "Dados de pesquisa em falta"
           }
         },
         "ru" : {
@@ -15360,19 +14887,19 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Consulta lugares soleados cercanos desde Tu ubicación."
+            "value" : "Consulta lugares soleados cercanos desde «Tu ubicación»."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Découvrez les endroits ensoleillés près de vous depuis Votre position."
+            "value" : "Découvrez les endroits ensoleillés près de vous depuis «Votre position»."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scopri luoghi soleggiati vicino a te da La tua posizione."
+            "value" : "Scopri i luoghi soleggiati vicino a te dalla sezione «La tua posizione»."
           }
         },
         "ja" : {
@@ -15390,7 +14917,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Veja lugares soalheiros perto de si em A sua localização."
+            "value" : "Veja locais soalheiros perto de si em «A sua localização»."
           }
         },
         "ru" : {
@@ -15409,79 +14936,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在「你的位置」中查看附近陽光充足的地點。"
-          }
-        }
-      }
-    },
-    "See when the sun is out, compare places, and plan ahead." : {
-      "comment" : "A description of the app's primary features.",
-      "extractionState" : "stale",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sieh, wann die Sonne scheint, vergleiche Orte und plane voraus."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "See when the sun is out, compare places, and plan ahead."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mira cuándo hay sol, compara lugares y planifica con antelación."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Voyez quand le soleil brille, comparez les lieux et planifiez à l’avance."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scopri quando c’è il sole, confronta i luoghi e pianifica in anticipo."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "日差しの時間を確認し、場所を比較して、先の予定を立てましょう。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "햇빛이 비치는 시간을 확인하고 장소를 비교하며 미리 계획하세요."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Veja quando há sol, compare locais e planeie com antecedência."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Узнайте, когда светит солнце, сравните места и планируйте заранее."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查看阳光时间、比较地点并提前规划。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "查看陽光時間、比較地點並提前規劃。"
           }
         }
       }
@@ -15810,7 +15264,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "일조 시간 범례 표시"
+            "value" : "일조시간 범례 표시"
           }
         },
         "pt" : {
@@ -15822,91 +15276,19 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Показать легенду солнечных часов"
+            "value" : "Показать легенду солнечного сияния"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "显示日照时长图例"
+            "value" : "显示日照时数图例"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示日照時數圖例"
-          }
-        }
-      }
-    },
-    "Shows the sunny-hours colour scale" : {
-      "comment" : "A hint that appears when a user taps the \"Show Sunny Hours Legend\" button.",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Zeigt die Farbskala der Sonnenstunden"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Shows the sunny-hours colour scale"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Muestra la escala de colores de las horas de sol"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Affiche l’échelle de couleurs des heures d’ensoleillement"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostra la scala dei colori delle ore di sole"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "日照時間の色の目盛りを表示"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "일조 시간 색상 눈금을 표시합니다"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mostra a escala de cores das horas de sol"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Показывает цветовую шкалу солнечных часов"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "显示日照时长颜色刻度"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "顯示日照時數色階"
           }
         }
       }
@@ -15978,77 +15360,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "小"
-          }
-        }
-      }
-    },
-    "Snow" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schnee"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Snow"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nieve"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neige"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neve"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "雪"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "눈"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neve"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Снег"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "雪"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "雪"
           }
         }
       }
@@ -16126,7 +15437,7 @@
       }
     },
     "South America" : {
-      "comment" : "Name for the \"South America\" city list section.",
+      "comment" : "Localized continent name used by Find Sun scopes.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -16485,73 +15796,73 @@
         }
       }
     },
-    "Sun out in" : {
-      "comment" : "Detail hero prefix before a highlighted localized duration until direct sunlight begins.",
+    "Sun out in %@" : {
+      "comment" : "Sentence-cased sun status beneath the Detail hero. The placeholder is a localized duration until direct sunlight begins; keep it and position it naturally.",
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Die Sonne scheint in"
+            "value" : "Die Sonne scheint in %@"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sun out in"
+            "value" : "Sun out in %@"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Habrá sol en"
+            "value" : "Habrá sol en %@"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le soleil brillera dans"
+            "value" : "Le soleil brillera dans %@"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ci sarà il sole tra"
+            "value" : "Ci sarà il sole tra %@"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "日が出るまで"
+            "value" : "%@後に日が出ます"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "해가 나기까지"
+            "value" : "%@ 후에 해가 납니다"
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Haverá sol em"
+            "value" : "Haverá sol em %@"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Солнце выйдет через"
+            "value" : "Солнце выйдет через %@"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "阳光将在"
+            "value" : "%@后出太阳"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "陽光將在"
+            "value" : "%@後出太陽"
           }
         }
       }
@@ -16770,7 +16081,7 @@
       }
     },
     "Sunny" : {
-      "comment" : "A description of a sunny weather condition.",
+      "comment" : "Legend and status label for fully sunny chart hours.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -16841,78 +16152,6 @@
         }
       }
     },
-    "Sunny for %@ hours" : {
-      "comment" : "Sun-status message shown beneath the location hero for a non-today date. The number counts clear and partly-sunny daylight hours, which need not be consecutive.",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sonnig für %@ Stunden"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sunny for %@ hours"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Soleado durante %@ horas"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ensoleillé pendant %@ heures"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Soleggiato per %@ ore"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@時間晴れ"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@시간 동안 맑음"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ensolarado por %@ horas"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Солнечно %@ часов"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "晴朗 %@ 小时"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "晴朗 %@ 小時"
-          }
-        }
-      }
-    },
     "Sunny Hours" : {
       "comment" : "Title for a section that shows the hours of the day when it is sunny.",
       "isCommentAutoGenerated" : true,
@@ -16932,13 +16171,13 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Horas soleadas"
+            "value" : "Horas de sol"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Heures ensoleillées"
+            "value" : "Heures d’ensoleillement"
           }
         },
         "it" : {
@@ -16950,13 +16189,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "晴れの時間"
+            "value" : "日照時間"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "맑은 시간"
+            "value" : "일조시간"
           }
         },
         "pt" : {
@@ -16968,162 +16207,19 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Солнечные часы"
+            "value" : "Солнечное сияние"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "晴朗小时"
+            "value" : "日照时数"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "晴朗小時"
-          }
-        }
-      }
-    },
-    "Sunny hours colour scale" : {
-      "comment" : "A label describing the content of the map's sunny-hours legend.",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Farbskala der Sonnenstunden"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sunny hours colour scale"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Escala de colores de las horas de sol"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Échelle de couleurs des heures d’ensoleillement"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scala dei colori delle ore di sole"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "日照時間の色の目盛り"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "일조 시간 색상 눈금"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Escala de cores das horas de sol"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Цветовая шкала солнечных часов"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "日照时长颜色刻度"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "日照時數色階"
-          }
-        }
-      }
-    },
-    "Sunny Hours for %@: %@" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sonnenstunden für %@: %@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sunny Hours for %@: %@"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Horas de sol para %@: %@"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Heures de soleil pour %@ : %@"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ore di sole per %@: %@"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@の日照時間：%@"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@의 맑은 시간: %@"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Horas de sol para %@: %@"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Солнечные часы для %@: %@"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 的日照时间：%@"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 的日照時間：%@"
+            "value" : "日照時數"
           }
         }
       }
@@ -17413,79 +16509,6 @@
         }
       }
     },
-    "Tap anywhere on the map to query that area, or use Find Sun to search more broadly." : {
-      "comment" : "A tip message for the \"Map\" contextual feature tip.",
-      "extractionState" : "stale",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tippe auf die Karte, um das Gebiet abzufragen, oder nutze „Sonne suchen“ für eine umfassendere Suche."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tap anywhere on the map to query that area, or use Find Sun to search more broadly."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Toca cualquier lugar del mapa para consultar esa zona o usa Buscar sol para ampliar la búsqueda."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Touchez la carte pour interroger cette zone, ou utilisez Rechercher le soleil pour élargir la recherche."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tocca un punto sulla mappa per analizzare l’area oppure usa Trova il sole per cercare più ampiamente."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "地図上の場所をタップしてそのエリアを検索するか、「晴れた場所を検索」で広く探します。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "지도에서 아무 곳이나 탭해 해당 지역을 검색하거나 햇빛 찾기로 더 넓게 검색하세요."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Toque em qualquer ponto do mapa para consultar essa área ou use Encontrar sol para pesquisar mais amplamente."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Нажмите в любом месте карты, чтобы проверить область, или используйте «Искать солнце» для более широкого поиска."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "点击地图上的任意位置查询该区域，或使用“查找阳光”进行更广泛的搜索。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "點選地圖上的任意位置查詢該區域，或使用「尋找陽光」進行更廣泛的搜尋。"
-          }
-        }
-      }
-    },
     "Tap anywhere on the map to search that area. Or use the Find Sun button to search more broadly." : {
       "localizations" : {
         "de" : {
@@ -17770,79 +16793,6 @@
         }
       }
     },
-    "the selected place" : {
-      "comment" : "Placeholder text for a city name when the user hasn't selected a specific place.",
-      "extractionState" : "stale",
-      "isCommentAutoGenerated" : true,
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "der ausgewählte Ort"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "the selected place"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "el lugar seleccionado"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "le lieu sélectionné"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "il luogo selezionato"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "選択した場所"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "선택한 장소"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "o local selecionado"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "выбранное место"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所选地点"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "所選地點"
-          }
-        }
-      }
-    },
     "Theme" : {
       "localizations" : {
         "de" : {
@@ -17909,150 +16859,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "主題"
-          }
-        }
-      }
-    },
-    "There’s no more sun today. Sun coming out %@." : {
-      "comment" : "Detail-header status when today’s sunny hours have ended but a later forecast day has sunshine. The argument completes ‘Sun coming out …’ with a locale-formatted relative day, such as ‘tomorrow’ or ‘in 2 days’.",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Heute scheint keine Sonne mehr. %@ kommt die Sonne heraus."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "There’s no more sun today. Sun coming out %@."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hoy ya no habrá más sol. El sol saldrá %@."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Il n’y aura plus de soleil aujourd’hui. Le soleil fera son apparition %@."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Oggi non ci sarà più sole. Il sole uscirà %@."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今日はもう日が出ません。次に日が出るのは%@です。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "오늘은 더 이상 해가 나지 않습니다. %@에는 해가 납니다."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hoje não haverá mais sol. O sol aparecerá %@."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Сегодня солнца больше не будет. Солнце выглянет %@."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今天不会再有阳光。%@会出太阳。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今天不會再有陽光。%@會出太陽。"
-          }
-        }
-      }
-    },
-    "There’s no sun today. Sun coming out %@." : {
-      "comment" : "Detail-header status when today has no sunny hours but a later forecast day has sunshine. The argument completes ‘Sun coming out …’ with a locale-formatted relative day, such as ‘tomorrow’ or ‘in 2 days’.",
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Heute scheint keine Sonne. %@ kommt die Sonne heraus."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "There’s no sun today. Sun coming out %@."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hoy no habrá sol. El sol saldrá %@."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Il n’y aura pas de soleil aujourd’hui. Le soleil fera son apparition %@."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Oggi non ci sarà sole. Il sole uscirà %@."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今日は日が出ません。次に日が出るのは%@です。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "오늘은 해가 나지 않습니다. %@에는 해가 납니다."
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hoje não haverá sol. O sol aparecerá %@."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Сегодня солнца не будет. Солнце выглянет %@."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今天没有阳光。%@会出太阳。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今天沒有陽光。%@會出太陽。"
           }
         }
       }
@@ -18318,7 +17124,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Isso remove todos os locais salvos. Esta ação não pode ser desfeita."
+            "value" : "Isto remove todos os locais guardados. Esta ação não pode ser anulada."
           }
         },
         "ru" : {
@@ -18370,7 +17176,7 @@
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Questa operazione rimuoverà i luoghi, le preferenze e il meteo memorizzati nella cache salvati."
+            "value" : "Questa operazione rimuoverà i luoghi salvati, le preferenze e i dati meteo memorizzati nella cache."
           }
         },
         "ja" : {
@@ -18388,7 +17194,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Isso remove seus lugares salvos, preferências e clima em cache."
+            "value" : "Isto remove os seus locais guardados, as preferências e os dados meteorológicos em cache."
           }
         },
         "ru" : {
@@ -18554,7 +17360,7 @@
       }
     },
     "Times shown in %@ local time (%@)" : {
-      "comment" : "A description of a weather chart's time The argument is the string “UTC%1$arg%2$arg” or the string “UTC%1$arg%2$arg:%3$arg”.",
+      "comment" : "Disclosure that chart times use a place's local time. The first argument is the place name and the second is its formatted UTC offset.",
       "isCommentAutoGenerated" : true,
       "localizations" : {
         "de" : {
@@ -18801,13 +17607,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "選択した都市で晴れている昼間の時間を確認します。"
+            "value" : "選択した都市の日中の日照時間を確認します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "선택한 도시에서 낮 동안 맑은 시간을 확인하세요."
+            "value" : "선택한 도시의 낮 시간대 일조시간을 확인하세요."
           }
         },
         "pt" : {
@@ -18819,19 +17625,19 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Отслеживайте солнечные дневные часы в выбранном городе."
+            "value" : "Отслеживайте продолжительность солнечного сияния в дневное время в выбранном городе."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "追踪所选城市白天的晴朗时段。"
+            "value" : "追踪所选城市白天的日照时数。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "追蹤所選城市白天的晴朗時段。"
+            "value" : "追蹤所選城市白天的日照時數。"
           }
         }
       }
@@ -18872,13 +17678,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "選択した都市の晴れの時間を確認します。"
+            "value" : "選択した都市の日照時間を確認します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "선택한 도시의 맑은 시간을 확인하세요."
+            "value" : "선택한 도시의 일조시간을 확인하세요."
           }
         },
         "pt" : {
@@ -18890,19 +17696,19 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Отслеживайте солнечные часы в выбранном городе."
+            "value" : "Отслеживайте продолжительность солнечного сияния в выбранном городе."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "追踪所选城市的晴朗时段。"
+            "value" : "追踪所选城市的日照时数。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "追蹤所選城市的晴朗時段。"
+            "value" : "追蹤所選城市的日照時數。"
           }
         }
       }
@@ -18977,6 +17783,290 @@
         }
       }
     },
+    "Translate Names" : {
+      "comment" : "Button that opts in to translating Saved Place names during a language change.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namen übersetzen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Translate Names"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traducir nombres"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traduire les noms"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traduci nomi"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "名前を翻訳"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이름 번역"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traduzir nomes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перевести названия"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译名称"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻譯名稱"
+          }
+        }
+      }
+    },
+    "Translate Saved Place Names?" : {
+      "comment" : "Confirmation title shown after selecting a new app language.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Namen gespeicherter Orte übersetzen?"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Translate Saved Place Names?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Traducir los nombres de lugares guardados?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traduire les noms des lieux enregistrés ?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tradurre i nomi dei luoghi salvati?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存した場所の名前を翻訳しますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 장소 이름을 번역할까요?"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traduzir os nomes dos locais guardados?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перевести названия сохранённых мест?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻译已保存地点的名称？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻譯已儲存地點的名稱？"
+          }
+        }
+      }
+    },
+    "Translate the names of your saved places to %@? Names without a translation stay unchanged." : {
+      "comment" : "Language-change confirmation message. The argument is the target language name.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Namen deiner gespeicherten Orte in %@ übersetzen? Namen ohne Übersetzung bleiben unverändert."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Translate the names of your saved places to %@? Names without a translation stay unchanged."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Traducir los nombres de tus lugares guardados al %@? Los nombres sin traducción no cambiarán."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traduire les noms de vos lieux enregistrés en %@ ? Les noms sans traduction restent inchangés."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tradurre i nomi dei luoghi salvati in %@? I nomi senza traduzione restano invariati."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存した場所の名前を%@に翻訳しますか？翻訳できない名前は変更されません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 장소 이름을 %@로 번역할까요? 번역할 수 없는 이름은 변경되지 않습니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Traduzir os nomes dos seus locais guardados para %@? Os nomes sem tradução permanecem inalterados."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перевести названия сохранённых мест на %@? Названия без перевода останутся без изменений."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要将已保存地点的名称翻译成%@吗？没有译文的名称将保持不变。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要將已儲存地點的名稱翻譯成%@嗎？沒有譯文的名稱將保持不變。"
+          }
+        }
+      }
+    },
+    "Translated saved-place names could not be saved. Original names are unchanged." : {
+      "comment" : "Error shown if translated Saved Place names cannot be persisted.",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Übersetzte Namen gespeicherter Orte konnten nicht gespeichert werden. Die Originalnamen bleiben unverändert."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Translated saved-place names could not be saved. Original names are unchanged."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudieron guardar los nombres traducidos de los lugares guardados. Los nombres originales no han cambiado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les noms traduits des lieux enregistrés n’ont pas pu être enregistrés. Les noms d’origine restent inchangés."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non è stato possibile salvare i nomi tradotti dei luoghi salvati. I nomi originali non sono cambiati."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "翻訳した保存場所の名前を保存できませんでした。元の名前は変更されていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "번역된 저장 장소 이름을 저장할 수 없습니다. 원래 이름은 변경되지 않았습니다."
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível guardar os nomes traduzidos dos locais guardados. Os nomes originais não foram alterados."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось сохранить переведённые названия сохранённых мест. Исходные названия не изменены."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法保存已翻译的已保存地点名称。原始名称未更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法儲存已翻譯的已儲存地點名稱。原始名稱未變更。"
+          }
+        }
+      }
+    },
     "Try Again" : {
       "localizations" : {
         "de" : {
@@ -19043,77 +18133,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "再試一次"
-          }
-        }
-      }
-    },
-    "Türkiye" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Türkei"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Türkiye"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Turquía"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Türkiye"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Turchia"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "トルコ"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "튀르키예"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Turquia"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Турция"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "土耳其"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "土耳其"
           }
         }
       }
@@ -19568,7 +18587,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Utilisez votre position pour trouver des lieux à proximité avec davantage d’heures de soleil."
+            "value" : "Utilisez votre position pour trouver des lieux à proximité avec davantage d’heures d’ensoleillement."
           }
         },
         "it" : {
@@ -19586,7 +18605,7 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "현재 위치를 사용하여 주변에서 일조 시간이 더 긴 장소를 찾습니다."
+            "value" : "현재 위치를 사용하여 주변에서 일조시간이 더 긴 장소를 찾습니다."
           }
         },
         "pt" : {
@@ -19598,13 +18617,13 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Используйте геопозицию, чтобы найти поблизости места с большим количеством солнечных часов."
+            "value" : "Используйте геопозицию, чтобы найти поблизости места с большей продолжительностью солнечного сияния."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用当前位置查找附近日照时长更长的地点。"
+            "value" : "使用当前位置查找附近日照时数更长的地点。"
           }
         },
         "zh-Hant" : {
@@ -19620,7 +18639,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Verwenden Sie Ihren Standort, um die Sonnenstunden-Zeitleiste des Tages anzuzeigen."
+            "value" : "Verwenden Sie Ihren Standort, um die Sonnenstunden im Tagesverlauf anzuzeigen."
           }
         },
         "en" : {
@@ -19632,19 +18651,19 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Utilice su ubicación para ver la línea de tiempo de las horas soleadas del día."
+            "value" : "Usa tu ubicación para ver la cronología de las horas de sol del día."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Utilisez votre position pour voir la chronologie des heures ensoleillées de la journée."
+            "value" : "Utilisez votre position pour voir la chronologie des heures d’ensoleillement de la journée."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Usa la tua posizione per vedere la cronologia delle ore soleggiate del giorno."
+            "value" : "Usa la tua posizione per vedere la cronologia delle ore di sole del giorno."
           }
         },
         "ja" : {
@@ -19656,31 +18675,31 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "현재 위치를 사용하여 하루의 맑은 시간 타임라인을 확인하세요."
+            "value" : "현재 위치를 사용하여 하루의 일조 시간대를 확인하세요."
           }
         },
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Use sua localização para ver a linha do tempo das horas ensolaradas do dia."
+            "value" : "Use a sua localização para ver a linha temporal das horas de sol do dia."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Используйте свое местоположение, чтобы увидеть хронологию дня в солнечные часы."
+            "value" : "Используйте геопозицию, чтобы увидеть график солнечного сияния в течение дня."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用您的位置查看当天的晴朗时间线。"
+            "value" : "使用当前位置查看当天各时段的日照情况。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "使用您的位置查看當天的晴朗時間線。"
+            "value" : "使用目前位置查看當天各時段的日照情況。"
           }
         }
       }
@@ -20376,7 +19395,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Faltam os dados meteorológicos de %@ porque a solicitação falhou."
+            "value" : "Faltam os dados meteorológicos de %@ porque o pedido falhou."
           }
         },
         "ru" : {
@@ -20590,7 +19609,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Fontes legais do clima"
+            "value" : "Fontes legais da meteorologia"
           }
         },
         "ru" : {
@@ -20668,7 +19687,7 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Погода недоступна。"
+            "value" : "Погода недоступна."
           }
         },
         "zh-Hans" : {
@@ -20827,77 +19846,6 @@
         }
       }
     },
-    "Windy" : {
-      "extractionState" : "stale",
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Windig"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Windy"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ventoso"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Venteux"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ventoso"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "強風"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "바람"
-          }
-        },
-        "pt" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vento"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ветрено"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有风"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "有風"
-          }
-        }
-      }
-    },
     "World city catalog data is missing." : {
       "comment" : "Error message shown when the",
       "isCommentAutoGenerated" : true,
@@ -21019,7 +19967,7 @@
         "pt" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sua localização"
+            "value" : "A sua localização"
           }
         },
         "ru" : {

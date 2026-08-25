@@ -2,8 +2,8 @@
 //  Settings.swift
 //  Weather
 //
-//  Purpose: Presents Weather Atlas's warm, compact settings hierarchy using
-//  the place-owned architecture.
+//  Purpose: Presents preferences, provider attribution, onboarding replay,
+//  saved-name translation choices, and the app reset workflow.
 //
 
 import SwiftUI
@@ -21,7 +21,7 @@ struct SettingsView: View {
     /// Restarts the guided onboarding without clearing user data.
     let onReplayTutorial: () -> Void
 
-    // MARK: Persisted preferences and presentation state
+    // MARK: - Persisted Preferences and Presentation State
 
     @AppStorage("temperatureUnit")
     private var temperatureUnit = TemperatureUnit.defaultRawValue
@@ -41,6 +41,10 @@ struct SettingsView: View {
     @State private var showsCopiedNotice = false
     @State private var showsResetAlert = false
     @State private var resetError: SettingsResetError?
+    /// A language selection is held here until the person decides whether
+    /// Saved Place labels should follow it.
+    @State private var pendingLanguageCode: String?
+    @State private var translatingPlaceNamesToLanguageCode: String?
 
     /// Converts the stored integer to a valid domain value, guarding against a
     /// stale value from an older app release or direct UserDefaults editing.
@@ -48,14 +52,14 @@ struct SettingsView: View {
         AppTextSizeLevel.level(clamping: appTextSizeLevel)
     }
 
-    // MARK: Root navigation and safety prompts
+    // MARK: - Root Navigation and Safety Prompts
 
     var body: some View {
         NavigationStack {
             settingsForm
                 // A custom principal view keeps this sheet's title vertically
                 // aligned with its native close button without hiding the bar.
-                .navigationTitle("")
+                .navigationTitle(Text(verbatim: ""))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .principal) {
@@ -105,9 +109,27 @@ struct SettingsView: View {
         } message: { error in
             Text(error.message)
         }
+        .alert(
+            "Translate Saved Place Names?",
+            isPresented: showsPlaceNameTranslationPrompt
+        ) {
+            Button("Translate Names") {
+                commitPendingLanguageChange(translatingSavedPlaceNames: true)
+            }
+            Button("Keep Original Names") {
+                commitPendingLanguageChange(translatingSavedPlaceNames: false)
+            }
+            Button("Cancel", role: .cancel) {
+                pendingLanguageCode = nil
+            }
+        } message: {
+            Text(
+                "Translate the names of your saved places to \(pendingLanguageDisplayName)? Names without a translation stay unchanged."
+            )
+        }
     }
 
-    // MARK: Main settings categories
+    // MARK: - Main Settings Categories
 
     /// The main form contains navigational summaries; detailed controls live
     /// in destination forms so the initial screen remains easy to scan.
@@ -199,7 +221,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Destination forms
+    // MARK: - Destination Forms
 
     /// Value-based destination selection keeps navigation state in one enum
     /// instead of five separate Boolean flags.
@@ -273,7 +295,7 @@ struct SettingsView: View {
                         languageDisplayName(for: code),
                         isSelected: appLanguage == code
                     ) {
-                        appLanguage = code
+                        requestLanguageChange(to: code)
                     }
                 }
             }
@@ -395,7 +417,7 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Reusable rows and formatting helpers
+    // MARK: - Reusable Rows and Formatting Helpers
 
     /// Applies the shared background treatment to every pushed settings form.
     private func settingsDestinationForm<Content: View>(
@@ -672,7 +694,93 @@ struct SettingsView: View {
         }
     }
 
-    // MARK: Reset handling
+    // MARK: - Saved-Place Name Translation
+
+    /// Defers changing the app language until the person has chosen how saved
+    /// place labels should behave in that language.
+    private func requestLanguageChange(to code: String) {
+        guard code != appLanguage,
+              translatingPlaceNamesToLanguageCode == nil else {
+            return
+        }
+        pendingLanguageCode = code
+    }
+
+    private var showsPlaceNameTranslationPrompt: Binding<Bool> {
+        Binding(
+            get: { pendingLanguageCode != nil },
+            set: { isPresented in
+                if !isPresented { pendingLanguageCode = nil }
+            }
+        )
+    }
+
+    private var pendingLanguageDisplayName: String {
+        languageDisplayName(for: pendingLanguageCode ?? appLanguage)
+    }
+
+    /// Commits the selected language in both cases. Translation is opt-in for
+    /// that language change; declining suppresses every saved-place translated
+    /// label and restores the original saved text instead.
+    private func commitPendingLanguageChange(
+        translatingSavedPlaceNames: Bool
+    ) {
+        guard let targetLanguageCode = pendingLanguageCode else { return }
+        pendingLanguageCode = nil
+        appLanguage = targetLanguageCode
+        SavedPlaceNameTranslationPreference.setEnabled(
+            translatingSavedPlaceNames
+        )
+
+        guard translatingSavedPlaceNames,
+              !model.placesStore.allPlaces.isEmpty else {
+            return
+        }
+        translatingPlaceNamesToLanguageCode = targetLanguageCode
+        Task {
+            await translateSavedPlaceNames(to: targetLanguageCode)
+        }
+    }
+
+    /// Resolves the original saved label — either the city name or the person's
+    /// rename — only through the bundled GeoNames data. A label with no GeoNames
+    /// match is deliberately omitted, which keeps the original visible.
+    private func translateSavedPlaceNames(to targetLanguageCode: String) async {
+        guard translatingPlaceNamesToLanguageCode == targetLanguageCode else {
+            return
+        }
+        var translatedNames: [SavedPlace.ID: String] = [:]
+        let targetLocale = Locale(identifier: targetLanguageCode)
+        for place in model.placesStore.allPlaces {
+            guard let translatedName = await CityNameLocalizationCatalog.localizedName(
+                matchingSavedPlaceLabel: place.translationSourceName,
+                locale: targetLocale
+            ) else {
+                continue
+            }
+            translatedNames[place.id] = translatedName
+        }
+        do {
+            try model.placesStore.replaceTranslatedDisplayNames(
+                translatedNames,
+                languageIdentifier: targetLanguageCode
+            )
+        } catch {
+            resetError = SettingsResetError(
+                message: localizedString(
+                    "Translated saved-place names could not be saved. Original names are unchanged.",
+                    locale: targetLocale
+                )
+            )
+        }
+        finishSavedPlaceNameTranslation()
+    }
+
+    private func finishSavedPlaceNameTranslation() {
+        translatingPlaceNamesToLanguageCode = nil
+    }
+
+    // MARK: - Reset Handling
 
     /// Adapts optional error state to the Boolean binding expected by `alert`.
     private var showsResetError: Binding<Bool> {
@@ -693,7 +801,7 @@ struct SettingsView: View {
             try onResetApp()
         } catch {
             resetError = SettingsResetError(
-                message: localizedPlacesErrorDescription(error)
+                message: localizedPlacesErrorDescription(error, locale: locale)
             )
         }
     }
@@ -703,8 +811,8 @@ struct SettingsView: View {
 
 /// Apple-provided attribution mark with a native legal-page link.
 ///
-/// Restored from the pre-redesign app so the official Apple Weather attribution
-/// remains visible and directly opens the provider's legal page.
+/// Keeps Apple Weather's official attribution visible and links directly to
+/// the provider's legal page.
 private struct WeatherAttributionView: View {
     let attribution: WeatherAttribution
 
@@ -749,8 +857,6 @@ private struct WeatherAttributionView: View {
             }
             .contentShape(.rect)
         }
-
-
     }
 
     /// WeatherKit provides separate light and dark artwork, so select the one

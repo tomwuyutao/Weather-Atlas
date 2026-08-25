@@ -2,47 +2,71 @@
 //  WidgetDataStore.swift
 //  Weather
 //
-//  Purpose: Persists app-owned city identity and widget-owned weather snapshots.
+//  Purpose: Persists app-owned widget configuration and shared widget models.
 //
 //  Reading guide: the main app and widget extension are separate processes.
 //  They cannot share in-memory Swift objects, so this file defines Codable
-//  payloads and uses an App Group UserDefaults suite as their small shared disk
-//  mailbox. The catalog says which cities exist; snapshots hold widget-fetched
-//  weather for those cities.
+//  payloads. The App Group contains only the catalog of selectable cities; the
+//  widget extension keeps its WeatherKit snapshots in its own private storage.
 //
 
 import Foundation
 import WidgetKit
 
+// MARK: - Cross-Process Reset State
+
+/// A small App Group marker shared by the app and widget extension.
+///
+/// Widget forecasts live in the extension's private defaults, which the host
+/// app cannot delete. Advancing this value makes every older private snapshot
+/// ineligible after Reset App, while a normal first installation has no epoch.
+enum WidgetResetEpoch {
+    private static let storageKey = "weatherAtlas.widgetResetEpoch"
+
+    static var current: String? {
+        UserDefaults(suiteName: WidgetDataStore.appGroupIdentifier)?.string(
+            forKey: storageKey
+        )
+    }
+
+#if !WEATHER_WIDGETS
+    static func advance() {
+        UserDefaults(suiteName: WidgetDataStore.appGroupIdentifier)?.set(
+            UUID().uuidString,
+            forKey: storageKey
+        )
+    }
+#endif
+}
+
 // MARK: - Widget Data Models
 
-/// One normalized daylight-hour condition persisted for the widget charts.
+/// The exact WeatherKit presentation data required by widget views.
+///
+/// `condition` preserves WeatherKit's raw condition through the shared app
+/// wrapper, while `symbolName` is the SF Symbol supplied by WeatherKit. Widgets
+/// must draw that original symbol rather than choosing a replacement icon.
+struct WidgetWeatherPresentation: Codable, Hashable {
+    let condition: AppWeatherCondition
+    let symbolName: String
+}
+
+/// One daylight-hour WeatherKit record persisted for the widget charts.
 ///
 /// The date keeps repeated local clock hours distinct on daylight-saving
 /// transitions, while the local hour makes chart layout independent of the
-/// device's timezone. Widgets used to retain only sunny and partly-sunny
-/// buckets, which made rain and drizzle indistinguishable from no sun.
+/// device's timezone. `weather` remains optional only so pre-source-payload
+/// snapshots decode; those snapshots are refreshed before presentation.
 struct WidgetHourlyCondition: Codable, Hashable, Identifiable {
     /// Absolute forecast instant; unique even when a local hour repeats.
     let date: Date
     /// City-local clock hour used by the chart layout.
     let hour: Int
-    /// The shared app/widget semantic weather condition.
-    let condition: AppWeatherCondition
+    /// Exact source condition and symbol from WeatherKit.
+    var weather: WidgetWeatherPresentation? = nil
 
     /// Stable view identity derived from the source forecast instant.
     var id: Date { date }
-}
-
-// MARK: - Widget Weather Presentation Policy
-
-extension AppWeatherCondition {
-    /// Widgets retain the legacy `.partlySunny` raw value solely so existing
-    /// App Group payloads remain decodable. It now represents the same
-    /// non-sunny state as partly cloudy when rendered or counted.
-    nonisolated var widgetPresentationCondition: AppWeatherCondition {
-        self == .partlySunny ? .partlyCloudy : self
-    }
 }
 
 /// App-group city payload used for widget selection and current rendering.
@@ -55,28 +79,18 @@ struct WidgetDataCity: Codable, Hashable, Identifiable {
     let cityName: String
     /// Timezone identifier required for local-day calculations.
     let timeZoneIdentifier: String?
-    /// Optional latitude retained for deep links and diagnostics.
+    /// Latitude used by direct WeatherKit requests and deep links.
     let latitude: Double?
-    /// Optional longitude retained for deep links and diagnostics.
+    /// Longitude paired with `latitude` for requests and deep links.
     let longitude: Double?
-    /// Daylight hours in the selected current-day forecast.
-    /// Stored as city-local clock integers rather than absolute Dates so compact
-    /// charts remain simple.
-    let daytimeHours: [Int]
-    /// Current-day hours classified as sunny.
-    let sunnyHours: [Int]
-    /// Legacy current-day partly-sunny bucket. It remains Codable for payloads
-    /// written by earlier versions, but is no longer counted as sunny or drawn
-    /// with the yellow timeline color.
-    let partlySunnyHours: [Int]
-    /// Current-day normalized conditions for every available daylight hour.
-    /// Optional keeps previously persisted three-bucket widget data decodable
-    /// until WidgetKit performs its next forecast refresh.
+    /// Current-day WeatherKit source data for every available daylight hour.
+    /// Optional supports decoding snapshots written before source condition and
+    /// symbol data were persisted.
     var hourlyConditions: [WidgetHourlyCondition]? = nil
-    /// Current condition normalized by the same resolver as the main app.
-    /// Optional keeps older snapshots decodable; the widget refreshes them
-    /// before rendering weather content because the semantic value is missing.
-    var currentCondition: AppWeatherCondition? = nil
+    /// Exact current WeatherKit condition and symbol.
+    /// Optional supports decoding snapshots written before source data was
+    /// persisted; the widget refreshes them before rendering weather content.
+    var currentWeather: WidgetWeatherPresentation? = nil
     /// Available current/future rows for the large chart, capped at ten by its
     /// presentation capacity. A shorter valid forecast remains displayable.
     var sunnyWindowDays: [WidgetSunnyWindowDay]? = nil
@@ -113,58 +127,14 @@ enum WidgetDefaultLocationKind: String, Codable, Hashable {
 struct WidgetSunnyWindowDay: Codable, Hashable, Identifiable {
     /// Literal selection date represented by this row.
     let date: Date
-    /// Fully sunny hours for the day.
-    let sunnyHours: [Int]
-    /// Legacy partly-sunny bucket retained for backward-compatible decoding.
-    /// Its values are now rendered as neutral partly-cloudy intervals.
-    let partlySunnyHours: [Int]
-    /// Normalized conditions for every available daylight hour in this row.
-    /// Optional supports snapshots written before detailed condition charts.
+    /// Exact WeatherKit source data for every available daylight hour in this
+    /// row. Optional supports snapshots written before detailed source data.
     var hourlyConditions: [WidgetHourlyCondition]? = nil
 
     /// Uses the literal local date as row identity.
     /// `Identifiable` gives SwiftUI a stable key when it renders rows in a
     /// `ForEach`.
     var id: Date { date }
-}
-
-/// Timestamped per-city cache used when WidgetKit runs between app launches.
-/// A snapshot is widget-owned weather data; it is separate from the catalog so
-/// the main app can update Saved Places without writing stale forecast values.
-struct WidgetWeatherSnapshot: Codable, Hashable {
-    /// Main-app fetch time used to enforce snapshot freshness.
-    let fetchedAt: Date
-    /// The destination-local calendar day represented by all current-day
-    /// fields. An absolute fetch timestamp alone is insufficient around local
-    /// midnight, where yesterday's data can still be only minutes old.
-    let representedLocalDate: Date?
-    /// City timezone copied from the catalog at fetch time.
-    let timeZoneIdentifier: String?
-    /// Coordinate used for the WeatherKit request. Keeping this with the
-    /// snapshot prevents a moved Current Location widget from reusing weather
-    /// fetched for an earlier physical location.
-    var latitude: Double? = nil
-    /// Longitude paired with `latitude` for snapshot identity validation.
-    var longitude: Double? = nil
-    /// Cached condition normalized by the shared app/widget WeatherKit adapter.
-    /// Optional preserves backward decoding of snapshots from older releases.
-    var currentCondition: AppWeatherCondition? = nil
-    /// Cached current-day daylight hours.
-    let daytimeHours: [Int]
-    /// Cached current-day sunny hours.
-    let sunnyHours: [Int]
-    /// Legacy cached partly-sunny bucket retained for backward-compatible
-    /// decoding. Its values are no longer included in sunny-hour totals.
-    let partlySunnyHours: [Int]
-    /// Cached normalized conditions for every current-day daylight hour.
-    /// Optional preserves backward decoding of existing on-device snapshots.
-    var hourlyConditions: [WidgetHourlyCondition]? = nil
-    /// Cached available current/future rows for the large chart, capped at ten
-    /// during presentation rather than requiring a full ten-day feed.
-    var sunnyWindowDays: [WidgetSunnyWindowDay]? = nil
-    /// Cached request, place, or basic-forecast issue. Legacy per-field source
-    /// issues remain decodable but do not hide otherwise usable widget data.
-    var dataIssue: WeatherDataIssue? = nil
 }
 
 /// Top-level app-group catalog read by App Intents and widget timelines.
@@ -198,7 +168,7 @@ struct WidgetDataCatalog: Codable, Hashable {
 /// This `enum` is a Swift namespace: it has only `static` members, so no store
 /// instance or global mutable object needs to be constructed.
 enum WidgetDataStore {
-    // MARK: - Shared Keys and Freshness Policy
+    // MARK: - Shared Keys
 
     /// Entitlement-backed application group identifier.
     static let appGroupIdentifier = "group.Yutao-Wu.Weather"
@@ -210,10 +180,6 @@ enum WidgetDataStore {
     /// updates its coordinate, mode, and display name while widget
     /// configurations keep referring to this one backward-compatible ID.
     static let currentLocationIdentifier = "current-location"
-    /// Prefix for widget-owned timestamped per-city weather snapshots.
-    static let weatherCacheKeyPrefix = "widgetWeatherSnapshot."
-    /// Maximum accepted age of a normal widget weather snapshot.
-    static let weatherCacheDuration: TimeInterval = 30 * 60
 
     // MARK: - Stable City Identity
 
@@ -260,6 +226,7 @@ enum WidgetDataStore {
         catalog()?.localizedStrings[key] ?? key
     }
 
+#if !WEATHER_WIDGETS
     // MARK: - Catalog Publishing
 
     /// Encodes the catalog and requests WidgetKit timeline reloads.
@@ -286,77 +253,18 @@ enum WidgetDataStore {
         WidgetCenter.shared.reloadAllTimelines()
     }
 
-    // MARK: - Reset and Snapshot Cache
+    // MARK: - Reset
 
-    /// Clears app-group widget metadata and snapshots during a full app reset.
-    /// This intentionally removes every key in this dedicated group, then asks
-    /// WidgetKit to replace any timelines based on the removed data.
+    /// Clears app-group widget configuration during a full app reset. Forecast
+    /// snapshots live in the extension's private store, so advancing the shared
+    /// reset epoch makes those old snapshots ineligible as well.
     static func removeAll() {
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
         for key in defaults.dictionaryRepresentation().keys {
             defaults.removeObject(forKey: key)
         }
+        WidgetResetEpoch.advance()
         WidgetCenter.shared.reloadAllTimelines()
-    }
-
-    /// Returns a fresh city snapshot, rejecting stale or corrupt payloads.
-    /// Freshness is measured at read time so an unchanged persisted snapshot
-    /// naturally expires even if the widget process was not launched for a while.
-    static func weatherSnapshot(for cityID: String, now: Date = .now) -> WidgetWeatherSnapshot? {
-        guard let snapshot = latestWeatherSnapshot(for: cityID) else {
-            return nil
-        }
-        let age = now.timeIntervalSince(snapshot.fetchedAt)
-        guard age >= 0, age < weatherCacheDuration,
-              let identifier = snapshot.timeZoneIdentifier,
-              let timeZone = TimeZone(identifier: identifier),
-              let representedLocalDate = snapshot.representedLocalDate else {
-            return nil
-        }
-
-        var calendar = Calendar.current
-        calendar.timeZone = timeZone
-        guard calendar.isDate(representedLocalDate, inSameDayAs: now) else {
-            return nil
-        }
-        return snapshot
-    }
-
-    /// Decodes the last stored result for validation and replacement only.
-    /// Presentation callers must use `weatherSnapshot(for:now:)`; an expired
-    /// or previous-local-day payload is never a display fallback.
-    private static func latestWeatherSnapshot(for cityID: String) -> WidgetWeatherSnapshot? {
-        guard let data = UserDefaults(suiteName: appGroupIdentifier)?.data(forKey: weatherCacheKey(for: cityID)) else {
-            return nil
-        }
-        return try? JSONDecoder().decode(WidgetWeatherSnapshot.self, from: data)
-    }
-
-    /// Persists the widget extension's latest usable response for one city.
-    /// Request and basic-forecast issues remain available for an honest
-    /// placeholder, while source-field gaps retain their usable weather data.
-    static func saveWeatherSnapshot(_ snapshot: WidgetWeatherSnapshot, for cityID: String) {
-        guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
-        guard let data = try? JSONEncoder().encode(snapshot) else {
-            defaults.removeObject(forKey: weatherCacheKey(for: cityID))
-            return
-        }
-        defaults.set(data, forKey: weatherCacheKey(for: cityID))
-    }
-
-    /// Removes one city's snapshot before a network refresh that cannot safely
-    /// use it. This prevents a later provider callback from resurrecting an old
-    /// result after the refresh has already failed.
-    static func removeWeatherSnapshot(for cityID: String) {
-        UserDefaults(suiteName: appGroupIdentifier)?.removeObject(
-            forKey: weatherCacheKey(for: cityID)
-        )
-    }
-
-    /// Produces the namespaced preference key for one city snapshot.
-    /// Prefixing separates cache entries from the catalog and from each other.
-    private static func weatherCacheKey(for cityID: String) -> String {
-        "\(weatherCacheKeyPrefix)\(cityID)"
     }
 
     // MARK: - Published Widget Copy
@@ -381,6 +289,7 @@ enum WidgetDataStore {
             "Home Location": localizedString("Home Location", locale: locale),
             "Today": localizedString("Today", locale: locale),
             "Sunny": localizedString("Sunny", locale: locale),
+            "Partly Sunny": localizedString("Partly Sunny", locale: locale),
             "No Sun": localizedString("No Sun", locale: locale),
             "Rain": localizedString("Rain", locale: locale),
             "Drizzle": localizedString("Drizzle", locale: locale),
@@ -391,10 +300,16 @@ enum WidgetDataStore {
                 "No More Sun Today",
                 locale: locale
             ),
+            "%@ h": localizedString("%@ h", locale: locale),
             "Weather unavailable.": localizedString(
                 "Weather unavailable.",
                 locale: locale
             ),
+            "less than one minute": localizedString(
+                "less than one minute",
+                locale: locale
+            ),
         ]
     }
+#endif
 }

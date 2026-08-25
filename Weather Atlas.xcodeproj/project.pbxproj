@@ -47,6 +47,7 @@
 				Widgets/Localizable.xcstrings,
 				"Widgets/WeatherWidgets-Info.plist",
 				"Widgets/WeatherWidgets-InfoPlist.xcstrings",
+				Widgets/WidgetForecastStore.swift,
 				Widgets/Widgets.swift,
 			);
 			target = 59C2E3552F4F06B000877DA8 /* Weather Atlas */;
@@ -54,15 +55,16 @@
 		5908967630063DF500EB20E0 /* Exceptions for "Weather" folder in "WeatherWidgets" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Helpers/AppPreferences.swift,
 				Helpers/AppTheme.swift,
 				Models/SunnyHoursCalculation.swift,
 				Models/WeatherCondition.swift,
 				Models/WeatherDataValidation.swift,
 				Models/WeatherSymbols.swift,
 				Widgets/Localizable.xcstrings,
+				Widgets/SunnyHoursChartPrimitives.swift,
 				"Widgets/WeatherWidgets-InfoPlist.xcstrings",
 				Widgets/WidgetDataStore.swift,
+				Widgets/WidgetForecastStore.swift,
 				Widgets/Widgets.swift,
 			);
 			target = A10000000000000000000008 /* WeatherWidgets */;
@@ -485,6 +487,7 @@
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "Yutao-Wu.Weather.WeatherWidgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -512,6 +515,7 @@
 				MARKETING_VERSION = 1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = "Yutao-Wu.Weather.WeatherWidgets";
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				REGISTER_APP_GROUPS = YES;
 				SKIP_INSTALL = YES;
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";

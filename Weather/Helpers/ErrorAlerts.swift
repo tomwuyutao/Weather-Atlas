@@ -9,6 +9,7 @@
 
 import Foundation
 import Observation
+import OSLog
 import SwiftUI
 
 // MARK: - Native Missing-Data Alerts
@@ -60,6 +61,8 @@ private struct MissingDataRecovery {
 @MainActor
 @Observable
 final class MissingDataAlertCenter {
+    // MARK: - Queue and Recovery State
+
     private(set) var currentAlert: MissingDataAlert?
 
     @ObservationIgnored private var queuedAlerts: [MissingDataAlert] = []
@@ -72,6 +75,8 @@ final class MissingDataAlertCenter {
     /// reports resolve. A card that appears slightly later therefore joins the
     /// completed retry instead of creating a second request for the same data.
     @ObservationIgnored private var recoveries: [String: MissingDataRecovery] = [:]
+
+    // MARK: - Reporting Lifecycle
 
     /// Queues an already-confirmed failure episode.
     ///
@@ -166,6 +171,8 @@ final class MissingDataAlertCenter {
         recoveryKeyByReportKey = [:]
     }
 
+    // MARK: - Shared Retry Coordination
+
     /// Returns the existing recovery for this context or starts its one and
     /// only retry. Every participating report waits on the same task.
     private func joinRecovery(
@@ -213,6 +220,8 @@ final class MissingDataAlertCenter {
         recovery.task.cancel()
         recoveries.removeValue(forKey: recoveryKey)
     }
+
+    // MARK: - Alert Queue Internals
 
     private func normalizedRecoveryKey(_ key: String, fallback: String) -> String {
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -347,14 +356,20 @@ extension View {
 
 /// Debug-only reporting for internal catalog and geocoder invariants.
 ///
-/// This intentionally uses `print` only in DEBUG builds. These messages help
-/// developers diagnose a bad bundled row or geocoder response without turning
-/// an internal implementation detail into a customer-facing error.
+/// This uses the system log only in DEBUG builds. It keeps a burst of
+/// diagnostics from blocking app work when a console is slow to consume output.
 enum DeveloperDiagnostics {
+#if DEBUG
+    private static let logger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Yutao-Wu.Weather",
+        category: "DeveloperDiagnostics"
+    )
+#endif
+
     /// Logs implementation diagnostics without exposing them as user alerts.
     static func show(title: String, message: String) {
         #if DEBUG
-        print("[DeveloperWarning] \(title): \(message)")
+        logger.error("\(title, privacy: .public): \(message, privacy: .public)")
         #endif
     }
 }

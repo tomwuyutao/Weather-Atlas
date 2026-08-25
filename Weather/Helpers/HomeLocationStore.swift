@@ -8,6 +8,8 @@
 
 import Foundation
 
+// MARK: - Manual Home Persistence
+
 /// Small persistence boundary for the manually chosen home location.
 ///
 /// Keeping this separate from Saved Places prevents a home choice from

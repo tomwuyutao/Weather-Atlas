@@ -4,14 +4,20 @@
 //
 //  Purpose: Counts city-local daylight hours that are clear.
 //
+//  Reading guide: chart geometry and locale-safe formatting are shared with
+//  WidgetKit. App-only policy below the compile guard interprets WeatherKit's
+//  daylight flags for forecasts, rankings, and live status text.
+//
 
 import Foundation
+
+// MARK: - Chart Domain
 
 /// Integer-hour domain shared by the sunny-hours timelines.
 ///
 /// Bounds use an inclusive start and exclusive end, so 0...24 represents a
 /// full local day without needing a separate midnight data point.
-struct SunnyHoursChartBounds: Codable, Hashable {
+struct SunnyHoursChartBounds {
     let startHour: Int
     let endHour: Int
 
@@ -22,6 +28,7 @@ struct SunnyHoursChartBounds: Codable, Hashable {
 
     static let fullDay = SunnyHoursChartBounds(startHour: 0, endHour: 24)
 
+    /// Produces one domain spanning several charts so comparable rows align.
     static func merged(_ bounds: [SunnyHoursChartBounds]) -> SunnyHoursChartBounds? {
         guard let first = bounds.map(\.startHour).min(),
               let last = bounds.map(\.endHour).max() else {
@@ -30,6 +37,7 @@ struct SunnyHoursChartBounds: Codable, Hashable {
         return SunnyHoursChartBounds(startHour: first, endHour: last)
     }
 
+    /// Chooses sparse, even tick intervals while always retaining the end bound.
     func axisHours(maximumTickCount: Int = 9) -> [Int] {
         let span = endHour - startHour
         guard span > 0 else { return [startHour] }
@@ -51,6 +59,7 @@ struct SunnyHoursChartBounds: Codable, Hashable {
         return hours
     }
 
+    /// Maps a possibly out-of-range hour into the chart's clamped x-domain.
     func xPosition(for hour: Double, width: CGFloat) -> CGFloat {
         let hour = min(max(hour, Double(startHour)), Double(endHour))
         return CGFloat(
@@ -58,19 +67,20 @@ struct SunnyHoursChartBounds: Codable, Hashable {
         ) * width
     }
 
+    /// Maps current city-local time into the chart, clamping before/after the
+    /// represented daylight window to its leading/trailing edge.
     func currentTimeXPosition(
         at date: Date,
         timeZone: TimeZone,
         width: CGFloat
     ) -> CGFloat? {
-        guard let hour = Self.fractionalHour(for: date, timeZone: timeZone),
-              hour >= Double(startHour),
-              hour <= Double(endHour) else {
+        guard let hour = Self.fractionalHour(for: date, timeZone: timeZone) else {
             return nil
         }
         return xPosition(for: hour, width: width)
     }
 
+    /// Converts an inclusive hourly interval into a visible bar width.
     func width(
         for range: ClosedRange<Int>,
         timelineWidth: CGFloat,
@@ -103,12 +113,41 @@ struct SunnyHoursChartBounds: Codable, Hashable {
     }
 }
 
+// MARK: - Shared Formatting
+
 /// Formatting shared by the app and widget sunny-hours charts.
 enum SunnyHoursFormatting {
+    /// Formats the compact hour count as one localizable unit expression. The
+    /// widget reads the same key from the app-published copy so its selected
+    /// language remains independent from the device language.
     static func hourCountLabel(_ hours: Double, locale: Locale) -> String {
-        "\(hourCountText(hours, locale: locale)) h"
+        let format: String
+#if WEATHER_WIDGETS
+        format = WidgetDataStore.localizedText(for: "%@ h")
+#else
+        format = localizedString("%@ h", locale: locale)
+#endif
+        return String(
+            format: format,
+            locale: locale,
+            hourCountText(hours, locale: locale)
+        )
     }
 
+#if !WEATHER_WIDGETS
+    /// Upper endpoint used by Map's legend, where the plus sign means “or
+    /// more”. Keeping the entire unit expression localizable lets languages
+    /// move or expand that qualifier around the number.
+    static func maximumHourCountLabel(_ hours: Double, locale: Locale) -> String {
+        String(
+            format: localizedString("%@ h+", locale: locale),
+            locale: locale,
+            hourCountText(hours, locale: locale)
+        )
+    }
+#endif
+
+    /// Keeps whole-hour values free of a decimal while retaining one fractional digit.
     static func hourCountText(_ hours: Double, locale: Locale) -> String {
         hours.formatted(
             .number
@@ -120,6 +159,7 @@ enum SunnyHoursFormatting {
         )
     }
 
+    /// Preserves `24` as the chart endpoint instead of wrapping it to `00`.
     nonisolated static func chartHourLabel(_ hour: Int) -> String {
         hour == 24 ? "24" : String(format: "%02d", ((hour % 24) + 24) % 24)
     }
@@ -127,8 +167,12 @@ enum SunnyHoursFormatting {
 
 #if !WEATHER_WIDGETS
 
+// MARK: - App Sunny-Hours Policy
+
 /// Shared sunny-hours calculations for cards, status copy, and rankings.
 enum SunnyHoursCalculation {
+    // MARK: - Result Types
+
     struct SunnyHoursData {
         let hours: [HourlyForecast]
         let bounds: SunnyHoursChartBounds
@@ -147,6 +191,8 @@ enum SunnyHoursCalculation {
         case noMoreSunToday
         case noSunOnSelectedDay
     }
+
+    // MARK: - Daylight Extraction
 
     /// Returns the selected city's WeatherKit daylight hours. WeatherKit has
     /// already marked each hourly record with `isDaylight`, so sunrise and
@@ -191,8 +237,10 @@ enum SunnyHoursCalculation {
     }
 
     static func sunnyHourCount(in data: SunnyHoursData) -> Double {
-        Double(data.hours.count(where: { $0.condition?.isSunnyOrPartlySunny == true }))
+        Double(data.hours.count(where: { $0.condition?.countsAsSunnyHour == true }))
     }
+
+    // MARK: - Future Forecast Search
 
     /// Finds the first later city-local forecast day with at least one clear
     /// WeatherKit daylight hour. Available forecast rows are
@@ -259,6 +307,10 @@ enum SunnyHoursCalculation {
         return count
     }
 
+    // MARK: - Daily Status
+
+    /// Resolves status in city-local time, giving solar-event boundaries
+    /// precedence over the coarser one-hour WeatherKit intervals used in charts.
     static func dailySunStatus(
         in data: SunnyHoursData,
         selectedDate: Date,
@@ -269,7 +321,7 @@ enum SunnyHoursCalculation {
         var cityCalendar = selectionCalendar
         cityCalendar.timeZone = timeZone
         let sunnyHours = data.hours.filter {
-            $0.condition?.isSunnyOrPartlySunny == true
+            $0.condition?.countsAsSunnyHour == true
         }
 
         guard cityCalendar.isDateInToday(selectedDate) else {
@@ -292,7 +344,7 @@ enum SunnyHoursCalculation {
 
         if let currentHour = data.hours.last(where: { $0.date <= referenceDate }),
            hourlyInterval(currentHour, contains: referenceDate),
-           currentHour.condition?.isSunnyOrPartlySunny == true {
+           currentHour.condition?.countsAsSunnyHour == true {
             return .sunOutNow
         }
         if let nextHour = sunnyHours.first(where: { $0.date > referenceDate }) {
@@ -313,6 +365,8 @@ enum SunnyHoursCalculation {
     }
 
 }
+
+// MARK: - Local-Time Disclosure
 
 extension SunnyHoursFormatting {
     static func localTimeDisclosure(

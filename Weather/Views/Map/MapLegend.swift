@@ -2,24 +2,26 @@
 //  MapLegend.swift
 //  Weather
 //
-//  Restores the original floating-map legend treatment for the current
-//  sunny-hours map layer.
+//  Purpose: Presents the collapsible sunny-hours scale for the Map layer.
 //
 
 import SwiftUI
 
-/// The Map's sunny-hours key uses the former Map legend's narrow vertical
-/// gradient and Liquid Glass card, so its visual language stays consistent
-/// with the app's earlier metric legends.
+// MARK: - Sunny-Hours Legend
+
+/// A narrow vertical gradient keeps the sunny-hours scale readable without
+/// obscuring the map, while the card follows the app's shared glass styling.
 struct MapSunnyHoursLegend: View {
     @Binding var isExpanded: Bool
 
     @Environment(\.accessibilityReduceTransparency)
     private var reduceTransparency
     @Environment(\.appTheme) private var theme
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.locale) private var locale
 
     private let shape = RoundedRectangle(cornerRadius: 24, style: .continuous)
+
+    // MARK: - Collapsed and Expanded States
 
     var body: some View {
         Group {
@@ -37,14 +39,13 @@ struct MapSunnyHoursLegend: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
                 .buttonStyle(.plain)
-                .accessibilityHint("Shows the sunny-hours colour scale")
             }
         }
     }
 
     @ViewBuilder
     private var expandedLegend: some View {
-        if reduceTransparency || colorSchemeContrast == .increased {
+        if reduceTransparency {
             legendCard
                 .background(theme.colors.glassFill, in: shape)
                 .overlay {
@@ -66,8 +67,8 @@ struct MapSunnyHoursLegend: View {
         verticalGradientLegend
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-            // Match the former map legend: the close target visually hangs
-            // off the trailing edge without widening the gradient scale.
+            // Let the close target hang beyond the trailing edge so its full
+            // hit area does not widen the compact gradient scale.
             .padding(.trailing, 20)
             .frame(width: 108, alignment: .leading)
             .overlay(alignment: .topTrailing) {
@@ -86,12 +87,12 @@ struct MapSunnyHoursLegend: View {
             }
             .contentShape(shape)
             .fixedSize(horizontal: true, vertical: false)
-            .accessibilityElement(children: .contain)
-            .accessibilityLabel("Sunny hours colour scale")
     }
 
-    /// This is the old cloud-cover gradient layout, now using the exact same
-    /// quiet-to-gold endpoint colors as live sunny-hours Map dots.
+    // MARK: - Scale
+
+    /// Uses the same quiet-to-gold endpoint colors as the live map dots, so
+    /// the legend remains a direct key rather than an approximate guide.
     private var verticalGradientLegend: some View {
         HStack(alignment: .center, spacing: 10) {
             LinearGradient(
@@ -105,12 +106,22 @@ struct MapSunnyHoursLegend: View {
             .clipShape(Capsule())
 
             VStack(alignment: .leading, spacing: 0) {
-                ForEach(["10 h+", "8 h", "6 h", "4 h", "2 h", "0 h"], id: \.self) { label in
-                    Text(label)
+                ForEach([10, 8, 6, 4, 2, 0], id: \.self) { hours in
+                    Text(
+                        hours == 10
+                            ? SunnyHoursFormatting.maximumHourCountLabel(
+                                Double(hours),
+                                locale: locale
+                            )
+                            : SunnyHoursFormatting.hourCountLabel(
+                                Double(hours),
+                                locale: locale
+                            )
+                    )
                         .font(.caption2.weight(.medium))
                         .foregroundStyle(theme.colors.secondaryText)
 
-                    if label != "0 h" {
+                    if hours != 0 {
                         Spacer(minLength: 0)
                     }
                 }

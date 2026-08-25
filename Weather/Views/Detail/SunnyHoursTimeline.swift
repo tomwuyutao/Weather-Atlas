@@ -2,8 +2,8 @@
 //  SunnyHoursTimeline.swift
 //  Weather
 //
-//  Purpose: Brings the medium widget's single-day sunny-hour timeline into
-//  Your Location using live current-location weather.
+//  Purpose: Defines the shared single-day sunny-hour timeline used in current
+//  and saved-location reports.
 //
 
 import SwiftUI
@@ -31,7 +31,7 @@ struct WeatherTimeZoneFootnote: View {
 /// Shared daily chart UI for both location reports. Your Location supplies
 /// location-recovery actions, while a saved-place Detail supplies weather only.
 struct SunnyHoursTimeline: View {
-    // MARK: Inputs
+    // MARK: - Inputs
 
     let weather: CityWeather?
     let selectedDate: Date
@@ -44,10 +44,11 @@ struct SunnyHoursTimeline: View {
 
     @Environment(\.appTheme) private var theme
     @Environment(\.calendar) private var calendar
-    @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
+    @ScaledMetric(relativeTo: .body) private var horizontalTimelinePadding: CGFloat = 20
+    @ScaledMetric(relativeTo: .body) private var verticalTimelinePadding: CGFloat = 14
 
-    // MARK: Selected Forecast
+    // MARK: - Initialization and Forecast Selection
 
     /// Your Location includes recovery actions because its forecast depends on
     /// Core Location authorization and a fresh physical coordinate.
@@ -100,53 +101,15 @@ struct SunnyHoursTimeline: View {
         )
     }
 
-    /// The trailing header value reports the selected day's total sunny hours,
-    /// matching the compact value used by nearby and saved-place rankings.
-    /// The chart itself still exposes the hours' positions within the day.
-    private var selectedSunnyHours: String? {
-        guard let weather,
-              let forecast = selectedForecast else {
-            return nil
-        }
-        let data = SunnyHoursCalculation.sunnyHoursData(
-            for: forecast,
-            timeZone: weather.timeZone
-        )
-
-        return SunnyHoursFormatting.hourCountLabel(
-            SunnyHoursCalculation.sunnyHourCount(in: data),
-            locale: locale
-        )
-    }
+    // MARK: - Presentation and Availability States
 
     var body: some View {
-        VStack(alignment: .leading, spacing: WeatherCardLayout.contentSpacing) {
-            WeatherCardHeader(
-                icon: "calendar.day.timeline.left",
-                title: "Daily Sunny Hours"
-            ) {
-                if let selectedSunnyHours {
-                    Text(selectedSunnyHours)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(theme.colors.secondaryText)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.trailing)
-                }
-            }
-
-            cardContent
-        }
-        .padding(WeatherCardLayout.padding)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .detailTranslucentCard(
-            colorScheme: colorScheme,
-            in: RoundedRectangle(
-                cornerRadius: WeatherCardLayout.cornerRadius,
-                style: .continuous
-            )
-        )
-        // Availability belongs to the enclosing report. This card renders an
-        // honest blank/unavailable state, but never presents a duplicate alert.
+        cardContent
+            .padding(.horizontal, horizontalTimelinePadding)
+            .padding(.vertical, verticalTimelinePadding)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        // The capsules intentionally sit directly on the report background.
+        // Availability remains in this space without adding a second card.
     }
 
     @ViewBuilder
@@ -189,6 +152,8 @@ struct SunnyHoursTimeline: View {
         }
     }
 
+    // MARK: - Unavailable-State Copy
+
     private var resolvedUnavailableMessage: String {
         let message = unavailableMessage?.trimmingCharacters(
             in: .whitespacesAndNewlines
@@ -222,6 +187,8 @@ struct SunnyHoursTimeline: View {
             )
     }
 
+    // MARK: - Loaded Timeline
+
     private func loadedTimeline(
         weather: CityWeather,
         data: SunnyHoursCalculation.SunnyHoursData
@@ -229,10 +196,11 @@ struct SunnyHoursTimeline: View {
         return DailySunnyHoursTrack(
             data: data,
             selectedDate: selectedDate,
-            timeZone: weather.timeZone,
-            screenTone: selectedForecast?.condition?.iconTone
+            timeZone: weather.timeZone
         )
     }
+
+    // MARK: - Location Recovery
 
     @ViewBuilder
     private var locationUnavailableContent: some View {
@@ -311,278 +279,66 @@ struct SunnyHoursTimeline: View {
 // MARK: - Hourly Track
 
 /// Low-level graphical track shared by the daily card in both report types.
-/// It aligns hourly segments, the current-time marker, and sparse axis labels.
+/// It adapts app forecast values to the shared app/widget capsule renderer.
 private struct DailySunnyHoursTrack: View {
-    /// Wider cards scale the compact timeline's capsule width and gap together,
-    /// preserving the visual rhythm instead of stretching only one dimension.
-    private static let maximumPhoneTimelineWidth: CGFloat = 360
-    /// One data-backed hourly capsule in the discrete daily timeline.
-    private struct TimelineSlot: Identifiable {
-        enum ID: Hashable {
-            case forecast(Date)
-        }
-
-        let id: ID
-        let hour: Int
-        let condition: AppWeatherCondition?
-    }
-
-    /// A sparse x-axis label mapped to one concrete capsule index. Keeping the
-    /// displayed hour and its capsule position together prevents labels from
-    /// drifting into the gaps between cells on a nonuniform daylight domain.
-    private struct AxisMarker: Identifiable {
-        let hour: Int
-        let capsuleIndex: Int
-
-        var id: Int { hour }
-    }
-
-    /// The shared dimensions for both the capsule row and its time axis.
-    private struct TimelineMetrics {
-        let capsuleWidth: CGFloat
-        let spacing: CGFloat
-    }
-
     let data: SunnyHoursCalculation.SunnyHoursData
     let selectedDate: Date
     let timeZone: TimeZone
-    /// The selected report condition also tints inactive timeline slots.
-    let screenTone: WeatherIconTone?
 
     @Environment(\.appTheme) private var theme
     @Environment(\.calendar) private var calendar
     @ScaledMetric(relativeTo: .caption) private var capsuleSpacing: CGFloat = 7
+    @ScaledMetric(relativeTo: .caption) private var maximumCapsuleWidth: CGFloat = 16
     @ScaledMetric(relativeTo: .caption) private var timelineMinimumHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .caption) private var axisHeight: CGFloat = 14
 
-    /// Converts the available daylight forecasts into the same data-backed
-    /// discrete capsule sequence used by the medium widget.
-    private var displayedSlots: [TimelineSlot] {
+    /// Converts app-owned hourly values into the target-neutral timeline input
+    /// also used by the widget extension.
+    private var chartHours: [SunnyHoursChartHour] {
         data.hours.map { forecast in
-            TimelineSlot(
-                id: .forecast(forecast.date),
+            SunnyHoursChartHour(
+                date: forecast.date,
                 hour: forecast.hour(in: timeZone),
                 condition: forecast.condition
             )
         }
     }
 
+    /// Uses the shared warm neutral so daily and 10-day cloudy marks match.
+    private var noSunTimelineColor: Color {
+        theme.colors.noSunTimelineFill
+    }
+
     var body: some View {
-        // Both rows derive their positions from this single slot sequence. The
-        // chart is therefore visually identical to the medium widget below its
-        // header, while the app can retain its own card chrome above it.
-        let slots = displayedSlots
-        if let startHour = slots.first?.hour {
-            let endHour = data.bounds.endHour
-            VStack(spacing: 4) {
-                GeometryReader { proxy in
-                    let capsuleHeight = proxy.size.height
-                    let metrics = timelineMetrics(
-                        for: slots.count,
-                        availableWidth: proxy.size.width
-                    )
-
-                    ZStack(alignment: .leading) {
-                        HStack(spacing: metrics.spacing) {
-                            ForEach(slots) { slot in
-                                Capsule()
-                                    .fill(color(for: slot.condition))
-                                    .frame(width: metrics.capsuleWidth)
-                            }
-                        }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-
-                        if selectedDateIsToday,
-                           let boundaryIndex = currentTimeBoundaryIndex(in: slots) {
-                            Rectangle()
-                                .fill(theme.colors.primaryText.opacity(0.9))
-                                .frame(width: 2)
-                                .frame(height: capsuleHeight)
-                                .position(
-                                    // Match the widget's marker: it falls at the
-                                    // nearest clock-hour boundary between capsules.
-                                    x: currentTimeMarkerX(
-                                        for: boundaryIndex,
-                                        capsuleWidth: metrics.capsuleWidth,
-                                        slotCount: slots.count,
-                                        spacing: metrics.spacing
-                                    ),
-                                    y: capsuleHeight / 2
-                                )
-                        }
-                    }
-                    .frame(height: capsuleHeight, alignment: .top)
-                }
-                .frame(minHeight: timelineMinimumHeight)
-
-                // Four labels remain readable in the app card. Each desired
-                // hour is anchored to its nearest visible capsule center, as
-                // in the medium widget, rather than a continuous solar-time x.
-                let axisMarkers = timelineAxisMarkers(
-                    for: slots,
-                    from: startHour,
-                    through: endHour
-                )
-                GeometryReader { proxy in
-                    let metrics = timelineMetrics(
-                        for: slots.count,
-                        availableWidth: proxy.size.width
-                    )
-
-                    ZStack(alignment: .leading) {
-                        ForEach(axisMarkers) { marker in
-                            Text(SunnyHoursFormatting.chartHourLabel(marker.hour))
-                                .position(
-                                    // Put every label directly under a real
-                                    // capsule center, including each endpoint.
-                                    x: CGFloat(marker.capsuleIndex)
-                                        * (metrics.capsuleWidth + metrics.spacing)
-                                        + metrics.capsuleWidth / 2,
-                                    y: proxy.size.height / 2
-                                )
-                        }
-                    }
-                }
-                .frame(height: axisHeight)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(theme.colors.secondaryText)
-                .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-        } else {
-            EmptyView()
-        }
+        SunnyHoursDiscreteCapsuleTimeline(
+            hours: chartHours,
+            bounds: data.bounds,
+            currentDate: .now,
+            timeZone: timeZone,
+            showsCurrentTimeMarker: selectedDateIsToday,
+            configuration: .init(
+                capsuleSpacing: capsuleSpacing,
+                maximumCapsuleWidth: maximumCapsuleWidth,
+                minimumTrackHeight: timelineMinimumHeight,
+                axisHeight: axisHeight,
+                axisStyle: .sparse
+            ),
+            colors: SunnyHoursChartColors(
+                primary: theme.colors.primaryText,
+                secondary: theme.colors.secondaryText,
+                sun: theme.colors.dotSun,
+                partlySunny: theme.colors.dotPartlyCloudy,
+                rain: theme.colors.dotRain,
+                drizzle: theme.colors.dotDrizzle,
+                noSun: noSunTimelineColor
+            )
+        )
     }
 
     private var selectedDateIsToday: Bool {
         var cityCalendar = calendar
         cityCalendar.timeZone = timeZone
         return cityCalendar.isDateInToday(selectedDate)
-    }
-
-    /// Finds the boundary after the capsule nearest the city's current hour.
-    /// This mirrors the widget's discrete marker policy instead of placing a
-    /// continuous marker at a point that could sit between unequal slot widths.
-    private func currentTimeBoundaryIndex(in slots: [TimelineSlot]) -> Int? {
-        guard slots.count > 1,
-              let firstHour = slots.first?.hour,
-              let lastHour = slots.last?.hour else {
-            return nil
-        }
-
-        var cityCalendar = calendar
-        cityCalendar.timeZone = timeZone
-        let currentHour = cityCalendar.component(.hour, from: .now)
-
-        guard currentHour >= firstHour,
-              currentHour <= lastHour,
-              let currentIndex = slots.enumerated().min(by: {
-                  abs($0.element.hour - currentHour)
-                      < abs($1.element.hour - currentHour)
-              })?.offset else {
-            return nil
-        }
-
-        return currentIndex + 1
-    }
-
-    /// Places a marker between data cells, or at the trailing edge when the
-    /// current hour is the final represented forecast interval.
-    private func currentTimeMarkerX(
-        for boundaryIndex: Int,
-        capsuleWidth: CGFloat,
-        slotCount: Int,
-        spacing: CGFloat
-    ) -> CGFloat {
-        if boundaryIndex >= slotCount {
-            return CGFloat(slotCount) * capsuleWidth
-                + CGFloat(max(slotCount - 1, 0)) * spacing
-        }
-        return CGFloat(boundaryIndex) * capsuleWidth
-            + (CGFloat(boundaryIndex) - 0.5) * spacing
-    }
-
-    /// Starts with the compact phone layout, then proportionally scales both
-    /// its vertical capsules and their gaps to fill a wider iPad card.
-    private func timelineMetrics(
-        for slotCount: Int,
-        availableWidth: CGFloat
-    ) -> TimelineMetrics {
-        guard slotCount > 0, availableWidth > 0 else {
-            return TimelineMetrics(capsuleWidth: 0, spacing: 0)
-        }
-        let compactWidth = min(
-            availableWidth,
-            Self.maximumPhoneTimelineWidth
-        )
-        let compactSpacing = slotCount > 1
-            ? min(
-                capsuleSpacing,
-                compactWidth / CGFloat(slotCount - 1)
-            )
-            : 0
-        let compactCapsuleWidth = max(
-            0,
-            (
-                compactWidth
-                    - compactSpacing * CGFloat(slotCount - 1)
-            ) / CGFloat(slotCount)
-        )
-        let scale = availableWidth / compactWidth
-        return TimelineMetrics(
-            capsuleWidth: compactCapsuleWidth * scale,
-            spacing: compactSpacing * scale
-        )
-    }
-
-    /// Maps four evenly spaced clock labels back to actual capsule centers.
-    /// Rounding can land between real daylight-hour cells, so the nearest
-    /// displayed slot gives the user an honest visual anchor for every label.
-    private func timelineAxisMarkers(
-        for slots: [TimelineSlot],
-        from startHour: Int,
-        through endHour: Int
-    ) -> [AxisMarker] {
-        guard !slots.isEmpty else { return [] }
-
-        let span = max(endHour - startHour, 0)
-        let axisHours = (0...3).reduce(into: [Int]()) { hours, index in
-            let hour = startHour
-                + Int((Double(span) * Double(index) / 3).rounded())
-            if hours.last != hour {
-                hours.append(hour)
-            }
-        }
-
-        return axisHours.enumerated().map { axisIndex, hour in
-            let capsuleIndex: Int
-            if axisIndex == 0 {
-                capsuleIndex = 0
-            } else if axisIndex == axisHours.count - 1 {
-                capsuleIndex = slots.count - 1
-            } else {
-                capsuleIndex = slots.enumerated().min {
-                    abs($0.element.hour - hour) < abs($1.element.hour - hour)
-                }?.offset ?? 0
-            }
-            return AxisMarker(hour: hour, capsuleIndex: capsuleIndex)
-        }
-    }
-
-    /// Only clear conditions occupy the sunny track. Partly cloudy retains its
-    /// distinct icon elsewhere, but is neutral here just like cloud cover.
-    /// Rain and drizzle stay visible as their own forecast states.
-    private func color(for condition: AppWeatherCondition?) -> Color {
-        switch condition {
-        case .clear:
-            theme.colors.dotSun
-        case .rain:
-            theme.colors.dotRain
-        case .drizzle:
-            theme.colors.dotDrizzle
-        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind, .none:
-            theme.colors.weatherNoSunTimelineColor(for: screenTone)
-        }
     }
 
 }

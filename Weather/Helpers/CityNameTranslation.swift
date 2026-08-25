@@ -30,6 +30,8 @@ nonisolated private struct CityNameLocalizationDocument: Decodable, Sendable {
 /// before catalog identifiers existed. A missing localized label deliberately
 /// returns `nil`; callers then retain the canonical English/source name.
 nonisolated enum CityNameLocalizationCatalog {
+    // MARK: - Bundled Resource
+
     private static let resourceName = "city_name_localizations"
     private static let appLanguageStorageKey = "appLanguage"
 
@@ -47,6 +49,8 @@ nonisolated enum CityNameLocalizationCatalog {
         )
     }()
 
+    // MARK: - Locale Selection
+
     /// The language selected by Settings. Before first launch initialization
     /// has run (for example, in a preview), the current device locale is a
     /// sensible read-only fallback.
@@ -57,31 +61,98 @@ nonisolated enum CityNameLocalizationCatalog {
         return Locale(identifier: identifier)
     }
 
+    // MARK: - Name Lookup
+
+    /// Resolves a catalog city by its stable source ID, falling back to the
+    /// coordinate-based key used before source identifiers were persisted.
     static func localizedName(for city: City, locale: Locale) -> String? {
         guard let document else { return nil }
-        let names: [String: String]?
-
-        if let catalogIdentifier = city.catalogIdentifier,
-           let directNames = document.namesByCatalogIdentifier[
-               catalogIdentifier
-           ] {
-            names = directNames
+        let catalogIdentifier: String
+        if let directIdentifier = city.catalogIdentifier,
+           document.namesByCatalogIdentifier[directIdentifier] != nil {
+            catalogIdentifier = directIdentifier
         } else {
             let key = legacyKey(for: city)
-            guard let catalogIdentifier = document
+            guard let resolvedIdentifier = document
                 .catalogIdentifierByLegacyKey[key] else {
                 return nil
             }
-            names = document.namesByCatalogIdentifier[catalogIdentifier]
+            catalogIdentifier = resolvedIdentifier
         }
 
-        guard let names,
-              let localizedName = names[languageIdentifier(for: locale)]?
+        return localizedName(
+            forCatalogIdentifier: catalogIdentifier,
+            in: document,
+            locale: locale
+        )
+    }
+
+    /// Looks up a literal Saved Place label through GeoNames. It first accepts
+    /// any bundled alternate-language label, then checks canonical city names.
+    /// This deliberately ignores the saved place's coordinate: a custom label
+    /// such as "Shanghai" on London should resolve to Shanghai's GeoNames name.
+    static func localizedName(
+        matchingSavedPlaceLabel label: String,
+        locale: Locale
+    ) async -> String? {
+        guard let document else { return nil }
+        let normalizedSourceLabel = normalizedLabel(label)
+        guard !normalizedSourceLabel.isEmpty else { return nil }
+
+        if let catalogIdentifier = document.namesByCatalogIdentifier
+            .sorted(by: { $0.key < $1.key })
+            .first(where: { _, names in
+                names.values.contains {
+                    normalizedLabel($0) == normalizedSourceLabel
+                }
+            })?.key {
+            return localizedName(
+                forCatalogIdentifier: catalogIdentifier,
+                in: document,
+                locale: locale
+            )
+        }
+
+        guard let city = try? await CitiesCatalog.shared.city(
+            matchingCanonicalName: label
+        ) else {
+            return nil
+        }
+        return localizedName(
+            forCatalogIdentifier: city.id,
+            in: document,
+            locale: locale
+        )
+    }
+
+    private static func localizedName(
+        forCatalogIdentifier catalogIdentifier: String,
+        in document: CityNameLocalizationDocument,
+        locale: Locale
+    ) -> String? {
+        guard let names = document.namesByCatalogIdentifier[catalogIdentifier] else {
+            return nil
+        }
+
+        guard let localizedName = names[languageIdentifier(for: locale)]?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
               !localizedName.isEmpty else {
             return nil
         }
         return localizedName
+    }
+
+    // MARK: - Resource Key Normalization
+
+    private static func normalizedLabel(_ label: String) -> String {
+        label
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .folding(
+                options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
     }
 
     /// Uses the format of the generated catalog rather than a localized number
@@ -103,6 +174,8 @@ nonisolated enum CityNameLocalizationCatalog {
         ].joined(separator: "|")
     }
 
+    /// Collapses regional locale variants onto the language keys generated in
+    /// the bundled document, while preserving Simplified/Traditional Chinese.
     private static func languageIdentifier(for locale: Locale) -> String {
         let identifier = locale.identifier.replacingOccurrences(
             of: "_",

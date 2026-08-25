@@ -8,10 +8,14 @@
 
 import SwiftUI
 
+// MARK: - Find Sun Results Dashboard
+
 /// A planning dashboard for the places returned by a Find Sun query. It
 /// deliberately shares Saved Places' date and ranking cards so both surfaces
 /// answer the same question with the same visual language.
 struct FindSunListView: View {
+    // MARK: - Inputs and Environment
+
     let results: [MapSunSearchResult]
     let title: String
     /// The full geographic pool remains available even when a city has no
@@ -26,6 +30,9 @@ struct FindSunListView: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.locale) private var locale
+
+    // MARK: - Initialization
+
     init(
         results: [MapSunSearchResult],
         title: String,
@@ -43,6 +50,7 @@ struct FindSunListView: View {
         _selectedDate = selectedDate
     }
 
+    #if DEBUG
     /// Keeps Xcode previews independent of WeatherKit and the saved-place
     /// store. The live Map destination always uses the model-backed initializer.
     init(
@@ -58,6 +66,9 @@ struct FindSunListView: View {
         self.forecastCalendar = previewCalendar
         _selectedDate = .constant(Date())
     }
+    #endif
+
+    // MARK: - Derived Forecast Data
 
     /// The active query's weather pool, not just the currently sunny subset.
     private var candidateWeathers: [CityWeather] {
@@ -104,10 +115,10 @@ struct FindSunListView: View {
     private var dateSummaries: [BestSunnyDateSummary] {
         candidateForecastDates.compactMap { date in
             let recommendations = candidateWeathers.compactMap {
-                $0.recommendationAssessment(
+                $0.recommendation(
                     on: date,
                     selectionCalendar: forecastCalendar
-                ).recommendation
+                )
             }
 
             guard !recommendations.isEmpty else { return nil }
@@ -132,6 +143,8 @@ struct FindSunListView: View {
         )
         .compactMap { resultsByID[$0.id] }
     }
+
+    // MARK: - Presentation
 
     var body: some View {
         GeometryReader { geometry in
@@ -190,6 +203,8 @@ struct FindSunListView: View {
         )
     }
 
+    // MARK: - Navigation
+
     private func showDetails(_ result: MapSunSearchResult) {
         guard let model, let router else { return }
         if let savedPlaceID = model.placesStore.savedPlaceID(matching: result.city) {
@@ -200,6 +215,8 @@ struct FindSunListView: View {
         }
     }
 }
+
+// MARK: - Results Card
 
 /// Queried places use the same translucent ranking card as Saved Places, but
 /// retain their Map search identities and display names.
@@ -252,6 +269,10 @@ private struct FindSunPlacesCard: View {
     }
 }
 
+#if DEBUG
+
+// MARK: - Previews
+
 #Preview("Find Sun List", traits: .fixedLayout(width: 390, height: 700)) {
     NavigationStack {
         FindSunListView(
@@ -271,3 +292,5 @@ private struct FindSunPlacesCard: View {
         .environment(\.appTheme, .shared)
     }
 }
+
+#endif

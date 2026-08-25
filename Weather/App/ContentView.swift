@@ -12,7 +12,7 @@ import SwiftUI
 
 /// Native app shell with local weather, saved-place planning, and an immersive Map.
 struct ContentView: View {
-    // MARK: Shared Dependencies
+    // MARK: - Shared Dependencies
 
     /// `@Bindable` exposes bindings into the shared observable models for the
     /// tab selection, sheet destination, and app-wide data updates below.
@@ -23,7 +23,7 @@ struct ContentView: View {
     /// App-level state for first-run gating, replay, and contextual tips.
     let tutorial: TutorialPresentationState
 
-    // MARK: Environment and View-Owned State
+    // MARK: - Environment and View-Owned State
 
     @Environment(\.locale) private var locale
     @Environment(\.scenePhase) private var scenePhase
@@ -38,11 +38,15 @@ struct ContentView: View {
     /// metadata changes the app-wide calendar from the device to local time.
     @State private var dateTimeZone = TimeZone.autoupdatingCurrent
     @State private var resetID = UUID()
+    /// Invalidates any starter-place task that outlives a full reset. A reset
+    /// must never persist the initial library before onboarding establishes its
+    /// new location.
+    @State private var starterSeedGeneration = 0
     /// Deep links can arrive while first-run education owns the root view.
     /// Keep the latest supported intent until the app shell is available.
     @State private var pendingExternalURL: URL?
 
-    // MARK: Tab Shell
+    // MARK: - Tab Shell
 
     var body: some View {
         Group {
@@ -224,6 +228,8 @@ struct ContentView: View {
         }
     }
 
+    // MARK: - Shared Tab Adornments
+
     /// Non-map tabs use the same bottom control lane as Map's Find Sun button.
     /// The child safe area already excludes the native tab bar, so this never
     /// overlaps the tab controls.
@@ -260,7 +266,7 @@ struct ContentView: View {
         )
     }
 
-    // MARK: Root Lifecycle
+    // MARK: - Root Lifecycle
 
     private func handleLocationTimeZoneChange(
         _: String?,
@@ -275,12 +281,20 @@ struct ContentView: View {
         dateTimeZone = newTimeZone
     }
 
+    /// Restores the durable library and cache before refreshing external data.
+    /// Every suspension rechecks onboarding ownership so a reset cannot let an
+    /// obsolete launch task publish into the new app session.
     private func performInitialHydration() async {
         // Restore persisted weather, publish widget snapshots, then ask Core
         // Location only when authorization already exists.
-        await seedStarterPlacesIfNeeded()
+        _ = await seedStarterPlacesIfNeeded()
+        // `appShell` is removed while Reset App presents onboarding. Do not let
+        // its cancelled task republish data, request a location, or consume an
+        // external shortcut before the new onboarding choice is made.
+        guard !Task.isCancelled, !tutorial.shouldPresent else { return }
         model.retainWeatherScope()
         await model.loadSavedWeather()
+        guard !Task.isCancelled, !tutorial.shouldPresent else { return }
         model.publishWidgetCatalog(locale: locale)
         if !model.isUsingHomeLocation {
             model.locationProvider.requestLocationIfAuthorized(
@@ -290,6 +304,8 @@ struct ContentView: View {
         handlePendingShortcut()
     }
 
+    /// Rebuilds system-owned surfaces that do not inherit SwiftUI's locale and
+    /// refreshes current-location metadata in the newly selected language.
     private func refreshLocaleDependencies() {
         AppDelegate.updateHomeScreenShortcuts()
         model.publishWidgetCatalog(locale: locale)
@@ -300,6 +316,8 @@ struct ContentView: View {
         }
     }
 
+    /// Keeps transient forecast retention and cross-process widget metadata in
+    /// step with the newly verified Saved Places document.
     private func handlePlacesDocumentChange() {
         model.retainWeatherScope()
         model.publishWidgetCatalog(locale: locale)
@@ -310,17 +328,13 @@ struct ContentView: View {
         _ errorDescription: String?
     ) {
         let key = "places-library-load"
-        if let errorDescription {
+        if errorDescription != nil {
             let report = MissingDataAlertReport(
                 key: key,
                 title: localizedString("Data Missing", locale: locale),
-                message: String(
-                    format: localizedString(
-                        "Saved Places data is missing because the library could not be loaded: %@",
-                        locale: locale
-                    ),
-                    locale: locale,
-                    errorDescription
+                message: localizedString(
+                    "Saved Places could not be loaded. Try again.",
+                    locale: locale
                 )
             )
             // A document read can fail transiently while iCloud or the app
@@ -346,11 +360,13 @@ struct ContentView: View {
             // intentionally empty ones still exit through the seed guards.
             guard previousErrorDescription != nil else { return }
             Task {
-                await seedStarterPlacesIfNeeded()
+                _ = await seedStarterPlacesIfNeeded()
             }
         }
     }
 
+    /// On foregrounding, consumes deferred navigation and refreshes only data
+    /// that may have become stale while the process was inactive.
     private func handleScenePhaseChange(
         _: ScenePhase,
         _ newPhase: ScenePhase
@@ -368,6 +384,8 @@ struct ContentView: View {
         }
     }
 
+    /// Joins warm-process notifications with the persisted cold-launch handoff;
+    /// taking the persisted value guarantees a shortcut is routed only once.
     private func handleShortcutNotification(_ notification: Notification) {
         let notifiedDestination = (notification.object as? String)
             .flatMap(HomeScreenShortcutDestination.init(rawValue:))
@@ -378,7 +396,7 @@ struct ContentView: View {
         handleShortcut(destination)
     }
 
-    // MARK: Date and Navigation Helpers
+    // MARK: - Date and Navigation Helpers
 
     /// Keeps “tomorrow” as tomorrow when the current location resolves to a
     /// different time zone, rather than reinterpreting a device-midnight
@@ -406,7 +424,8 @@ struct ContentView: View {
             DetailView(
                 placeID: id,
                 selectedDate: $selectedDate,
-                model: model
+                model: model,
+                router: router
             )
         case .savedPlacesLibrary:
             ManageSavedPlaces(
@@ -432,35 +451,53 @@ struct ContentView: View {
         }
     }
 
-    // MARK: First-Run and Reset
+    // MARK: - First-Run and Reset
 
     /// Seeds a first-run library with a fixed, globally recognisable overview.
     /// A starter city within 20 km of the location chosen during onboarding is
     /// omitted so that the library never duplicates the person's local area.
     /// Existing and intentionally emptied libraries are left untouched.
-    private func seedStarterPlacesIfNeeded() async {
+    @discardableResult
+    private func seedStarterPlacesIfNeeded() async -> Bool {
         let alertKey = "starter-places-seed"
-        guard !didSeedPlaces else { return }
-        guard model.placesStore.loadErrorDescription == nil else { return }
+        // The normal app shell is mounted only after TutorialFlow completes.
+        // Keep the same invariant here as a defence against a task that began
+        // before Reset App returned the root to onboarding.
+        guard !tutorial.shouldPresent, !didSeedPlaces else { return didSeedPlaces }
+        guard model.placesStore.loadErrorDescription == nil else { return false }
         guard model.placesStore.allPlaces.isEmpty else {
             didSeedPlaces = true
-            return
+            return true
         }
+        let seedGeneration = starterSeedGeneration
 
         do {
             // Restore the fixed library first, then load its forecasts. A
             // reset should never depend on WeatherKit before places reappear.
+            // Recheck after the catalog await: Reset App can return to the
+            // tutorial while this task is suspended.
+            let starterCities = try await starterCitiesAfterOneCatalogRetry()
+            guard isCurrentStarterSeed(seedGeneration),
+                  model.placesStore.loadErrorDescription == nil,
+                  model.placesStore.allPlaces.isEmpty else {
+                return false
+            }
             let cities = starterCitiesExcludingInitialLocation(
-                try await starterCitiesAfterOneCatalogRetry()
+                starterCities
             )
-            guard !cities.isEmpty else { return }
+            guard !cities.isEmpty else { return false }
             _ = try model.placesStore.savePlaces(cities)
-            model.retainWeatherScope()
-            await model.weatherStore.load(cities: cities)
-            model.publishWidgetCatalog(locale: locale)
+            // The durable library is the completion condition for first-run
+            // setup. Forecast loading belongs to normal hydration below and
+            // must not hold onboarding open or make a successful save appear
+            // to have failed on a slow/offline first launch.
             didSeedPlaces = true
+            model.retainWeatherScope()
+            model.publishWidgetCatalog(locale: locale)
             missingDataAlerts.resolve(key: alertKey)
+            return true
         } catch let issue as WeatherDataIssue {
+            guard isCurrentStarterSeed(seedGeneration) else { return false }
             // The library remains blank. The alert names the exact source field
             // rather than silently substituting unresolved starter metadata.
             missingDataAlerts.report(
@@ -472,7 +509,9 @@ struct ContentView: View {
                     locale: locale
                 )
             )
+            return false
         } catch CitiesCatalogError.missingStarterCities(let labels) {
+            guard isCurrentStarterSeed(seedGeneration) else { return false }
             missingDataAlerts.report(
                 key: alertKey,
                 title: localizedString("Data Missing", locale: locale),
@@ -485,7 +524,9 @@ struct ContentView: View {
                     labels.joined(separator: ", ")
                 )
             )
+            return false
         } catch is CitiesCatalogError {
+            guard isCurrentStarterSeed(seedGeneration) else { return false }
             missingDataAlerts.report(
                 key: alertKey,
                 title: localizedString("Data Missing", locale: locale),
@@ -494,7 +535,9 @@ struct ContentView: View {
                     locale: locale
                 )
             )
+            return false
         } catch {
+            guard isCurrentStarterSeed(seedGeneration) else { return false }
             // Leave the flag unset so a transient catalog or persistence
             // failure can be retried when the app next becomes active.
             missingDataAlerts.report(
@@ -505,7 +548,17 @@ struct ContentView: View {
                     locale: locale
                 )
             )
+            return false
         }
+    }
+
+    /// A full reset or an in-progress onboarding transition invalidates a
+    /// suspended seed task. Callers that are about to persist additionally
+    /// check the library is still empty before writing the starter set.
+    private func isCurrentStarterSeed(_ seedGeneration: Int) -> Bool {
+        !tutorial.shouldPresent
+            && starterSeedGeneration == seedGeneration
+            && !didSeedPlaces
     }
 
     /// The bundled world-city catalog is normally immutable, but the first
@@ -557,7 +610,10 @@ struct ContentView: View {
         return coordinate
     }
 
-    /// Clears user-owned state, then restores the fixed first-run overview.
+    /// Clears app-owned state and returns to the same gated onboarding path a
+    /// person sees on first installation. Starter places are intentionally not
+    /// restored here: onboarding must establish the new home/current location
+    /// before its 20 km exclusion is evaluated.
     private func resetApp() throws {
         // First clear data owned by the user and cache, then reset lightweight
         // display preferences before rebuilding the fresh-root state.
@@ -566,6 +622,8 @@ struct ContentView: View {
         WidgetDataStore.removeAll()
         model.resetLocation()
         missingDataAlerts.reset()
+        starterSeedGeneration &+= 1
+        AppDelegate.clearPendingHomeScreenShortcut()
 
         let defaults = UserDefaults.standard
         let resetLanguage = AppLanguageDefaults.preferredDeviceLanguage()
@@ -581,28 +639,26 @@ struct ContentView: View {
             forKey: "appTextSizeLevel"
         )
         defaults.set(true, forKey: "showsMapSunnyHoursLegend")
+        SavedPlaceNameTranslationPreference.resetToInitialDefault()
         theme.style = .automatic
 
         tutorial.resetForFullAppReset()
 
         selectedDate = Calendar.current.startOfDay(for: Date())
+        dateTimeZone = .autoupdatingCurrent
+        pendingExternalURL = nil
         router.yourLocationPath = []
         router.savedPlacesPath = []
+        router.searchPath = []
         router.resetMapHandoffState()
         router.selectedTab = .yourLocation
         resetID = UUID()
         didSeedPlaces = false
-        model.publishWidgetCatalog(locale: Locale(identifier: resetLanguage))
+        AppDelegate.updateHomeScreenShortcuts()
         router.presentedSheet = nil
-
-        Task {
-            // This is intentionally asynchronous: the reset can finish and
-            // dismiss Settings before catalog look-up and weather loading run.
-            await seedStarterPlacesIfNeeded()
-        }
     }
 
-    // MARK: External Navigation
+    // MARK: - External Navigation
 
     private func completeTutorial() {
         tutorial.complete()
@@ -633,7 +689,7 @@ struct ContentView: View {
 
         switch destination {
         case .findSunNearMe:
-            router.showMap(findingSunIn: .nearMe)
+            router.showMap(findingSunIn: .nearMe, on: selectedDate)
         case .legacyHome:
             router.yourLocationPath = []
             router.selectedTab = .yourLocation

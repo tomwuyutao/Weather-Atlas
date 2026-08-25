@@ -2,8 +2,8 @@
 //  CitiesCatalog.swift
 //  Weather
 //
-//  Purpose: Loads the bundled world-cities dataset once for Map discovery,
-//  nearby-city lookup, and first-run saved places.
+//  Purpose: Loads the bundled world-cities dataset for Map discovery and
+//  nearby-city lookup, plus a compact dedicated first-run Saved Places list.
 //
 //  Reading guide: this actor protects one shared CSV load, then exposes local
 //  geographic queries. It supplies candidates only; WeatherKit requests and
@@ -39,7 +39,7 @@ nonisolated struct CatalogCity: Identifiable, Hashable, Sendable {
     /// Missing population remains nil and is surfaced as a catalog issue.
     let population: Int?
     /// An authoritative IANA timezone supplied only for the fixed starter
-    /// collection. General catalog rows intentionally leave this unset until
+    /// set. General catalog rows intentionally leave this unset until
     /// their place metadata has been resolved.
     let timeZoneIdentifier: String?
 
@@ -78,6 +78,8 @@ nonisolated enum CitiesCatalogError: Error, Equatable, Sendable {
 /// callers choose their own result limit. The catalog performs no network or
 /// weather work.
 actor CitiesCatalog {
+    // MARK: - Shared Loading State
+
     /// App-wide catalog backed by `worldcities.csv` in the main bundle.
     static let shared = CitiesCatalog()
 
@@ -85,7 +87,13 @@ actor CitiesCatalog {
     /// Multiple callers arriving during the first load await this same task,
     /// rather than independently parsing the large CSV on separate threads.
     private var loadTask: Task<[CatalogCity], Error>?
-    /// A deliberately curated, world-spanning starter collection for a new
+    /// The compact first-run catalog is intentionally separate from the global
+    /// search resource so reset never waits for a 50,000-row CSV parse.
+    private var starterLoadTask: Task<[CatalogCity], Error>?
+
+    // MARK: - Starter Set
+
+    /// A deliberately curated, world-spanning starter set for a new
     /// Saved Places library. The names resolve to their canonical rows in the
     /// bundled catalog; the zones are factual metadata for this fixed set so
     /// resetting the app never waits on a network lookup before restoring it.
@@ -119,12 +127,13 @@ actor CitiesCatalog {
         }
     }
 
-    /// Returns the curated first-run cities in their intended overview order.
-    /// Matching by normalized name + ISO code lets the labels remain readable in
-    /// source while still resolving to one canonical data row. `max` settles a
-    /// rare duplicate-name case with population, then a stable source ID.
+    // MARK: - Public Queries
+
+    /// Returns the curated first-run cities from the compact bundled CSV in
+    /// their intended overview order. This avoids cold-start dependence on the
+    /// much larger search catalog.
     func starterCities() async throws -> [CatalogCity] {
-        let cities = try await allCities()
+        let cities = try await starterCatalogData()
         var resolved: [CatalogCity] = []
         var missingLabels: [String] = []
         for label in Self.starterCityLabels {
@@ -174,6 +183,8 @@ actor CitiesCatalog {
     func reload() {
         loadTask?.cancel()
         loadTask = nil
+        starterLoadTask?.cancel()
+        starterLoadTask = nil
     }
 
     /// Returns the most populous catalog cities inside a radius while retaining
@@ -244,6 +255,36 @@ actor CitiesCatalog {
         }.prefix(limit))
     }
 
+    /// Returns the most populous representative of each nearby metro cluster.
+    /// The larger source pool lets a dense set of boroughs be replaced by the
+    /// next distinct cities, while the caller's result limit stays fixed.
+    func mostPopulousSpatiallyDistinctCities(
+        centeredAt center: CLLocationCoordinate2D,
+        withinKilometers radiusKilometers: Double,
+        fartherThanKilometers minimumDistanceKilometers: Double = 0,
+        resultLimit: Int,
+        sourceCandidateLimit: Int,
+        clusterRadiusKilometers: Double
+    ) async throws -> [CatalogCityDistanceCandidate] {
+        guard resultLimit > 0,
+              sourceCandidateLimit > 0,
+              clusterRadiusKilometers.isFinite,
+              clusterRadiusKilometers > 0 else {
+            return []
+        }
+        let sourceCities = try await mostPopulousCities(
+            centeredAt: center,
+            withinKilometers: radiusKilometers,
+            fartherThanKilometers: minimumDistanceKilometers,
+            limit: max(resultLimit, sourceCandidateLimit)
+        )
+        return Self.spatiallyDistinct(
+            sourceCities,
+            resultLimit: resultLimit,
+            clusterRadiusKilometers: clusterRadiusKilometers
+        )
+    }
+
     /// Returns the most populous cities visible in a MapKit region. This is a
     /// screen-area query rather than a radius query, so Find Sun mirrors the
     /// part of the map the person is actually looking at.
@@ -298,6 +339,51 @@ actor CitiesCatalog {
         }.prefix(limit))
     }
 
+    /// Returns population-leading visible cities with one representative per
+    /// nearby metro cluster. The map area itself remains the geographic scope;
+    /// only duplicate locality rows are replaced by the next available city.
+    func spatiallyDistinctCities(
+        visibleIn region: MKCoordinateRegion,
+        resultLimit: Int,
+        sourceCandidateLimit: Int,
+        clusterRadiusKilometers: Double
+    ) async throws -> [CatalogCity] {
+        guard resultLimit > 0,
+              sourceCandidateLimit > 0,
+              clusterRadiusKilometers.isFinite,
+              clusterRadiusKilometers > 0 else {
+            return []
+        }
+        let sourceCities = try await cities(
+            visibleIn: region,
+            limit: max(resultLimit, sourceCandidateLimit)
+        )
+        return Self.spatiallyDistinct(
+            sourceCities,
+            resultLimit: resultLimit,
+            clusterRadiusKilometers: clusterRadiusKilometers
+        )
+    }
+
+    /// Resolves a literal saved-place label against the bundled GeoNames city
+    /// catalog. This is deliberately name-only: a person may have renamed a
+    /// place to any city, so the label rather than its stored coordinate is the
+    /// authority for this lookup. Population and ID make duplicate labels
+    /// deterministic without inventing a translation.
+    func city(matchingCanonicalName name: String) async throws -> CatalogCity? {
+        let normalizedName = Self.normalizedSearchText(name)
+        guard !normalizedName.isEmpty else { return nil }
+        let matches = try await allCities().filter {
+            Self.normalizedSearchText($0.name) == normalizedName
+        }
+        return matches.sorted {
+            if $0.population != $1.population {
+                return Self.populationRanksBefore($0.population, $1.population)
+            }
+            return $0.id < $1.id
+        }.first
+    }
+
     // MARK: - One-Time Resource Loading
 
     /// Returns parsed rows, starting and retaining one utility-priority task.
@@ -322,6 +408,19 @@ actor CitiesCatalog {
         return try await task.value
     }
 
+    private func starterCatalogData() async throws -> [CatalogCity] {
+        if let starterLoadTask {
+            return try await starterLoadTask.value
+        }
+
+        let url = try resolvedStarterResourceURL()
+        let task = Task.detached(priority: .utility) {
+            try Self.decodeCities(at: url)
+        }
+        starterLoadTask = task
+        return try await task.value
+    }
+
     /// Locates the resource in both Xcode's flattened bundle layout and a
     /// folder-preserving bundle layout.
     private func resolvedResourceURL() throws -> URL {
@@ -342,7 +441,17 @@ actor CitiesCatalog {
         return bundledURL
     }
 
-    // MARK: - Query Helpers
+    private func resolvedStarterResourceURL() throws -> URL {
+        guard let bundledURL = Bundle.main.url(
+            forResource: "starter-cities",
+            withExtension: "csv"
+        ) else {
+            throw CitiesCatalogError.resourceMissing
+        }
+        return bundledURL
+    }
+
+    // MARK: - Geographic Query Helpers
 
     /// Known populations rank high-to-low; nil remains an unknown value at the
     /// end instead of being converted into a real population of zero.
@@ -356,6 +465,60 @@ actor CitiesCatalog {
         case (nil, _?): false
         case (nil, nil): false
         }
+    }
+
+    /// Keeps the first (therefore most populous) source row and discards later
+    /// rows within its metro radius. The source query has already established
+    /// deterministic population order, so no weather data is involved here.
+    nonisolated private static func spatiallyDistinct(
+        _ candidates: [CatalogCityDistanceCandidate],
+        resultLimit: Int,
+        clusterRadiusKilometers: Double
+    ) -> [CatalogCityDistanceCandidate] {
+        var selected: [CatalogCityDistanceCandidate] = []
+        selected.reserveCapacity(min(resultLimit, candidates.count))
+
+        for candidate in candidates {
+            let isInExistingCluster = selected.contains { selectedCandidate in
+                distanceKilometers(
+                    fromLatitude: candidate.city.latitude,
+                    longitude: candidate.city.longitude,
+                    toLatitude: selectedCandidate.city.latitude,
+                    longitude: selectedCandidate.city.longitude
+                ) <= clusterRadiusKilometers
+            }
+            guard !isInExistingCluster else { continue }
+
+            selected.append(candidate)
+            if selected.count == resultLimit { break }
+        }
+        return selected
+    }
+
+    /// City-only overload used by the Map's visible-area query.
+    nonisolated private static func spatiallyDistinct(
+        _ candidates: [CatalogCity],
+        resultLimit: Int,
+        clusterRadiusKilometers: Double
+    ) -> [CatalogCity] {
+        var selected: [CatalogCity] = []
+        selected.reserveCapacity(min(resultLimit, candidates.count))
+
+        for candidate in candidates {
+            let isInExistingCluster = selected.contains { selectedCandidate in
+                distanceKilometers(
+                    fromLatitude: candidate.latitude,
+                    longitude: candidate.longitude,
+                    toLatitude: selectedCandidate.latitude,
+                    longitude: selectedCandidate.longitude
+                ) <= clusterRadiusKilometers
+            }
+            guard !isInExistingCluster else { continue }
+
+            selected.append(candidate)
+            if selected.count == resultLimit { break }
+        }
+        return selected
     }
 
     // MARK: - CSV Decoding

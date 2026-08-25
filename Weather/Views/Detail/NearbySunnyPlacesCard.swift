@@ -17,7 +17,7 @@ struct NearbySunnyPlacesCard: View {
     /// Your Location is a quick local scan, not a second full results screen.
     private static let maxRecommendations = 3
 
-    // MARK: Inputs and User Preferences
+    // MARK: - Inputs and User Preferences
 
     /// Pre-ranked results supplied by `WeatherModel` for the selected day.
     let recommendations: [NearestSunnyPlaceResult]
@@ -35,7 +35,7 @@ struct NearbySunnyPlacesCard: View {
     @AppStorage("distanceUnit")
     private var distanceUnitRaw = DistanceUnit.defaultRawValue
 
-    // MARK: Display Formatting
+    // MARK: - Display Formatting
 
     private var distanceUnit: DistanceUnit {
         DistanceUnit(rawValue: distanceUnitRaw) ?? .kilometers
@@ -64,6 +64,8 @@ struct NearbySunnyPlacesCard: View {
             )
     }
 
+    // MARK: - Presentation
+
     var body: some View {
         VStack(
             alignment: .leading,
@@ -76,12 +78,7 @@ struct NearbySunnyPlacesCard: View {
 
             cardContent
         }
-        .padding(.top, WeatherCardLayout.padding)
-        .padding(.horizontal, WeatherCardLayout.padding)
-        .padding(
-            .bottom,
-            showsLoadingContent ? WeatherCardLayout.padding : 12
-        )
+        .padding(WeatherCardLayout.padding)
         .frame(maxWidth: .infinity, alignment: .leading)
         .detailTranslucentCard(
             colorScheme: colorScheme,
@@ -91,6 +88,8 @@ struct NearbySunnyPlacesCard: View {
             )
         )
     }
+
+    // MARK: - Content States
 
     @ViewBuilder
     private var cardContent: some View {
@@ -169,6 +168,8 @@ struct NearbySunnyPlacesCard: View {
         }
     }
 
+    // MARK: - Recommendation Rows and Recovery Actions
+
     private var loadingContent: some View {
         HStack(spacing: WeatherCardLayout.headerSpacing) {
             ProgressView()
@@ -198,19 +199,33 @@ struct NearbySunnyPlacesCard: View {
         // name, and a trailing total of sunny hours. Its extra line is the local distance.
         NavigationLink(value: AppRoute.place(id: recommendation.id)) {
             HStack(spacing: WeatherCardLayout.headerSpacing) {
-                let icon = recommendation.recommendation.condition.displayIcon
-                Image(systemName: icon)
-                    // Preserve the exact weather category color used by Map.
-                    .weatherIconStyle(for: recommendation.recommendation.condition.iconTone)
-                    .font(.callout.weight(.medium))
-                    .frame(
-                        width: WeatherCardLayout.leadingIconWidth,
-                        alignment: .leading
-                    )
-
+                if recommendation.recommendation.symbolName.isEmpty {
+                    Color.clear
+                        .frame(
+                            width: WeatherCardLayout.leadingIconWidth,
+                            height: 1,
+                            alignment: .leading
+                        )
+                } else {
+                    Image(systemName: recommendation.recommendation.symbolName)
+                        // Current local Today uses WeatherKit's live symbol;
+                        // an unavailable observation does not fall back to a
+                        // daily icon.
+                        .weatherIconStyle(
+                            for: recommendation.recommendation.condition?.iconTone
+                                ?? .cloudy
+                        )
+                        .font(.callout.weight(.medium))
+                        .frame(
+                            width: WeatherCardLayout.leadingIconWidth,
+                            alignment: .leading
+                        )
+                }
 
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(recommendation.cityWeather.city.displayName)
+                    Text(
+                        recommendation.recommendation.cityWeather.city.displayName
+                    )
                         .font(.body)
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(2)
@@ -241,8 +256,6 @@ struct NearbySunnyPlacesCard: View {
         .buttonStyle(.plain)
         .padding(.vertical, 6)
 
-
-
     }
 
     private func messageWithAction(
@@ -270,6 +283,7 @@ struct NearbySunnyPlacesCard: View {
 
 // MARK: - Xcode Previews
 
+#if DEBUG
 #Preview(
     "Nearby Sunnier Places – Loading",
     traits: .fixedLayout(width: 390, height: 150)
@@ -290,6 +304,7 @@ struct NearbySunnyPlacesCard: View {
     .environment(\.locale, Locale(identifier: "en"))
     .preferredColorScheme(.light)
 }
+#endif
 
 // MARK: - Search Readiness
 

@@ -44,11 +44,6 @@ enum WeatherServiceError: LocalizedError {
     }
 }
 
-/// Successful conversion of WeatherKit's typed response into app-owned models.
-struct WeatherServiceResponse {
-    let weather: CityWeather
-}
-
 /// Thin WeatherKit adapter shared by the place-keyed forecast repository.
 ///
 /// The whole service is `@MainActor` because its short-lived resolution caches
@@ -56,24 +51,24 @@ struct WeatherServiceResponse {
 /// than blocking the main thread while the request is in flight.
 @MainActor
 final class WeatherService {
-    // MARK: Resolution State
+    // MARK: - Resolution State
 
     /// In-process place cache keyed by exact coordinates plus app locale.
     var resolvedPlaces: [String: ResolvedPlace] = [:]
 
-    // MARK: WeatherKit
+    // MARK: - WeatherKit
 
     /// Shared Apple WeatherKit client.
     let weatherKitService = WeatherKit.WeatherService.shared
 
-    // MARK: Error Reporting
+    // MARK: - Error Reporting
 
     /// Records an internal invariant or persistence diagnostic in debug builds.
     func reportDeveloperWarning(title: String, message: String) {
         DeveloperDiagnostics.show(title: title, message: message)
     }
 
-    // MARK: WeatherKit Conversion
+    // MARK: - WeatherKit Conversion
 
     /// Converts WeatherKit source values without filling omitted optional fields.
     ///
@@ -85,7 +80,7 @@ final class WeatherService {
         weather: Weather,
         for city: City,
         timeZone: TimeZone
-    ) throws -> WeatherServiceResponse {
+    ) throws -> CityWeather {
         let dailyForecasts = weather.dailyForecast.forecast.map { day -> DailyForecast in
             // WeatherKit returns one continuous hourly series. Re-slice it for
             // each daily model so each Detail timeline owns exactly one local day.
@@ -102,10 +97,7 @@ final class WeatherService {
                 dailyLow: day.lowTemperature.value,
                 dailyHigh: day.highTemperature.value,
                 symbolName: daySymbol,
-                condition: AppWeatherCondition.resolve(
-                    weatherKit: day.condition,
-                    symbolName: daySymbol
-                ),
+                condition: AppWeatherCondition(weatherKit: day.condition),
                 hourlyForecasts: hourlyForecasts,
                 cloudCover: daytimeForecast.cloudCover,
                 precipitationChance: daytimeForecast.precipitationChance,
@@ -121,12 +113,17 @@ final class WeatherService {
             )
         }
 
-        return WeatherServiceResponse(
-            weather: CityWeather(
-                city: city,
-                dailyForecasts: dailyForecasts,
-                timeZone: timeZone
-            )
+        return CityWeather(
+            city: city,
+            dailyForecasts: dailyForecasts,
+            currentWeather: CurrentWeatherPresentation(
+                date: weather.currentWeather.date,
+                symbolName: weather.currentWeather.symbolName,
+                condition: AppWeatherCondition(
+                    weatherKit: weather.currentWeather.condition
+                )
+            ),
+            timeZone: timeZone
         )
     }
 
@@ -151,14 +148,13 @@ final class WeatherService {
         }
 
         return dayHourlyData.map { hourWeather in
-            // Classification is resolved exactly once at this adapter boundary.
+            // Keep WeatherKit's semantic condition and symbol unchanged at the
+            // adapter boundary. Presentation decides only how to tint the
+            // source-provided symbol.
             HourlyForecast(
                 date: hourWeather.date,
                 symbolName: hourWeather.symbolName,
-                condition: AppWeatherCondition.resolve(
-                    weatherKit: hourWeather.condition,
-                    symbolName: hourWeather.symbolName
-                ),
+                condition: AppWeatherCondition(weatherKit: hourWeather.condition),
                 isDaylight: hourWeather.isDaylight,
                 temperature: hourWeather.temperature.value,
                 apparentTemperature: hourWeather.apparentTemperature.value,
@@ -169,7 +165,8 @@ final class WeatherService {
             )
         }
     }
-    // MARK: Per-City Fetching
+
+    // MARK: - Per-City Fetching
 
     /// Retries one failed WeatherKit network request before allowing its error
     /// to reach the user-facing warning pipeline. This covers work interrupted
@@ -218,22 +215,11 @@ final class WeatherService {
     func fetchWeatherForCity(
         _ city: City,
         retriesOnFailure: Bool = true
-    ) async throws -> WeatherServiceResponse {
-#if DEBUG
-        let debugStartedAt = Date()
-        func debugLog(_ message: String) {
-            let elapsed = Date().timeIntervalSince(debugStartedAt)
-            print("[WeatherRequest \(city.canonicalDisplayName) +\(String(format: "%.2f", elapsed))s] \(message)")
-        }
-        debugLog("started")
-#endif
+    ) async throws -> CityWeather {
         do {
             // Resolve a display-only city into coordinates/name metadata before
             // requesting WeatherKit. WeatherKit itself ultimately uses location.
             let resolved = try await resolvedCityAndTimeZone(for: city)
-#if DEBUG
-            debugLog("place and timezone resolved")
-#endif
             let location = CLLocation(
                 latitude: resolved.city.latitude,
                 longitude: resolved.city.longitude
@@ -244,39 +230,23 @@ final class WeatherService {
             } else {
                 weather = try await weatherKitService.weather(for: location)
             }
-#if DEBUG
-            debugLog("WeatherKit response received")
-#endif
 
             // Convert Apple SDK objects at this boundary; views only see the
             // app's own stable models after this point.
-            let response = try convertWeatherKitData(
+            return try convertWeatherKitData(
                 weather: weather,
                 for: resolved.city,
                 timeZone: resolved.timeZone
             )
-#if DEBUG
-            debugLog("forecast converted")
-#endif
-            return response
         } catch is CancellationError {
-#if DEBUG
-            debugLog("cancelled")
-#endif
             throw CancellationError()
         } catch let serviceError as WeatherServiceError {
-#if DEBUG
-            debugLog("failed: \(serviceError.localizedDescription)")
-#endif
             reportDeveloperWarning(
                 title: "Weather Request Failed",
                 message: serviceError.localizedDescription
             )
             throw serviceError
         } catch {
-#if DEBUG
-            debugLog("failed: \(error.localizedDescription)")
-#endif
             let serviceError = WeatherServiceError.requestFailed(
                 city: city.displayName,
                 detail: error.localizedDescription

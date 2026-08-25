@@ -29,7 +29,7 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
     /// The SF Symbol paired with this destination in the system shortcut menu.
     var iconName: String {
         switch self {
-        case .findSunNearMe: return "sun.max.fill"
+        case .findSunNearMe: return "location.fill"
         case .map: return "map"
         case .places: return "bookmark"
         case .legacyHome: return "location.fill"
@@ -40,10 +40,7 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
     func localizedTitle(locale: Locale) -> String {
         switch self {
         case .findSunNearMe:
-            return [
-                localizedString("Find Sun", locale: locale),
-                localizedString("Near Me", locale: locale)
-            ].joined(separator: " ")
+            return localizedString("Find Sun Near Me", locale: locale)
         case .map: return localizedString("Map", locale: locale)
         case .places: return localizedString("Saved Places", locale: locale)
         case .legacyHome: return localizedString("Your Location", locale: locale)
@@ -122,6 +119,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         guard let rawValue = UserDefaults.standard.string(forKey: pendingShortcutDestinationKey) else { return nil }
         UserDefaults.standard.removeObject(forKey: pendingShortcutDestinationKey)
         return HomeScreenShortcutDestination(rawValue: rawValue)
+    }
+
+    /// Removes any stored external navigation intent during a full app reset,
+    /// so onboarding starts at the same blank root as a first installation.
+    static func clearPendingHomeScreenShortcut() {
+        UserDefaults.standard.removeObject(forKey: pendingShortcutDestinationKey)
     }
 
     /// Decodes, stores, and broadcasts a shortcut received outside the main actor.

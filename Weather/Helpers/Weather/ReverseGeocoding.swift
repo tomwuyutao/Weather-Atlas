@@ -12,6 +12,8 @@ import CoreLocation
 import MapKit
 import SwiftTimeZoneLookup
 
+// MARK: - Resolved Place Value
+
 /// Canonical place metadata assembled from geocoding services.
 /// It is intentionally a small value type: it is cached in memory but never
 /// replaces a saved city's stable identifier or exact coordinate.
@@ -91,7 +93,7 @@ extension WeatherService {
         return Locale(identifier: identifier)
     }
 
-    // MARK: - Reverse Geocoding
+    // MARK: - Provider Fallback Chain
 
     /// Resolves place metadata through caller data, cache, local time-zone
     /// boundaries, MapKit, then CLGeocoder.

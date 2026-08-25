@@ -12,14 +12,15 @@
 
 import Foundation
 import Observation
+import OSLog
 import WeatherKit
+
+// MARK: - Forecast Repository
 
 /// A recoverable loading problem associated with one place.
 /// The failure is keyed by city ID instead of thrown through every list, so one
 /// unavailable forecast can show a local message while other cities still load.
-struct PlaceWeatherFailure: Identifiable, Equatable {
-    /// Stable place identity.
-    let id: City.ID
+struct PlaceWeatherFailure: Equatable {
     /// Exact service/data issue used by native alert presentation.
     let issue: WeatherDataIssue
 }
@@ -32,6 +33,13 @@ struct PlaceWeatherFailure: Identifiable, Equatable {
 @MainActor
 @Observable
 final class SavedPlacesWeatherStore {
+#if DEBUG
+    private static let weatherBatchLogger = Logger(
+        subsystem: Bundle.main.bundleIdentifier ?? "Yutao-Wu.Weather",
+        category: "WeatherBatch"
+    )
+#endif
+
     // MARK: - Observable Forecast State
 
     /// Latest usable forecast snapshot for each stable place identity.
@@ -145,6 +153,18 @@ final class SavedPlacesWeatherStore {
         )
     }
 
+#if DEBUG
+    /// Seeds an in-memory preview repository without starting a WeatherKit
+    /// request. This keeps route-level Xcode previews deterministic and
+    /// isolated from a person's cached weather data.
+    func insertPreviewWeather(_ weather: CityWeather) {
+        weatherByID[weather.id] = weather
+        refreshDatesByPlaceID[weather.id] = .now
+        weatherRevision &+= 1
+        scheduleCacheExpiry()
+    }
+#endif
+
     // MARK: - Public Forecast Access
 
     /// Returns the latest usable weather for a stable place identity.
@@ -213,7 +233,8 @@ final class SavedPlacesWeatherStore {
         let debugStartedAt = Date()
         func debugLog(_ message: String) {
             let elapsed = Date().timeIntervalSince(debugStartedAt)
-            print("[WeatherBatch +\(String(format: "%.2f", elapsed))s] \(message)")
+            let detail = "[WeatherBatch +\(String(format: "%.2f", elapsed))s] \(message)"
+            Self.weatherBatchLogger.notice("\(detail, privacy: .public)")
         }
 #endif
         discardExpiredWeather()
@@ -229,9 +250,6 @@ final class SavedPlacesWeatherStore {
         guard !networkConnectivity.isOffline else { return }
 
         await loadAttributionIfNeeded()
-#if DEBUG
-        debugLog("WeatherKit attribution ready")
-#endif
         beginCacheBatch()
         defer { endCacheBatch() }
 
@@ -258,11 +276,8 @@ final class SavedPlacesWeatherStore {
 
         // Await all started/coalesced tasks. They were created before this loop,
         // so requests can run concurrently up to the internal four-slot limit.
-        for (index, task) in tasks.enumerated() {
+        for task in tasks {
             _ = await task.value
-#if DEBUG
-            debugLog("request \(index + 1)/\(tasks.count) settled")
-#endif
         }
 
         // A forced refresh from another screen can supersede one of the tasks
@@ -274,7 +289,20 @@ final class SavedPlacesWeatherStore {
             await awaitCurrentRequest(for: city.id)
         }
 #if DEBUG
-        debugLog("completed")
+        let availableCount = uniqueCities.count(
+            where: { weatherByID[$0.id] != nil }
+        )
+        let failureKinds = Dictionary(
+            grouping: uniqueCities.compactMap { failuresByID[$0.id]?.issue.kind.rawValue },
+            by: { $0 }
+        )
+        let failureSummary = failureKinds
+            .map { "\($0.key): \($0.value.count)" }
+            .sorted()
+            .joined(separator: ", ")
+        debugLog(
+            "completed: \(availableCount)/\(uniqueCities.count) available; failures: \(failureSummary.isEmpty ? "none" : failureSummary)"
+        )
 #endif
     }
 
@@ -440,9 +468,9 @@ final class SavedPlacesWeatherStore {
             return nil
         }
 
-        let response: WeatherServiceResponse
+        let weather: CityWeather
         do {
-            response = try await weatherService.fetchWeatherForCity(city)
+            weather = try await weatherService.fetchWeatherForCity(city)
         } catch is CancellationError {
             return nil
         } catch {
@@ -458,10 +486,7 @@ final class SavedPlacesWeatherStore {
             }
             // The prior snapshot was removed when this replacement request
             // began, so publish only the typed unavailable state.
-            failuresByID[city.id] = PlaceWeatherFailure(
-                id: city.id,
-                issue: issue
-            )
+            failuresByID[city.id] = PlaceWeatherFailure(issue: issue)
             return nil
         }
 
@@ -472,8 +497,8 @@ final class SavedPlacesWeatherStore {
 
         // Commit only after the second ownership check. Incrementing the separate
         // revision forces dependent SwiftUI views to redraw a same-ID replacement.
-        weatherByID[city.id] = response.weather
-        cachedWeatherByID[city.id] = CachedCityWeather(from: response.weather)
+        weatherByID[city.id] = weather
+        cachedWeatherByID[city.id] = CachedCityWeather(from: weather)
         // Wrapping addition makes this monotonic render signal safe even after
         // an impractically large number of refreshes; its exact numeric value is
         // never displayed or used as a business value.
@@ -481,7 +506,7 @@ final class SavedPlacesWeatherStore {
         failuresByID[city.id] = nil
         recordRefresh(for: city.id)
         markCacheDirty()
-        return response.weather
+        return weather
     }
 
     // MARK: - Request-Concurrency Gate
@@ -763,6 +788,8 @@ nonisolated struct PlaceWeatherSnapshot: Sendable {
 /// Caches may be purged by iOS at any time, unlike Saved Places in Application
 /// Support, so every failure in this type is deliberately recoverable.
 nonisolated struct PlaceWeatherSnapshotCache: Sendable {
+    // MARK: - Cache Schema
+
     /// Versioned file format so incompatible forecast snapshots can be discarded.
     /// UUID dictionary keys become `String` because JSON object keys are strings.
     private struct Document: Codable, Sendable {
@@ -771,8 +798,10 @@ nonisolated struct PlaceWeatherSnapshotCache: Sendable {
         let refreshDatesByPlaceID: [String: Date]
     }
 
-    /// Current cache schema.
-    private static let schemaVersion = 3
+    /// Current cache schema. Version 4 stores WeatherKit's raw condition
+    /// values rather than the older app-normalized categories, so earlier
+    /// snapshots are discarded instead of being reinterpreted.
+    private static let schemaVersion = 4
     /// Forecast snapshots are disposable and must not survive beyond one day,
     /// even when the app has not had a chance to start a network replacement.
     static let maximumRetentionInterval: TimeInterval = 24 * 60 * 60
@@ -781,6 +810,8 @@ nonisolated struct PlaceWeatherSnapshotCache: Sendable {
 
     /// Lets preview/in-memory stores skip even constructing a snapshot.
     var canPersist: Bool { fileURL != nil }
+
+    // MARK: - Construction
 
     /// Locates the cache without turning a missing directory into app failure.
     /// A nil URL simply turns cache reads/writes into no-ops; fresh WeatherKit
@@ -807,6 +838,8 @@ nonisolated struct PlaceWeatherSnapshotCache: Sendable {
     private init(fileURL: URL?) {
         self.fileURL = fileURL
     }
+
+    // MARK: - Loading and Retention
 
     /// Restores only valid current-schema snapshots. A malformed city is dropped
     /// independently so it cannot erase unrelated honest cached forecasts.
@@ -888,6 +921,8 @@ nonisolated struct PlaceWeatherSnapshotCache: Sendable {
         return age >= 0 && age < maximumRetentionInterval
     }
 
+    // MARK: - Persistence
+
     /// Atomically replaces the disposable snapshot.
     /// Cache writes intentionally do not escape errors: a forecast already in
     /// memory remains valid even if the device declines to write its cache file.
@@ -923,6 +958,8 @@ nonisolated struct PlaceWeatherSnapshotCache: Sendable {
         try? FileManager.default.removeItem(at: fileURL)
     }
 }
+
+// MARK: - Background Cache Writer
 
 /// Serializes disposable snapshots away from the UI actor. Operation numbers
 /// make delayed writes deterministic even when Task delivery order differs from

@@ -3,9 +3,10 @@
 //  Weather
 //
 //  Purpose: Owns native tab selection, independent navigation histories, and
-//  lightweight modal destinations for the redesigned app shell.
+//  lightweight modal destinations for the current app shell.
 //
 
+import Foundation
 import Observation
 
 // MARK: - Navigation Values
@@ -26,6 +27,14 @@ enum AppTab: Hashable {
 enum AppRoute: Hashable {
     case place(id: City.ID)
     case savedPlacesLibrary
+}
+
+/// One-shot Find Sun navigation payload. The forecast date travels with the
+/// geographic scope so Map can apply the exact originating selection before it
+/// starts ranking results, while `ContentView` remains the single date owner.
+struct MapSunHandoff: Equatable {
+    let scope: MapSunQueryScope
+    let selectedDate: Date
 }
 
 // MARK: - Modal Values
@@ -66,9 +75,9 @@ final class AppNavigation {
     /// An unsaved search result that Map presents with the same floating card
     /// language as a Find Sun result.
     var mapPreviewCity: City?
-    /// A Find Sun query handed to Map from another tab. The companion token
-    /// makes repeated selections of the same scope distinct.
-    var pendingMapSunQuery: MapSunQueryScope?
+    /// A Find Sun request handed to Map from another tab. The companion token
+    /// makes repeated selections of the same scope and date distinct.
+    var pendingMapSunHandoff: MapSunHandoff?
     var mapSunQueryToken = 0
     /// Every external Map request receives a fresh generation. Map consumes
     /// this before showing the new marker, preview, or Find Sun scope, so a
@@ -97,9 +106,12 @@ final class AppNavigation {
 
     /// Sends a geographic Find Sun scope to Map, which remains the sole owner
     /// of candidate selection, weather loading, ranking, and result display.
-    func showMap(findingSunIn scope: MapSunQueryScope) {
+    func showMap(findingSunIn scope: MapSunQueryScope, on selectedDate: Date) {
         beginMapHandoff()
-        pendingMapSunQuery = scope
+        pendingMapSunHandoff = MapSunHandoff(
+            scope: scope,
+            selectedDate: selectedDate
+        )
         mapSunQueryToken &+= 1
         selectedTab = .map
     }
@@ -111,7 +123,7 @@ final class AppNavigation {
         mapPath = []
         selectedMapPlaceID = nil
         mapPreviewCity = nil
-        pendingMapSunQuery = nil
+        pendingMapSunHandoff = nil
         mapHandoffToken &+= 1
     }
 
@@ -137,7 +149,7 @@ final class AppNavigation {
         mapPath = []
         selectedMapPlaceID = nil
         mapPreviewCity = nil
-        pendingMapSunQuery = nil
+        pendingMapSunHandoff = nil
         mapSunQueryToken &+= 1
         mapHandoffToken &+= 1
     }

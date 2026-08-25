@@ -10,6 +10,8 @@ import Foundation
 import Network
 import Observation
 
+// MARK: - Reachability State
+
 /// App-wide network reachability state backed by Apple's `NWPathMonitor`.
 ///
 /// This deliberately reports only a confirmed unsatisfied path as offline.

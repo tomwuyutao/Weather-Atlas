@@ -11,15 +11,24 @@ import Foundation
 import Observation
 import SwiftUI
 
+private extension EnvironmentValues {
+    /// Bright onboarding palette resolved for the system contrast preference.
+    @Entry var tutorialPalette: AppPalette.Values = AppPalette.light
+}
+
 // MARK: - First-Run Tutorial
 
 /// Two-step tutorial shown before the normal tab shell is mounted. A person
 /// must choose either their current location or a permanent home location.
 struct TutorialFlow: View {
+    // MARK: - Inputs and Flow State
+
     let model: WeatherModel
     let complete: () -> Void
 
     @Environment(\.locale) private var locale
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     @State private var step: TutorialStep = .welcome
     @State private var isBouncingSun = false
@@ -29,20 +38,21 @@ struct TutorialFlow: View {
     @State private var deviceLocationMessage: LocalizedStringKey?
     @State private var showsHomeLocationPicker = false
 
+    // MARK: - Presentation
+
     var body: some View {
         ZStack {
-            AppPalette.light.background
+            tutorialPalette.background
                 .ignoresSafeArea()
 
             Circle()
-                .fill(AppPalette.light.dotSun)
+                .fill(tutorialPalette.dotSun)
                 .frame(width: 58, height: 58)
                 .offset(y: isBouncingSun ? -24 : 0)
                 .scaleEffect(isSunExpanded ? 36 : 1)
                 .opacity(showsWelcome ? 0 : 1)
 
-
-            AppPalette.light.dotSun
+            tutorialStageBackground
                 .ignoresSafeArea()
                 .opacity(isSunExpanded ? 1 : 0)
 
@@ -51,7 +61,7 @@ struct TutorialFlow: View {
                     .transition(.opacity)
             }
         }
-        .task {
+        .task(id: reduceMotion) {
             await playLaunchAnimation()
         }
         .task(id: model.locationProvider.hasUsableCoordinate) {
@@ -73,8 +83,24 @@ struct TutorialFlow: View {
         }
         // The tutorial intentionally uses its bright light presentation even
         // if the rest of the app is configured for a dark appearance.
+        .environment(\.tutorialPalette, tutorialPalette)
         .preferredColorScheme(.light)
     }
+
+    private var tutorialPalette: AppPalette.Values {
+        AppPalette.values(for: .light, contrast: colorSchemeContrast)
+    }
+
+    /// Full-screen yellow is decorative in the standard presentation. Under
+    /// Increase Contrast the warm canvas keeps all tutorial copy on its tested
+    /// text/background pairing while yellow remains a semantic accent.
+    private var tutorialStageBackground: Color {
+        colorSchemeContrast == .increased
+            ? tutorialPalette.background
+            : tutorialPalette.dotSun
+    }
+
+    // MARK: - Stage Navigation
 
     private var tutorialContent: some View {
         TabView(selection: $step) {
@@ -98,12 +124,25 @@ struct TutorialFlow: View {
     }
 
     private func advanceToLocation() {
-        withAnimation(.smooth) {
+        withAnimation(reduceMotion ? nil : .smooth) {
             step = .location
         }
     }
 
+    // MARK: - Launch Animation
+
     private func playLaunchAnimation() async {
+        if reduceMotion {
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                isBouncingSun = false
+                isSunExpanded = true
+                showsWelcome = true
+            }
+            return
+        }
+
         for _ in 0..<2 {
             withAnimation(.easeOut(duration: 0.18)) {
                 isBouncingSun = true
@@ -137,6 +176,8 @@ struct TutorialFlow: View {
         }
     }
 
+    // MARK: - Location Choice
+
     private func useCurrentLocation() {
         deviceLocationMessage = nil
         isRequestingDeviceLocation = true
@@ -163,6 +204,8 @@ struct TutorialFlow: View {
     }
 }
 
+// MARK: - Tutorial Stages
+
 private enum TutorialStep: Hashable {
     case welcome
     case location
@@ -172,6 +215,7 @@ private enum TutorialStep: Hashable {
 /// it can be previewed exactly as it appears after the launch animation.
 struct TutorialWelcomeStage: View {
     let continueAction: () -> Void
+    @Environment(\.tutorialPalette) private var palette
 
     var body: some View {
         TutorialStageLayout {
@@ -187,12 +231,12 @@ struct TutorialWelcomeStage: View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Welcome!")
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
-                .foregroundStyle(AppPalette.light.titleText)
+                .foregroundStyle(palette.titleText)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text("Here are the three ways to find sun using Weather Atlas:")
                 .font(.title3)
-                .foregroundStyle(AppPalette.light.secondaryText)
+                .foregroundStyle(palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
             TutorialFindSunSteps()
@@ -201,8 +245,8 @@ struct TutorialWelcomeStage: View {
     }
 }
 
-/// Reuses the original tutorial's numbered-card treatment to introduce the
-/// three levels of Find Sun before the person chooses their location.
+/// Uses a numbered-card treatment to introduce the three levels of Find Sun
+/// before the person chooses their location.
 private struct TutorialFindSunSteps: View {
     private let steps: [TutorialFindSunStep] = [
         .init(
@@ -244,26 +288,30 @@ private struct TutorialFindSunStep: Identifiable {
 private struct TutorialFindSunStepCard: View {
     let step: TutorialFindSunStep
 
+    @Environment(\.tutorialPalette) private var palette
+    @Environment(\.accessibilityReduceTransparency)
+    private var reduceTransparency
+
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
             Text(step.number, format: .number)
                 .font(.callout.weight(.bold))
-                .foregroundStyle(AppPalette.light.titleText)
+                .foregroundStyle(palette.titleText)
                 .frame(width: 34, height: 34)
                 .background(
-                    AppPalette.light.titleText.opacity(0.12),
+                    palette.titleText.opacity(0.12),
                     in: Circle()
                 )
 
             VStack(alignment: .leading, spacing: 5) {
                 Text(step.title)
                     .font(.headline.weight(.bold))
-                    .foregroundStyle(AppPalette.light.titleText)
+                    .foregroundStyle(palette.titleText)
                     .fixedSize(horizontal: false, vertical: true)
 
                 Text(step.subtitle)
                     .font(.body)
-                    .foregroundStyle(AppPalette.light.titleText.opacity(0.64))
+                    .foregroundStyle(palette.titleText.opacity(0.64))
                     .lineSpacing(4)
                     .fixedSize(horizontal: false, vertical: true)
             }
@@ -273,14 +321,23 @@ private struct TutorialFindSunStepCard: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 18)
         .background(
-            AppPalette.light.titleText.opacity(0.06),
+            cardFill,
             in: RoundedRectangle(cornerRadius: 18, style: .continuous)
         )
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(AppPalette.light.titleText.opacity(0.14), lineWidth: 1)
+                .stroke(
+                    palette.titleText.opacity(0.14),
+                    lineWidth: 1
+                )
         }
-        .accessibilityElement(children: .combine)
+    }
+
+    private var cardFill: Color {
+        guard reduceTransparency else {
+            return palette.titleText.opacity(0.06)
+        }
+        return palette.background
     }
 }
 
@@ -292,6 +349,8 @@ struct TutorialLocationStage: View {
     let useCurrentLocation: () -> Void
     let chooseHomeLocation: () -> Void
 
+    @Environment(\.tutorialPalette) private var palette
+
     var body: some View {
         TutorialStageLayout {
             tutorialLocationIntro
@@ -301,7 +360,7 @@ struct TutorialLocationStage: View {
                     HStack(spacing: 10) {
                         if isRequestingDeviceLocation {
                             ProgressView()
-                                .tint(AppPalette.light.background)
+                                .tint(palette.background)
 
                         } else {
                             Image(systemName: "location.fill")
@@ -330,18 +389,18 @@ struct TutorialLocationStage: View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Set your location")
                 .font(.system(.largeTitle, design: .serif).weight(.bold))
-                .foregroundStyle(AppPalette.light.titleText)
+                .foregroundStyle(palette.titleText)
                 .fixedSize(horizontal: false, vertical: true)
 
             Text("Use your current location, or choose a home location to keep using every time you open Weather Atlas.")
                 .font(.title3)
-                .foregroundStyle(AppPalette.light.secondaryText)
+                .foregroundStyle(palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let deviceLocationMessage {
                 Label(deviceLocationMessage, systemImage: "exclamationmark.circle")
                     .font(.subheadline)
-                    .foregroundStyle(AppPalette.light.titleText)
+                    .foregroundStyle(palette.titleText)
                     .padding(.top, 4)
 
             }
@@ -392,6 +451,8 @@ private struct TutorialStageLayout<Intro: View, Actions: View>: View {
 /// It resolves provider results before accepting them, so tutorial setup never
 /// stores an incomplete place or a free-form string as geographic data.
 private struct TutorialHomeLocationPicker: View {
+    // MARK: - Inputs and Search State
+
     let onSelect: (City) -> Void
 
     @Environment(\.dismiss) private var dismiss
@@ -407,6 +468,8 @@ private struct TutorialHomeLocationPicker: View {
     @State private var selectionGeneration = 0
     @State private var loadingID: CitySearchResult.ID?
     @State private var selectionMessage: String?
+
+    // MARK: - Presentation
 
     var body: some View {
         NavigationStack {
@@ -434,6 +497,8 @@ private struct TutorialHomeLocationPicker: View {
                 }
         }
     }
+
+    // MARK: - Search Results
 
     @ViewBuilder
     private var pickerContent: some View {
@@ -552,6 +617,8 @@ private struct TutorialHomeLocationPicker: View {
         .padding(.vertical, 4)
     }
 
+    // MARK: - Search State
+
     private var normalizedQuery: String {
         query.trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -568,6 +635,8 @@ private struct TutorialHomeLocationPicker: View {
         searchManager.appleErrorMessage != nil
             || searchManager.openMeteoErrorMessage != nil
     }
+
+    // MARK: - Search Lifecycle
 
     private func updateSearch() async {
         guard !normalizedQuery.isEmpty else {
@@ -598,6 +667,8 @@ private struct TutorialHomeLocationPicker: View {
         isSettled = true
         searchManager.search(query: normalizedQuery, locale: locale)
     }
+
+    // MARK: - Place Resolution
 
     @MainActor
     private func invalidateSelection() {
@@ -693,9 +764,17 @@ struct TutorialFeatureTipCard: View {
     let dismiss: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     private var panelPalette: AppPalette.Values {
-        colorScheme == .light ? AppPalette.dark : AppPalette.light
+        AppPalette.values(
+            for: colorScheme == .light ? .dark : .light,
+            contrast: colorSchemeContrast
+        )
+    }
+
+    private var actionPalette: AppPalette.Values {
+        AppPalette.values(for: .light, contrast: colorSchemeContrast)
     }
 
     var body: some View {
@@ -712,11 +791,17 @@ struct TutorialFeatureTipCard: View {
             Button(action: dismiss) {
                 Text("Done")
                     .font(.headline.weight(.semibold))
-                    .foregroundStyle(AppPalette.light.titleText)
+                    .foregroundStyle(
+                        colorSchemeContrast == .increased
+                            ? actionPalette.background
+                            : actionPalette.titleText
+                    )
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 14)
                     .background(
-                        AppPalette.light.dotSun,
+                        colorSchemeContrast == .increased
+                            ? actionPalette.titleText
+                            : actionPalette.dotSun,
                         in: RoundedRectangle(
                             cornerRadius: 16,
                             style: .continuous
@@ -749,10 +834,16 @@ struct TutorialFeatureTipOverlay: View {
     let isSelected: Bool
     let dismiss: () -> Void
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency)
+    private var reduceTransparency
+
     var body: some View {
         ZStack {
             if let tip, tip.tab == tab, isSelected {
-                Color.black.opacity(0.28)
+                Color.black.opacity(
+                    reduceTransparency ? 0.72 : 0.28
+                )
                     .ignoresSafeArea()
 
                 TutorialFeatureTipCard(tip: tip, dismiss: dismiss)
@@ -761,8 +852,8 @@ struct TutorialFeatureTipOverlay: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .animation(.smooth, value: isSelected)
-        .animation(.smooth, value: tip)
+        .animation(reduceMotion ? nil : .smooth, value: isSelected)
+        .animation(reduceMotion ? nil : .smooth, value: tip)
     }
 }
 
@@ -774,12 +865,16 @@ struct TutorialFeatureTipOverlay: View {
 @MainActor
 @Observable
 final class TutorialPresentationState {
+    // MARK: - Persistence Keys
+
     private enum StorageKey {
         static let completed = "hasCompletedOnboarding"
         static let replay = "shouldReplayTutorial"
         static let savedPlacesTipSeen = "hasSeenSavedPlacesTutorialTip"
         static let mapTipSeen = "hasSeenMapTutorialTip"
     }
+
+    // MARK: - Persisted Presentation State
 
     @ObservationIgnored private let defaults: UserDefaults
 
@@ -798,6 +893,8 @@ final class TutorialPresentationState {
         ) as? Bool ?? false
         hasSeenMapTip = defaults.object(forKey: StorageKey.mapTipSeen) as? Bool ?? false
     }
+
+    // MARK: - Full Tutorial Lifecycle
 
     var shouldPresent: Bool {
         !hasCompleted || isReplaying
@@ -837,6 +934,8 @@ final class TutorialPresentationState {
         defaults.set(false, forKey: StorageKey.mapTipSeen)
     }
 
+    // MARK: - Contextual Tip Lifecycle
+
     /// Schedules the tip for a just-opened tab only when no native data alert
     /// is visible. This prevents instructional copy from being obscured.
     func presentFeatureTipIfNeeded(
@@ -845,7 +944,7 @@ final class TutorialPresentationState {
     ) {
         // A card belongs only to the tab that introduced it. Switching tabs
         // hides it without recording a dismissal, so returning to that tab
-        // shows the same explanation again until the person taps Got it.
+        // shows the same explanation again until the person taps Done.
         if let currentTip = activeFeatureTip, currentTip.tab != tab {
             activeFeatureTip = nil
         }
@@ -886,38 +985,68 @@ final class TutorialPresentationState {
 // MARK: - Tutorial Styling
 
 private struct TutorialPrimaryButtonStyle: ButtonStyle {
+    @Environment(\.tutorialPalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .foregroundStyle(AppPalette.light.background)
+            .foregroundStyle(palette.background)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 18)
-            .background(AppPalette.light.titleText, in: .rect(cornerRadius: 18))
+            .background(palette.titleText, in: .rect(cornerRadius: 18))
             .opacity(configuration.isPressed ? 0.82 : 1)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.smooth, value: configuration.isPressed)
+            .scaleEffect(
+                reduceMotion ? 1 : (configuration.isPressed ? 0.98 : 1)
+            )
+            .animation(
+                reduceMotion ? nil : .smooth,
+                value: configuration.isPressed
+            )
     }
 }
 
 private struct TutorialSecondaryButtonStyle: ButtonStyle {
+    @Environment(\.tutorialPalette) private var palette
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency)
+    private var reduceTransparency
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.headline)
-            .foregroundStyle(AppPalette.light.titleText)
+            .foregroundStyle(palette.titleText)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 17)
-            .background(AppPalette.light.background.opacity(0.55), in: .rect(cornerRadius: 18))
+            .background(
+                reduceTransparency
+                    ? palette.background
+                    : palette.background.opacity(0.55),
+                in: .rect(cornerRadius: 18)
+            )
             .overlay {
                 RoundedRectangle(cornerRadius: 18)
-                    .strokeBorder(AppPalette.light.titleText.opacity(0.18), lineWidth: 1)
+                    .strokeBorder(
+                        palette.titleText.opacity(0.18),
+                        lineWidth: 1
+                    )
             }
             .opacity(configuration.isPressed ? 0.72 : 1)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(.smooth, value: configuration.isPressed)
+            .scaleEffect(
+                reduceMotion ? 1 : (configuration.isPressed ? 0.98 : 1)
+            )
+            .animation(
+                reduceMotion ? nil : .smooth,
+                value: configuration.isPressed
+            )
     }
 }
 
 // MARK: - Xcode Previews
+
+#if DEBUG
+
+// MARK: - Full-Screen Stages
 
 #Preview("Tutorial – Welcome", traits: .fixedLayout(width: 390, height: 844)) {
     TutorialWelcomeStage(continueAction: {})
@@ -935,6 +1064,8 @@ private struct TutorialSecondaryButtonStyle: ButtonStyle {
     .background(AppPalette.light.dotSun)
     .preferredColorScheme(.light)
 }
+
+// MARK: - Contextual Tip Hosts
 
 #Preview("Tutorial – Saved Places Tip") {
     TutorialSavedPlacesTipPreview()
@@ -995,6 +1126,8 @@ private struct TutorialMapTipPreview: View {
     }
 }
 
+// MARK: - Preview Dependencies
+
 /// Preview-only dependency bundle. Its stores are entirely in memory and the
 /// empty place library means neither tab has any weather requests to make.
 @MainActor
@@ -1018,3 +1151,4 @@ private final class TutorialPreviewState {
         )
     }
 }
+#endif

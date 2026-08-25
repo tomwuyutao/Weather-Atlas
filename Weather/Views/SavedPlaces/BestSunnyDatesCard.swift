@@ -20,7 +20,7 @@ struct BestSunnyDateSummary: Identifiable {
 
 /// Compact planning control for choosing a high-sun day across Saved Places.
 struct BestSunnyDatesCard: View {
-    // MARK: Inputs and Environment
+    // MARK: - Inputs and Environment
 
     let summaries: [BestSunnyDateSummary]
     /// Shared root selection. Tapping a heatmap cell updates every tab's date
@@ -34,7 +34,7 @@ struct BestSunnyDatesCard: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
 
-    // MARK: Calendar Layout
+    // MARK: - Calendar Layout
 
     private var calendarColumns: [GridItem] {
         // Seven equal-width columns mirror the user's locale-aware week.
@@ -111,6 +111,8 @@ struct BestSunnyDatesCard: View {
         calendarDates.contains { $0.isForecastDate }
     }
 
+    // MARK: - Card Presentation
+
     var body: some View {
         // Every planning card uses the same shared header, padding, corner
         // radius, and translucent material as the rest of the app.
@@ -147,7 +149,6 @@ struct BestSunnyDatesCard: View {
             if presentationState == .loading {
                 ProgressView()
                     .controlSize(.small)
-
             }
 
             Text(statusMessage)
@@ -159,7 +160,6 @@ struct BestSunnyDatesCard: View {
             minHeight: WeatherCardFallbackLayout.savedDatesContentHeight,
             alignment: .leading
         )
-
     }
 
     private var statusMessage: LocalizedStringKey {
@@ -187,7 +187,6 @@ struct BestSunnyDatesCard: View {
                         .frame(maxWidth: .infinity)
                         .lineLimit(1)
                         .minimumScaleFactor(0.72)
-
                 }
             }
 
@@ -219,13 +218,8 @@ struct BestSunnyDatesCard: View {
                 )
             }
             .buttonStyle(.plain)
-
-
-
-
         } else {
             calendarDayCell(day, isSelected: false)
-
         }
     }
 
@@ -248,19 +242,13 @@ struct BestSunnyDatesCard: View {
                 format: .number.locale(locale)
             )
             .font(.body.weight(isSelected ? .semibold : .medium).monospacedDigit())
-            .foregroundStyle(
-                day.isForecastDate
-                    ? (isSelected ? theme.colors.accent : theme.colors.primaryText)
-                    : theme.colors.secondaryText
-            )
+            .foregroundStyle(dayNumberColor(for: day, isSelected: isSelected))
             .lineLimit(1)
             .minimumScaleFactor(0.65)
         }
         .overlay {
             shape.stroke(
-                isSelected
-                    ? theme.colors.accent
-                    : theme.colors.primaryText.opacity(0.16),
+                cellOutlineColor(for: day, isSelected: isSelected),
                 lineWidth: isSelected ? 1.65 : 0.7
             )
         }
@@ -282,6 +270,27 @@ struct BestSunnyDatesCard: View {
             colorScheme: colorScheme
         )
     }
+
+    private func dayNumberColor(
+        for day: BestSunnyCalendarDate,
+        isSelected: Bool
+    ) -> Color {
+        if day.isForecastDate {
+            return isSelected ? theme.colors.accent : theme.colors.primaryText
+        }
+        return theme.colors.secondaryText
+    }
+
+    private func cellOutlineColor(
+        for day: BestSunnyCalendarDate,
+        isSelected: Bool
+    ) -> Color {
+        return isSelected
+            ? theme.colors.accent
+            : theme.colors.primaryText.opacity(0.16)
+    }
+
+    // MARK: - Calendar Arithmetic
 
     private func leadingCalendarCellCount(for date: Date) -> Int {
         let weekday = calendar.component(.weekday, from: date)

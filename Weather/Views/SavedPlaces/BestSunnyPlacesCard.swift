@@ -11,6 +11,8 @@ import SwiftUI
 
 /// Saved places with usable data, ranked by the selected day's sunny-hour total.
 struct BestSunnyPlacesCard: View {
+    // MARK: - Inputs and Environment
+
     /// Available weather-derived values, ranked by the selected day.
     let recommendations: [PlaceRecommendation]
     /// The complete library is supplied so available recommendations can keep
@@ -25,6 +27,8 @@ struct BestSunnyPlacesCard: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
+
+    // MARK: - Ranked Rows
 
     private var recommendationsByID: [SavedPlace.ID: PlaceRecommendation] {
         Dictionary(
@@ -59,6 +63,8 @@ struct BestSunnyPlacesCard: View {
             )
         }
     }
+
+    // MARK: - Card Presentation
 
     var body: some View {
         VStack(
@@ -123,7 +129,6 @@ struct BestSunnyPlacesCard: View {
             if presentationState == .loading {
                 ProgressView()
                     .controlSize(.small)
-
             }
 
             Text(statusMessage)
@@ -135,7 +140,6 @@ struct BestSunnyPlacesCard: View {
             minHeight: WeatherCardFallbackLayout.savedPlacesContentHeight,
             alignment: .leading
         )
-
     }
 
     private var statusMessage: LocalizedStringKey {
@@ -184,26 +188,34 @@ struct SunnyPlaceRecommendationRow: View {
         // The spacer pushes only the numeric value to the trailing edge; the
         // city name stays regular weight so rows remain easy to compare.
         HStack(spacing: SavedPlacesSunnyListLayout.columnSpacing) {
-            let icon = recommendation.condition.displayIcon
-            Image(systemName: icon)
-                // Match the condition's Map-dot color rather than the
-                // shared cloud-and-sun symbol's generic yellow fallback.
-                .weatherIconStyle(for: recommendation.condition.iconTone)
-                .font(.callout.weight(.medium))
-                .frame(
-                    width: SavedPlacesSunnyListLayout.leadingIconWidth,
-                    alignment: .leading
-                )
-                // The row displays the localized condition;
-                // the weather symbol itself would otherwise be a duplicate.
-
+            if recommendation.symbolName.isEmpty {
+                Color.clear
+                    .frame(
+                        width: SavedPlacesSunnyListLayout.leadingIconWidth,
+                        height: 1,
+                        alignment: .leading
+                    )
+            } else {
+                Image(systemName: recommendation.symbolName)
+                    // Current local Today uses WeatherKit's live symbol; all
+                    // other selected dates use their daily forecast symbol.
+                    .weatherIconStyle(
+                        for: recommendation.condition?.iconTone ?? .cloudy
+                    )
+                    .font(.callout.weight(.medium))
+                    .frame(
+                        width: SavedPlacesSunnyListLayout.leadingIconWidth,
+                        alignment: .leading
+                    )
+                    // The row displays the localized condition;
+                    // the weather symbol itself would otherwise be a duplicate.
+            }
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(displayName)
                     .font(.body)
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(2)
-
             }
 
             Spacer(minLength: 8)
@@ -221,8 +233,5 @@ struct SunnyPlaceRecommendationRow: View {
         }
         .padding(.vertical, 8)
         .contentShape(.rect)
-
-
-
     }
 }

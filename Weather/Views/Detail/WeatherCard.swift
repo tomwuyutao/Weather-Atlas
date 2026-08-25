@@ -40,7 +40,7 @@ enum WeatherCardFallbackLayout {
 /// Consistent primary-card header with an optional secondary line and trailing
 /// weather context such as a condition symbol or selected sunny window.
 struct WeatherCardHeader<Trailing: View>: View {
-    // MARK: Content Supplied by the Calling Card
+    // MARK: - Content Supplied by the Calling Card
 
     let icon: String
     let title: LocalizedStringKey
@@ -76,14 +76,12 @@ struct WeatherCardHeader<Trailing: View>: View {
                 // Every card already names its content in text. Repeating an
                 // SF Symbol's generic name adds noise without adding meaning.
 
-
             VStack(alignment: .leading, spacing: 2) {
                 Text(title)
                     .font(.headline.weight(.semibold))
                     .foregroundStyle(theme.colors.primaryText)
                     .lineLimit(2)
                     .multilineTextAlignment(.leading)
-
 
                 if let subtitle {
                     Text(verbatim: subtitle)

@@ -9,6 +9,8 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Forecast Presentation State
+
 /// Shared presentation state for the two Saved Places planning cards.
 ///
 /// The state changes only their explanatory fallback content. Any available
@@ -21,9 +23,20 @@ enum SavedPlacesForecastPresentationState: Equatable {
     case ready
 }
 
+#if DEBUG
+
+// MARK: - Preview
+
+#Preview("Saved Places View") {
+    SavedPlacesViewRoutePreview()
+}
+#endif
+
+// MARK: - Planning Dashboard
+
 /// Planning dashboard for cities the person explicitly saved.
 struct SavedPlacesView: View {
-    // MARK: Shared Inputs
+    // MARK: - Shared Inputs
 
     @Bindable var model: WeatherModel
     @Bindable var router: AppNavigation
@@ -32,11 +45,12 @@ struct SavedPlacesView: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.locale) private var locale
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    // MARK: Derived Planning Data
+    // MARK: - Derived Planning Data
 
-    private var recommendationAssessment: SavedRecommendationsAssessment {
-        model.savedRecommendationAssessment(
+    private var recommendations: [PlaceRecommendation] {
+        model.savedRecommendations(
             on: selectedDate,
             locale: locale
         )
@@ -92,14 +106,13 @@ struct SavedPlacesView: View {
 
     private var dateSummaries: [BestSunnyDateSummary] {
         return savedForecastDates.compactMap { date in
-            let assessment = model.savedRecommendationAssessment(
+            let recommendations = model.savedRecommendations(
                 on: date,
                 locale: locale
             )
-            let recommendations = assessment.recommendations
 
             // A calendar summary exists only for concrete recommendations.
-            // This prevents an unexpected assessment gap from being displayed
+            // This prevents an unexpected recommendation gap from being displayed
             // as an apparently factual zero-sun day.
             guard !recommendations.isEmpty else { return nil }
 
@@ -167,35 +180,41 @@ struct SavedPlacesView: View {
         )
     }
 
+    // MARK: - Presentation
+
     var body: some View {
         GeometryReader { geometry in
-            ScrollView {
-                LazyVStack(spacing: 20) {
-                // Planning cards retain their structure through first load,
-                // empty-library, partial-data, and failure states. Their own
-                // fallback content explains why weather values are absent.
-                BestSunnyDatesCard(
-                    summaries: dateSummaries,
-                    selectedDate: $selectedDate,
-                    presentationState: forecastPresentationState
-                )
+            let usesLandscapeIPadSplit = LandscapeReportLayout.usesSplit(
+                for: geometry.size
+            )
+            let topPadding = detailStyleTitleTopPadding(
+                for: geometry.size,
+                dynamicTypeSize: dynamicTypeSize
+            )
 
-                BestSunnyPlacesCard(
-                    recommendations: recommendationAssessment.recommendations,
-                    savedPlaces: model.placesStore.allPlaces,
-                    presentationState: forecastPresentationState,
-                    timeZoneExclusionNotice: timeZoneExclusionNotice
+            if usesLandscapeIPadSplit {
+                planningLayout(
+                    usesLandscapeIPadSplit: true,
+                    landscapeContentWidth: geometry.size.width - 32,
+                    landscapeContentHeight: geometry.size.height - topPadding - 24
                 )
-
-                // The dashboard stays focused on planning. Renaming and
-                // deleting places live in the pushed Saved Places manager.
-                manageSavedPlacesLink
-                }
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
+                .padding(.top, topPadding)
                 .padding(.bottom, 24)
-                .frame(maxWidth: contentWidth(for: geometry.size))
                 .frame(maxWidth: .infinity)
+            } else {
+                ScrollView {
+                    planningLayout(
+                        usesLandscapeIPadSplit: false,
+                        landscapeContentWidth: 0,
+                        landscapeContentHeight: 0
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, topPadding)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: contentWidth(for: geometry.size))
+                    .frame(maxWidth: .infinity)
+                }
             }
         }
         .scrollIndicators(.hidden)
@@ -205,13 +224,20 @@ struct SavedPlacesView: View {
         .navigationTitle("Saved Places")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            if UIDevice.current.userInterfaceIdiom == .pad {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("Settings", systemImage: "slider.horizontal.3") {
-                        router.presentedSheet = .settings
-                    }
-                    .labelStyle(.iconOnly)
+            // The shared large in-content heading is the visible Saved Places
+            // title. Reserve the compact toolbar slot without duplicating it,
+            // matching Detail View and Your Location.
+            ToolbarItem(placement: .principal) {
+                Text("Saved Places")
+                    .lineLimit(1)
+                    .opacity(0)
+            }
+
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Settings", systemImage: "slider.horizontal.3") {
+                    router.presentedSheet = .settings
                 }
+                .labelStyle(.iconOnly)
             }
 
             // This is intentionally the same shared root date binding used by
@@ -228,7 +254,94 @@ struct SavedPlacesView: View {
         }
         // ContentView owns initial hydration and foreground freshness checks.
         // Re-entering this tab must only read that shared state; launching a
-        // second load here used to rebuild and visibly reshuffle the ranking.
+            // second load here used to rebuild and visibly reshuffle the ranking.
+    }
+
+    // MARK: - Adaptive Layout
+
+    @ViewBuilder
+    private func planningLayout(
+        usesLandscapeIPadSplit: Bool,
+        landscapeContentWidth: CGFloat,
+        landscapeContentHeight: CGFloat
+    ) -> some View {
+        if usesLandscapeIPadSplit {
+            let splitWidth = max(0, landscapeContentWidth - 20)
+            let leftColumnWidth = splitWidth * 0.4
+            let rightColumnWidth = splitWidth - leftColumnWidth
+            let rightColumnContentInset: CGFloat = 80
+
+            HStack(alignment: .top, spacing: 20) {
+                VStack(spacing: 0) {
+                    savedPlacesTitle
+
+                    Spacer(minLength: 0)
+
+                    BestSunnyDatesCard(
+                        summaries: dateSummaries,
+                        selectedDate: $selectedDate,
+                        presentationState: forecastPresentationState
+                    )
+                }
+                .frame(height: landscapeContentHeight, alignment: .top)
+                .frame(width: leftColumnWidth, alignment: .top)
+                // Match Detail View's visual balance against the right column's
+                // large reading inset without changing the 40/60 split.
+                .offset(x: rightColumnContentInset / 2)
+
+                ScrollView {
+                    LazyVStack(spacing: 20) {
+                        BestSunnyPlacesCard(
+                            recommendations: recommendations,
+                            savedPlaces: model.placesStore.allPlaces,
+                            presentationState: forecastPresentationState,
+                            timeZoneExclusionNotice: timeZoneExclusionNotice
+                        )
+
+                        // The dashboard stays focused on planning. Renaming and
+                        // deleting places live in the pushed Saved Places manager.
+                        manageSavedPlacesLink
+                    }
+                    .padding(.horizontal, rightColumnContentInset)
+                    .frame(width: rightColumnWidth, alignment: .top)
+                }
+                .scrollIndicators(.hidden)
+                .hidesLandscapePaneScrollEdgeEffects()
+                .scrollClipDisabled()
+                .frame(height: landscapeContentHeight)
+                .frame(width: rightColumnWidth, alignment: .top)
+            }
+        } else {
+            LazyVStack(spacing: 20) {
+                savedPlacesTitle
+
+                BestSunnyDatesCard(
+                    summaries: dateSummaries,
+                    selectedDate: $selectedDate,
+                    presentationState: forecastPresentationState
+                )
+
+                BestSunnyPlacesCard(
+                    recommendations: recommendations,
+                    savedPlaces: model.placesStore.allPlaces,
+                    presentationState: forecastPresentationState,
+                    timeZoneExclusionNotice: timeZoneExclusionNotice
+                )
+
+                manageSavedPlacesLink
+            }
+        }
+    }
+
+    /// The planning dashboard uses the same in-content heading treatment as
+    /// every Detail View, independent of device, orientation, or platform.
+    private var savedPlacesTitle: some View {
+        DetailStyleReportTitle(
+            title: localizedString("Saved Places", locale: locale)
+        )
+            .frame(maxWidth: .infinity)
+            .padding(.top, 4)
+            .padding(.bottom, 4)
     }
 
     /// A quiet footer link shares Place Detail's secondary text-action style
@@ -241,6 +354,5 @@ struct SavedPlacesView: View {
             )
         }
         .buttonStyle(.plain)
-
     }
 }

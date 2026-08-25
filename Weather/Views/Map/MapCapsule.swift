@@ -8,6 +8,8 @@
 
 import SwiftUI
 
+// MARK: - Compact Surface
+
 /// One compact content shell for every short-lived Map state. `MapCard` owns
 /// the material and positioning; this type owns the capsule's typography,
 /// spacing, Dynamic Type behavior, and interactive hit shape.
@@ -49,6 +51,8 @@ struct MapCapsule<Content: View>: View {
     }
 }
 
+// MARK: - Compact Actions
+
 /// Icon-only action sized for the compact Map capsule.
 struct MapCapsuleIconButton: View {
     let title: LocalizedStringKey
@@ -88,6 +92,8 @@ struct MapCapsuleIconButton: View {
             : -iconOffsetTowardTrailing
     }
 }
+
+// MARK: - Search Status
 
 /// The Find Sun search lifecycle rendered in the one shared Map capsule.
 struct MapSunSearchCapsule: View {

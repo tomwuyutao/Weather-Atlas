@@ -9,10 +9,14 @@ import CoreLocation
 import SwiftUI
 import UIKit
 
+// MARK: - Find Sun Menu
+
 /// A single compact control for all Find Sun entry points. Immediate searches
 /// stay in the menu, while the country and continent catalogs open in a
 /// dedicated picker that floats on iPad and remains full screen on iPhone.
 struct FindSunButton: View {
+    // MARK: - Inputs
+
     let currentLocationCoordinate: CLLocationCoordinate2D?
     let locale: Locale
     /// Parent-owned Map generation. Clear, a replacement query, and an
@@ -24,10 +28,15 @@ struct FindSunButton: View {
     let findSunInCountry: (CountryPlacesOption) -> Void
     let findSunInContinent: (ContinentPlacesOption) -> Void
 
+    // MARK: - Deferred Selection State
+
     @State private var presentedPicker: GeographicPicker?
     @State private var pendingCommitTask: Task<Void, Never>?
     @State private var pendingCommitID = 0
     @State private var latestSessionGeneration = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    // MARK: - Presentation
 
     var body: some View {
         pickerPresentation
@@ -120,6 +129,8 @@ struct FindSunButton: View {
         UIDevice.current.userInterfaceIdiom == .pad ? "ipad" : "iphone"
     }
 
+    // MARK: - Deferred Menu Actions
+
     /// A system `Menu` finishes its collapse animation after its action has
     /// been invoked. Publishing the loading state in that same transaction
     /// briefly places the shrinking menu over the replacement MapCard. Yield
@@ -130,10 +141,14 @@ struct FindSunButton: View {
         pendingCommitID &+= 1
         let commitID = pendingCommitID
         pendingCommitTask = Task { @MainActor in
-            do {
-                try await Task.sleep(for: .milliseconds(180))
-            } catch {
-                return
+            if reduceMotion {
+                await Task.yield()
+            } else {
+                do {
+                    try await Task.sleep(for: .milliseconds(180))
+                } catch {
+                    return
+                }
             }
             guard !Task.isCancelled,
                   commitID == pendingCommitID,
@@ -155,6 +170,8 @@ struct FindSunButton: View {
         generation == latestSessionGeneration
     }
 }
+
+// MARK: - Native Menu Labels
 
 /// Native menus choose their own width. Force each descriptive label into one
 /// compact line so unusually long localized place names never create a tall
@@ -192,6 +209,8 @@ struct MapContextMenuLabel: View {
         .fixedSize(horizontal: true, vertical: false)
     }
 }
+
+// MARK: - Geographic Picker
 
 /// The two catalog surfaces use dedicated navigation instead of nested menus:
 /// countries can be searched, and both lists stay usable at every Dynamic Type
@@ -353,6 +372,10 @@ private struct CountrySearchModifier: ViewModifier {
     }
 }
 
+#if DEBUG
+
+// MARK: - Preview
+
 #Preview("Find Sun Button", traits: .sizeThatFitsLayout) {
     FindSunButton(
         currentLocationCoordinate: CLLocationCoordinate2D(
@@ -369,3 +392,4 @@ private struct CountrySearchModifier: ViewModifier {
     .padding()
     .environment(\.appTheme, .shared)
 }
+#endif

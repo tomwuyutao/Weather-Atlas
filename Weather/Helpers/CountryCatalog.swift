@@ -200,6 +200,8 @@ enum CountryCityCatalogIssue: Hashable {
 /// static value, so Foundation initializes it once, on first use, and thereafter
 /// each query works only with already-validated Swift values.
 enum CountryCityCatalog {
+    // MARK: - Public Queries
+
     /// Resource problems retained alongside any valid catalog rows.
     static var dataIssues: [CountryCityCatalogIssue] {
         catalog.issues
@@ -302,21 +304,49 @@ enum CountryCityCatalog {
         Array(country.cities.prefix(max(0, limit))).map(\.appCity)
     }
 
-    /// Returns top catalog cities across the countries mapped to a continent.
-    /// The cross-country sort is repeated here because each country has already
-    /// been sorted only within itself; this produces one continent-wide ranking.
-    static func topCities(
-        for continent: ContinentPlacesOption,
-        limit: Int
+    // MARK: - Candidate Sampling
+
+    /// Selects up to the requested number of population-leading cities while
+    /// replacing nearby boroughs/localities with later distinct destinations.
+    /// This uses only bundled catalog data, before any WeatherKit request.
+    static func spatiallyDistinctTopCities(
+        for country: CountryPlacesOption,
+        resultLimit: Int,
+        sourceCandidateLimit: Int,
+        clusterRadiusKilometers: Double
     ) -> [City] {
-        Array(cities(for: continent).prefix(max(0, limit)))
+        spatiallyDistinctCities(
+            Array(country.cities.prefix(max(resultLimit, sourceCandidateLimit))),
+            resultLimit: resultLimit,
+            clusterRadiusKilometers: clusterRadiusKilometers
+        )
     }
 
-    /// Returns every bundled city for a continent in the same deterministic
-    /// population order used by `topCities`. Map uses this complete geographic
-    /// sample to establish a stable scope camera, independently of which
-    /// individual cities happen to be sunny on a particular date.
-    static func cities(for continent: ContinentPlacesOption) -> [City] {
+    /// Continent equivalent of the country sampler. It retains the global
+    /// population ordering before clustering, so each selected city is the
+    /// largest available representative of its local metro area.
+    static func spatiallyDistinctTopCities(
+        for continent: ContinentPlacesOption,
+        resultLimit: Int,
+        sourceCandidateLimit: Int,
+        clusterRadiusKilometers: Double
+    ) -> [City] {
+        spatiallyDistinctCities(
+            Array(
+                cityEntries(for: continent)
+                    .prefix(max(resultLimit, sourceCandidateLimit))
+            ),
+            resultLimit: resultLimit,
+            clusterRadiusKilometers: clusterRadiusKilometers
+        )
+    }
+
+    /// Preserves population alongside each source row for geographic sampling.
+    /// Public callers receive app cities above; the private form is used only
+    /// where choosing a metro representative requires population ordering.
+    private static func cityEntries(
+        for continent: ContinentPlacesOption
+    ) -> [CountryCityCatalogEntry] {
         guard let countryCodes = continentCountryCodes[continent] else { return [] }
         return countryCodes
             .flatMap { countryCode in
@@ -332,8 +362,47 @@ enum CountryCityCatalog {
                 }
                 return $0.id.uuidString < $1.id.uuidString
             }
-            .map(\.appCity)
     }
+
+    /// Uses the already population-sorted country catalog. A selected city
+    /// becomes the representative for source rows inside its 25 km metro
+    /// radius; subsequent non-overlapping rows backfill the requested result
+    /// count.
+    private static func spatiallyDistinctCities(
+        _ candidates: [CountryCityCatalogEntry],
+        resultLimit: Int,
+        clusterRadiusKilometers: Double
+    ) -> [City] {
+        guard resultLimit > 0,
+              clusterRadiusKilometers.isFinite,
+              clusterRadiusKilometers > 0 else {
+            return []
+        }
+        var selected: [CountryCityCatalogEntry] = []
+        selected.reserveCapacity(min(resultLimit, candidates.count))
+
+        for candidate in candidates {
+            let candidateLocation = CLLocation(
+                latitude: candidate.latitude,
+                longitude: candidate.longitude
+            )
+            let isInExistingCluster = selected.contains { selectedCandidate in
+                candidateLocation.distance(
+                    from: CLLocation(
+                        latitude: selectedCandidate.latitude,
+                        longitude: selectedCandidate.longitude
+                    )
+                ) <= clusterRadiusKilometers * 1_000
+            }
+            guard !isInExistingCluster else { continue }
+
+            selected.append(candidate)
+            if selected.count == resultLimit { break }
+        }
+        return selected.map(\.appCity)
+    }
+
+    // MARK: - Continent Membership
 
     /// Built-in continents mapped to included ISO country codes.
     /// `Set` literals express membership rather than order; no UI relies on the
@@ -522,6 +591,8 @@ enum CountryCityCatalog {
         return CatalogData(countriesByCode: countriesByCode, issues: issues)
     }()
 
+    // MARK: - CSV Field Validation
+
     private static func nonemptyCatalogValue(_ value: String) -> String? {
         let value = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return value.isEmpty ? nil : value
@@ -571,6 +642,8 @@ enum CountryCityCatalog {
         }
         return Int(value)
     }
+
+    // MARK: - CSV Parsing
 
     /// Splits one CSV row while respecting quoted commas and escaped quotes.
     ///

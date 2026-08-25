@@ -201,9 +201,19 @@ private struct SunnyHoursHomeScreenWidgetView: View {
 /// truth prevents those two glanceable surfaces from drifting in either
 /// information or visual hierarchy.
 private struct SunnyStatusWidgetView: View {
+    /// The Home Screen gets a slightly tighter leading inset. The Lock Screen
+    /// retains its original system-friendly spacing even though it reuses the
+    /// same information hierarchy.
+    enum Surface {
+        case homeSmall
+        case lockScreen
+    }
+
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.locale) private var locale
     let entry: SunnyHoursLockScreenEntry
+    var surface: Surface = .homeSmall
 
     var body: some View {
         if let city = entry.city {
@@ -212,43 +222,48 @@ private struct SunnyStatusWidgetView: View {
                 ? widgetSunStatusText(for: city, at: entry.date, locale: locale)
                 : nil
 
-            VStack(spacing: 6) {
-                Text(city.cityName)
-                    .font(.headline.weight(.semibold))
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.72)
-                    .frame(maxWidth: .infinity)
-
-                Spacer(minLength: 0)
-
+            VStack(alignment: .leading, spacing: 8) {
                 if issue == nil,
-                   let condition = city.currentCondition {
-                    WidgetConditionIcon(condition: condition, size: 34)
+                   let weather = city.currentWeather {
+                    WidgetConditionIcon(weather: weather, size: 34)
                 } else {
-                    Image(systemName: "cloud.slash")
+                    Image(systemName: "cloud.fill")
                         .font(.system(size: 30, weight: .medium))
-                        .foregroundStyle(AppPalette.values(for: colorScheme).secondaryText)
+                        .foregroundStyle(widgetPalette.secondaryText)
 
                 }
-
-                Spacer(minLength: 0)
-
                 Text(status ?? widgetLocalizedString("Weather unavailable."))
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(AppPalette.values(for: colorScheme).secondaryText)
-                    .multilineTextAlignment(.center)
+                    .font(.headline.weight(.semibold))
+                    .foregroundStyle(widgetPalette.secondaryText)
+                    .multilineTextAlignment(.leading)
                     .lineLimit(2)
                     .minimumScaleFactor(0.72)
-                    .frame(maxWidth: .infinity)
+
+                Text(city.cityName)
+                    .font(.caption.weight(.medium))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.72)
+
+                Spacer(minLength: 0)
             }
-            .padding(12)
-            .foregroundStyle(AppPalette.values(for: colorScheme).titleText)
-
-
+            .padding(.top, 12)
+            .padding(.bottom, 12)
+            .padding(.leading, surface == .homeSmall ? 8 : 12)
+            .padding(.trailing, 12)
+            .frame(
+                maxWidth: .infinity,
+                maxHeight: .infinity,
+                alignment: .topLeading
+            )
+            .foregroundStyle(widgetPalette.titleText)
             .widgetURL(widgetPlaceURL(for: city, issue: issue))
         } else {
             WidgetDataUnavailablePlaceholder()
         }
+    }
+
+    private var widgetPalette: AppPalette.Values {
+        AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)
     }
 }
 
@@ -260,6 +275,7 @@ private struct SunnyWindowLargeWidgetView: View {
     @Environment(\.locale) private var locale
     /// Widget appearance used by the shared palette.
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     /// Timeline entry supplied by the shared provider.
     let entry: SunnyHoursLockScreenEntry
 
@@ -272,8 +288,8 @@ private struct SunnyWindowLargeWidgetView: View {
             VStack(alignment: .leading, spacing: 9) {
                 SunnyHoursHeader(
                     cityName: city.cityName,
-                    condition: currentIssue == nil
-                        ? city.currentCondition
+                    weather: currentIssue == nil
+                        ? city.currentWeather
                         : nil,
                     summaryText: summaryText,
                     font: .headline.weight(.semibold),
@@ -308,12 +324,12 @@ private struct SunnyWindowLargeWidgetView: View {
             .padding(.top, 4)
             .padding(.bottom, 2)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .foregroundStyle(AppPalette.values(for: colorScheme).titleText)
-            // A Home Screen widget is one deep-link destination. Present a
-            // concise city-and-sunny-hours summary rather than exposing every
-            // decorative chart segment and grid label.
-
-
+            .foregroundStyle(
+                AppPalette.values(
+                    for: colorScheme,
+                    contrast: colorSchemeContrast
+                ).titleText
+            )
             // `widgetURL` makes the entire noninteractive widget a deep link;
             // WidgetKit does not support arbitrary in-widget navigation here.
             .widgetURL(widgetPlaceURL(for: city, issue: windowIssue))
@@ -475,39 +491,20 @@ private struct SunnyWindowLargeChart: View {
                         .lineLimit(1)
                         .frame(width: labelWidth, alignment: .leading)
 
-                    ZStack(alignment: .leading) {
-                        Capsule()
-                            // Adapt the empty daylight track to rendering and contrast modes.
-                            .fill(
-                                usesSystemColors
-                                    ? .primary.opacity(colorSchemeContrast == .increased ? 0.24 : 0.14)
-                                    : noSunColor(in: palette)
+                    SunnyHoursContinuousCapsuleTrack(
+                        hours: day.chartHourlyConditions.compactMap {
+                            guard let weather = $0.weather else { return nil }
+                            return SunnyHoursChartHour(
+                                date: $0.date,
+                                hour: $0.hour,
+                                condition: weather.condition
                             )
-                            .frame(height: capsuleHeight)
-
-                        // Draw every source hour directly, retaining distinct
-                        // rain and drizzle treatment instead of reducing all
-                        // non-sunny conditions to one no-sun track.
-                        ForEach(day.chartHourlyConditions) { hour in
-                            Rectangle()
-                                .fill(segmentColor(for: hour.condition))
-                                .frame(
-                                    width: chartBounds.width(
-                                        for: hour.hour...hour.hour,
-                                        timelineWidth: timelineWidth,
-                                        minimumWidth: 1
-                                    ),
-                                    height: capsuleHeight
-                                )
-                                .offset(
-                                    x: chartBounds.xPosition(
-                                        for: Double(hour.hour),
-                                        width: timelineWidth
-                                    )
-                                )
-                        }
-                    }
-                    // Give each capsule a stable 16-point visual lane.
+                        },
+                        bounds: chartBounds,
+                        colors: sharedChartColors,
+                        height: capsuleHeight
+                    )
+                    // Give each shared capsule track a stable 16-point lane.
                     .frame(width: timelineWidth, height: 16)
                 }
                 .frame(height: rowHeight)
@@ -538,7 +535,7 @@ private struct SunnyWindowLargeChart: View {
             }
             // Keep vertical guides subordinate in every rendering mode.
             .stroke(
-                renderedSecondary.opacity(colorSchemeContrast == .increased ? 0.18 : 0.08),
+                renderedSecondary.opacity(0.08),
                 lineWidth: 1
             )
             .frame(width: timelineWidth, height: rowsHeight)
@@ -547,9 +544,9 @@ private struct SunnyWindowLargeChart: View {
     }
 
     // `@ViewBuilder` lets this helper intentionally emit no view when today is
-    // absent or the current time lies outside the chart's real daylight bounds.
+    // absent. Off-window times clamp to the chart's leading or trailing edge.
     @ViewBuilder
-    /// Draws selected-city local time only on today's row inside daylight.
+    /// Draws selected-city local time on today's row, clamped to daylight.
     private func currentTimeMarker(
         rowCount: Int,
         timelineWidth: CGFloat,
@@ -571,7 +568,14 @@ private struct SunnyWindowLargeChart: View {
                         Rectangle()
                             .fill(renderedPrimary.opacity(0.82))
                             .frame(width: 2, height: capsuleHeight)
-                            .offset(x: markerX - 1)
+                            // Keep the complete two-point marker visible when
+                            // an off-window time clamps to either chart edge.
+                            .offset(
+                                x: min(
+                                    max(markerX - 1, 0),
+                                    max(timelineWidth - 2, 0)
+                                )
+                            )
                     }
                     .frame(
                         width: timelineWidth,
@@ -592,55 +596,75 @@ private struct SunnyWindowLargeChart: View {
 
     // MARK: - Rendering Colors and Local Time
 
-    /// Returns the shared timeline color for one source hour. Legacy
-    /// `.partlySunny` values are normalized to neutral partly-cloudy first.
-    private func segmentColor(for condition: AppWeatherCondition) -> Color {
-        let condition = condition.widgetPresentationCondition
+    /// Returns the shared timeline color for one API-derived tint family.
+    /// This changes only the track color; current-condition symbols always use
+    /// the original WeatherKit `symbolName`.
+    private func segmentColor(for tone: WeatherIconTone) -> Color {
         if usesSystemColors {
-            return monochromeColor(for: condition)
+            return monochromeColor(for: tone)
         }
         if colorSchemeContrast == .increased {
             let colors = AppPalette.increasedContrastValues(for: colorScheme)
-            return chartColor(for: condition, colors: colors)
+            return chartColor(for: tone, colors: colors)
         }
-        return chartColor(for: condition, colors: palette)
+        return chartColor(for: tone, colors: palette)
+    }
+
+    /// Adapter-only colour policy for the shared app/widget capsule renderer.
+    private var sharedChartColors: SunnyHoursChartColors {
+        SunnyHoursChartColors(
+            primary: renderedPrimary,
+            secondary: renderedSecondary,
+            sun: segmentColor(for: .clear),
+            partlySunny: segmentColor(for: .partlySunny),
+            rain: segmentColor(for: .rain),
+            drizzle: segmentColor(for: .drizzle),
+            noSun: segmentColor(for: .cloudy)
+        )
     }
 
     /// Retains clear, precipitation, and neutral no-sun weights when WidgetKit
     /// enforces a monochrome or tinted rendering mode.
-    private func monochromeColor(for condition: AppWeatherCondition) -> Color {
-        switch condition {
+    private func monochromeColor(for tone: WeatherIconTone) -> Color {
+        switch tone {
         case .clear:
             .primary.opacity(1)
+        case .partlySunny:
+            .primary.opacity(0.92)
         case .rain:
             .primary.opacity(0.82)
         case .drizzle:
             .primary.opacity(0.38)
-        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
-            .primary.opacity(colorSchemeContrast == .increased ? 0.24 : 0.14)
+        case .cloudy:
+            .primary.opacity(0.14)
         }
     }
 
-    /// Maps normalized conditions to the same semantic palette values used by
-    /// Detail's daily and ten-day charts.
+    /// Maps only tint families to the timeline palette.
     private func chartColor(
-        for condition: AppWeatherCondition,
+        for tone: WeatherIconTone,
         colors: AppPalette.Values
     ) -> Color {
-        switch condition {
+        switch tone {
         case .clear:
             colors.dotSun
+        case .partlySunny:
+            colors.dotPartlyCloudy
         case .rain:
             colors.dotRain
         case .drizzle:
             colors.dotDrizzle
-        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
+        case .cloudy:
             noSunColor(in: colors)
         }
     }
 
-    /// Reproduces Detail's subdued condition-aware no-sun fill.
+    /// Reproduces Detail's subdued condition-aware no-sun fill. Increased
+    /// contrast keeps the strengthened cloudy mark opaque against the canvas.
     private func noSunColor(in colors: AppPalette.Values) -> Color {
+        if colorSchemeContrast == .increased {
+            return colors.dotCloudy
+        }
         guard let screenTone else { return colors.settingsRow }
         return weatherColor(for: screenTone, colors: colors).interpolated(
             with: colors.background,
@@ -656,7 +680,9 @@ private struct SunnyWindowLargeChart: View {
         switch tone {
         case .clear:
             colors.dotSun
-        case .partlySunny, .cloudy:
+        case .partlySunny:
+            colors.dotPartlyCloudy
+        case .cloudy:
             colors.dotCloudy
         case .rain:
             colors.dotRain
@@ -667,7 +693,7 @@ private struct SunnyWindowLargeChart: View {
 
     /// Shared primitive palette for the widget appearance.
     private var palette: AppPalette.Values {
-        AppPalette.values(for: colorScheme)
+        AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)
     }
 
     /// Whether WidgetKit requires monochrome/tinted semantic foregrounds.
@@ -708,6 +734,7 @@ private struct SunnyHoursHomeWidgetView: View {
     @Environment(\.locale) private var locale
     /// Widget appearance selecting the shared palette.
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     /// Timeline entry supplied by the shared provider.
     let entry: SunnyHoursLockScreenEntry
 
@@ -730,8 +757,8 @@ private struct SunnyHoursHomeWidgetView: View {
         return VStack(alignment: .leading, spacing: family == .systemSmall ? 7 : 9) {
             SunnyHoursHeader(
                 cityName: city.cityName,
-                condition: issue == nil
-                    ? city.currentCondition
+                weather: issue == nil
+                    ? city.currentWeather
                     : nil,
                 summaryText: summaryText,
                 font: .headline.weight(.semibold),
@@ -741,7 +768,10 @@ private struct SunnyHoursHomeWidgetView: View {
             if issue != nil {
                 WidgetDataUnavailablePlaceholder()
             } else {
-                SunnyHoursTimeline(city: city, currentDate: entry.date)
+                WidgetDailySunnyHoursTimeline(
+                    city: city,
+                    currentDate: entry.date
+                )
                     .padding(.top, 12)
                     .frame(maxHeight: .infinity)
 
@@ -752,9 +782,12 @@ private struct SunnyHoursHomeWidgetView: View {
         .padding(.top, 12)
         .padding(.bottom, 5)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .foregroundStyle(AppPalette.values(for: colorScheme).titleText)
-
-
+        .foregroundStyle(
+            AppPalette.values(
+                for: colorScheme,
+                contrast: colorSchemeContrast
+            ).titleText
+        )
     }
 }
 
@@ -764,12 +797,16 @@ private struct SunnyHoursHomeWidgetView: View {
 private struct WidgetPaletteBackground: View {
     /// Widget appearance selecting light or dark background.
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     /// Fills the widget container with the semantic canvas.
     var body: some View {
         // `containerBackground(for: .widget)` above inserts this semantic color
         // only in families where WidgetKit allows the extension to own it.
-        AppPalette.values(for: colorScheme).background
+        AppPalette.values(
+            for: colorScheme,
+            contrast: colorSchemeContrast
+        ).background
     }
 }
 
@@ -784,7 +821,7 @@ private struct SunnyHoursLockScreenEntry: TimelineEntry {
     let date: Date
     /// Configured city with applied snapshot, or `nil` before configuration.
     let city: WidgetDataCity?
-    /// Deterministic sample entry used by WidgetKit previews.
+    /// Deterministic sample used by placeholders, the gallery, and Xcode previews.
     static let preview = SunnyHoursLockScreenEntry(
         date: .now,
         city: .preview
@@ -905,30 +942,51 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
             timeZoneIdentifier: nil,
             latitude: nil,
             longitude: nil,
-            daytimeHours: [],
-            sunnyHours: [],
-            partlySunnyHours: [],
             dataIssue: issue
         )
     }
 
-    /// Applies only a fresh snapshot for the destination's current local day.
-    /// Placeholder/gallery rendering must not briefly present yesterday's
-    /// weather as current while a later timeline refresh is still pending.
+    /// Applies only a fresh, widget-owned snapshot for the destination's
+    /// current local day. Placeholder/gallery rendering must not briefly
+    /// present yesterday's weather as current while a later direct refresh is
+    /// still pending.
     private func cityUsingCachedSnapshot(
         for configuration: SunnyHoursLockScreenConfigurationIntent
     ) -> WidgetDataCity? {
         guard let city = selectedCity(for: configuration) else { return nil }
+        return cityUsingFreshWidgetSnapshot(for: city)
+    }
+
+    /// Applies the extension's private snapshot only while it is still inside
+    /// the normal freshness window.
+    private func cityUsingFreshWidgetSnapshot(
+        for city: WidgetDataCity
+    ) -> WidgetDataCity {
         if let issue = city.widgetCurrentIssue {
             return city.markingUnavailable(issue)
         }
-        guard let snapshot = WidgetDataStore.weatherSnapshot(for: city.id) else {
+        guard let snapshot = WidgetForecastStore.freshSnapshot(for: city.id) else {
             return city.markingUnavailable(.missingForecastData(at: .now))
         }
         guard snapshotMatchesCity(snapshot, city: city) else {
             return city.markingUnavailable(.missingTimeZone)
         }
         return city.applying(snapshot)
+    }
+
+    /// Returns a current-local-day, last-known-good extension snapshot after a
+    /// direct request fails. This recovery path is intentionally unavailable to
+    /// the host app and never uses the App Group catalog as weather storage.
+    private func cityUsingFallbackWidgetSnapshot(
+        for city: WidgetDataCity
+    ) -> WidgetDataCity? {
+        guard let snapshot = WidgetForecastStore.fallbackSnapshot(for: city.id),
+              snapshotMatchesCity(snapshot, city: city) else {
+            return nil
+        }
+        let cachedCity = city.applying(snapshot)
+        guard cachedCity.widgetCurrentIssue == nil else { return nil }
+        return cachedCity
     }
 
     /// Uses fresh cache or makes a bounded direct WeatherKit request.
@@ -961,35 +1019,37 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
             )
         }
 
-        // Timeline and gallery requests always fetch through the extension so
-        // widgets remain self-refreshing. Cached data is used only by the
-        // synchronous placeholder path, where WidgetKit cannot await WeatherKit.
-        // Remove it before the request so a failed refresh cannot revive a
-        // previous coordinate or forecast through a later callback.
-        WidgetDataStore.removeWeatherSnapshot(for: city.id)
-
-        // A widget can be asked for its first timeline while WeatherKit is still
-        // establishing the extension's service session. Retry one transient
-        // request failure, but accept every returned WeatherKit response: a
-        // partial daily or hourly horizon is still useful widget data.
+        // `snapshot` and `timeline` own an actual extension-side WeatherKit
+        // refresh. The private cache is reserved for synchronous placeholders
+        // and recovery after a direct request fails, never as app-provided data.
+        // Request only the datasets these widgets render; the aggregate request
+        // also asks WeatherKit for alerts, air quality, and next-hour data.
         var finalRequestError: Error?
         for attempt in 0..<2 {
             do {
-                // WeatherKit returns an aggregate containing daily and hourly
-                // forecasts for this coordinate; reduce it directly to the
-                // widget's Codable rendering payload.
-                let weather = try await WeatherService.shared.weather(
-                    for: CLLocation(latitude: latitude, longitude: longitude)
+                let (currentWeather, dailyForecast, hourlyForecast) = try await WeatherKit.WeatherService.shared.weather(
+                    for: CLLocation(latitude: latitude, longitude: longitude),
+                    including: .current,
+                    .daily,
+                    .hourly
                 )
                 let snapshot = makeWeatherSnapshot(
-                    weather: weather,
+                    currentWeather: currentWeather,
+                    dailyForecast: dailyForecast,
+                    hourlyForecast: hourlyForecast,
                     city: city,
                     timeZone: timeZone
                 )
-                WidgetDataStore.saveWeatherSnapshot(snapshot, for: city.id)
+                WidgetForecastStore.save(snapshot, for: city.id)
                 return RefreshResult(
                     city: city.applying(snapshot),
                     needsShortRetry: false
+                )
+            } catch is CancellationError {
+                return RefreshResult(
+                    city: cityUsingFallbackWidgetSnapshot(for: city)
+                        ?? city.markingUnavailable(.missingForecastData(at: .now)),
+                    needsShortRetry: true
                 )
             } catch {
                 finalRequestError = error
@@ -1003,12 +1063,12 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
             }
         }
 
-        WidgetDataStore.removeWeatherSnapshot(for: city.id)
         let errorDetail = finalRequestError.map {
             String(reflecting: type(of: $0))
         }
         return RefreshResult(
-            city: city.markingUnavailable(.weatherRequestFailed(errorDetail)),
+            city: cityUsingFallbackWidgetSnapshot(for: city)
+                ?? city.markingUnavailable(.weatherRequestFailed(errorDetail)),
             needsShortRetry: true
         )
     }
@@ -1046,11 +1106,18 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
               let cityLongitude = city.longitude else {
             return false
         }
-        // Catalog coordinates are rounded/persisted values. A tiny tolerance
-        // accepts their stable representation while rejecting a moved Current
-        // Location before its old forecast can be drawn.
-        return abs(snapshotLatitude - cityLatitude) < 0.0001
-            && abs(snapshotLongitude - cityLongitude) < 0.0001
+        // Current Location can move by ordinary GPS jitter between catalog and
+        // timeline updates. A small real-world distance tolerates that drift
+        // without reviving a forecast after the person has meaningfully moved.
+        let snapshotLocation = CLLocation(
+            latitude: snapshotLatitude,
+            longitude: snapshotLongitude
+        )
+        let cityLocation = CLLocation(
+            latitude: cityLatitude,
+            longitude: cityLongitude
+        )
+        return snapshotLocation.distance(from: cityLocation) <= 2_000
     }
 
     // MARK: - WeatherKit Snapshot Construction
@@ -1061,7 +1128,9 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
     /// and hourly data remain usable even when no daily row is available for the
     /// large-widget timeline.
     private func makeWeatherSnapshot(
-        weather: Weather,
+        currentWeather: CurrentWeather,
+        dailyForecast: Forecast<DayWeather>,
+        hourlyForecast: Forecast<HourWeather>,
         city: WidgetDataCity,
         timeZone: TimeZone
     ) -> WidgetWeatherSnapshot {
@@ -1072,33 +1141,28 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
         calendar.timeZone = timeZone
         let currentLocalDay = calendar.startOfDay(for: now)
         let forecastDays = Array(
-            weather.dailyForecast.forecast
+            dailyForecast.forecast
                 .filter { calendar.startOfDay(for: $0.date) >= currentLocalDay }
                 .prefix(10)
         )
-        // The header describes current weather, so use WeatherKit's current
-        // record rather than substituting the daily condition.
-        let currentWeather = weather.currentWeather
-        let currentCondition = (
-            AppWeatherCondition.resolve(
-                weatherKit: currentWeather.condition,
-                symbolName: currentWeather.symbolName
-            ) ?? .cloudy
-        ).widgetPresentationCondition
+        // The header uses the exact current WeatherKit condition and symbol,
+        // rather than substituting a daily value or app-selected icon.
+        let currentWeatherPresentation = WidgetWeatherPresentation(
+            condition: AppWeatherCondition(weatherKit: currentWeather.condition),
+            symbolName: currentWeather.symbolName
+        )
 
         // Group WeatherKit's available daylight records once. Both the current
         // card and every large-widget row then reuse the same local-day data.
         let daylightHoursByDay = Dictionary(
-            grouping: Array(weather.hourlyForecast.forecast)
+            grouping: Array(hourlyForecast.forecast)
                 .filter(\.isDaylight)
                 .sorted { $0.date < $1.date }
         ) {
             calendar.startOfDay(for: $0.date)
         }
-        // Reduce available daylight HourWeather objects to integer chart hours.
-        // Unrecognized source conditions use a neutral presentation rather than
-        // discarding an otherwise useful widget snapshot.
-        let currentHours = widgetForecastHourBreakdown(
+        // Retain each daylight record's source condition and symbol unchanged.
+        let currentHourlyConditions = widgetForecastHourlyConditions(
             hours: daylightHoursByDay[currentLocalDay] ?? [],
             calendar: calendar
         )
@@ -1108,29 +1172,25 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
         // daylight-marked hourly records.
         let sunnyWindowDays = forecastDays.map { day in
             let localDay = calendar.startOfDay(for: day.date)
-            let hours = widgetForecastHourBreakdown(
+            let hourlyConditions = widgetForecastHourlyConditions(
                 hours: daylightHoursByDay[localDay] ?? [],
                 calendar: calendar
             )
             return WidgetSunnyWindowDay(
                 date: localDay,
-                sunnyHours: hours.sunnyHours,
-                partlySunnyHours: hours.partlySunnyHours,
-                hourlyConditions: hours.hourlyConditions
+                hourlyConditions: hourlyConditions
             )
         }
 
         return WidgetWeatherSnapshot(
+            resetEpoch: WidgetResetEpoch.current,
             fetchedAt: now,
             representedLocalDate: calendar.startOfDay(for: now),
             timeZoneIdentifier: timeZone.identifier,
             latitude: city.latitude,
             longitude: city.longitude,
-            currentCondition: currentCondition,
-            daytimeHours: currentHours.daytimeHours,
-            sunnyHours: currentHours.sunnyHours,
-            partlySunnyHours: currentHours.partlySunnyHours,
-            hourlyConditions: currentHours.hourlyConditions,
+            currentWeather: currentWeatherPresentation,
+            hourlyConditions: currentHourlyConditions,
             sunnyWindowDays: sunnyWindowDays,
             dataIssue: nil
         )
@@ -1140,60 +1200,24 @@ private struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
 
 // MARK: - Widget Forecast Classification
 
-/// Widget-specific output adds full normalized conditions to the sunny bucket.
-/// The partly-sunny bucket remains only for decoding payloads from earlier
-/// versions; partly cloudy is now a neutral, non-sunny chart condition.
-private struct WidgetForecastHourBreakdown {
-    let daytimeHours: [Int]
-    let sunnyHours: [Int]
-    let partlySunnyHours: [Int]
-    let hourlyConditions: [WidgetHourlyCondition]
-}
-
-/// Resolves widget WeatherKit records with the app's semantic-first condition
-/// adapter, then derives every persisted chart bucket from that one result.
-/// A future WeatherKit condition that is outside the app's finite display
-/// vocabulary gets the neutral cloudy treatment instead of invalidating the
-/// entire forecast.
-private func widgetForecastHourBreakdown(
+/// Reduces WeatherKit records to the persistent widget payload without
+/// translating their condition or replacing their source symbol.
+private func widgetForecastHourlyConditions(
     hours: [HourWeather],
     calendar: Calendar
-) -> WidgetForecastHourBreakdown {
-    var daytimeHours: [Int] = []
-    var sunnyHours: [Int] = []
-    // Preserve the serialized bucket's shape for widget payload compatibility,
-    // while ensuring fresh snapshots never classify an hour as partly sunny.
-    let partlySunnyHours: [Int] = []
-    var hourlyConditions: [WidgetHourlyCondition] = []
-
-    for forecast in hours {
-        let condition = (
-            AppWeatherCondition.resolve(
-                weatherKit: forecast.condition,
-                symbolName: forecast.symbolName
-            ) ?? .cloudy
-        ).widgetPresentationCondition
-
+) -> [WidgetHourlyCondition] {
+    hours.map { forecast in
+        let weather = WidgetWeatherPresentation(
+            condition: AppWeatherCondition(weatherKit: forecast.condition),
+            symbolName: forecast.symbolName
+        )
         let hour = calendar.component(.hour, from: forecast.date)
-        daytimeHours.append(hour)
-        if condition == .clear {
-            sunnyHours.append(hour)
-        }
-        hourlyConditions.append(
-            WidgetHourlyCondition(
-                date: forecast.date,
-                hour: hour,
-                condition: condition
-            )
+        return WidgetHourlyCondition(
+            date: forecast.date,
+            hour: hour,
+            weather: weather
         )
     }
-
-    return WidgetForecastHourBreakdown(
-        daytimeHours: daytimeHours,
-        sunnyHours: sunnyHours,
-        partlySunnyHours: partlySunnyHours,
-        hourlyConditions: hourlyConditions
-    )
 }
 
 /// Uses the actual represented hours where possible; a full-day domain is a
@@ -1247,7 +1271,7 @@ private struct SunnyHoursLockScreenWidgetView: View {
 
     /// Builds configured accessory content or remains empty before configuration.
     var body: some View {
-        SunnyStatusWidgetView(entry: entry)
+        SunnyStatusWidgetView(entry: entry, surface: .lockScreen)
     }
 }
 
@@ -1259,12 +1283,13 @@ private struct SunnyHoursLockScreenWidgetView: View {
 private struct SunnyHoursHeader: View {
     /// Widget appearance selecting the weather icon palette.
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     /// Rendering mode determining full-color versus monochrome symbols.
     @Environment(\.widgetRenderingMode) private var widgetRenderingMode
     /// Localized configured city name.
     let cityName: String
-    /// Optional current condition normalized by the shared app/widget model.
-    let condition: AppWeatherCondition?
+    /// Optional current WeatherKit condition and source symbol.
+    let weather: WidgetWeatherPresentation?
     /// Optional day-total text replacing the condition icon on Home Screen widgets.
     var summaryText: String? = nil
     /// Family-specific header font.
@@ -1272,8 +1297,8 @@ private struct SunnyHoursHeader: View {
     /// Whether full-color weather icon rendering is permitted.
     let usesWeatherColors: Bool
 
-    /// Builds city title and its already-normalized condition icon. If a
-    /// condition is absent, the header leaves that secondary slot empty while
+    /// Builds city title and its WeatherKit-provided condition icon. If weather
+    /// data is absent, the header leaves that secondary slot empty while
     /// retaining the available weather timeline.
     var body: some View {
         HStack(spacing: 6) {
@@ -1288,33 +1313,37 @@ private struct SunnyHoursHeader: View {
                     .font(.caption.weight(.semibold))
                     .foregroundStyle(
                         widgetRenderingMode == .fullColor
-                            ? AppPalette.values(for: colorScheme).secondaryText
+                            ? widgetPalette.secondaryText
                             : Color.secondary
                     )
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)
-            } else if let condition {
+            } else if let weather {
                 // WidgetKit can request monochrome/tinted rendering regardless
                 // of the device color scheme. In Full Color, match each weather
                 // symbol to the same semantic color as its Map-dot condition.
                 if usesWeatherColors,
                    widgetRenderingMode == .fullColor {
-                    Image(systemName: condition.displayIcon)
+                    Image(systemName: weather.symbolName)
                         .symbolRenderingMode(.monochrome)
                         .foregroundStyle(
                             widgetConditionIconColor(
-                                for: condition,
-                                colors: AppPalette.values(for: colorScheme)
+                                for: weather,
+                                colors: widgetPalette
                             )
                         )
                 } else {
-                    Image(systemName: condition.displayIcon)
+                    Image(systemName: weather.symbolName)
                         .symbolRenderingMode(.monochrome)
                         .foregroundStyle(Color.primary)
                 }
             }
         }
         .font(font)
+    }
+
+    private var widgetPalette: AppPalette.Values {
+        AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)
     }
 }
 
@@ -1323,12 +1352,13 @@ private struct SunnyHoursHeader: View {
 /// remains system monochrome or tinted as required.
 private struct WidgetConditionIcon: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.widgetRenderingMode) private var widgetRenderingMode
-    let condition: AppWeatherCondition
+    let weather: WidgetWeatherPresentation
     let size: CGFloat
 
     var body: some View {
-        Image(systemName: condition.displayIcon)
+        Image(systemName: weather.symbolName)
             .font(.system(size: size, weight: .medium))
             .symbolRenderingMode(.monochrome)
             .foregroundStyle(iconColor)
@@ -1337,8 +1367,11 @@ private struct WidgetConditionIcon: View {
     private var iconColor: Color {
         guard widgetRenderingMode == .fullColor else { return .primary }
         return widgetConditionIconColor(
-            for: condition,
-            colors: AppPalette.values(for: colorScheme)
+            for: weather,
+            colors: AppPalette.values(
+                for: colorScheme,
+                contrast: colorSchemeContrast
+            )
         )
     }
 }
@@ -1349,10 +1382,11 @@ private func widgetSunnyHoursTotalText(
     locale: Locale
 ) -> String? {
     guard city.widgetCurrentIssue == nil else { return nil }
-    // `partlySunnyHours` is a legacy cache bucket. It represents neutral
-    // partly-cloudy data under the current weather policy and must not inflate
-    // the displayed sunny-hour total.
-    let favorableHours = Set(city.sunnyHours)
+    // Match the previous persisted buckets by counting each favorable local
+    // clock hour once, including both clear and mostly-clear conditions.
+    let favorableHours = Set((city.hourlyConditions ?? []).compactMap { hour in
+        hour.weather?.condition.countsAsSunnyHour == true ? hour.hour : nil
+    })
     guard !favorableHours.isEmpty else {
         return widgetLocalizedString("No Sun")
     }
@@ -1370,94 +1404,67 @@ private func widgetSunStatusText(
     at referenceDate: Date,
     locale: Locale
 ) -> String? {
-    guard city.widgetCurrentIssue == nil,
-          let timeZone = city.widgetTimeZone else {
+    guard city.widgetCurrentIssue == nil else {
         return nil
     }
 
     if let conditions = city.hourlyConditions,
        !conditions.isEmpty {
         let sunnyConditions = conditions.filter {
-            $0.condition.widgetPresentationCondition == .clear
+            $0.weather?.condition.countsAsSunnyHour == true
         }
         guard !sunnyConditions.isEmpty else {
             return widgetLocalizedString("No Sun Today")
         }
         if let current = conditions.last(where: { $0.date <= referenceDate }),
-           current.condition.widgetPresentationCondition == .clear {
+           current.weather?.condition.countsAsSunnyHour == true {
             return widgetLocalizedString("Sun Out Now")
         }
         if let next = sunnyConditions.first(where: { $0.date > referenceDate }) {
             return String(
                 format: widgetLocalizedString("Sun Out in %@"),
                 locale: locale,
-                widgetCountdownText(to: next.date, from: referenceDate)
+                widgetCountdownText(
+                    to: next.date,
+                    from: referenceDate,
+                    locale: locale
+                )
             )
         }
         return widgetLocalizedString("No More Sun Today")
     }
 
-    // Older cached snapshots carry hour buckets rather than individual source
-    // dates. Use the city-local clock so their small/Lock Screen widgets keep
-    // the same useful message until WidgetKit replaces the cache.
-    var calendar = Calendar.current
-    calendar.timeZone = timeZone
-    let currentHour = calendar.component(.hour, from: referenceDate)
-    let sunnyHours = Array(Set(city.sunnyHours)).sorted()
-    guard !sunnyHours.isEmpty else {
-        return widgetLocalizedString("No Sun Today")
-    }
-    if sunnyHours.contains(currentHour) {
-        return widgetLocalizedString("Sun Out Now")
-    }
-    guard let nextHour = sunnyHours.first(where: { $0 > currentHour }),
-          let nextDate = calendar.date(
-            bySettingHour: nextHour,
-            minute: 0,
-            second: 0,
-            of: referenceDate
-          ) else {
-        return widgetLocalizedString("No More Sun Today")
-    }
-    return String(
-        format: widgetLocalizedString("Sun Out in %@"),
-        locale: locale,
-        widgetCountdownText(to: nextDate, from: referenceDate)
-    )
+    return nil
 }
 
 /// Formats the Detail-compatible duration without depending on the app process.
-private func widgetCountdownText(to date: Date, from referenceDate: Date) -> String {
+private func widgetCountdownText(
+    to date: Date,
+    from referenceDate: Date,
+    locale: Locale
+) -> String {
     let formatter = DateComponentsFormatter()
     formatter.allowedUnits = [.hour, .minute]
     formatter.unitsStyle = .full
     formatter.maximumUnitCount = 2
     formatter.zeroFormattingBehavior = .dropAll
+    var calendar = Calendar.autoupdatingCurrent
+    calendar.locale = locale
+    formatter.calendar = calendar
     return formatter.string(
         from: max(0, date.timeIntervalSince(referenceDate))
     ) ?? widgetLocalizedString("less than one minute")
 }
 
-/// Current-day capsule timeline shared by medium and Lock Screen widgets.
-/// It uses a discrete capsule per clock hour, unlike the large widget's
-/// continuous solar-time chart, to remain legible in narrow widget families.
-private struct SunnyHoursTimeline: View {
-    // MARK: - Style and Identity Types
+/// Widget-only adapter for the current-day chart. The actual capsule rendering
+/// is shared with the app's Daily Sunny Hours card.
+private struct WidgetDailySunnyHoursTimeline: View {
+    // MARK: - Surface Style
 
     /// Layout and rendering density for each widget family.
     enum Style {
         case home
         case lockScreen
-    }
-
-    /// Stable axis identity is the unique represented clock hour.
-    /// The separate capsule index records where that label belongs after
-    /// downsampling.
-    private struct AxisMarker: Identifiable {
-        let hour: Int
-        let capsuleIndex: Int
-
-        var id: Int { hour }
     }
 
     // MARK: - Rendering Environment and Inputs
@@ -1475,140 +1482,71 @@ private struct SunnyHoursTimeline: View {
     /// Family-specific style.
     var style: Style = .home
 
-    // MARK: - Timeline Layout
+    // MARK: - Shared Timeline
 
-    /// Builds capsule hours, current-time marker, and family-specific axis.
     var body: some View {
-        // All downstream geometry derives from the same normalized hour array,
-        // so capsules, current marker, and labels cannot drift out of alignment.
-        let bounds = city.widgetCurrentDaylightBounds
-        let hours = displayedHours
-        let startHour = bounds.startHour
-        VStack(spacing: style == .home ? 4 : 3) {
-            GeometryReader { proxy in
-                let capsuleHeight = proxy.size.height
-                let capsuleSpacing: CGFloat = style == .home ? 7 : 8
-                // Divide the offered width after reserving gaps. The widget
-                // family may be resized by the system, so no fixed width is
-                // assumed here.
-                let capsuleWidth = (
-                    proxy.size.width - capsuleSpacing * CGFloat(hours.count - 1)
-                ) / CGFloat(hours.count)
-                ZStack(alignment: .leading) {
-                    HStack(spacing: capsuleSpacing) {
-                        ForEach(hours, id: \.self) { hour in
-                            Capsule()
-                                .fill(segmentColor(for: hour))
-                        }
-                    }
-
-                    // An optional marker is emitted only when the city-local
-                    // current hour is inside this daylight/capsule domain.
-                    if let boundaryIndex = currentTimeBoundaryIndex(in: hours) {
-                        currentTimeMarker
-                            .frame(height: capsuleHeight)
-                            .position(
-                                // Place the marker in the gap nearest the city's current hour.
-                                x: currentTimeMarkerX(
-                                    for: boundaryIndex,
-                                    capsuleWidth: capsuleWidth,
-                                    hourCount: hours.count,
-                                    capsuleSpacing: capsuleSpacing
-                                ),
-                                y: capsuleHeight / 2
-                            )
-                    }
-                }
-                .frame(height: capsuleHeight, alignment: .top)
-            }
-            // Preserve usable Home Screen capsule thickness.
-            .frame(minHeight: style == .home ? 44 : 18)
-
-            if style == .lockScreen {
-                HStack {
-                    Text(SunnyHoursFormatting.chartHourLabel(startHour))
-                    Spacer(minLength: 0)
-                    Text(SunnyHoursFormatting.chartHourLabel(bounds.endHour))
-                }
-                .frame(height: 14)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(renderedSecondary)
-                .lineLimit(1)
-                .padding(.top, 2)
-            } else {
-                // The medium widget can afford four labels. Map them back to
-                // actual capsule centers so a requested evenly spaced hour
-                // never floats between nonuniform displayed hours.
-                let axisMarkers = timelineAxisMarkers(
-                    for: hours,
-                    from: startHour,
-                    through: bounds.endHour
-                )
-                GeometryReader { proxy in
-                    let capsuleSpacing: CGFloat = style == .home ? 7 : 8
-                    let capsuleWidth = (
-                        proxy.size.width - capsuleSpacing * CGFloat(hours.count - 1)
-                    ) / CGFloat(hours.count)
-                    ZStack(alignment: .leading) {
-                        ForEach(axisMarkers) { marker in
-                            Text(SunnyHoursFormatting.chartHourLabel(marker.hour))
-                                .position(
-                                    // Align each clock label with its nearest capsule center.
-                                    x: CGFloat(marker.capsuleIndex) * (capsuleWidth + capsuleSpacing)
-                                        + capsuleWidth / 2,
-                                    y: proxy.size.height / 2
-                                )
-                        }
-                    }
-                }
-                .frame(height: 14)
-                .font(.caption2.weight(.medium))
-                .foregroundStyle(renderedSecondary)
-                .lineLimit(1)
-            }
-        }
+        SunnyHoursDiscreteCapsuleTimeline(
+            hours: chartHours,
+            bounds: city.widgetCurrentDaylightBounds,
+            currentDate: currentDate,
+            timeZone: city.widgetTimeZone ?? .autoupdatingCurrent,
+            showsCurrentTimeMarker: true,
+            configuration: style == .home ? .appAndHome : .lockScreen,
+            colors: sharedChartColors
+        )
     }
 
     // MARK: - Timeline Rendering
 
-    /// Returns the shared timeline color for one displayed hour. Any legacy
-    /// partly-sunny cache value is normalized to neutral partly cloudy first.
-    private func segmentColor(for hour: Int) -> Color {
-        guard let condition = condition(for: hour)?.widgetPresentationCondition else {
-            return noSunColor
-        }
+    /// Resolves the widget's colour policy before passing it to the shared
+    /// renderer. WidgetKit can enforce monochrome or accented colours.
+    private func timelineColor(for tone: WeatherIconTone) -> Color {
         if usesSystemColors {
-            return monochromeColor(for: condition)
+            return monochromeColor(for: tone)
         }
 
         if colorSchemeContrast == .increased {
             let colors = AppPalette.increasedContrastValues(for: colorScheme)
-            return chartColor(for: condition, colors: colors)
+            return chartColor(for: tone, colors: colors)
         }
 
-        return chartColor(for: condition, colors: palette)
+        return chartColor(for: tone, colors: palette)
     }
 
-    /// Reads the precise cached weather condition. Older persisted widget
-    /// snapshots retain their partly-sunny bucket for decoding, but render that
-    /// legacy state as neutral partly cloudy rather than as a sunny interval.
-    private func condition(for hour: Int) -> AppWeatherCondition? {
-        if let cachedCondition = city.hourlyConditions?.first(where: {
-            $0.hour == hour
-        })?.condition {
-            return cachedCondition.widgetPresentationCondition
+    private var sharedChartColors: SunnyHoursChartColors {
+        SunnyHoursChartColors(
+            primary: renderedPrimary,
+            secondary: renderedSecondary,
+            sun: timelineColor(for: .clear),
+            partlySunny: timelineColor(for: .partlySunny),
+            rain: timelineColor(for: .rain),
+            drizzle: timelineColor(for: .drizzle),
+            noSun: timelineColor(for: .cloudy)
+        )
+    }
+
+    /// Adapts exact persisted API conditions to the presentation-only shared
+    /// track. No missing source value is replaced by a fabricated condition.
+    private var chartHours: [SunnyHoursChartHour] {
+        displayedHours.compactMap { hour in
+            guard let source = city.hourlyConditions?.first(where: {
+                $0.hour == hour
+            }),
+                  let weather = source.weather else {
+                return nil
+            }
+            return SunnyHoursChartHour(
+                date: source.date,
+                hour: hour,
+                condition: weather.condition
+            )
         }
-        if city.sunnyHours.contains(hour) { return .clear }
-        if city.partlySunnyHours.contains(hour) { return .partlyCloudy }
-        return nil
     }
 
     /// Neutral no-sun color shared by non-sunny chart slots.
     private var noSunColor: Color {
         if usesSystemColors {
-            return .primary.opacity(
-                colorSchemeContrast == .increased ? 0.24 : 0.14
-            )
+            return .primary.opacity(0.14)
         }
         let colors = colorSchemeContrast == .increased
             ? AppPalette.increasedContrastValues(for: colorScheme)
@@ -1618,15 +1556,17 @@ private struct SunnyHoursTimeline: View {
 
     /// WidgetKit may enforce monochrome/tinted rendering, where custom colors
     /// are unavailable. Preserve condition differences with distinct weights.
-    private func monochromeColor(for condition: AppWeatherCondition) -> Color {
-        switch condition {
+    private func monochromeColor(for tone: WeatherIconTone) -> Color {
+        switch tone {
         case .clear:
             .primary.opacity(1)
+        case .partlySunny:
+            .primary.opacity(0.92)
         case .rain:
             .primary.opacity(0.82)
         case .drizzle:
             .primary.opacity(0.38)
-        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
+        case .cloudy:
             noSunColor
         }
     }
@@ -1634,23 +1574,29 @@ private struct SunnyHoursTimeline: View {
     /// Uses the widget's full-color timeline mapping: clear, rain, drizzle,
     /// and the neutral no-sun treatment.
     private func chartColor(
-        for condition: AppWeatherCondition,
+        for tone: WeatherIconTone,
         colors: AppPalette.Values
     ) -> Color {
-        switch condition {
+        switch tone {
         case .clear:
             colors.dotSun
+        case .partlySunny:
+            colors.dotPartlyCloudy
         case .rain:
             colors.dotRain
         case .drizzle:
             colors.dotDrizzle
-        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
+        case .cloudy:
             conditionAwareNoSunColor(in: colors)
         }
     }
 
     /// Matches Detail's subtle condition-derived no-sun fill in full color.
+    /// Increased contrast uses the opaque strengthened cloudy palette value.
     private func conditionAwareNoSunColor(in colors: AppPalette.Values) -> Color {
+        if colorSchemeContrast == .increased {
+            return colors.dotCloudy
+        }
         guard let tone = city.widgetScreenTone else { return colors.settingsRow }
         return weatherColor(for: tone, colors: colors).interpolated(
             with: colors.background,
@@ -1666,7 +1612,9 @@ private struct SunnyHoursTimeline: View {
         switch tone {
         case .clear:
             colors.dotSun
-        case .partlySunny, .cloudy:
+        case .partlySunny:
+            colors.dotPartlyCloudy
+        case .cloudy:
             colors.dotCloudy
         case .rain:
             colors.dotRain
@@ -1675,16 +1623,9 @@ private struct SunnyHoursTimeline: View {
         }
     }
 
-    /// Thin marker placed at the nearest current-hour boundary.
-    private var currentTimeMarker: some View {
-        Rectangle()
-            .fill(renderedPrimary.opacity(0.9))
-            .frame(width: 2)
-    }
-
     /// Shared primitive palette for the widget appearance.
     private var palette: AppPalette.Values {
-        AppPalette.values(for: colorScheme)
+        AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)
     }
 
     /// Whether family/rendering mode requires semantic system foregrounds.
@@ -1700,46 +1641,6 @@ private struct SunnyHoursTimeline: View {
     /// Effective secondary foreground.
     private var renderedSecondary: Color {
         usesSystemColors ? .secondary : palette.secondaryText
-    }
-
-    /// Finds the capsule boundary nearest the city's current local hour.
-    private func currentTimeBoundaryIndex(in hours: [Int]) -> Int? {
-        guard let timeZone = city.widgetTimeZone,
-              let firstHour = hours.first,
-              let lastHour = hours.last else {
-            return nil
-        }
-        // Current time must be evaluated in the selected city, not device zone.
-        var calendar = Calendar.current
-        calendar.timeZone = timeZone
-        let currentHour = calendar.component(.hour, from: currentDate)
-        // `enumerated().min` returns the nearest represented clock hour after
-        // any Lock Screen downsampling, then the marker advances to its boundary.
-        guard hours.count > 1,
-              currentHour >= firstHour,
-              currentHour <= lastHour,
-              let currentIndex = hours.enumerated().min(by: {
-                abs($0.element - currentHour) < abs($1.element - currentHour)
-              })?.offset else {
-            return nil
-        }
-        return currentIndex + 1
-    }
-
-    /// Places a marker between real hour cells, or at the trailing edge when
-    /// the final real forecast interval is current.
-    private func currentTimeMarkerX(
-        for boundaryIndex: Int,
-        capsuleWidth: CGFloat,
-        hourCount: Int,
-        capsuleSpacing: CGFloat
-    ) -> CGFloat {
-        if boundaryIndex >= hourCount {
-            return CGFloat(hourCount) * capsuleWidth
-                + CGFloat(max(hourCount - 1, 0)) * capsuleSpacing
-        }
-        return CGFloat(boundaryIndex) * capsuleWidth
-            + (CGFloat(boundaryIndex) - 0.5) * capsuleSpacing
     }
 
     /// Available daylight hours, downsampled only for Lock Screen space.
@@ -1765,46 +1666,9 @@ private struct SunnyHoursTimeline: View {
         return twoHourlySlots
     }
 
-    /// Maps four evenly spaced desired hours to the nearest actual capsule centers.
-    private func timelineAxisMarkers(
-        for hours: [Int],
-        from startHour: Int,
-        through endHour: Int
-    ) -> [AxisMarker] {
-        let span = max(endHour - startHour, 0)
-        // `reduce(into:)` builds four desired labels while avoiding duplicates
-        // in very short daylight spans where rounding lands on the same hour.
-        let axisHours = (0...3).reduce(into: [Int]()) { hours, index in
-            let hour = startHour
-                + Int((Double(span) * Double(index) / 3).rounded())
-            if hours.last != hour {
-                hours.append(hour)
-            }
-        }
-
-        var markers: [AxisMarker] = []
-        for (axisIndex, hour) in axisHours.enumerated() {
-            let capsuleIndex: Int
-            if axisIndex == 0 {
-                capsuleIndex = 0
-            } else if axisIndex == axisHours.count - 1 {
-                capsuleIndex = hours.count - 1
-            } else {
-                guard let closestIndex = hours.enumerated().min(by: {
-                    abs($0.element - hour) < abs($1.element - hour)
-                })?.offset else {
-                    return []
-                }
-                capsuleIndex = closestIndex
-            }
-            markers.append(AxisMarker(hour: hour, capsuleIndex: capsuleIndex))
-        }
-        return markers
-    }
-
 }
 
-/// Centered four-state key shared by medium and large Home Screen timelines.
+/// Centered five-state key shared by medium and large Home Screen timelines.
 /// It mirrors the timeline's rendering mode, so the explanatory key remains
 /// consistent with the chart.
 private struct SunnyHoursLegend: View {
@@ -1822,7 +1686,8 @@ private struct SunnyHoursLegend: View {
 
     // MARK: - Legend Layout
 
-    /// Builds the timeline's sunny, neutral, rain, and drizzle categories.
+    /// Builds the timeline's clear, partly sunny, neutral, rain, and drizzle
+    /// categories.
     var body: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: 14) {
@@ -1836,11 +1701,15 @@ private struct SunnyHoursLegend: View {
                         title: widgetLocalizedString("Sunny")
                     )
                     item(
-                        color: color(for: .cloudy),
-                        title: widgetLocalizedString("No Sun")
+                        color: color(for: .partlySunny),
+                        title: widgetLocalizedString("Partly Sunny")
                     )
                 }
                 HStack(spacing: 14) {
+                    item(
+                        color: color(for: .cloudy),
+                        title: widgetLocalizedString("No Sun")
+                    )
                     item(
                         color: color(for: .rain),
                         title: widgetLocalizedString("Rain")
@@ -1867,6 +1736,10 @@ private struct SunnyHoursLegend: View {
                 title: widgetLocalizedString("Sunny")
             )
             item(
+                color: color(for: .partlySunny),
+                title: widgetLocalizedString("Partly Sunny")
+            )
+            item(
                 color: color(for: .cloudy),
                 title: widgetLocalizedString("No Sun")
             )
@@ -1884,39 +1757,45 @@ private struct SunnyHoursLegend: View {
     /// Matches the four timeline color categories used by the widget. In
     /// system-controlled widget rendering modes, use distinct monochrome
     /// weights because WidgetKit does not permit custom tint colors.
-    private func color(for condition: AppWeatherCondition) -> Color {
+    private func color(for tone: WeatherIconTone) -> Color {
         if usesSystemColors {
-            switch condition {
+            switch tone {
             case .clear:
                 return .primary.opacity(1)
+            case .partlySunny:
+                return .primary.opacity(0.92)
             case .rain:
                 return .primary.opacity(0.82)
             case .drizzle:
                 return .primary.opacity(0.38)
-            case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
-                return .primary.opacity(
-                    colorSchemeContrast == .increased ? 0.24 : 0.14
-                )
+            case .cloudy:
+                return .primary.opacity(0.14)
             }
         }
 
         let colors = colorSchemeContrast == .increased
             ? AppPalette.increasedContrastValues(for: colorScheme)
             : palette
-        switch condition {
+        switch tone {
         case .clear:
             return colors.dotSun
+        case .partlySunny:
+            return colors.dotPartlyCloudy
         case .rain:
             return colors.dotRain
         case .drizzle:
             return colors.dotDrizzle
-        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
+        case .cloudy:
             return noSunColor(in: colors)
         }
     }
 
     /// Reproduces the condition-aware no-sun swatch from the Detail legend.
+    /// Increased contrast uses the opaque strengthened cloudy palette value.
     private func noSunColor(in colors: AppPalette.Values) -> Color {
+        if colorSchemeContrast == .increased {
+            return colors.dotCloudy
+        }
         guard let screenTone else { return colors.settingsRow }
         return weatherColor(for: screenTone, colors: colors).interpolated(
             with: colors.background,
@@ -1932,7 +1811,9 @@ private struct SunnyHoursLegend: View {
         switch tone {
         case .clear:
             colors.dotSun
-        case .partlySunny, .cloudy:
+        case .partlySunny:
+            colors.dotPartlyCloudy
+        case .cloudy:
             colors.dotCloudy
         case .rain:
             colors.dotRain
@@ -1953,7 +1834,7 @@ private struct SunnyHoursLegend: View {
 
     /// Standard primitive palette for widget appearance.
     private var palette: AppPalette.Values {
-        AppPalette.values(for: colorScheme)
+        AppPalette.values(for: colorScheme, contrast: colorSchemeContrast)
     }
 
     /// Whether WidgetKit requires monochrome/tinted semantic colors.
@@ -2004,13 +1885,15 @@ private struct WidgetDataUnavailablePlaceholder: View {
 /// like the main app. WidgetKit's tinted and monochrome modes retain their
 /// platform-controlled rendering outside this helper.
 private func widgetConditionIconColor(
-    for condition: AppWeatherCondition,
+    for weather: WidgetWeatherPresentation,
     colors: AppPalette.Values
 ) -> Color {
-    switch condition.widgetPresentationCondition.iconTone {
+    switch weather.condition.iconTone {
     case .clear:
         return colors.dotSun
-    case .partlySunny, .cloudy:
+    case .partlySunny:
+        return colors.dotPartlyCloudy
+    case .cloudy:
         return colors.dotCloudy
     case .rain:
         return colors.dotRain
@@ -2059,29 +1942,22 @@ private func widgetPlaceURL(for city: WidgetDataCity, issue: WeatherDataIssue?) 
 
 // MARK: - Widget Presentation Models
 
-private extension WidgetSunnyWindowDay {
-    /// Full source conditions for a four-color row. Existing snapshots created
-    /// before this payload was added retain their known partly-sunny buckets,
-    /// but those intervals now draw as neutral partly cloudy.
-    var chartHourlyConditions: [WidgetHourlyCondition] {
-        if let hourlyConditions {
-            return hourlyConditions.map { hour in
-                WidgetHourlyCondition(
-                    date: hour.date,
-                    hour: hour.hour,
-                    condition: hour.condition.widgetPresentationCondition
-                )
-            }
-        }
+/// Builds deterministic source-shaped WeatherKit data for Xcode previews.
+private func widgetPreviewWeather(
+    _ condition: WeatherCondition,
+    symbolName: String
+) -> WidgetWeatherPresentation {
+    WidgetWeatherPresentation(
+        condition: AppWeatherCondition(weatherKit: condition),
+        symbolName: symbolName
+    )
+}
 
-        let knownHours = Array(Set(sunnyHours + partlySunnyHours)).sorted()
-        return knownHours.map { hour in
-            WidgetHourlyCondition(
-                date: date.addingTimeInterval(TimeInterval(hour * 3_600)),
-                hour: hour,
-                condition: sunnyHours.contains(hour) ? .clear : .partlyCloudy
-            )
-        }
+private extension WidgetSunnyWindowDay {
+    /// Full source conditions for a five-color row. Pre-source-payload snapshots
+    /// are refreshed instead of fabricating a weather condition or symbol.
+    var chartHourlyConditions: [WidgetHourlyCondition] {
+        (hourlyConditions ?? []).filter { $0.weather != nil }
     }
 }
 
@@ -2097,10 +1973,7 @@ private extension WidgetDataCity {
             cityName: "Barcelona",
             timeZoneIdentifier: "Europe/Madrid",
             latitude: 41.3874,
-            longitude: 2.1686,
-            daytimeHours: Array(6...21),
-            sunnyHours: Array(8...19),
-            partlySunnyHours: []
+            longitude: 2.1686
         )
         city.hourlyConditions = (6...21).compactMap { hour in
             guard let date = calendar.date(
@@ -2111,36 +1984,39 @@ private extension WidgetDataCity {
             ) else {
                 return nil
             }
-            let condition: AppWeatherCondition
+            let weather: WidgetWeatherPresentation
             switch hour {
-            case 8...17:
-                condition = .clear
+            case 8...16:
+                weather = widgetPreviewWeather(.clear, symbolName: "sun.max.fill")
+            case 17:
+                weather = widgetPreviewWeather(.mostlyClear, symbolName: "cloud.sun.fill")
             case 7, 20:
-                condition = .partlyCloudy
+                weather = widgetPreviewWeather(.partlyCloudy, symbolName: "cloud.sun.fill")
             case 18:
-                condition = .rain
+                weather = widgetPreviewWeather(.rain, symbolName: "cloud.rain.fill")
             case 19:
-                condition = .drizzle
+                weather = widgetPreviewWeather(.drizzle, symbolName: "cloud.drizzle.fill")
             default:
-                condition = .cloudy
+                weather = widgetPreviewWeather(.cloudy, symbolName: "cloud.fill")
             }
             return WidgetHourlyCondition(
                 date: date,
                 hour: hour,
-                condition: condition
+                weather: weather
             )
         }
-        city.currentCondition = .clear
-        // Vary hours by day so previews exercise differing span widths and the
-        // neutral partly-cloudy treatment without requiring WeatherKit access.
+        city.currentWeather = widgetPreviewWeather(
+            .mostlyClear,
+            symbolName: "cloud.sun.fill"
+        )
+        // Vary hours by day so previews exercise differing spans and source
+        // symbols without requiring a live WeatherKit request.
         city.sunnyWindowDays = (0..<10).compactMap { offset in
             guard let date = calendar.date(byAdding: .day, value: offset, to: .now) else { return nil }
             let sunnyStart = 7 + (offset % 4)
             let sunnyEnd = 15 + (offset % 5)
             return WidgetSunnyWindowDay(
                 date: calendar.startOfDay(for: date),
-                sunnyHours: Array(sunnyStart...sunnyEnd),
-                partlySunnyHours: [],
                 hourlyConditions: (6...21).compactMap { hour in
                     guard let hourDate = calendar.date(
                         bySettingHour: hour,
@@ -2150,22 +2026,27 @@ private extension WidgetDataCity {
                     ) else {
                         return nil
                     }
-                    let condition: AppWeatherCondition
-                    if (sunnyStart...sunnyEnd).contains(hour) {
-                        condition = .clear
+                    let weather: WidgetWeatherPresentation
+                    if (sunnyStart..<sunnyEnd).contains(hour) {
+                        weather = widgetPreviewWeather(.clear, symbolName: "sun.max.fill")
+                    } else if hour == sunnyEnd {
+                        weather = widgetPreviewWeather(
+                            .mostlyClear,
+                            symbolName: "cloud.sun.fill"
+                        )
                     } else if hour == 6 || hour == sunnyEnd + 1 {
-                        condition = .partlyCloudy
+                        weather = widgetPreviewWeather(.partlyCloudy, symbolName: "cloud.sun.fill")
                     } else if hour == 18, offset.isMultiple(of: 3) {
-                        condition = .rain
+                        weather = widgetPreviewWeather(.rain, symbolName: "cloud.rain.fill")
                     } else if hour == 19, offset.isMultiple(of: 3) {
-                        condition = .drizzle
+                        weather = widgetPreviewWeather(.drizzle, symbolName: "cloud.drizzle.fill")
                     } else {
-                        condition = .cloudy
+                        weather = widgetPreviewWeather(.cloudy, symbolName: "cloud.fill")
                     }
                     return WidgetHourlyCondition(
                         date: hourDate,
                         hour: hour,
-                        condition: condition
+                        weather: weather
                     )
                 }
             )
@@ -2189,24 +2070,16 @@ private extension WidgetDataCity {
         timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
     }
 
-    /// Uses the same condition-derived no-sun fill as Detail's currently
-    /// selected forecast, based on the widget's current destination condition.
+    /// Uses the current API condition only to tint no-sun chart slots.
     var widgetScreenTone: WeatherIconTone? {
-        currentCondition?.widgetPresentationCondition.iconTone
+        currentWeather?.condition.iconTone
     }
 
     /// A rendering-safe current-day domain derived from WeatherKit's available
     /// daylight-marked hourly records. A full-day domain is used only when that
     /// source list is empty.
     var widgetCurrentDaylightBounds: SunnyHoursChartBounds {
-        let sourceHours: [Int]
-        if let hourlyConditions {
-            sourceHours = hourlyConditions.map(\.hour)
-        } else if !daytimeHours.isEmpty {
-            sourceHours = daytimeHours
-        } else {
-            sourceHours = sunnyHours + partlySunnyHours
-        }
+        let sourceHours = hourlyConditions?.map(\.hour) ?? []
         return widgetFallbackChartBounds(for: sourceHours)
     }
 
@@ -2283,11 +2156,8 @@ private extension WidgetDataCity {
             timeZoneIdentifier: snapshot.timeZoneIdentifier,
             latitude: latitude,
             longitude: longitude,
-            daytimeHours: snapshot.daytimeHours,
-            sunnyHours: snapshot.sunnyHours,
-            partlySunnyHours: snapshot.partlySunnyHours,
             hourlyConditions: snapshot.hourlyConditions,
-            currentCondition: snapshot.currentCondition?.widgetPresentationCondition,
+            currentWeather: snapshot.currentWeather,
             sunnyWindowDays: snapshot.sunnyWindowDays,
             dataIssue: snapshot.dataIssue
         )
@@ -2303,11 +2173,8 @@ private extension WidgetDataCity {
             timeZoneIdentifier: timeZoneIdentifier,
             latitude: latitude,
             longitude: longitude,
-            daytimeHours: [],
-            sunnyHours: [],
-            partlySunnyHours: [],
             hourlyConditions: nil,
-            currentCondition: nil,
+            currentWeather: nil,
             sunnyWindowDays: [],
             dataIssue: issue
         )
@@ -2321,7 +2188,7 @@ private extension WidgetDataCity {
 /// Weather Atlas app. WidgetKit discovers each widget returned from this body.
 @main
 struct WeatherWidgetsBundle: WidgetBundle {
-    /// Declares medium, large, and rectangular Lock Screen widgets.
+    /// Declares the small/medium/large Home Screen and rectangular Lock Screen widgets.
     var body: some Widget {
         BestSunnyPlacesWidget()
         SunnyHoursLockScreenWidget()
@@ -2333,6 +2200,7 @@ struct WeatherWidgetsBundle: WidgetBundle {
 // SwiftUI previews use the deterministic entry above, never a live app-group
 // catalog or WeatherKit call, so they remain available in Xcode offline.
 
+#if DEBUG
 #Preview("Sun Status - Small", as: .systemSmall) {
     BestSunnyPlacesWidget()
 } timeline: {
@@ -2356,3 +2224,4 @@ struct WeatherWidgetsBundle: WidgetBundle {
 } timeline: {
     SunnyHoursLockScreenEntry.preview
 }
+#endif

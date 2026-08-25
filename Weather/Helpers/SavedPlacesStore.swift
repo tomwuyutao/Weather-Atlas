@@ -24,6 +24,11 @@ import Observation
 struct SavedPlace: Identifiable, Codable, Equatable, Hashable {
     var city: City
     var customName: String?
+    /// Translations generated after a person opts in while changing the app
+    /// language. The original name remains separate, so a later language
+    /// change always translates the name the person actually saved rather
+    /// than looking up a previous localized label.
+    private var translatedDisplayNames: [String: String]
 
     /// `Identifiable` forwards the city's persistent UUID for SwiftUI lists.
     var id: UUID { city.id }
@@ -31,16 +36,65 @@ struct SavedPlace: Identifiable, Codable, Equatable, Hashable {
     init(city: City, customName: String? = nil) {
         self.city = city
         self.customName = Self.normalizedCustomName(customName)
+        translatedDisplayNames = [:]
     }
+
+    // MARK: - Display Names
 
     /// Primary presentation name. A custom name never replaces the underlying
     /// geographic `City`; it only changes what saved-place surfaces lead with.
-    var displayName: String { customName ?? city.displayName }
+    var displayName: String {
+        localizedDisplayName(locale: SavedPlaceNameTranslationPreference.appLocale)
+    }
 
-    /// Resolves the underlying catalog label for an explicit locale while
-    /// preserving a person's custom saved-place name verbatim.
+    /// Resolves a name for an explicit locale. When the person keeps original
+    /// names at a language change, this always returns that original text.
+    /// When they opt in, a stored system translation wins; unrenamed catalog
+    /// cities still use their exact GeoNames labels until a system result is
+    /// stored. Any unresolved text remains unchanged.
     func localizedDisplayName(locale: Locale) -> String {
-        customName ?? city.localizedDisplayName(locale: locale)
+        let originalName = customName ?? city.canonicalDisplayName
+        guard SavedPlaceNameTranslationPreference.isEnabled else {
+            return originalName
+        }
+        if let translatedName = translatedDisplayNames[
+            SavedPlaceNameTranslationPreference.languageIdentifier(for: locale)
+        ]?.trimmingCharacters(in: .whitespacesAndNewlines), !translatedName.isEmpty {
+            return translatedName
+        }
+        return customName == nil
+            ? city.localizedDisplayName(locale: locale)
+            : originalName
+    }
+
+    /// The unmodified label sent to the GeoNames lookup.
+    var translationSourceName: String {
+        (customName ?? city.canonicalDisplayName)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Replaces generated names for one language without changing the original
+    /// city or custom name.
+    mutating func setTranslatedDisplayName(
+        _ name: String,
+        languageIdentifier: String
+    ) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return }
+        translatedDisplayNames[languageIdentifier] = name
+    }
+
+    /// Removes the generated label for one target language. A fresh GeoNames
+    /// resolution clears any obsolete entry before storing its current result.
+    mutating func removeTranslatedDisplayName(languageIdentifier: String) {
+        translatedDisplayNames.removeValue(forKey: languageIdentifier)
+    }
+
+    /// A person editing a custom name establishes a new original, so generated
+    /// translations of the previous name can no longer be displayed.
+    mutating func setCustomName(_ name: String?) {
+        customName = Self.normalizedCustomName(name)
+        translatedDisplayNames = [:]
     }
 
     /// Treats blank names as absent, so the UI naturally falls back to the city.
@@ -49,19 +103,76 @@ struct SavedPlace: Identifiable, Codable, Equatable, Hashable {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
+
+    // MARK: - Codable Compatibility
+
+    private enum CodingKeys: String, CodingKey {
+        case city
+        case customName
+        case translatedDisplayNames
+    }
+
+    /// `decodeIfPresent` keeps every existing saved-place document compatible
+    /// with the new, optional translated-name field.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        city = try container.decode(City.self, forKey: .city)
+        customName = Self.normalizedCustomName(
+            try container.decodeIfPresent(String.self, forKey: .customName)
+        )
+        translatedDisplayNames = try container.decodeIfPresent(
+            [String: String].self,
+            forKey: .translatedDisplayNames
+        ) ?? [:]
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(city, forKey: .city)
+        try container.encodeIfPresent(customName, forKey: .customName)
+        try container.encode(translatedDisplayNames, forKey: .translatedDisplayNames)
+    }
 }
 
-/// Saved-place forecast state used by Map presentation.
-///
-/// This is presentation state, not something stored in the JSON library: a
-/// recommendation/loading state belongs to the current weather request and is
-/// allowed to disappear on the next launch.
-struct SavedPlacePresentation: Identifiable {
-    let place: SavedPlace
-    let recommendation: PlaceRecommendation?
-    let isLoading: Bool
+/// Shared persisted preference controlling whether Saved Places displays the
+/// translation selected during the most recent language change. Defaulting to
+/// true preserves the existing GeoNames display behaviour for current users.
+enum SavedPlaceNameTranslationPreference {
+    private static let enabledKey = "savedPlaceNameAutoTranslationEnabled"
 
-    var id: SavedPlace.ID { place.id }
+    static var isEnabled: Bool {
+        guard UserDefaults.standard.object(forKey: enabledKey) != nil else {
+            return true
+        }
+        return UserDefaults.standard.bool(forKey: enabledKey)
+    }
+
+    static func setEnabled(_ isEnabled: Bool) {
+        UserDefaults.standard.set(isEnabled, forKey: enabledKey)
+    }
+
+    /// Removes the explicit preference so a full app reset matches a new
+    /// installation, where saved-place names follow the default behaviour.
+    static func resetToInitialDefault() {
+        UserDefaults.standard.removeObject(forKey: enabledKey)
+    }
+
+    static var appLocale: Locale {
+        Locale(identifier: UserDefaults.standard.string(forKey: "appLanguage") ?? "en")
+    }
+
+    static func languageIdentifier(for locale: Locale) -> String {
+        let identifier = locale.identifier.replacingOccurrences(of: "_", with: "-")
+        let lowercaseIdentifier = identifier.lowercased()
+        if lowercaseIdentifier.hasPrefix("zh-hant")
+            || lowercaseIdentifier.hasPrefix("zh-tw")
+            || lowercaseIdentifier.hasPrefix("zh-hk")
+            || lowercaseIdentifier.hasPrefix("zh-mo") {
+            return "zh-Hant"
+        }
+        if lowercaseIdentifier.hasPrefix("zh") { return "zh-Hans" }
+        return identifier.split(separator: "-").first.map(String.init) ?? "en"
+    }
 }
 
 /// Versioned persistence payload for the flat Saved Places library.
@@ -99,9 +210,19 @@ enum PlacesStoreError: LocalizedError {
 
 }
 
-/// Gives UI code one stable entry point for Places-specific error copy.
-func localizedPlacesErrorDescription(_ error: Error) -> String {
-    (error as? PlacesStoreError)?.errorDescription ?? error.localizedDescription
+/// Gives UI code one stable, app-localized message for Places mutations.
+///
+/// The underlying errors retain their detailed diagnostic descriptions for
+/// debugging, but those descriptions may be English or follow the device
+/// locale rather than the language selected inside Weather Atlas.
+func localizedPlacesErrorDescription(
+    _: Error,
+    locale: Locale
+) -> String {
+    localizedString(
+        "Saved Places could not be updated. Try again.",
+        locale: locale
+    )
 }
 
 // MARK: - Document Persistence
@@ -132,6 +253,8 @@ enum PlacesDocumentStoreError: LocalizedError {
 /// It knows nothing about SwiftUI. That makes file operations testable with an
 /// injected URL/FileManager and keeps the observable store focused on state.
 struct PlacesDocumentStore {
+    // MARK: - Storage Configuration
+
     /// The current schema has its own filename so a future migration can keep
     /// the previous version available until the replacement is verified.
     static let currentFileName = "places-library-v1.json"
@@ -140,6 +263,8 @@ struct PlacesDocumentStore {
 
     let fileURL: URL
     private let fileManager: FileManager
+
+    // MARK: - Construction
 
     /// Creates an injectable store for production or deterministic fixtures.
     init(fileURL: URL, fileManager: FileManager = .default) {
@@ -169,6 +294,8 @@ struct PlacesDocumentStore {
             fileManager: fileManager
         )
     }
+
+    // MARK: - Loading and Saving
 
     /// Loads and validates the current document, or returns `nil` if none exists.
     /// `mappedIfSafe` lets Foundation use memory mapping for a normal file while
@@ -231,6 +358,8 @@ struct PlacesDocumentStore {
         return document
     }
 
+    // MARK: - JSON Coding
+
     /// Uses deterministic JSON settings for stable files and reliable read-back.
     private func makeEncoder() -> JSONEncoder {
         let encoder = JSONEncoder()
@@ -254,7 +383,6 @@ enum PlacesLibraryValidationError: LocalizedError, Equatable {
     case duplicatePlaceID(UUID)
     case missingPlaceName(UUID)
     case missingCountry(UUID)
-    case missingTimeZone(UUID)
     case invalidTimeZone(UUID, String)
     case invalidPlace(UUID)
     case invalidCustomName(UUID)
@@ -271,8 +399,6 @@ enum PlacesLibraryValidationError: LocalizedError, Equatable {
             "Place name data is missing for a saved place."
         case .missingCountry:
             "Country data is missing for a saved place."
-        case .missingTimeZone:
-            "Time zone data is missing for a saved place."
         case .invalidTimeZone(_, let identifier):
             "A saved place has invalid time zone data: \(identifier)."
         case .invalidPlace:
@@ -288,9 +414,13 @@ enum PlacesLibraryValidationError: LocalizedError, Equatable {
 /// Validation is intentionally independent from the store so it can run on both
 /// newly constructed documents and bytes read from storage.
 enum PlacesLibraryValidator {
+    // MARK: - Limits
+
     static let maximumPlaceCount = 25_000
     static let maximumPlaceNameLength = 500
     static let maximumIdentifierLength = 200
+
+    // MARK: - Document Validation
 
     /// Performs cheap, deterministic checks before a document becomes visible.
     static func validate(_ document: PlacesLibraryDocument) throws {
@@ -360,6 +490,8 @@ enum PlacesLibraryValidator {
             }
         }
     }
+
+    // MARK: - Field Validation
 
     /// Accepts only complete, representable place metadata.
     static func isValidCity(_ city: City) -> Bool {
@@ -485,12 +617,16 @@ private struct SavedPlaceSemanticIdentity {
 @MainActor
 @Observable
 final class SavedPlacesStore {
+    // MARK: - Stored State
+
     /// The verified in-memory copy of the complete JSON document.
     private(set) var document: PlacesLibraryDocument
     /// A persistent failure shown by settings/UI instead of causing a crash.
     private(set) var loadErrorDescription: String?
     /// File I/O dependency hidden from Observation because views never render it.
     @ObservationIgnored private var documentStore: PlacesDocumentStore?
+
+    // MARK: - Initialization
 
     /// Loads the existing library synchronously during app setup, or starts an
     /// empty, verified document on the first launch. The injectable argument is
@@ -516,6 +652,8 @@ final class SavedPlacesStore {
         loadErrorDescription = nil
     }
 
+    // MARK: - Read Access
+
     /// Read-only convenience used by screens that should not edit the document.
     var allPlaces: [SavedPlace] { document.places }
 
@@ -529,17 +667,16 @@ final class SavedPlacesStore {
     /// Order matters: UUID is exact, a catalog ID links bundled rows, and the
     /// semantic identity only handles otherwise equivalent geocoded cities.
     func savedPlaceID(matching city: City) -> SavedPlace.ID? {
-        if let match = document.places.first(where: { $0.id == city.id }) { return match.id }
-        if let catalogID = city.catalogIdentifier,
-           let match = document.places.first(where: { $0.city.catalogIdentifier == catalogID }) { return match.id }
-        guard let identity = SavedPlaceSemanticIdentity(city: city) else { return nil }
-        return document.places.first {
-            guard let candidate = SavedPlaceSemanticIdentity(city: $0.city) else {
-                return false
-            }
-            return identity.matches(candidate)
-        }?.id
+        guard let index = Self.matchingPlaceIndex(
+            for: city,
+            in: document.places
+        ) else {
+            return nil
+        }
+        return document.places[index].id
     }
+
+    // MARK: - Loading and Mutations
 
     /// Lets the UI retry a transient file-system failure without recreating data.
     /// If the initial failure was resolving Application Support itself, acquire a
@@ -628,11 +765,38 @@ final class SavedPlacesStore {
             ) else {
                 throw PlacesStoreError.placeNotFound(placeID)
             }
-            candidate.places[index].customName = SavedPlace.normalizedCustomName(
-                customName
-            )
+            candidate.places[index].setCustomName(customName)
         }
     }
+
+    /// Replaces GeoNames display labels for one target language. Every prior
+    /// value for that language is cleared first, so a nonmatching custom name
+    /// correctly returns to its original text instead of retaining an old value.
+    func replaceTranslatedDisplayNames(
+        _ namesByPlaceID: [SavedPlace.ID: String],
+        languageIdentifier: String
+    ) throws {
+        let languageIdentifier = languageIdentifier.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !languageIdentifier.isEmpty else { return }
+        try mutateAndPersist { candidate in
+            for index in candidate.places.indices {
+                let placeID = candidate.places[index].id
+                candidate.places[index].removeTranslatedDisplayName(
+                    languageIdentifier: languageIdentifier
+                )
+                if let name = namesByPlaceID[placeID] {
+                    candidate.places[index].setTranslatedDisplayName(
+                        name,
+                        languageIdentifier: languageIdentifier
+                    )
+                }
+            }
+        }
+    }
+
+    // MARK: - Persistence Internals
 
     /// Runs a mutation against a throwaway value, then publishes it only after
     /// validated atomic persistence succeeds. This is a small value-type
@@ -665,7 +829,9 @@ final class SavedPlacesStore {
         return try documentStore.saveAndReadBack(.empty)
     }
 
-    /// Shared private counterpart of `savedPlaceID(matching:)` for mutations.
+    // MARK: - Identity and Merge Helpers
+
+    /// Shared identity matcher for read and mutation paths.
     private static func matchingPlaceIndex(for city: City, in places: [SavedPlace]) -> Int? {
         if let index = places.firstIndex(where: { $0.id == city.id }) { return index }
         if let catalogID = city.catalogIdentifier,
@@ -719,6 +885,8 @@ final class SavedPlacesStore {
             timeZoneIdentifier: incoming.timeZoneIdentifier ?? current.timeZoneIdentifier,
             catalogIdentifier: current.catalogIdentifier ?? incoming.catalogIdentifier
         )
-        if let customName = SavedPlace.normalizedCustomName(customName) { existing.customName = customName }
+        if let customName = SavedPlace.normalizedCustomName(customName) {
+            existing.setCustomName(customName)
+        }
     }
 }

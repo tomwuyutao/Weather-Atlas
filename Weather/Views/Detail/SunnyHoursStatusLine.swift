@@ -8,6 +8,8 @@
 
 import SwiftUI
 
+// MARK: - Shared Sunny-Hours Status
+
 /// A compact, localized sunny-hours phrase: an outlined sun followed by a
 /// highlighted count and the secondary copy “of sun”.
 ///
@@ -26,22 +28,16 @@ struct SunnyHoursStatusLine: View {
                 .font(.body.weight(.semibold))
                 .foregroundStyle(theme.colors.dotSun)
 
-
-            HStack(spacing: 0) {
-                Text(hourLabel)
-                    .font(.body.weight(.semibold))
-                    .foregroundStyle(theme.colors.dotSun)
-
-                Text(" " + localizedString("of sun", locale: locale))
-                    .font(.body)
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-            }
+            Text(attributedStatusText)
+                .font(.body)
+                .foregroundStyle(theme.colors.secondaryText)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
         }
         .minimumScaleFactor(0.75)
 
-
     }
+
+    // MARK: - Formatting
 
     /// The visible count is deliberately spelled out here; compact charts and
     /// rankings continue to use the shorter `11h` formatting.
@@ -49,23 +45,33 @@ struct SunnyHoursStatusLine: View {
         Self.hourLabel(hours: hours, locale: locale)
     }
 
+    /// Keeps the highlighted count as a movable placeholder inside one
+    /// localized sentence. Languages that place the descriptive phrase before
+    /// the duration can therefore reorder it without losing the visual emphasis.
+    private var attributedStatusText: AttributedString {
+        var emphasizedHours = AttributedString(hourLabel)
+        emphasizedHours.font = .body.weight(.semibold)
+        emphasizedHours.foregroundColor = theme.colors.dotSun
+
+        var resource: LocalizedStringResource = "\(emphasizedHours) of sun"
+        resource.locale = locale
+        return AttributedString(localized: resource)
+    }
+
     static func statusText(hours: Double, locale: Locale) -> String {
-        "\(hourLabel(hours: hours, locale: locale)) \(localizedString("of sun", locale: locale))"
+        let localizedHours = hourLabel(hours: hours, locale: locale)
+        var resource: LocalizedStringResource = "\(localizedHours) of sun"
+        resource.locale = locale
+        return String(localized: resource)
     }
 
     private static func hourLabel(hours: Double, locale: Locale) -> String {
-        let count = SunnyHoursFormatting.hourCountText(hours, locale: locale)
-        if hours == 1 {
-            return String(
-                format: localizedString("%@ hour", locale: locale),
-                locale: locale,
-                count
-            )
-        }
-        return String(
-            format: localizedString("%@ hours", locale: locale),
-            locale: locale,
-            count
-        )
+        // Sunny hours count discrete hourly forecast rows. Keeping that count
+        // as an integer interpolation lets the String Catalog select every
+        // locale's plural category, including Russian one/few/many forms.
+        let count = Int64(hours.rounded())
+        var resource: LocalizedStringResource = "\(count) hours"
+        resource.locale = locale
+        return String(localized: resource)
     }
 }

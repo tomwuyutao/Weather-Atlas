@@ -10,10 +10,12 @@ import SwiftUI
 
 // MARK: - Ten-Day Sunny-Hours Overview
 
-/// Shared Home/Detail ten-day chart. It turns each available daily forecast
-/// into a row of hourly weather conditions and writes taps to the root-selected
-/// day.
+/// Shared current-location/saved-place ten-day chart. It turns each available
+/// daily forecast into a row of hourly weather conditions and writes taps to
+/// the root-selected day.
 struct TenDaySunnyHoursTimeline: View {
+    // MARK: - Inputs
+
     /// Optional for report surfaces that must preserve the card while their
     /// forecast request is still loading or has failed.
     let city: CityWeather?
@@ -44,7 +46,7 @@ struct TenDaySunnyHoursTimeline: View {
         self.retry = retry
     }
 
-    // MARK: Chart Data Preparation
+    // MARK: - Chart Data Preparation
 
     private var rows: [SunnyHoursDayRow] {
         // Render every real WeatherKit daily forecast independently. A short
@@ -73,10 +75,12 @@ struct TenDaySunnyHoursTimeline: View {
                         SunnyHoursDayCell(
                             id: hour.date,
                             hour: hour.hour(in: city.timeZone),
-                            // A missing icon classification should not reject
-                            // an otherwise usable forecast row. Cloudy is the
-                            // app's established neutral timeline appearance.
-                            condition: hour.condition ?? .cloudy
+                            // The track keeps only its color role. It never
+                            // substitutes a different WeatherKit condition
+                            // when a cached source condition is unavailable.
+                            condition: SunnyHoursChartCondition(
+                                weatherCondition: hour.condition
+                            )
                         )
                     },
                     bounds: data.bounds
@@ -90,14 +94,12 @@ struct TenDaySunnyHoursTimeline: View {
         SunnyHoursChartBounds.merged(rows.map(\.bounds))
     }
 
-    /// The whole report follows the selected day, so inactive chart segments
-    /// use that same subtle canvas tint rather than a fixed gray fill.
-    private var screenTone: WeatherIconTone? {
-        city?.forecastIfAvailable(
-            on: selectedDate,
-            selectionCalendar: calendar
-        )?.condition?.iconTone
+    /// Uses the shared warm neutral so daily and 10-day cloudy marks match.
+    private var noSunTimelineColor: Color {
+        theme.colors.noSunTimelineFill
     }
+
+    // MARK: - Presentation
 
     var body: some View {
         VStack(alignment: .leading, spacing: WeatherCardLayout.contentSpacing) {
@@ -130,19 +132,14 @@ struct TenDaySunnyHoursTimeline: View {
                                 selected: isSelected,
                                 label: dayLabel(for: row.forecastDate),
                                 theme: theme.colors,
-                                noSunColor: theme.colors.weatherNoSunTimelineColor(
-                                    for: screenTone
-                                )
+                                noSunColor: noSunTimelineColor
                             )
                         }
                         .buttonStyle(.plain)
-                        // Keep the original compact 27-point row rhythm: the
+                        // Keep the compact 27-point row rhythm: the
                         // chart is primarily a dense visual forecast, with
                         // selection as a secondary interaction.
                         .contentShape(.rect)
-
-
-
 
                     }
                 }
@@ -166,6 +163,8 @@ struct TenDaySunnyHoursTimeline: View {
         // Availability belongs to the enclosing report. This card renders an
         // honest blank/unavailable state, but never presents a duplicate alert.
     }
+
+    // MARK: - Labels and Availability
 
     private func dayLabel(for date: Date) -> String {
         var localCalendar = calendar
@@ -232,6 +231,8 @@ struct TenDaySunnyHoursTimeline: View {
         return message
     }
 
+    // MARK: - Legend
+
     private var legend: some View {
         // Prefer one line, then fall back to two only when space or Dynamic
         // Type makes the complete legend too wide for the card.
@@ -239,10 +240,12 @@ struct TenDaySunnyHoursTimeline: View {
             HStack(spacing: 14) {
                 legendItem("Sunny", color: theme.colors.dotSun)
                 legendItem(
+                    "Partly Sunny",
+                    color: theme.colors.dotPartlyCloudy
+                )
+                legendItem(
                     "No Sun",
-                    color: theme.colors.weatherNoSunTimelineColor(
-                        for: screenTone
-                    )
+                    color: noSunTimelineColor
                 )
                 legendItem("Rain", color: theme.colors.dotRain)
                 legendItem("Drizzle", color: theme.colors.dotDrizzle)
@@ -252,10 +255,12 @@ struct TenDaySunnyHoursTimeline: View {
                 HStack(spacing: 14) {
                     legendItem("Sunny", color: theme.colors.dotSun)
                     legendItem(
+                        "Partly Sunny",
+                        color: theme.colors.dotPartlyCloudy
+                    )
+                    legendItem(
                         "No Sun",
-                        color: theme.colors.weatherNoSunTimelineColor(
-                            for: screenTone
-                        )
+                        color: noSunTimelineColor
                     )
                 }
                 HStack(spacing: 14) {
@@ -349,114 +354,30 @@ private struct SunnyHoursDayTrack: View {
                 .lineLimit(1)
                 .frame(width: labelWidth, alignment: .leading)
 
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(noSunColor)
-
-                    ForEach(colorSegments) { segment in
-                        // Weather runs keep a square join when the adjacent
-                        // hour has another color, so the timeline remains one
-                        // continuous bar. Only a run exposed to empty space
-                        // gets the rounded capsule end.
-                        segmentShape(for: segment)
-                            .fill(color(for: segment.condition))
-                            .frame(
-                                width: bounds.width(
-                                    for: segment.startHour...segment.endHour,
-                                    timelineWidth: proxy.size.width,
-                                    minimumWidth: 1
-                                )
-                            )
-                            .offset(
-                                x: bounds.xPosition(
-                                    for: Double(segment.startHour),
-                                    width: proxy.size.width
-                                )
-                            )
-                    }
-                }
-                .overlay {
-                    if selected {
-                        Capsule()
-                            .stroke(theme.primaryText, lineWidth: 1.5)
-                    }
-                }
-            }
-            .frame(height: trackHeight)
+            SunnyHoursContinuousCapsuleTrack(
+                hours: row.hours.map {
+                    SunnyHoursChartHour(
+                        date: $0.id,
+                        hour: $0.hour,
+                        condition: $0.condition
+                    )
+                },
+                bounds: bounds,
+                colors: SunnyHoursChartColors(
+                    primary: theme.primaryText,
+                    secondary: theme.secondaryText,
+                    sun: theme.dotSun,
+                    partlySunny: theme.dotPartlyCloudy,
+                    rain: theme.dotRain,
+                    drizzle: theme.dotDrizzle,
+                    noSun: noSunColor
+                ),
+                height: trackHeight,
+                outlineColor: selected ? theme.primaryText : nil
+            )
         }
         .frame(height: rowHeight)
         .contentShape(.rect)
-    }
-
-    /// Adjacent hours with the same condition read as one weather run. A
-    /// differently colored adjacent run remains separate, but they meet along
-    /// a square shared edge so there is never a gap in the forecast timeline.
-    private var colorSegments: [SunnyHoursColorSegment] {
-        row.hours.reduce(into: []) { segments, cell in
-            if let previous = segments.last,
-               previous.condition == cell.condition,
-               cell.hour == previous.endHour + 1 {
-                segments[segments.count - 1].endHour = cell.hour
-            } else {
-                segments.append(
-                    SunnyHoursColorSegment(
-                        id: cell.id,
-                        startHour: cell.hour,
-                        endHour: cell.hour,
-                        condition: cell.condition
-                    )
-                )
-            }
-        }
-    }
-
-    /// The cloudy track is the neutral default canvas. A coloured run therefore
-    /// rounds where it meets cloud, while two adjacent non-cloudy weather
-    /// sections keep a square shared edge and visually stick together.
-    private func segmentShape(
-        for segment: SunnyHoursColorSegment
-    ) -> UnevenRoundedRectangle {
-        let previousCondition = row.hours.first {
-            $0.hour == segment.startHour - 1
-        }?.condition
-        let nextCondition = row.hours.first {
-            $0.hour == segment.endHour + 1
-        }?.condition
-        let squaresLeadingEdge = previousCondition.map(isColoredCondition) == true
-        let squaresTrailingEdge = nextCondition.map(isColoredCondition) == true
-        let radius = trackHeight / 2
-        return UnevenRoundedRectangle(
-            cornerRadii: .init(
-                topLeading: squaresLeadingEdge ? 0 : radius,
-                bottomLeading: squaresLeadingEdge ? 0 : radius,
-                bottomTrailing: squaresTrailingEdge ? 0 : radius,
-                topTrailing: squaresTrailingEdge ? 0 : radius
-            ),
-            style: .continuous
-        )
-    }
-
-    private func isColoredCondition(_ condition: AppWeatherCondition) -> Bool {
-        switch condition {
-        case .clear, .rain, .drizzle:
-            true
-        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
-            false
-        }
-    }
-
-    private func color(for condition: AppWeatherCondition) -> Color {
-        switch condition {
-        case .clear:
-            theme.dotSun
-        case .rain:
-            theme.dotRain
-        case .drizzle:
-            theme.dotDrizzle
-        case .partlySunny, .partlyCloudy, .cloudy, .snow, .fog, .wind:
-            noSunColor
-        }
     }
 }
 
@@ -476,17 +397,10 @@ private struct SunnyHoursDayRow: Identifiable {
 }
 
 /// One available daylight hour after conversion to the city's local hour.
-/// Unknown source conditions are represented by the neutral cloudy appearance.
+/// The chart condition is presentation-only and derives directly from the
+/// source condition's tint role without replacing its API value.
 private struct SunnyHoursDayCell: Identifiable {
     let id: Date
     let hour: Int
-    let condition: AppWeatherCondition
-}
-
-/// A contiguous same-condition run rendered as one rounded capsule.
-private struct SunnyHoursColorSegment: Identifiable {
-    let id: Date
-    let startHour: Int
-    var endHour: Int
-    let condition: AppWeatherCondition
+    let condition: SunnyHoursChartCondition
 }

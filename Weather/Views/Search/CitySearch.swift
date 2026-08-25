@@ -66,6 +66,48 @@ enum CitySearchResolutionError: LocalizedError {
     }
 }
 
+/// Converts typed provider-resolution failures into the app-selected language.
+/// Raw provider descriptions remain available as internal diagnostics, but are
+/// never presented because they can follow a different system locale.
+func localizedCitySearchResolutionErrorDescription(
+    _ error: Error,
+    locale: Locale
+) -> String {
+    guard let resolutionError = error as? CitySearchResolutionError else {
+        return localizedString(
+            "This provider could not return results. Try again.",
+            locale: locale
+        )
+    }
+
+    let key: String.LocalizationValue
+    let place: String
+    switch resolutionError {
+    case .sourceDataMissing(let value),
+         .coordinateMissing(let value),
+         .invalidCoordinate(let value),
+         .cityNameMissing(let value),
+         .countryMissing(let value):
+        key = "Place data is missing for %@."
+        place = value
+    case .timeZoneMissing(let value),
+         .invalidTimeZone(let value, _):
+        key = "Missing time zone for %@."
+        place = value
+    case .providerFailed:
+        return localizedString(
+            "This provider could not return results. Try again.",
+            locale: locale
+        )
+    }
+
+    return String(
+        format: localizedString(key, locale: locale),
+        locale: locale,
+        place
+    )
+}
+
 /// A provider-labelled place suggestion that can be resolved into a City.
 /// Apple Maps suggestions need a later resolution request; Open-Meteo returns
 /// concrete coordinates immediately, which is why the two payload fields differ.
@@ -178,7 +220,7 @@ private struct OpenMeteoGeocodingResult: Decodable {
 @MainActor
 @Observable
 final class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
-    // MARK: Observable UI State
+    // MARK: - Observable UI State
 
     private(set) var appleResults: [CitySearchResult] = []
     private(set) var openMeteoResults: [CitySearchResult] = []
@@ -187,7 +229,7 @@ final class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
     private(set) var appleErrorMessage: String?
     private(set) var openMeteoErrorMessage: String?
 
-    // MARK: Provider Machinery Excluded From SwiftUI Observation
+    // MARK: - Provider Machinery Excluded From SwiftUI Observation
 
     /// MapKit's delegate object and task bookkeeping should not trigger view
     /// updates; only the published result/error properties need observation.
@@ -213,7 +255,7 @@ final class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
         )
     }
 
-    // MARK: Coordinated Provider Requests
+    // MARK: - Coordinated Provider Requests
 
     /// Cancels the previous Open-Meteo request, resets visible state, then
     /// launches both providers for the newest non-empty query.
@@ -251,6 +293,8 @@ final class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
             await self.searchOpenMeteo(query: query, locale: locale)
         }
     }
+
+    // MARK: - Place Resolution
 
     /// Apple Maps completions are lightweight text suggestions. Resolving one
     /// performs the extra MapKit lookup needed to obtain coordinates and a zone.
@@ -469,6 +513,8 @@ final class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
         return identifier
     }
 
+    // MARK: - Apple Maps Delegate
+
     /// Delegate callback from Apple Maps. Filtering again protects against a
     /// broad completion list and limits UI/network work to five suggestions.
     func completerDidUpdateResults(_ completer: MKLocalSearchCompleter) {
@@ -520,6 +566,8 @@ final class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
             self.completer.queryFragment = query
         }
     }
+
+    // MARK: - Open-Meteo Requests
 
     /// Open-Meteo accepts only queries of two or more characters. Comparing
     /// `currentQuery` after suspension prevents stale results overwriting newer

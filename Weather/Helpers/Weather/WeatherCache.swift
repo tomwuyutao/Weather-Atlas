@@ -27,6 +27,9 @@ nonisolated struct CachedCityWeather: Codable, Sendable {
     let city: City
     /// Available encoded daily forecasts.
     let dailyForecasts: [CachedDailyForecast]
+    /// Optional because snapshots written before live Detail conditions were
+    /// retained have no value for this field.
+    let currentWeather: CachedCurrentWeather?
     /// Required resolved timezone identifier for forecast interpretation.
     let timeZoneIdentifier: String
 
@@ -35,6 +38,7 @@ nonisolated struct CachedCityWeather: Codable, Sendable {
     init(from cityWeather: CityWeather) {
         city = cityWeather.city
         dailyForecasts = cityWeather.dailyForecasts.map { CachedDailyForecast(from: $0) }
+        currentWeather = cityWeather.currentWeather.map(CachedCurrentWeather.init)
         timeZoneIdentifier = cityWeather.timeZone.identifier
     }
 
@@ -52,7 +56,31 @@ nonisolated struct CachedCityWeather: Codable, Sendable {
         return CityWeather(
             city: city,
             dailyForecasts: forecasts,
+            currentWeather: currentWeather?.toCurrentWeatherPresentation(),
             timeZone: timeZone
+        )
+    }
+}
+
+/// Codable representation of WeatherKit's live observation.
+nonisolated struct CachedCurrentWeather: Codable, Sendable {
+    let date: Date
+    let symbolName: String
+    let condition: AppWeatherCondition?
+
+    @MainActor
+    init(from currentWeather: CurrentWeatherPresentation) {
+        date = currentWeather.date
+        symbolName = currentWeather.symbolName
+        condition = currentWeather.condition
+    }
+
+    @MainActor
+    func toCurrentWeatherPresentation() -> CurrentWeatherPresentation {
+        CurrentWeatherPresentation(
+            date: date,
+            symbolName: symbolName,
+            condition: condition
         )
     }
 }
@@ -71,7 +99,8 @@ nonisolated struct CachedDailyForecast: Codable, Sendable {
     let dailyHigh: Double
     /// Raw WeatherKit condition symbol.
     let symbolName: String
-    /// Normalized native WeatherKit daily condition.
+    /// Exact WeatherKit daily condition raw value. Its single-string Codable
+    /// form keeps snapshots written by earlier app releases decodable.
     let condition: AppWeatherCondition?
     /// Encoded hourly source forecasts.
     let hourlyForecasts: [CachedHourlyForecast]
@@ -131,7 +160,8 @@ nonisolated struct CachedHourlyForecast: Codable, Sendable {
     let date: Date
     /// Raw WeatherKit condition symbol.
     let symbolName: String
-    /// Normalized native WeatherKit hourly condition.
+    /// Exact WeatherKit hourly condition raw value. Its single-string Codable
+    /// form keeps snapshots written by earlier app releases decodable.
     let condition: AppWeatherCondition?
     /// WeatherKit's daylight bit used to select the day's sunny-hour rows.
     let isDaylight: Bool

@@ -2,17 +2,19 @@
 //  MapFindSun.swift
 //  Weather
 //
-//  Owns the Find Sun workflow and its presentation bridge. MapView remains
-//  responsible for screen navigation and PlacesMapCanvas for MapKit rendering.
+//  Purpose: Owns Find Sun queries, result ranking, persistence actions, and
+//  camera requests while MapView remains responsible for screen navigation.
 //
 
 import CoreLocation
 import MapKit
 import SwiftUI
 
+// MARK: - Find Sun Workflow
+
 extension MapView {
 
-    // MARK: Find Sun and map actions
+    // MARK: - Search Lifecycle
 
     /// Find Sun and city previews always use the app's sunny-hours ranking.
     func beginSunSearch(
@@ -45,6 +47,7 @@ extension MapView {
     ) {
         sunSearchID &+= 1
         let generation = sunSearchID
+        let candidateScopeGeneration = model.currentMapCandidateScopeGeneration
         pendingAreaSunSearch = false
         // A new geographic query replaces its candidate set and camera. Date
         // changes use `rerankSunSearchForSelectedDate()` below, which works
@@ -63,16 +66,15 @@ extension MapView {
         isFindingSun = true
         selectedSunID = nil
         activeSunQuery = scope
-        // Forecast assessments are date-bound. Clear them even when the
+        // Forecast recommendations are date-bound. Clear them even when the
         // geographic candidate context is reusable so pending candidates show
         // neutral hosts rather than values carried over from another day.
         sunSearchResults = []
-        sunRankingResults = []
         if shouldReplaceContext {
             // A different geographic query must not leave the prior scope's
             // candidate hosts or camera frame visible. A date refresh retains
             // both while its date-bound results are rebuilt above.
-            sunCandidateCities = []
+            setSunCandidateCities([])
             sunCameraRequest = nil
         }
 
@@ -89,9 +91,16 @@ extension MapView {
                     for: scope
                 )
                 guard !Task.isCancelled,
-                      generation == sunSearchID else { return }
+                      generation == sunSearchID,
+                      model.isCurrentMapCandidateScope(
+                        candidateScopeGeneration
+                      ) else { return }
 
-                sunCandidateCities = candidates
+                // Retain the complete candidate batch before either
+                // attribution or WeatherKit work can suspend. Saving a result,
+                // opening detail, or refreshing Home during this batch must
+                // not cancel its sibling requests.
+                setSunCandidateCities(candidates)
 
                 if shouldFrameSearchScope,
                    let cameraRequest = makeSunCameraRequest(
@@ -111,9 +120,25 @@ extension MapView {
                 // date change during the batch preserve late completions and
                 // keeps every published value on the current selected date.
                 await weatherStore.loadAttributionIfNeeded()
+                guard !Task.isCancelled,
+                      generation == sunSearchID,
+                      model.isCurrentMapCandidateScope(
+                        candidateScopeGeneration
+                      ) else { return }
                 await withTaskGroup(of: City.ID.self) { group in
                     for city in candidates {
-                        group.addTask { [weatherStore, city] in
+                        group.addTask { @MainActor [weatherStore, city] in
+                            // A clear, hand-off, or full reset can happen
+                            // between scheduling this child and its first
+                            // execution. Do not restart an obsolete request
+                            // after the shared cache scope has released it.
+                            guard !Task.isCancelled,
+                                  generation == sunSearchID,
+                                  model.isCurrentMapCandidateScope(
+                                    candidateScopeGeneration
+                                  ) else {
+                                return city.id
+                            }
                             await weatherStore.load(cities: [city])
                             return city.id
                         }
@@ -121,7 +146,10 @@ extension MapView {
 
                     for await cityID in group {
                         guard !Task.isCancelled,
-                              generation == sunSearchID else {
+                              generation == sunSearchID,
+                              model.isCurrentMapCandidateScope(
+                                candidateScopeGeneration
+                              ) else {
                             group.cancelAll()
                             return
                         }
@@ -130,17 +158,24 @@ extension MapView {
                     }
                 }
                 guard !Task.isCancelled,
-                      generation == sunSearchID else { return }
+                      generation == sunSearchID,
+                      model.isCurrentMapCandidateScope(
+                        candidateScopeGeneration
+                      ) else { return }
 
                 rebuildSunSearchResults(for: selectedSunSearchDate)
                 await reportFindSunWeatherFailureIfNeeded(
                     candidates: candidates,
-                    generation: generation
+                    generation: generation,
+                    scopeGeneration: candidateScopeGeneration
                 )
             } catch is CancellationError {
                 return
             } catch let error as MapDataAvailabilityError {
-                guard generation == sunSearchID else { return }
+                guard generation == sunSearchID,
+                      model.isCurrentMapCandidateScope(
+                        candidateScopeGeneration
+                      ) else { return }
                 // A Map canvas can receive the command before MapKit has
                 // supplied its first camera snapshot. Keep the requested
                 // action visibly pending and retry it exactly when a viewport
@@ -168,7 +203,10 @@ extension MapView {
                     message: error.message(locale: locale)
                 )
             } catch is CitiesCatalogError {
-                guard generation == sunSearchID else { return }
+                guard generation == sunSearchID,
+                      model.isCurrentMapCandidateScope(
+                        candidateScopeGeneration
+                      ) else { return }
                 if !preservingCandidateContext {
                     activeSunQuery = nil
                 }
@@ -181,7 +219,10 @@ extension MapView {
                     )
                 )
             } catch {
-                guard generation == sunSearchID else { return }
+                guard generation == sunSearchID,
+                      model.isCurrentMapCandidateScope(
+                        candidateScopeGeneration
+                      ) else { return }
                 if !preservingCandidateContext {
                     activeSunQuery = nil
                 }
@@ -189,6 +230,8 @@ extension MapView {
             }
         }
     }
+
+    // MARK: - Forecast Ranking
 
     /// Evaluates one completed candidate. Every available forecast remains on
     /// the Map, including zero-sun days; only the result-card subset filters to
@@ -207,7 +250,7 @@ extension MapView {
         from recommendations: [PlaceRecommendation]
     ) -> [MapSunSearchResult] {
         PlaceRecommendation.ranked(recommendations, locale: locale).map {
-            MapSunSearchResult(city: $0.cityWeather.city, recommendation: $0)
+            MapSunSearchResult(recommendation: $0)
         }
     }
 
@@ -277,11 +320,13 @@ extension MapView {
         // so report that no-results condition now.
         guard !isFindingSun else { return }
         let generation = sunSearchID
+        let scopeGeneration = model.currentMapCandidateScopeGeneration
         let candidates = sunCandidateCities
         Task { @MainActor in
             await reportFindSunWeatherFailureIfNeeded(
                 candidates: candidates,
-                generation: generation
+                generation: generation,
+                scopeGeneration: scopeGeneration
             )
         }
     }
@@ -300,9 +345,6 @@ extension MapView {
         }
         let results = mapSunSearchResults(from: recommendations)
         sunSearchResults = results
-        sunRankingResults = results.filter {
-            $0.recommendation.sunnyHourCount > 0
-        }
 
         if let selectedSunID,
            !results.contains(where: { $0.id == selectedSunID }) {
@@ -316,9 +358,11 @@ extension MapView {
     /// not a partial forecast horizon or a date absent from some candidates.
     private func reportFindSunWeatherFailureIfNeeded(
         candidates: [City],
-        generation: Int
+        generation: Int,
+        scopeGeneration: Int
     ) async {
         guard generation == sunSearchID,
+              model.isCurrentMapCandidateScope(scopeGeneration),
               activeSunQuery != nil else {
             return
         }
@@ -358,12 +402,20 @@ extension MapView {
             report,
             recoveryKey: "map-find-sun-systemic-weather:\(generation)",
             retry: {
+                guard generation == sunSearchID,
+                      model.isCurrentMapCandidateScope(scopeGeneration) else {
+                    return
+                }
                 await weatherStore.retryMissingData(for: candidates)
-                guard generation == sunSearchID else { return }
+                guard generation == sunSearchID,
+                      model.isCurrentMapCandidateScope(scopeGeneration) else {
+                    return
+                }
                 rebuildSunSearchResults(for: selectedSunSearchDate)
             },
             isStillMissing: {
                 generation == sunSearchID
+                    && model.isCurrentMapCandidateScope(scopeGeneration)
                     && activeSunQuery != nil
                     && sunSearchResults.isEmpty
                     && candidates.allSatisfy { candidate in
@@ -373,9 +425,11 @@ extension MapView {
         )
     }
 
-    /// Selects at most 25 candidate cities for the chosen spatial scope before
-    /// WeatherKit is asked for their forecasts. Deduplication protects against
-    /// catalog rows that resolve to the same stable city identifier.
+    // MARK: - Candidate Selection
+
+    /// Selects up to 25 geographically distinct candidate cities before
+    /// WeatherKit is asked for their forecasts. A larger population-ranked
+    /// source pool backfills boroughs and other nearby locality duplicates.
     private func sunSearchCandidates(
         for scope: MapSunQueryScope
     ) async throws -> [City] {
@@ -387,7 +441,7 @@ extension MapView {
             guard let viewport = currentViewport else {
                 throw MapDataAvailabilityError.viewport
             }
-            let records = try await model.citiesCatalog.cities(
+            let records = try await model.citiesCatalog.spatiallyDistinctCities(
                 visibleIn: MKCoordinateRegion(
                     center: viewport.center,
                     span: MKCoordinateSpan(
@@ -395,7 +449,9 @@ extension MapView {
                         longitudeDelta: viewport.longitudeDelta
                     )
                 ),
-                limit: 25
+                resultLimit: FindSunCitySamplingPolicy.resultLimit,
+                sourceCandidateLimit: FindSunCitySamplingPolicy.sourceCandidateLimit,
+                clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
             )
             cities = records.map(resolveSearchCity)
         case .nearMe:
@@ -411,12 +467,12 @@ extension MapView {
         case .nearbySunnier:
             // The Your Location CTA has already loaded this shared local pool.
             // Derive its strict current-location comparison from the cached
-            // assessment so Map shows the same eligible cities, not every
+            // recommendations so Map shows the same eligible cities, not every
             // nearby place with nonzero sunny hours.
-            cities = model.nearbyRecommendationAssessment(
+            cities = model.nearbyRecommendations(
                 on: selectedSunSearchDate,
                 locale: locale
-            ).recommendations.map(\.cityWeather.city)
+            ).map(\.recommendation.cityWeather.city)
         case .nearPlace(let city):
             // A contextual map-card query keeps the same 200 km / 25-city
             // contract as Near Me. Only the center changes: it is the exact
@@ -429,19 +485,28 @@ extension MapView {
                 )
             )
         case .country(let country):
-            // Country and continent catalogs supply a bounded populous sample;
-            // only those candidates incur weather requests below.
+            // Country and continent catalogs provide a larger population-ranked
+            // source pool, collapsed to 25 metro representatives before only
+            // those candidates incur WeatherKit requests below.
             guard !hasFatalCountryCatalogIssue else {
                 throw MapDataAvailabilityError.countryCatalog
             }
-            cities = CountryCityCatalog.topCities(for: country, limit: 25)
-                .map(resolveSearchCity)
+            cities = CountryCityCatalog.spatiallyDistinctTopCities(
+                for: country,
+                resultLimit: FindSunCitySamplingPolicy.resultLimit,
+                sourceCandidateLimit: FindSunCitySamplingPolicy.sourceCandidateLimit,
+                clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
+            ).map(resolveSearchCity)
         case .continent(let continent):
             guard !hasFatalCountryCatalogIssue else {
                 throw MapDataAvailabilityError.countryCatalog
             }
-            cities = CountryCityCatalog.topCities(for: continent, limit: 25)
-                .map(resolveSearchCity)
+            cities = CountryCityCatalog.spatiallyDistinctTopCities(
+                for: continent,
+                resultLimit: FindSunCitySamplingPolicy.resultLimit,
+                sourceCandidateLimit: FindSunCitySamplingPolicy.sourceCandidateLimit,
+                clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
+            ).map(resolveSearchCity)
         }
 
         var seenIDs: Set<City.ID> = []
@@ -450,17 +515,20 @@ extension MapView {
 
     /// Resolves the one shared local candidate policy used by both city-origin
     /// Map searches. `CitiesCatalog` performs the exact Haversine-radius
-    /// filter, then population-first ordering before WeatherKit is asked for
-    /// any forecast, keeping the local search cheap and predictable.
+    /// filter, then retains population-leading metro representatives before
+    /// WeatherKit is asked for any forecast, keeping the local search cheap.
     private func sharedNearbySunCandidates(
         centeredAt coordinate: CLLocationCoordinate2D
     ) async throws -> [City] {
-        let records = try await model.citiesCatalog.mostPopulousCities(
+        let records = try await model.citiesCatalog
+            .mostPopulousSpatiallyDistinctCities(
             centeredAt: coordinate,
             withinKilometers: Double(
                 NearbySunSearchPolicy.radiusKilometers
             ),
-            limit: NearbySunSearchPolicy.candidateLimit
+            resultLimit: NearbySunSearchPolicy.candidateLimit,
+            sourceCandidateLimit: FindSunCitySamplingPolicy.sourceCandidateLimit,
+            clusterRadiusKilometers: FindSunCitySamplingPolicy.clusterRadiusKilometers
         )
         return records.map { resolveSearchCity(from: $0.city) }
     }
@@ -509,6 +577,8 @@ extension MapView {
         return savedCity
     }
 
+    // MARK: - Session and Persistence Actions
+
     func clearSunSearch() {
         // Invalidate an in-flight lookup before clearing its visible state.
         sunSearchID &+= 1
@@ -516,8 +586,7 @@ extension MapView {
         // must not start a transaction on MapKit's annotation hierarchy.
         activeSunQuery = nil
         sunSearchResults = []
-        sunRankingResults = []
-        sunCandidateCities = []
+        setSunCandidateCities([])
         sunCameraRequest = nil
         selectedSunID = nil
         isFindingSun = false
@@ -612,6 +681,8 @@ extension MapView {
         }
     }
 
+    // MARK: - Camera Framing
+
     private func makeSunCameraRequest(
         id: Int,
         scope: MapSunQueryScope,
@@ -651,5 +722,4 @@ extension MapView {
             originLongitude: origin?.longitude
         )
     }
-
 }

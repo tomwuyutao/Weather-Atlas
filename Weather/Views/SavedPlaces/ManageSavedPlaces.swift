@@ -14,7 +14,7 @@ import SwiftUI
 /// The app shell owns the tab's `NavigationStack`; this view contributes
 /// value-based links and native navigation-bar content to that stack.
 struct ManageSavedPlaces: View {
-    // MARK: Parent-Supplied Store and Navigation
+    // MARK: - Parent-Supplied Store and Navigation
 
     /// The store owns persistence. This screen creates only transient UI state,
     /// then asks the shared store to perform mutations.
@@ -23,8 +23,10 @@ struct ManageSavedPlaces: View {
     @Bindable var router: AppNavigation
 
     @Environment(\.appTheme) private var theme
+    /// App-selected locale used for mutation error recovery copy.
+    @Environment(\.locale) private var locale
 
-    // MARK: View state
+    // MARK: - View State
 
     @State private var deleteAllIsPresented = false
     @State private var renamingPlace: SavedPlace?
@@ -32,11 +34,11 @@ struct ManageSavedPlaces: View {
     @State private var editMode: EditMode = .inactive
     @State private var presentedError: PlacesUIError?
 
-    // MARK: Derived library data
+    // MARK: - Derived Library Data
 
     private var savedPlaces: [SavedPlace] { placesStore.allPlaces }
 
-    // MARK: Screen lifecycle and navigation
+    // MARK: - Screen Lifecycle and Navigation
 
     var body: some View {
         placesContent
@@ -97,15 +99,14 @@ struct ManageSavedPlaces: View {
             }
     }
 
-    // MARK: List states and row construction
+    // MARK: - List States and Row Construction
 
     /// Selects the single whole-screen state: persistence failure, empty
     /// library, or the interactive list.
     @ViewBuilder
     private var placesContent: some View {
-        if let loadErrorDescription = placesStore.loadErrorDescription {
+        if placesStore.loadErrorDescription != nil {
             PlacesLibraryUnavailableView(
-                message: loadErrorDescription,
                 retry: placesStore.retryLoading
             )
         } else if savedPlaces.isEmpty {
@@ -156,7 +157,7 @@ struct ManageSavedPlaces: View {
     private func placeRow(_ place: SavedPlace) -> some View {
         if editMode.isEditing {
             HStack {
-                savedPlaceRow(place)
+                CompactSavedPlaceRow(place: place)
 
                 Spacer(minLength: 12)
 
@@ -177,19 +178,13 @@ struct ManageSavedPlaces: View {
             .contextMenu { placeContextMenu(place) }
         } else {
             NavigationLink(value: AppRoute.place(id: place.id)) {
-                savedPlaceRow(place)
+                CompactSavedPlaceRow(place: place)
             }
             .contextMenu { placeContextMenu(place) }
         }
     }
 
-    private func savedPlaceRow(
-        _ place: SavedPlace
-    ) -> some View {
-        CompactSavedPlaceRow(place: place)
-    }
-
-    // MARK: User actions and bindings
+    // MARK: - User Actions and Bindings
 
     private var errorIsPresented: Binding<Bool> {
         Binding(
@@ -317,10 +312,19 @@ struct ManageSavedPlaces: View {
 
     private func present(_ error: Error) {
         presentedError = PlacesUIError(
-            message: localizedPlacesErrorDescription(error)
+            message: localizedPlacesErrorDescription(error, locale: locale)
         )
     }
 }
+
+#if DEBUG
+
+// MARK: - Preview
+
+#Preview("Manage Saved Places") {
+    ManageSavedPlacesRoutePreview()
+}
+#endif
 
 // MARK: - Supporting Views and Values
 
@@ -382,14 +386,13 @@ private struct PlacesEmptyView: View {
 /// Persistence failed to load, which is distinct from a legitimately empty
 /// library and therefore offers a retry rather than a search call to action.
 private struct PlacesLibraryUnavailableView: View {
-    let message: String
     let retry: () -> Void
 
     var body: some View {
         ContentUnavailableView {
             Label("Places Unavailable", systemImage: "exclamationmark.triangle")
         } description: {
-            Text(message)
+            Text("Saved Places could not be loaded. Try again.")
         } actions: {
             Button("Try Again", systemImage: "arrow.clockwise", action: retry)
                 .weatherGlassActionStyle()
