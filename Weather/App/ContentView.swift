@@ -28,6 +28,10 @@ struct ContentView: View {
     @Environment(\.locale) private var locale
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.appTheme) private var theme
+    /// The root app policy has already capped this to the app's selectable
+    /// Small...Large range. Publishing changes keeps WidgetKit typography in
+    /// lockstep when Follow System is enabled.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     /// Reuses the former first-launch key so existing installs are not seeded
     /// again after starter places replaced setup.
     @AppStorage("hasLaunchedBefore") private var didSeedPlaces = false
@@ -146,6 +150,9 @@ struct ContentView: View {
             // contract whenever the app receives a new location or its weather
             // response supplies the authoritative city/timezone.
             .onChange(of: widgetCurrentLocationIdentity) {
+                model.publishWidgetCatalog(locale: locale)
+            }
+            .onChange(of: dynamicTypeSize) {
                 model.publishWidgetCatalog(locale: locale)
             }
             .onChange(
@@ -841,6 +848,7 @@ struct ContentView: View {
         }
 
         if cityIdentifier == WidgetDataStore.currentLocationIdentifier {
+            selectCurrentWidgetToday()
             router.yourLocationPath = []
             router.selectedTab = .yourLocation
             showWidgetIssue(url)
@@ -857,22 +865,122 @@ struct ContentView: View {
             return
         }
 
+        selectWidgetDestinationToday(
+            in: widgetTimeZone(for: savedPlace, identifier: cityIdentifier)
+        )
         router.selectedTab = .savedPlaces
         router.savedPlacesPath = [.place(id: savedPlace.id)]
         showWidgetIssue(url)
     }
 
-    /// Resolves the stable cross-process widget identifier to the app's saved
-    /// UUID. Widget identifiers intentionally derive from coordinates because
-    /// they must survive between the app and widget extension processes.
+    /// Resolves both UUID-backed widget identifiers and identifiers persisted
+    /// by pre-migration App Intent configurations. The published catalog owns
+    /// the alias mapping, while the final fallback supports a legacy deep link
+    /// received before the catalog has been republished by this app version.
     private func savedPlace(forWidgetCityIdentifier identifier: String) -> SavedPlace? {
-        model.placesStore.allPlaces.first { place in
+        if let savedPlaceID = WidgetDataStore.savedPlaceID(from: identifier),
+           let place = model.placesStore.place(id: savedPlaceID) {
+            return place
+        }
+        if let catalogCity = WidgetDataStore.catalog()?.cities.first(where: {
+            $0.matchesWidgetIdentifier(identifier)
+        }),
+           let savedPlaceID = WidgetDataStore.savedPlaceID(from: catalogCity.id),
+           let place = model.placesStore.place(id: savedPlaceID) {
+            return place
+        }
+        return model.placesStore.allPlaces.first { place in
             WidgetDataStore.cityIdentifier(
                 country: place.city.country,
                 latitude: place.city.latitude,
                 longitude: place.city.longitude
             ) == identifier
         }
+    }
+
+    /// Resets the shared selector before a Current/Home Location widget route.
+    /// If the app is still restoring location state, the published widget zone
+    /// supplies the correct local midnight and becomes the baseline for the
+    /// ordinary timezone-change rebase once fresh location metadata arrives.
+    private func selectCurrentWidgetToday() {
+        let destinationTimeZone = model.locationTimeZone
+            ?? model.currentLocationPlaceCity?.timeZoneIdentifier.flatMap(
+                TimeZone.init(identifier:)
+            )
+            ?? WidgetDataStore.catalog()?.currentLocation?.timeZoneIdentifier
+                .flatMap(TimeZone.init(identifier:))
+            ?? model.forecastCalendar.timeZone
+        var destinationCalendar = model.forecastCalendar
+        destinationCalendar.timeZone = destinationTimeZone
+        selectedDate = destinationCalendar.startOfDay(for: .now)
+        dateTimeZone = destinationTimeZone
+    }
+
+    /// Resets a Saved Place route to that city's local Today while retaining the
+    /// shared selector's calendar representation used across the app's tabs.
+    private func selectWidgetDestinationToday(in destinationTimeZone: TimeZone) {
+        var destinationCalendar = model.forecastCalendar
+        destinationCalendar.timeZone = destinationTimeZone
+        let localToday = destinationCalendar.dateComponents(
+            [.year, .month, .day],
+            from: .now
+        )
+        let selectionCalendar = model.forecastCalendar
+        guard let selectionDate = selectionCalendar.date(from: localToday) else {
+            return
+        }
+        selectedDate = selectionCalendar.startOfDay(for: selectionDate)
+    }
+
+    /// Uses app weather first, then persisted city/catalog metadata, so both a
+    /// healthy widget and its unavailable-state link resolve the same local day.
+    private func widgetTimeZone(
+        for savedPlace: SavedPlace,
+        identifier: String
+    ) -> TimeZone {
+        model.weatherStore.weather(for: savedPlace.id)?.timeZone
+            ?? savedPlace.city.timeZoneIdentifier.flatMap(
+                TimeZone.init(identifier:)
+            )
+            ?? WidgetDataStore.catalog()?.cities.first {
+                $0.matchesWidgetIdentifier(identifier)
+            }?.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
+            ?? model.forecastCalendar.timeZone
+    }
+
+    /// Recovers the Current/Home widget from the location-backed source rather
+    /// than borrowing any Saved Place with a similar display name. A cold device-
+    /// location launch waits briefly for the authorized one-shot request before
+    /// retrying the current-coordinate forecast.
+    private func retryCurrentWidgetWeather() async {
+        if !model.isUsingHomeLocation,
+           !model.locationProvider.hasUsableCoordinate {
+            guard model.locationProvider.hasLocationAuthorization else { return }
+            model.locationProvider.requestLocationIfAuthorized(
+                preferredLocale: locale
+            )
+
+            for _ in 0..<40 where !model.locationProvider.hasUsableCoordinate {
+                guard !Task.isCancelled else { return }
+                switch model.locationProvider.status {
+                case .denied, .restricted, .servicesDisabled, .failed:
+                    return
+                default:
+                    break
+                }
+                do {
+                    try await Task.sleep(for: .milliseconds(100))
+                } catch {
+                    return
+                }
+            }
+        }
+
+        guard model.locationProvider.hasUsableCoordinate else { return }
+        await model.ensureCurrentLocationWeather(
+            forceRefresh: true,
+            locale: locale
+        )
     }
 
     /// Presents precise widget diagnostics without exposing internal developer
@@ -923,27 +1031,37 @@ struct ContentView: View {
             )
         )
 
-        let savedPlace = cityIdentifier.flatMap(savedPlace(forWidgetCityIdentifier:))
-            ?? model.placesStore.allPlaces.first {
-            $0.displayName.localizedCaseInsensitiveCompare(cityName)
-                == .orderedSame
-        }
+        let isCurrentLocationWidget = cityIdentifier
+            == WidgetDataStore.currentLocationIdentifier
+        let savedPlace = isCurrentLocationWidget
+            ? nil
+            : cityIdentifier.flatMap(savedPlace(forWidgetCityIdentifier:))
 
         // A widget can render between app launches, so its missing snapshot may
         // already be stale by the time a person opens the app. Re-fetch the
-        // matching saved place once before carrying that widget diagnostic into
-        // the app's native alert queue.
+        // exact source once before carrying that widget diagnostic into the
+        // app's native alert queue. Current/Home Location deliberately never
+        // falls back to a same-name saved city.
         Task {
             await missingDataAlerts.retryThenReport(
                 report,
-                recoveryKey: "widget-weather-\(savedPlace?.id.uuidString ?? cityIdentifier ?? cityName)",
+                recoveryKey: isCurrentLocationWidget
+                    ? "widget-weather-current-location"
+                    : "widget-weather-\(savedPlace?.id.uuidString ?? cityIdentifier ?? cityName)",
                 retry: {
+                    if isCurrentLocationWidget {
+                        await retryCurrentWidgetWeather()
+                        return
+                    }
                     guard let savedPlace else { return }
                     _ = await model.weatherStore.retryMissingData(
                         for: savedPlace.city
                     )
                 },
                 isStillMissing: {
+                    if isCurrentLocationWidget {
+                        return !model.hasWeatherForCurrentLocation
+                    }
                     guard let savedPlace else {
                         return true
                     }

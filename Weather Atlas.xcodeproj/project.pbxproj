@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A10000000000000000000007 /* WeatherWidgets.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = A10000000000000000000001 /* WeatherWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A20000000000000000000001 /* SwiftTimeZoneLookup in Frameworks */ = {isa = PBXBuildFile; productRef = A20000000000000000000002 /* SwiftTimeZoneLookup */; };
+		A20000000000000000000004 /* SwiftTimeZoneLookup in Frameworks */ = {isa = PBXBuildFile; productRef = A20000000000000000000002 /* SwiftTimeZoneLookup */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -46,27 +47,34 @@
 			membershipExceptions = (
 				"Weather-Info.plist",
 				Widgets/Localizable.xcstrings,
+				Widgets/PrivacyInfo.xcprivacy,
 				"Widgets/WeatherWidgets-Info.plist",
 				"Widgets/WeatherWidgets-InfoPlist.xcstrings",
+				Widgets/WidgetCurrentLocationResolver.swift,
 				Widgets/WidgetForecastStore.swift,
 				Widgets/Widgets.swift,
+				Widgets/WidgetTimeZoneResolver.swift,
 			);
 			target = 59C2E3552F4F06B000877DA8 /* Weather Atlas */;
 		};
 		5908967630063DF500EB20E0 /* Exceptions for "Weather" folder in "WeatherWidgets" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				ThirdPartyNotices.txt,
 				Helpers/AppTheme.swift,
 				Models/SunnyHoursCalculation.swift,
 				Models/WeatherCondition.swift,
 				Models/WeatherDataValidation.swift,
 				Models/WeatherSymbols.swift,
 				Widgets/Localizable.xcstrings,
+				Widgets/PrivacyInfo.xcprivacy,
 				Widgets/SunnyHoursChartPrimitives.swift,
 				"Widgets/WeatherWidgets-InfoPlist.xcstrings",
+				Widgets/WidgetCurrentLocationResolver.swift,
 				Widgets/WidgetDataStore.swift,
 				Widgets/WidgetForecastStore.swift,
 				Widgets/Widgets.swift,
+				Widgets/WidgetTimeZoneResolver.swift,
 			);
 			target = A10000000000000000000008 /* WeatherWidgets */;
 		};
@@ -97,6 +105,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A20000000000000000000004 /* SwiftTimeZoneLookup in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -162,6 +171,7 @@
 			);
 			name = WeatherWidgets;
 			packageProductDependencies = (
+				A20000000000000000000002 /* SwiftTimeZoneLookup */,
 			);
 			productName = WeatherWidgets;
 			productReference = A10000000000000000000001 /* WeatherWidgets.appex */;

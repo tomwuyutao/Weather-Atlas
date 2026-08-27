@@ -111,8 +111,6 @@ struct SunnyHoursDiscreteCapsuleTimeline: View {
     enum AxisStyle {
         /// Four labels aligned with actual capsule centers.
         case sparse
-        /// First and last labels used by compact Lock Screen space.
-        case endpoints
     }
 
     /// Surface-specific space constraints without changing chart geometry.
@@ -133,13 +131,6 @@ struct SunnyHoursDiscreteCapsuleTimeline: View {
             axisStyle: .sparse
         )
 
-        static let lockScreen = Configuration(
-            capsuleSpacing: 8,
-            maximumCapsuleWidth: nil,
-            minimumTrackHeight: 18,
-            axisHeight: 14,
-            axisStyle: .endpoints
-        )
     }
 
     // MARK: - Inputs
@@ -199,13 +190,13 @@ struct SunnyHoursDiscreteCapsuleTimeline: View {
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
 
-                        if let boundaryIndex = currentTimeBoundaryIndex() {
+                        if let slotPosition = currentTimeSlotPosition() {
                             Rectangle()
                                 .fill(colors.primary.opacity(0.9))
                                 .frame(width: 2, height: capsuleHeight)
                                 .position(
                                     x: currentTimeMarkerX(
-                                        for: boundaryIndex,
+                                        for: slotPosition,
                                         capsuleWidth: metrics.capsuleWidth,
                                         slotCount: hours.count,
                                         spacing: metrics.spacing
@@ -231,18 +222,6 @@ struct SunnyHoursDiscreteCapsuleTimeline: View {
     @ViewBuilder
     private func axis(for startHour: Int) -> some View {
         switch configuration.axisStyle {
-        case .endpoints:
-            HStack {
-                Text(SunnyHoursFormatting.chartHourLabel(startHour))
-                Spacer(minLength: 0)
-                Text(SunnyHoursFormatting.chartHourLabel(bounds.endHour))
-            }
-            .frame(height: configuration.axisHeight)
-            .font(.caption2.weight(.medium))
-            .foregroundStyle(colors.secondary)
-            .lineLimit(1)
-            .padding(.top, 2)
-
         case .sparse:
             let markers = timelineAxisMarkers(from: startHour)
             GeometryReader { proxy in
@@ -272,51 +251,60 @@ struct SunnyHoursDiscreteCapsuleTimeline: View {
 
     // MARK: - Current-Time Marker
 
-    /// Finds the nearest capsule boundary, clamping times outside the displayed
-    /// daylight window to the leading or trailing edge instead of hiding them.
-    private func currentTimeBoundaryIndex() -> Int? {
+    /// Finds the exact fractional position within the covering hourly capsule,
+    /// clamping times outside the daylight window to its leading/trailing edge.
+    private func currentTimeSlotPosition() -> Double? {
         guard showsCurrentTimeMarker,
               !hours.isEmpty,
-              let firstHour = hours.first?.hour,
-              let lastHour = hours.last?.hour else {
+              let firstDate = hours.first?.date,
+              let lastDate = hours.last?.date else {
             return nil
         }
 
-        var calendar = Calendar.current
-        calendar.timeZone = timeZone
-        let currentHour = calendar.component(.hour, from: currentDate)
-        if currentHour < firstHour {
+        if currentDate < firstDate {
             return 0
         }
-        if currentHour > lastHour {
-            return hours.count
-        }
-        guard let currentIndex = hours.enumerated().min(by: {
-            abs($0.element.hour - currentHour)
-                < abs($1.element.hour - currentHour)
-        })?.offset else {
-            return nil
+        if currentDate >= lastDate.addingTimeInterval(60 * 60) {
+            return Double(hours.count)
         }
 
-        return currentIndex + 1
+        if let currentIndex = hours.firstIndex(where: {
+            $0.date <= currentDate
+                && currentDate < $0.date.addingTimeInterval(60 * 60)
+        }) {
+            let elapsed = currentDate.timeIntervalSince(hours[currentIndex].date)
+            return Double(currentIndex) + min(max(elapsed / 3600, 0), 1)
+        }
+
+        // A missing source hour remains a gap, not a fabricated capsule. Place
+        // the marker at the boundary before the first later source record.
+        return Double(hours.firstIndex(where: { $0.date > currentDate }) ?? hours.count)
     }
 
-    /// Places the marker in a gap, or at the trailing edge of the final cell.
+    /// Interpolates between capsule boundaries so minutes advance smoothly.
     private func currentTimeMarkerX(
-        for boundaryIndex: Int,
+        for slotPosition: Double,
         capsuleWidth: CGFloat,
         slotCount: Int,
         spacing: CGFloat
     ) -> CGFloat {
-        if boundaryIndex <= 0 {
-            return 0
+        func boundaryX(_ boundaryIndex: Int) -> CGFloat {
+            if boundaryIndex <= 0 { return 0 }
+            if boundaryIndex >= slotCount {
+                return CGFloat(slotCount) * capsuleWidth
+                    + CGFloat(max(slotCount - 1, 0)) * spacing
+            }
+            return CGFloat(boundaryIndex) * capsuleWidth
+                + (CGFloat(boundaryIndex) - 0.5) * spacing
         }
-        if boundaryIndex >= slotCount {
-            return CGFloat(slotCount) * capsuleWidth
-                + CGFloat(max(slotCount - 1, 0)) * spacing
-        }
-        return CGFloat(boundaryIndex) * capsuleWidth
-            + (CGFloat(boundaryIndex) - 0.5) * spacing
+
+        let clamped = min(max(slotPosition, 0), Double(slotCount))
+        let lower = Int(floor(clamped))
+        let upper = Int(ceil(clamped))
+        guard lower != upper else { return boundaryX(lower) }
+        let fraction = CGFloat(clamped - Double(lower))
+        let lowerX = boundaryX(lower)
+        return lowerX + (boundaryX(upper) - lowerX) * fraction
     }
 
     // MARK: - Layout Calculation
@@ -426,8 +414,20 @@ struct SunnyHoursContinuousCapsuleTrack: View {
 
     private struct ColorSegment: Identifiable {
         let id: Date
-        let startHour: Int
-        var endHour: Int
+        let startPosition: Double
+        var endPosition: Double
+        let condition: SunnyHoursChartCondition
+        var leadingNeighborCondition: SunnyHoursChartCondition?
+        var trailingNeighborCondition: SunnyHoursChartCondition?
+    }
+
+    /// A local clock-hour lane after repeated DST hours have been divided into
+    /// equal sub-slots. Both occurrences remain visible without drawing two
+    /// forecast records on top of each other.
+    private struct PositionedHour {
+        let id: Date
+        let startPosition: Double
+        let endPosition: Double
         let condition: SunnyHoursChartCondition
     }
 
@@ -443,15 +443,20 @@ struct SunnyHoursContinuousCapsuleTrack: View {
                     segmentShape(for: segment)
                         .fill(colors.color(for: segment.condition))
                         .frame(
-                            width: bounds.width(
-                                for: segment.startHour...segment.endHour,
-                                timelineWidth: proxy.size.width,
-                                minimumWidth: 1
+                            width: max(
+                                bounds.xPosition(
+                                    for: segment.endPosition,
+                                    width: proxy.size.width
+                                ) - bounds.xPosition(
+                                    for: segment.startPosition,
+                                    width: proxy.size.width
+                                ),
+                                1
                             )
                         )
                         .offset(
                             x: bounds.xPosition(
-                                for: Double(segment.startHour),
+                                for: segment.startPosition,
                                 width: proxy.size.width
                             )
                         )
@@ -471,35 +476,75 @@ struct SunnyHoursContinuousCapsuleTrack: View {
 
     /// Groups adjacent equal conditions into a single visual run.
     private var colorSegments: [ColorSegment] {
-        hours.reduce(into: []) { segments, hour in
+        var segments = positionedHours.reduce(into: [ColorSegment]()) { segments, hour in
             if let previous = segments.last,
                previous.condition == hour.condition,
-               hour.hour == previous.endHour + 1 {
-                segments[segments.count - 1].endHour = hour.hour
+               approximatelyEqual(hour.startPosition, previous.endPosition) {
+                segments[segments.count - 1].endPosition = hour.endPosition
             } else {
                 segments.append(
                     ColorSegment(
-                        id: hour.date,
-                        startHour: hour.hour,
-                        endHour: hour.hour,
-                        condition: hour.condition
+                        id: hour.id,
+                        startPosition: hour.startPosition,
+                        endPosition: hour.endPosition,
+                        condition: hour.condition,
+                        leadingNeighborCondition: nil,
+                        trailingNeighborCondition: nil
                     )
                 )
             }
+        }
+
+        for index in segments.indices {
+            if index > segments.startIndex,
+               approximatelyEqual(
+                   segments[index - 1].endPosition,
+                   segments[index].startPosition
+               ) {
+                segments[index].leadingNeighborCondition = segments[index - 1].condition
+            }
+            if index < segments.index(before: segments.endIndex),
+               approximatelyEqual(
+                   segments[index].endPosition,
+                   segments[index + 1].startPosition
+               ) {
+                segments[index].trailingNeighborCondition = segments[index + 1].condition
+            }
+        }
+        return segments
+    }
+
+    /// Converts repeated local hours on a daylight-saving fall-back day into
+    /// non-overlapping fractions of that clock-hour lane. Normal days retain
+    /// the exact integer-hour geometry used throughout the app.
+    private var positionedHours: [PositionedHour] {
+        let sortedHours = hours.sorted { $0.date < $1.date }
+        let occurrenceCounts = Dictionary(
+            grouping: sortedHours,
+            by: \.hour
+        ).mapValues(\.count)
+        var occurrenceIndices: [Int: Int] = [:]
+
+        return sortedHours.map { hour in
+            let count = max(occurrenceCounts[hour.hour] ?? 1, 1)
+            let index = occurrenceIndices[hour.hour, default: 0]
+            occurrenceIndices[hour.hour] = index + 1
+            let slotWidth = 1 / Double(count)
+            let startPosition = Double(hour.hour) + Double(index) * slotWidth
+            return PositionedHour(
+                id: hour.date,
+                startPosition: startPosition,
+                endPosition: startPosition + slotWidth,
+                condition: hour.condition
+            )
         }
     }
 
     /// Only exposed ends round; adjoining coloured weather runs retain their
     /// square shared edge and read as a continuous hourly forecast.
     private func segmentShape(for segment: ColorSegment) -> UnevenRoundedRectangle {
-        let previousCondition = hours.first {
-            $0.hour == segment.startHour - 1
-        }?.condition
-        let nextCondition = hours.first {
-            $0.hour == segment.endHour + 1
-        }?.condition
-        let squaresLeadingEdge = previousCondition.map(isColoredCondition) == true
-        let squaresTrailingEdge = nextCondition.map(isColoredCondition) == true
+        let squaresLeadingEdge = segment.leadingNeighborCondition.map(isColoredCondition) == true
+        let squaresTrailingEdge = segment.trailingNeighborCondition.map(isColoredCondition) == true
         let radius = height / 2
         return UnevenRoundedRectangle(
             cornerRadii: .init(
@@ -510,6 +555,10 @@ struct SunnyHoursContinuousCapsuleTrack: View {
             ),
             style: .continuous
         )
+    }
+
+    private func approximatelyEqual(_ lhs: Double, _ rhs: Double) -> Bool {
+        abs(lhs - rhs) < 0.000_001
     }
 
     private func isColoredCondition(_ condition: SunnyHoursChartCondition) -> Bool {

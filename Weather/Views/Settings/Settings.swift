@@ -413,6 +413,7 @@ struct SettingsView: View {
         Menu {
             Button {
                 useSystemTextSize = true
+                model.publishWidgetCatalog(locale: locale)
             } label: {
                 textSizeMenuOption(
                     localizedString("Follow System", locale: locale),
@@ -426,6 +427,7 @@ struct SettingsView: View {
                 Button {
                     useSystemTextSize = false
                     appTextSizeLevel = level.rawValue
+                    model.publishWidgetCatalog(locale: locale)
                 } label: {
                     textSizeMenuOption(
                         level.displayName(locale: locale),

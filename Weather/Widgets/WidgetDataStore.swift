@@ -11,7 +11,11 @@
 //
 
 import Foundation
+import SwiftUI
 import WidgetKit
+#if !WEATHER_WIDGETS
+import UIKit
+#endif
 
 // MARK: - Cross-Process Reset State
 
@@ -75,8 +79,19 @@ struct WidgetHourlyCondition: Codable, Hashable, Identifiable {
 struct WidgetDataCity: Codable, Hashable, Identifiable {
     /// Stable cross-process city identifier.
     let id: String
+    /// Historic identifiers that WidgetKit may still have persisted inside an
+    /// existing App Intent configuration. Saved Places now use their durable
+    /// UUID, while these aliases let widgets created by older releases keep
+    /// resolving after country or coordinate metadata changes. Optional
+    /// decoding keeps catalogs written before UUID identities compatible.
+    var legacyIdentifiers: [String]? = nil
     /// Localized city label published by the main app.
     let cityName: String
+    /// Optional disambiguating label shown only in widget configuration UI.
+    /// This remains separate from `cityName` so compact widget layouts never
+    /// expose additional location metadata. Optional decoding keeps catalogs
+    /// written by earlier app versions compatible.
+    var configurationSubtitle: String? = nil
     /// Timezone identifier required for local-day calculations.
     let timeZoneIdentifier: String?
     /// Latitude used by direct WeatherKit requests and deep links.
@@ -87,10 +102,21 @@ struct WidgetDataCity: Codable, Hashable, Identifiable {
     /// Optional supports decoding snapshots written before source condition and
     /// symbol data were persisted.
     var hourlyConditions: [WidgetHourlyCondition]? = nil
+    /// All covered current-day hours, including night, used to advance the
+    /// compact condition icon as WidgetKit renders later timeline entries.
+    var hourlyWeatherConditions: [WidgetHourlyCondition]? = nil
     /// Exact current WeatherKit condition and symbol.
     /// Optional supports decoding snapshots written before source data was
     /// persisted; the widget refreshes them before rendering weather content.
     var currentWeather: WidgetWeatherPresentation? = nil
+    /// Extension-owned fetch instant for `currentWeather`. The compact widget
+    /// keeps that exact observation through its source hour, then advances with
+    /// the persisted hourly forecast while the extension is suspended.
+    var weatherFetchedAt: Date? = nil
+    /// Current local day's exact solar boundaries, when WeatherKit supplies
+    /// them. Polar day/night legitimately leaves either event unavailable.
+    var sunrise: Date? = nil
+    var sunset: Date? = nil
     /// Available current/future rows for the large chart, capped at ten by its
     /// presentation capacity. A shorter valid forecast remains displayable.
     var sunnyWindowDays: [WidgetSunnyWindowDay]? = nil
@@ -98,6 +124,24 @@ struct WidgetDataCity: Codable, Hashable, Identifiable {
     /// Legacy per-field source issues remain decodable, but do not suppress
     /// otherwise usable WeatherKit data in widget presentation.
     var dataIssue: WeatherDataIssue? = nil
+}
+
+extension WidgetDataCity {
+    /// Canonical UUID identity followed by any exact identifiers persisted by
+    /// pre-migration App Intent configurations. Empty and duplicate values are
+    /// discarded so callers can safely use this list for cache retention.
+    var allWidgetIdentifiers: [String] {
+        var seen: Set<String> = []
+        return ([id] + (legacyIdentifiers ?? [])).filter { identifier in
+            !identifier.isEmpty && seen.insert(identifier).inserted
+        }
+    }
+
+    /// Matches both newly configured UUID-backed widgets and already-installed
+    /// widgets whose App Intent still contains the former coordinate identity.
+    func matchesWidgetIdentifier(_ identifier: String) -> Bool {
+        allWidgetIdentifiers.contains(identifier)
+    }
 }
 
 /// App-owned choice that supplies the widget's stable default-location slot.
@@ -119,6 +163,51 @@ enum WidgetDefaultLocationKind: String, Codable, Hashable {
             "Home Location"
         }
     }
+}
+
+/// Exact Dynamic Type category selected by the app after applying its
+/// Small...Large cap, including when the setting follows the system.
+enum WidgetTextSize: String, Codable, Hashable {
+    case small
+    case medium
+    case large
+    case xLarge
+
+    var dynamicTypeSize: DynamicTypeSize {
+        switch self {
+        case .small: .small
+        case .medium: .medium
+        case .large: .large
+        case .xLarge: .xLarge
+        }
+    }
+
+#if !WEATHER_WIDGETS
+    /// Resolves the same capped app policy used by the containing app's scene.
+    @MainActor
+    static var current: WidgetTextSize {
+        let defaults = UserDefaults.standard
+        let usesSystem = defaults.object(
+            forKey: AppTextSizePolicy.useSystemKey
+        ) == nil
+            ? true
+            : defaults.bool(forKey: AppTextSizePolicy.useSystemKey)
+        let appLevel = defaults.object(
+            forKey: AppTextSizePolicy.appLevelKey
+        ) == nil
+            ? AppTextSizeLevel.defaultRawValue
+            : defaults.integer(forKey: AppTextSizePolicy.appLevelKey)
+        let effective = AppTextSizePolicy.effectiveDynamicTypeSize(
+            useSystem: usesSystem,
+            appLevel: appLevel,
+            systemCategory: UIApplication.shared.preferredContentSizeCategory
+        )
+        if effective <= .small { return .small }
+        if effective == .medium { return .medium }
+        if effective == .large { return .large }
+        return .xLarge
+    }
+#endif
 }
 
 /// One available local-date row in the large widget timeline.
@@ -153,12 +242,31 @@ struct WidgetDataCatalog: Codable, Hashable {
     /// Optional keeps catalogs written by older app versions decodable; those
     /// payloads predate Home Location and therefore mean Current Location.
     var defaultLocationKind: WidgetDefaultLocationKind? = nil
+    /// App-resolved and capped Dynamic Type category for every widget family.
+    /// Optional keeps catalogs from older releases decodable.
+    var textSize: WidgetTextSize? = nil
+    /// Whether widgets should follow WidgetKit's live system Dynamic Type value.
+    /// The extension applies the same app-supported cap itself, so this remains
+    /// responsive even while the containing app is terminated.
+    var followsSystemTextSize: Bool? = nil
     /// Widget-only copy resolved by the localized main app before publication.
     var localizedStrings: [String: String] = [:]
 
     /// Backward-compatible interpretation of the optional persisted mode.
     var resolvedDefaultLocationKind: WidgetDefaultLocationKind {
         defaultLocationKind ?? .currentLocation
+    }
+
+    /// Older catalogs predate the app-wide widget typography contract and use
+    /// the app's long-standing default category until the next publication.
+    var resolvedTextSize: WidgetTextSize {
+        textSize ?? .large
+    }
+
+    /// Older catalogs published one exact size and therefore retain that fixed
+    /// behavior until the containing app next republishes its preferences.
+    var resolvedFollowsSystemTextSize: Bool {
+        followsSystemTextSize ?? false
     }
 }
 
@@ -180,10 +288,35 @@ enum WidgetDataStore {
     /// updates its coordinate, mode, and display name while widget
     /// configurations keep referring to this one backward-compatible ID.
     static let currentLocationIdentifier = "current-location"
+    /// Namespace separating durable Saved Place UUIDs from legacy coordinate
+    /// identifiers and the special Current/Home Location slot.
+    private static let savedPlaceIdentifierPrefix = "saved-place:"
 
     // MARK: - Stable City Identity
 
-    /// Builds a stable identifier from normalized city coordinates.
+    /// Builds the durable identifier used by every newly configured Saved Place
+    /// widget. A Saved Place UUID survives renames, country repair, and
+    /// coordinate correction because it is the app library's canonical ID.
+    static func savedPlaceIdentifier(for id: UUID) -> String {
+        savedPlaceIdentifierPrefix + id.uuidString.lowercased()
+    }
+
+    /// Recovers a Saved Place UUID from a current widget/deep-link identity.
+    /// Legacy country-and-coordinate identifiers deliberately return nil and
+    /// are resolved through aliases in the published catalog instead.
+    static func savedPlaceID(from identifier: String) -> UUID? {
+        guard identifier.hasPrefix(savedPlaceIdentifierPrefix) else {
+            return nil
+        }
+        return UUID(
+            uuidString: String(identifier.dropFirst(savedPlaceIdentifierPrefix.count))
+        )
+    }
+
+    /// Builds the pre-UUID identifier used by released widget configurations.
+    /// Keep this encoder unchanged: App Intents can rehydrate an installed
+    /// legacy selection only when the app continues publishing its exact ID as
+    /// an alias during migration.
     /// The fixed POSIX decimal separator makes the key identical regardless of
     /// the main app's language or a user's regional number-format preference.
     static func cityIdentifier(country: String, latitude: Double, longitude: Double) -> String {
@@ -232,21 +365,33 @@ enum WidgetDataStore {
     /// Encodes the catalog and requests WidgetKit timeline reloads.
     /// Reloading asks WidgetKit for replacement timelines; it does not
     /// synchronously force every widget instance to redraw at this exact line.
+    @MainActor
     static func save(_ catalog: WidgetDataCatalog) {
         // Work on a local copy so the caller's value remains unchanged while we
         // attach the widget-specific strings needed by the extension process.
         var publishedCatalog = catalog
+        publishedCatalog.textSize = .current
+        let defaults = UserDefaults.standard
+        publishedCatalog.followsSystemTextSize = defaults.object(
+            forKey: AppTextSizePolicy.useSystemKey
+        ) == nil
+            ? true
+            : defaults.bool(forKey: AppTextSizePolicy.useSystemKey)
         let locale = catalog.appLanguageIdentifier.isEmpty
             ? Locale.autoupdatingCurrent
             : Locale(identifier: catalog.appLanguageIdentifier)
         publishedCatalog.localizedStrings = localizedWidgetStrings(locale: locale)
 
         guard let defaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
+        // Catalog publication happens from several normal app lifecycle paths.
+        // Avoid spending WidgetKit refresh budget (and causing duplicate
+        // WeatherKit work in the extension) when the published value has not
+        // actually changed.
+        guard publishedCatalog != self.catalog() else { return }
         guard let data = try? JSONEncoder().encode(publishedCatalog) else {
-            // A failed publication invalidates the previous catalog rather than
-            // leaving deleted or renamed Saved Places visible as current.
-            defaults.removeObject(forKey: catalogKey)
-            WidgetCenter.shared.reloadAllTimelines()
+            // Keep the last successfully encoded catalog. A transient encoding
+            // failure must not strand every installed widget until the app is
+            // opened again.
             return
         }
         defaults.set(data, forKey: catalogKey)
@@ -287,6 +432,7 @@ enum WidgetDataStore {
             ),
             "Current Location": localizedString("Current Location", locale: locale),
             "Home Location": localizedString("Home Location", locale: locale),
+            "Saved Place": localizedString("Saved Place", locale: locale),
             "Today": localizedString("Today", locale: locale),
             "Sunny": localizedString("Sunny", locale: locale),
             "Partly Sunny": localizedString("Partly Sunny", locale: locale),

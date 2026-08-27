@@ -67,6 +67,19 @@ struct AttributionsView: View {
                 aboutTitle: "About GeoNames",
                 aboutURL: URL(string: "https://www.geonames.org/")
             )
+
+            attributionSection(
+                "Time Zone Data",
+                dataValue: "Natural Earth and timezone-boundary-builder",
+                dataSystemImage: "clock",
+                legalURL: URL(
+                    string: "https://opendatacommons.org/licenses/odbl/1-0/"
+                ),
+                aboutTitle: "About SwiftTimeZoneLookup",
+                aboutURL: URL(
+                    string: "https://github.com/patrick-zippenfenig/SwiftTimeZoneLookup"
+                )
+            )
         }
         .scrollContentBackground(.hidden)
         .background(theme.colors.background)

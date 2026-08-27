@@ -22,6 +22,10 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<!-- Allows WidgetKit to offer location to this extension after the host app
+	     obtains When-In-Use permission and the person approves widget access. -->
+	<key>NSWidgetWantsLocation</key>
+	<true/>
 	<!-- Declares this product as a WidgetKit extension. The system reads this
 	     extension point identifier to discover and host the widget. -->
 	<key>NSExtension</key>

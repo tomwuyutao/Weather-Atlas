@@ -1512,22 +1512,43 @@ final class WeatherModel {
             : .currentLocation
         let previousCatalog = WidgetDataStore.catalog()
         let retainedDefaultLocation: WidgetDataCity?
-        if previousCatalog?.resolvedDefaultLocationKind == defaultLocationKind {
+        let canRetainCurrentLocationWhileRefreshing = !isUsingHomeLocation
+            && locationProvider.hasLocationAuthorization
+            && [
+                LocationProviderStatus.idle,
+                .checkingAvailability,
+                .locating,
+                .resolvingPlace,
+            ].contains(locationProvider.status)
+        if previousCatalog?.resolvedDefaultLocationKind == defaultLocationKind,
+           canRetainCurrentLocationWhileRefreshing {
             // Core Location is intentionally asynchronous. Preserve a confirmed
-            // coordinate while a same-mode app launch or refresh is in flight so
-            // publishing Saved Places never makes an autonomous widget depend on
-            // reopening the app.
+            // coordinate only while an authorized same-mode launch or refresh
+            // is genuinely in flight. Denied, restricted, disabled, and failed
+            // states must clear the old coordinate rather than letting widgets
+            // continue to fetch a location the person revoked.
             retainedDefaultLocation = previousCatalog?.currentLocation
         } else {
             retainedDefaultLocation = nil
         }
 
+        let savedPlaces = placesStore.allPlaces
+        let legacyIdentifiersByPlaceID = widgetLegacyIdentifiers(
+            for: savedPlaces,
+            previousCatalog: previousCatalog
+        )
+
         // Widgets receive only lightweight place identities here; their own
         // extension code owns fetching and refreshing forecast presentation.
         WidgetDataStore.save(
             WidgetDataCatalog(
-                cities: placesStore.allPlaces.map {
-                    widgetCity(for: $0, locale: locale)
+                cities: savedPlaces.map {
+                    widgetCity(
+                        for: $0,
+                        locale: locale,
+                        legacyIdentifiers: legacyIdentifiersByPlaceID[$0.id]
+                            ?? []
+                    )
                 },
                 appLanguageIdentifier: locale.identifier,
                 currentLocation: widgetCurrentLocation(locale: locale)
@@ -1719,29 +1740,281 @@ final class WeatherModel {
     /// the widget extension.
     private func widgetCity(
         for place: SavedPlace,
-        locale: Locale
+        locale: Locale,
+        legacyIdentifiers: [String]
     ) -> WidgetDataCity {
         // Prefer a timezone learned from the actual weather response; fall back
         // to the saved city metadata when weather has not loaded yet.
         let city = place.city
+        let country = city.country.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
         let timeZoneID = weatherStore.weather(for: place.id)?
             .timeZone.identifier
             ?? city.timeZoneIdentifier
+        let identifier = WidgetDataStore.savedPlaceIdentifier(for: place.id)
+
         // Weather remains widget-owned; this catalog hand-off carries identity
         // and location metadata only.
         return WidgetDataCity(
-            id: WidgetDataStore.cityIdentifier(
-                country: city.country,
-                latitude: city.latitude,
-                longitude: city.longitude
-            ),
+            id: identifier,
+            legacyIdentifiers: legacyIdentifiers,
             cityName: place.localizedDisplayName(locale: locale),
+            configurationSubtitle: country.isEmpty ? nil : country,
             timeZoneIdentifier: timeZoneID,
             latitude: city.latitude,
             longitude: city.longitude,
             sunnyWindowDays: nil,
             dataIssue: nil
         )
+    }
+
+    /// Assigns every pre-UUID widget identifier to one durable Saved Place.
+    ///
+    /// A legacy identifier is a country-and-coordinate string and therefore is
+    /// not guaranteed to be globally unique: two very close results can round
+    /// to the same four-decimal coordinate. More importantly, a previous
+    /// publication must never copy one row's canonical `saved-place:<UUID>` ID
+    /// into another row's aliases. Doing either would allow adding or reordering
+    /// a nearby Saved Place to retarget an already-configured widget.
+    ///
+    /// Exact UUID-backed ownership from the previous catalog wins. Unmigrated
+    /// catalogs are then matched one-to-one by their historic identifier (with
+    /// the old coordinate tolerance as a repair fallback), and only finally do
+    /// new coordinate aliases claim identifiers that remain unowned.
+    private func widgetLegacyIdentifiers(
+        for places: [SavedPlace],
+        previousCatalog: WidgetDataCatalog?
+    ) -> [SavedPlace.ID: [String]] {
+        guard !places.isEmpty else { return [:] }
+
+        let placeIDs = Set(places.map(\.id))
+        let canonicalIdentifierByPlaceID = Dictionary(
+            uniqueKeysWithValues: places.map {
+                ($0.id, WidgetDataStore.savedPlaceIdentifier(for: $0.id))
+            }
+        )
+        let currentLegacyIdentifierByPlaceID = Dictionary(
+            uniqueKeysWithValues: places.map { place in
+                (
+                    place.id,
+                    WidgetDataStore.cityIdentifier(
+                        country: place.city.country,
+                        latitude: place.city.latitude,
+                        longitude: place.city.longitude
+                    )
+                )
+            }
+        )
+        let previousCities = previousCatalog?.cities ?? []
+
+        /// Valid historic aliases exclude every canonical UUID identifier,
+        /// including one accidentally propagated by an older buggy catalog.
+        func legacyAliases(in city: WidgetDataCity) -> [String] {
+            var seen: Set<String> = []
+            return city.allWidgetIdentifiers.filter { identifier in
+                !identifier.isEmpty
+                    && identifier != WidgetDataStore.currentLocationIdentifier
+                    && WidgetDataStore.savedPlaceID(from: identifier) == nil
+                    && seen.insert(identifier).inserted
+            }
+        }
+
+        /// Reconstructs the alias represented by a catalog row's own metadata.
+        /// This distinguishes the original owner from a later row that merely
+        /// inherited the alias through the propagation bug.
+        func metadataLegacyIdentifier(for city: WidgetDataCity) -> String? {
+            guard let latitude = city.latitude,
+                  let longitude = city.longitude else {
+                return nil
+            }
+            return WidgetDataStore.cityIdentifier(
+                country: city.configurationSubtitle ?? "",
+                latitude: latitude,
+                longitude: longitude
+            )
+        }
+
+        // Collect stable claims first rather than resolving in current library
+        // order. This makes a drag reorder unable to change alias ownership.
+        var aliasesPreviouslyOwnedByCanonicalRows: Set<String> = []
+        var priorCanonicalClaims: [String: [(placeID: SavedPlace.ID, isOwnMetadata: Bool, order: Int)]] = [:]
+        for (order, previousCity) in previousCities.enumerated() {
+            guard let previousPlaceID = WidgetDataStore.savedPlaceID(
+                from: previousCity.id
+            ) else {
+                continue
+            }
+            let metadataIdentifier = metadataLegacyIdentifier(for: previousCity)
+            for alias in legacyAliases(in: previousCity) {
+                aliasesPreviouslyOwnedByCanonicalRows.insert(alias)
+                guard placeIDs.contains(previousPlaceID) else { continue }
+                priorCanonicalClaims[alias, default: []].append(
+                    (
+                        placeID: previousPlaceID,
+                        isOwnMetadata: metadataIdentifier == alias,
+                        order: order
+                    )
+                )
+            }
+        }
+
+        var ownerByAlias: [String: SavedPlace.ID] = [:]
+        for (alias, claims) in priorCanonicalClaims {
+            // Prefer the row whose own country/coordinate metadata produces the
+            // alias. If an old collision remains intrinsically ambiguous, keep
+            // the earliest previous-catalog owner for deterministic continuity.
+            let owner = claims.min { lhs, rhs in
+                if lhs.isOwnMetadata != rhs.isOwnMetadata {
+                    return lhs.isOwnMetadata && !rhs.isOwnMetadata
+                }
+                return lhs.order < rhs.order
+            }
+            if let owner {
+                ownerByAlias[alias] = owner.placeID
+            }
+        }
+
+        /// Finds the sole best current owner for a pre-migration catalog row.
+        /// Name/country break the rare rounded-coordinate tie, while the prior
+        /// library order remains the deterministic final fallback.
+        func ownerForUnmigratedCity(
+            _ previousCity: WidgetDataCity
+        ) -> SavedPlace.ID? {
+            let previousName = previousCity.cityName.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            let previousCountry = previousCity.configurationSubtitle?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            var best: (
+                placeID: SavedPlace.ID,
+                exactIdentifier: Bool,
+                nameMatches: Bool,
+                countryMatches: Bool,
+                coordinateDistance: Double,
+                order: Int
+            )?
+
+            for (order, place) in places.enumerated() {
+                let exactIdentifier = currentLegacyIdentifierByPlaceID[place.id]
+                    == previousCity.id
+                let coordinateDistance: Double
+                if let previousLatitude = previousCity.latitude,
+                   let previousLongitude = previousCity.longitude {
+                    coordinateDistance = max(
+                        abs(previousLatitude - place.city.latitude),
+                        abs(previousLongitude - place.city.longitude)
+                    )
+                } else {
+                    coordinateDistance = .infinity
+                }
+                guard exactIdentifier || coordinateDistance < 0.000_05 else {
+                    continue
+                }
+
+                let candidate = (
+                    placeID: place.id,
+                    exactIdentifier: exactIdentifier,
+                    nameMatches: place.displayName.compare(
+                        previousName,
+                        options: [.caseInsensitive, .diacriticInsensitive]
+                    ) == .orderedSame,
+                    countryMatches: previousCountry.map {
+                        place.city.country.compare(
+                            $0,
+                            options: [.caseInsensitive, .diacriticInsensitive]
+                        ) == .orderedSame
+                    } ?? false,
+                    coordinateDistance: coordinateDistance,
+                    order: order
+                )
+
+                guard let currentBest = best else {
+                    best = candidate
+                    continue
+                }
+                if candidate.exactIdentifier != currentBest.exactIdentifier {
+                    if candidate.exactIdentifier { best = candidate }
+                } else if candidate.nameMatches != currentBest.nameMatches {
+                    if candidate.nameMatches { best = candidate }
+                } else if candidate.countryMatches != currentBest.countryMatches {
+                    if candidate.countryMatches { best = candidate }
+                } else if candidate.coordinateDistance
+                            != currentBest.coordinateDistance {
+                    if candidate.coordinateDistance
+                        < currentBest.coordinateDistance {
+                        best = candidate
+                    }
+                } else if candidate.order < currentBest.order {
+                    best = candidate
+                }
+            }
+            return best?.placeID
+        }
+
+        // A catalog whose primary row IDs are still coordinate-based predates
+        // the UUID migration. Resolve each row once, then carry all of that
+        // row's noncanonical aliases to the same owner if still unclaimed.
+        for previousCity in previousCities
+        where WidgetDataStore.savedPlaceID(from: previousCity.id) == nil {
+            guard previousCity.id != WidgetDataStore.currentLocationIdentifier,
+                  let owner = ownerForUnmigratedCity(previousCity) else {
+                continue
+            }
+            for alias in legacyAliases(in: previousCity)
+            where ownerByAlias[alias] == nil {
+                ownerByAlias[alias] = owner
+            }
+        }
+
+        // Retain the legacy encoder as a last-resort bridge when the old shared
+        // catalog was lost. A prior stable owner always wins, so a newly added
+        // nearby place cannot take over an installed widget's identifier.
+        for place in places {
+            guard let alias = currentLegacyIdentifierByPlaceID[place.id],
+                  !aliasesPreviouslyOwnedByCanonicalRows.contains(alias),
+                  ownerByAlias[alias] == nil else {
+                continue
+            }
+            ownerByAlias[alias] = place.id
+        }
+
+        var result: [SavedPlace.ID: [String]] = [:]
+        for place in places {
+            var aliases: [String] = []
+            var seen: Set<String> = []
+            if let currentAlias = currentLegacyIdentifierByPlaceID[place.id],
+               ownerByAlias[currentAlias] == place.id,
+               seen.insert(currentAlias).inserted {
+                aliases.append(currentAlias)
+            }
+            for previousCity in previousCities {
+                for alias in legacyAliases(in: previousCity)
+                where ownerByAlias[alias] == place.id
+                    && seen.insert(alias).inserted {
+                    aliases.append(alias)
+                }
+            }
+            // Defensive invariants: aliases are noncanonical by construction,
+            // and one `ownerByAlias` entry can reach only this one result row.
+            let canonicalIdentifier = canonicalIdentifierByPlaceID[place.id]
+            result[place.id] = aliases.filter { $0 != canonicalIdentifier }
+        }
+
+#if DEBUG
+        let publishedAliases = result.values.flatMap { $0 }
+        assert(
+            Set(publishedAliases).count == publishedAliases.count,
+            "Every legacy widget identifier must have exactly one owner."
+        )
+        assert(
+            publishedAliases.allSatisfy {
+                WidgetDataStore.savedPlaceID(from: $0) == nil
+            },
+            "A canonical Saved Place identifier must never become an alias."
+        )
+#endif
+        return result
     }
 
     /// Builds the special default widget location from the app's most recent
