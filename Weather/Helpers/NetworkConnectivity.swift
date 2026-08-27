@@ -12,16 +12,28 @@ import Observation
 
 // MARK: - Reachability State
 
+/// The monitor has an explicit initial phase so callers never mistake an
+/// unevaluated path for a confirmed internet connection.
+nonisolated enum NetworkConnectivityStatus: Equatable, Sendable {
+    case evaluating
+    case available
+    case offline
+}
+
 /// App-wide network reachability state backed by Apple's `NWPathMonitor`.
 ///
 /// This deliberately reports only a confirmed unsatisfied path as offline.
-/// The brief initial monitor state is treated as unknown/usable so launch does
-/// not flash an offline warning before iOS has evaluated the network path.
+/// The brief initial monitor state remains explicit, so launch neither flashes
+/// an offline warning nor starts network work before iOS evaluates the path.
 @MainActor
 @Observable
 final class NetworkConnectivity {
+    /// Starts unevaluated and changes after the monitor's first path callback.
+    private(set) var status: NetworkConnectivityStatus = .evaluating
     /// Whether iOS has confirmed that no internet-capable path is available.
-    private(set) var isOffline = false
+    var isOffline: Bool { status == .offline }
+    /// Whether the monitor has delivered at least one authoritative path result.
+    var hasEvaluatedPath: Bool { status != .evaluating }
     /// Lets the person hide the advisory banner for the current offline episode.
     private(set) var isOfflineBannerDismissed = false
 
@@ -53,9 +65,9 @@ final class NetworkConnectivity {
     /// Applies a new path result on the main actor. A recovered path re-arms
     /// the banner for a later, genuinely separate offline episode.
     private func apply(pathStatus: NWPath.Status) {
-        let wasOffline = isOffline
-        isOffline = pathStatus == .unsatisfied
-        if wasOffline && !isOffline {
+        let previousStatus = status
+        status = pathStatus == .unsatisfied ? .offline : .available
+        if previousStatus == .offline, status == .available {
             isOfflineBannerDismissed = false
         }
     }

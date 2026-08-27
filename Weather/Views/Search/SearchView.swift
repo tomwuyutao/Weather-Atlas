@@ -226,7 +226,8 @@ struct PlaceSearchView: View {
     @ViewBuilder
     private var citySearchContent: some View {
         if normalizedQuery.isEmpty {
-            if countryCitySuggestions.isEmpty {
+            if recentCitySuggestions.isEmpty
+                && remainingCountryCitySuggestions.isEmpty {
                 ContentUnavailableView(
                     "Search for a City",
                     systemImage: "building.2",
@@ -263,7 +264,7 @@ struct PlaceSearchView: View {
                     .foregroundStyle(theme.colors.secondaryText)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if countryResults.isEmpty {
+        } else if !hasCountrySuggestionContent {
             if normalizedQuery.isEmpty {
                 ContentUnavailableView(
                     "Search countries",
@@ -274,20 +275,38 @@ struct PlaceSearchView: View {
             }
         } else {
             List {
-                Section {
-                    ForEach(countryResults) { country in
-                        geographicQueryButton(
-                            title: country.localizedName(locale: locale)
-                        ) {
-                            openFindSun(in: .country(country))
+                if normalizedQuery.isEmpty,
+                   !recentCountrySuggestions.isEmpty {
+                    Section {
+                        ForEach(recentCountrySuggestions) { country in
+                            geographicQueryButton(
+                                title: country.localizedName(locale: locale)
+                            ) {
+                                openFindSun(in: .country(country))
+                            }
                         }
+                    } header: {
+                        geographicScopeHeader(description: "Recent")
                     }
-                } header: {
-                    geographicScopeHeader(
-                        description: "Find which cities are sunny in a country."
-                    )
+                    .listRowBackground(theme.colors.settingsRowFill)
                 }
-                .listRowBackground(theme.colors.settingsRowFill)
+
+                if !countrySuggestionResults.isEmpty {
+                    Section {
+                        ForEach(countrySuggestionResults) { country in
+                            geographicQueryButton(
+                                title: country.localizedName(locale: locale)
+                            ) {
+                                openFindSun(in: .country(country))
+                            }
+                        }
+                    } header: {
+                        geographicScopeHeader(
+                            description: "Find which cities are sunny in a country."
+                        )
+                    }
+                    .listRowBackground(theme.colors.settingsRowFill)
+                }
             }
             .listStyle(.insetGrouped)
             .scrollDismissesKeyboard(.interactively)
@@ -297,24 +316,42 @@ struct PlaceSearchView: View {
 
     private var continentSearchContent: some View {
         Group {
-            if continentResults.isEmpty {
+            if !hasContinentSuggestionContent {
                 ContentUnavailableView.search(text: normalizedQuery)
             } else {
                 List {
-                    Section {
-                        ForEach(continentResults) { continent in
-                            geographicQueryButton(
-                                title: continent.localizedName(locale: locale)
-                            ) {
-                                openFindSun(in: .continent(continent))
+                    if normalizedQuery.isEmpty,
+                       !recentContinentSuggestions.isEmpty {
+                        Section {
+                            ForEach(recentContinentSuggestions) { continent in
+                                geographicQueryButton(
+                                    title: continent.localizedName(locale: locale)
+                                ) {
+                                    openFindSun(in: .continent(continent))
+                                }
                             }
+                        } header: {
+                            geographicScopeHeader(description: "Recent")
                         }
-                    } header: {
-                        geographicScopeHeader(
-                            description: "Find which cities are sunny across a continent."
-                        )
+                        .listRowBackground(theme.colors.settingsRowFill)
                     }
-                    .listRowBackground(theme.colors.settingsRowFill)
+
+                    if !continentSuggestionResults.isEmpty {
+                        Section {
+                            ForEach(continentSuggestionResults) { continent in
+                                geographicQueryButton(
+                                    title: continent.localizedName(locale: locale)
+                                ) {
+                                    openFindSun(in: .continent(continent))
+                                }
+                            }
+                        } header: {
+                            geographicScopeHeader(
+                                description: "Find which cities are sunny across a continent."
+                            )
+                        }
+                        .listRowBackground(theme.colors.settingsRowFill)
+                    }
                 }
                 .listStyle(.insetGrouped)
                 .scrollDismissesKeyboard(.interactively)
@@ -370,18 +407,37 @@ struct PlaceSearchView: View {
 
     private var countryCitySuggestionsList: some View {
         List {
-            Section {
-                ForEach(countryCitySuggestions) { city in
-                    geographicQueryButton(title: city.displayName) {
-                        selectSuggestedCity(city)
+            if !recentCitySuggestions.isEmpty {
+                Section {
+                    ForEach(recentCitySuggestions) { city in
+                        geographicQueryButton(
+                            title: city.localizedDisplayName(locale: locale)
+                        ) {
+                            selectSuggestedCity(city)
+                        }
                     }
+                } header: {
+                    geographicScopeHeader(description: "Recent")
                 }
-            } header: {
-                geographicScopeHeader(
-                    description: "Find when the sun comes out in a city."
-                )
+                .listRowBackground(theme.colors.settingsRowFill)
             }
-            .listRowBackground(theme.colors.settingsRowFill)
+
+            if !remainingCountryCitySuggestions.isEmpty {
+                Section {
+                    ForEach(remainingCountryCitySuggestions) { city in
+                        geographicQueryButton(
+                            title: city.localizedDisplayName(locale: locale)
+                        ) {
+                            selectSuggestedCity(city)
+                        }
+                    }
+                } header: {
+                    geographicScopeHeader(
+                        description: "Find when the sun comes out in a city."
+                    )
+                }
+                .listRowBackground(theme.colors.settingsRowFill)
+            }
         }
         .listStyle(.insetGrouped)
         .weatherScrollableBackground()
@@ -479,12 +535,44 @@ struct PlaceSearchView: View {
     private var countryResults: [CountryPlacesOption] {
         guard !normalizedQuery.isEmpty else { return allCountries }
         return allCountries.filter { country in
-            country.localizedName(locale: locale)
-                .localizedCaseInsensitiveContains(normalizedQuery)
-                || country.englishName.localizedCaseInsensitiveContains(
-                    normalizedQuery
-                )
+            country.matchesSearchQuery(normalizedQuery, locale: locale)
         }
+    }
+
+    /// Recents are a first section only while the field is empty. Their exact
+    /// identities are removed from the ordinary suggestion section so no row
+    /// appears twice on the same screen.
+    private var recentCitySuggestions: [City] {
+        Array(
+            model.recentCitySuggestions.prefix(
+                RecentSearchStore.maximumSuggestionCount
+            )
+        )
+    }
+
+    private var remainingCountryCitySuggestions: [City] {
+        countryCitySuggestions.filter { suggestion in
+            !recentCitySuggestions.contains {
+                CitySemanticMatcher.matches($0, suggestion)
+            }
+        }
+    }
+
+    private var recentCountrySuggestions: [CountryPlacesOption] {
+        model.recentSearches.countryISO2Codes.compactMap {
+            CountryCityCatalog.country(iso2: $0)
+        }
+    }
+
+    private var countrySuggestionResults: [CountryPlacesOption] {
+        guard normalizedQuery.isEmpty else { return countryResults }
+        let recentIDs = Set(recentCountrySuggestions.map(\.id))
+        return countryResults.filter { !recentIDs.contains($0.id) }
+    }
+
+    private var hasCountrySuggestionContent: Bool {
+        !countrySuggestionResults.isEmpty
+            || (normalizedQuery.isEmpty && !recentCountrySuggestions.isEmpty)
     }
 
     private var citySearchTaskID: String {
@@ -546,6 +634,22 @@ struct PlaceSearchView: View {
                 normalizedQuery
             ) || englishName.localizedCaseInsensitiveContains(normalizedQuery)
         }
+    }
+
+    private var recentContinentSuggestions: [ContinentPlacesOption] {
+        model.recentSearches.continents
+    }
+
+    private var continentSuggestionResults: [ContinentPlacesOption] {
+        guard normalizedQuery.isEmpty else { return continentResults }
+        let recentIDs = Set(recentContinentSuggestions.map(\.id))
+        return continentResults.filter { !recentIDs.contains($0.id) }
+    }
+
+    private var hasContinentSuggestionContent: Bool {
+        !continentSuggestionResults.isEmpty
+            || (normalizedQuery.isEmpty
+                && !recentContinentSuggestions.isEmpty)
     }
 
     private var hasNoResults: Bool {
@@ -734,6 +838,7 @@ struct PlaceSearchView: View {
             // before navigating, so a future/past date selected elsewhere
             // cannot make this freshly searched forecast disappear on Map.
             selectToday(for: resolvedPlace.timeZoneIdentifier)
+            model.recordRecentCityAccess(city)
             if let savedPlaceID = model.placesStore.savedPlaceID(matching: city) {
                 isSearchFocused = false
                 router.showMap(placeID: savedPlaceID)
@@ -754,6 +859,7 @@ struct PlaceSearchView: View {
         defer { loadingID = nil }
 
         selectToday(for: city.timeZoneIdentifier ?? TimeZone.autoupdatingCurrent.identifier)
+        model.recordRecentCityAccess(city)
         if let savedPlaceID = model.placesStore.savedPlaceID(matching: city) {
             isSearchFocused = false
             router.showMap(placeID: savedPlaceID)

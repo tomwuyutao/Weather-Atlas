@@ -8,7 +8,6 @@
 
 import SwiftUI
 import UIKit
-import WeatherKit
 
 // MARK: - Settings Root
 
@@ -70,13 +69,7 @@ struct SettingsView: View {
                     }
 
                     ToolbarItem(placement: .topBarLeading) {
-                        Button("Close", systemImage: "xmark") {
-                            dismiss()
-                        }
-                        .labelStyle(.iconOnly)
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(theme.colors.primaryText)
-                        .frame(width: 44, height: 44)
+                        CloseButton(action: dismiss.callAsFunction)
                     }
                 }
                 .navigationDestination(item: $destination) { destination in
@@ -240,8 +233,9 @@ struct SettingsView: View {
             themeForm
                 .navigationTitle("Theme")
         case .attributions:
-            attributionsForm
-                .navigationTitle("Attributions")
+            AttributionsView(
+                weatherAttribution: model.weatherStore.weatherAttribution
+            )
         }
     }
 
@@ -331,87 +325,6 @@ struct SettingsView: View {
                     .buttonStyle(.plain)
 
                 }
-            }
-            .listRowBackground(theme.colors.settingsRowFill)
-        }
-    }
-
-    /// Attribution is data-driven: WeatherKit's official mark is shown when
-    /// its asynchronously loaded attribution object is available.
-    private var attributionsForm: some View {
-        settingsDestinationForm {
-            Section("Weather") {
-                if let attribution = model.weatherStore.weatherAttribution {
-                    WeatherAttributionView(attribution: attribution)
-                } else {
-                    infoRow(
-                        "Weather Data",
-                        value: " Weather",
-                        systemImage: "cloud.sun"
-                    )
-                }
-                linkRow(
-                    "Weather Legal Sources",
-                    systemImage: "doc.text",
-                    url: model.weatherStore.weatherAttribution?.legalPageURL
-                )
-                linkRow(
-                    "About WeatherKit",
-                    systemImage: "doc.text",
-                    url: URL(string: "https://developer.apple.com/weatherkit/")
-                )
-            }
-            .listRowBackground(theme.colors.settingsRowFill)
-
-            Section("Maps") {
-                infoRow("Map Data", value: " Map", systemImage: "map")
-                linkRow(
-                    "Maps Legal Sources",
-                    systemImage: "doc.text",
-                    url: URL(
-                        string: "https://www.apple.com/legal/internet-services/maps/legal-en.html"
-                    )
-                )
-                linkRow(
-                    "About MapKit",
-                    systemImage: "doc.text",
-                    url: URL(
-                        string: "https://developer.apple.com/documentation/mapkit/"
-                    )
-                )
-            }
-            .listRowBackground(theme.colors.settingsRowFill)
-
-            Section("Search") {
-                infoRow(
-                    "Search",
-                    value: "SimpleMaps World Cities",
-                    systemImage: "magnifyingglass"
-                )
-                linkRow(
-                    "About SimpleMaps",
-                    systemImage: "doc.text",
-                    url: URL(string: "https://simplemaps.com/data/world-cities")
-                )
-            }
-            .listRowBackground(theme.colors.settingsRowFill)
-
-            Section("Cities Data") {
-                infoRow(
-                    "Cities Data",
-                    value: "SimpleMaps World Cities",
-                    systemImage: "building.2"
-                )
-                linkRow(
-                    "About SimpleMaps",
-                    systemImage: "doc.text",
-                    url: URL(string: "https://simplemaps.com/data/world-cities")
-                )
-                linkRow(
-                    "GeoNames",
-                    systemImage: "character.bubble",
-                    url: URL(string: "https://www.geonames.org/")
-                )
             }
             .listRowBackground(theme.colors.settingsRowFill)
         }
@@ -804,67 +717,6 @@ struct SettingsView: View {
                 message: localizedPlacesErrorDescription(error, locale: locale)
             )
         }
-    }
-}
-
-// MARK: - Weather Attribution
-
-/// Apple-provided attribution mark with a native legal-page link.
-///
-/// Keeps Apple Weather's official attribution visible and links directly to
-/// the provider's legal page.
-private struct WeatherAttributionView: View {
-    let attribution: WeatherAttribution
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        Link(destination: attribution.legalPageURL) {
-            HStack {
-                // `AsyncImage` is explicit about loading and failure so the
-                // attribution row remains useful even if the mark URL is slow
-                // or unavailable on the current network.
-                AsyncImage(url: markURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .frame(
-                                maxWidth: 120,
-                                maxHeight: 24,
-                                alignment: .leading
-                            )
-                    case .empty:
-                        ProgressView()
-                            .controlSize(.small)
-                            .frame(minWidth: 24, minHeight: 24)
-
-                    case .failure:
-                        Text(attribution.serviceName)
-                            .font(.footnote)
-                    @unknown default:
-                        EmptyView()
-                    }
-                }
-
-                Spacer()
-
-                Image(systemName: "arrow.up.right")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-
-            }
-            .contentShape(.rect)
-        }
-    }
-
-    /// WeatherKit provides separate light and dark artwork, so select the one
-    /// with sufficient contrast for the currently resolved color scheme.
-    private var markURL: URL {
-        colorScheme == .dark
-            ? attribution.combinedMarkDarkURL
-            : attribution.combinedMarkLightURL
     }
 }
 

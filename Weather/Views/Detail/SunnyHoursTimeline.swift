@@ -232,7 +232,7 @@ struct SunnyHoursTimeline: View {
                     systemImage: "arrow.clockwise",
                     action: retry
                 )
-            case .ready, .readyWithoutMetadata:
+            case .resolvingPlace, .ready, .readyWithoutMetadata:
                 locationMessage(
                     "Weather is temporarily unavailable.",
                     buttonTitle: "Try Again",
@@ -240,7 +240,7 @@ struct SunnyHoursTimeline: View {
                     action: retry
                 )
             case .idle, .checkingAvailability, .requestingAuthorization,
-                    .locating, .resolvingPlace:
+                    .locating:
                 locationMessage(
                     "Use your location to see the day's sunny-hour timeline.",
                     buttonTitle: "Use Current Location",
@@ -349,11 +349,10 @@ private struct DailySunnyHoursTrack: View {
 private extension LocationProviderStatus {
     var isActivelyLocating: Bool {
         switch self {
-        case .checkingAvailability, .requestingAuthorization, .locating,
-                .resolvingPlace:
+        case .checkingAvailability, .requestingAuthorization, .locating:
             true
-        case .idle, .ready, .readyWithoutMetadata, .denied, .restricted,
-                .servicesDisabled, .failed:
+        case .idle, .resolvingPlace, .ready, .readyWithoutMetadata, .denied,
+                .restricted, .servicesDisabled, .failed:
             false
         }
     }

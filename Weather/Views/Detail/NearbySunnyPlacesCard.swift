@@ -3,7 +3,7 @@
 //  Weather
 //
 //  Purpose: Presents nearby World Cities recommendations using the same
-//  ranking as Best Sunny Places, with each city's distance from the user.
+//  ranking as Best Sunny Places, with each city's distance from the reference.
 //
 
 import SwiftUI
@@ -11,10 +11,10 @@ import SwiftUI
 // MARK: - Nearby Sunny Recommendations
 
 /// A persistent card showing nearby places with more selected-day sunny hours
-/// than the person's location. It displays already-fetched recommendations;
+/// than the report's reference place. It displays fetched recommendations;
 /// it does not search.
 struct NearbySunnyPlacesCard: View {
-    /// Your Location is a quick local scan, not a second full results screen.
+    /// The card is a quick local scan, not a second full results screen.
     private static let maxRecommendations = 3
 
     // MARK: - Inputs and User Preferences
@@ -22,6 +22,11 @@ struct NearbySunnyPlacesCard: View {
     /// Pre-ranked results supplied by `WeatherModel` for the selected day.
     let recommendations: [NearestSunnyPlaceResult]
     let locationStatus: LocationProviderStatus
+    /// Only Your Location needs permission recovery; place reports already carry
+    /// an exact coordinate and must never fall back to the device coordinate.
+    let requiresCurrentLocation: Bool
+    /// A non-nil name changes row distances from “your location” to that place.
+    let distanceReferenceName: String?
     let isLoading: Bool
     let hasCompletedSearch: Bool
     let errorMessage: String?
@@ -43,25 +48,28 @@ struct NearbySunnyPlacesCard: View {
 
     private var shownRecommendations: [NearestSunnyPlaceResult] {
         // `WeatherModel` has already excluded places that do not improve on the
-        // current location's sunny-hour total. This report is only a compact
+        // reference place's sunny-hour total. This report is only a compact
         // preview; the Map receives the full eligible result list through the
         // action closure when the person wants to explore more choices.
         Array(recommendations.prefix(Self.maxRecommendations))
     }
 
-    /// The card can be waiting for a search in two phases: while its task is
-    /// actively running, and briefly after location resolution hands the
-    /// search off. Both use the same compact loading layout.
+    /// The card can be waiting while its task runs or while its origin is being
+    /// handed to the search. Both phases use the same compact loading layout.
     private var showsLoadingContent: Bool {
         shownRecommendations.isEmpty
             && (
                 isLoading
                     || (
-                        locationStatus.hasResolvedCoordinate
+                        hasSearchOrigin
                             && !hasCompletedSearch
                             && errorMessage == nil
                     )
             )
+    }
+
+    private var hasSearchOrigin: Bool {
+        !requiresCurrentLocation || locationStatus.hasResolvedCoordinate
     }
 
     // MARK: - Presentation
@@ -128,7 +136,7 @@ struct NearbySunnyPlacesCard: View {
 
         } else if let errorMessage {
             message(errorMessage)
-        } else if locationStatus.requiresSettings {
+        } else if requiresCurrentLocation && locationStatus.requiresSettings {
             messageWithAction(
                 locationStatus == .denied
                     ? localizedString(
@@ -143,7 +151,7 @@ struct NearbySunnyPlacesCard: View {
                 systemImage: "gearshape",
                 action: openSettings
             )
-        } else if !locationStatus.hasResolvedCoordinate {
+        } else if requiresCurrentLocation && !locationStatus.hasResolvedCoordinate {
             messageWithAction(
                 localizedString(
                     "Use your location to find nearby places with more sunny hours.",
@@ -230,9 +238,7 @@ struct NearbySunnyPlacesCard: View {
                         .foregroundStyle(theme.colors.primaryText)
                         .lineLimit(2)
 
-                    Text(
-                        "\(distanceUnit.display(recommendation.distanceKilometers)) from your location"
-                    )
+                    Text(distanceLabel(for: recommendation))
                         .font(.caption)
                         .foregroundStyle(theme.colors.secondaryText)
                         .lineLimit(2)
@@ -256,6 +262,24 @@ struct NearbySunnyPlacesCard: View {
         .buttonStyle(.plain)
         .padding(.vertical, 6)
 
+    }
+
+    /// Keeps the complete distance phrase localizable while changing only its
+    /// reference from the user to the place whose report is open.
+    private func distanceLabel(
+        for recommendation: NearestSunnyPlaceResult
+    ) -> String {
+        let distance = distanceUnit.display(recommendation.distanceKilometers)
+        guard let distanceReferenceName else {
+            return localizedString(
+                "\(distance) from your location",
+                locale: locale
+            )
+        }
+        return localizedString(
+            "\(distance) from \(distanceReferenceName)",
+            locale: locale
+        )
     }
 
     private func messageWithAction(
@@ -291,6 +315,8 @@ struct NearbySunnyPlacesCard: View {
     NearbySunnyPlacesCard(
         recommendations: [],
         locationStatus: .ready,
+        requiresCurrentLocation: true,
+        distanceReferenceName: nil,
         isLoading: true,
         hasCompletedSearch: false,
         errorMessage: nil,

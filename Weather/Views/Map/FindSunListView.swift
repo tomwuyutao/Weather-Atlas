@@ -100,7 +100,7 @@ struct FindSunListView: View {
 
     /// Preserve an out-of-band shared date without pretending it has candidate
     /// weather. `dateSummaries` below deliberately includes only real forecast
-    /// days, so the heatmap remains truthful and non-selectable when data is
+    /// days, so the ranked recommendations never imply data exists when it is
     /// absent.
     private var datePickerDates: [Date] {
         Array(
@@ -121,15 +121,15 @@ struct FindSunListView: View {
                 )
             }
 
-            guard !recommendations.isEmpty else { return nil }
-
-            let averageSunnyHours = recommendations.map(\.sunnyHourCount)
-                .reduce(0, +) / Double(recommendations.count)
-
             return BestSunnyDateSummary(
                 date: date,
-                averageSunnyHours: averageSunnyHours
-            )
+                recommendations: recommendations,
+                locale: locale
+            ) { recommendation in
+                recommendation.cityWeather.city.localizedDisplayName(
+                    locale: locale
+                )
+            }
         }
     }
 
@@ -251,7 +251,7 @@ private struct FindSunPlacesCard: View {
                             .background(theme.colors.secondaryText.opacity(0.16))
                             .padding(
                                 .leading,
-                                SavedPlacesSunnyListLayout.cityNameLeadingInset
+                                SavedPlacesRankingListLayout.contentLeadingInset
                             )
                     }
                 }

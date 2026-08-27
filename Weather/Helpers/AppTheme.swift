@@ -378,7 +378,35 @@ struct ThemeColors {
         )
 
         guard usesIncreasedContrast else { return standardFill }
-        return standardFill.interpolated(with: .black, by: 0.08)
+
+        // The light canvas is deliberately warm, so darkening the composited
+        // standard fill channel-by-channel would retain a subtle beige tint.
+        // Preserve its perceived brightness, remove that tint, then darken the
+        // resulting neutral grey by the same small eight-percent step.
+        let resolvedFill = UIColor(standardFill)
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard resolvedFill.getRed(
+            &red,
+            green: &green,
+            blue: &blue,
+            alpha: &alpha
+        ) else {
+            return AppPalette.light.dotCloudy.interpolated(
+                with: .black,
+                by: 0.08
+            )
+        }
+
+        let perceivedBrightness = (
+            red * 0.2126 + green * 0.7152 + blue * 0.0722
+        ) * 0.92
+        return Color(
+            white: Double(max(0, min(1, perceivedBrightness))),
+            opacity: Double(alpha)
+        )
     }
 
     /// Tint participating in translucent glass surfaces.

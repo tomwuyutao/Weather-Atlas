@@ -92,7 +92,7 @@ extension View {
 /// current physical location. The owning screen still supplies its own loading,
 /// permission, retry, and supplementary content; this type only owns the
 /// report UI that is genuinely identical between those flows.
-struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: View {
+struct DetailReportContent<HeaderAccessory: View, SupplementaryContent: View>: View {
     // MARK: - Inputs and Environment
 
     /// The large report and navigation heading. A direct map query can retain
@@ -108,9 +108,10 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
     let temperatureUnit: TemperatureUnit
     let maximumContentWidth: CGFloat
     let showsTimeZoneFootnote: Bool
+    let sectionOrder: [DetailReportSection]
     private let onHeaderVisibilityChange: (Bool) -> Void
+    private let headerAccessory: HeaderAccessory
     private let supplementaryContent: SupplementaryContent
-    private let footerContent: FooterContent
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.locale) private var locale
@@ -129,9 +130,10 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
         temperatureUnit: TemperatureUnit,
         maximumContentWidth: CGFloat = AppContentLayout.standardMaximumWidth,
         showsTimeZoneFootnote: Bool,
+        sectionOrder: [DetailReportSection],
         onHeaderVisibilityChange: @escaping (Bool) -> Void = { _ in },
-        @ViewBuilder supplementaryContent: () -> SupplementaryContent,
-        @ViewBuilder footerContent: () -> FooterContent
+        @ViewBuilder headerAccessory: () -> HeaderAccessory,
+        @ViewBuilder supplementaryContent: () -> SupplementaryContent
     ) {
         self.locationName = locationName
         self.placeDisplayName = placeDisplayName ?? locationName
@@ -143,9 +145,10 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
         self.temperatureUnit = temperatureUnit
         self.maximumContentWidth = maximumContentWidth
         self.showsTimeZoneFootnote = showsTimeZoneFootnote
+        self.sectionOrder = sectionOrder
         self.onHeaderVisibilityChange = onHeaderVisibilityChange
+        self.headerAccessory = headerAccessory()
         self.supplementaryContent = supplementaryContent()
-        self.footerContent = footerContent()
     }
 
     // MARK: - Presentation
@@ -261,7 +264,9 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
             forecast: forecast,
             landscapeHeight: landscapeHeight,
             landscapeConditionVerticalOffset: landscapeHeight == nil ? 0 : 18
-        )
+        ) {
+            headerAccessory
+        }
         .onScrollVisibilityChange(threshold: 0.01) { isVisible in
             onHeaderVisibilityChange(isVisible)
         }
@@ -285,8 +290,12 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
 
     @ViewBuilder
     private var reportDetails: some View {
-        tenDaySunnyHoursTimeline
+        ForEach(sectionOrder) { section in
+            reportSection(section)
+        }
 
+        // Local-time context qualifies the complete report rather than only
+        // the ten-day card, so it always follows every movable section.
         if showsTimeZoneFootnote,
            let weather,
            let forecast,
@@ -301,20 +310,24 @@ struct DetailReportContent<SupplementaryContent: View, FooterContent: View>: Vie
                 )
             )
         }
+    }
 
-        DetailMetricGrid(
-            city: weather,
-            forecast: forecast,
-            temperatureUnit: temperatureUnit,
-            usesLandscapeIPadLayout: false,
-            selectedForecastDate: $selectedDate
-        )
-
-        footerContent
-
-        // Recommendations are the final report section, after all six weather
-        // metrics and any saved-place action, on every detail-view route.
-        supplementaryContent
+    @ViewBuilder
+    private func reportSection(_ section: DetailReportSection) -> some View {
+        switch section {
+        case .tenDaySunnyHours:
+            tenDaySunnyHoursTimeline
+        case .basicWeatherData:
+            DetailMetricGrid(
+                city: weather,
+                forecast: forecast,
+                temperatureUnit: temperatureUnit,
+                usesLandscapeIPadLayout: false,
+                selectedForecastDate: $selectedDate
+            )
+        case .nearbySunnyPlaces:
+            supplementaryContent
+        }
     }
 
     // MARK: - Responsive Layout
@@ -354,9 +367,15 @@ struct CurrentLocationReportContent: View {
 
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
+    @Environment(NetworkConnectivity.self) private var networkConnectivity
     /// Mirrors a place report's compact title once its in-content hero scrolls
     /// away, without showing a duplicate title while the hero is visible.
     @State private var showsLargeTitle = true
+    @State private var mutationError: PlaceDetailMutationError?
+    @State private var presentedSheet: PlaceDetailSheet?
+    @AppStorage(DetailReportSection.storageKey)
+    private var storedDetailSectionOrder =
+        DetailReportSection.defaultStorageValue
     @AppStorage("temperatureUnit")
     private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
 
@@ -373,15 +392,50 @@ struct CurrentLocationReportContent: View {
         )
     }
 
+    /// Weather supplies the most recently resolved current-location city. A
+    /// configured home location remains usable while its weather is loading.
+    private var locationCity: City? {
+        model.currentLocationPlaceCity
+    }
+
+    private var savedPlace: SavedPlace? {
+        guard let locationCity,
+              let savedID = model.placesStore.savedPlaceID(
+                matching: locationCity
+              ) else {
+            return nil
+        }
+        return model.placesStore.place(id: savedID)
+    }
+
     private var locationName: String {
-        let resolvedName = model.homeLocation?.localizedDisplayName(locale: locale)
-            ?? model.locationProvider.metadata?.displayName
-            ?? locationWeather?.city.localizedDisplayName(locale: locale)
-        return CurrentLocationMetadata.localityName(from: resolvedName) ?? ""
+        model.currentLocationDisplayName(locale: locale)
     }
 
     private var temperatureUnit: TemperatureUnit {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
+    }
+
+    private var detailSectionOrder: [DetailReportSection] {
+        DetailReportSection.order(from: storedDetailSectionOrder)
+    }
+
+    /// A confirmed offline path is a settled unavailable state. This keeps a
+    /// request that was interrupted while iOS evaluated reachability from
+    /// holding either current-location timeline on a spinner indefinitely.
+    private var isLocationForecastLoading: Bool {
+        model.isRefreshingLocation && !networkConnectivity.isOffline
+    }
+
+    private var locationForecastUnavailableMessage: String? {
+        guard locationWeather == nil else { return nil }
+        if networkConnectivity.isOffline {
+            return localizedString(
+                "Weather is temporarily unavailable.",
+                locale: locale
+            )
+        }
+        return model.locationError
     }
 
     /// Prefer the resolved locality, while retaining a meaningful label during
@@ -444,7 +498,7 @@ struct CurrentLocationReportContent: View {
                 weather: locationWeather,
                 selectedDate: selectedDate,
                 locationStatus: model.locationProvider.status,
-                isLoading: model.isRefreshingLocation,
+                isLoading: isLocationForecastLoading,
                 requestLocation: requestCurrentLocation,
                 openSettings: openLocationSettings,
                 retry: refreshCurrentLocation
@@ -452,23 +506,26 @@ struct CurrentLocationReportContent: View {
             tenDaySunnyHoursTimeline: TenDaySunnyHoursTimeline(
                 city: locationWeather,
                 selectedDate: $selectedDate,
-                isLoading: model.isRefreshingLocation,
-                unavailableMessage: locationWeather == nil
-                    ? model.locationError
-                    : nil,
+                isLoading: isLocationForecastLoading,
+                unavailableMessage: locationForecastUnavailableMessage,
                 retry: nil
             ),
             temperatureUnit: temperatureUnit,
             maximumContentWidth: AppContentLayout.standardMaximumWidth,
             showsTimeZoneFootnote: true,
+            sectionOrder: detailSectionOrder,
             onHeaderVisibilityChange: { isVisible in
                 guard showsLargeTitle != isVisible else { return }
                 showsLargeTitle = isVisible
+            },
+            headerAccessory: {
+                placeActionsMenu
             }
         ) {
             NearbySunnyPlacesSection(
                 model: model,
                 selectedDate: selectedDate,
+                reference: .currentLocation,
                 requestLocation: requestCurrentLocation,
                 openSettings: openLocationSettings,
                 viewOnMap: {
@@ -478,8 +535,6 @@ struct CurrentLocationReportContent: View {
                     )
                 }
             )
-        } footerContent: {
-            EmptyView()
         }
         .scrollIndicators(.hidden)
         .weatherConditionScreenBackground(
@@ -488,6 +543,12 @@ struct CurrentLocationReportContent: View {
         )
         .navigationTitle(navigationTitle)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $presentedSheet) { sheet in
+            switch sheet {
+            case .customize:
+                CustomizeDetail()
+            }
+        }
         .toolbar {
             // Keep the toolbar preference tree stable while scrolling. Adding
             // and removing the principal item in response to header visibility
@@ -522,17 +583,107 @@ struct CurrentLocationReportContent: View {
                 await model.locationProvider.retryMetadataResolution()
             }
         )
+        // A legacy current-location row can have been saved before the more
+        // precise locality arrived. Repair only that exact transient UUID;
+        // ordinary saved catalog cities are not candidates for this migration.
+        .task(id: locationCity) {
+            do {
+                try model.synchronizeSavedCurrentLocationIdentity()
+            } catch {
+                mutationError = PlaceDetailMutationError(
+                    message: localizedPlacesErrorDescription(
+                        error,
+                        locale: locale
+                    )
+                )
+            }
+        }
+        .alert(
+            "Places",
+            isPresented: showsMutationError,
+            presenting: mutationError
+        ) { _ in
+            Button("OK") {
+                mutationError = nil
+            }
+        } message: { error in
+            Text(error.message)
+        }
+    }
+
+    // MARK: - Place Actions
+
+    private var placeActionsMenu: some View {
+        PlaceDetailActionsMenu(
+            isSaved: savedPlace != nil,
+            canUsePlace: locationCity != nil,
+            viewOnMap: viewOnMap,
+            savePlace: savePlace,
+            removePlace: removeSavedPlace,
+            customizeDetailView: {
+                presentedSheet = .customize
+            }
+        )
+    }
+
+    private var showsMutationError: Binding<Bool> {
+        Binding(
+            get: { mutationError != nil },
+            set: { isPresented in
+                if !isPresented {
+                    mutationError = nil
+                }
+            }
+        )
+    }
+
+    private func savePlace() {
+        guard let locationCity else { return }
+        do {
+            _ = try model.placesStore.savePlace(locationCity)
+        } catch {
+            mutationError = PlaceDetailMutationError(
+                message: localizedPlacesErrorDescription(error, locale: locale)
+            )
+        }
+    }
+
+    private func removeSavedPlace() {
+        guard let savedPlace else { return }
+        do {
+            try model.placesStore.deletePlace(id: savedPlace.id)
+        } catch {
+            mutationError = PlaceDetailMutationError(
+                message: localizedPlacesErrorDescription(error, locale: locale)
+            )
+        }
+    }
+
+    private func viewOnMap() {
+        guard let locationCity else { return }
+        if let savedPlace {
+            router.showMap(placeID: savedPlace.id)
+        } else {
+            router.showMap(previewing: locationCity)
+        }
     }
 }
 
 // MARK: - Nearby Recommendation Adapter
 
+/// Identifies both the geographic center and sunny-hours baseline for the card.
+private enum NearbySunnyPlacesReference {
+    case currentLocation
+    case place(city: City?, displayName: String)
+}
+
 /// Keeps nearby ranking and repository observation below the lazy report
-/// boundary. Current-weather updates no longer make the whole Home report scan
-/// every candidate while this lower card is offscreen.
+/// boundary. Weather updates no longer make an entire report scan every nearby
+/// candidate while this lower card is offscreen.
 private struct NearbySunnyPlacesSection: View {
     let model: WeatherModel
     let selectedDate: Date
+    let reference: NearbySunnyPlacesReference
     let requestLocation: () -> Void
     let openSettings: () -> Void
     let viewOnMap: () -> Void
@@ -540,24 +691,91 @@ private struct NearbySunnyPlacesSection: View {
     @Environment(\.locale) private var locale
 
     var body: some View {
-        let recommendations = model.nearbyRecommendations(
-            on: selectedDate,
-            locale: locale
-        )
         NearbySunnyPlacesCard(
             recommendations: recommendations,
             locationStatus: model.locationProvider.status,
-            isLoading: model.isSearchingNearby,
-            hasCompletedSearch: model.didSearchNearby,
-            errorMessage: model.nearbySearchError,
+            requiresCurrentLocation: requiresCurrentLocation,
+            distanceReferenceName: distanceReferenceName,
+            isLoading: isLoading,
+            hasCompletedSearch: hasCompletedSearch,
+            errorMessage: errorMessage,
             requestLocation: requestLocation,
             openSettings: openSettings,
             viewOnMap: viewOnMap
         )
     }
+
+    // MARK: Search-State Selection
+
+    private var recommendations: [NearestSunnyPlaceResult] {
+        switch reference {
+        case .currentLocation:
+            return model.nearbyRecommendations(
+                on: selectedDate,
+                locale: locale
+            )
+        case .place(let city, _):
+            guard let city else { return [] }
+            return model.nearbyRecommendations(
+                around: city,
+                on: selectedDate,
+                locale: locale
+            )
+        }
+    }
+
+    private var requiresCurrentLocation: Bool {
+        if case .currentLocation = reference { return true }
+        return false
+    }
+
+    private var distanceReferenceName: String? {
+        guard case .place(_, let displayName) = reference else { return nil }
+        return displayName
+    }
+
+    private var hasMatchingPlaceSearch: Bool {
+        guard case .place(let city, _) = reference,
+              let city else { return false }
+        return model.placeNearbySearchOriginID == city.id
+    }
+
+    private var isLoading: Bool {
+        switch reference {
+        case .currentLocation:
+            model.isSearchingNearby
+        case .place:
+            hasMatchingPlaceSearch && model.isSearchingPlaceNearby
+        }
+    }
+
+    private var hasCompletedSearch: Bool {
+        switch reference {
+        case .currentLocation:
+            model.didSearchNearby
+        case .place:
+            hasMatchingPlaceSearch && model.didSearchPlaceNearby
+        }
+    }
+
+    private var errorMessage: String? {
+        switch reference {
+        case .currentLocation:
+            model.nearbySearchError
+        case .place:
+            hasMatchingPlaceSearch ? model.placeNearbySearchError : nil
+        }
+    }
 }
 
 // MARK: - Saved Place Report
+
+/// Restarts a route's skipped lookup once reachability has been evaluated or
+/// recovered, without rebuilding the surrounding navigation destination.
+private struct PlaceForecastTaskID: Hashable {
+    let placeID: City.ID
+    let connectivityStatus: NetworkConnectivityStatus
+}
 
 /// Shared value-routed report for saved and discovered places.
 struct DetailView: View {
@@ -574,12 +792,23 @@ struct DetailView: View {
     @Binding private var selectedDate: Date
     /// Optional payload drives the error alert after a persistence mutation.
     @State private var mutationError: PlaceDetailMutationError?
+    /// Item-driven presentation keeps the customization workflow separate
+    /// from the menu that launches it.
+    @State private var presentedSheet: PlaceDetailSheet?
     /// Hides the duplicate compact navigation title while the large in-content
     /// heading is visible at the top of the scrolling report.
     @State private var showsLargeTitle = true
+    /// A transient Detail lookup is not part of root saved/current recovery.
+    /// Remember an offline interruption so this route can supersede its own
+    /// older repository task when connectivity returns.
+    @State private var forecastWasInterruptedByOffline = false
 
     @Environment(\.locale) private var locale
     @Environment(\.appTheme) private var theme
+    @Environment(NetworkConnectivity.self) private var networkConnectivity
+    @AppStorage(DetailReportSection.storageKey)
+    private var storedDetailSectionOrder =
+        DetailReportSection.defaultStorageValue
     @AppStorage("temperatureUnit")
     private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
 
@@ -637,8 +866,13 @@ struct DetailView: View {
         TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
     }
 
+    private var detailSectionOrder: [DetailReportSection] {
+        DetailReportSection.order(from: storedDetailSectionOrder)
+    }
+
     private var isForecastLoading: Bool {
         guard let city else { return false }
+        guard !networkConnectivity.isOffline else { return false }
         return model.weatherStore.isLoading(city.id)
             || (cityWeather == nil
                 && model.weatherStore.failuresByID[city.id] == nil)
@@ -653,6 +887,12 @@ struct DetailView: View {
         if cityWeather != nil, forecast == nil {
             return localizedString(
                 "Forecast data is unavailable for the selected date.",
+                locale: locale
+            )
+        }
+        if cityWeather == nil, networkConnectivity.isOffline {
+            return localizedString(
+                "Weather is temporarily unavailable.",
                 locale: locale
             )
         }
@@ -706,14 +946,22 @@ struct DetailView: View {
             temperatureUnit: temperatureUnit,
             maximumContentWidth: AppContentLayout.standardMaximumWidth,
             showsTimeZoneFootnote: true,
+            sectionOrder: detailSectionOrder,
             onHeaderVisibilityChange: { isVisible in
                 guard showsLargeTitle != isVisible else { return }
                 showsLargeTitle = isVisible
+            },
+            headerAccessory: {
+                placeActionsMenu
             }
         ) {
             NearbySunnyPlacesSection(
                 model: model,
                 selectedDate: selectedDate,
+                reference: .place(
+                    city: city,
+                    displayName: displayName
+                ),
                 requestLocation: {
                     model.useCurrentLocation(preferredLocale: locale)
                 },
@@ -721,14 +969,13 @@ struct DetailView: View {
                     router.presentedSheet = .settings
                 },
                 viewOnMap: {
+                    guard let city else { return }
                     router.showMap(
-                        findingSunIn: .nearMe,
+                        findingSunIn: .nearPlace(city),
                         on: selectedDate
                     )
                 }
             )
-        } footerContent: {
-            savedPlaceAction
         }
         .background(
             theme.colors.weatherBackgroundColor(
@@ -739,6 +986,12 @@ struct DetailView: View {
         .refreshable {
             guard let city else { return }
             await model.weatherStore.refresh(city: city)
+            guard !Task.isCancelled else { return }
+            await model.searchNearbyPlaces(
+                around: city,
+                forceRefresh: true,
+                locale: locale
+            )
         }
         .weatherConditionScreenBackground(
             for: screenColorSource.tone,
@@ -764,17 +1017,51 @@ struct DetailView: View {
                 )
             }
         }
-        .task(id: placeID) {
+        .sheet(item: $presentedSheet) { sheet in
+            switch sheet {
+            case .customize:
+                CustomizeDetail()
+            }
+        }
+        .onChange(of: networkConnectivity.status, initial: true) { _, status in
+            if status == .offline {
+                forecastWasInterruptedByOffline = true
+            }
+        }
+        // Full-detail navigation from Nearby Sunnier Places, Find Sun results,
+        // and Map cards converges here. Keep this independent from the forecast
+        // task so a connectivity transition cannot falsely refresh recency.
+        .task(id: city) {
+            guard let city else { return }
+            model.recordRecentCityAccess(city)
+        }
+        .task(
+            id: PlaceForecastTaskID(
+                placeID: placeID,
+                connectivityStatus: networkConnectivity.status
+            )
+        ) {
             // The repository owns caching and transient request retries. Detail
             // starts the normal lookup once; each card handles an optional input
             // locally without triggering another WeatherKit request.
             showsLargeTitle = true
-            guard let city else {
+            guard networkConnectivity.status == .available,
+                  let city else {
                 return
             }
 
             _ = await model.weatherStore.lookup(
-                city: city
+                city: city,
+                forceRefresh: forecastWasInterruptedByOffline
+            )
+            guard !Task.isCancelled,
+                  networkConnectivity.status == .available else {
+                return
+            }
+            forecastWasInterruptedByOffline = false
+            await model.searchNearbyPlaces(
+                around: city,
+                locale: locale
             )
         }
         // The Store owns the bounded forecast request/retry. This route keeps
@@ -802,36 +1089,19 @@ struct DetailView: View {
         }
     }
 
-    // MARK: - Saved-Place Actions
+    // MARK: - Place Actions
 
-    /// The report ends with the same quiet secondary text-action language as
-    /// Saved Places. Saving or deleting updates this control in place without
-    /// leaving the detail screen.
-    @ViewBuilder
-    private var savedPlaceAction: some View {
-        if savedPlace == nil {
-            Button {
-                savePlace()
-            } label: {
-                SecondaryTextActionLabel(
-                    title: "Save Place",
-                    systemImage: "bookmark",
-                    iconIsLeading: true
-                )
+    private var placeActionsMenu: some View {
+        PlaceDetailActionsMenu(
+            isSaved: savedPlace != nil,
+            canUsePlace: city != nil,
+            viewOnMap: viewOnMap,
+            savePlace: savePlace,
+            removePlace: deleteSavedPlace,
+            customizeDetailView: {
+                presentedSheet = .customize
             }
-            .buttonStyle(.plain)
-        } else {
-            Button(role: .destructive) {
-                deleteSavedPlace()
-            } label: {
-                SecondaryTextActionLabel(
-                    title: "Delete from Saved Places",
-                    systemImage: "trash",
-                    iconIsLeading: true
-                )
-            }
-            .buttonStyle(.plain)
-        }
+        )
     }
 
     private var showsMutationError: Binding<Bool> {
@@ -877,6 +1147,75 @@ struct DetailView: View {
         }
     }
 
+    private func viewOnMap() {
+        guard let city else { return }
+        if savedPlace != nil {
+            router.showMap(placeID: placeID)
+        } else {
+            router.showMap(previewing: city)
+        }
+    }
+
+}
+
+// MARK: - Place Detail Menu
+
+private enum PlaceDetailSheet: String, Identifiable {
+    case customize
+
+    var id: String { rawValue }
+}
+
+/// Secondary city-specific actions live with the large city title so the
+/// navigation bar remains dedicated to forecast navigation.
+private struct PlaceDetailActionsMenu: View {
+    let isSaved: Bool
+    let canUsePlace: Bool
+    let viewOnMap: () -> Void
+    let savePlace: () -> Void
+    let removePlace: () -> Void
+    let customizeDetailView: () -> Void
+
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        Menu {
+            Button("View on Map", systemImage: "map", action: viewOnMap)
+                .disabled(!canUsePlace)
+
+            if isSaved {
+                Button(role: .destructive, action: removePlace) {
+                    // Native menus can tint the destructive title without
+                    // tinting its template icon, so style both explicitly.
+                    Label(
+                        "Remove from Saved Places",
+                        systemImage: "bookmark.slash"
+                    )
+                    .foregroundStyle(theme.colors.destructive)
+                }
+                .tint(theme.colors.destructive)
+            } else {
+                Button("Save Place", systemImage: "bookmark", action: savePlace)
+                    .disabled(!canUsePlace)
+            }
+
+            Divider()
+
+            Button(
+                "Customize Detail View",
+                systemImage: "arrow.up.arrow.down",
+                action: customizeDetailView
+            )
+        } label: {
+            Label("Place Actions", systemImage: "chevron.down")
+                .labelStyle(.iconOnly)
+                .font(.body.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .frame(width: 28, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
 }
 
 // MARK: - Mutation Alert Payload
@@ -890,12 +1229,18 @@ private struct PlaceDetailMutationError: Identifiable {
 /// Shared large heading treatment used by forecast reports and planning views.
 struct DetailStyleReportTitle: View {
     let title: String
+    let horizontalPadding: CGFloat
 
     @Environment(\.appTheme) private var theme
     @ScaledMetric(relativeTo: .largeTitle)
     private var titleMinimumHeight: CGFloat = 44
     @ScaledMetric(relativeTo: .largeTitle)
     private var titleToContentGap: CGFloat = 8
+
+    init(title: String, horizontalPadding: CGFloat = 34) {
+        self.title = title
+        self.horizontalPadding = horizontalPadding
+    }
 
     var body: some View {
         Text(title)
@@ -904,7 +1249,7 @@ struct DetailStyleReportTitle: View {
             .lineLimit(2)
             .minimumScaleFactor(0.72)
             .multilineTextAlignment(.center)
-            .padding(.horizontal, 34)
+            .padding(.horizontal, horizontalPadding)
             .padding(.bottom, titleToContentGap)
             .frame(minHeight: titleMinimumHeight)
     }
@@ -913,7 +1258,7 @@ struct DetailStyleReportTitle: View {
 // MARK: - Report Header
 
 /// Large in-content heading shared by every forecast report.
-struct LocationReportHeader: View {
+struct LocationReportHeader<HeaderAccessory: View>: View {
     // MARK: - Inputs and Scaled Layout
 
     let locationName: String
@@ -923,6 +1268,7 @@ struct LocationReportHeader: View {
     /// condition summary can sit independently of the title and timeline.
     let landscapeHeight: CGFloat?
     let landscapeConditionVerticalOffset: CGFloat
+    private let headerAccessory: HeaderAccessory
 
     @Environment(\.appTheme) private var theme
     @Environment(\.calendar) private var calendar
@@ -937,6 +1283,23 @@ struct LocationReportHeader: View {
     private var conditionPlaceholderHeight: CGFloat = 74
     @ScaledMetric(relativeTo: .body)
     private var sunStatusHeight: CGFloat = 20
+
+    init(
+        locationName: String,
+        weather: CityWeather?,
+        forecast: DailyForecast?,
+        landscapeHeight: CGFloat?,
+        landscapeConditionVerticalOffset: CGFloat,
+        @ViewBuilder headerAccessory: () -> HeaderAccessory
+    ) {
+        self.locationName = locationName
+        self.weather = weather
+        self.forecast = forecast
+        self.landscapeHeight = landscapeHeight
+        self.landscapeConditionVerticalOffset =
+            landscapeConditionVerticalOffset
+        self.headerAccessory = headerAccessory()
+    }
 
     // MARK: - Sunny-Hours Status
 
@@ -1145,7 +1508,15 @@ struct LocationReportHeader: View {
     }
 
     private var locationTitle: some View {
-        DetailStyleReportTitle(title: locationName)
+        HStack(alignment: .top, spacing: 2) {
+            DetailStyleReportTitle(
+                title: locationName,
+                horizontalPadding: 0
+            )
+            headerAccessory
+        }
+        .padding(.horizontal, 34)
+        .frame(maxWidth: .infinity)
     }
 
     private var conditionAndStatus: some View {

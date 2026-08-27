@@ -236,7 +236,7 @@ struct TutorialWelcomeStage: View {
 
             Text("Here are the three ways to find sun using Weather Atlas:")
                 .font(.title3)
-                .foregroundStyle(palette.secondaryText)
+                .foregroundStyle(palette.titleText.opacity(0.64))
                 .fixedSize(horizontal: false, vertical: true)
 
             TutorialFindSunSteps()
@@ -245,22 +245,22 @@ struct TutorialWelcomeStage: View {
     }
 }
 
-/// Uses a numbered-card treatment to introduce the three levels of Find Sun
+/// Uses the matching tab-bar symbols to introduce the three Find Sun views
 /// before the person chooses their location.
 private struct TutorialFindSunSteps: View {
     private let steps: [TutorialFindSunStep] = [
         .init(
-            number: 1,
+            systemImage: "location.fill",
             title: "Find Sun Near You",
             subtitle: "See nearby sunny places from Your Location."
         ),
         .init(
-            number: 2,
+            systemImage: "bookmark",
             title: "Track Your Saved Places",
             subtitle: "Compare the cities you care about in Saved Places."
         ),
         .init(
-            number: 3,
+            systemImage: "map",
             title: "Explore the Map",
             subtitle: "Search new areas and discover sunny places."
         )
@@ -276,11 +276,12 @@ private struct TutorialFindSunSteps: View {
 }
 
 private struct TutorialFindSunStep: Identifiable {
-    let number: Int
+    /// SF Symbol shared with the destination's tab-bar item.
+    let systemImage: String
     let title: LocalizedStringKey
     let subtitle: LocalizedStringKey
 
-    var id: Int { number }
+    var id: String { systemImage }
 }
 
 /// Original three-card tutorial styling, adapted for the current light
@@ -294,7 +295,7 @@ private struct TutorialFindSunStepCard: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: 16) {
-            Text(step.number, format: .number)
+            Image(systemName: step.systemImage)
                 .font(.callout.weight(.bold))
                 .foregroundStyle(palette.titleText)
                 .frame(width: 34, height: 34)
@@ -467,7 +468,9 @@ private struct TutorialHomeLocationPicker: View {
     /// stale results when the person changes then restores the same query.
     @State private var selectionGeneration = 0
     @State private var loadingID: CitySearchResult.ID?
-    @State private var selectionMessage: String?
+    /// A localization key is retained until display so the picker follows the
+    /// app's in-view locale instead of treating the English source as verbatim.
+    @State private var selectionMessage: LocalizedStringKey?
 
     // MARK: - Presentation
 
@@ -489,10 +492,8 @@ private struct TutorialHomeLocationPicker: View {
                     invalidateSelection()
                 }
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button("Cancel") {
-                            dismiss()
-                        }
+                    ToolbarItem(placement: .topBarLeading) {
+                        CloseButton(action: dismiss.callAsFunction)
                     }
                 }
         }
@@ -1147,6 +1148,7 @@ private final class TutorialPreviewState {
             placesStore: placesStore,
             weatherStore: weatherStore,
             locationProvider: LocationProvider(),
+            recentSearches: RecentSearchStore(inMemoryCities: []),
             initialHomeLocation: nil
         )
     }

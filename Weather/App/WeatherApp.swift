@@ -8,6 +8,7 @@
 
 import Foundation
 import SwiftUI
+import UIKit
 
 // MARK: - First-Run Language Selection
 
@@ -57,6 +58,72 @@ enum AppLanguageDefaults {
     }
 }
 
+// MARK: - App Text-Size Policy
+
+/// Resolves the text-size choice shared by SwiftUI content and UIKit surfaces.
+enum AppTextSizePolicy {
+    /// Preference key used by the Follow System toggle.
+    static let useSystemKey = "useSystemTextSize"
+    /// Preference key used by the app-specific size menu.
+    static let appLevelKey = "appTextSizeLevel"
+
+    /// Clamps either the system preference or the custom preference to the
+    /// exact Small...Large range exposed by the app.
+    static func effectiveDynamicTypeSize(
+        useSystem: Bool,
+        appLevel: Int,
+        systemCategory: UIContentSizeCategory
+    ) -> DynamicTypeSize {
+        let requestedSize = useSystem
+            ? DynamicTypeSize(systemCategory) ?? .large
+            : AppTextSizeLevel.level(clamping: appLevel).dynamicTypeSize
+
+        return min(
+            max(requestedSize, AppTextSizeLevel.small.dynamicTypeSize),
+            AppTextSizeLevel.xLarge.dynamicTypeSize
+        )
+    }
+
+    /// Rebuilds the current policy directly from persisted preferences. Scene
+    /// lifecycle callbacks use this before the SwiftUI root is mounted.
+    @MainActor
+    static func currentEffectiveContentSizeCategory(
+        defaults: UserDefaults = .standard
+    ) -> UIContentSizeCategory {
+        let useSystem = defaults.object(forKey: useSystemKey) == nil
+            ? true
+            : defaults.bool(forKey: useSystemKey)
+        let appLevel = defaults.object(forKey: appLevelKey) == nil
+            ? AppTextSizeLevel.defaultRawValue
+            : defaults.integer(forKey: appLevelKey)
+
+        return UIContentSizeCategory(
+            effectiveDynamicTypeSize(
+                useSystem: useSystem,
+                appLevel: appLevel,
+                systemCategory: UIApplication.shared.preferredContentSizeCategory
+            )
+        )
+    }
+
+    /// Applies the resolved category only to the window scene being updated.
+    @MainActor
+    static func apply(
+        _ category: UIContentSizeCategory,
+        to scene: UIWindowScene
+    ) {
+        // UIKit throws when the getter is read before this trait has an
+        // override, so assign directly instead of attempting an equality guard.
+        scene.traitOverrides.preferredContentSizeCategory = category
+    }
+
+    /// Applies the persisted app policy to one connecting or returning scene.
+    @MainActor
+    static func applyCurrentPreferences(to scene: UIWindowScene) {
+        apply(currentEffectiveContentSizeCategory(), to: scene)
+    }
+}
+
 // MARK: - App Entry Point
 
 /// Process entry point that creates shared state before opening themed windows.
@@ -86,6 +153,7 @@ struct WeatherApp: App {
         AppLanguageDefaults.configureInitialLanguage()
 
         let placesStore = SavedPlacesStore()
+        let recentSearches = RecentSearchStore()
         let missingDataAlerts = MissingDataAlertCenter()
         let networkConnectivity = NetworkConnectivity()
 
@@ -95,7 +163,8 @@ struct WeatherApp: App {
         _appModel = State(
             initialValue: WeatherModel(
                 placesStore: placesStore,
-                weatherStore: weatherStore
+                weatherStore: weatherStore,
+                recentSearches: recentSearches
             )
         )
         _router = State(initialValue: AppNavigation())
@@ -179,18 +248,30 @@ private struct ThemeContent: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     /// Disables custom interpolation throughout the app when Reduce Motion is on.
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Current system text category.
-    @Environment(\.dynamicTypeSize) private var systemDynamicTypeSize
+    /// Reconciles the raw system preference after a suspended scene returns.
+    @Environment(\.scenePhase) private var scenePhase
     /// Whether typography should follow the system rather than the in-app menu.
-    @AppStorage("useSystemTextSize") private var useSystemTextSize: Bool = true
+    @AppStorage(AppTextSizePolicy.useSystemKey) private var useSystemTextSize: Bool = true
     /// Persisted in-app text-size step used when system sizing is disabled.
-    @AppStorage("appTextSizeLevel") private var appTextSizeLevel: Int = AppTextSizeLevel.defaultRawValue
+    @AppStorage(AppTextSizePolicy.appLevelKey) private var appTextSizeLevel: Int = AppTextSizeLevel.defaultRawValue
+    /// The device preference remains observable even while this scene applies
+    /// its own capped UIKit trait for native menus and presentations.
+    @State private var systemContentSizeCategory = UIApplication.shared.preferredContentSizeCategory
 
     /// Injects locale, text size, theme, tint, and contrast app-wide.
     var body: some View {
         // Resolve the custom palette after reading the system scheme and
         // contrast setting. Every descendant then receives matching colors.
         let resolvedColors = theme.colors(for: colorScheme, contrast: colorSchemeContrast)
+        // Follow System still respects the same upper bound as the app's own
+        // text-size menu. Resolve the exact category before applying SwiftUI's
+        // dedicated modifier so system presentations inherit the same value.
+        let effectiveDynamicTypeSize = AppTextSizePolicy.effectiveDynamicTypeSize(
+            useSystem: useSystemTextSize,
+            appLevel: appTextSizeLevel,
+            systemCategory: systemContentSizeCategory
+        )
+        let effectiveContentSizeCategory = UIContentSizeCategory(effectiveDynamicTypeSize)
         ContentView(
             model: appModel,
             router: router,
@@ -201,13 +282,15 @@ private struct ThemeContent: View {
             .environment(\.locale, appLocale)
             // The app stops at its largest supported text setting, including
             // when the person follows the system's text-size preference.
-            .environment(
-                \.dynamicTypeSize,
-                useSystemTextSize
-                    ? systemDynamicTypeSize
-                    : AppTextSizeLevel.level(clamping: appTextSizeLevel).dynamicTypeSize
-            )
-            .dynamicTypeSize(...DynamicTypeSize.xLarge)
+            .dynamicTypeSize(effectiveDynamicTypeSize)
+            // SwiftUI's environment does not constrain UIKit-owned menus.
+            // This zero-size probe updates only the hosting window scene.
+            .background {
+                SceneContentSizeCategoryOverride(
+                    category: effectiveContentSizeCategory
+                )
+                .frame(width: 0, height: 0)
+            }
             .environment(\.appTheme, theme)
             .environment(missingDataAlerts)
             .environment(networkConnectivity)
@@ -229,5 +312,67 @@ private struct ThemeContent: View {
             .onChange(of: colorSchemeContrast, initial: true) { _, newContrast in
                 theme.systemContrast = newContrast
             }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: UIContentSizeCategory.didChangeNotification
+                )
+            ) { notification in
+                let newCategory = notification.userInfo?[
+                    UIContentSizeCategory.newValueUserInfoKey
+                ] as? UIContentSizeCategory
+                    ?? UIApplication.shared.preferredContentSizeCategory
+                updateSystemContentSizeCategory(newCategory)
+            }
+            .onChange(of: scenePhase, initial: true) { _, newPhase in
+                guard newPhase == .active else { return }
+                updateSystemContentSizeCategory(
+                    UIApplication.shared.preferredContentSizeCategory
+                )
+            }
+    }
+
+    /// Stores only raw system changes; the effective value is derived in body.
+    private func updateSystemContentSizeCategory(
+        _ newCategory: UIContentSizeCategory
+    ) {
+        guard systemContentSizeCategory != newCategory else { return }
+        systemContentSizeCategory = newCategory
+    }
+}
+
+/// Bridges the effective category to the one UIKit scene hosting this view.
+private struct SceneContentSizeCategoryOverride: UIViewRepresentable {
+    /// Category already clamped to the app's supported range.
+    let category: UIContentSizeCategory
+
+    func makeUIView(context: Context) -> SceneContentSizeCategoryOverrideView {
+        let view = SceneContentSizeCategoryOverrideView()
+        view.category = category
+        return view
+    }
+
+    func updateUIView(
+        _ uiView: SceneContentSizeCategoryOverrideView,
+        context: Context
+    ) {
+        uiView.category = category
+        uiView.applyIfAttached()
+    }
+}
+
+/// Applies the trait once its invisible probe has joined a concrete window.
+private final class SceneContentSizeCategoryOverrideView: UIView {
+    /// Latest category supplied by the SwiftUI root.
+    var category: UIContentSizeCategory = .large
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        applyIfAttached()
+    }
+
+    /// Targets only this view's scene so one iPad window cannot alter another.
+    func applyIfAttached() {
+        guard let windowScene = window?.windowScene else { return }
+        AppTextSizePolicy.apply(category, to: windowScene)
     }
 }

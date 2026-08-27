@@ -35,6 +35,33 @@ struct CountryPlacesOption: Identifiable, Hashable {
     func localizedName(locale: Locale) -> String {
         locale.localizedString(forRegionCode: iso2) ?? englishName
     }
+
+    /// Matches what a person typed against both the currently displayed name
+    /// and the stable English fallback. Folding diacritics lets a keyboard
+    /// without the relevant accent still find names such as Côte d’Ivoire.
+    func matchesSearchQuery(_ query: String, locale: Locale) -> Bool {
+        let trimmedQuery = query.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        guard !trimmedQuery.isEmpty else { return true }
+
+        let options: String.CompareOptions = [
+            .caseInsensitive,
+            .diacriticInsensitive,
+            .widthInsensitive
+        ]
+        let localizedMatch = localizedName(locale: locale).range(
+            of: trimmedQuery,
+            options: options,
+            locale: locale
+        ) != nil
+        let englishMatch = englishName.range(
+            of: trimmedQuery,
+            options: options,
+            locale: Locale(identifier: "en_US_POSIX")
+        ) != nil
+        return localizedMatch || englishMatch
+    }
 }
 
 /// The six continent scopes available in Map's Find Sun query.

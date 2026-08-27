@@ -426,12 +426,10 @@ struct DetailChartView: View {
                     temperatureSeriesLegend
                     metricChart
 
-                    // The six cards summarize one selected day. Hiding them in
-                    // 10-day mode prevents those day values from appearing to
-                    // contradict the aggregate chart heading.
-                    if selectedRange == .day {
-                        chartMetricCards
-                    }
+                    // Keep the same six metric controls available in both
+                    // ranges. Their values follow the active range so a
+                    // 10-day card never presents a selected-day summary.
+                    chartMetricCards
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
@@ -443,11 +441,8 @@ struct DetailChartView: View {
             .navigationTitle(selectedMetric.title(locale: locale))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", systemImage: "xmark") {
-                        dismiss()
-                    }
-                    .labelStyle(.iconOnly)
+                ToolbarItem(placement: .topBarLeading) {
+                    CloseButton(action: dismiss.callAsFunction)
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
@@ -579,6 +574,10 @@ struct DetailChartView: View {
         let xDomain = chartDateDomain(for: points, minimumSpan: 60 * 60)
         let icons = hourlyConditionIcons(for: forecast, at: points.map(\.date))
         let xAxisDates = hourlyAxisDates(for: points)
+        let currentTime = currentTimeMarkerDate(
+            for: forecast,
+            in: xDomain
+        )
 
         return Chart {
             // Every hourly metric is one series. Daily temperature alone needs
@@ -603,6 +602,14 @@ struct DetailChartView: View {
                 .foregroundStyle(metricColor)
                 .symbolSize(24)
                 .symbol(.circle)
+            }
+
+            if let currentTime {
+                // Match the current-time rule in Daily Sunny Hours while
+                // keeping it above the metric series and inside the plot.
+                RuleMark(x: .value("Time", currentTime))
+                    .foregroundStyle(theme.colors.primaryText.opacity(0.9))
+                    .lineStyle(StrokeStyle(lineWidth: 2))
             }
         }
         // The scale's real upper bound is also the uppermost native axis grid
@@ -856,14 +863,9 @@ struct DetailChartView: View {
 
         return LazyVGrid(columns: columns, spacing: 10) {
             ForEach(DetailChartMetric.allCases) { metric in
-                let value = metricPresentation?.summary(
-                    for: metric,
-                    temperatureUnit: temperatureUnit,
-                    distanceUnit: distanceUnit
-                )
                 DetailMetricCard(
                     metric: metric,
-                    value: value,
+                    value: metricCardSummary(for: metric),
                     isEnabled: true,
                     isSelected: selectedMetric == metric,
                     action: {
@@ -875,6 +877,28 @@ struct DetailChartView: View {
                     }
                 )
             }
+        }
+    }
+
+    /// Keeps every card aligned with the selected chart range. Daily mode uses
+    /// the existing selected-day presentation, while 10 Days summarizes the
+    /// complete available forecast horizon for that metric.
+    private func metricCardSummary(
+        for metric: DetailChartMetric
+    ) -> String? {
+        switch selectedRange {
+        case .day:
+            return metricPresentation?.summary(
+                for: metric,
+                temperatureUnit: temperatureUnit,
+                distanceUnit: distanceUnit
+            )
+        case .forecast:
+            return metric.forecastSummary(
+                availableForecasts,
+                temperatureUnit: temperatureUnit,
+                distanceUnit: distanceUnit
+            )
         }
     }
 
@@ -1074,6 +1098,23 @@ struct DetailChartView: View {
     }
 
     // MARK: - Domains, Selection, and Styling
+
+    /// Returns the selected city's current time only when this hourly chart
+    /// represents today there. Clamping matches Daily Sunny Hours when a
+    /// partially available metric produces a narrower-than-day chart domain.
+    private func currentTimeMarkerDate(
+        for forecast: DailyForecast,
+        in domain: ClosedRange<Date>,
+        now: Date = .now
+    ) -> Date? {
+        var cityCalendar = forecastCalendar
+        cityCalendar.timeZone = city.timeZone
+        guard cityCalendar.isDate(forecast.date, inSameDayAs: now) else {
+            return nil
+        }
+
+        return min(max(now, domain.lowerBound), domain.upperBound)
+    }
 
     /// Pins both chart bounds to real plotted dates. A one-point series gets a
     /// minimal trailing span so Charts can still render a valid temporal scale.

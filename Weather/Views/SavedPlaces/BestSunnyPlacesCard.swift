@@ -96,7 +96,7 @@ struct BestSunnyPlacesCard: View {
                                 )
                                 .padding(
                                     .leading,
-                                    SavedPlacesSunnyListLayout.cityNameLeadingInset
+                                    SavedPlacesRankingListLayout.contentLeadingInset
                                 )
                         }
                     }
@@ -169,10 +169,13 @@ private struct SavedPlaceSunnyRow: Identifiable {
 
 /// The row grid deliberately shares the header's icon width and spacing, so
 /// recommendation names and the card title begin on the same visual column.
-enum SavedPlacesSunnyListLayout {
+enum SavedPlacesRankingListLayout {
     static let leadingIconWidth = WeatherCardLayout.leadingIconWidth
     static let columnSpacing = WeatherCardLayout.headerSpacing
-    static let cityNameLeadingInset = leadingIconWidth + columnSpacing
+    static let contentLeadingInset = leadingIconWidth + columnSpacing
+    /// Numerals are narrower than the header's SF Symbols. This keeps their
+    /// optical center on the same vertical axis without moving later columns.
+    static let rankOpticalInset: CGFloat = 3
 }
 
 /// One saved-place row. The parent omits a place when this selected date has no
@@ -187,11 +190,11 @@ struct SunnyPlaceRecommendationRow: View {
     var body: some View {
         // The spacer pushes only the numeric value to the trailing edge; the
         // city name stays regular weight so rows remain easy to compare.
-        HStack(spacing: SavedPlacesSunnyListLayout.columnSpacing) {
+        HStack(spacing: SavedPlacesRankingListLayout.columnSpacing) {
             if recommendation.symbolName.isEmpty {
                 Color.clear
                     .frame(
-                        width: SavedPlacesSunnyListLayout.leadingIconWidth,
+                        width: SavedPlacesRankingListLayout.leadingIconWidth,
                         height: 1,
                         alignment: .leading
                     )
@@ -204,7 +207,7 @@ struct SunnyPlaceRecommendationRow: View {
                     )
                     .font(.callout.weight(.medium))
                     .frame(
-                        width: SavedPlacesSunnyListLayout.leadingIconWidth,
+                        width: SavedPlacesRankingListLayout.leadingIconWidth,
                         alignment: .leading
                     )
                     // The row displays the localized condition;

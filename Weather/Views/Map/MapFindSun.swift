@@ -21,6 +21,15 @@ extension MapView {
         _ scope: MapSunQueryScope,
         preservingCandidateContext: Bool = false
     ) {
+        switch scope {
+        case .country(let country):
+            model.recentSearches.record(country: country)
+        case .continent(let continent):
+            model.recentSearches.record(continent: continent)
+        default:
+            break
+        }
+
         selectionResetID &+= 1
         runSunSearch(
             scope,

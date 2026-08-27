@@ -97,6 +97,17 @@ struct SavedPlace: Identifiable, Codable, Equatable, Hashable {
         translatedDisplayNames = [:]
     }
 
+    /// Replaces provider-owned city metadata while keeping the user-owned
+    /// alias. Generated translations are tied to their original source text,
+    /// so discard them only when that source actually changes.
+    mutating func replaceCity(_ replacement: City) {
+        let previousTranslationSource = translationSourceName
+        city = replacement
+        if translationSourceName != previousTranslationSource {
+            translatedDisplayNames = [:]
+        }
+    }
+
     /// Treats blank names as absent, so the UI naturally falls back to the city.
     static func normalizedCustomName(_ name: String?) -> String? {
         guard let name else { return nil }
@@ -607,6 +618,25 @@ private struct SavedPlaceSemanticIdentity {
     }
 }
 
+/// One shared equivalence rule keeps Saved Places matching, recent-search
+/// deduplication, and current-location exclusion from drifting apart.
+enum CitySemanticMatcher {
+    static func matches(_ lhs: City, _ rhs: City) -> Bool {
+        if lhs.id == rhs.id { return true }
+
+        if let lhsCatalogID = lhs.catalogIdentifier,
+           let rhsCatalogID = rhs.catalogIdentifier {
+            return lhsCatalogID == rhsCatalogID
+        }
+
+        guard let lhsIdentity = SavedPlaceSemanticIdentity(city: lhs),
+              let rhsIdentity = SavedPlaceSemanticIdentity(city: rhs) else {
+            return false
+        }
+        return lhsIdentity.matches(rhsIdentity)
+    }
+}
+
 // MARK: - Observable Saved Places Store
 
 /// The main-actor store exposes a safely observable library to SwiftUI.
@@ -623,6 +653,9 @@ final class SavedPlacesStore {
     private(set) var document: PlacesLibraryDocument
     /// A persistent failure shown by settings/UI instead of causing a crash.
     private(set) var loadErrorDescription: String?
+    /// Successful single-city changes waiting for the app-level popup. Batch
+    /// seeding, metadata repair, rename, translation, and reset stay silent.
+    private(set) var pendingSavedPlaceNotifications: [SavedPlaceNotification] = []
     /// File I/O dependency hidden from Observation because views never render it.
     @ObservationIgnored private var documentStore: PlacesDocumentStore?
 
@@ -698,7 +731,11 @@ final class SavedPlacesStore {
     }
 
     /// Replaces the whole library through the normal verified persistence path.
-    func resetToEmptyLibrary() throws { try persist(.empty) }
+    /// Bulk deletion/reset has its own confirmation and clears any stale popup.
+    func resetToEmptyLibrary() throws {
+        try persist(.empty)
+        pendingSavedPlaceNotifications.removeAll()
+    }
 
     @discardableResult
     /// Adds one city at the front of the library or merges refreshed metadata.
@@ -712,6 +749,7 @@ final class SavedPlacesStore {
             throw PlacesLibraryValidationError.invalidPlace(city.id)
         }
         var savedID = city.id
+        var insertedNewPlace = false
         try mutateAndPersist { candidate in
             // A repeated Save is an update, not a duplicate. The merge preserves
             // user-owned values such as the existing UUID and custom name.
@@ -722,7 +760,11 @@ final class SavedPlacesStore {
                 let place = SavedPlace(city: city, customName: customName)
                 candidate.places.insert(place, at: candidate.places.startIndex)
                 savedID = place.id
+                insertedNewPlace = true
             }
+        }
+        if insertedNewPlace, let savedPlace = place(id: savedID) {
+            enqueueNotification(for: .saved, place: savedPlace)
         }
         return savedID
     }
@@ -744,12 +786,22 @@ final class SavedPlacesStore {
 
     /// Deletes exactly one row; an unknown ID is surfaced rather than ignored.
     func deletePlace(id placeID: SavedPlace.ID) throws {
+        guard let removedPlace = place(id: placeID) else {
+            throw PlacesStoreError.placeNotFound(placeID)
+        }
         try mutateAndPersist { candidate in
-            guard candidate.places.contains(where: { $0.id == placeID }) else {
-                throw PlacesStoreError.placeNotFound(placeID)
-            }
             candidate.places.removeAll { $0.id == placeID }
         }
+        enqueueNotification(for: .removed, place: removedPlace)
+    }
+
+    /// Removes only the popup currently being presented. A stale dismissal
+    /// task cannot consume a newer queued city notification.
+    func consumeSavedPlaceNotification(id notificationID: UUID) {
+        guard pendingSavedPlaceNotifications.first?.id == notificationID else {
+            return
+        }
+        pendingSavedPlaceNotifications.removeFirst()
     }
 
     /// Changes only the user-owned custom name of one saved city.
@@ -809,6 +861,20 @@ final class SavedPlacesStore {
         try persist(candidate)
     }
 
+    /// Captures the display name only after persistence succeeds, ensuring a
+    /// failed save/delete never produces a false confirmation.
+    private func enqueueNotification(
+        for change: SavedPlaceNotification.Change,
+        place: SavedPlace
+    ) {
+        pendingSavedPlaceNotifications.append(
+            SavedPlaceNotification(
+                change: change,
+                placeName: place.displayName
+            )
+        )
+    }
+
     /// Makes the store's memory reflect the document read back from disk—not
     /// merely the candidate that was asked to be saved.
     private func persist(_ candidate: PlacesLibraryDocument) throws {
@@ -833,15 +899,8 @@ final class SavedPlacesStore {
 
     /// Shared identity matcher for read and mutation paths.
     private static func matchingPlaceIndex(for city: City, in places: [SavedPlace]) -> Int? {
-        if let index = places.firstIndex(where: { $0.id == city.id }) { return index }
-        if let catalogID = city.catalogIdentifier,
-           let index = places.firstIndex(where: { $0.city.catalogIdentifier == catalogID }) { return index }
-        guard let identity = SavedPlaceSemanticIdentity(city: city) else { return nil }
-        return places.firstIndex {
-            guard let candidate = SavedPlaceSemanticIdentity(city: $0.city) else {
-                return false
-            }
-            return identity.matches(candidate)
+        places.firstIndex {
+            CitySemanticMatcher.matches(city, $0.city)
         }
     }
 
@@ -875,7 +934,7 @@ final class SavedPlacesStore {
     /// or a previously chosen custom name unless the caller provides a new one.
     private static func merge(city incoming: City, customName: String?, into existing: inout SavedPlace) {
         let current = existing.city
-        existing.city = City(
+        let mergedCity = City(
             id: current.id,
             name: incoming.name.isEmpty ? current.name : incoming.name,
             titleName: incoming.titleName ?? current.titleName,
@@ -885,6 +944,7 @@ final class SavedPlacesStore {
             timeZoneIdentifier: incoming.timeZoneIdentifier ?? current.timeZoneIdentifier,
             catalogIdentifier: current.catalogIdentifier ?? incoming.catalogIdentifier
         )
+        existing.replaceCity(mergedCity)
         if let customName = SavedPlace.normalizedCustomName(customName) {
             existing.setCustomName(customName)
         }

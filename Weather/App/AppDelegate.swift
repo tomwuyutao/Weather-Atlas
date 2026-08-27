@@ -169,8 +169,18 @@ final class AppSceneDelegate: NSObject, UIWindowSceneDelegate {
         willConnectTo session: UISceneSession,
         options connectionOptions: UIScene.ConnectionOptions
     ) {
-        guard let shortcutItem = connectionOptions.shortcutItem else { return }
-        _ = AppDelegate.handleShortcutItem(shortcutItem)
+        if let windowScene = scene as? UIWindowScene {
+            AppTextSizePolicy.applyCurrentPreferences(to: windowScene)
+        }
+        if let shortcutItem = connectionOptions.shortcutItem {
+            _ = AppDelegate.handleShortcutItem(shortcutItem)
+        }
+    }
+
+    /// Reconciles the cap before a suspended window becomes interactive again.
+    func sceneWillEnterForeground(_ scene: UIScene) {
+        guard let windowScene = scene as? UIWindowScene else { return }
+        AppTextSizePolicy.applyCurrentPreferences(to: windowScene)
     }
 
     /// Handles a shortcut delivered to an existing window scene.

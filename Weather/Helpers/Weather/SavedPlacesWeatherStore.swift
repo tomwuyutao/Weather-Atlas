@@ -96,6 +96,9 @@ final class SavedPlacesWeatherStore {
     /// Wakes when the earliest retained forecast reaches the hard cache-age
     /// limit, so an app that stays open for a day does not keep rendering it.
     @ObservationIgnored private var cacheExpiryTask: Task<Void, Never>?
+    /// Apple Weather attribution loads independently from forecasts. Coalescing
+    /// its best-effort task prevents several screens from repeating that request.
+    @ObservationIgnored private var attributionLoadTask: Task<Void, Never>?
 
     // MARK: - Initialization and Cache Restoration
 
@@ -193,12 +196,13 @@ final class SavedPlacesWeatherStore {
         forceRefresh: Bool = false
     ) async -> CityWeather? {
         discardExpiredWeather()
-        // Offline mode can reuse a retained forecast beyond the normal
-        // 30-minute refresh window, but never beyond the hard one-day limit.
-        guard !networkConnectivity.isOffline else {
+        // An unevaluated or confirmed-offline path can reuse a retained forecast
+        // beyond the normal 30-minute refresh window, but never beyond the hard
+        // one-day limit. The first available-path transition restarts loading.
+        guard networkConnectivity.status == .available else {
             return weatherByID[city.id]
         }
-        await loadAttributionIfNeeded()
+        startAttributionLoadIfNeeded()
 
         // If another screen has already started the same city request, await that
         // task instead of spending a second WeatherKit quota/network request.
@@ -246,10 +250,11 @@ final class SavedPlacesWeatherStore {
         debugLog("started for \(uniqueCities.count) cities")
 #endif
 
-        // Do not begin a blanking refresh without a viable network path.
-        guard !networkConnectivity.isOffline else { return }
+        // Do not begin a blanking refresh before iOS confirms a viable path.
+        // Existing cached snapshots remain untouched in both non-available states.
+        guard networkConnectivity.status == .available else { return }
 
-        await loadAttributionIfNeeded()
+        startAttributionLoadIfNeeded()
         beginCacheBatch()
         defer { endCacheBatch() }
 
@@ -314,10 +319,10 @@ final class SavedPlacesWeatherStore {
         city: City
     ) async -> CityWeather? {
         discardExpiredWeather()
-        guard !networkConnectivity.isOffline else {
+        guard networkConnectivity.status == .available else {
             return weatherByID[city.id]
         }
-        await loadAttributionIfNeeded()
+        startAttributionLoadIfNeeded()
         return await startRequest(
             for: city,
             supersedingExisting: true
@@ -400,12 +405,31 @@ final class SavedPlacesWeatherStore {
         }
     }
 
-    /// Loads Apple Weather's legal mark and link once per app process.
-    /// Attribution is independent of a forecast request and failures are benign:
-    /// the app can show weather even if the legal image/link arrives later.
+    /// Starts Apple Weather's legal mark and link load once per app process.
+    /// This async compatibility entry point intentionally returns after scheduling:
+    /// attribution is independent, and must never delay a forecast request.
     func loadAttributionIfNeeded() async {
-        guard weatherAttribution == nil else { return }
-        weatherAttribution = try? await weatherService.weatherKitService.attribution
+        startAttributionLoadIfNeeded()
+    }
+
+    /// Coalesces a best-effort attribution request while allowing forecast work
+    /// to start immediately. Observation updates an open Attributions page when
+    /// the legal mark eventually arrives.
+    private func startAttributionLoadIfNeeded() {
+        guard networkConnectivity.status == .available,
+              weatherAttribution == nil,
+              attributionLoadTask == nil else {
+            return
+        }
+
+        let weatherKitService = weatherService.weatherKitService
+        attributionLoadTask = Task { @MainActor [weak self, weatherKitService] in
+            let attribution = try? await weatherKitService.attribution
+            guard let self else { return }
+            attributionLoadTask = nil
+            guard !Task.isCancelled, let attribution else { return }
+            weatherAttribution = attribution
+        }
     }
 
     // MARK: - Per-Place Request Lifecycle

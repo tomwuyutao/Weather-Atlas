@@ -763,14 +763,8 @@ struct MapView: View {
             loadError: placesStore.loadErrorDescription,
             selectedPlaceID: $router.selectedMapPlaceID,
             locationCoordinate: locationCoordinate,
-            locationCity: model.locationCity ?? model.locationWeather?.city,
-            locationName: CurrentLocationMetadata.localityName(
-                from: model.homeLocation?.localizedDisplayName(locale: locale)
-                    ?? model.locationProvider.metadata?.displayName
-                    ?? model.locationWeather?.city.localizedDisplayName(
-                        locale: locale
-                    )
-            ) ?? "",
+            locationCity: model.currentLocationPlaceCity,
+            locationName: model.currentLocationDisplayName(locale: locale),
             locationRecommendation: locationRecommendation,
             isLocationWeatherLoading: isLocationWeatherLoading,
             needsLocationWeather: needsCurrentLocationWeather,
@@ -825,6 +819,9 @@ struct MapView: View {
             },
             isSavedPlace: { city in
                 placesStore.savedPlaceID(matching: city) != nil
+            },
+            recordRecentCityAccess: { city in
+                model.recordRecentCityAccess(city)
             },
             preloadTappedPlaceDetails: { city in
                 // The regional card is an intentional decision point. Start
@@ -1073,6 +1070,9 @@ private struct PlacesMapCanvas: View {
     /// library store. This semantic matcher also lets a direct-tap bookmark
     /// become filled as soon as persistence succeeds.
     let isSavedPlace: (City) -> Bool
+    /// Opening an unsaved city information card is a City Recent event even
+    /// before the person chooses the card's full View Details action.
+    let recordRecentCityAccess: (City) -> Void
     /// Begins the normal cached WeatherKit load while a bare-map region card is
     /// visible. The card never waits for it; Detail coalesces with this work.
     let preloadTappedPlaceDetails: (City) async -> Void
@@ -2537,6 +2537,7 @@ private struct PlacesMapCanvas: View {
                 country: country,
                 continent: CountryCityCatalog.continent(for: country)
             )
+            recordRecentCityAccess(city)
             isResolvingTappedRegion = false
         }
     }
@@ -2723,6 +2724,9 @@ private struct PlacesMapCanvas: View {
         isLocationSelected = false
         pendingSavedPlaceFocusID = nil
         clearTappedRegionContext()
+        if let city = sunSearchResults.first(where: { $0.id == id })?.city {
+            recordRecentCityAccess(city)
+        }
     }
 
     private func selectSearchPreview(_ id: City.ID) {
@@ -2732,6 +2736,9 @@ private struct PlacesMapCanvas: View {
         isLocationSelected = false
         pendingSavedPlaceFocusID = nil
         clearTappedRegionContext()
+        if let previewCity, previewCity.id == id {
+            recordRecentCityAccess(previewCity)
+        }
     }
 
     /// A Search hand-off must be visible before WeatherKit has populated the

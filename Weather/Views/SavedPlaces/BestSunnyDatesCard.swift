@@ -2,133 +2,129 @@
 //  BestSunnyDatesCard.swift
 //  Weather
 //
-//  Purpose: Summarizes the strongest upcoming sunny days across Saved Places.
+//  Purpose: Ranks the strongest upcoming sunny days across a set of places.
 //
 
 import SwiftUI
 
 // MARK: - Date Summary Model
 
-/// An average sunny-hours summary for one forecast date across Saved Places.
-struct BestSunnyDateSummary: Identifiable {
+/// One forecast date summarized across every place with usable weather.
+struct BestSunnyDateSummary: Identifiable, Equatable {
     let date: Date
-    /// Mean selected-day sunny hours across concrete recommendations.
+    /// Mean selected-day sunny hours across available place forecasts.
     let averageSunnyHours: Double
+    /// Places with at least one sunny daytime hour on this date.
+    let sunnyPlaceCount: Int
+    /// Places that contributed usable weather to this date's comparison.
+    let availablePlaceCount: Int
+    /// Highest-ranked place for the date, resolved for the current surface.
+    let bestPlaceName: String?
+    /// Sunny-hour total paired with `bestPlaceName`.
+    let bestPlaceSunnyHours: Double?
 
     var id: Date { date }
+
+    /// Centralizes the comparison math shared by Saved Places and Find Sun.
+    init?(
+        date: Date,
+        recommendations: [PlaceRecommendation],
+        locale: Locale,
+        placeName: (PlaceRecommendation) -> String
+    ) {
+        guard !recommendations.isEmpty else { return nil }
+
+        let rankedRecommendations = PlaceRecommendation.ranked(
+            recommendations,
+            locale: locale
+        )
+        let totalSunnyHours = recommendations.map(\.sunnyHourCount).reduce(0, +)
+        let bestRecommendation = rankedRecommendations.first
+
+        self.date = date
+        averageSunnyHours = totalSunnyHours / Double(recommendations.count)
+        sunnyPlaceCount = recommendations.count { $0.sunnyHourCount > 0 }
+        availablePlaceCount = recommendations.count
+        bestPlaceName = bestRecommendation.flatMap { recommendation in
+            recommendation.sunnyHourCount > 0 ? placeName(recommendation) : nil
+        }
+        bestPlaceSunnyHours = bestRecommendation.flatMap { recommendation in
+            recommendation.sunnyHourCount > 0
+                ? recommendation.sunnyHourCount
+                : nil
+        }
+    }
+
+    /// Best dates lead; broader sunshine and the strongest place break ties.
+    static func ranked(
+        _ summaries: [BestSunnyDateSummary]
+    ) -> [BestSunnyDateSummary] {
+        summaries.sorted { lhs, rhs in
+            if lhs.averageSunnyHours != rhs.averageSunnyHours {
+                return lhs.averageSunnyHours > rhs.averageSunnyHours
+            }
+            if lhs.sunnyPlaceCount != rhs.sunnyPlaceCount {
+                return lhs.sunnyPlaceCount > rhs.sunnyPlaceCount
+            }
+            if lhs.bestPlaceSunnyHours != rhs.bestPlaceSunnyHours {
+                return (lhs.bestPlaceSunnyHours ?? 0) > (rhs.bestPlaceSunnyHours ?? 0)
+            }
+            return lhs.date < rhs.date
+        }
+    }
 }
 
-/// Compact planning control for choosing a high-sun day across Saved Places.
-struct BestSunnyDatesCard: View {
-    // MARK: - Inputs and Environment
+// MARK: - Ranked Date Card
 
+/// Planning card that recommends dates instead of duplicating chronological
+/// date navigation. Selecting a recommendation still updates the shared date so
+/// the adjacent place ranking can immediately explain that choice.
+struct BestSunnyDatesCard: View {
     let summaries: [BestSunnyDateSummary]
-    /// Shared root selection. Tapping a heatmap cell updates every tab's date
-    /// control and any report currently shown in its navigation stack.
     @Binding var selectedDate: Date
-    /// Describes why the heatmap may not yet contain a usable date.
     let presentationState: SavedPlacesForecastPresentationState
 
     @Environment(\.appTheme) private var theme
-    @Environment(\.calendar) private var calendar
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.locale) private var locale
 
-    // MARK: - Calendar Layout
-
-    private var calendarColumns: [GridItem] {
-        // Seven equal-width columns mirror the user's locale-aware week.
-        Array(repeating: GridItem(.flexible(), spacing: 7), count: 7)
-    }
-
-    /// The supplied forecast range rendered as complete calendar weeks. Dates
-    /// with no saved-place forecast stay visible but inert, preserving the
-    /// heatmap's calendar rhythm without implying that weather data exists.
-    private var calendarDates: [BestSunnyCalendarDate] {
-        // Associate forecasts with normalized local days before filling the
-        // leading/trailing cells required to complete calendar weeks.
-        let summariesByDate = Dictionary(
-            uniqueKeysWithValues: summaries.map {
-                (calendar.startOfDay(for: $0.date), $0)
+    private var featuredDates: [RankedSunnyDate] {
+        Array(BestSunnyDateSummary.ranked(summaries).prefix(3))
+            .enumerated()
+            .map { index, summary in
+                RankedSunnyDate(rank: index + 1, summary: summary)
             }
-        )
-        let forecastDates = summariesByDate.keys.sorted()
-
-        guard let firstForecastDate = forecastDates.first,
-              let lastForecastDate = forecastDates.last else {
-            return []
-        }
-
-        let leadingCount = leadingCalendarCellCount(for: firstForecastDate)
-        let leadingDates = (0..<leadingCount).compactMap { index in
-            calendar.date(
-                byAdding: .day,
-                value: index - leadingCount,
-                to: firstForecastDate
-            )
-        }
-
-        // The real forecast range sits between inert cells from adjacent weeks.
-        let forecastRange = dates(from: firstForecastDate, through: lastForecastDate)
-        let trailingCount = (
-            7 - ((leadingDates.count + forecastRange.count) % 7)
-        ) % 7
-        let trailingDates = (0..<trailingCount).compactMap { index in
-            calendar.date(
-                byAdding: .day,
-                value: index + 1,
-                to: lastForecastDate
-            )
-        }
-
-        return (leadingDates + forecastRange + trailingDates).map { date in
-            let normalizedDate = calendar.startOfDay(for: date)
-            return BestSunnyCalendarDate(
-                date: normalizedDate,
-                summary: summariesByDate[normalizedDate]
-            )
-        }
     }
-
-    private var weekdayLabels: [String] {
-        // Localize the weekday names without replacing the system calendar's
-        // First Day of Week preference. The same value also positions dates.
-        let firstWeekdayIndex = calendar.firstWeekday - 1
-        var localizedCalendar = calendar
-        localizedCalendar.locale = locale
-        let symbols = localizedCalendar.shortStandaloneWeekdaySymbols
-
-        guard symbols.count == 7,
-              symbols.indices.contains(firstWeekdayIndex) else {
-            return []
-        }
-
-        return Array(symbols[firstWeekdayIndex...])
-            + Array(symbols[..<firstWeekdayIndex])
-    }
-
-    private var hasAvailableForecast: Bool {
-        calendarDates.contains { $0.isForecastDate }
-    }
-
-    // MARK: - Card Presentation
 
     var body: some View {
-        // Every planning card uses the same shared header, padding, corner
-        // radius, and translucent material as the rest of the app.
         VStack(
             alignment: .leading,
             spacing: WeatherCardLayout.contentSpacing
         ) {
             WeatherCardHeader(
-                icon: "calendar",
+                icon: "calendar.badge.checkmark",
                 title: "Best Sunny Dates"
             )
 
-            if hasAvailableForecast {
-                calendarHeatmap
-            } else {
+            if featuredDates.isEmpty {
                 statusContent
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(featuredDates) { rankedDate in
+                        BestSunnyDateRow(
+                            rankedDate: rankedDate,
+                            selectedDate: $selectedDate
+                        )
+
+                        if rankedDate.id != featuredDates.last?.id {
+                            Divider()
+                                .background(theme.colors.secondaryText.opacity(0.16))
+                                .padding(
+                                    .leading,
+                                    SavedPlacesRankingListLayout.contentLeadingInset
+                                )
+                        }
+                    }
+                }
             }
         }
         .padding(WeatherCardLayout.padding)
@@ -142,8 +138,6 @@ struct BestSunnyDatesCard: View {
         )
     }
 
-    /// Keeps the card informative without inventing heatmap values while the
-    /// library is empty, loading, or unavailable.
     private var statusContent: some View {
         HStack(spacing: 8) {
             if presentationState == .loading {
@@ -174,162 +168,127 @@ struct BestSunnyDatesCard: View {
             "No saved-place forecasts are available for this period."
         }
     }
+}
 
-    private var calendarHeatmap: some View {
-        VStack(spacing: 7) {
-            LazyVGrid(columns: calendarColumns, spacing: 0) {
-                // `enumerated` gives the static labels stable positional IDs;
-                // weekday strings themselves can repeat in some locales.
-                ForEach(Array(weekdayLabels.enumerated()), id: \.offset) { _, label in
-                    Text(label)
-                        .font(.caption2.weight(.medium))
-                        .foregroundStyle(theme.colors.secondaryText)
-                        .frame(maxWidth: .infinity)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.72)
-                }
-            }
+// MARK: - Ranked Date Row
 
-            LazyVGrid(columns: calendarColumns, spacing: 7) {
-                ForEach(calendarDates) { day in
-                    calendarDayView(day)
-                }
-            }
-        }
+private struct RankedSunnyDate: Identifiable {
+    let rank: Int
+    let summary: BestSunnyDateSummary
+
+    var id: Date { summary.id }
+}
+
+private struct BestSunnyDateRow: View {
+    let rankedDate: RankedSunnyDate
+    @Binding var selectedDate: Date
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.calendar) private var calendar
+    @Environment(\.locale) private var locale
+
+    private var summary: BestSunnyDateSummary { rankedDate.summary }
+
+    /// The root date switcher and this ranking share one calendar-day
+    /// selection. Comparing days through the environment calendar keeps the
+    /// emphasis correct even when the stored dates have different times.
+    private var isSelected: Bool {
+        calendar.isDate(summary.date, inSameDayAs: selectedDate)
     }
 
-    @ViewBuilder
-    private func calendarDayView(_ day: BestSunnyCalendarDate) -> some View {
-        if let summary = day.summary, day.isForecastDate {
-            let isSelected = calendar.isDate(
-                summary.date,
-                inSameDayAs: selectedDate
-            )
-            // Only dates with forecasts are buttons. Empty adjacent-week cells
-            // retain the grid's geometry but cannot choose a missing forecast.
-            Button {
-                withAnimation(.smooth(duration: 0.2)) {
-                    selectedDate = calendar.startOfDay(for: summary.date)
-                }
-            } label: {
-                calendarDayCell(
-                    day,
-                    isSelected: isSelected
-                )
-            }
-            .buttonStyle(.plain)
-        } else {
-            calendarDayCell(day, isSelected: false)
-        }
-    }
+    /// Explains the distribution hidden by the arithmetic mean. The complete
+    /// localized sentence lets translators reorder every value naturally.
+    private var sunnyPlacesSummary: String {
+        let sunnyCount = summary.sunnyPlaceCount.formatted(
+            .number.grouping(.never).locale(locale)
+        )
+        let availableCount = summary.availablePlaceCount.formatted(
+            .number.grouping(.never).locale(locale)
+        )
 
-    private func calendarDayCell(
-        _ day: BestSunnyCalendarDate,
-        isSelected: Bool
-    ) -> some View {
-        // The cell is always rendered once. Only its fill, outline, and text
-        // color change, keeping the heatmap's grid visually stable.
-        let shape = RoundedRectangle(cornerRadius: 12, style: .continuous)
-
-        return ZStack {
-            shape.fill(heatmapFill(for: day))
-
-            // A calendar cell should contain the day number only. Date
-            // formatting appends locale-specific units such as Japanese 日,
-            // which makes the compact grid visually inconsistent.
-            Text(
-                calendar.component(.day, from: day.date),
-                format: .number.locale(locale)
-            )
-            .font(.body.weight(isSelected ? .semibold : .medium).monospacedDigit())
-            .foregroundStyle(dayNumberColor(for: day, isSelected: isSelected))
-            .lineLimit(1)
-            .minimumScaleFactor(0.65)
-        }
-        .overlay {
-            shape.stroke(
-                cellOutlineColor(for: day, isSelected: isSelected),
-                lineWidth: isSelected ? 1.65 : 0.7
-            )
-        }
-        .aspectRatio(1, contentMode: .fit)
-        .padding(2)
-        .contentShape(shape)
-    }
-
-    private func heatmapFill(for day: BestSunnyCalendarDate) -> Color {
-        guard day.isForecastDate,
-              let summary = day.summary else {
-            return theme.colors.secondaryText.opacity(
-                colorScheme == .dark ? 0.18 : 0.10
-            )
-        }
-
-        return theme.colors.sunnyHoursColor(
-            for: summary.averageSunnyHours,
-            colorScheme: colorScheme
+        return String(
+            format: localizedString(
+                "Sunny places: %1$@ of %2$@",
+                locale: locale
+            ),
+            locale: locale,
+            sunnyCount,
+            availableCount
         )
     }
 
-    private func dayNumberColor(
-        for day: BestSunnyCalendarDate,
-        isSelected: Bool
-    ) -> Color {
-        if day.isForecastDate {
-            return isSelected ? theme.colors.accent : theme.colors.primaryText
-        }
-        return theme.colors.secondaryText
-    }
+    var body: some View {
+        Button {
+            selectedDate = calendar.startOfDay(for: summary.date)
+        } label: {
+            HStack(spacing: SavedPlacesRankingListLayout.columnSpacing) {
+                Text(
+                    rankedDate.rank,
+                    format: .number.grouping(.never).locale(locale)
+                )
+                .font(.body.monospacedDigit())
+                .foregroundStyle(theme.colors.primaryText)
+                .padding(
+                    .leading,
+                    SavedPlacesRankingListLayout.rankOpticalInset
+                )
+                .frame(
+                    width: SavedPlacesRankingListLayout.leadingIconWidth,
+                    alignment: .leading
+                )
 
-    private func cellOutlineColor(
-        for day: BestSunnyCalendarDate,
-        isSelected: Bool
-    ) -> Color {
-        return isSelected
-            ? theme.colors.accent
-            : theme.colors.primaryText.opacity(0.16)
-    }
+                // Match Nearby Sunnier Places: the primary identity and its
+                // supporting context share a compact two-line leading column.
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(
+                        summary.date,
+                        format: .dateTime
+                            .weekday(.wide)
+                            .month(.abbreviated)
+                            .day()
+                            .locale(locale)
+                    )
+                    .font(
+                        .body.weight(isSelected ? .semibold : .regular)
+                    )
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(2)
 
-    // MARK: - Calendar Arithmetic
+                    Text(sunnyPlacesSummary)
+                        .font(.caption)
+                        .foregroundStyle(theme.colors.secondaryText)
+                        .lineLimit(2)
+                }
 
-    private func leadingCalendarCellCount(for date: Date) -> Int {
-        let weekday = calendar.component(.weekday, from: date)
-        return (weekday - calendar.firstWeekday + 7) % 7
-    }
+                Spacer(minLength: 8)
 
-    private func dates(from firstDate: Date, through lastDate: Date) -> [Date] {
-        // Advance by calendar days, rather than 86,400-second durations, to
-        // keep the forecast grid correct around daylight-saving transitions.
-        var dates: [Date] = []
-        var date = firstDate
+                VStack(alignment: .trailing, spacing: 3) {
+                    Text(
+                        SunnyHoursFormatting.hourCountLabel(
+                            summary.averageSunnyHours,
+                            locale: locale
+                        )
+                    )
+                    .font(
+                        .body.weight(isSelected ? .semibold : .regular)
+                    )
+                    .monospacedDigit()
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
 
-        while date <= lastDate {
-            dates.append(date)
-            guard let nextDate = calendar.date(
-                byAdding: .day,
-                value: 1,
-                to: date
-            ) else {
-                break
+                    Text(
+                        "Average",
+                        comment: "Small caption identifying the sunny-hour value as an arithmetic mean across available saved places."
+                    )
+                    .font(.caption)
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .lineLimit(1)
+                }
+                .multilineTextAlignment(.trailing)
             }
-            date = nextDate
+            .padding(.vertical, 6)
+            .contentShape(.rect)
         }
-
-        return dates
-    }
-}
-
-// MARK: - Calendar Cell State
-
-/// A visual day cell combines a calendar date with an optional saved-place
-/// summary. `nil` means an adjacent-week filler rather than unavailable data.
-private struct BestSunnyCalendarDate: Identifiable {
-    let date: Date
-    let summary: BestSunnyDateSummary?
-
-    var id: Date { date }
-
-    var isForecastDate: Bool {
-        summary != nil
+        .buttonStyle(.plain)
     }
 }

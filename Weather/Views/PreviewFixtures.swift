@@ -54,6 +54,7 @@ enum WeatherPreviewFixtures {
             placesStore: placesStore,
             weatherStore: weatherStore,
             locationProvider: LocationProvider(),
+            recentSearches: RecentSearchStore(inMemoryCities: []),
             initialHomeLocation: nil
         )
     }

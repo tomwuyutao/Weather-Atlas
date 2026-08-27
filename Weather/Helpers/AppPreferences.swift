@@ -14,6 +14,65 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Detail Report Section Order
+
+/// The three movable sections below Detail View's pinned daily timeline.
+/// Raw values are persisted so the same order applies to every city report.
+enum DetailReportSection: String, CaseIterable, Identifiable {
+    case tenDaySunnyHours
+    case basicWeatherData
+    case nearbySunnyPlaces
+
+    static let storageKey = "detailReportSectionOrder"
+    static let defaultOrder = Array(allCases)
+    static let defaultStorageValue = storageValue(for: defaultOrder)
+
+    var id: String { rawValue }
+
+    var title: LocalizedStringResource {
+        switch self {
+        case .tenDaySunnyHours:
+            "10-Day Sunny Hours"
+        case .basicWeatherData:
+            "Basic Weather Data"
+        case .nearbySunnyPlaces:
+            "Nearby Sunnier Places"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .tenDaySunnyHours:
+            "calendar"
+        case .basicWeatherData:
+            "square.grid.2x2"
+        case .nearbySunnyPlaces:
+            "location.magnifyingglass"
+        }
+    }
+
+    /// Ignores corrupt and duplicate values, then appends any sections added
+    /// by a future app version in their default order.
+    static func order(from storedValue: String) -> [DetailReportSection] {
+        var seen = Set<DetailReportSection>()
+        var result = storedValue
+            .split(separator: ",")
+            .compactMap { DetailReportSection(rawValue: String($0)) }
+            .filter { seen.insert($0).inserted }
+
+        result.append(
+            contentsOf: defaultOrder.filter { seen.insert($0).inserted }
+        )
+        return result
+    }
+
+    static func storageValue(
+        for sections: [DetailReportSection]
+    ) -> String {
+        sections.map(\.rawValue).joined(separator: ",")
+    }
+}
+
 // MARK: - Temperature Unit
 
 /// Persistable temperature preference exposed in Settings.

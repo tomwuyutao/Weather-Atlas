@@ -241,22 +241,56 @@ private struct FindSunGeographicSearchSheet: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.dismiss) private var dismiss
 
+    private var trimmedQuery: String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     private var countries: [CountryPlacesOption] {
         let allCountries = CountryCityCatalog.countries(
             near: currentLocationCoordinate,
             locale: locale
         )
-        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedQuery.isEmpty else { return allCountries }
-        return allCountries.filter {
-            $0.localizedName(locale: locale)
-                .localizedCaseInsensitiveContains(trimmedQuery)
-                || $0.englishName.localizedCaseInsensitiveContains(trimmedQuery)
+        return allCountries.filter { country in
+            country.matchesSearchQuery(trimmedQuery, locale: locale)
         }
+    }
+
+    private var showsEmptyCountrySearch: Bool {
+        picker == .country && !trimmedQuery.isEmpty && countries.isEmpty
     }
 
     var body: some View {
         NavigationStack {
+            geographicSearchContent
+                .tint(theme.colors.accent)
+                .navigationTitle(
+                    picker == .country
+                        ? "Find Sun in a Country"
+                        : "Find Sun in a Continent"
+                )
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarLeading) {
+                        CloseButton(action: dismiss.callAsFunction)
+                    }
+                }
+                .modifier(
+                    CountrySearchModifier(
+                        isEnabled: picker == .country,
+                        query: $query
+                    )
+                )
+        }
+    }
+
+    @ViewBuilder
+    private var geographicSearchContent: some View {
+        if showsEmptyCountrySearch {
+            ContentUnavailableView.search(text: trimmedQuery)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .weatherScreenBackground()
+        } else {
             List {
                 switch picker {
                 case .country:
@@ -289,20 +323,6 @@ private struct FindSunGeographicSearchSheet: View {
             .weatherScrollableBackground()
             .weatherContentColumn(standardMaximumWidth: .infinity)
             .weatherScreenBackground()
-            .tint(theme.colors.accent)
-            .navigationTitle(
-                picker == .country
-                    ? "Find Sun in a Country"
-                    : "Find Sun in a Continent"
-            )
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close", systemImage: "xmark") { dismiss() }
-                        .labelStyle(.iconOnly)
-                }
-            }
-            .modifier(CountrySearchModifier(isEnabled: picker == .country, query: $query))
         }
     }
 

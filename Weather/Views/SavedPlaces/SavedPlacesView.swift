@@ -14,8 +14,8 @@ import UIKit
 /// Shared presentation state for the two Saved Places planning cards.
 ///
 /// The state changes only their explanatory fallback content. Any available
-/// recommendations or date summaries continue to use the existing ranking and
-/// heatmap paths.
+/// recommendations or date summaries continue to use the existing ranking
+/// paths.
 enum SavedPlacesForecastPresentationState: Equatable {
     case emptyLibrary
     case loading
@@ -46,6 +46,7 @@ struct SavedPlacesView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.locale) private var locale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(NetworkConnectivity.self) private var networkConnectivity
 
     // MARK: - Derived Planning Data
 
@@ -111,17 +112,18 @@ struct SavedPlacesView: View {
                 locale: locale
             )
 
-            // A calendar summary exists only for concrete recommendations.
-            // This prevents an unexpected recommendation gap from being displayed
-            // as an apparently factual zero-sun day.
-            guard !recommendations.isEmpty else { return nil }
-
-            let averageSunnyHours = recommendations.map(\.sunnyHourCount)
-                .reduce(0, +) / Double(recommendations.count)
             return BestSunnyDateSummary(
                 date: date,
-                averageSunnyHours: averageSunnyHours
-            )
+                recommendations: recommendations,
+                locale: locale
+            ) { recommendation in
+                model.placesStore.allPlaces.first {
+                    $0.id == recommendation.id
+                }?.localizedDisplayName(locale: locale)
+                    ?? recommendation.cityWeather.city.localizedDisplayName(
+                        locale: locale
+                    )
+            }
         }
     }
 
@@ -135,6 +137,14 @@ struct SavedPlacesView: View {
 
         let places = model.placesStore.allPlaces
         guard !places.isEmpty else { return .emptyLibrary }
+
+        // A retained snapshot remains useful offline. Without one, confirmed
+        // offline is a settled unavailable state rather than imaginary loading.
+        if networkConnectivity.isOffline {
+            return places.contains(where: {
+                model.weatherStore.weather(for: $0.id) != nil
+            }) ? .ready : .unavailable
+        }
 
         if places.contains(where: { model.weatherStore.isLoading($0.id) }) {
             return .loading

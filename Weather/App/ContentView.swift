@@ -78,6 +78,44 @@ struct ContentView: View {
             // Rebuild the shell after a full reset so local view state cannot leak
             // from the discarded user library into the newly seeded library.
             .id(resetID)
+            // One root overlay keeps save feedback centered and visually
+            // identical across every tab, pushed report, and Map card.
+            .overlay {
+                ZStack {
+                    if let notification = currentSavedPlaceNotification {
+                        SavedNotifications(notification: notification)
+                            .id(notification.id)
+                            .padding(.horizontal, 28)
+                            .transition(
+                                .scale(scale: 0.94)
+                                    .combined(with: .opacity)
+                            )
+                            .allowsHitTesting(false)
+                    }
+                }
+                // Limit the transition transaction to the popup so a saved
+                // row's simultaneous insertion/removal does not also animate.
+                .animation(
+                    .smooth(duration: 0.24),
+                    value: currentSavedPlaceNotification?.id
+                )
+            }
+            // Each queued city gets its own complete display interval. A new
+            // mutation cannot cancel or overwrite the notification ahead of it.
+            .task(id: currentSavedPlaceNotification?.id) {
+                guard let notification = currentSavedPlaceNotification else {
+                    return
+                }
+                do {
+                    try await Task.sleep(for: .milliseconds(2400))
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                model.placesStore.consumeSavedPlaceNotification(
+                    id: notification.id
+                )
+            }
             // A single item-driven sheet prevents two root modals being presented
             // at once and lets AppNavigation describe the destination declaratively.
             .sheet(item: $router.presentedSheet) { destination in
@@ -114,6 +152,10 @@ struct ContentView: View {
                 of: model.placesStore.loadErrorDescription,
                 initial: true,
                 handlePlacesLoadErrorChange
+            )
+            .onChange(
+                of: networkConnectivity.status,
+                handleConnectivityStatusChange
             )
             .onChange(of: scenePhase, handleScenePhaseChange)
             .onChange(of: router.selectedTab, initial: true) { _, newTab in
@@ -230,14 +272,19 @@ struct ContentView: View {
 
     // MARK: - Shared Tab Adornments
 
-    /// Non-map tabs use the same bottom control lane as Map's Find Sun button.
-    /// The child safe area already excludes the native tab bar, so this never
-    /// overlaps the tab controls.
+    /// The store queues only successful user-initiated single-city mutations.
+    /// Reading the head here keeps presentation state derived and centralized.
+    private var currentSavedPlaceNotification: SavedPlaceNotification? {
+        model.placesStore.pendingSavedPlaceNotifications.first
+    }
+
+    /// Non-map tabs lift the offline banner above the floating native tab bar.
+    /// Map owns a separate bottom-surface layout and is intentionally excluded.
     @ViewBuilder
     private func screenWithOfflineBanner<Content: View>(
         _ content: Content
     ) -> some View {
-        content.safeAreaInset(edge: .bottom, spacing: MapCardLayout.bottomPadding) {
+        content.safeAreaInset(edge: .bottom, spacing: 0) {
             if networkConnectivity.isOffline,
                !networkConnectivity.isOfflineBannerDismissed {
                 OfflineBanner(
@@ -245,6 +292,7 @@ struct ContentView: View {
                     dismiss: networkConnectivity.dismissOfflineBanner
                 )
                 .padding(.horizontal, 16)
+                .padding(.bottom, MapCardLayout.bottomPadding)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
@@ -362,6 +410,27 @@ struct ContentView: View {
             Task {
                 _ = await seedStarterPlacesIfNeeded()
             }
+        }
+    }
+
+    /// Initial evaluation and recovery can both make network work viable after
+    /// an earlier hydration attempt deliberately preserved only cached data.
+    private func handleConnectivityStatusChange(
+        _ previousStatus: NetworkConnectivityStatus,
+        _ status: NetworkConnectivityStatus
+    ) {
+        guard previousStatus != .available, status == .available else { return }
+        let forceRefresh = previousStatus == .offline
+        Task {
+            await model.loadSavedWeather(forceRefresh: forceRefresh)
+            guard !Task.isCancelled,
+                  model.locationProvider.hasUsableCoordinate else {
+                return
+            }
+            await model.ensureCurrentLocationWeather(
+                forceRefresh: forceRefresh,
+                locale: locale
+            )
         }
     }
 
@@ -619,6 +688,7 @@ struct ContentView: View {
         // display preferences before rebuilding the fresh-root state.
         try model.placesStore.resetToEmptyLibrary()
         model.weatherStore.clearAllWeather()
+        model.recentSearches.reset()
         WidgetDataStore.removeAll()
         model.resetLocation()
         missingDataAlerts.reset()
