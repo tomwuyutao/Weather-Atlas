@@ -618,8 +618,8 @@ private struct SavedPlaceSemanticIdentity {
     }
 }
 
-/// One shared equivalence rule keeps Saved Places matching, recent-search
-/// deduplication, and current-location exclusion from drifting apart.
+/// One shared equivalence rule keeps Saved Places matching and recent-search
+/// deduplication from drifting apart.
 enum CitySemanticMatcher {
     static func matches(_ lhs: City, _ rhs: City) -> Bool {
         if lhs.id == rhs.id { return true }
@@ -634,6 +634,92 @@ enum CitySemanticMatcher {
             return false
         }
         return lhsIdentity.matches(rhsIdentity)
+    }
+}
+
+/// Current-location exclusion additionally recognizes a nearby city-centre
+/// result when reverse geocoding names the person's more precise locality.
+/// Keeping this fallback separate avoids weakening identity everywhere else.
+enum CurrentLocationCityMatcher {
+    private static let maximumDistanceMeters: CLLocationDistance = 10_000
+
+    static func matches(_ candidate: City, currentLocation: City) -> Bool {
+        if CitySemanticMatcher.matches(candidate, currentLocation) {
+            return true
+        }
+
+        guard countriesMatch(candidate, currentLocation),
+              timeZonesDoNotConflict(candidate, currentLocation),
+              let candidateLocation = location(for: candidate),
+              let resolvedCurrentLocation = location(for: currentLocation) else {
+            return false
+        }
+
+        return candidateLocation.distance(from: resolvedCurrentLocation)
+            <= maximumDistanceMeters
+    }
+
+    private static func location(for city: City) -> CLLocation? {
+        guard city.latitude.isFinite, city.longitude.isFinite,
+              (-90...90).contains(city.latitude),
+              (-180...180).contains(city.longitude) else {
+            return nil
+        }
+        return CLLocation(latitude: city.latitude, longitude: city.longitude)
+    }
+
+    private static func timeZonesDoNotConflict(
+        _ lhs: City,
+        _ rhs: City
+    ) -> Bool {
+        guard let lhsTimeZone = normalizedTimeZone(lhs.timeZoneIdentifier),
+              let rhsTimeZone = normalizedTimeZone(rhs.timeZoneIdentifier) else {
+            return true
+        }
+        return lhsTimeZone == rhsTimeZone
+    }
+
+    private static func normalizedTimeZone(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    private static func countriesMatch(_ lhs: City, _ rhs: City) -> Bool {
+        let lhsCode = normalizedCountryCode(lhs.countryISO2Code)
+            ?? CountryCityCatalog.countryISO2Code(
+                matchingCountryName: lhs.country
+            )
+        let rhsCode = normalizedCountryCode(rhs.countryISO2Code)
+            ?? CountryCityCatalog.countryISO2Code(
+                matchingCountryName: rhs.country
+            )
+        if let lhsCode, let rhsCode {
+            return lhsCode == rhsCode
+        }
+
+        let lhsCountry = normalizedCountry(lhs.country)
+        let rhsCountry = normalizedCountry(rhs.country)
+        return !lhsCountry.isEmpty && lhsCountry == rhsCountry
+    }
+
+    private static func normalizedCountryCode(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).uppercased(), value.count == 2 else {
+            return nil
+        }
+        return value
+    }
+
+    private static func normalizedCountry(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).folding(
+            options: [.caseInsensitive, .diacriticInsensitive, .widthInsensitive],
+            locale: Locale(identifier: "en_US_POSIX")
+        )
     }
 }
 
@@ -939,6 +1025,8 @@ final class SavedPlacesStore {
             name: incoming.name.isEmpty ? current.name : incoming.name,
             titleName: incoming.titleName ?? current.titleName,
             country: incoming.country.isEmpty ? current.country : incoming.country,
+            countryISO2Code:
+                incoming.countryISO2Code ?? current.countryISO2Code,
             latitude: current.latitude,
             longitude: current.longitude,
             timeZoneIdentifier: incoming.timeZoneIdentifier ?? current.timeZoneIdentifier,

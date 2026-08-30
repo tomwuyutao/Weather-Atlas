@@ -29,6 +29,8 @@ nonisolated struct City: Identifiable, Hashable, Codable, Sendable {
     let titleName: String?
     /// Canonical country or region name returned by reverse geocoding.
     let country: String
+    /// Stable ISO 3166-1 alpha-2 country identity, when a provider supplies it.
+    let countryISO2Code: String?
     /// Geographic latitude used by WeatherKit and MapKit.
     let latitude: Double
     /// Geographic longitude used by WeatherKit and MapKit.
@@ -43,6 +45,7 @@ nonisolated struct City: Identifiable, Hashable, Codable, Sendable {
         name: String,
         titleName: String? = nil,
         country: String,
+        countryISO2Code: String? = nil,
         latitude: Double,
         longitude: Double,
         timeZoneIdentifier: String? = nil,
@@ -52,6 +55,15 @@ nonisolated struct City: Identifiable, Hashable, Codable, Sendable {
         self.name = name
         self.titleName = titleName
         self.country = country
+        let normalizedCountryCode = countryISO2Code?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .uppercased()
+        self.countryISO2Code = normalizedCountryCode?.count == 2
+            && normalizedCountryCode?.unicodeScalars.allSatisfy {
+                $0.value >= 65 && $0.value <= 90
+            } == true
+            ? normalizedCountryCode
+            : nil
         self.latitude = latitude
         self.longitude = longitude
         self.timeZoneIdentifier = timeZoneIdentifier
@@ -459,6 +471,8 @@ final class WeatherModel {
             name: resolvedName,
             titleName: baseCity.titleName,
             country: resolvedCountry,
+            countryISO2Code:
+                metadata?.isoCountryCode ?? baseCity.countryISO2Code,
             latitude: baseCity.latitude,
             longitude: baseCity.longitude,
             timeZoneIdentifier:
@@ -1349,27 +1363,42 @@ final class WeatherModel {
 
     /// City recents are intentionally limited to unsaved, non-local places.
     /// Re-evaluating this filter at display time makes an existing recent row
-    /// disappear immediately when it is saved or becomes the current location.
+    /// disappear immediately when it is saved or becomes the current location;
+    /// the lifecycle synchronization below then removes it from storage.
     var recentCitySuggestions: [City] {
         recentSearches.cities.filter { city in
-            placesStore.savedPlaceID(matching: city) == nil
-                && !isCurrentLocationCity(city)
+            isEligibleRecentCity(city)
         }
     }
 
     /// Records a city information-card or full-detail access only while that
     /// place is eligible for the City Recent section.
     func recordRecentCityAccess(_ city: City) {
-        guard placesStore.savedPlaceID(matching: city) == nil,
-              !isCurrentLocationCity(city) else {
-            return
-        }
+        pruneIneligibleRecentCities()
+        guard isEligibleRecentCity(city) else { return }
         recentSearches.record(city: city)
+    }
+
+    /// Saved/current identities are not merely hidden from Recent: remove them
+    /// from its durable MRU so they cannot consume one of the backfill slots.
+    /// ContentView calls this whenever either eligibility source changes.
+    func pruneIneligibleRecentCities() {
+        recentSearches.removeCities { city in
+            !isEligibleRecentCity(city)
+        }
+    }
+
+    private func isEligibleRecentCity(_ city: City) -> Bool {
+        placesStore.savedPlaceID(matching: city) == nil
+            && !isCurrentLocationCity(city)
     }
 
     private func isCurrentLocationCity(_ city: City) -> Bool {
         guard let currentLocationPlaceCity else { return false }
-        return CitySemanticMatcher.matches(city, currentLocationPlaceCity)
+        return CurrentLocationCityMatcher.matches(
+            city,
+            currentLocation: currentLocationPlaceCity
+        )
     }
 
     /// Resolves a detail route from the library, Home's current nearby batch, or
@@ -1703,6 +1732,7 @@ final class WeatherModel {
             country: metadata?.countryName?.trimmingCharacters(
                 in: .whitespacesAndNewlines
             ) ?? "",
+            countryISO2Code: metadata?.isoCountryCode,
             latitude: coordinate.latitude,
             longitude: coordinate.longitude,
             timeZoneIdentifier: metadata?.timeZoneIdentifier
@@ -1716,6 +1746,7 @@ final class WeatherModel {
             id: Self.stableCityID(namespace: "world-city", value: record.id),
             name: record.name,
             country: record.countryName,
+            countryISO2Code: record.isoCountryCode,
             latitude: record.latitude,
             longitude: record.longitude,
             timeZoneIdentifier: record.timeZoneIdentifier,

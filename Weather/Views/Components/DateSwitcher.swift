@@ -8,6 +8,34 @@
 
 import SwiftUI
 
+// MARK: - Shared Forecast Date Labels
+
+/// Produces the compact, locale-aware date wording shared by forecast controls
+/// and cards that describe the app-wide selected day.
+enum ForecastDateLabel {
+    static func compact(
+        for date: Date,
+        calendar: Calendar,
+        locale: Locale
+    ) -> String {
+        if calendar.isDateInToday(date) {
+            return localizedString("Today", locale: locale)
+        }
+
+        if calendar.isDateInTomorrow(date) {
+            return localizedString("Tomorrow", locale: locale)
+        }
+
+        var style = Date.FormatStyle.dateTime
+            .weekday(.abbreviated)
+            .month(.abbreviated)
+            .day()
+            .locale(locale)
+        style.timeZone = calendar.timeZone
+        return date.formatted(style)
+    }
+}
+
 /// A compact, native date stepper with an anchored system calendar picker.
 ///
 /// The control owns no app-wide state: every main destination receives the
@@ -85,7 +113,13 @@ struct TopForecastDateSwitcher: View {
             Button {
                 showsDatePicker = true
             } label: {
-                Text(dateText(for: normalizedSelection))
+                Text(
+                    ForecastDateLabel.compact(
+                        for: normalizedSelection,
+                        calendar: calendar,
+                        locale: locale
+                    )
+                )
                     // Match the Saved Places recommendation rows so the
                     // shared forecast control reads at the same hierarchy.
                     .font(.body.weight(.medium))
@@ -211,27 +245,6 @@ struct TopForecastDateSwitcher: View {
         showsDatePicker = false
     }
 
-    private func dateText(for date: Date) -> String {
-        // Keep the compact toolbar wording familiar for the two most useful
-        // forecast days. The calendar comes from WeatherModel, so “Today” and
-        // “Tomorrow” follow the app's active forecast time zone rather than
-        // accidentally following a different device time zone.
-        if calendar.isDateInToday(date) {
-            return localizedString("Today", locale: locale)
-        }
-
-        if calendar.isDateInTomorrow(date) {
-            return localizedString("Tomorrow", locale: locale)
-        }
-
-        return date.formatted(
-            Date.FormatStyle.dateTime
-                .weekday(.abbreviated)
-                .month(.abbreviated)
-                .day()
-                .locale(locale)
-        )
-    }
 }
 
 // MARK: - Shared Forecast Horizon

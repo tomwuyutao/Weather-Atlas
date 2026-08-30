@@ -142,14 +142,15 @@ struct ContentView: View {
             .task(id: locale.identifier) {
                 refreshLocaleDependencies()
             }
-            .onChange(of: model.placesStore.document) {
+            .onChange(of: model.placesStore.document, initial: true) {
                 handlePlacesDocumentChange()
             }
             // The Current Location entry is a stable widget configuration, but
             // its coordinate and locality are live. Republish that one small
             // contract whenever the app receives a new location or its weather
             // response supplies the authoritative city/timezone.
-            .onChange(of: widgetCurrentLocationIdentity) {
+            .onChange(of: widgetCurrentLocationIdentity, initial: true) {
+                model.pruneIneligibleRecentCities()
                 model.publishWidgetCatalog(locale: locale)
             }
             .onChange(of: dynamicTypeSize) {
@@ -374,6 +375,7 @@ struct ContentView: View {
     /// Keeps transient forecast retention and cross-process widget metadata in
     /// step with the newly verified Saved Places document.
     private func handlePlacesDocumentChange() {
+        model.pruneIneligibleRecentCities()
         model.retainWeatherScope()
         model.publishWidgetCatalog(locale: locale)
     }
@@ -716,6 +718,22 @@ struct ContentView: View {
             forKey: "appTextSizeLevel"
         )
         defaults.set(true, forKey: "showsMapSunnyHoursLegend")
+        defaults.set(
+            DetailReportSection.defaultStorageValue,
+            forKey: DetailReportSection.storageKey
+        )
+        defaults.set(
+            SavedPlacesDashboardSection.defaultStorageValue,
+            forKey: SavedPlacesDashboardSection.storageKey
+        )
+        defaults.set(
+            SavedPlacesSelectedDayCard.defaultStorageValue,
+            forKey: SavedPlacesSelectedDayCard.storageKey
+        )
+        defaults.set(
+            SavedPlacesPlanAheadCard.defaultStorageValue,
+            forKey: SavedPlacesPlanAheadCard.storageKey
+        )
         SavedPlaceNameTranslationPreference.resetToInitialDefault()
         theme.style = .automatic
 

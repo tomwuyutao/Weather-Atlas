@@ -92,7 +92,7 @@ extension View {
 /// current physical location. The owning screen still supplies its own loading,
 /// permission, retry, and supplementary content; this type only owns the
 /// report UI that is genuinely identical between those flows.
-struct DetailReportContent<HeaderAccessory: View, SupplementaryContent: View>: View {
+struct DetailReportContent<HeaderTitle: View, SupplementaryContent: View>: View {
     // MARK: - Inputs and Environment
 
     /// The large report and navigation heading. A direct map query can retain
@@ -110,7 +110,7 @@ struct DetailReportContent<HeaderAccessory: View, SupplementaryContent: View>: V
     let showsTimeZoneFootnote: Bool
     let sectionOrder: [DetailReportSection]
     private let onHeaderVisibilityChange: (Bool) -> Void
-    private let headerAccessory: HeaderAccessory
+    private let headerTitle: HeaderTitle
     private let supplementaryContent: SupplementaryContent
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -132,7 +132,7 @@ struct DetailReportContent<HeaderAccessory: View, SupplementaryContent: View>: V
         showsTimeZoneFootnote: Bool,
         sectionOrder: [DetailReportSection],
         onHeaderVisibilityChange: @escaping (Bool) -> Void = { _ in },
-        @ViewBuilder headerAccessory: () -> HeaderAccessory,
+        @ViewBuilder headerTitle: () -> HeaderTitle,
         @ViewBuilder supplementaryContent: () -> SupplementaryContent
     ) {
         self.locationName = locationName
@@ -147,7 +147,7 @@ struct DetailReportContent<HeaderAccessory: View, SupplementaryContent: View>: V
         self.showsTimeZoneFootnote = showsTimeZoneFootnote
         self.sectionOrder = sectionOrder
         self.onHeaderVisibilityChange = onHeaderVisibilityChange
-        self.headerAccessory = headerAccessory()
+        self.headerTitle = headerTitle()
         self.supplementaryContent = supplementaryContent()
     }
 
@@ -259,13 +259,12 @@ struct DetailReportContent<HeaderAccessory: View, SupplementaryContent: View>: V
 
     private func reportHeader(landscapeHeight: CGFloat? = nil) -> some View {
         LocationReportHeader(
-            locationName: locationName,
             weather: weather,
             forecast: forecast,
             landscapeHeight: landscapeHeight,
             landscapeConditionVerticalOffset: landscapeHeight == nil ? 0 : 18
         ) {
-            headerAccessory
+            headerTitle
         }
         .onScrollVisibilityChange(threshold: 0.01) { isVisible in
             onHeaderVisibilityChange(isVisible)
@@ -518,7 +517,7 @@ struct CurrentLocationReportContent: View {
                 guard showsLargeTitle != isVisible else { return }
                 showsLargeTitle = isVisible
             },
-            headerAccessory: {
+            headerTitle: {
                 placeActionsMenu
             }
         ) {
@@ -615,6 +614,7 @@ struct CurrentLocationReportContent: View {
 
     private var placeActionsMenu: some View {
         PlaceDetailActionsMenu(
+            title: navigationTitle,
             isSaved: savedPlace != nil,
             canUsePlace: locationCity != nil,
             viewOnMap: viewOnMap,
@@ -951,7 +951,7 @@ struct DetailView: View {
                 guard showsLargeTitle != isVisible else { return }
                 showsLargeTitle = isVisible
             },
-            headerAccessory: {
+            headerTitle: {
                 placeActionsMenu
             }
         ) {
@@ -1093,6 +1093,7 @@ struct DetailView: View {
 
     private var placeActionsMenu: some View {
         PlaceDetailActionsMenu(
+            title: detailTitle,
             isSaved: savedPlace != nil,
             canUsePlace: city != nil,
             viewOnMap: viewOnMap,
@@ -1169,6 +1170,7 @@ private enum PlaceDetailSheet: String, Identifiable {
 /// Secondary city-specific actions live with the large city title so the
 /// navigation bar remains dedicated to forecast navigation.
 private struct PlaceDetailActionsMenu: View {
+    let title: String
     let isSaved: Bool
     let canUsePlace: Bool
     let viewOnMap: () -> Void
@@ -1179,42 +1181,48 @@ private struct PlaceDetailActionsMenu: View {
     @Environment(\.appTheme) private var theme
 
     var body: some View {
-        Menu {
-            Button("View on Map", systemImage: "map", action: viewOnMap)
-                .disabled(!canUsePlace)
+        HStack(spacing: 0) {
+            Spacer(minLength: 34)
 
-            if isSaved {
-                Button(role: .destructive, action: removePlace) {
-                    // Native menus can tint the destructive title without
-                    // tinting its template icon, so style both explicitly.
-                    Label(
-                        "Remove from Saved Places",
-                        systemImage: "bookmark.slash"
-                    )
-                    .foregroundStyle(theme.colors.destructive)
-                }
-                .tint(theme.colors.destructive)
-            } else {
-                Button("Save Place", systemImage: "bookmark", action: savePlace)
+            Menu {
+                Button("View on Map", systemImage: "map", action: viewOnMap)
                     .disabled(!canUsePlace)
+
+                if isSaved {
+                    Button(role: .destructive, action: removePlace) {
+                        // Native menus can tint the destructive title without
+                        // tinting its template icon, so style both explicitly.
+                        Label(
+                            "Remove from Saved Places",
+                            systemImage: "bookmark.slash"
+                        )
+                        .foregroundStyle(theme.colors.destructive)
+                    }
+                    .tint(theme.colors.destructive)
+                } else {
+                    Button(
+                        "Save Place",
+                        systemImage: "bookmark",
+                        action: savePlace
+                    )
+                    .disabled(!canUsePlace)
+                }
+
+                Divider()
+
+                Button(
+                    "Customize Detail View",
+                    systemImage: "arrow.up.arrow.down",
+                    action: customizeDetailView
+                )
+            } label: {
+                DetailStyleReportMenuLabel(title: title)
             }
+            .buttonStyle(.plain)
 
-            Divider()
-
-            Button(
-                "Customize Detail View",
-                systemImage: "arrow.up.arrow.down",
-                action: customizeDetailView
-            )
-        } label: {
-            Label("Place Actions", systemImage: "chevron.down")
-                .labelStyle(.iconOnly)
-                .font(.body.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 28, height: 44)
-                .contentShape(Rectangle())
+            Spacer(minLength: 34)
         }
-        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
     }
 }
 
@@ -1255,20 +1263,43 @@ struct DetailStyleReportTitle: View {
     }
 }
 
+/// Shared native-menu label for report titles. Keeping the title and chevron
+/// inside one label makes either visible element open the same menu while
+/// preserving the established large-title geometry.
+struct DetailStyleReportMenuLabel: View {
+    let title: String
+
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 2) {
+            DetailStyleReportTitle(
+                title: title,
+                horizontalPadding: 0
+            )
+
+            Image(systemName: "chevron.down")
+                .font(.body.weight(.semibold))
+                .foregroundStyle(theme.colors.primaryText)
+                .frame(width: 28, height: 44)
+        }
+        .contentShape(.rect)
+    }
+}
+
 // MARK: - Report Header
 
 /// Large in-content heading shared by every forecast report.
-struct LocationReportHeader<HeaderAccessory: View>: View {
+struct LocationReportHeader<HeaderTitle: View>: View {
     // MARK: - Inputs and Scaled Layout
 
-    let locationName: String
     let weather: CityWeather?
     let forecast: DailyForecast?
     /// The landscape left column supplies its available header space so the
     /// condition summary can sit independently of the title and timeline.
     let landscapeHeight: CGFloat?
     let landscapeConditionVerticalOffset: CGFloat
-    private let headerAccessory: HeaderAccessory
+    private let headerTitle: HeaderTitle
 
     @Environment(\.appTheme) private var theme
     @Environment(\.calendar) private var calendar
@@ -1285,20 +1316,18 @@ struct LocationReportHeader<HeaderAccessory: View>: View {
     private var sunStatusHeight: CGFloat = 20
 
     init(
-        locationName: String,
         weather: CityWeather?,
         forecast: DailyForecast?,
         landscapeHeight: CGFloat?,
         landscapeConditionVerticalOffset: CGFloat,
-        @ViewBuilder headerAccessory: () -> HeaderAccessory
+        @ViewBuilder headerTitle: () -> HeaderTitle
     ) {
-        self.locationName = locationName
         self.weather = weather
         self.forecast = forecast
         self.landscapeHeight = landscapeHeight
         self.landscapeConditionVerticalOffset =
             landscapeConditionVerticalOffset
-        self.headerAccessory = headerAccessory()
+        self.headerTitle = headerTitle()
     }
 
     // MARK: - Sunny-Hours Status
@@ -1335,7 +1364,8 @@ struct LocationReportHeader<HeaderAccessory: View>: View {
             return sunOutInText(to: date)
         case .noSunToday:
             if let sunlessForecastHorizonText = sunlessForecastHorizonText(
-                "No sun in the next %lld days."
+                singularKey: "No sun in the next %lld day.",
+                pluralKey: "No sun in the next %lld days."
             ) {
                 return sunlessForecastHorizonText
             }
@@ -1352,7 +1382,8 @@ struct LocationReportHeader<HeaderAccessory: View>: View {
             return localizedString("No Sun Today", locale: locale)
         case .noMoreSunToday:
             if let sunlessForecastHorizonText = sunlessForecastHorizonText(
-                "No more sun in the next %lld days."
+                singularKey: "No more sun in the next %lld day.",
+                pluralKey: "No more sun in the next %lld days."
             ) {
                 return sunlessForecastHorizonText
             }
@@ -1372,30 +1403,30 @@ struct LocationReportHeader<HeaderAccessory: View>: View {
         }
     }
 
-    /// A forecast-wide sunless message is only safe when every later forecast
-    /// day is present, assessable, and has no sunny interval. The current day
-    /// is included in the displayed horizon, so this reads naturally as “the
-    /// next 10 days” for a ten-day forecast beginning today.
+    /// A forecast-wide sunless message is only safe when every future forecast
+    /// date is assessable and has no sunny interval. Today is excluded so the
+    /// localized “next N days” count matches ordinary forward-looking wording.
     private func sunlessForecastHorizonText(
-        _ key: String.LocalizationValue
+        singularKey: String.LocalizationValue,
+        pluralKey: String.LocalizationValue
     ) -> String? {
         guard let weather,
               let forecast,
-              let followingDayCount = SunnyHoursCalculation
-                .followingSunlessForecastDayCount(
+              let futureDayCount = SunnyHoursCalculation
+                .sunlessFutureForecastDayCount(
                     after: forecast,
                     in: weather.dailyForecasts,
                     timeZone: weather.timeZone,
                     selectionCalendar: calendar
-                ), followingDayCount > 0 else {
+                ), futureDayCount > 0 else {
             return nil
         }
 
-        let horizonDayCount = followingDayCount + 1
+        let key = futureDayCount == 1 ? singularKey : pluralKey
         return String(
             format: localizedString(key, locale: locale),
             locale: locale,
-            Int64(horizonDayCount)
+            Int64(futureDayCount)
         )
     }
 
@@ -1508,15 +1539,7 @@ struct LocationReportHeader<HeaderAccessory: View>: View {
     }
 
     private var locationTitle: some View {
-        HStack(alignment: .top, spacing: 2) {
-            DetailStyleReportTitle(
-                title: locationName,
-                horizontalPadding: 0
-            )
-            headerAccessory
-        }
-        .padding(.horizontal, 34)
-        .frame(maxWidth: .infinity)
+        headerTitle
     }
 
     private var conditionAndStatus: some View {

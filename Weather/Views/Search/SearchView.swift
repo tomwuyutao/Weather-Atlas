@@ -12,16 +12,9 @@ import UIKit
 
 // MARK: - Search Scope
 
-/// The Search tab keeps city lookup separate from the two geographic Find Sun
-/// scopes. City remains the default because it is the only provider-backed
-/// lookup that resolves an individual place for saving.
-private enum PlaceSearchScope: String, CaseIterable, Identifiable {
-    case city
-    case country
-    case continent
-
-    var id: Self { self }
-
+/// Search-scope labels remain view-local while the stable enum value lives in
+/// the app-session router.
+private extension PlaceSearchScope {
     var title: LocalizedStringKey {
         switch self {
         case .city: "City"
@@ -48,7 +41,6 @@ struct PlaceSearchView: View {
     /// The manager is observable but owned by this view, so `@State` preserves
     /// one instance for the screen's lifetime rather than recreating it in body.
     @State private var searchManager = CitySearchManager()
-    @State private var searchScope: PlaceSearchScope = .city
     @State private var query = ""
     /// Stays false during the debounce interval so an empty list can show a
     /// searching state before either provider has begun returning suggestions.
@@ -148,10 +140,6 @@ struct PlaceSearchView: View {
                 // The system search tab may morph into its field after the
                 // screen appears, so yield once before requesting focus.
                 guard router.selectedTab == .search else { return }
-                if searchScope != .city {
-                    searchScope = .city
-                    await Task.yield()
-                }
                 await Task.yield()
                 guard router.selectedTab == .search,
                       searchScope == .city else {
@@ -159,7 +147,7 @@ struct PlaceSearchView: View {
                 }
                 isSearchFocused = true
             }
-            .onChange(of: searchScope) { _, newScope in
+            .onChange(of: router.placeSearchScope) { _, newScope in
                 handleScopeChange(to: newScope)
             }
             .onChange(of: query) { _, _ in
@@ -210,8 +198,12 @@ struct PlaceSearchView: View {
         }
     }
 
+    private var searchScope: PlaceSearchScope {
+        router.placeSearchScope
+    }
+
     private var scopePicker: some View {
-        Picker("Search", selection: $searchScope) {
+        Picker("Search", selection: $router.placeSearchScope) {
             ForEach(PlaceSearchScope.allCases) { scope in
                 Text(scope.title).tag(scope)
             }
@@ -286,7 +278,7 @@ struct PlaceSearchView: View {
                             }
                         }
                     } header: {
-                        geographicScopeHeader(description: "Recent")
+                        geographicScopeHeader(title: "Recent")
                     }
                     .listRowBackground(theme.colors.settingsRowFill)
                 }
@@ -302,6 +294,7 @@ struct PlaceSearchView: View {
                         }
                     } header: {
                         geographicScopeHeader(
+                            title: "Suggestions",
                             description: "Find which cities are sunny in a country."
                         )
                     }
@@ -331,7 +324,7 @@ struct PlaceSearchView: View {
                                 }
                             }
                         } header: {
-                            geographicScopeHeader(description: "Recent")
+                            geographicScopeHeader(title: "Recent")
                         }
                         .listRowBackground(theme.colors.settingsRowFill)
                     }
@@ -347,6 +340,7 @@ struct PlaceSearchView: View {
                             }
                         } header: {
                             geographicScopeHeader(
+                                title: "Suggestions",
                                 description: "Find which cities are sunny across a continent."
                             )
                         }
@@ -417,7 +411,7 @@ struct PlaceSearchView: View {
                         }
                     }
                 } header: {
-                    geographicScopeHeader(description: "Recent")
+                    geographicScopeHeader(title: "Recent")
                 }
                 .listRowBackground(theme.colors.settingsRowFill)
             }
@@ -433,6 +427,7 @@ struct PlaceSearchView: View {
                     }
                 } header: {
                     geographicScopeHeader(
+                        title: "Suggestions",
                         description: "Find when the sun comes out in a city."
                     )
                 }
@@ -584,13 +579,22 @@ struct PlaceSearchView: View {
     }
 
     private var citySuggestionTaskID: String {
-        "\(searchScope.rawValue)|\(locationCountryName ?? "unavailable")|\(locale.identifier)"
+        "\(searchScope.rawValue)|\(locationCountryISO2Code ?? "unavailable")|\(locale.identifier)"
     }
 
-    private var locationCountryName: String? {
-        model.homeLocation?.country
-            ?? model.locationProvider.metadata?.countryName
-            ?? model.locationCity?.country
+    private var locationCountryISO2Code: String? {
+        for candidate in [
+            model.homeLocation?.countryISO2Code,
+            model.locationProvider.metadata?.isoCountryCode,
+            model.locationCity?.countryISO2Code
+        ] {
+            guard let code = candidate?.uppercased(),
+                  CountryCityCatalog.country(iso2: code) != nil else {
+                continue
+            }
+            return code
+        }
+        return nil
     }
 
     private var currentLocationCoordinate: CLLocationCoordinate2D? {
@@ -609,12 +613,21 @@ struct PlaceSearchView: View {
     }
 
     private func geographicScopeHeader(
-        description: LocalizedStringKey
+        title: LocalizedStringKey,
+        description: LocalizedStringKey? = nil
     ) -> some View {
-        Text(description)
-            .font(.body.weight(.bold))
-            .foregroundStyle(theme.colors.primaryText)
-            .textCase(nil)
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.body.weight(.bold))
+                .foregroundStyle(theme.colors.primaryText)
+
+            if let description {
+                Text(description)
+                    .font(.subheadline)
+                    .foregroundStyle(theme.colors.secondaryText)
+            }
+        }
+        .textCase(nil)
     }
 
     /// The continent catalog is deliberately tiny, so filtering its six stable
@@ -703,13 +716,10 @@ struct PlaceSearchView: View {
 
     @MainActor
     private func refreshCountryCitySuggestions() {
-        guard let locationCountryName,
-              let country = CountryCityCatalog.countries(locale: locale).first(where: {
-                  $0.englishName.compare(
-                      locationCountryName,
-                      options: [.caseInsensitive, .diacriticInsensitive]
-                  ) == .orderedSame
-        }) else {
+        guard let locationCountryISO2Code,
+              let country = CountryCityCatalog.country(
+                  iso2: locationCountryISO2Code
+              ) else {
             countryCitySuggestions = []
             return
         }
@@ -828,6 +838,7 @@ struct PlaceSearchView: View {
             let city = City(
                 name: resolvedPlace.cityName,
                 country: resolvedPlace.country,
+                countryISO2Code: resolvedPlace.countryISO2Code,
                 latitude: resolvedPlace.coordinate.latitude,
                 longitude: resolvedPlace.coordinate.longitude,
                 timeZoneIdentifier: resolvedPlace.timeZoneIdentifier

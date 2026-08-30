@@ -20,6 +20,17 @@ enum AppTab: Hashable {
     case search
 }
 
+/// The three result modes available from the Search tab. Keeping this value in
+/// the app-session router lets Search restore the person's last mode whenever
+/// its tab content is remounted, without persisting it across app launches.
+enum PlaceSearchScope: String, CaseIterable, Identifiable {
+    case city
+    case country
+    case continent
+
+    var id: Self { self }
+}
+
 /// Values pushed inside a tab's own `NavigationStack`.
 ///
 /// Routes deliberately hold IDs rather than full models. This lets a detail
@@ -63,6 +74,8 @@ enum AppSheetDestination: Identifiable, Hashable {
 final class AppNavigation {
     /// Currently visible top-level tab. The app opens on local weather.
     var selectedTab: AppTab = .yourLocation
+    /// Search restores this scope for the lifetime of the current app session.
+    var placeSearchScope: PlaceSearchScope = .city
     /// Separate paths preserve back-stack history as the person switches tabs.
     var yourLocationPath: [AppRoute] = []
     var savedPlacesPath: [AppRoute] = []

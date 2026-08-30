@@ -15,6 +15,8 @@ struct BestSunnyPlacesCard: View {
 
     /// Available weather-derived values, ranked by the selected day.
     let recommendations: [PlaceRecommendation]
+    /// The shared date selector value described by this ranking.
+    let selectedDate: Date
     /// The complete library is supplied so available recommendations can keep
     /// each saved place's custom display name and navigation identity.
     let savedPlaces: [SavedPlace]
@@ -25,6 +27,7 @@ struct BestSunnyPlacesCard: View {
     let timeZoneExclusionNotice: String?
 
     @Environment(\.appTheme) private var theme
+    @Environment(\.calendar) private var calendar
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
 
@@ -66,6 +69,15 @@ struct BestSunnyPlacesCard: View {
 
     // MARK: - Card Presentation
 
+    private var headerTitle: LocalizedStringKey {
+        let dateLabel = ForecastDateLabel.compact(
+            for: selectedDate,
+            calendar: calendar,
+            locale: locale
+        )
+        return "Best Sunny Places · \(dateLabel)"
+    }
+
     var body: some View {
         VStack(
             alignment: .leading,
@@ -73,7 +85,7 @@ struct BestSunnyPlacesCard: View {
         ) {
             WeatherCardHeader(
                 icon: "mappin.and.ellipse",
-                title: "Best Sunny Places"
+                title: headerTitle
             )
 
             if !orderedRows.isEmpty {
@@ -183,9 +195,21 @@ enum SavedPlacesRankingListLayout {
 struct SunnyPlaceRecommendationRow: View {
     let recommendation: PlaceRecommendation
     let displayName: String
+    /// Optional compact context appended after the localized hour total.
+    let trailingContext: String?
 
     @Environment(\.appTheme) private var theme
     @Environment(\.locale) private var locale
+
+    init(
+        recommendation: PlaceRecommendation,
+        displayName: String,
+        trailingContext: String? = nil
+    ) {
+        self.recommendation = recommendation
+        self.displayName = displayName
+        self.trailingContext = trailingContext
+    }
 
     var body: some View {
         // The spacer pushes only the numeric value to the trailing edge; the
@@ -223,12 +247,7 @@ struct SunnyPlaceRecommendationRow: View {
 
             Spacer(minLength: 8)
 
-            Text(
-                SunnyHoursFormatting.hourCountLabel(
-                    recommendation.sunnyHourCount,
-                    locale: locale
-                )
-            )
+            Text(trailingLabel)
                 .font(.body)
                 .monospacedDigit()
                 .foregroundStyle(theme.colors.primaryText)
@@ -236,5 +255,21 @@ struct SunnyPlaceRecommendationRow: View {
         }
         .padding(.vertical, 8)
         .contentShape(.rect)
+    }
+
+    private var trailingLabel: String {
+        let hourLabel = SunnyHoursFormatting.hourCountLabel(
+            recommendation.sunnyHourCount,
+            locale: locale
+        )
+        guard let trailingContext else { return hourLabel }
+
+        // Keep both values inside one localized resource so translators can
+        // reorder the hour total and compact day label if their language needs
+        // a different reading order.
+        var resource: LocalizedStringResource =
+            "\(hourLabel) · \(trailingContext)"
+        resource.locale = locale
+        return String(localized: resource)
     }
 }

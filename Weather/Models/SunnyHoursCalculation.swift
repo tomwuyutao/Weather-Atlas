@@ -240,6 +240,23 @@ enum SunnyHoursCalculation {
         Double(data.hours.count(where: { $0.condition?.countsAsSunnyHour == true }))
     }
 
+    /// Whether at least four fifths of the available WeatherKit daylight
+    /// capsules are clear or mostly clear. The comparison is deliberately
+    /// integer-based so the inclusive 80% boundary cannot drift through
+    /// floating-point rounding. A day without a daylight capsule is not a
+    /// qualifying day: its zero-over-zero share is undefined rather than 100%.
+    static func hasAtLeastEightyPercentSunnyDaylight(
+        in data: SunnyHoursData
+    ) -> Bool {
+        let daylightCapsuleCount = data.hours.count
+        guard daylightCapsuleCount > 0 else { return false }
+
+        let sunnyCapsuleCount = data.hours.count {
+            $0.condition?.countsAsSunnyHour == true
+        }
+        return sunnyCapsuleCount * 5 >= daylightCapsuleCount * 4
+    }
+
     // MARK: - Future Forecast Search
 
     /// Finds the first later city-local forecast day with at least one clear
@@ -275,10 +292,10 @@ enum SunnyHoursCalculation {
         return nil
     }
 
-    /// Returns the number of available later forecast rows before the first
-    /// sunny one. This intentionally does not impose a contiguous ten-day
-    /// horizon: WeatherKit may supply fewer rows.
-    static func followingSunlessForecastDayCount(
+    /// Returns the number of future forecast dates only when every one is
+    /// assessable and contains no sunny hour. Today is deliberately excluded,
+    /// and a single future sunny date suppresses the horizon-wide claim.
+    static func sunlessFutureForecastDayCount(
         after forecast: DailyForecast,
         in forecasts: [DailyForecast],
         timeZone: TimeZone,
@@ -293,18 +310,24 @@ enum SunnyHoursCalculation {
             }
             .sorted { $0.date < $1.date }
 
-        var count = 0
+        guard !laterForecasts.isEmpty else { return nil }
+
         for laterForecast in laterForecasts {
             let data = sunnyHoursData(
                 for: laterForecast,
                 timeZone: timeZone
             )
 
-            guard sunnyHourCount(in: data) == 0 else { break }
-            count += 1
+            // Missing daylight rows or conditions cannot prove that a date is
+            // sunless, so fall back to the honest day-specific status instead.
+            guard !data.hours.isEmpty,
+                  data.hours.allSatisfy({ $0.condition != nil }),
+                  sunnyHourCount(in: data) == 0 else {
+                return nil
+            }
         }
 
-        return count
+        return laterForecasts.count
     }
 
     // MARK: - Daily Status
@@ -364,6 +387,63 @@ enum SunnyHoursCalculation {
             && date < forecast.date.addingTimeInterval(60 * 60)
     }
 
+}
+
+// MARK: - City Forecast Planning
+
+/// Outcome of assessing one city's retained future hourly forecasts against
+/// the mostly-sunny threshold. A missing hourly horizon is distinct from a
+/// complete assessed horizon that simply contains no qualifying day.
+enum MostlySunnyForecastSearchResult {
+    case match(forecast: DailyForecast, selectionDate: Date)
+    case noMatch
+    case unavailable
+}
+
+extension CityWeather {
+    /// Finds the first city-local forecast day on or after the reference day
+    /// whose available daylight capsules are at least 80% clear or mostly
+    /// clear. The paired selection date carries the same literal year, month,
+    /// and day into the app-wide forecast calendar for navigation.
+    func mostlySunnyForecastSearch(
+        onOrAfter referenceDate: Date,
+        selectionCalendar: Calendar = .current
+    ) -> MostlySunnyForecastSearchResult {
+        var cityCalendar = selectionCalendar
+        cityCalendar.timeZone = timeZone
+        let referenceDay = cityCalendar.startOfDay(for: referenceDate)
+        var assessedForecast = false
+
+        let candidateForecasts = dailyForecasts
+            .filter {
+                cityCalendar.startOfDay(for: $0.date) >= referenceDay
+            }
+            .sorted { $0.date < $1.date }
+
+        for forecast in candidateForecasts {
+            let data = SunnyHoursCalculation.sunnyHoursData(
+                for: forecast,
+                timeZone: timeZone
+            )
+            guard !data.hours.isEmpty else { continue }
+            assessedForecast = true
+
+            guard SunnyHoursCalculation
+                .hasAtLeastEightyPercentSunnyDaylight(in: data),
+                  let selectionDate = selectionDate(
+                      for: forecast,
+                      selectionCalendar: selectionCalendar
+                  ) else {
+                continue
+            }
+            return .match(
+                forecast: forecast,
+                selectionDate: selectionDate
+            )
+        }
+
+        return assessedForecast ? .noMatch : .unavailable
+    }
 }
 
 // MARK: - Local-Time Disclosure

@@ -18,11 +18,11 @@ import Foundation
 /// replaces absent source data with plausible-looking hours or conditions.
 /// `Error` lets asynchronous validation throw it, while `Codable` and `Hashable`
 /// let app and widget snapshots store and compare the same explanation.
-struct WeatherDataIssue: Error, Codable, Hashable {
+struct WeatherDataIssue: Error, Codable, Hashable, Sendable {
     // MARK: - Issue Categories
 
     /// Stable issue categories shared by the app, cache, and widget extension.
-    enum Kind: String, Codable, Hashable {
+    enum Kind: String, Codable, Hashable, Sendable {
         case weatherRequestFailed
         case unresolvedPlace
         case missingSunriseOrSunset

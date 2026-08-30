@@ -2,46 +2,23 @@
 //  WidgetDataStore.swift
 //  Weather
 //
-//  Purpose: Persists app-owned widget configuration and shared widget models.
+//  Purpose: Defines the app/widget data contract and persists the app-owned
+//  configuration catalog shared with the widget extension.
 //
 //  Reading guide: the main app and widget extension are separate processes.
-//  They cannot share in-memory Swift objects, so this file defines Codable
-//  payloads. The App Group contains only the catalog of selectable cities; the
-//  widget extension keeps its WeatherKit snapshots in its own private storage.
+//  The App Group contains only selectable-place metadata and preferences.
+//  Forecast snapshots remain private to the extension in WidgetForecast.
 //
 
 import Foundation
 import SwiftUI
 import WidgetKit
-#if !WEATHER_WIDGETS
+
+#if WEATHER_WIDGETS
+import WeatherKit
+#else
 import UIKit
 #endif
-
-// MARK: - Cross-Process Reset State
-
-/// A small App Group marker shared by the app and widget extension.
-///
-/// Widget forecasts live in the extension's private defaults, which the host
-/// app cannot delete. Advancing this value makes every older private snapshot
-/// ineligible after Reset App, while a normal first installation has no epoch.
-enum WidgetResetEpoch {
-    private static let storageKey = "weatherAtlas.widgetResetEpoch"
-
-    static var current: String? {
-        UserDefaults(suiteName: WidgetDataStore.appGroupIdentifier)?.string(
-            forKey: storageKey
-        )
-    }
-
-#if !WEATHER_WIDGETS
-    static func advance() {
-        UserDefaults(suiteName: WidgetDataStore.appGroupIdentifier)?.set(
-            UUID().uuidString,
-            forKey: storageKey
-        )
-    }
-#endif
-}
 
 // MARK: - Widget Data Models
 
@@ -50,7 +27,7 @@ enum WidgetResetEpoch {
 /// `condition` preserves WeatherKit's raw condition through the shared app
 /// wrapper, while `symbolName` is the SF Symbol supplied by WeatherKit. Widgets
 /// must draw that original symbol rather than choosing a replacement icon.
-struct WidgetWeatherPresentation: Codable, Hashable {
+struct WidgetWeatherPresentation: Codable, Hashable, Sendable {
     let condition: AppWeatherCondition
     let symbolName: String
 }
@@ -61,7 +38,7 @@ struct WidgetWeatherPresentation: Codable, Hashable {
 /// transitions, while the local hour makes chart layout independent of the
 /// device's timezone. `weather` remains optional only so pre-source-payload
 /// snapshots decode; those snapshots are refreshed before presentation.
-struct WidgetHourlyCondition: Codable, Hashable, Identifiable {
+struct WidgetHourlyCondition: Codable, Hashable, Identifiable, Sendable {
     /// Absolute forecast instant; unique even when a local hour repeats.
     let date: Date
     /// City-local clock hour used by the chart layout.
@@ -213,7 +190,7 @@ enum WidgetTextSize: String, Codable, Hashable {
 /// One available local-date row in the large widget timeline.
 /// The row is independent from `WidgetDataCity` so the up-to-ten-day chart can
 /// render every WeatherKit forecast row without requiring a full horizon.
-struct WidgetSunnyWindowDay: Codable, Hashable, Identifiable {
+struct WidgetSunnyWindowDay: Codable, Hashable, Identifiable, Sendable {
     /// Literal selection date represented by this row.
     let date: Date
     /// Exact WeatherKit source data for every available daylight hour in this
@@ -268,6 +245,32 @@ struct WidgetDataCatalog: Codable, Hashable {
     var resolvedFollowsSystemTextSize: Bool {
         followsSystemTextSize ?? false
     }
+}
+
+// MARK: - Cross-Process Reset State
+
+/// A small App Group marker shared by the app and widget extension.
+///
+/// Widget forecasts live in the extension's private defaults, which the host
+/// app cannot delete. Advancing this value makes every older private snapshot
+/// ineligible after Reset App, while a normal first installation has no epoch.
+enum WidgetResetEpoch {
+    private static let storageKey = "weatherAtlas.widgetResetEpoch"
+
+    static var current: String? {
+        UserDefaults(suiteName: WidgetDataStore.appGroupIdentifier)?.string(
+            forKey: storageKey
+        )
+    }
+
+#if !WEATHER_WIDGETS
+    static func advance() {
+        UserDefaults(suiteName: WidgetDataStore.appGroupIdentifier)?.set(
+            UUID().uuidString,
+            forKey: storageKey
+        )
+    }
+#endif
 }
 
 // MARK: - Shared Widget Persistence
@@ -459,3 +462,303 @@ enum WidgetDataStore {
     }
 #endif
 }
+
+#if WEATHER_WIDGETS
+// MARK: - Extension-Only Presentation Data
+
+/// Builds deterministic source-shaped WeatherKit data for Xcode previews.
+private func widgetPreviewWeather(
+    _ condition: WeatherCondition,
+    symbolName: String
+) -> WidgetWeatherPresentation {
+    WidgetWeatherPresentation(
+        condition: AppWeatherCondition(weatherKit: condition),
+        symbolName: symbolName
+    )
+}
+
+extension WidgetSunnyWindowDay {
+    /// Full source conditions for a five-color row. Pre-source-payload snapshots
+    /// are refreshed instead of fabricating a weather condition or symbol.
+    var chartHourlyConditions: [WidgetHourlyCondition] {
+        (hourlyConditions ?? []).filter { $0.weather != nil }
+    }
+}
+
+extension WidgetDataCity {
+    // MARK: - Preview Fixture
+
+    /// Deterministic multi-day city fixture used by WidgetKit previews.
+    static var preview: WidgetDataCity {
+        var calendar = Calendar.current
+        calendar.timeZone = TimeZone(identifier: "Europe/Madrid")!
+        var city = WidgetDataCity(
+            id: "barcelona",
+            cityName: "Barcelona",
+            timeZoneIdentifier: "Europe/Madrid",
+            latitude: 41.3874,
+            longitude: 2.1686
+        )
+        city.hourlyConditions = (6...21).compactMap { hour in
+            guard let date = calendar.date(
+                bySettingHour: hour,
+                minute: 0,
+                second: 0,
+                of: .now
+            ) else {
+                return nil
+            }
+            let weather: WidgetWeatherPresentation
+            switch hour {
+            case 8...16:
+                weather = widgetPreviewWeather(.clear, symbolName: "sun.max.fill")
+            case 17:
+                weather = widgetPreviewWeather(.mostlyClear, symbolName: "cloud.sun.fill")
+            case 7, 20:
+                weather = widgetPreviewWeather(.partlyCloudy, symbolName: "cloud.sun.fill")
+            case 18:
+                weather = widgetPreviewWeather(.rain, symbolName: "cloud.rain.fill")
+            case 19:
+                weather = widgetPreviewWeather(.drizzle, symbolName: "cloud.drizzle.fill")
+            default:
+                weather = widgetPreviewWeather(.cloudy, symbolName: "cloud.fill")
+            }
+            return WidgetHourlyCondition(
+                date: date,
+                hour: hour,
+                weather: weather
+            )
+        }
+        city.currentWeather = widgetPreviewWeather(
+            .mostlyClear,
+            symbolName: "cloud.sun.fill"
+        )
+        city.weatherFetchedAt = .now
+        city.hourlyWeatherConditions = city.hourlyConditions
+        city.sunrise = calendar.date(
+            bySettingHour: 6,
+            minute: 30,
+            second: 0,
+            of: .now
+        )
+        city.sunset = calendar.date(
+            bySettingHour: 21,
+            minute: 0,
+            second: 0,
+            of: .now
+        )
+        // Vary hours by day so previews exercise differing spans and source
+        // symbols without requiring a live WeatherKit request.
+        city.sunnyWindowDays = (0..<10).compactMap { offset in
+            guard let date = calendar.date(byAdding: .day, value: offset, to: .now) else { return nil }
+            let sunnyStart = 7 + (offset % 4)
+            let sunnyEnd = 15 + (offset % 5)
+            return WidgetSunnyWindowDay(
+                date: calendar.startOfDay(for: date),
+                hourlyConditions: (6...21).compactMap { hour in
+                    guard let hourDate = calendar.date(
+                        bySettingHour: hour,
+                        minute: 0,
+                        second: 0,
+                        of: date
+                    ) else {
+                        return nil
+                    }
+                    let weather: WidgetWeatherPresentation
+                    if (sunnyStart..<sunnyEnd).contains(hour) {
+                        weather = widgetPreviewWeather(.clear, symbolName: "sun.max.fill")
+                    } else if hour == sunnyEnd {
+                        weather = widgetPreviewWeather(
+                            .mostlyClear,
+                            symbolName: "cloud.sun.fill"
+                        )
+                    } else if hour == 6 || hour == sunnyEnd + 1 {
+                        weather = widgetPreviewWeather(.partlyCloudy, symbolName: "cloud.sun.fill")
+                    } else if hour == 18, offset.isMultiple(of: 3) {
+                        weather = widgetPreviewWeather(.rain, symbolName: "cloud.rain.fill")
+                    } else if hour == 19, offset.isMultiple(of: 3) {
+                        weather = widgetPreviewWeather(.drizzle, symbolName: "cloud.drizzle.fill")
+                    } else {
+                        weather = widgetPreviewWeather(.cloudy, symbolName: "cloud.fill")
+                    }
+                    return WidgetHourlyCondition(
+                        date: hourDate,
+                        hour: hour,
+                        weather: weather
+                    )
+                }
+            )
+        }
+        return city
+    }
+
+    // MARK: - Derived Presentation
+
+    /// The large chart has room for at most ten rows, but it does not validate
+    /// or require a complete ten-day horizon. It presents WeatherKit's available
+    /// current/future rows in their received order.
+    var widgetSunnyWindowDays: [WidgetSunnyWindowDay] {
+        Array((sunnyWindowDays ?? []).prefix(10))
+    }
+
+    /// Valid timezone represented by the published identifier.
+    /// `flatMap` both unwraps the optional identifier and discards invalid
+    /// timezone strings.
+    var widgetTimeZone: TimeZone? {
+        timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
+    }
+
+    /// A rendering-safe current-day domain derived from WeatherKit's available
+    /// daylight-marked hourly records. A full-day domain is used only when that
+    /// source list is empty.
+    var widgetCurrentDaylightBounds: SunnyHoursChartBounds {
+        let sourceHours = hourlyConditions?.map(\.hour) ?? []
+        return widgetFallbackChartBounds(for: sourceHours)
+    }
+
+    /// Exact place-identity issue preventing a trustworthy fetch or deep link.
+    var widgetIdentityIssue: WeatherDataIssue? {
+        guard !cityName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return .unresolvedPlace("city name")
+        }
+        guard let latitude,
+              latitude.isFinite,
+              (-90...90).contains(latitude),
+              let longitude,
+              longitude.isFinite,
+              (-180...180).contains(longitude) else {
+            return .unresolvedPlace("coordinates")
+        }
+        return nil
+    }
+
+    /// Whether a catalog location has stable identity and coordinates for a
+    /// direct request. Time zone is intentionally excluded because the widget
+    /// extension can repair legacy fixed places from its bundled lookup data.
+    var hasResolvableWidgetLocation: Bool {
+        widgetIdentityIssue == nil
+    }
+
+    /// Exact issue preventing current-day widget content. Source-level solar,
+    /// hourly, condition, and metric gaps are presentation fallbacks, not an
+    /// unavailable state; only a failed request, explicit no-forecast state,
+    /// unsafe identity, or missing timezone blocks the widget.
+    var widgetCurrentIssue: WeatherDataIssue? {
+        if let dataIssue = widgetBlockingDataIssue { return dataIssue }
+        if let identityIssue = widgetIdentityIssue { return identityIssue }
+        guard widgetTimeZone != nil else { return .missingTimeZone }
+        return nil
+    }
+
+    /// Exact issue preventing the large multi-day chart.
+    /// Its requirements differ from the daily widget only because it needs at
+    /// least one available forecast row to draw.
+    var widgetSunnyWindowIssue: WeatherDataIssue? {
+        if let dataIssue = widgetBlockingDataIssue { return dataIssue }
+        if let identityIssue = widgetIdentityIssue { return identityIssue }
+        guard widgetTimeZone != nil else { return .missingTimeZone }
+        guard !widgetSunnyWindowDays.isEmpty else { return .missingForecastData }
+        return nil
+    }
+
+    /// Returns only issues that mean the snapshot cannot safely identify or
+    /// represent a place at all. Legacy field-level issues remain decodable but
+    /// no longer hide otherwise usable WeatherKit data.
+    var widgetBlockingDataIssue: WeatherDataIssue? {
+        guard let dataIssue else { return nil }
+        switch dataIssue.kind {
+        case .weatherRequestFailed,
+             .unresolvedPlace,
+             .missingForecastData,
+             .missingTimeZone:
+            return dataIssue
+        default:
+            return nil
+        }
+    }
+
+    // MARK: - Combining Catalog and Snapshot Data
+
+    /// Replaces weather-bearing catalog fields with a fetched cached snapshot.
+    /// This returns a new struct because Swift value types are copied on change;
+    /// the catalog value itself remains app-owned and unmodified.
+    func applying(
+        _ snapshot: WidgetWeatherSnapshot,
+        preservesResolvedCityName: Bool = false
+    ) -> WidgetDataCity {
+        let snapshotName: String? = {
+            guard !preservesResolvedCityName,
+                  id == WidgetDataStore.currentLocationIdentifier,
+                  snapshot.locationSource == .deviceCurrentLocation,
+                  WidgetDataStore.catalog()?.resolvedDefaultLocationKind
+                    == .currentLocation,
+                  snapshot.cityNameLocaleIdentifier
+                    == WidgetDataStore.appLocale.identifier else {
+                return nil
+            }
+            return snapshot.resolvedCityName
+        }()
+        return WidgetDataCity(
+            id: id,
+            legacyIdentifiers: legacyIdentifiers,
+            cityName: snapshotName ?? cityName,
+            configurationSubtitle: configurationSubtitle,
+            timeZoneIdentifier: snapshot.timeZoneIdentifier,
+            latitude: snapshot.latitude ?? latitude,
+            longitude: snapshot.longitude ?? longitude,
+            hourlyConditions: snapshot.hourlyConditions,
+            hourlyWeatherConditions: snapshot.hourlyWeatherConditions,
+            currentWeather: snapshot.currentWeather,
+            weatherFetchedAt: snapshot.fetchedAt,
+            sunrise: snapshot.sunrise,
+            sunset: snapshot.sunset,
+            sunnyWindowDays: snapshot.sunnyWindowDays,
+            dataIssue: snapshot.dataIssue
+        )
+    }
+
+    /// Clears weather-bearing content while retaining identity and exact issue.
+    /// The resulting value is still routable and configurable, but cannot be
+    /// mistaken for a valid all-cloudy/zero-sun forecast.
+    func markingUnavailable(_ issue: WeatherDataIssue) -> WidgetDataCity {
+        WidgetDataCity(
+            id: id,
+            legacyIdentifiers: legacyIdentifiers,
+            cityName: cityName,
+            configurationSubtitle: configurationSubtitle,
+            timeZoneIdentifier: timeZoneIdentifier,
+            latitude: latitude,
+            longitude: longitude,
+            hourlyConditions: nil,
+            hourlyWeatherConditions: nil,
+            currentWeather: nil,
+            weatherFetchedAt: nil,
+            sunrise: nil,
+            sunset: nil,
+            sunnyWindowDays: [],
+            dataIssue: issue
+        )
+    }
+
+    /// Returns the same catalog/snapshot value with one locally resolved zone.
+    func replacingTimeZone(with identifier: String) -> WidgetDataCity {
+        WidgetDataCity(
+            id: id,
+            legacyIdentifiers: legacyIdentifiers,
+            cityName: cityName,
+            configurationSubtitle: configurationSubtitle,
+            timeZoneIdentifier: identifier,
+            latitude: latitude,
+            longitude: longitude,
+            hourlyConditions: hourlyConditions,
+            hourlyWeatherConditions: hourlyWeatherConditions,
+            currentWeather: currentWeather,
+            weatherFetchedAt: weatherFetchedAt,
+            sunrise: sunrise,
+            sunset: sunset,
+            sunnyWindowDays: sunnyWindowDays,
+            dataIssue: dataIssue
+        )
+    }
+}
+#endif

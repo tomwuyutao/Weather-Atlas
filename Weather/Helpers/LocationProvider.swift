@@ -57,6 +57,8 @@ nonisolated struct CurrentLocationMetadata: Equatable, Hashable, Sendable {
     let displayName: String?
     /// Geocoder-provided localized country name, when available.
     let countryName: String?
+    /// Stable ISO 3166-1 alpha-2 country identity, when available.
+    let isoCountryCode: String?
     /// Time zone identifier attached to the resolved place, when available.
     let timeZoneIdentifier: String?
 
@@ -65,10 +67,12 @@ nonisolated struct CurrentLocationMetadata: Equatable, Hashable, Sendable {
     init(
         displayName: String?,
         countryName: String?,
+        isoCountryCode: String?,
         timeZoneIdentifier: String?
     ) {
         self.displayName = Self.localityName(from: displayName)
         self.countryName = countryName
+        self.isoCountryCode = Self.normalizedISO2Code(isoCountryCode)
         self.timeZoneIdentifier = timeZoneIdentifier
     }
 
@@ -95,14 +99,24 @@ nonisolated struct CurrentLocationMetadata: Equatable, Hashable, Sendable {
 
     /// Whether Apple supplied at least one factual presentation field.
     var hasAnyValue: Bool {
-        displayName != nil || countryName != nil || timeZoneIdentifier != nil
+        displayName != nil
+            || countryName != nil
+            || isoCountryCode != nil
+            || timeZoneIdentifier != nil
     }
 
-    /// A complete current-location identity has a real locality, country, and
-    /// valid timezone. Partial metadata remains publishable so available fields
-    /// can render while the missing fields stay blank.
+    /// Complete presentation metadata has a real locality, country, and valid
+    /// timezone. The ISO code is identity metadata rather than visible content.
     var isComplete: Bool {
-        displayName != nil && countryName != nil && timeZoneIdentifier != nil
+        displayName != nil
+            && countryName != nil
+            && timeZoneIdentifier != nil
+    }
+
+    /// A second geocoder may still supply a missing stable country identity,
+    /// even when all user-visible presentation fields are already complete.
+    var needsSupplementalLookup: Bool {
+        !isComplete || isoCountryCode == nil
     }
 
     func fillingMissingFields(
@@ -111,14 +125,25 @@ nonisolated struct CurrentLocationMetadata: Equatable, Hashable, Sendable {
         CurrentLocationMetadata(
             displayName: displayName ?? other.displayName,
             countryName: countryName ?? other.countryName,
+            isoCountryCode: isoCountryCode ?? other.isoCountryCode,
             timeZoneIdentifier:
                 timeZoneIdentifier ?? other.timeZoneIdentifier
         )
     }
 
+    private static func normalizedISO2Code(_ code: String?) -> String? {
+        guard let code = code?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ).uppercased(), code.count == 2 else {
+            return nil
+        }
+        return code
+    }
+
     static let empty = CurrentLocationMetadata(
         displayName: nil,
         countryName: nil,
+        isoCountryCode: nil,
         timeZoneIdentifier: nil
     )
 }
@@ -265,6 +290,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         metadata = CurrentLocationMetadata(
             displayName: city.name,
             countryName: city.country,
+            isoCountryCode: countryISO2Code(representedBy: city),
             timeZoneIdentifier: city.timeZoneIdentifier
         )
         status = .ready
@@ -466,7 +492,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
 
             // A partial MapKit result must not suppress a valid locality,
             // country, or timezone available from Core Location.
-            if !resolvedMetadata.isComplete {
+            if resolvedMetadata.needsSupplementalLookup {
                 let coreMetadata = try await coreLocationMetadata(for: location)
                 resolvedMetadata = resolvedMetadata.fillingMissingFields(
                     from: coreMetadata
@@ -512,6 +538,9 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
                 mapItem.placemark.country
                     ?? mapItem.placemark.isoCountryCode
             ),
+            isoCountryCode: cleanMetadataValue(
+                mapItem.placemark.isoCountryCode
+            ),
             timeZoneIdentifier: validTimeZoneIdentifier(
                 mapItem.timeZone?.identifier
             )
@@ -538,6 +567,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
             countryName: cleanMetadataValue(
                 placemark.country ?? placemark.isoCountryCode
             ),
+            isoCountryCode: cleanMetadataValue(placemark.isoCountryCode),
             timeZoneIdentifier: validTimeZoneIdentifier(
                 placemark.timeZone?.identifier
             )
@@ -555,6 +585,32 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
             return nil
         }
         return value
+    }
+
+    /// Provider-resolved homes normally carry their ISO code directly. This
+    /// deterministic catalog fallback upgrades homes saved by an older schema
+    /// using exact source identity first, then an unambiguous country label in
+    /// any language Weather Atlas supports. It never guesses from proximity.
+    private func countryISO2Code(representedBy city: City) -> String? {
+        if let code = city.countryISO2Code {
+            return code
+        }
+
+        let countries = CountryCityCatalog.countries(
+            locale: Locale(identifier: "en")
+        )
+        if let catalogIdentifier = city.catalogIdentifier,
+           let country = countries.first(where: { country in
+               country.cities.contains {
+                   $0.catalogIdentifier == catalogIdentifier
+               }
+           }) {
+            return country.iso2
+        }
+
+        return CountryCityCatalog.countryISO2Code(
+            matchingCountryName: city.country
+        )
     }
 
     private func validTimeZoneIdentifier(_ identifier: String?) -> String? {

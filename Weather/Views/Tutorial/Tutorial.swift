@@ -705,6 +705,7 @@ private struct TutorialHomeLocationPicker: View {
                 let city = City(
                     name: resolved.cityName,
                     country: resolved.country,
+                    countryISO2Code: resolved.countryISO2Code,
                     latitude: resolved.coordinate.latitude,
                     longitude: resolved.coordinate.longitude,
                     timeZoneIdentifier: resolved.timeZoneIdentifier

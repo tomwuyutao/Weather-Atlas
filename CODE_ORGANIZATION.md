@@ -137,13 +137,14 @@ ten-day chart.
 Read:
 
 1. **Weather/Views/SavedPlaces/SavedPlacesView.swift**
-2. **Weather/Views/SavedPlaces/BestSunnyDatesCard.swift**
-3. **Weather/Views/SavedPlaces/BestSunnyPlacesCard.swift**
-4. **Weather/Views/SavedPlaces/ManageSavedPlaces.swift**
+2. **Weather/Views/SavedPlaces/BestSunnyPlacesCard.swift**
+3. **Weather/Views/SavedPlaces/PlanAheadCards.swift**
+4. **Weather/Views/SavedPlaces/CustomizeSavedPlaces.swift**
+5. **Weather/Views/SavedPlaces/ManageSavedPlaces.swift**
 
-The overview is a planning dashboard. ManageSavedPlaces.swift is the editable saved-place
-library. The current location is not included in saved-place heatmaps or
-saved-place recommendations.
+The overview is a reorderable planning dashboard split between the selected
+day and future planning. ManageSavedPlaces.swift is the editable saved-place
+library. The current location is not included in saved-place recommendations.
 
 ### 7. Read discovery and geography
 
@@ -172,7 +173,9 @@ Read:
 4. **Weather/Views/Settings/Settings.swift**
 5. **Weather/App/AppDelegate.swift**
 6. **Weather/Widgets/WidgetDataStore.swift**
-7. **Weather/Widgets/Widgets.swift**
+7. **Weather/Widgets/WidgetForecast.swift**
+8. **Weather/Widgets/WidgetLocation.swift**
+9. **Weather/Widgets/Widgets.swift**
 
 Widgets are worth reading last because an app extension is a separate process
 with its own lifecycle and forecast loading.
@@ -358,7 +361,7 @@ forecast be retained safely during the app session.
 | Area | Primary view files | What belongs there |
 | --- | --- | --- |
 | Your Location | YourLocationView.swift, SunnyHoursTimeline.swift, NearbySunnyPlacesCard.swift | Device-location lifecycle, local timeline, and nearby-sun suggestions. |
-| Saved Places overview | SavedPlacesView.swift, BestSunnyDatesCard.swift, BestSunnyPlacesCard.swift | Heatmap calendar and ranked saved-place planning. |
+| Saved Places overview | SavedPlacesView.swift, BestSunnyPlacesCard.swift, PlanAheadCards.swift, CustomizeSavedPlaces.swift | Reorderable selected-day and future saved-place planning. |
 | Saved Places library | ManageSavedPlaces.swift | Rename, delete, and browse the persistent saved library. |
 | Detail | DetailView.swift, ChartView.swift | Shared full reports, reusable charts, and saved-place actions where appropriate. |
 | Map | MapCard.swift, MapView.swift | Shared two-size floating surface, MapKit presentation, markers, Find Sun, and camera handling. |
@@ -384,11 +387,11 @@ chart logic and appearance in one place.
 
 ### Saved Places
 
-SavedPlacesView is not the library editor. It is a concise dashboard
-for comparison:
+SavedPlacesView is not the library editor. It is a concise planning dashboard:
 
-- BestSunnyDatesCard renders a heatmap-style calendar using saved places only.
-- BestSunnyPlacesCard presents the best saved-place recommendations.
+- BestSunnyPlacesCard ranks saved places for the globally selected day.
+- PlanAheadCards presents the next weekend and each place's next mostly sunny day.
+- CustomizeSavedPlaces owns the persisted section and card ordering interface.
 - A navigation action opens ManageSavedPlaces for the full editable library.
 
 ManageSavedPlaces.swift is where persistent-place management happens. It preserves the
@@ -455,16 +458,17 @@ app. The handoff is intentionally narrow:
 1. WeatherModel publishes saved-city identities plus the default Current
    Location, display labels, timezone information, and localized widget strings
    to the app-group store.
-2. WidgetDataStore writes and reads that shared catalog and widget snapshots.
-3. The extension fetches its own WeatherKit forecast, stores a fresh
-   WidgetWeatherSnapshot, and falls back to a stale last-known-good snapshot
-   only when necessary.
-4. WidgetCenter reloads timelines when shared widget data changes.
+2. WidgetDataStore writes and reads only that shared configuration catalog.
+3. WidgetForecast independently fetches WeatherKit data and keeps each
+   WidgetWeatherSnapshot in the extension's private storage.
+4. When offline, the extension can use a cached forecast for up to 24 hours;
+   older snapshots are removed and the widget shows an unavailable state.
+5. WidgetCenter reloads timelines when shared widget data changes.
 
 The widget cache target is 30 minutes. The catalog does not pretend to be a
 main-app weather snapshot: widget weather is independently fetched by the
-extension. Widgets expose a configurable saved city, Home Screen widgets in
-medium and large sizes, and an accessory rectangular Lock Screen widget. They
+extension. Widgets expose a configurable saved city, Small, Medium, and Large
+Home Screen widgets, and an accessory rectangular Lock Screen widget. They
 use WeatherDataIssue for truthful missing-data states and link back to the
 Saved Places route.
 
@@ -532,8 +536,10 @@ Saved Places route.
 | Weather/Views/YourLocation/YourLocationView.swift | Device-location permission, refresh, and recovery wrapper. |
 | Weather/Views/Detail/NearbySunnyPlacesCard.swift | Nearby sunny-city rows, distance labels, and Map handoff. |
 | Weather/Views/SavedPlaces/SavedPlacesView.swift | Saved Places planning dashboard. |
-| Weather/Views/SavedPlaces/BestSunnyDatesCard.swift | Saved-places-only heatmap calendar. |
 | Weather/Views/SavedPlaces/BestSunnyPlacesCard.swift | Best sunny saved-place recommendations. |
+| Weather/Views/SavedPlaces/PlanAheadCards.swift | Weekend rankings and each place's next mostly sunny day. |
+| Weather/Views/SavedPlaces/CustomizeSavedPlaces.swift | Persisted native dashboard section and card reordering. |
+| Weather/Views/SavedPlaces/BestSunnyDatesCard.swift | Date ranking reused by Find Sun results. |
 
 ### Views: Detail, Map, Places, Search, Settings
 
@@ -559,10 +565,15 @@ Saved Places route.
 
 | File | Role |
 | --- | --- |
-| Weather/Widgets/WidgetDataStore.swift | App-group configuration catalog, locale handoff, and reset generation. |
-| Weather/Widgets/WidgetForecastStore.swift | Widget-extension-private forecast cache and freshness validation. |
+| Weather/Widgets/SunnyStatusSmallWidget.swift | Small Home Screen current-condition and sun-status presentation. |
+| Weather/Widgets/SunnyHoursMediumWidget.swift | Medium Home Screen daily sunny-hours presentation and shared Home chart header helpers. |
+| Weather/Widgets/SunnyWindowLargeWidget.swift | Large Home Screen multi-day sunny-window presentation. |
+| Weather/Widgets/SunnyHoursLockScreenWidget.swift | Accessory rectangular Lock Screen registration and presentation. |
 | Weather/Widgets/SunnyHoursChartPrimitives.swift | Shared app/widget capsule timelines and chart geometry. |
-| Weather/Widgets/Widgets.swift | Widget configuration intents, timeline provider, WeatherKit fetching, and widget views. |
+| Weather/Widgets/WidgetDataStore.swift | Shared Codable contract, App Group catalog, locale handoff, reset generation, and extension-only presentation data. |
+| Weather/Widgets/WidgetForecast.swift | Widget timeline provider, private 30-minute/24-hour cache, WeatherKit fetching, request coordination, and snapshot construction. |
+| Weather/Widgets/WidgetLocation.swift | Widget-owned current-location, reverse-geocoding, and time-zone resolution. |
+| Weather/Widgets/Widgets.swift | Extension entry point, App Intent configuration, timeline entry, shared WidgetKit policy, and family routing. |
 | Weather/Widgets/WeatherWidgets-Info.plist | Widget extension bundle metadata. |
 | Weather/Widgets/WeatherWidgets-InfoPlist.xcstrings | Localized widget extension Info.plist strings. |
 | Weather/Widgets/Localizable.xcstrings | Widget-localized UI text. |
@@ -621,7 +632,7 @@ Before changing code, identify the layer first:
 | Tab, push, sheet, deep-link, or Map handoff behavior | AppNavigation and ContentView. |
 | Search result sourcing | CitySearch and SearchView. |
 | Map markers, cards, or Find Sun | MapView, plus WeatherModel if shared state changes. |
-| Widget behavior | WidgetDataStore and Widgets, then the app-group entitlements. |
+| Widget behavior | The relevant size file, then WidgetForecast, WidgetLocation, WidgetDataStore, Widgets, and the app-group entitlements. |
 
 For one complete end-to-end exercise, trace this path:
 

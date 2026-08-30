@@ -139,6 +139,7 @@ struct CitySearchResult: Identifiable {
         candidate = CitySearchPlaceCandidate(
             cityName: result.name,
             country: result.country ?? result.countryCode ?? "",
+            countryISO2Code: result.countryCode,
             coordinate: CLLocationCoordinate2D(
                 latitude: result.latitude,
                 longitude: result.longitude
@@ -173,6 +174,7 @@ struct CitySearchResult: Identifiable {
 struct CitySearchResolvedPlace {
     let cityName: String
     let country: String
+    let countryISO2Code: String?
     let coordinate: CLLocationCoordinate2D
     let timeZoneIdentifier: String
 }
@@ -182,6 +184,7 @@ struct CitySearchResolvedPlace {
 fileprivate struct CitySearchPlaceCandidate {
     let cityName: String?
     let country: String?
+    let countryISO2Code: String?
     let coordinate: CLLocationCoordinate2D?
     let timeZoneIdentifier: String?
 }
@@ -368,6 +371,9 @@ final class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
                 country: cleanProviderValue(
                     item.placemark.country ?? item.placemark.isoCountryCode
                 ),
+                countryISO2Code: validCountryISO2Code(
+                    item.placemark.isoCountryCode
+                ),
                 coordinate: coordinate,
                 timeZoneIdentifier: cleanProviderValue(
                     item.placemark.timeZone?.identifier
@@ -408,6 +414,7 @@ final class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
 
         guard candidate.cityName == nil
             || candidate.country == nil
+            || validCountryISO2Code(candidate.countryISO2Code) == nil
             || validTimeZoneIdentifier(candidate.timeZoneIdentifier) == nil else {
             return try validatedPlace(candidate, resultTitle: resultTitle)
         }
@@ -430,6 +437,9 @@ final class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
                         ?? cleanProviderValue(
                             placemark.country ?? placemark.isoCountryCode
                         ),
+                    countryISO2Code: validCountryISO2Code(
+                        candidate.countryISO2Code
+                    ) ?? validCountryISO2Code(placemark.isoCountryCode),
                     coordinate: coordinate,
                     timeZoneIdentifier: validTimeZoneIdentifier(
                         candidate.timeZoneIdentifier
@@ -491,6 +501,9 @@ final class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
         return CitySearchResolvedPlace(
             cityName: cityName,
             country: country,
+            countryISO2Code: validCountryISO2Code(
+                candidate.countryISO2Code
+            ),
             coordinate: coordinate,
             timeZoneIdentifier: timeZoneIdentifier
         )
@@ -511,6 +524,17 @@ final class CitySearchManager: NSObject, MKLocalSearchCompleterDelegate {
             return nil
         }
         return identifier
+    }
+
+    private func validCountryISO2Code(_ code: String?) -> String? {
+        guard let code = cleanProviderValue(code)?.uppercased(),
+              code.count == 2,
+              code.unicodeScalars.allSatisfy({
+                  $0.value >= 65 && $0.value <= 90
+              }) else {
+            return nil
+        }
+        return code
     }
 
     // MARK: - Apple Maps Delegate

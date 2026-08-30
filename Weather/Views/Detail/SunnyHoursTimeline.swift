@@ -314,14 +314,12 @@ private struct DailySunnyHoursTrack: View {
             hours: chartHours,
             bounds: data.bounds,
             currentDate: .now,
-            timeZone: timeZone,
             showsCurrentTimeMarker: selectedDateIsToday,
             configuration: .init(
                 capsuleSpacing: capsuleSpacing,
                 maximumCapsuleWidth: maximumCapsuleWidth,
                 minimumTrackHeight: timelineMinimumHeight,
-                axisHeight: axisHeight,
-                axisStyle: .sparse
+                axisHeight: axisHeight
             ),
             colors: SunnyHoursChartColors(
                 primary: theme.colors.primaryText,

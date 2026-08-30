@@ -11,11 +11,10 @@ import UIKit
 
 // MARK: - Forecast Presentation State
 
-/// Shared presentation state for the two Saved Places planning cards.
+/// Shared presentation state for Saved Places planning cards.
 ///
 /// The state changes only their explanatory fallback content. Any available
-/// recommendations or date summaries continue to use the existing ranking
-/// paths.
+/// recommendations continue to use the established ranking paths.
 enum SavedPlacesForecastPresentationState: Equatable {
     case emptyLibrary
     case loading
@@ -34,6 +33,12 @@ enum SavedPlacesForecastPresentationState: Equatable {
 
 // MARK: - Planning Dashboard
 
+private enum SavedPlacesSheet: String, Identifiable {
+    case customize
+
+    var id: String { rawValue }
+}
+
 /// Planning dashboard for cities the person explicitly saved.
 struct SavedPlacesView: View {
     // MARK: - Shared Inputs
@@ -41,6 +46,17 @@ struct SavedPlacesView: View {
     @Bindable var model: WeatherModel
     @Bindable var router: AppNavigation
     @Binding var selectedDate: Date
+
+    @State private var presentedSheet: SavedPlacesSheet?
+    @AppStorage(SavedPlacesDashboardSection.storageKey)
+    private var storedDashboardSectionOrder =
+        SavedPlacesDashboardSection.defaultStorageValue
+    @AppStorage(SavedPlacesSelectedDayCard.storageKey)
+    private var storedSelectedDayCardOrder =
+        SavedPlacesSelectedDayCard.defaultStorageValue
+    @AppStorage(SavedPlacesPlanAheadCard.storageKey)
+    private var storedPlanAheadCardOrder =
+        SavedPlacesPlanAheadCard.defaultStorageValue
 
     @Environment(\.appTheme) private var theme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -54,6 +70,24 @@ struct SavedPlacesView: View {
         model.savedRecommendations(
             on: selectedDate,
             locale: locale
+        )
+    }
+
+    private var orderedDashboardSections: [SavedPlacesDashboardSection] {
+        SavedPlacesDashboardSection.order(
+            from: storedDashboardSectionOrder
+        )
+    }
+
+    private var orderedSelectedDayCards: [SavedPlacesSelectedDayCard] {
+        SavedPlacesSelectedDayCard.order(
+            from: storedSelectedDayCardOrder
+        )
+    }
+
+    private var orderedPlanAheadCards: [SavedPlacesPlanAheadCard] {
+        SavedPlacesPlanAheadCard.order(
+            from: storedPlanAheadCardOrder
         )
     }
 
@@ -105,26 +139,76 @@ struct SavedPlacesView: View {
         .sorted()
     }
 
-    private var dateSummaries: [BestSunnyDateSummary] {
-        return savedForecastDates.compactMap { date in
-            let recommendations = model.savedRecommendations(
-                on: date,
-                locale: locale
-            )
+    /// The next weekend starts with today when the dashboard is opened on a
+    /// Saturday; on Sunday it advances to the following weekend. These dates
+    /// stay independent from the selected-day switcher.
+    private var weekendDates: (saturday: Date, sunday: Date) {
+        let calendar = model.forecastCalendar
+        let today = calendar.startOfDay(for: .now)
+        let weekday = calendar.component(.weekday, from: today)
+        let daysUntilSaturday = (7 - weekday + 7) % 7
+        let saturday = calendar.date(
+            byAdding: .day,
+            value: daysUntilSaturday,
+            to: today
+        ) ?? today
+        let sunday = calendar.date(
+            byAdding: .day,
+            value: 1,
+            to: saturday
+        ) ?? saturday
+        return (saturday, sunday)
+    }
 
-            return BestSunnyDateSummary(
-                date: date,
-                recommendations: recommendations,
-                locale: locale
-            ) { recommendation in
-                model.placesStore.allPlaces.first {
-                    $0.id == recommendation.id
-                }?.localizedDisplayName(locale: locale)
-                    ?? recommendation.cityWeather.city.localizedDisplayName(
-                        locale: locale
-                    )
+    private var saturdayRecommendations: [PlaceRecommendation] {
+        model.savedRecommendations(
+            on: weekendDates.saturday,
+            locale: locale
+        )
+    }
+
+    private var sundayRecommendations: [PlaceRecommendation] {
+        model.savedRecommendations(
+            on: weekendDates.sunday,
+            locale: locale
+        )
+    }
+
+    /// Every saved place remains represented, even while different WeatherKit
+    /// requests settle at different times. A loaded place searches its own
+    /// local forecast days and maps the first qualifying date back into the
+    /// shared selector calendar.
+    private var sunnyOutlooks: [SavedPlaceSunnyOutlook] {
+        let outlooks = model.placesStore.allPlaces.map { place in
+            let status: SavedPlaceSunnyOutlook.Status
+
+            if let weather = model.weatherStore.weather(for: place.id) {
+                switch weather.mostlySunnyForecastSearch(
+                    onOrAfter: .now,
+                    selectionCalendar: model.forecastCalendar
+                ) {
+                case .match(_, let selectionDate):
+                    status = .date(selectionDate)
+                case .noMatch:
+                    status = .noMatch
+                case .unavailable:
+                    status = .unavailable
+                }
+            } else if model.weatherStore.isLoading(place.id)
+                        || (forecastPresentationState == .loading
+                            && model.weatherStore.failuresByID[place.id] == nil) {
+                status = .loading
+            } else {
+                status = .unavailable
             }
+
+            return SavedPlaceSunnyOutlook(
+                place: place,
+                status: status
+            )
         }
+
+        return SavedPlaceSunnyOutlook.ranked(outlooks)
     }
 
     /// Distinguishes first load, an intentionally empty library, and a settled
@@ -205,7 +289,6 @@ struct SavedPlacesView: View {
             if usesLandscapeIPadSplit {
                 planningLayout(
                     usesLandscapeIPadSplit: true,
-                    landscapeContentWidth: geometry.size.width - 32,
                     landscapeContentHeight: geometry.size.height - topPadding - 24
                 )
                 .padding(.horizontal, 16)
@@ -216,7 +299,6 @@ struct SavedPlacesView: View {
                 ScrollView {
                     planningLayout(
                         usesLandscapeIPadSplit: false,
-                        landscapeContentWidth: 0,
                         landscapeContentHeight: 0
                     )
                     .padding(.horizontal, 16)
@@ -229,6 +311,12 @@ struct SavedPlacesView: View {
         }
         .scrollIndicators(.hidden)
         .background(theme.colors.background)
+        .sheet(item: $presentedSheet) { sheet in
+            switch sheet {
+            case .customize:
+                CustomizeSavedPlaces()
+            }
+        }
         // A navigation title remains plain text. A custom leading toolbar item
         // is rendered as a circular glass control on iOS 26.
         .navigationTitle("Saved Places")
@@ -272,86 +360,138 @@ struct SavedPlacesView: View {
     @ViewBuilder
     private func planningLayout(
         usesLandscapeIPadSplit: Bool,
-        landscapeContentWidth: CGFloat,
         landscapeContentHeight: CGFloat
     ) -> some View {
         if usesLandscapeIPadSplit {
-            let splitWidth = max(0, landscapeContentWidth - 20)
-            let leftColumnWidth = splitWidth * 0.4
-            let rightColumnWidth = splitWidth - leftColumnWidth
-            let rightColumnContentInset: CGFloat = 80
+            VStack(spacing: 20) {
+                savedPlacesTitle
 
-            HStack(alignment: .top, spacing: 20) {
-                VStack(spacing: 0) {
-                    savedPlacesTitle
+                HStack(alignment: .top, spacing: 20) {
+                    ForEach(orderedDashboardSections) { section in
+                        ScrollView {
+                            LazyVStack(spacing: 20) {
+                                planningSection(section)
 
-                    Spacer(minLength: 0)
-
-                    BestSunnyDatesCard(
-                        summaries: dateSummaries,
-                        selectedDate: $selectedDate,
-                        presentationState: forecastPresentationState
-                    )
-                }
-                .frame(height: landscapeContentHeight, alignment: .top)
-                .frame(width: leftColumnWidth, alignment: .top)
-                // Match Detail View's visual balance against the right column's
-                // large reading inset without changing the 40/60 split.
-                .offset(x: rightColumnContentInset / 2)
-
-                ScrollView {
-                    LazyVStack(spacing: 20) {
-                        BestSunnyPlacesCard(
-                            recommendations: recommendations,
-                            savedPlaces: model.placesStore.allPlaces,
-                            presentationState: forecastPresentationState,
-                            timeZoneExclusionNotice: timeZoneExclusionNotice
-                        )
-
-                        // The dashboard stays focused on planning. Renaming and
-                        // deleting places live in the pushed Saved Places manager.
-                        manageSavedPlacesLink
+                                if section == orderedDashboardSections.last {
+                                    manageSavedPlacesLink
+                                }
+                            }
+                            .padding(.horizontal, 24)
+                        }
+                        .scrollIndicators(.hidden)
+                        .hidesLandscapePaneScrollEdgeEffects()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
-                    .padding(.horizontal, rightColumnContentInset)
-                    .frame(width: rightColumnWidth, alignment: .top)
                 }
-                .scrollIndicators(.hidden)
-                .hidesLandscapePaneScrollEdgeEffects()
-                .scrollClipDisabled()
-                .frame(height: landscapeContentHeight)
-                .frame(width: rightColumnWidth, alignment: .top)
+                .frame(maxHeight: .infinity)
             }
+            .frame(height: landscapeContentHeight, alignment: .top)
         } else {
             LazyVStack(spacing: 20) {
                 savedPlacesTitle
 
-                BestSunnyDatesCard(
-                    summaries: dateSummaries,
-                    selectedDate: $selectedDate,
-                    presentationState: forecastPresentationState
-                )
-
-                BestSunnyPlacesCard(
-                    recommendations: recommendations,
-                    savedPlaces: model.placesStore.allPlaces,
-                    presentationState: forecastPresentationState,
-                    timeZoneExclusionNotice: timeZoneExclusionNotice
-                )
+                ForEach(orderedDashboardSections) { section in
+                    planningSection(section)
+                }
 
                 manageSavedPlacesLink
             }
         }
     }
 
+    private func planningSection(
+        _ section: SavedPlacesDashboardSection
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 20) {
+            switch section {
+            case .selectedDay:
+                selectedDayCards
+            case .planAhead:
+                planAheadCards
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    @ViewBuilder
+    private var selectedDayCards: some View {
+        ForEach(orderedSelectedDayCards) { card in
+            switch card {
+            case .bestSunnyPlaces:
+                BestSunnyPlacesCard(
+                    recommendations: recommendations,
+                    selectedDate: selectedDate,
+                    savedPlaces: model.placesStore.allPlaces,
+                    presentationState: forecastPresentationState,
+                    timeZoneExclusionNotice: timeZoneExclusionNotice
+                )
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var planAheadCards: some View {
+        ForEach(orderedPlanAheadCards) { card in
+            switch card {
+            case .bestWeekendEscape:
+                BestWeekendEscapeCard(
+                    saturdayDate: weekendDates.saturday,
+                    sundayDate: weekendDates.sunday,
+                    saturdayRecommendations: saturdayRecommendations,
+                    sundayRecommendations: sundayRecommendations,
+                    savedPlaces: model.placesStore.allPlaces,
+                    presentationState: forecastPresentationState,
+                    onSelect: { placeID, date in
+                        openPlanAheadPlace(placeID, on: date)
+                    }
+                )
+            case .sunnyOutlookByPlace:
+                SunnyOutlookByPlaceCard(
+                    rows: sunnyOutlooks,
+                    presentationState: forecastPresentationState,
+                    onSelect: { placeID, date in
+                        openPlanAheadPlace(placeID, on: date)
+                    }
+                )
+            }
+        }
+    }
+
+    private func openPlanAheadPlace(
+        _ placeID: SavedPlace.ID,
+        on date: Date?
+    ) {
+        if let date {
+            selectedDate = model.forecastCalendar.startOfDay(for: date)
+        }
+        router.savedPlacesPath.append(.place(id: placeID))
+    }
+
     /// The planning dashboard uses the same in-content heading treatment as
     /// every Detail View, independent of device, orientation, or platform.
     private var savedPlacesTitle: some View {
-        DetailStyleReportTitle(
-            title: localizedString("Saved Places", locale: locale)
-        )
-            .frame(maxWidth: .infinity)
-            .padding(.top, 4)
-            .padding(.bottom, 4)
+        HStack(spacing: 0) {
+            Spacer(minLength: 34)
+
+            Menu {
+                Button(
+                    "Customize Saved Places",
+                    systemImage: "arrow.up.arrow.down"
+                ) {
+                    presentedSheet = .customize
+                }
+            } label: {
+                DetailStyleReportMenuLabel(
+                    title: localizedString("Saved Places", locale: locale)
+                )
+            }
+            .buttonStyle(.plain)
+
+            Spacer(minLength: 34)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.top, 4)
+        .padding(.bottom, 4)
     }
 
     /// A quiet footer link shares Place Detail's secondary text-action style

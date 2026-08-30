@@ -2,8 +2,8 @@
 //  RecentSearchStore.swift
 //  Weather
 //
-//  Purpose: Persists the five most recent City, Country, and Continent search
-//  suggestions shared by Search and Map.
+//  Purpose: Persists recent City, Country, and Continent search suggestions
+//  shared by Search and Map.
 //
 
 import Foundation
@@ -20,6 +20,12 @@ import Observation
 @Observable
 final class RecentSearchStore {
     static let maximumSuggestionCount = 5
+
+    /// City eligibility can change after access when a place is saved or made
+    /// the current location. Keep a small private backfill behind the five
+    /// visible suggestions so removing that newly ineligible row does not
+    /// leave the Recent section artificially short.
+    private static let maximumStoredCityCount = maximumSuggestionCount * 4
 
     private static let storageKey = "weatherAtlas.recentSearches"
     private static let schemaVersion = 1
@@ -58,12 +64,23 @@ final class RecentSearchStore {
 
     // MARK: - Recording
 
-    /// Moves one semantic city identity to the front and keeps only five.
+    /// Moves one semantic city identity to the front of the bounded backing
+    /// history. Search still exposes only `maximumSuggestionCount` rows.
     func record(city: City) {
         guard PlacesLibraryValidator.isValidCity(city) else { return }
+        guard cities.first != city else { return }
         cities.removeAll { CitySemanticMatcher.matches($0, city) }
         cities.insert(city, at: 0)
-        cities = Array(cities.prefix(Self.maximumSuggestionCount))
+        cities = Array(cities.prefix(Self.maximumStoredCityCount))
+        persist()
+    }
+
+    /// Durably removes cities whose eligibility changed after they were
+    /// recorded. MRU order is preserved and a no-op never writes or publishes.
+    func removeCities(where shouldRemove: (City) -> Bool) {
+        let retainedCities = cities.filter { !shouldRemove($0) }
+        guard retainedCities != cities else { return }
+        cities = retainedCities
         persist()
     }
 
@@ -72,6 +89,7 @@ final class RecentSearchStore {
     /// the visible history.
     func record(country: CountryPlacesOption) {
         let code = country.iso2.uppercased()
+        guard countryISO2Codes.first != code else { return }
         countryISO2Codes.removeAll { $0 == code }
         countryISO2Codes.insert(code, at: 0)
         countryISO2Codes = Array(
@@ -82,6 +100,7 @@ final class RecentSearchStore {
 
     /// Continent raw values are stable product-defined identifiers.
     func record(continent: ContinentPlacesOption) {
+        guard continents.first != continent else { return }
         continents.removeAll { $0 == continent }
         continents.insert(continent, at: 0)
         continents = Array(continents.prefix(Self.maximumSuggestionCount))
@@ -107,7 +126,7 @@ final class RecentSearchStore {
                 continue
             }
             validCities.append(city)
-            if validCities.count == Self.maximumSuggestionCount { break }
+            if validCities.count == Self.maximumStoredCityCount { break }
         }
         cities = validCities
 

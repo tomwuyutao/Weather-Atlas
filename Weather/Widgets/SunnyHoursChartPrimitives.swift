@@ -107,12 +107,6 @@ struct SunnyHoursChartColors {
 struct SunnyHoursDiscreteCapsuleTimeline: View {
     // MARK: - Configuration
 
-    /// Axis density appropriate for the receiving surface.
-    enum AxisStyle {
-        /// Four labels aligned with actual capsule centers.
-        case sparse
-    }
-
     /// Surface-specific space constraints without changing chart geometry.
     struct Configuration {
         let capsuleSpacing: CGFloat
@@ -121,14 +115,12 @@ struct SunnyHoursDiscreteCapsuleTimeline: View {
         let maximumCapsuleWidth: CGFloat?
         let minimumTrackHeight: CGFloat
         let axisHeight: CGFloat
-        let axisStyle: AxisStyle
 
         static let appAndHome = Configuration(
             capsuleSpacing: 7,
             maximumCapsuleWidth: nil,
             minimumTrackHeight: 44,
-            axisHeight: 14,
-            axisStyle: .sparse
+            axisHeight: 14
         )
 
     }
@@ -141,8 +133,6 @@ struct SunnyHoursDiscreteCapsuleTimeline: View {
     let bounds: SunnyHoursChartBounds
     /// Timeline entry time, used only for a current-time marker.
     let currentDate: Date
-    /// City time zone used for marker placement.
-    let timeZone: TimeZone
     /// The app hides the marker when the user has selected a non-current day.
     let showsCurrentTimeMarker: Bool
     /// Family-specific vertical space and axis treatment.
@@ -221,32 +211,29 @@ struct SunnyHoursDiscreteCapsuleTimeline: View {
 
     @ViewBuilder
     private func axis(for startHour: Int) -> some View {
-        switch configuration.axisStyle {
-        case .sparse:
-            let markers = timelineAxisMarkers(from: startHour)
-            GeometryReader { proxy in
-                let metrics = timelineMetrics(
-                    for: hours.count,
-                    availableWidth: proxy.size.width
-                )
+        let markers = timelineAxisMarkers(from: startHour)
+        GeometryReader { proxy in
+            let metrics = timelineMetrics(
+                for: hours.count,
+                availableWidth: proxy.size.width
+            )
 
-                ZStack(alignment: .leading) {
-                    ForEach(markers) { marker in
-                        Text(SunnyHoursFormatting.chartHourLabel(marker.hour))
-                            .position(
-                                x: CGFloat(marker.capsuleIndex)
-                                    * (metrics.capsuleWidth + metrics.spacing)
-                                    + metrics.capsuleWidth / 2,
-                                y: proxy.size.height / 2
-                            )
-                    }
+            ZStack(alignment: .leading) {
+                ForEach(markers) { marker in
+                    Text(SunnyHoursFormatting.chartHourLabel(marker.hour))
+                        .position(
+                            x: CGFloat(marker.capsuleIndex)
+                                * (metrics.capsuleWidth + metrics.spacing)
+                                + metrics.capsuleWidth / 2,
+                            y: proxy.size.height / 2
+                        )
                 }
             }
-            .frame(height: configuration.axisHeight)
-            .font(.caption2.weight(.medium))
-            .foregroundStyle(colors.secondary)
-            .lineLimit(1)
         }
+        .frame(height: configuration.axisHeight)
+        .font(.caption2.weight(.medium))
+        .foregroundStyle(colors.secondary)
+        .lineLimit(1)
     }
 
     // MARK: - Current-Time Marker

@@ -175,6 +175,7 @@ struct CountryCityCatalogEntry: Identifiable, Hashable {
             id: id,
             name: city,
             country: country,
+            countryISO2Code: iso2,
             latitude: latitude,
             longitude: longitude,
             timeZoneIdentifier: timeZoneIdentifier,
@@ -291,6 +292,42 @@ enum CountryCityCatalog {
     /// Resolves one bundled country from an ISO 3166-1 alpha-2 code.
     static func country(iso2: String) -> CountryPlacesOption? {
         catalog.countriesByCode[iso2.uppercased()]
+    }
+
+    /// Resolves a localized or canonical country label to one stable ISO code.
+    /// A result is returned only when the label is unambiguous across every
+    /// language bundled by Weather Atlas.
+    static func countryISO2Code(matchingCountryName countryName: String) -> String? {
+        let normalizedName = normalizedCountryName(countryName)
+        guard !normalizedName.isEmpty else { return nil }
+
+        let supportedLocales = [
+            "en", "fr", "de", "it", "ja", "ko", "pt", "ru",
+            "zh-Hans", "es", "zh-Hant"
+        ].map(Locale.init(identifier:))
+        let matches = Set(catalog.countriesByCode.values.compactMap {
+            country -> String? in
+            if normalizedCountryName(country.englishName) == normalizedName {
+                return country.iso2
+            }
+            let hasLocalizedMatch = supportedLocales.contains { locale in
+                normalizedCountryName(country.localizedName(locale: locale))
+                    == normalizedName
+            }
+            return hasLocalizedMatch ? country.iso2 : nil
+        })
+        return matches.count == 1 ? matches.first : nil
+    }
+
+    private static func normalizedCountryName(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).folding(
+            options: [
+                .caseInsensitive,
+                .diacriticInsensitive,
+                .widthInsensitive
+            ],
+            locale: Locale(identifier: "en_US_POSIX")
+        )
     }
 
     /// Returns a timezone only when every validated city in the factual bundled

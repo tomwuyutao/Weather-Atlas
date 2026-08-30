@@ -128,6 +128,7 @@ struct AttributionsView: View {
         Section {
             LabeledContent {
                 Text(dataValue)
+                    .font(.body.weight(.regular))
                     .foregroundStyle(theme.colors.secondaryText)
                     .multilineTextAlignment(.trailing)
             } label: {
@@ -210,6 +211,8 @@ private struct WeatherDataSourceMark: View {
 
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+    /// Matches the optical cap height of the surrounding regular body text.
+    @ScaledMetric(relativeTo: .body) private var markHeight: CGFloat = 13
 
     var body: some View {
         if let attribution {
@@ -221,7 +224,7 @@ private struct WeatherDataSourceMark: View {
                         .scaledToFit()
                         .frame(
                             maxWidth: 100,
-                            maxHeight: 17,
+                            maxHeight: markHeight,
                             alignment: .trailing
                         )
                 case .empty:
@@ -236,6 +239,7 @@ private struct WeatherDataSourceMark: View {
             }
         } else {
             Text(" Weather")
+                .font(.body.weight(.regular))
                 .foregroundStyle(theme.colors.secondaryText)
         }
     }
@@ -244,6 +248,7 @@ private struct WeatherDataSourceMark: View {
         for attribution: WeatherAttribution
     ) -> some View {
         Text(attribution.serviceName)
+            .font(.body.weight(.regular))
             .foregroundStyle(theme.colors.secondaryText)
     }
 

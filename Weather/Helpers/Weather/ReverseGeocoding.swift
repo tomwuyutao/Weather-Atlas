@@ -304,6 +304,7 @@ extension WeatherService {
                 name: place?.name ?? "",
                 titleName: city.titleName,
                 country: place?.country ?? "",
+                countryISO2Code: city.countryISO2Code,
                 latitude: city.latitude,
                 longitude: city.longitude,
                 timeZoneIdentifier: timeZone.identifier,
