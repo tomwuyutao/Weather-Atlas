@@ -2,8 +2,9 @@
 //  SavedPlacesView.swift
 //  Weather
 //
-//  Purpose: Presents saved-place planning and comparisons, with the full
-//  editable library available as a pushed destination rather than a peer tab.
+//  Purpose: Presents one supplied set of places through three focused lenses:
+//  a selected day, the next weekend, or the forecast outlook. Saved Places
+//  and Map Find Sun both adapt their own data to this shared screen.
 //
 
 import SwiftUI
@@ -11,15 +12,61 @@ import UIKit
 
 // MARK: - Forecast Presentation State
 
-/// Shared presentation state for Saved Places planning cards.
-///
-/// The state changes only their explanatory fallback content. Any available
-/// recommendations continue to use the established ranking paths.
+/// Shared presentation state for Saved Places and Find Sun planning lists.
 enum SavedPlacesForecastPresentationState: Equatable {
     case emptyLibrary
     case loading
     case unavailable
     case ready
+}
+
+/// A neutral place identity used by both persistent Saved Places and temporary
+/// Map query results. Weather remains keyed by the original city UUID even when
+/// a semantic saved match supplies the display name.
+struct ForecastComparisonPlace: Identifiable, Equatable {
+    let city: City
+    let displayName: String
+
+    var id: City.ID { city.id }
+}
+
+/// Source-specific fallback copy keeps the shared cards truthful without
+/// forking their layout or loading-state behavior.
+struct PlaceComparisonStatusMessages {
+    let empty: LocalizedStringResource
+    let loading: LocalizedStringResource
+    let unavailable: LocalizedStringResource
+    let noDateComparison: LocalizedStringResource
+    let noPeriodForecasts: LocalizedStringResource
+
+    static let savedPlaces = PlaceComparisonStatusMessages(
+        empty: "Save a place to compare sunny hours.",
+        loading: "Loading place forecasts…",
+        unavailable: "Place forecasts are unavailable.",
+        noDateComparison: "No sunny-hour comparison is available for this date.",
+        noPeriodForecasts: "No place forecasts are available for this period."
+    )
+
+    static let mapQuery = PlaceComparisonStatusMessages(
+        empty: "No places are available for this search.",
+        loading: "Loading place forecasts…",
+        unavailable: "Place forecasts are unavailable.",
+        noDateComparison: "No sunny-hour comparison is available for this date.",
+        noPeriodForecasts: "No place forecasts are available for this period."
+    )
+}
+
+/// Only the data source and route chrome differ between Saved Places and a Map
+/// query. The comparison calculations and visible modes remain identical.
+enum PlacesComparisonSource {
+    case savedPlaces
+    case mapQuery(title: String, cities: [City])
+
+    var isSavedPlaces: Bool {
+        if case .savedPlaces = self { return true }
+        return false
+    }
+
 }
 
 #if DEBUG
@@ -31,32 +78,39 @@ enum SavedPlacesForecastPresentationState: Equatable {
 }
 #endif
 
-// MARK: - Planning Dashboard
+// MARK: - Saved Places Route
 
-private enum SavedPlacesSheet: String, Identifiable {
-    case customize
-
-    var id: String { rawValue }
-}
-
-/// Planning dashboard for cities the person explicitly saved.
 struct SavedPlacesView: View {
-    // MARK: - Shared Inputs
-
     @Bindable var model: WeatherModel
     @Bindable var router: AppNavigation
     @Binding var selectedDate: Date
 
-    @State private var presentedSheet: SavedPlacesSheet?
-    @AppStorage(SavedPlacesDashboardSection.storageKey)
-    private var storedDashboardSectionOrder =
-        SavedPlacesDashboardSection.defaultStorageValue
-    @AppStorage(SavedPlacesSelectedDayCard.storageKey)
-    private var storedSelectedDayCardOrder =
-        SavedPlacesSelectedDayCard.defaultStorageValue
-    @AppStorage(SavedPlacesPlanAheadCard.storageKey)
-    private var storedPlanAheadCardOrder =
-        SavedPlacesPlanAheadCard.defaultStorageValue
+    var body: some View {
+        PlacesComparisonView(
+            source: .savedPlaces,
+            model: model,
+            router: router,
+            selectedDate: $selectedDate
+        )
+    }
+}
+
+// MARK: - Shared Place Comparison
+
+struct PlacesComparisonView: View {
+    private static let scrollTopID = "places-comparison-mode-title"
+
+    let source: PlacesComparisonSource
+    @Bindable var model: WeatherModel
+    @Bindable var router: AppNavigation
+    @Binding var selectedDate: Date
+
+    @AppStorage(SavedPlacesViewMode.storageKey)
+    private var storedModeRawValue = SavedPlacesViewMode.defaultRawValue
+    /// Map results are themselves a Boolean navigation destination. Keeping
+    /// their child Detail route local prevents the root path from replacing
+    /// that destination, so Back returns to the comparison list.
+    @State private var mapDetailPlaceID: City.ID?
 
     @Environment(\.appTheme) private var theme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -64,48 +118,50 @@ struct SavedPlacesView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(NetworkConnectivity.self) private var networkConnectivity
 
-    // MARK: - Derived Planning Data
+    // MARK: - Mode
 
-    private var recommendations: [PlaceRecommendation] {
-        model.savedRecommendations(
-            on: selectedDate,
-            locale: locale
-        )
+    private var selectedMode: SavedPlacesViewMode {
+        SavedPlacesViewMode(rawValue: storedModeRawValue) ?? .day
     }
 
-    private var orderedDashboardSections: [SavedPlacesDashboardSection] {
-        SavedPlacesDashboardSection.order(
-            from: storedDashboardSectionOrder
-        )
+    private var comparisonPlaces: [ForecastComparisonPlace] {
+        switch source {
+        case .savedPlaces:
+            return model.placesStore.allPlaces.map { place in
+                ForecastComparisonPlace(
+                    city: place.city,
+                    displayName: place.localizedDisplayName(locale: locale)
+                )
+            }
+        case .mapQuery(_, let cities):
+            var seenIDs: Set<City.ID> = []
+            return cities.compactMap { city in
+                guard seenIDs.insert(city.id).inserted else { return nil }
+
+                let savedDisplayName = model.placesStore
+                    .savedPlaceID(matching: city)
+                    .flatMap { model.placesStore.place(id: $0) }?
+                    .localizedDisplayName(locale: locale)
+                return ForecastComparisonPlace(
+                    city: city,
+                    displayName: savedDisplayName
+                        ?? city.localizedDisplayName(locale: locale)
+                )
+            }
+        }
     }
 
-    private var orderedSelectedDayCards: [SavedPlacesSelectedDayCard] {
-        SavedPlacesSelectedDayCard.order(
-            from: storedSelectedDayCardOrder
-        )
+    private var statusMessages: PlaceComparisonStatusMessages {
+        source.isSavedPlaces ? .savedPlaces : .mapQuery
     }
 
-    private var orderedPlanAheadCards: [SavedPlacesPlanAheadCard] {
-        SavedPlacesPlanAheadCard.order(
-            from: storedPlanAheadCardOrder
-        )
-    }
+    // MARK: - Shared Forecast Dates
 
-    /// Places where the selected literal date has already passed stay visible
-    /// as exclusions instead of silently disappearing from the page.
-    private var dateExclusions: [SavedPlaceDateExclusion] {
-        model.savedPlaceDateExclusions(on: selectedDate)
-    }
-
-    /// Every literal selector day backed by at least one saved city's retained
-    /// daily forecast. Forecasts are stored in each city's local time zone, so
-    /// convert them into the shared location-calendar day before comparing or
-    /// presenting them.
-    private var savedForecastDates: [Date] {
+    private var comparisonForecastDates: [Date] {
         let calendar = model.forecastCalendar
         var dates = Set<Date>()
 
-        for place in model.placesStore.allPlaces {
+        for place in comparisonPlaces {
             guard let weather = model.weatherStore.weather(for: place.id) else {
                 continue
             }
@@ -122,14 +178,12 @@ struct SavedPlacesView: View {
         return dates.sorted()
     }
 
-    /// Keep the global day intact when this tab opens from another surface.
-    /// Once weather arrives, every real daily forecast date remains selectable,
-    /// even when no place is sunny on that date.
+    /// Day mode shares the global selection with every other app surface.
     private var dateSwitcherDates: [Date] {
         let calendar = model.forecastCalendar
-        let sourceDates = savedForecastDates.isEmpty
+        let sourceDates = comparisonForecastDates.isEmpty
             ? ForecastDateHorizon.dates(in: calendar)
-            : savedForecastDates
+            : comparisonForecastDates
 
         return Array(
             Set(
@@ -139,9 +193,47 @@ struct SavedPlacesView: View {
         .sorted()
     }
 
-    /// The next weekend starts with today when the dashboard is opened on a
-    /// Saturday; on Sunday it advances to the following weekend. These dates
-    /// stay independent from the selected-day switcher.
+    private var outlookForecastDates: [Date] {
+        let calendar = model.forecastCalendar
+        let referenceDate = Date.now
+        var dates = Set<Date>()
+
+        // Outlook searches from each city's local Today. Build the displayed
+        // range from that same domain so a far-west city cannot produce a row
+        // dated one literal day before the toolbar's lower bound.
+        for place in comparisonPlaces {
+            guard let weather = model.weatherStore.weather(for: place.id) else {
+                continue
+            }
+
+            var cityCalendar = calendar
+            cityCalendar.timeZone = weather.timeZone
+            let localToday = cityCalendar.startOfDay(for: referenceDate)
+
+            for forecast in weather.dailyForecasts where
+                cityCalendar.startOfDay(for: forecast.date) >= localToday {
+                let data = SunnyHoursCalculation.sunnyHoursData(
+                    for: forecast,
+                    timeZone: weather.timeZone
+                )
+                guard !data.hours.isEmpty else { continue }
+
+                let date = weather.selectionDate(
+                    for: forecast,
+                    selectionCalendar: calendar
+                ) ?? calendar.startOfDay(for: forecast.date)
+                dates.insert(calendar.startOfDay(for: date))
+            }
+        }
+
+        let forecastDates = dates.sorted()
+        return forecastDates.isEmpty
+            ? ForecastDateHorizon.dates(in: calendar)
+            : forecastDates
+    }
+
+    /// Today is part of the weekend when it is Saturday. Opening the screen on
+    /// Sunday targets the following weekend instead of showing a half weekend.
     private var weekendDates: (saturday: Date, sunday: Date) {
         let calendar = model.forecastCalendar
         let today = calendar.startOfDay(for: .now)
@@ -160,70 +252,221 @@ struct SavedPlacesView: View {
         return (saturday, sunday)
     }
 
+    private var dateSwitcherDisplay: TopForecastDateSwitcher.Display {
+        switch selectedMode {
+        case .day:
+            return .selectedDate
+        case .weekend:
+            return .staticRange(
+                start: weekendDates.saturday,
+                end: weekendDates.sunday
+            )
+        case .outlook:
+            let dates = outlookForecastDates
+            let fallback = model.forecastCalendar.startOfDay(for: .now)
+            return .staticRange(
+                start: dates.first ?? fallback,
+                end: dates.last ?? fallback
+            )
+        }
+    }
+
+    // MARK: - Day Ranking
+
+    private var recommendations: [PlaceRecommendation] {
+        assessedRecommendations(on: selectedDate)
+    }
+
+    // MARK: - Weekend Ranking
+
     private var saturdayRecommendations: [PlaceRecommendation] {
-        model.savedRecommendations(
-            on: weekendDates.saturday,
-            locale: locale
-        )
+        assessedRecommendations(on: weekendDates.saturday)
     }
 
     private var sundayRecommendations: [PlaceRecommendation] {
-        model.savedRecommendations(
-            on: weekendDates.sunday,
+        assessedRecommendations(on: weekendDates.sunday)
+    }
+
+    /// A daily shell without daylight capsules cannot truthfully receive a
+    /// zero-hour rank. Omit that settled result from every comparison mode.
+    private func assessedRecommendations(
+        on date: Date
+    ) -> [PlaceRecommendation] {
+        let recommendations: [PlaceRecommendation] = comparisonPlaces.compactMap {
+            place -> PlaceRecommendation? in
+            guard let weather = model.weatherStore.weather(for: place.id),
+                  let forecast = weather.forecastIfAvailable(
+                    on: date,
+                    selectionCalendar: model.forecastCalendar
+                  ) else {
+                return nil
+            }
+            guard !SunnyHoursCalculation.sunnyHoursData(
+                for: forecast,
+                timeZone: weather.timeZone
+            ).hours.isEmpty else {
+                return nil
+            }
+            return model.placeRecommendation(for: weather, on: date)
+        }
+
+        return PlaceRecommendation.ranked(recommendations, locale: locale)
+    }
+
+    private var loadingPlaceIDs: Set<City.ID> {
+        Set(comparisonPlaces.compactMap { place in
+            if model.weatherStore.isLoading(place.id) {
+                return place.id
+            }
+            if forecastPresentationState == .loading,
+               model.weatherStore.weather(for: place.id) == nil,
+               model.weatherStore.failuresByID[place.id] == nil {
+                return place.id
+            }
+            return nil
+        })
+    }
+
+    private var saturdayWeekendRows: [ForecastComparisonWeekendDayRanking] {
+        weekendRows(recommendations: saturdayRecommendations)
+    }
+
+    private var sundayWeekendRows: [ForecastComparisonWeekendDayRanking] {
+        weekendRows(recommendations: sundayRecommendations)
+    }
+
+    private func weekendRows(
+        recommendations: [PlaceRecommendation]
+    ) -> [ForecastComparisonWeekendDayRanking] {
+        ForecastComparisonWeekendDayRanking.ranked(
+            places: comparisonPlaces,
+            recommendations: recommendations,
+            loadingPlaceIDs: loadingPlaceIDs,
             locale: locale
         )
     }
 
-    /// Every saved place remains represented, even while different WeatherKit
-    /// requests settle at different times. A loaded place searches its own
-    /// local forecast days and maps the first qualifying date back into the
-    /// shared selector calendar.
-    private var sunnyOutlooks: [SavedPlaceSunnyOutlook] {
-        let outlooks = model.placesStore.allPlaces.map { place in
-            let status: SavedPlaceSunnyOutlook.Status
+    // MARK: - Outlook Ranking
+
+    private var sunnyOutlooks: [ForecastComparisonSunnyOutlook] {
+        let referenceDate = Date.now
+        let outlooks = comparisonPlaces.map { place in
+            let status: ForecastComparisonSunnyOutlook.Status
+            let navigationDate: Date
 
             if let weather = model.weatherStore.weather(for: place.id) {
+                let fallbackDate = firstOutlookSelectionDate(
+                    for: weather,
+                    onOrAfter: referenceDate
+                ) ?? localSelectionDate(
+                    for: referenceDate,
+                    timeZone: weather.timeZone
+                )
                 switch weather.mostlySunnyForecastSearch(
-                    onOrAfter: .now,
+                    onOrAfter: referenceDate,
                     selectionCalendar: model.forecastCalendar
                 ) {
                 case .match(_, let selectionDate):
                     status = .date(selectionDate)
+                    navigationDate = selectionDate
                 case .noMatch:
                     status = .noMatch
+                    navigationDate = fallbackDate
                 case .unavailable:
-                    status = .unavailable
+                    status = loadingPlaceIDs.contains(place.id)
+                        ? .loading
+                        : .unavailable
+                    navigationDate = fallbackDate
                 }
-            } else if model.weatherStore.isLoading(place.id)
-                        || (forecastPresentationState == .loading
-                            && model.weatherStore.failuresByID[place.id] == nil) {
+            } else if loadingPlaceIDs.contains(place.id) {
                 status = .loading
+                navigationDate = localSelectionDate(
+                    for: referenceDate,
+                    timeZone: placeTimeZone(for: place)
+                )
             } else {
                 status = .unavailable
+                navigationDate = localSelectionDate(
+                    for: referenceDate,
+                    timeZone: placeTimeZone(for: place)
+                )
             }
 
-            return SavedPlaceSunnyOutlook(
+            return ForecastComparisonSunnyOutlook(
                 place: place,
-                status: status
+                status: status,
+                navigationDate: navigationDate
             )
         }
 
-        return SavedPlaceSunnyOutlook.ranked(outlooks)
+        return ForecastComparisonSunnyOutlook.ranked(outlooks).filter { outlook in
+            if case .unavailable = outlook.status {
+                return false
+            }
+            return true
+        }
     }
 
-    /// Distinguishes first load, an intentionally empty library, and a settled
-    /// failure so both planning cards can remain visible with honest fallback
-    /// content. Loaded rows still take precedence inside each card.
+    private func firstOutlookSelectionDate(
+        for weather: CityWeather,
+        onOrAfter referenceDate: Date
+    ) -> Date? {
+        var cityCalendar = model.forecastCalendar
+        cityCalendar.timeZone = weather.timeZone
+        let localToday = cityCalendar.startOfDay(for: referenceDate)
+
+        return weather.dailyForecasts
+            .filter {
+                cityCalendar.startOfDay(for: $0.date) >= localToday
+            }
+            .sorted { $0.date < $1.date }
+            .compactMap { forecast -> Date? in
+                let data = SunnyHoursCalculation.sunnyHoursData(
+                    for: forecast,
+                    timeZone: weather.timeZone
+                )
+                guard !data.hours.isEmpty else { return nil }
+                return weather.selectionDate(
+                    for: forecast,
+                    selectionCalendar: model.forecastCalendar
+                )
+            }
+            .first
+    }
+
+    private func placeTimeZone(
+        for place: ForecastComparisonPlace
+    ) -> TimeZone {
+        place.city.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
+            ?? model.forecastCalendar.timeZone
+    }
+
+    /// Carries a city-local literal day into the shared forecast calendar.
+    private func localSelectionDate(
+        for date: Date,
+        timeZone: TimeZone
+    ) -> Date {
+        var cityCalendar = model.forecastCalendar
+        cityCalendar.timeZone = timeZone
+        let components = cityCalendar.dateComponents(
+            [.year, .month, .day],
+            from: date
+        )
+        return model.forecastCalendar.date(from: components)
+            ?? model.forecastCalendar.startOfDay(for: date)
+    }
+
+    // MARK: - Loading State
+
     private var forecastPresentationState: SavedPlacesForecastPresentationState {
-        if model.placesStore.loadErrorDescription != nil {
+        if source.isSavedPlaces,
+           model.placesStore.loadErrorDescription != nil {
             return .unavailable
         }
 
-        let places = model.placesStore.allPlaces
+        let places = comparisonPlaces
         guard !places.isEmpty else { return .emptyLibrary }
 
-        // A retained snapshot remains useful offline. Without one, confirmed
-        // offline is a settled unavailable state rather than imaginary loading.
         if networkConnectivity.isOffline {
             return places.contains(where: {
                 model.weatherStore.weather(for: $0.id) != nil
@@ -246,27 +489,108 @@ struct SavedPlacesView: View {
             return .unavailable
         }
 
-        // Saved places exist but initial hydration has not started publishing
-        // per-place request state yet. Present this brief gap as loading rather
-        // than incorrectly declaring the forecasts unavailable.
         return .loading
     }
 
-    private var timeZoneExclusionNotice: String? {
-        let excludedCityCount = dateExclusions.count
-        guard excludedCityCount > 0 else { return nil }
+    // MARK: - Presentation
 
-        // Keep the count inside the localized resource so String Catalog plural
-        // rules can select singular, plural, and language-specific forms.
-        var resource: LocalizedStringResource =
-            "\(excludedCityCount) cities excluded due to time zone differences."
-        resource.locale = locale
-        return String(localized: resource)
+    var body: some View {
+        GeometryReader { geometry in
+            let topPadding = detailStyleTitleTopPadding(
+                for: geometry.size,
+                dynamicTypeSize: dynamicTypeSize
+            )
+
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(spacing: 20) {
+                        modeHeader
+
+                        modeList
+
+                        if source.isSavedPlaces {
+                            manageSavedPlacesLink
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, topPadding)
+                    .padding(.bottom, 24)
+                    .frame(maxWidth: contentWidth(for: geometry.size))
+                    .frame(maxWidth: .infinity)
+                    // Target the padded container rather than the title so a
+                    // mode switch preserves its intentional top breathing room.
+                    .id(Self.scrollTopID)
+                }
+                .scrollIndicators(.hidden)
+                .onChange(of: storedModeRawValue) { _, _ in
+                    // A mode switch is a direct navigation change. Reset the
+                    // list without motion so Reduce Motion needs no exception.
+                    proxy.scrollTo(Self.scrollTopID, anchor: .top)
+                }
+            }
+        }
+        .background(theme.colors.background)
+        .navigationTitle(navigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            if source.isSavedPlaces {
+                ToolbarItem(placement: .principal) {
+                    Text("Saved Places")
+                        .lineLimit(1)
+                        .opacity(0)
+                }
+
+                ToolbarItem(placement: .topBarLeading) {
+                    Button("Settings", systemImage: "slider.horizontal.3") {
+                        router.presentedSheet = .settings
+                    }
+                    .labelStyle(.iconOnly)
+                }
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                TopForecastDateSwitcher(
+                    selection: $selectedDate,
+                    availableDates: dateSwitcherDates,
+                    display: dateSwitcherDisplay,
+                    staticRangeHorizontalPadding: selectedMode == .outlook ? 6 : 0
+                )
+            }
+        }
+        .refreshable {
+            await refreshForecasts()
+        }
+        .navigationDestination(item: $mapDetailPlaceID) { placeID in
+            DetailView(
+                placeID: placeID,
+                selectedDate: $selectedDate,
+                model: model,
+                router: router
+            )
+        }
     }
 
-    /// Preserve the established phone and portrait layout. A full-width
-    /// landscape iPad gets a more focused planning column with generous space
-    /// on either side of the two comparison cards.
+    private var navigationTitle: String {
+        switch source {
+        case .savedPlaces:
+            localizedString("Saved Places", locale: locale)
+        case .mapQuery(let title, _):
+            title
+        }
+    }
+
+    private func refreshForecasts() async {
+        switch source {
+        case .savedPlaces:
+            await model.loadSavedWeather(forceRefresh: true)
+        case .mapQuery:
+            await model.weatherStore.load(
+                cities: comparisonPlaces.map(\.city),
+                forceRefresh: true
+            )
+        }
+    }
+
     private func contentWidth(for size: CGSize) -> CGFloat {
         AppContentLayout.maximumWidth(
             for: size,
@@ -274,228 +598,110 @@ struct SavedPlacesView: View {
         )
     }
 
-    // MARK: - Presentation
+    // MARK: - Mode Content
 
-    var body: some View {
-        GeometryReader { geometry in
-            let usesLandscapeIPadSplit = LandscapeReportLayout.usesSplit(
-                for: geometry.size
+    @ViewBuilder
+    private var modeList: some View {
+        switch selectedMode {
+        case .day:
+            BestSunnyPlacesCard(
+                recommendations: recommendations,
+                places: comparisonPlaces,
+                loadingPlaceIDs: loadingPlaceIDs,
+                presentationState: forecastPresentationState,
+                statusMessages: statusMessages,
+                onSelect: { placeID in
+                    openComparisonPlace(placeID, on: selectedDate)
+                }
             )
-            let topPadding = detailStyleTitleTopPadding(
-                for: geometry.size,
-                dynamicTypeSize: dynamicTypeSize
+        case .weekend:
+            BestWeekendEscapeCard(
+                saturdayDate: weekendDates.saturday,
+                sundayDate: weekendDates.sunday,
+                saturdayRows: saturdayWeekendRows,
+                sundayRows: sundayWeekendRows,
+                presentationState: forecastPresentationState,
+                statusMessages: statusMessages,
+                onSelect: openComparisonPlace
             )
-
-            if usesLandscapeIPadSplit {
-                planningLayout(
-                    usesLandscapeIPadSplit: true,
-                    landscapeContentHeight: geometry.size.height - topPadding - 24
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, topPadding)
-                .padding(.bottom, 24)
-                .frame(maxWidth: .infinity)
-            } else {
-                ScrollView {
-                    planningLayout(
-                        usesLandscapeIPadSplit: false,
-                        landscapeContentHeight: 0
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.top, topPadding)
-                    .padding(.bottom, 24)
-                    .frame(maxWidth: contentWidth(for: geometry.size))
-                    .frame(maxWidth: .infinity)
+        case .outlook:
+            SunnyOutlookByPlaceCard(
+                rows: sunnyOutlooks,
+                presentationState: forecastPresentationState,
+                statusMessages: statusMessages,
+                onSelect: { placeID, date in
+                    openComparisonPlace(placeID, on: date)
                 }
-            }
-        }
-        .scrollIndicators(.hidden)
-        .background(theme.colors.background)
-        .sheet(item: $presentedSheet) { sheet in
-            switch sheet {
-            case .customize:
-                CustomizeSavedPlaces()
-            }
-        }
-        // A navigation title remains plain text. A custom leading toolbar item
-        // is rendered as a circular glass control on iOS 26.
-        .navigationTitle("Saved Places")
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            // The shared large in-content heading is the visible Saved Places
-            // title. Reserve the compact toolbar slot without duplicating it,
-            // matching Detail View and Your Location.
-            ToolbarItem(placement: .principal) {
-                Text("Saved Places")
-                    .lineLimit(1)
-                    .opacity(0)
-            }
-
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Settings", systemImage: "slider.horizontal.3") {
-                    router.presentedSheet = .settings
-                }
-                .labelStyle(.iconOnly)
-            }
-
-            // This is intentionally the same shared root date binding used by
-            // Your Location, Map, and detail charts.
-            ToolbarItem(placement: .topBarTrailing) {
-                TopForecastDateSwitcher(
-                    selection: $selectedDate,
-                    availableDates: dateSwitcherDates
-                )
-            }
-        }
-        .refreshable {
-            await model.loadSavedWeather(forceRefresh: true)
-        }
-        // ContentView owns initial hydration and foreground freshness checks.
-        // Re-entering this tab must only read that shared state; launching a
-            // second load here used to rebuild and visibly reshuffle the ranking.
-    }
-
-    // MARK: - Adaptive Layout
-
-    @ViewBuilder
-    private func planningLayout(
-        usesLandscapeIPadSplit: Bool,
-        landscapeContentHeight: CGFloat
-    ) -> some View {
-        if usesLandscapeIPadSplit {
-            VStack(spacing: 20) {
-                savedPlacesTitle
-
-                HStack(alignment: .top, spacing: 20) {
-                    ForEach(orderedDashboardSections) { section in
-                        ScrollView {
-                            LazyVStack(spacing: 20) {
-                                planningSection(section)
-
-                                if section == orderedDashboardSections.last {
-                                    manageSavedPlacesLink
-                                }
-                            }
-                            .padding(.horizontal, 24)
-                        }
-                        .scrollIndicators(.hidden)
-                        .hidesLandscapePaneScrollEdgeEffects()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
-                }
-                .frame(maxHeight: .infinity)
-            }
-            .frame(height: landscapeContentHeight, alignment: .top)
-        } else {
-            LazyVStack(spacing: 20) {
-                savedPlacesTitle
-
-                ForEach(orderedDashboardSections) { section in
-                    planningSection(section)
-                }
-
-                manageSavedPlacesLink
-            }
+            )
         }
     }
 
-    private func planningSection(
-        _ section: SavedPlacesDashboardSection
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 20) {
-            switch section {
-            case .selectedDay:
-                selectedDayCards
-            case .planAhead:
-                planAheadCards
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
-    private var selectedDayCards: some View {
-        ForEach(orderedSelectedDayCards) { card in
-            switch card {
-            case .bestSunnyPlaces:
-                BestSunnyPlacesCard(
-                    recommendations: recommendations,
-                    selectedDate: selectedDate,
-                    savedPlaces: model.placesStore.allPlaces,
-                    presentationState: forecastPresentationState,
-                    timeZoneExclusionNotice: timeZoneExclusionNotice
-                )
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var planAheadCards: some View {
-        ForEach(orderedPlanAheadCards) { card in
-            switch card {
-            case .bestWeekendEscape:
-                BestWeekendEscapeCard(
-                    saturdayDate: weekendDates.saturday,
-                    sundayDate: weekendDates.sunday,
-                    saturdayRecommendations: saturdayRecommendations,
-                    sundayRecommendations: sundayRecommendations,
-                    savedPlaces: model.placesStore.allPlaces,
-                    presentationState: forecastPresentationState,
-                    onSelect: { placeID, date in
-                        openPlanAheadPlace(placeID, on: date)
-                    }
-                )
-            case .sunnyOutlookByPlace:
-                SunnyOutlookByPlaceCard(
-                    rows: sunnyOutlooks,
-                    presentationState: forecastPresentationState,
-                    onSelect: { placeID, date in
-                        openPlanAheadPlace(placeID, on: date)
-                    }
-                )
-            }
-        }
-    }
-
-    private func openPlanAheadPlace(
-        _ placeID: SavedPlace.ID,
+    private func openComparisonPlace(
+        _ placeID: City.ID,
         on date: Date?
     ) {
         if let date {
             selectedDate = model.forecastCalendar.startOfDay(for: date)
         }
-        router.savedPlacesPath.append(.place(id: placeID))
+
+        guard let place = comparisonPlaces.first(where: { $0.id == placeID }) else {
+            return
+        }
+
+        switch source {
+        case .savedPlaces:
+            router.savedPlacesPath.append(.place(id: placeID))
+        case .mapQuery:
+            if let savedPlaceID = model.placesStore.savedPlaceID(
+                matching: place.city
+            ) {
+                mapDetailPlaceID = savedPlaceID
+            } else {
+                model.registerTransientCity(place.city)
+                mapDetailPlaceID = placeID
+            }
+        }
     }
 
-    /// The planning dashboard uses the same in-content heading treatment as
-    /// every Detail View, independent of device, orientation, or platform.
-    private var savedPlacesTitle: some View {
-        HStack(spacing: 0) {
-            Spacer(minLength: 34)
+    private var modeHeader: some View {
+        VStack(spacing: 9) {
+            HStack(spacing: 0) {
+                Spacer(minLength: 34)
 
-            Menu {
-                Button(
-                    "Customize Saved Places",
-                    systemImage: "arrow.up.arrow.down"
-                ) {
-                    presentedSheet = .customize
+                Menu {
+                    ForEach(SavedPlacesViewMode.allCases) { mode in
+                        Button {
+                            storedModeRawValue = mode.rawValue
+                        } label: {
+                            HStack {
+                                Text(mode.title)
+                                if mode == selectedMode {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    DetailStyleReportMenuLabel(
+                        title: selectedMode.displayName(locale: locale)
+                    )
                 }
-            } label: {
-                DetailStyleReportMenuLabel(
-                    title: localizedString("Saved Places", locale: locale)
-                )
-            }
-            .buttonStyle(.plain)
+                .buttonStyle(.plain)
 
-            Spacer(minLength: 34)
+                Spacer(minLength: 34)
+            }
+
+            Text(selectedMode.subtitle)
+                .font(.body)
+                .foregroundStyle(theme.colors.secondaryText)
+                .multilineTextAlignment(.center)
+                .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 4)
         .padding(.bottom, 4)
     }
 
-    /// A quiet footer link shares Place Detail's secondary text-action style
-    /// rather than competing with the forecast cards as another capsule.
     private var manageSavedPlacesLink: some View {
         NavigationLink(value: AppRoute.savedPlacesLibrary) {
             SecondaryTextActionLabel(

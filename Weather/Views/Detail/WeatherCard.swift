@@ -31,8 +31,6 @@ enum WeatherCardFallbackLayout {
     static let dailyTimelineContentHeight: CGFloat = 62
     /// Ten-day timelines retain room for their axis, forecast rows, and key.
     static let tenDayTimelineContentHeight: CGFloat = 300
-    /// The usual two-week Saved Places heat map remains visually anchored.
-    static let savedDatesContentHeight: CGFloat = 144
     /// The planning preview normally presents up to three saved-place rows.
     static let savedPlacesContentHeight: CGFloat = 132
 }

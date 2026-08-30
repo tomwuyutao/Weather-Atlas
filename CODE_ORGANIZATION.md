@@ -139,12 +139,17 @@ Read:
 1. **Weather/Views/SavedPlaces/SavedPlacesView.swift**
 2. **Weather/Views/SavedPlaces/BestSunnyPlacesCard.swift**
 3. **Weather/Views/SavedPlaces/PlanAheadCards.swift**
-4. **Weather/Views/SavedPlaces/CustomizeSavedPlaces.swift**
-5. **Weather/Views/SavedPlaces/ManageSavedPlaces.swift**
+4. **Weather/Views/SavedPlaces/ManageSavedPlaces.swift**
 
-The overview is a reorderable planning dashboard split between the selected
-day and future planning. ManageSavedPlaces.swift is the editable saved-place
-library. The current location is not included in saved-place recommendations.
+SavedPlacesView adapts the persistent library to one shared, mode-selectable
+comparison screen. Best Sunny Places uses the selected date, Best Weekend
+Escape presents independent Saturday and Sunday rankings for the next complete
+weekend, and Next Sunny Day shows each place's next mostly sunny day. Map Find
+Sun results reuse that same comparison screen with a temporary candidate set.
+Every mode explains its ranking beneath the title. The latter two expose a
+static forecast range, without stepper arrows, in the shared date control.
+ManageSavedPlaces.swift is the editable saved-place library. The current
+location is not included in saved-place recommendations.
 
 ### 7. Read discovery and geography
 
@@ -216,7 +221,7 @@ AppNavigation owns navigation state that should survive switching tabs.
 | Router value | Meaning |
 | --- | --- |
 | AppTab.yourLocation | The temporary local-weather experience. |
-| AppTab.savedPlaces | The saved-place dashboard and its editable library. |
+| AppTab.savedPlaces | The saved-place planning rankings and editable library. |
 | AppTab.map | The geographic experience. |
 | AppTab.search | The system search-role tab. |
 | AppRoute.place(id:) | Pushes a detail report for a saved or temporary City ID. |
@@ -361,7 +366,7 @@ forecast be retained safely during the app session.
 | Area | Primary view files | What belongs there |
 | --- | --- | --- |
 | Your Location | YourLocationView.swift, SunnyHoursTimeline.swift, NearbySunnyPlacesCard.swift | Device-location lifecycle, local timeline, and nearby-sun suggestions. |
-| Saved Places overview | SavedPlacesView.swift, BestSunnyPlacesCard.swift, PlanAheadCards.swift, CustomizeSavedPlaces.swift | Reorderable selected-day and future saved-place planning. |
+| Place comparison | SavedPlacesView.swift, BestSunnyPlacesCard.swift, PlanAheadCards.swift, FindSunListView.swift | One selectable Best Sunny Places, Best Weekend Escape, and Next Sunny Day implementation, supplied by either the saved library or a temporary Map query. |
 | Saved Places library | ManageSavedPlaces.swift | Rename, delete, and browse the persistent saved library. |
 | Detail | DetailView.swift, ChartView.swift | Shared full reports, reusable charts, and saved-place actions where appropriate. |
 | Map | MapCard.swift, MapView.swift | Shared two-size floating surface, MapKit presentation, markers, Find Sun, and camera handling. |
@@ -387,11 +392,16 @@ chart logic and appearance in one place.
 
 ### Saved Places
 
-SavedPlacesView is not the library editor. It is a concise planning dashboard:
+SavedPlacesView is not the library editor. It supplies the persistent library
+to the shared comparison screen, whose title menu selects one complete ranking:
 
-- BestSunnyPlacesCard ranks saved places for the globally selected day.
-- PlanAheadCards presents the next weekend and each place's next mostly sunny day.
-- CustomizeSavedPlaces owns the persisted section and card ordering interface.
+- BestSunnyPlacesCard ranks usable saved-place forecasts for the globally
+  selected day while hiding settled unavailable rows.
+- PlanAheadCards ranks Saturday and Sunday independently in two columns and
+  presents each place's next mostly sunny day.
+- Best Sunny Places keeps the interactive date switcher; Best Weekend Escape
+  and Next Sunny Day show their actual time ranges without arrows or changes to
+  the shared selected day.
 - A navigation action opens ManageSavedPlaces for the full editable library.
 
 ManageSavedPlaces.swift is where persistent-place management happens. It preserves the
@@ -420,8 +430,9 @@ international date line.
 Find Sun guards asynchronous search writes with a generation value, so an
 older search cannot overwrite a newer one. A result stays transient unless
 the person explicitly saves it. FindSunButton.swift owns the menu and
-geographic picker, FindSunListView.swift owns ranked navigation results, and
-MapFindSun.swift contains the MapView workflow extension.
+geographic picker, FindSunListView.swift adapts the complete query candidate
+set to the shared place-comparison screen, and MapFindSun.swift contains the
+MapView workflow extension.
 
 ## Search
 
@@ -535,11 +546,9 @@ Saved Places route.
 | --- | --- |
 | Weather/Views/YourLocation/YourLocationView.swift | Device-location permission, refresh, and recovery wrapper. |
 | Weather/Views/Detail/NearbySunnyPlacesCard.swift | Nearby sunny-city rows, distance labels, and Map handoff. |
-| Weather/Views/SavedPlaces/SavedPlacesView.swift | Saved Places planning dashboard. |
-| Weather/Views/SavedPlaces/BestSunnyPlacesCard.swift | Best sunny saved-place recommendations. |
-| Weather/Views/SavedPlaces/PlanAheadCards.swift | Weekend rankings and each place's next mostly sunny day. |
-| Weather/Views/SavedPlaces/CustomizeSavedPlaces.swift | Persisted native dashboard section and card reordering. |
-| Weather/Views/SavedPlaces/BestSunnyDatesCard.swift | Date ranking reused by Find Sun results. |
+| Weather/Views/SavedPlaces/SavedPlacesView.swift | Shared source-driven Best Sunny Places, Best Weekend Escape, and Next Sunny Day comparison screen plus the persistent-library adapter. |
+| Weather/Views/SavedPlaces/BestSunnyPlacesCard.swift | Available selected-day place ranking with transient states. |
+| Weather/Views/SavedPlaces/PlanAheadCards.swift | Source-neutral Saturday/Sunday rankings and per-place mostly-sunny outlook. |
 
 ### Views: Detail, Map, Places, Search, Settings
 
@@ -548,7 +557,7 @@ Saved Places route.
 | Weather/Views/Detail/DetailView.swift | Shared detailed report canvas and the place-detail route. |
 | Weather/Views/Detail/ChartView.swift | Forecast metric cards and chart presentation. |
 | Weather/Views/Map/FindSunButton.swift | Find Sun menu and geographic picker. |
-| Weather/Views/Map/FindSunListView.swift | Ranked Find Sun result dashboard. |
+| Weather/Views/Map/FindSunListView.swift | Thin Map-query adapter to the shared place-comparison screen. |
 | Weather/Views/Map/MapCard.swift | Shared compact/large Map surface and every floating-card body. |
 | Weather/Views/Map/MapCapsule.swift | Shared compact Map status capsule and its presentation states. |
 | Weather/Views/Map/MapFindSun.swift | MapView's Find Sun workflow extension. |

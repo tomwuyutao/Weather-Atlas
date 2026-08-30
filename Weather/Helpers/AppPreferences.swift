@@ -73,166 +73,47 @@ enum DetailReportSection: String, CaseIterable, Identifiable {
     }
 }
 
-// MARK: - Saved Places Dashboard Order
+// MARK: - Saved Places View Mode
 
-/// The two movable planning sections on the Saved Places dashboard.
-/// Raw values are persisted so a person's preferred order survives relaunches.
-enum SavedPlacesDashboardSection: String, CaseIterable, Identifiable {
-    case selectedDay
-    case planAhead
+/// The three mutually exclusive ranking lenses on Saved Places. Persisting
+/// only the selected lens replaces the previous nested section/card ordering
+/// preferences while preserving the person's context across relaunches.
+enum SavedPlacesViewMode: String, CaseIterable, Identifiable {
+    case day
+    case weekend
+    case outlook
 
-    static let storageKey = "savedPlacesDashboardSectionOrder"
-    static let defaultOrder = Array(allCases)
-    static let defaultStorageValue = storageValue(for: defaultOrder)
-
-    var id: String { rawValue }
-
-    var title: LocalizedStringResource {
-        switch self {
-        case .selectedDay:
-            "Selected Day"
-        case .planAhead:
-            "Plan Ahead"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .selectedDay:
-            "calendar"
-        case .planAhead:
-            "calendar.badge.checkmark"
-        }
-    }
-
-    /// Ignores corrupt and duplicate values, then appends sections introduced
-    /// by a future app version in their default order.
-    static func order(
-        from storedValue: String
-    ) -> [SavedPlacesDashboardSection] {
-        var seen = Set<SavedPlacesDashboardSection>()
-        var result = storedValue
-            .split(separator: ",")
-            .compactMap {
-                SavedPlacesDashboardSection(rawValue: String($0))
-            }
-            .filter { seen.insert($0).inserted }
-
-        result.append(
-            contentsOf: defaultOrder.filter { seen.insert($0).inserted }
-        )
-        return result
-    }
-
-    static func storageValue(
-        for sections: [SavedPlacesDashboardSection]
-    ) -> String {
-        sections.map(\.rawValue).joined(separator: ",")
-    }
-}
-
-/// Movable cards within the Saved Places dashboard's Selected Day section.
-enum SavedPlacesSelectedDayCard: String, CaseIterable, Identifiable {
-    case bestSunnyPlaces
-
-    static let storageKey = "savedPlacesSelectedDayCardOrder"
-    static let defaultOrder = Array(allCases)
-    static let defaultStorageValue = storageValue(for: defaultOrder)
+    static let storageKey = "savedPlacesViewMode"
+    static let defaultRawValue = SavedPlacesViewMode.day.rawValue
 
     var id: String { rawValue }
 
     var title: LocalizedStringResource {
         switch self {
-        case .bestSunnyPlaces:
+        case .day:
             "Best Sunny Places"
-        }
-    }
-
-    var systemImage: String {
-        switch self {
-        case .bestSunnyPlaces:
-            "mappin.and.ellipse"
-        }
-    }
-
-    /// Ignores corrupt and duplicate values, then appends cards introduced by
-    /// a future app version in their default order.
-    static func order(
-        from storedValue: String
-    ) -> [SavedPlacesSelectedDayCard] {
-        var seen = Set<SavedPlacesSelectedDayCard>()
-        var result = storedValue
-            .split(separator: ",")
-            .compactMap {
-                SavedPlacesSelectedDayCard(rawValue: String($0))
-            }
-            .filter { seen.insert($0).inserted }
-
-        result.append(
-            contentsOf: defaultOrder.filter { seen.insert($0).inserted }
-        )
-        return result
-    }
-
-    static func storageValue(
-        for cards: [SavedPlacesSelectedDayCard]
-    ) -> String {
-        cards.map(\.rawValue).joined(separator: ",")
-    }
-}
-
-/// Movable cards within the Saved Places dashboard's Plan Ahead section.
-enum SavedPlacesPlanAheadCard: String, CaseIterable, Identifiable {
-    case bestWeekendEscape
-    case sunnyOutlookByPlace
-
-    static let storageKey = "savedPlacesPlanAheadCardOrder"
-    static let defaultOrder = Array(allCases)
-    static let defaultStorageValue = storageValue(for: defaultOrder)
-
-    var id: String { rawValue }
-
-    var title: LocalizedStringResource {
-        switch self {
-        case .bestWeekendEscape:
+        case .weekend:
             "Best Weekend Escape"
-        case .sunnyOutlookByPlace:
-            "Sunny Outlook by Place"
+        case .outlook:
+            "Next Sunny Day"
         }
     }
 
-    var systemImage: String {
+    var subtitle: LocalizedStringResource {
         switch self {
-        case .bestWeekendEscape:
-            "suitcase.rolling"
-        case .sunnyOutlookByPlace:
-            "sun.max"
+        case .day:
+            "Places ranked by sunny daylight hours on the selected day."
+        case .weekend:
+            "Saturday and Sunday ranked separately by sunny daylight hours."
+        case .outlook:
+            "Each place’s next day with at least 80% sunny daylight."
         }
     }
 
-    /// Ignores corrupt and duplicate values, then appends cards introduced by
-    /// a future app version in their default order.
-    static func order(
-        from storedValue: String
-    ) -> [SavedPlacesPlanAheadCard] {
-        var seen = Set<SavedPlacesPlanAheadCard>()
-        var result = storedValue
-            .split(separator: ",")
-            .compactMap {
-                SavedPlacesPlanAheadCard(rawValue: String($0))
-            }
-            .filter { seen.insert($0).inserted }
-
-        result.append(
-            contentsOf: defaultOrder.filter { seen.insert($0).inserted }
-        )
-        return result
-    }
-
-    static func storageValue(
-        for cards: [SavedPlacesPlanAheadCard]
-    ) -> String {
-        cards.map(\.rawValue).joined(separator: ",")
+    func displayName(locale: Locale) -> String {
+        var resource = title
+        resource.locale = locale
+        return String(localized: resource)
     }
 }
 

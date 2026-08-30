@@ -723,17 +723,12 @@ struct ContentView: View {
             forKey: DetailReportSection.storageKey
         )
         defaults.set(
-            SavedPlacesDashboardSection.defaultStorageValue,
-            forKey: SavedPlacesDashboardSection.storageKey
+            SavedPlacesViewMode.defaultRawValue,
+            forKey: SavedPlacesViewMode.storageKey
         )
-        defaults.set(
-            SavedPlacesSelectedDayCard.defaultStorageValue,
-            forKey: SavedPlacesSelectedDayCard.storageKey
-        )
-        defaults.set(
-            SavedPlacesPlanAheadCard.defaultStorageValue,
-            forKey: SavedPlacesPlanAheadCard.storageKey
-        )
+        defaults.removeObject(forKey: "savedPlacesDashboardSectionOrder")
+        defaults.removeObject(forKey: "savedPlacesSelectedDayCardOrder")
+        defaults.removeObject(forKey: "savedPlacesPlanAheadCardOrder")
         SavedPlaceNameTranslationPreference.resetToInitialDefault()
         theme.style = .automatic
 

@@ -327,15 +327,6 @@ struct NearestSunnyPlaceResult: Identifiable {
     var id: City.ID { recommendation.id }
 }
 
-/// One saved destination intentionally omitted from a selected-day ranking
-/// because that literal date has already passed in the destination's timezone.
-struct SavedPlaceDateExclusion: Identifiable {
-    /// Persisted place retained even though it has no rank for the selected day.
-    let place: SavedPlace
-    /// Reuse the persisted place identity for stable SwiftUI rows.
-    var id: SavedPlace.ID { place.id }
-}
-
 /// Stable inputs that make rebuilding Home or changing tabs a no-op.
 /// Coordinates are intentionally rounded before becoming this key: minor GPS
 /// jitter should not repeat an expensive nearby-city WeatherKit search.
@@ -1305,58 +1296,6 @@ final class WeatherModel {
             recommendations,
             locale: locale
         )
-    }
-
-    /// Saved places omitted because the selected literal date has already
-    /// passed there. Injecting `now` keeps the timezone rule deterministic in
-    /// tests; missing loads and incomplete weather fields are excluded because
-    /// they require different user-facing messages.
-    func savedPlaceDateExclusions(
-        on date: Date,
-        now: Date = .now
-    ) -> [SavedPlaceDateExclusion] {
-        let selectedDay = forecastCalendar.startOfDay(for: date)
-
-        return placesStore.allPlaces.compactMap { place in
-            guard let weather = weatherStore.weather(for: place.id),
-                  weather.forecastIfAvailable(
-                    on: date,
-                    selectionCalendar: forecastCalendar
-                  ) == nil,
-                  let localCurrentDate = selectionDate(
-                    forLocalDayContaining: now,
-                    in: weather.timeZone
-                  ),
-                  forecastCalendar.compare(
-                    selectedDay,
-                    to: localCurrentDate,
-                    toGranularity: .day
-                  ) == .orderedAscending else {
-                return nil
-            }
-
-            return SavedPlaceDateExclusion(
-                place: place
-            )
-        }
-    }
-
-    /// Converts an instant's destination-local day into the literal date used
-    /// by the shared selector without preserving the absolute clock time.
-    private func selectionDate(
-        forLocalDayContaining date: Date,
-        in timeZone: TimeZone
-    ) -> Date? {
-        var destinationCalendar = forecastCalendar
-        destinationCalendar.timeZone = timeZone
-        let components = destinationCalendar.dateComponents(
-            [.year, .month, .day],
-            from: date
-        )
-        guard let selectionDate = forecastCalendar.date(from: components) else {
-            return nil
-        }
-        return forecastCalendar.startOfDay(for: selectionDate)
     }
 
     // MARK: - Routing and Persistence Bridges

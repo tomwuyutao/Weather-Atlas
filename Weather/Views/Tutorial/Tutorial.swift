@@ -749,7 +749,7 @@ enum TutorialFeatureTip: Equatable {
     var message: LocalizedStringKey {
         switch self {
         case .savedPlaces:
-            "Save prospective holiday destinations, and Weather Atlas will find the best dates and best places for each date."
+            "Save cities you care about to compare their weather in one place."
         case .map:
             "Tap anywhere on the map to search that area. Or use the Find Sun button to search more broadly."
         }

@@ -294,7 +294,6 @@ struct PlaceSearchView: View {
                         }
                     } header: {
                         geographicScopeHeader(
-                            title: "Suggestions",
                             description: "Find which cities are sunny in a country."
                         )
                     }
@@ -340,7 +339,6 @@ struct PlaceSearchView: View {
                             }
                         } header: {
                             geographicScopeHeader(
-                                title: "Suggestions",
                                 description: "Find which cities are sunny across a continent."
                             )
                         }
@@ -427,7 +425,6 @@ struct PlaceSearchView: View {
                     }
                 } header: {
                     geographicScopeHeader(
-                        title: "Suggestions",
                         description: "Find when the sun comes out in a city."
                     )
                 }
@@ -613,13 +610,15 @@ struct PlaceSearchView: View {
     }
 
     private func geographicScopeHeader(
-        title: LocalizedStringKey,
+        title: LocalizedStringKey? = nil,
         description: LocalizedStringKey? = nil
     ) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.body.weight(.bold))
-                .foregroundStyle(theme.colors.primaryText)
+            if let title {
+                Text(title)
+                    .font(.body.weight(.bold))
+                    .foregroundStyle(theme.colors.primaryText)
+            }
 
             if let description {
                 Text(description)

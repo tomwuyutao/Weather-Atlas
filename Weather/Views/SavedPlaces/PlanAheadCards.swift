@@ -2,8 +2,8 @@
 //  PlanAheadCards.swift
 //  Weather
 //
-//  Purpose: Presents saved-place sunny outlooks and compact weekend rankings
-//  without coupling their calculation to the Saved Places screen.
+//  Purpose: Presents the two plan-ahead rankings without coupling their
+//  calculation to either the Saved Places or Map query screen.
 //
 
 import SwiftUI
@@ -11,37 +11,28 @@ import SwiftUI
 // MARK: - Sunny Outlook Inputs
 
 /// One saved destination's next mostly-sunny forecast state.
-///
-/// Keeping loading and unavailable at row level lets forecasts that have
-/// already resolved remain useful while another saved place is still pending.
-struct SavedPlaceSunnyOutlook: Identifiable, Equatable {
+struct ForecastComparisonSunnyOutlook: Identifiable, Equatable {
     enum Status: Equatable {
-        /// The app-wide selection date for the first qualifying city-local day.
         case date(Date)
-        /// Usable forecast rows exist, but none meet the 80% daylight rule.
         case noMatch
-        /// This place still has an in-flight forecast request.
         case loading
-        /// The request settled without a usable forecast.
         case unavailable
     }
 
-    let place: SavedPlace
+    let place: ForecastComparisonPlace
     let status: Status
+    /// A city-local date suitable for opening Detail even when no qualifying
+    /// mostly-sunny day exists or the forecast is still loading.
+    let navigationDate: Date
 
-    var id: SavedPlace.ID { place.id }
+    var id: City.ID { place.id }
 
-    var selectionDate: Date? {
-        guard case .date(let date) = status else { return nil }
-        return date
-    }
-
-    /// Places with a confirmed sunny date lead chronologically. Pending and
-    /// unavailable forecasts follow, while a confirmed no-match stays last.
-    /// Equal statuses retain saved-library order for deterministic updates.
+    /// Confirmed sunny dates lead chronologically. Pending and unavailable
+    /// forecasts follow, while a confirmed no-match stays last. Equal statuses
+    /// retain saved-library order for deterministic updates.
     static func ranked(
-        _ outlooks: [SavedPlaceSunnyOutlook]
-    ) -> [SavedPlaceSunnyOutlook] {
+        _ outlooks: [ForecastComparisonSunnyOutlook]
+    ) -> [ForecastComparisonSunnyOutlook] {
         outlooks.enumerated().sorted { lhs, rhs in
             if case .date(let lhsDate) = lhs.element.status,
                case .date(let rhsDate) = rhs.element.status,
@@ -57,7 +48,7 @@ struct SavedPlaceSunnyOutlook: Identifiable, Equatable {
 
             return lhs.offset < rhs.offset
         }
-        .map { $0.element }
+        .map(\.element)
     }
 
     private static func sortPriority(for status: Status) -> Int {
@@ -74,51 +65,48 @@ struct SavedPlaceSunnyOutlook: Identifiable, Equatable {
     }
 }
 
-// MARK: - Sunny Outlook Card
+// MARK: - Sunny Outlook List
 
-/// Shows the first forecast day with at least 80% sunny daylight for every
-/// saved place. All rows use native buttons so a caller can open the place and,
-/// when available, synchronize the shared forecast date.
+/// Shows every saved place's next forecast day with at least 80% sunny
+/// daylight. The parent mode title supplies the list's heading.
 struct SunnyOutlookByPlaceCard: View {
-    let rows: [SavedPlaceSunnyOutlook]
+    let rows: [ForecastComparisonSunnyOutlook]
     let presentationState: SavedPlacesForecastPresentationState
-    let onSelect: (SavedPlace.ID, Date?) -> Void
+    let statusMessages: PlaceComparisonStatusMessages
+    let onSelect: (City.ID, Date?) -> Void
 
     @Environment(\.appTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
 
-    var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: WeatherCardLayout.contentSpacing
-        ) {
-            WeatherCardHeader(
-                icon: "sun.max",
-                title: "Sunny Outlook by Place"
-            )
+    /// A comparison card never uses a city row to report settled missing
+    /// forecast data. Filtering here keeps that rule intact for every caller.
+    private var visibleRows: [ForecastComparisonSunnyOutlook] {
+        rows.filter { row in
+            if case .unavailable = row.status {
+                return false
+            }
+            return true
+        }
+    }
 
-            if rows.isEmpty {
+    var body: some View {
+        Group {
+            if visibleRows.isEmpty {
                 statusContent
             } else {
                 VStack(spacing: 0) {
-                    ForEach(rows) { row in
-                        Button {
-                            onSelect(row.id, row.selectionDate)
-                        } label: {
-                            SunnyOutlookPlaceRow(outlook: row)
-                        }
-                        .buttonStyle(.plain)
+                    ForEach(visibleRows) { row in
+                        VStack(spacing: 0) {
+                            Button {
+                                onSelect(row.id, row.navigationDate)
+                            } label: {
+                                SunnyOutlookPlaceRow(outlook: row)
+                            }
+                            .buttonStyle(.plain)
 
-                        if row.id != rows.last?.id {
-                            Divider()
-                                .background(
-                                    theme.colors.secondaryText.opacity(0.16)
-                                )
-                                .padding(
-                                    .leading,
-                                    SavedPlacesRankingListLayout
-                                        .contentLeadingInset
-                                )
+                            if row.id != visibleRows.last?.id {
+                                rowDivider
+                            }
                         }
                     }
                 }
@@ -133,6 +121,15 @@ struct SunnyOutlookByPlaceCard: View {
                 style: .continuous
             )
         )
+    }
+
+    private var rowDivider: some View {
+        Divider()
+            .background(theme.colors.secondaryText.opacity(0.16))
+            .padding(
+                .leading,
+                SavedPlacesRankingListLayout.contentLeadingInset
+            )
     }
 
     private var statusContent: some View {
@@ -153,22 +150,22 @@ struct SunnyOutlookByPlaceCard: View {
         )
     }
 
-    private var statusMessage: LocalizedStringKey {
+    private var statusMessage: LocalizedStringResource {
         switch presentationState {
         case .emptyLibrary:
-            "Save a place to compare sunny hours."
+            statusMessages.empty
         case .loading:
-            "Loading saved-place forecasts…"
+            statusMessages.loading
         case .unavailable:
-            "Saved-place forecasts are unavailable."
+            statusMessages.unavailable
         case .ready:
-            "No saved-place forecasts are available for this period."
+            statusMessages.noPeriodForecasts
         }
     }
 }
 
 private struct SunnyOutlookPlaceRow: View {
-    let outlook: SavedPlaceSunnyOutlook
+    let outlook: ForecastComparisonSunnyOutlook
 
     @Environment(\.appTheme) private var theme
     @Environment(\.calendar) private var calendar
@@ -182,7 +179,7 @@ private struct SunnyOutlookPlaceRow: View {
                     alignment: .leading
                 )
 
-            Text(outlook.place.localizedDisplayName(locale: locale))
+            Text(outlook.place.displayName)
                 .font(.body)
                 .foregroundStyle(theme.colors.primaryText)
                 .lineLimit(2)
@@ -254,85 +251,106 @@ private struct SunnyOutlookPlaceRow: View {
     }
 }
 
-// MARK: - Weekend Escape Card
+// MARK: - Weekend Daily Ranking Model
 
-/// Ranks saved destinations independently for the next Saturday and Sunday,
-/// then presents both capped rankings as one continuous list.
+/// One visible result in either weekend-day column. Confirmed forecasts lead in
+/// their independently ranked order; pending forecasts follow.
+/// Settled places without usable daylight data never become visible rows.
+struct ForecastComparisonWeekendDayRanking: Identifiable {
+    let place: ForecastComparisonPlace
+    let recommendation: PlaceRecommendation?
+    let isLoading: Bool
+
+    var id: City.ID { place.id }
+
+    static func ranked(
+        places: [ForecastComparisonPlace],
+        recommendations: [PlaceRecommendation],
+        loadingPlaceIDs: Set<City.ID>,
+        locale: Locale
+    ) -> [ForecastComparisonWeekendDayRanking] {
+        let placeByID = Dictionary(
+            uniqueKeysWithValues: places.map { ($0.id, $0) }
+        )
+        let rankedPairs = PlaceRecommendation.ranked(
+            recommendations,
+            locale: locale
+        ).compactMap { recommendation in
+            placeByID[recommendation.id].map { ($0, recommendation) }
+        }
+        let rankedIDs = Set(rankedPairs.map { $0.0.id })
+
+        let confirmedRows = rankedPairs.map { pair in
+            ForecastComparisonWeekendDayRanking(
+                place: pair.0,
+                recommendation: pair.1,
+                isLoading: false
+            )
+        }
+        let pendingRows: [ForecastComparisonWeekendDayRanking] =
+            places.compactMap { place in
+                guard loadingPlaceIDs.contains(place.id),
+                      !rankedIDs.contains(place.id) else {
+                    return nil
+                }
+                return ForecastComparisonWeekendDayRanking(
+                    place: place,
+                    recommendation: nil,
+                    isLoading: true
+                )
+            }
+
+        return confirmedRows + pendingRows
+    }
+}
+
+// MARK: - Weekend Daily Ranking Card
+
+/// Presents the next Saturday and Sunday as equal, independently ranked
+/// columns inside one planning card.
 struct BestWeekendEscapeCard: View {
-    private static let maximumRecommendationsPerDay = 5
-
     let saturdayDate: Date
     let sundayDate: Date
-    let saturdayRecommendations: [PlaceRecommendation]
-    let sundayRecommendations: [PlaceRecommendation]
-    let savedPlaces: [SavedPlace]
+    let saturdayRows: [ForecastComparisonWeekendDayRanking]
+    let sundayRows: [ForecastComparisonWeekendDayRanking]
     let presentationState: SavedPlacesForecastPresentationState
-    let onSelect: (SavedPlace.ID, Date) -> Void
+    let statusMessages: PlaceComparisonStatusMessages
+    let onSelect: (City.ID, Date?) -> Void
 
     @Environment(\.appTheme) private var theme
-    @Environment(\.calendar) private var calendar
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.locale) private var locale
 
-    private var saturdayRows: [WeekendRecommendationRow] {
-        rankedRows(from: saturdayRecommendations, on: saturdayDate)
-    }
-
-    private var sundayRows: [WeekendRecommendationRow] {
-        rankedRows(from: sundayRecommendations, on: sundayDate)
-    }
-
-    private var weekendRows: [WeekendRecommendationRow] {
-        saturdayRows + sundayRows
+    private var hasVisibleRows: Bool {
+        !saturdayRows.isEmpty || !sundayRows.isEmpty
     }
 
     var body: some View {
-        VStack(
-            alignment: .leading,
-            spacing: WeatherCardLayout.contentSpacing
-        ) {
-            WeatherCardHeader(
-                icon: "suitcase.rolling",
-                title: "Best Weekend Escape"
-            ) {
-                Text(weekendDateRangeLabel)
-                    .font(.subheadline)
-                    .foregroundStyle(theme.colors.secondaryText)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
+        Group {
+            if hasVisibleRows {
+                HStack(alignment: .top, spacing: 12) {
+                    WeekendDayRankingColumn(
+                        date: saturdayDate,
+                        rows: saturdayRows,
+                        presentationState: presentationState,
+                        onSelect: onSelect
+                    )
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
 
-            if weekendRows.isEmpty {
-                statusContent
-            } else {
-                VStack(spacing: 0) {
-                    ForEach(weekendRows) { row in
-                        Button {
-                            onSelect(row.place.id, row.date)
-                        } label: {
-                            SunnyPlaceRecommendationRow(
-                                recommendation: row.recommendation,
-                                displayName: row.place.localizedDisplayName(
-                                    locale: locale
-                                ),
-                                trailingContext: weekdayLabel(for: row.date)
-                            )
-                        }
-                        .buttonStyle(.plain)
+                    Divider()
+                        .background(
+                            theme.colors.secondaryText.opacity(0.16)
+                        )
 
-                        if row.id != weekendRows.last?.id {
-                            Divider()
-                                .background(
-                                    theme.colors.secondaryText.opacity(0.16)
-                                )
-                                .padding(
-                                    .leading,
-                                    SavedPlacesRankingListLayout
-                                        .contentLeadingInset
-                                )
-                        }
-                    }
+                    WeekendDayRankingColumn(
+                        date: sundayDate,
+                        rows: sundayRows,
+                        presentationState: presentationState,
+                        onSelect: onSelect
+                    )
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
                 }
+            } else {
+                statusContent
             }
         }
         .padding(WeatherCardLayout.padding)
@@ -364,73 +382,134 @@ struct BestWeekendEscapeCard: View {
         )
     }
 
-    private func rankedRows(
-        from recommendations: [PlaceRecommendation],
-        on date: Date
-    ) -> [WeekendRecommendationRow] {
-        let placesByID = Dictionary(
-            uniqueKeysWithValues: savedPlaces.map { ($0.id, $0) }
-        )
-
-        let rows: [WeekendRecommendationRow] = PlaceRecommendation.ranked(
-            recommendations.filter { $0.sunnyHourCount > 0 },
-            locale: locale
-        ).compactMap { recommendation in
-            guard let place = placesByID[recommendation.id] else { return nil }
-            return WeekendRecommendationRow(
-                place: place,
-                recommendation: recommendation,
-                date: date
-            )
+    private var statusMessage: LocalizedStringResource {
+        switch presentationState {
+        case .emptyLibrary:
+            statusMessages.empty
+        case .loading:
+            statusMessages.loading
+        case .unavailable:
+            statusMessages.unavailable
+        case .ready:
+            statusMessages.noPeriodForecasts
         }
+    }
+}
 
-        return Array(rows.prefix(Self.maximumRecommendationsPerDay))
+private struct WeekendDayRankingColumn: View {
+    let date: Date
+    let rows: [ForecastComparisonWeekendDayRanking]
+    let presentationState: SavedPlacesForecastPresentationState
+    let onSelect: (City.ID, Date?) -> Void
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.calendar) private var calendar
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(weekdayLabel)
+                    .font(.headline)
+                    .foregroundStyle(theme.colors.primaryText)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.75)
+
+                Text(dateLabel)
+                    .font(.caption)
+                    .foregroundStyle(theme.colors.secondaryText)
+                    .lineLimit(1)
+            }
+            .padding(.bottom, 8)
+
+            if rows.isEmpty {
+                if presentationState == .loading {
+                    ProgressView()
+                        .controlSize(.small)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                }
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(rows) { row in
+                        VStack(spacing: 0) {
+                            Button {
+                                onSelect(row.id, date)
+                            } label: {
+                                WeekendDayRecommendationRow(row: row)
+                            }
+                            .buttonStyle(.plain)
+
+                            if row.id != rows.last?.id {
+                                Divider()
+                                    .background(
+                                        theme.colors.secondaryText.opacity(0.16)
+                                    )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
-    private func weekdayLabel(for date: Date) -> String {
+    private var weekdayLabel: String {
         var style = Date.FormatStyle.dateTime
-            .weekday(.abbreviated)
+            .weekday(.wide)
             .locale(locale)
         style.timeZone = calendar.timeZone
         return date.formatted(style)
     }
 
-    /// Omits the year and collapses a shared month, producing concise labels
-    /// such as “Aug 29–30” while retaining each locale's natural field order.
-    private var weekendDateRangeLabel: String {
-        let style = Date.IntervalFormatStyle(
-            locale: locale,
-            calendar: calendar,
-            timeZone: calendar.timeZone
-        )
-        .month(.abbreviated)
-        .day()
-        return (saturdayDate..<sundayDate).formatted(style)
-    }
-
-    private var statusMessage: LocalizedStringKey {
-        switch presentationState {
-        case .emptyLibrary:
-            "Save a place to compare sunny hours."
-        case .loading:
-            "Loading saved-place forecasts…"
-        case .unavailable:
-            "Saved-place forecasts are unavailable."
-        case .ready:
-            "No saved place has sunny hours this weekend."
-        }
+    private var dateLabel: String {
+        var style = Date.FormatStyle.dateTime
+            .month(.abbreviated)
+            .day()
+            .locale(locale)
+        style.timeZone = calendar.timeZone
+        return date.formatted(style)
     }
 }
 
-private struct WeekendRecommendationRow: Identifiable {
-    struct ID: Hashable {
-        let placeID: SavedPlace.ID
-        let date: Date
+private struct WeekendDayRecommendationRow: View {
+    let row: ForecastComparisonWeekendDayRanking
+
+    @Environment(\.appTheme) private var theme
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(row.place.displayName)
+                .font(.body)
+                .foregroundStyle(theme.colors.primaryText)
+                .lineLimit(2)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            trailingStatus
+        }
+        .padding(.vertical, 8)
+        .contentShape(.rect)
     }
 
-    let place: SavedPlace
-    let recommendation: PlaceRecommendation
-    let date: Date
-
-    var id: ID { ID(placeID: place.id, date: date) }
+    @ViewBuilder
+    private var trailingStatus: some View {
+        if let recommendation = row.recommendation {
+            Text(
+                SunnyHoursFormatting.hourCountLabel(
+                    recommendation.sunnyHourCount,
+                    locale: locale
+                )
+            )
+            .font(.caption)
+            .monospacedDigit()
+            .foregroundStyle(theme.colors.secondaryText)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+        } else if row.isLoading {
+            Text("Loading…")
+                .font(.caption)
+                .foregroundStyle(theme.colors.secondaryText)
+                .lineLimit(1)
+                .minimumScaleFactor(0.75)
+        }
+    }
 }

@@ -2,126 +2,122 @@
 //  BestSunnyPlacesCard.swift
 //  Weather
 //
-//  Purpose: Presents compact sunny-place recommendations on Saved Places.
+//  Purpose: Presents compact sunny-place recommendations for any comparison
+//  source, including Saved Places and temporary Map query results.
 //
 
 import SwiftUI
 
 // MARK: - Saved-Place Recommendations
 
-/// Saved places with usable data, ranked by the selected day's sunny-hour total.
+/// Places with usable data, ranked by the selected day's sunny-hour total.
 struct BestSunnyPlacesCard: View {
     // MARK: - Inputs and Environment
 
     /// Available weather-derived values, ranked by the selected day.
     let recommendations: [PlaceRecommendation]
-    /// The shared date selector value described by this ranking.
-    let selectedDate: Date
-    /// The complete library is supplied so available recommendations can keep
-    /// each saved place's custom display name and navigation identity.
-    let savedPlaces: [SavedPlace]
+    /// The complete source supplies identity and source order. Settled places
+    /// without a forecast are omitted from the visible ranking.
+    let places: [ForecastComparisonPlace]
+    /// Per-place request state preserves a row only while its forecast is
+    /// actively loading. Settled missing data has no visible city row.
+    let loadingPlaceIDs: Set<City.ID>
     /// Describes why the ranking may not yet contain a usable row.
     let presentationState: SavedPlacesForecastPresentationState
-    /// Explains when saved places were omitted because the selected date has
-    /// already passed in their local time zone.
-    let timeZoneExclusionNotice: String?
+    let statusMessages: PlaceComparisonStatusMessages
+    let onSelect: (City.ID) -> Void
 
     @Environment(\.appTheme) private var theme
-    @Environment(\.calendar) private var calendar
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.locale) private var locale
 
     // MARK: - Ranked Rows
 
-    private var recommendationsByID: [SavedPlace.ID: PlaceRecommendation] {
+    private var recommendationsByID: [City.ID: PlaceRecommendation] {
         Dictionary(
             uniqueKeysWithValues: recommendations.map { ($0.id, $0) }
         )
     }
 
-    private var orderedRows: [SavedPlaceSunnyRow] {
+    private var orderedRows: [ForecastComparisonSunnyRow] {
         let rankByPlaceID = Dictionary(
             uniqueKeysWithValues: PlaceRecommendation.ranked(
                 recommendations,
                 locale: locale
             ).enumerated().map { ($0.element.id, $0.offset) }
         )
-        let orderedPlaces = savedPlaces
-            .filter { rankByPlaceID[$0.id] != nil }
-            .sorted {
-                rankByPlaceID[$0.id, default: .max]
-                    < rankByPlaceID[$1.id, default: .max]
+        let sourceOrderByID = Dictionary(
+            uniqueKeysWithValues: places.enumerated().map {
+                ($0.element.id, $0.offset)
             }
+        )
 
-        // The engine already excludes unavailable recommendations. `compactMap`
-        // also makes that invariant explicit in the row type, preventing a
-        // future caller change from bringing back a visually empty row.
+        let orderedPlaces = places.sorted { lhs, rhs in
+            switch (rankByPlaceID[lhs.id], rankByPlaceID[rhs.id]) {
+            case let (lhsRank?, rhsRank?):
+                return lhsRank < rhsRank
+            case (_?, nil):
+                return true
+            case (nil, _?):
+                return false
+            case (nil, nil):
+                return sourceOrderByID[lhs.id, default: .max]
+                    < sourceOrderByID[rhs.id, default: .max]
+            }
+        }
+
         return orderedPlaces.compactMap { place in
-            guard let recommendation = recommendationsByID[place.id] else {
+            let recommendation = recommendationsByID[place.id]
+            let isLoading = loadingPlaceIDs.contains(place.id)
+            guard recommendation != nil || isLoading else {
                 return nil
             }
-            return SavedPlaceSunnyRow(
+
+            return ForecastComparisonSunnyRow(
                 place: place,
                 recommendation: recommendation
             )
         }
     }
 
-    // MARK: - Card Presentation
-
-    private var headerTitle: LocalizedStringKey {
-        let dateLabel = ForecastDateLabel.compact(
-            for: selectedDate,
-            calendar: calendar,
-            locale: locale
-        )
-        return "Best Sunny Places · \(dateLabel)"
-    }
+    // MARK: - List Presentation
 
     var body: some View {
         VStack(
             alignment: .leading,
             spacing: WeatherCardLayout.contentSpacing
         ) {
-            WeatherCardHeader(
-                icon: "mappin.and.ellipse",
-                title: headerTitle
-            )
-
-            if !orderedRows.isEmpty {
+            if orderedRows.isEmpty {
+                statusContent
+            } else {
                 VStack(spacing: 0) {
                     ForEach(orderedRows) { row in
-                        NavigationLink(
-                            value: AppRoute.place(id: row.id)
-                        ) {
-                            SunnyPlaceRecommendationRow(
-                                recommendation: row.recommendation,
-                                displayName: row.place.displayName
-                            )
-                        }
-                        .buttonStyle(.plain)
+                        VStack(spacing: 0) {
+                            Button {
+                                onSelect(row.id)
+                            } label: {
+                                ForecastComparisonDayRow(
+                                    row: row
+                                )
+                            }
+                            .buttonStyle(.plain)
 
-                        if row.id != orderedRows.last?.id {
-                            Divider()
-                                .background(
-                                    theme.colors.secondaryText.opacity(0.16)
-                                )
-                                .padding(
-                                    .leading,
-                                    SavedPlacesRankingListLayout.contentLeadingInset
-                                )
+                            if row.id != orderedRows.last?.id {
+                                Divider()
+                                    .background(
+                                        theme.colors.secondaryText.opacity(0.16)
+                                    )
+                                    .padding(
+                                        .leading,
+                                        SavedPlacesRankingListLayout
+                                            .contentLeadingInset
+                                    )
+                            }
                         }
                     }
                 }
-            } else {
-                statusContent
             }
 
-            // Keep this context attached to the comparison it qualifies,
-            // rather than leaving an orphaned note below the dashboard.
-            if let timeZoneExclusionNotice {
-                WeatherTimeZoneFootnote(text: timeZoneExclusionNotice)
-            }
         }
         .padding(WeatherCardLayout.padding)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -154,29 +150,73 @@ struct BestSunnyPlacesCard: View {
         )
     }
 
-    private var statusMessage: LocalizedStringKey {
+    private var statusMessage: LocalizedStringResource {
         switch presentationState {
         case .emptyLibrary:
-            "Save a place to compare sunny hours."
+            statusMessages.empty
         case .loading:
-            "Loading saved-place forecasts…"
+            statusMessages.loading
         case .unavailable:
-            "Saved-place forecasts are unavailable."
+            statusMessages.unavailable
         case .ready:
-            "No sunny-hour comparison is available for this date."
+            statusMessages.noDateComparison
         }
     }
 }
 
 // MARK: - Shared Row Alignment
 
-/// A fully renderable ranking row. Its stable identity remains the saved-place
-/// UUID while the nonoptional recommendation guarantees weather content.
-private struct SavedPlaceSunnyRow: Identifiable {
-    let place: SavedPlace
-    let recommendation: PlaceRecommendation
+/// One stable visible city row. Settled places without usable data are filtered
+/// out before row construction; only in-flight forecast requests remain.
+private struct ForecastComparisonSunnyRow: Identifiable {
+    let place: ForecastComparisonPlace
+    let recommendation: PlaceRecommendation?
 
-    var id: SavedPlace.ID { place.id }
+    var id: City.ID { place.id }
+}
+
+private struct ForecastComparisonDayRow: View {
+    let row: ForecastComparisonSunnyRow
+
+    @Environment(\.appTheme) private var theme
+
+    var body: some View {
+        VStack(spacing: 0) {
+            if let recommendation = row.recommendation {
+                SunnyPlaceRecommendationRow(
+                    recommendation: recommendation,
+                    displayName: row.place.displayName
+                )
+            } else {
+                loadingRow
+            }
+        }
+    }
+
+    private var loadingRow: some View {
+        HStack(spacing: SavedPlacesRankingListLayout.columnSpacing) {
+            ProgressView()
+                .controlSize(.small)
+                .frame(
+                    width: SavedPlacesRankingListLayout.leadingIconWidth,
+                    alignment: .leading
+                )
+
+            Text(row.place.displayName)
+                .font(.body)
+                .foregroundStyle(theme.colors.primaryText)
+                .lineLimit(2)
+
+            Spacer(minLength: 8)
+
+            Text("Loading…")
+                .font(.callout)
+                .foregroundStyle(theme.colors.secondaryText)
+                .lineLimit(1)
+        }
+        .padding(.vertical, 8)
+        .contentShape(.rect)
+    }
 }
 
 /// The row grid deliberately shares the header's icon width and spacing, so
@@ -190,8 +230,7 @@ enum SavedPlacesRankingListLayout {
     static let rankOpticalInset: CGFloat = 3
 }
 
-/// One saved-place row. The parent omits a place when this selected date has no
-/// usable recommendation, so every visible row has meaningful weather values.
+/// One reusable available-forecast row shared by Saved Places and Find Sun.
 struct SunnyPlaceRecommendationRow: View {
     let recommendation: PlaceRecommendation
     let displayName: String

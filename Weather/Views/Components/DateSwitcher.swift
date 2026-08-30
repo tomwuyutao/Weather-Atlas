@@ -34,6 +34,38 @@ enum ForecastDateLabel {
         style.timeZone = calendar.timeZone
         return date.formatted(style)
     }
+
+    /// Formats an inclusive forecast-day span without assuming field order or
+    /// punctuation. A one-day range stays compact rather than repeating the
+    /// same date twice.
+    static func compactRange(
+        from start: Date,
+        through end: Date,
+        calendar: Calendar,
+        locale: Locale
+    ) -> String {
+        let startDay = calendar.startOfDay(for: min(start, end))
+        let endDay = calendar.startOfDay(for: max(start, end))
+
+        var oneDayStyle = Date.FormatStyle.dateTime
+            .month(.abbreviated)
+            .day()
+            .locale(locale)
+        oneDayStyle.timeZone = calendar.timeZone
+
+        guard startDay != endDay else {
+            return startDay.formatted(oneDayStyle)
+        }
+
+        let rangeStyle = Date.IntervalFormatStyle(
+            locale: locale,
+            calendar: calendar,
+            timeZone: calendar.timeZone
+        )
+        .month(.abbreviated)
+        .day()
+        return (startDay..<endDay).formatted(rangeStyle)
+    }
 }
 
 /// A compact, native date stepper with an anchored system calendar picker.
@@ -41,16 +73,26 @@ enum ForecastDateLabel {
 /// The control owns no app-wide state: every main destination receives the
 /// same binding from the root, so switching tabs never resets the chosen day.
 struct TopForecastDateSwitcher: View {
+    /// Saved Places can preserve the control's position while showing a
+    /// noninteractive time span for modes that are not driven by one day.
+    enum Display: Equatable {
+        case selectedDate
+        case staticRange(start: Date, end: Date)
+    }
+
     // MARK: - Inputs and Local Presentation State
 
     /// The root owns the selected forecast day; this compact toolbar control
     /// merely mutates that binding when the person steps or picks a date.
     @Binding var selection: Date
     let availableDates: [Date]
+    let display: Display
+    let staticRangeHorizontalPadding: CGFloat
 
     @State private var showsDatePicker = false
 
     @Environment(\.appTheme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
     // The toolbar's date label and hit targets must grow with the surrounding
@@ -79,6 +121,18 @@ struct TopForecastDateSwitcher: View {
     /// 44-point button frames continue to extend into the outer toolbar space.
     private let chevronVisualInset: CGFloat = 9
 
+    init(
+        selection: Binding<Date>,
+        availableDates: [Date],
+        display: Display = .selectedDate,
+        staticRangeHorizontalPadding: CGFloat = 0
+    ) {
+        self._selection = selection
+        self.availableDates = availableDates
+        self.display = display
+        self.staticRangeHorizontalPadding = staticRangeHorizontalPadding
+    }
+
     // MARK: - Normalized Date Navigation
 
     private var dates: [Date] {
@@ -99,66 +153,104 @@ struct TopForecastDateSwitcher: View {
         dates.first(where: { $0 > normalizedSelection })
     }
 
+    private var selectedDateLabel: String {
+        ForecastDateLabel.compact(
+            for: normalizedSelection,
+            calendar: calendar,
+            locale: locale
+        )
+    }
+
+    private var staticRangeLabel: String? {
+        guard case .staticRange(let start, let end) = display else {
+            return nil
+        }
+        return ForecastDateLabel.compactRange(
+            from: start,
+            through: end,
+            calendar: calendar,
+            locale: locale
+        )
+    }
+
     // MARK: - Body and Controls
 
     var body: some View {
         // The toolbar itself supplies the native glass material. This view
         // only lays out its three controls inside that system-provided shell.
         HStack(spacing: 0) {
-            stepperButton(
-                systemImage: "chevron.left",
-                targetDate: previousDate
-            )
-
-            Button {
-                showsDatePicker = true
-            } label: {
-                Text(
-                    ForecastDateLabel.compact(
-                        for: normalizedSelection,
-                        calendar: calendar,
-                        locale: locale
-                    )
+            switch display {
+            case .selectedDate:
+                stepperButton(
+                    systemImage: "chevron.left",
+                    targetDate: previousDate
                 )
-                    // Match the Saved Places recommendation rows so the
-                    // shared forecast control reads at the same hierarchy.
-                    .font(.body.weight(.medium))
-                    .foregroundStyle(theme.colors.primaryText)
-                    .lineLimit(1)
-                    // The wider label fits ordinary localized dates at the
-                    // standard text style. If a longer date still needs more
-                    // room, reduce its size before truncating its contents.
-                    .minimumScaleFactor(0.65)
-                    .allowsTightening(true)
-                    .frame(
-                        minWidth: dateLabelWidth,
-                        minHeight: dateLabelHeight
+
+                Button {
+                    showsDatePicker = true
+                } label: {
+                    dateLabel(
+                        selectedDateLabel,
+                        color: theme.colors.primaryText
                     )
                     .contentShape(Capsule())
-            }
-            .buttonStyle(.plain)
-            // The visual date label remains compact, but this independent
-            // toolbar button keeps the standard 44-point minimum hit area.
-            .frame(minWidth: dateLabelWidth, minHeight: minimumTapDimension)
-            .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                // The visual date label remains compact, but this independent
+                // toolbar button keeps the standard 44-point minimum hit area.
+                .frame(
+                    minWidth: dateLabelWidth,
+                    minHeight: minimumTapDimension
+                )
+                .contentShape(Rectangle())
+                .popover(isPresented: $showsDatePicker) {
+                    datePicker
+                        // On iPhone retain the anchored calendar instead of
+                        // adapting this short choice into a full-screen sheet.
+                        .presentationCompactAdaptation(.popover)
+                }
 
-            .popover(isPresented: $showsDatePicker) {
-                datePicker
-                    // On iPhone retain the anchored calendar instead of
-                    // adapting this short choice into a full-screen sheet.
-                    .presentationCompactAdaptation(.popover)
-            }
+                stepperButton(
+                    systemImage: "chevron.right",
+                    targetDate: nextDate
+                )
 
-            stepperButton(
-                systemImage: "chevron.right",
-                targetDate: nextDate
-            )
+            case .staticRange:
+                dateLabel(
+                    staticRangeLabel ?? selectedDateLabel,
+                    color: theme.colors.secondaryText
+                )
+                .padding(.horizontal, staticRangeHorizontalPadding)
+                .frame(
+                    minWidth: dateLabelWidth,
+                    minHeight: minimumTapDimension
+                )
+            }
         }
         .padding(.horizontal, 2)
         // The native toolbar provides this control's glass container. Adding
         // a second custom glass background here creates a nested capsule.
         .frame(minHeight: minimumTapDimension)
         .fixedSize(horizontal: true, vertical: false)
+        .onChange(of: display) {
+            if case .staticRange = display {
+                showsDatePicker = false
+            }
+        }
+    }
+
+    private func dateLabel(_ text: String, color: Color) -> some View {
+        Text(text)
+            // Match the Saved Places recommendation rows so the shared
+            // forecast control reads at the same hierarchy.
+            .font(.body.weight(.medium))
+            .foregroundStyle(color)
+            .lineLimit(1)
+            // The wider label fits ordinary localized dates at the standard
+            // text style. Longer ranges shrink before truncating.
+            .minimumScaleFactor(0.65)
+            .allowsTightening(true)
+            .frame(minWidth: dateLabelWidth, minHeight: dateLabelHeight)
     }
 
     private func stepperButton(
@@ -170,7 +262,9 @@ struct TopForecastDateSwitcher: View {
             .overlay {
                 Button {
                     guard let targetDate else { return }
-                    withAnimation(.smooth(duration: 0.2)) {
+                    withAnimation(
+                        reduceMotion ? nil : .smooth(duration: 0.2)
+                    ) {
                         selection = targetDate
                     }
                 } label: {

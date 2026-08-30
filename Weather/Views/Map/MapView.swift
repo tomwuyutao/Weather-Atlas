@@ -296,12 +296,9 @@ struct MapView: View {
     @State var currentViewport: MapViewport?
     @State var activeSunQuery: MapSunQueryScope?
     /// All valid Find Sun recommendations drive Map dots, including places with
-    /// zero sunny hours. The ranking sheet receives its sunnier-only subset
-    /// separately so its recommendation copy remains truthful.
+    /// zero sunny hours. The comparison destination derives every mode from the
+    /// complete candidate set and retained ten-day forecasts below.
     @State var sunSearchResults: [MapSunSearchResult] = []
-    var sunRankingResults: [MapSunSearchResult] {
-        sunSearchResults.filter { $0.recommendation.sunnyHourCount > 0 }
-    }
     /// Stable spatial candidates for the active query. They define both the
     /// date-independent camera frame and the persistent annotation hosts.
     @State var sunCandidateCities: [City] = []
@@ -621,7 +618,6 @@ struct MapView: View {
             }
             .navigationDestination(isPresented: $isSunRankingPresented) {
                 FindSunListView(
-                    results: sunRankingResults,
                     title: activeSunQuery?.resultsTitle(locale: locale)
                         ?? localizedString("Results", locale: locale),
                     candidateCities: sunCandidateCities,
