@@ -391,6 +391,22 @@ struct CurrentLocationReportContent: View {
         )
     }
 
+    /// Once weather is available, the selector mirrors WeatherKit's actual
+    /// city-local forecast dates. The fixed horizon remains only as loading UI.
+    private var locationForecastDates: [Date] {
+        guard let locationWeather else {
+            return ForecastDateHorizon.dates(in: model.forecastCalendar)
+        }
+
+        let dates = Set(locationWeather.dailyForecasts.compactMap { forecast in
+            locationWeather.selectionDate(
+                for: forecast,
+                selectionCalendar: model.forecastCalendar
+            )
+        })
+        return dates.sorted()
+    }
+
     /// Weather supplies the most recently resolved current-location city. A
     /// configured home location remains usable while its weather is loading.
     private var locationCity: City? {
@@ -426,6 +442,13 @@ struct CurrentLocationReportContent: View {
         model.isRefreshingLocation && !networkConnectivity.isOffline
     }
 
+    /// The daily card already understands active location phases directly.
+    /// Feed the same state to the ten-day card so both timelines settle together.
+    private var isLocationTimelineLoading: Bool {
+        isLocationForecastLoading
+            || model.locationProvider.status.isActivelyLocating
+    }
+
     private var locationForecastUnavailableMessage: String? {
         guard locationWeather == nil else { return nil }
         if networkConnectivity.isOffline {
@@ -443,9 +466,22 @@ struct CurrentLocationReportContent: View {
         let trimmedName = locationName.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
-        return trimmedName.isEmpty
-            ? localizedString("Your Location", locale: locale)
-            : trimmedName
+        if !trimmedName.isEmpty {
+            return trimmedName
+        }
+        return localizedString(
+            model.isUsingHomeLocation ? "Home Location" : "Your Location",
+            locale: locale
+        )
+    }
+
+    /// A fixed Home uses the same radius as the physical-location search, but
+    /// its results must remain named after that place rather than “Near Me.”
+    private var defaultLocationFindSunScope: MapSunQueryScope {
+        if model.isUsingHomeLocation, let locationCity {
+            return .nearPlace(locationCity)
+        }
+        return .nearMe
     }
 
     private var metadataRecoveryKey: String {
@@ -496,7 +532,11 @@ struct CurrentLocationReportContent: View {
             dailySunnyHoursCard: SunnyHoursTimeline(
                 weather: locationWeather,
                 selectedDate: selectedDate,
-                locationStatus: model.locationProvider.status,
+                // A fixed Home is a normal named-place forecast; physical
+                // permission/loading copy would misdescribe that scope.
+                locationStatus: model.isUsingHomeLocation
+                    ? nil
+                    : model.locationProvider.status,
                 isLoading: isLocationForecastLoading,
                 requestLocation: requestCurrentLocation,
                 openSettings: openLocationSettings,
@@ -505,7 +545,7 @@ struct CurrentLocationReportContent: View {
             tenDaySunnyHoursTimeline: TenDaySunnyHoursTimeline(
                 city: locationWeather,
                 selectedDate: $selectedDate,
-                isLoading: isLocationForecastLoading,
+                isLoading: isLocationTimelineLoading,
                 unavailableMessage: locationForecastUnavailableMessage,
                 retry: nil
             ),
@@ -524,12 +564,17 @@ struct CurrentLocationReportContent: View {
             NearbySunnyPlacesSection(
                 model: model,
                 selectedDate: selectedDate,
-                reference: .currentLocation,
+                reference: .currentLocation(
+                    distanceReferenceName: model.isUsingHomeLocation
+                        ? navigationTitle
+                        : nil,
+                    requiresPhysicalLocation: !model.isUsingHomeLocation
+                ),
                 requestLocation: requestCurrentLocation,
                 openSettings: openLocationSettings,
                 viewOnMap: {
                     router.showMap(
-                        findingSunIn: .nearMe,
+                        findingSunIn: defaultLocationFindSunScope,
                         on: selectedDate
                     )
                 }
@@ -569,9 +614,7 @@ struct CurrentLocationReportContent: View {
             ToolbarItem(placement: .topBarTrailing) {
                 TopForecastDateSwitcher(
                     selection: $selectedDate,
-                    availableDates: ForecastDateHorizon.dates(
-                        in: model.forecastCalendar
-                    )
+                    availableDates: locationForecastDates
                 )
             }
         }
@@ -660,12 +703,8 @@ struct CurrentLocationReportContent: View {
     }
 
     private func viewOnMap() {
-        guard let locationCity else { return }
-        if let savedPlace {
-            router.showMap(placeID: savedPlace.id)
-        } else {
-            router.showMap(previewing: locationCity)
-        }
+        guard locationCity != nil else { return }
+        router.showDefaultLocationOnMap()
     }
 }
 
@@ -673,7 +712,10 @@ struct CurrentLocationReportContent: View {
 
 /// Identifies both the geographic center and sunny-hours baseline for the card.
 private enum NearbySunnyPlacesReference {
-    case currentLocation
+    case currentLocation(
+        distanceReferenceName: String?,
+        requiresPhysicalLocation: Bool
+    )
     case place(city: City?, displayName: String)
 }
 
@@ -725,13 +767,19 @@ private struct NearbySunnyPlacesSection: View {
     }
 
     private var requiresCurrentLocation: Bool {
-        if case .currentLocation = reference { return true }
-        return false
+        guard case .currentLocation(_, let requiresPhysicalLocation) = reference else {
+            return false
+        }
+        return requiresPhysicalLocation
     }
 
     private var distanceReferenceName: String? {
-        guard case .place(_, let displayName) = reference else { return nil }
-        return displayName
+        switch reference {
+        case .currentLocation(let displayName, _):
+            return displayName
+        case .place(_, let displayName):
+            return displayName
+        }
     }
 
     private var hasMatchingPlaceSearch: Bool {
@@ -845,6 +893,24 @@ struct DetailView: View {
             on: selectedDate,
             selectionCalendar: model.forecastCalendar
         )
+    }
+
+    /// Detail keeps the app-wide selector's established horizon while removing
+    /// any provider gaps inside it. This avoids manufacturing missing forecast
+    /// days without changing how the shared calendar handles remote civil days.
+    private var detailForecastDates: [Date] {
+        let calendar = model.forecastCalendar
+        let fallbackDates = ForecastDateHorizon.dates(in: calendar)
+        guard let cityWeather else { return fallbackDates }
+
+        let horizon = Set(fallbackDates.map(calendar.startOfDay(for:)))
+        let actualDates = Set(cityWeather.dailyForecasts.compactMap { forecast in
+            cityWeather.selectionDate(
+                for: forecast,
+                selectionCalendar: calendar
+            )
+        }.map(calendar.startOfDay(for:)))
+        return actualDates.filter(horizon.contains).sorted()
     }
 
     private var displayName: String {
@@ -1013,7 +1079,7 @@ struct DetailView: View {
                 // navigation as the toolbar's single trailing control.
                 TopForecastDateSwitcher(
                     selection: $selectedDate,
-                    availableDates: ForecastDateHorizon.dates(in: model.forecastCalendar)
+                    availableDates: detailForecastDates
                 )
             }
         }
@@ -1238,6 +1304,7 @@ private struct PlaceDetailMutationError: Identifiable {
 struct DetailStyleReportTitle: View {
     let title: String
     let horizontalPadding: CGFloat
+    let textStyle: Font.TextStyle
 
     @Environment(\.appTheme) private var theme
     @ScaledMetric(relativeTo: .largeTitle)
@@ -1245,14 +1312,19 @@ struct DetailStyleReportTitle: View {
     @ScaledMetric(relativeTo: .largeTitle)
     private var titleToContentGap: CGFloat = 8
 
-    init(title: String, horizontalPadding: CGFloat = 34) {
+    init(
+        title: String,
+        horizontalPadding: CGFloat = 34,
+        textStyle: Font.TextStyle = .largeTitle
+    ) {
         self.title = title
         self.horizontalPadding = horizontalPadding
+        self.textStyle = textStyle
     }
 
     var body: some View {
         Text(title)
-            .font(.system(.largeTitle, design: .serif).weight(.bold))
+            .font(.system(textStyle, design: .serif).weight(.bold))
             .foregroundStyle(theme.colors.primaryText)
             .lineLimit(2)
             .minimumScaleFactor(0.72)
@@ -1268,14 +1340,24 @@ struct DetailStyleReportTitle: View {
 /// preserving the established large-title geometry.
 struct DetailStyleReportMenuLabel: View {
     let title: String
+    let titleTextStyle: Font.TextStyle
 
     @Environment(\.appTheme) private var theme
+
+    init(
+        title: String,
+        titleTextStyle: Font.TextStyle = .largeTitle
+    ) {
+        self.title = title
+        self.titleTextStyle = titleTextStyle
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: 2) {
             DetailStyleReportTitle(
                 title: title,
-                horizontalPadding: 0
+                horizontalPadding: 0,
+                textStyle: titleTextStyle
             )
 
             Image(systemName: "chevron.down")

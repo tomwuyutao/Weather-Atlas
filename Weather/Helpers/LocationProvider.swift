@@ -49,6 +49,23 @@ nonisolated enum LocationProviderStatus: Equatable, Hashable, Sendable {
     case failed
 }
 
+// MARK: - Shared Location Presentation State
+
+extension LocationProviderStatus {
+    /// The phases that are actively working toward the first usable coordinate.
+    /// Daily and multi-day forecast cards share this exact classification so one
+    /// report cannot show loading while another prematurely shows unavailable.
+    var isActivelyLocating: Bool {
+        switch self {
+        case .checkingAvailability, .requestingAuthorization, .locating:
+            true
+        case .idle, .resolvingPlace, .ready, .readyWithoutMetadata, .denied,
+                .restricted, .servicesDisabled, .failed:
+            false
+        }
+    }
+}
+
 /// Display metadata returned by Apple's reverse geocoder for the coordinate.
 /// All fields are optional because a coordinate can be precise and usable even
 /// when a provider cannot supply one of these presentation-only details.

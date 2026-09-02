@@ -347,6 +347,18 @@ private struct NearbySunnyCityCandidate {
     let distanceKilometers: Double
 }
 
+/// One settled place-detail search retained for native back navigation.
+/// Candidate weather remains repository-owned; this value stores only the
+/// geographic ordering and enough metadata to enforce the normal 30-minute
+/// reuse policy independently for each origin.
+private struct PlaceNearbySearchSnapshot {
+    let searchKey: NearestSunnySearchKey
+    let candidates: [NearbySunnyCityCandidate]
+    let retainedPlaceIDs: Set<City.ID>
+    let completedAt: Date
+    let isFullySuccessful: Bool
+}
+
 /// The single shared geographic sampling contract for Nearby Sunnier Places and
 /// Find Sun's Near Me scope. Keeping it here prevents the two entry points
 /// from slowly acquiring different radii or weather-request budgets.
@@ -405,8 +417,15 @@ final class WeatherModel {
 
     /// Coordinate-backed city used to retain current-location weather safely.
     private(set) var locationCity: City?
-    /// Weather rendered by the Your Location timeline card.
-    private(set) var locationWeather: CityWeather?
+    /// Weather rendered by every Current/Home Location surface.
+    ///
+    /// The repository is the single source of truth. Resolving this value at the
+    /// read boundary means its 24-hour validity check also governs Home and Map;
+    /// a detached copy could otherwise outlive repository expiry indefinitely.
+    var locationWeather: CityWeather? {
+        guard let placeID = currentLocationWeatherPlaceID else { return nil }
+        return weatherStore.weather(for: placeID)
+    }
     /// Optional resolved city selected during onboarding instead of device
     /// location. When present, it supplies every current-location surface
     /// until the person explicitly chooses device location again.
@@ -470,6 +489,20 @@ final class WeatherModel {
                 validTimeZoneIdentifier ?? baseCity.timeZoneIdentifier,
             catalogIdentifier: baseCity.catalogIdentifier
         )
+    }
+
+    /// Resolves the repository identity from the currently authoritative source.
+    /// A lost device coordinate deliberately has no fallback to `locationCity`:
+    /// that value can describe the previous position until its clearing task runs.
+    private var currentLocationWeatherPlaceID: City.ID? {
+        if let homeLocation {
+            return homeLocation.id
+        }
+        guard let coordinate = locationProvider.coordinate,
+              CLLocationCoordinate2DIsValid(coordinate) else {
+            return nil
+        }
+        return makeLocationCity(coordinate: coordinate).id
     }
 
     /// Uses the same canonical city as current-location actions. A manually
@@ -570,9 +603,9 @@ final class WeatherModel {
 
     // MARK: Place-Detail Nearby Search State
 
-    /// The last bounded candidate set centered on a non-current Detail View.
-    /// It remains separate from `nearbyCandidates`, so opening a saved or Map
-    /// place never replaces the Your Location recommendations underneath it.
+    /// The active bounded candidate set centered on a non-current Detail View.
+    /// Completed sets are also retained per origin below, so a nested route can
+    /// replace this compatibility projection without erasing its parent's state.
     private var placeNearbyCandidates: [NearbySunnyCityCandidate] = []
     /// Identifies the place whose coordinates and forecast define this search.
     private(set) var placeNearbySearchOriginID: City.ID?
@@ -600,13 +633,17 @@ final class WeatherModel {
     @ObservationIgnored private var inFlightNearbyPlaceIDs: Set<City.ID> = []
     /// Invalidates a place-detail search when another detail route replaces it.
     @ObservationIgnored private var placeNearbyRefreshID = 0
-    /// Bounded cache scope for the last completed place-detail candidate set.
+    /// Bounded cache scope for the active place-detail candidate set.
     @ObservationIgnored private var retainedPlaceNearbyIDs: Set<City.ID> = []
     /// Protects a place-detail batch from cache trimming while it is in flight.
     @ObservationIgnored private var inFlightPlaceNearbyIDs: Set<City.ID> = []
-    /// Short-lived reuse metadata for returning to the same detail location.
-    @ObservationIgnored private var lastPlaceNearbySearchKey: NearestSunnySearchKey?
-    @ObservationIgnored private var lastPlaceNearbySearchCompletedAt: Date?
+    /// Settled nearby state follows each origin through nested navigation. A
+    /// small LRU bound prevents recursive nearby browsing from retaining every
+    /// WeatherKit candidate encountered during the entire app session.
+    @ObservationIgnored
+    private var placeNearbySnapshotsByOriginID:
+        [City.ID: PlaceNearbySearchSnapshot] = [:]
+    @ObservationIgnored private var placeNearbySnapshotRecency: [City.ID] = []
     /// Find Sun owns a separate, Map-local candidate set. Its forecasts must
     /// survive unrelated Saved Places and Home mutations for as long as that
     /// Map session remains visible.
@@ -634,6 +671,9 @@ final class WeatherModel {
     /// Reuse successful nearby results for the same 0.001-degree coordinate for
     /// at most one WeatherKit freshness window.
     private static let nearbySearchTimeToLive: TimeInterval = 30 * 60
+    /// Six origins cover ordinary nested exploration while bounding retained
+    /// candidate forecasts to at most six nearby-search batches.
+    private static let maximumRetainedPlaceNearbyOrigins = 6
 
     // MARK: - Construction
 
@@ -727,7 +767,19 @@ final class WeatherModel {
             return
         }
 
+        let priorCurrentLocationWeatherID = physicalLocationFallbackPlaceID
         let currentCity = makeLocationCity(coordinate: coordinate)
+        // Coordinate-derived IDs may change after only a few metres of normal
+        // Core Location drift. Rebind the prior retained snapshot before scope
+        // trimming so an offline cold launch keeps its valid 24-hour fallback.
+        if !isUsingHomeLocation,
+           weatherStore.weather(for: currentCity.id) == nil,
+           let priorCurrentLocationWeatherID {
+            weatherStore.adoptRetainedLocationWeather(
+                from: priorCurrentLocationWeatherID,
+                for: currentCity
+            )
+        }
         let coordinateChanged = locationCity?.id != currentCity.id
         if coordinateChanged {
             // A location change invalidates an older nearby task immediately;
@@ -752,11 +804,10 @@ final class WeatherModel {
             }
         }
 
-        // A current-location refresh follows the same blank-first policy as
-        // every other replacement request. Keep the coordinate identity, but
-        // do not leave an older forecast visible while the new request settles.
+        // A current-location refresh follows the repository's replacement policy.
+        // Keep the coordinate identity while the store temporarily hides an older
+        // visible value and retains it only as a failure fallback.
         locationCity = currentCity
-        locationWeather = nil
         locationError = nil
         retainWeatherScope()
 
@@ -773,11 +824,13 @@ final class WeatherModel {
             return
         }
 
-        locationWeather = weather
         if let weather {
             // Preserve WeatherKit's authoritative timezone and metadata while
             // retaining the transient current-location identity.
             locationCity = weather.city
+            if !isUsingHomeLocation {
+                CurrentLocationWeatherIdentityStore.save(weather.id)
+            }
         } else {
             locationError = missingLocationWeatherMessage(locale: locale)
         }
@@ -1016,25 +1069,35 @@ final class WeatherModel {
         retainWeatherScope()
 
         let key = nearbySearchKey(coordinate: coordinate)
-        if !forceRefresh,
-           canReusePlaceNearbySearch(for: key) {
-            // Equivalent coordinates can arrive with a fresher saved/transient
-            // identity. Keep the candidate set but compare it with that route.
-            placeNearbySearchOriginID = origin.id
-            return
+        let fallbackSnapshot = placeNearbySnapshot(
+            for: origin.id,
+            matching: key
+        )
+        if !forceRefresh, let fallbackSnapshot {
+            // Returning to a completed parent route supersedes any younger
+            // detail search still finishing above it in the navigation stack.
+            placeNearbyRefreshID &+= 1
+            isSearchingPlaceNearby = false
+            inFlightPlaceNearbyIDs = []
+            applyPlaceNearbySnapshot(fallbackSnapshot, to: origin.id)
+            if canReusePlaceNearbySnapshot(fallbackSnapshot) {
+                retainWeatherScope()
+                return
+            }
         }
 
         placeNearbyRefreshID &+= 1
         let generation = placeNearbyRefreshID
         placeNearbySearchOriginID = origin.id
         isSearchingPlaceNearby = true
-        didSearchPlaceNearby = false
+        let keepsFallbackVisible = !forceRefresh && fallbackSnapshot != nil
+        didSearchPlaceNearby = keepsFallbackVisible
         placeNearbySearchError = nil
-        placeNearbyCandidates = []
-        retainedPlaceNearbyIDs = []
+        if !keepsFallbackVisible {
+            placeNearbyCandidates = []
+            retainedPlaceNearbyIDs = []
+        }
         inFlightPlaceNearbyIDs = []
-        lastPlaceNearbySearchKey = nil
-        lastPlaceNearbySearchCompletedAt = nil
         retainWeatherScope()
 
         defer {
@@ -1107,10 +1170,16 @@ final class WeatherModel {
                     locale: locale
                 )
             }
-            if failedLookupCount == 0 {
-                lastPlaceNearbySearchKey = key
-                lastPlaceNearbySearchCompletedAt = .now
-            }
+            cachePlaceNearbySnapshot(
+                PlaceNearbySearchSnapshot(
+                    searchKey: key,
+                    candidates: loadedCandidates,
+                    retainedPlaceIDs: retainedIDs,
+                    completedAt: .now,
+                    isFullySuccessful: failedLookupCount == 0
+                ),
+                for: origin.id
+            )
             retainWeatherScope()
         } catch is CancellationError {
             return
@@ -1119,12 +1188,14 @@ final class WeatherModel {
                 generation,
                 originID: origin.id
             ) else { return }
-            retainedPlaceNearbyIDs = []
-            placeNearbyCandidates = []
-            didSearchPlaceNearby = false
-            placeNearbySearchError = localizedString(
+            let message = localizedString(
                 "Nearby city catalog data is missing.",
                 locale: locale
+            )
+            restorePlaceNearbyFallback(
+                fallbackSnapshot,
+                for: origin.id,
+                errorMessage: message
             )
             retainWeatherScope()
         } catch {
@@ -1132,12 +1203,14 @@ final class WeatherModel {
                 generation,
                 originID: origin.id
             ) else { return }
-            retainedPlaceNearbyIDs = []
-            placeNearbyCandidates = []
-            didSearchPlaceNearby = false
-            placeNearbySearchError = localizedString(
+            let message = localizedString(
                 "Nearby city forecasts are temporarily unavailable.",
                 locale: locale
+            )
+            restorePlaceNearbyFallback(
+                fallbackSnapshot,
+                for: origin.id,
+                errorMessage: message
             )
             retainWeatherScope()
         }
@@ -1430,10 +1503,37 @@ final class WeatherModel {
         retainedIDs.formUnion(inFlightNearbyPlaceIDs)
         retainedIDs.formUnion(retainedPlaceNearbyIDs)
         retainedIDs.formUnion(inFlightPlaceNearbyIDs)
+        for snapshot in placeNearbySnapshotsByOriginID.values {
+            retainedIDs.formUnion(snapshot.retainedPlaceIDs)
+        }
         retainedIDs.formUnion(activeMapCandidateIDs)
         retainedIDs.formUnion(foundCitiesByID.keys)
         // The weather store discards every snapshot outside this explicit scope.
-        weatherStore.retainWeather(for: retainedIDs)
+        weatherStore.retainWeather(
+            for: retainedIDs,
+            preservingRestoredWeather:
+                shouldPreserveRestoredCurrentLocationWeather
+        )
+    }
+
+    /// Before an authorized one-shot request publishes a coordinate, the model
+    /// cannot yet reconstruct the deterministic current-location UUID. Preserve
+    /// restored cache entries through that short identity-resolution window; a
+    /// resolved coordinate or terminal location state resumes ordinary trimming.
+    private var shouldPreserveRestoredCurrentLocationWeather: Bool {
+        guard homeLocation == nil,
+              locationCity == nil,
+              locationProvider.coordinate == nil else {
+            return false
+        }
+
+        switch locationProvider.status {
+        case .idle, .checkingAvailability, .requestingAuthorization, .locating:
+            return true
+        case .resolvingPlace, .ready, .readyWithoutMetadata, .denied,
+                .restricted, .servicesDisabled, .failed:
+            return false
+        }
     }
 
     /// Invalidates the completed key when an explicit app reset occurs.
@@ -1442,6 +1542,7 @@ final class WeatherModel {
         activeMapCandidateIDs = []
         homeLocation = nil
         HomeLocationStore.clear()
+        CurrentLocationWeatherIdentityStore.clear()
         clearLocationState(keepingTransientCities: false)
         locationProvider.clearLocation()
         retainWeatherScope()
@@ -1544,7 +1645,6 @@ final class WeatherModel {
         refreshID &+= 1
         currentWeatherRefreshID &+= 1
         locationCity = nil
-        locationWeather = nil
         nearbyCandidates = []
         isRefreshingLocation = false
         isSearchingNearby = false
@@ -1588,8 +1688,8 @@ final class WeatherModel {
         placeNearbySearchError = nil
         retainedPlaceNearbyIDs = []
         inFlightPlaceNearbyIDs = []
-        lastPlaceNearbySearchKey = nil
-        lastPlaceNearbySearchCompletedAt = nil
+        placeNearbySnapshotsByOriginID = [:]
+        placeNearbySnapshotRecency = []
     }
 
     private func nearbySearchKey(
@@ -1618,17 +1718,132 @@ final class WeatherModel {
         return age >= 0 && age < Self.nearbySearchTimeToLive
     }
 
-    /// Uses the same freshness policy for the separate place-detail candidate set.
-    private func canReusePlaceNearbySearch(
-        for key: NearestSunnySearchKey,
+    // MARK: Place-Detail Nearby Snapshot Cache
+
+    /// Returns only a snapshot built for the origin's current coordinates. A
+    /// saved-place metadata correction may keep its ID while moving its factual
+    /// coordinate, in which case the earlier nearby result must be discarded.
+    private func placeNearbySnapshot(
+        for originID: City.ID,
+        matching key: NearestSunnySearchKey
+    ) -> PlaceNearbySearchSnapshot? {
+        guard let snapshot = placeNearbySnapshotsByOriginID[originID] else {
+            return nil
+        }
+        guard snapshot.searchKey == key else {
+            placeNearbySnapshotsByOriginID[originID] = nil
+            placeNearbySnapshotRecency.removeAll { $0 == originID }
+            return nil
+        }
+        touchPlaceNearbySnapshot(originID)
+        return snapshot
+    }
+
+    /// A fully successful snapshot shares the ordinary 30-minute reuse window.
+    /// Partial results remain available as refresh fallback but are retried when
+    /// their origin becomes active again.
+    private func canReusePlaceNearbySnapshot(
+        _ snapshot: PlaceNearbySearchSnapshot,
         now: Date = .now
     ) -> Bool {
-        guard key == lastPlaceNearbySearchKey,
-              let completedAt = lastPlaceNearbySearchCompletedAt else {
+        guard snapshot.isFullySuccessful else {
             return false
         }
-        let age = now.timeIntervalSince(completedAt)
-        return age >= 0 && age < Self.nearbySearchTimeToLive
+        let age = now.timeIntervalSince(snapshot.completedAt)
+        guard age >= 0, age < Self.nearbySearchTimeToLive else {
+            return false
+        }
+        return snapshot.retainedPlaceIDs.allSatisfy {
+            weatherStore.weather(for: $0) != nil
+        }
+    }
+
+    /// Projects one origin-owned snapshot back into the existing observable
+    /// properties consumed by `NearbySunnyPlacesSection`.
+    private func applyPlaceNearbySnapshot(
+        _ snapshot: PlaceNearbySearchSnapshot,
+        to originID: City.ID
+    ) {
+        placeNearbySearchOriginID = originID
+        placeNearbyCandidates = snapshot.candidates
+        retainedPlaceNearbyIDs = snapshot.retainedPlaceIDs
+        didSearchPlaceNearby = true
+        placeNearbySearchError = nil
+    }
+
+    /// Keeps a prior completed result visible if its replacement cannot finish.
+    /// Without a fallback, retain the active origin so the card can present the
+    /// newly localized error instead of appearing to have no search context.
+    private func restorePlaceNearbyFallback(
+        _ snapshot: PlaceNearbySearchSnapshot?,
+        for originID: City.ID,
+        errorMessage: String
+    ) {
+        if let snapshot {
+            applyPlaceNearbySnapshot(snapshot, to: originID)
+        } else {
+            placeNearbySearchOriginID = originID
+            placeNearbyCandidates = []
+            retainedPlaceNearbyIDs = []
+            didSearchPlaceNearby = false
+        }
+        placeNearbySearchError = errorMessage
+    }
+
+    /// Inserts or updates one origin and evicts the least recently viewed search
+    /// when the bounded navigation cache reaches its limit.
+    private func cachePlaceNearbySnapshot(
+        _ snapshot: PlaceNearbySearchSnapshot,
+        for originID: City.ID
+    ) {
+        placeNearbySnapshotsByOriginID[originID] = snapshot
+        touchPlaceNearbySnapshot(originID)
+
+        while placeNearbySnapshotRecency.count > Self.maximumRetainedPlaceNearbyOrigins {
+            let evictedOriginID = placeNearbySnapshotRecency.removeFirst()
+            placeNearbySnapshotsByOriginID[evictedOriginID] = nil
+        }
+    }
+
+    private func touchPlaceNearbySnapshot(_ originID: City.ID) {
+        placeNearbySnapshotRecency.removeAll { $0 == originID }
+        placeNearbySnapshotRecency.append(originID)
+    }
+
+    /// Resolves only identities previously published as the physical current
+    /// location. This prevents offline recovery from borrowing an unrelated
+    /// Saved Place or transient Map forecast merely because it is nearby.
+    private var physicalLocationFallbackPlaceID: City.ID? {
+        guard !isUsingHomeLocation else { return nil }
+
+        let knownIDs = [
+            locationCity?.id,
+            CurrentLocationWeatherIdentityStore.load()
+        ].compactMap { $0 }
+        if let retainedID = knownIDs.first(where: {
+            weatherStore.weather(for: $0) != nil
+        }) {
+            return retainedID
+        }
+
+        guard let catalog = WidgetDataStore.catalog(),
+              catalog.resolvedDefaultLocationKind == .currentLocation,
+              let previousLocation = catalog.currentLocation,
+              let latitude = previousLocation.latitude,
+              let longitude = previousLocation.longitude else {
+            return nil
+        }
+        let previousCoordinate = CLLocationCoordinate2D(
+            latitude: latitude,
+            longitude: longitude
+        )
+        guard CLLocationCoordinate2DIsValid(previousCoordinate) else {
+            return nil
+        }
+        let previousID = makeLocationCity(coordinate: previousCoordinate).id
+        return weatherStore.weather(for: previousID) == nil
+            ? nil
+            : previousID
     }
 
     /// Compatibility copy for the existing nearby card.

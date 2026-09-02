@@ -44,3 +44,28 @@ enum HomeLocationStore {
         UserDefaults.standard.removeObject(forKey: storageKey)
     }
 }
+
+// MARK: - Physical-Location Forecast Identity
+
+/// Persists only the repository identity of the last physical-location
+/// forecast. The forecast itself remains in `PlaceWeatherSnapshotCache` with
+/// its independent timestamp and 24-hour retention policy.
+enum CurrentLocationWeatherIdentityStore {
+    private static let storageKey =
+        "weatherAtlas.currentLocationWeatherPlaceID"
+
+    static func load() -> City.ID? {
+        guard let value = UserDefaults.standard.string(forKey: storageKey) else {
+            return nil
+        }
+        return UUID(uuidString: value)
+    }
+
+    static func save(_ placeID: City.ID) {
+        UserDefaults.standard.set(placeID.uuidString, forKey: storageKey)
+    }
+
+    static func clear() {
+        UserDefaults.standard.removeObject(forKey: storageKey)
+    }
+}

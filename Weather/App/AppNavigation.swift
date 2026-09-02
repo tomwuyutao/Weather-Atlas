@@ -37,6 +37,9 @@ enum PlaceSearchScope: String, CaseIterable, Identifiable {
 /// screen resolve the freshest saved-place and weather data after a refresh.
 enum AppRoute: Hashable {
     case place(id: City.ID)
+    /// The live Current/Home Location report is a distinct route. It must not
+    /// be collapsed into a semantically matching Saved Place identity.
+    case currentLocation
     case savedPlacesLibrary
 }
 
@@ -63,9 +66,9 @@ enum AppSheetDestination: Identifiable, Hashable {
     }
 }
 
-// MARK: - Shared Router
+// MARK: - Window Router
 
-/// Main-actor observable navigation state shared by the root tab shell.
+/// Main-actor observable navigation state owned by one root window's tab shell.
 ///
 /// SwiftUI observes individual stored properties here, so a view updates only
 /// when it reads the particular selection, path, or presentation that changes.
@@ -88,6 +91,9 @@ final class AppNavigation {
     /// An unsaved search result that Map presents with the same floating card
     /// language as a Find Sun result.
     var mapPreviewCity: City?
+    /// Whether an incoming Map hand-off targets the dedicated Current/Home
+    /// Location annotation rather than a saved or transient city marker.
+    var selectsDefaultLocationOnMap = false
     /// A Find Sun request handed to Map from another tab. The companion token
     /// makes repeated selections of the same scope and date distinct.
     var pendingMapSunHandoff: MapSunHandoff?
@@ -96,17 +102,21 @@ final class AppNavigation {
     /// this before showing the new marker, preview, or Find Sun scope, so a
     /// prior session's card or asynchronous query cannot mask the hand-off.
     var mapHandoffToken = 0
+    /// Reopening Map at its root should dismiss a locally pushed results list
+    /// without discarding the completed query shown underneath it.
+    var mapRootRequestToken = 0
 
     /// Selects Map and optionally tells it which saved or temporary place to
     /// focus. A targeted hand-off first returns the Map tab to its root, so a
     /// preview can never appear behind a previously pushed detail view. A
     /// destination-free call simply reopens the current Map session.
     func showMap(placeID: City.ID? = nil, previewing city: City? = nil) {
-        // Destination-free navigation reopens the existing Map session. In
-        // particular, a Home Screen Map shortcut must not silently clear a
-        // completed Find Sun query whose summary owns its explicit close.
+        // Destination-free navigation reopens the existing Map session and
+        // asks Map to dismiss its local results destination. The completed
+        // query itself remains available in the summary underneath.
         guard placeID != nil || city != nil else {
             mapPath = []
+            mapRootRequestToken &+= 1
             selectedTab = .map
             return
         }
@@ -114,6 +124,14 @@ final class AppNavigation {
         beginMapHandoff()
         selectedMapPlaceID = placeID
         mapPreviewCity = city
+        selectedTab = .map
+    }
+
+    /// Opens Map with its dedicated Current/Home Location annotation selected.
+    /// This remains distinct even when the same city also exists in Saved Places.
+    func showDefaultLocationOnMap() {
+        beginMapHandoff()
+        selectsDefaultLocationOnMap = true
         selectedTab = .map
     }
 
@@ -129,6 +147,15 @@ final class AppNavigation {
         selectedTab = .map
     }
 
+    /// Cancels a Find Sun hand-off that Map is still holding while it waits for
+    /// a cold-launch location. Advancing the shared generation also tells the
+    /// mounted Map to clear its local loading/query presentation.
+    func cancelPendingMapSunHandoff() {
+        guard pendingMapSunHandoff != nil else { return }
+        pendingMapSunHandoff = nil
+        mapHandoffToken &+= 1
+    }
+
     /// Clears routing values which belong to the previous Map session. The
     /// caller establishes its replacement target immediately afterward and
     /// Map observes the generation to cancel any in-flight presentation state.
@@ -136,6 +163,7 @@ final class AppNavigation {
         mapPath = []
         selectedMapPlaceID = nil
         mapPreviewCity = nil
+        selectsDefaultLocationOnMap = false
         pendingMapSunHandoff = nil
         mapHandoffToken &+= 1
     }
@@ -148,11 +176,11 @@ final class AppNavigation {
         selectedTab = .search
     }
 
-    /// Opens the full saved-city manager from an external entry point such as
-    /// a widget, map empty state, or Home Screen quick action.
-    func showPlacesLibrary() {
+    /// Opens the Saved Places dashboard at its root. External links should
+    /// never bypass that overview and land directly in the editing manager.
+    func showSavedPlacesRoot() {
         selectedTab = .savedPlaces
-        savedPlacesPath = [.savedPlacesLibrary]
+        savedPlacesPath = []
     }
 
     /// Discards every transient Map hand-off during a full app reset. Advancing
@@ -162,8 +190,10 @@ final class AppNavigation {
         mapPath = []
         selectedMapPlaceID = nil
         mapPreviewCity = nil
+        selectsDefaultLocationOnMap = false
         pendingMapSunHandoff = nil
         mapSunQueryToken &+= 1
         mapHandoffToken &+= 1
+        mapRootRequestToken &+= 1
     }
 }

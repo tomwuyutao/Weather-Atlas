@@ -75,15 +75,18 @@ enum DetailReportSection: String, CaseIterable, Identifiable {
 
 // MARK: - Saved Places View Mode
 
-/// The three mutually exclusive ranking lenses on Saved Places. Persisting
-/// only the selected lens replaces the previous nested section/card ordering
-/// preferences while preserving the person's context across relaunches.
+/// The three mutually exclusive ranking lenses shared by Saved Places and Map
+/// results. Each surface persists its own selection so changing one never
+/// changes the mode shown by the other.
 enum SavedPlacesViewMode: String, CaseIterable, Identifiable {
     case day
     case weekend
     case outlook
 
+    /// Existing key retained so current Saved Places preferences keep working.
     static let storageKey = "savedPlacesViewMode"
+    /// Independent key for the transient Map Find Sun results screen.
+    static let mapResultsStorageKey = "mapFindSunResultsViewMode"
     static let defaultRawValue = SavedPlacesViewMode.day.rawValue
 
     var id: String { rawValue }
@@ -102,11 +105,11 @@ enum SavedPlacesViewMode: String, CaseIterable, Identifiable {
     var subtitle: LocalizedStringResource {
         switch self {
         case .day:
-            "Places ranked by sunny daylight hours on the selected day."
+            "Places ranked by daytime sunny hours on the selected day."
         case .weekend:
-            "Saturday and Sunday ranked separately by sunny daylight hours."
+            "Places ranked by daytime sunny hours this weekend."
         case .outlook:
-            "Each place’s next day with at least 80% sunny daylight."
+            "Next day with sunshine for at least 80% of daytime hours."
         }
     }
 

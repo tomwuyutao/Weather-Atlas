@@ -557,19 +557,159 @@ extension SunnyHoursLockScreenProvider {
         )
     }
 
-    /// Makes a transient location failure visible without using an old
-    /// coordinate for rendering or a new network request.
+    /// Uses the extension's last verified Current Location response when a new
+    /// Core Location fix fails. Older snapshots must remain within the app's
+    /// two-kilometre jitter bound; generation-tagged snapshots may follow travel
+    /// farther away while the app's published Current Location identity remains
+    /// unchanged. Both paths verify the source, timezone, reset epoch, and cache
+    /// age, so neither can borrow Home or Saved Place weather. A short retry
+    /// remains in force so live position is preferred as soon as it is available.
     func transientCurrentLocationFallback(
-        for publishedCity: WidgetDataCity
-    ) -> WidgetRefreshResult {
-        // Keep the private cache for the next verified coordinate match, but do
-        // not display it under the app's older Current Location identity.
-        WidgetRefreshResult(
+        for publishedCity: WidgetDataCity,
+        defaultLocationKind: WidgetDefaultLocationKind?,
+        selectionIdentity: WidgetSelectionIdentity,
+        configuration: SunnyHoursLockScreenConfigurationIntent
+    ) async -> WidgetRefreshResult {
+        let authorizationFailure = await currentLocationAuthorizationFailure(
+            for: publishedCity,
+            whenRequired: true
+        )
+        guard selectionStillMatches(
+            selectionIdentity,
+            configuration: configuration,
+            resolvesDeviceLocation: true
+        ) else {
+            return resultForCurrentSelection(configuration)
+        }
+        if let authorizationFailure {
+            WidgetForecastStore.removeSnapshot(
+                for: WidgetDataStore.currentLocationIdentifier
+            )
+            return authorizationFailure
+        }
+        if let cached = cityUsingFallbackWidgetSnapshot(
+            for: publishedCity,
+            defaultLocationKind: defaultLocationKind
+        ) {
+            return WidgetRefreshResult(
+                city: cached.city,
+                snapshot: cached.snapshot,
+                reloadPolicy: .transientFailure
+            )
+        }
+        if let cached = latestVerifiedDeviceLocationFallback(
+            defaultLocationKind: defaultLocationKind
+        ) {
+            return WidgetRefreshResult(
+                city: cached.city,
+                snapshot: cached.snapshot,
+                reloadPolicy: .transientFailure
+            )
+        }
+
+        // Without a source- and identity-verified snapshot, retain no weather
+        // rather than displaying a potentially different city.
+        return WidgetRefreshResult(
             city: publishedCity.markingUnavailable(
                 .unresolvedPlace("widget current location")
             ),
             snapshot: nil,
             reloadPolicy: .transientFailure
+        )
+    }
+
+    /// Checks permission immediately before any cached device-coordinate value
+    /// can be displayed. A timeout and a revocation callback can race, so the
+    /// earlier Core Location error alone is not a sufficient authorization fact.
+    func currentLocationAuthorizationFailure(
+        for city: WidgetDataCity,
+        whenRequired: Bool
+    ) async -> WidgetRefreshResult? {
+        guard whenRequired else { return nil }
+        let remainsAuthorized = await WidgetCurrentLocationResolver
+            .widgetUpdatesAuthorized()
+        guard !remainsAuthorized else { return nil }
+
+        return WidgetRefreshResult(
+            city: city.markingUnavailable(
+                .unresolvedPlace("widget current location permission")
+            ),
+            snapshot: nil,
+            reloadPolicy: .persistentFailure
+        )
+    }
+
+    /// Accepts an extension-owned coordinate beyond the app catalog's ordinary
+    /// two-kilometre jitter bound only when both sides still share the exact
+    /// Current Location generation. This covers travel while the app stays
+    /// closed; a later app-published location changes the generation and makes
+    /// the older extension snapshot ineligible immediately.
+    private func latestVerifiedDeviceLocationFallback(
+        defaultLocationKind: WidgetDefaultLocationKind?
+    ) -> WidgetAppliedSnapshot? {
+        guard defaultLocationKind == .currentLocation,
+              let catalog = WidgetDataStore.catalog(),
+              catalog.resolvedDefaultLocationKind == .currentLocation,
+              let generation = catalog.currentLocationGeneration,
+              let snapshot = WidgetForecastStore.fallbackSnapshot(
+                  forAny: [WidgetDataStore.currentLocationIdentifier],
+                  matching: {
+                      $0.locationSource == .deviceCurrentLocation
+                          && $0.currentLocationGeneration == generation
+                          && validCoordinate(
+                              latitude: $0.latitude,
+                              longitude: $0.longitude
+                          )
+                  }
+              ),
+              let latitude = snapshot.latitude,
+              let longitude = snapshot.longitude,
+              let timeZoneIdentifier = snapshot.timeZoneIdentifier else {
+            return nil
+        }
+
+        let localizedSnapshotName: String? = {
+            guard snapshot.cityNameLocaleIdentifier
+                    == WidgetDataStore.appLocale.identifier,
+                  let name = snapshot.resolvedCityName?
+                    .trimmingCharacters(in: .whitespacesAndNewlines),
+                  !name.isEmpty else {
+                return nil
+            }
+            return name
+        }()
+        let cachedIdentity = WidgetDataCity(
+            id: WidgetDataStore.currentLocationIdentifier,
+            cityName: localizedSnapshotName
+                ?? widgetLocalizedString("Current Location"),
+            timeZoneIdentifier: timeZoneIdentifier,
+            latitude: latitude,
+            longitude: longitude
+        )
+        guard let cachedCity = cachedIdentity.applying(
+            snapshot,
+            preservesResolvedCityName: true
+        ), cachedCity.widgetCurrentIssue == nil else {
+            return nil
+        }
+        return WidgetAppliedSnapshot(city: cachedCity, snapshot: snapshot)
+    }
+
+    private func validCoordinate(
+        latitude: Double?,
+        longitude: Double?
+    ) -> Bool {
+        guard let latitude,
+              let longitude,
+              latitude.isFinite,
+              longitude.isFinite else {
+            return false
+        }
+        return CLLocationCoordinate2DIsValid(
+            CLLocationCoordinate2D(
+                latitude: latitude,
+                longitude: longitude
+            )
         )
     }
 }

@@ -26,6 +26,19 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
         [.findSunNearMe, .places, .map]
     }
 
+    /// Decodes both current destination values and the pre-redesign `list`
+    /// value. Legacy list shortcuts now land on the Saved Places dashboard,
+    /// which is the closest equivalent after named city lists were removed.
+    nonisolated static func decodePersistedValue(_ rawValue: String) -> Self? {
+        switch rawValue {
+        case "findSunNearMe": .findSunNearMe
+        case "map": .map
+        case "places", "list": .places
+        case "home": .legacyHome
+        default: nil
+        }
+    }
+
     /// The SF Symbol paired with this destination in the system shortcut menu.
     var iconName: String {
         switch self {
@@ -40,7 +53,12 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
     func localizedTitle(locale: Locale) -> String {
         switch self {
         case .findSunNearMe:
-            return localizedString("Find Sun Near Me", locale: locale)
+            // A fixed Home is a named place, not the device-relative “Near Me”
+            // scope. The app supplies the exact Home-centered query after launch.
+            return localizedString(
+                HomeLocationStore.load() == nil ? "Find Sun Near Me" : "Find Sun",
+                locale: locale
+            )
         case .map: return localizedString("Map", locale: locale)
         case .places: return localizedString("Saved Places", locale: locale)
         case .legacyHome: return localizedString("Your Location", locale: locale)
@@ -54,6 +72,10 @@ enum HomeScreenShortcutDestination: String, CaseIterable {
 class AppDelegate: NSObject, UIApplicationDelegate {
     /// User-defaults key holding a shortcut until the SwiftUI app shell consumes it.
     nonisolated private static let pendingShortcutDestinationKey = "pendingShortcutDestination"
+    /// Scene-qualified hand-offs keep a quick action delivered to one iPad
+    /// window from being consumed by another window's independent router.
+    nonisolated private static let pendingShortcutSceneKeyPrefix =
+        "pendingShortcutDestination.scene."
 
     /// Installs current shortcuts and captures a shortcut supplied at cold launch.
     func application(
@@ -92,6 +114,22 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         return configuration
     }
 
+    /// Removes an undelivered scene-qualified action when iOS permanently
+    /// discards that window session.
+    func application(
+        _ application: UIApplication,
+        didDiscardSceneSessions sceneSessions: Set<UISceneSession>
+    ) {
+        let defaults = UserDefaults.standard
+        for session in sceneSessions {
+            defaults.removeObject(
+                forKey: Self.pendingShortcutSceneKey(
+                    for: session.persistentIdentifier
+                )
+            )
+        }
+    }
+
     /// Rebuilds the dynamic shortcut set using the app's selected language.
     static func updateHomeScreenShortcuts() {
         // UIKit builds shortcut titles outside SwiftUI's environment, so read
@@ -113,37 +151,84 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     /// Atomically consumes the destination saved by a UIKit shortcut callback.
-    static func takePendingHomeScreenShortcut() -> HomeScreenShortcutDestination? {
+    static func takePendingHomeScreenShortcut(
+        for sceneSessionIdentifier: String? = nil,
+        includeGlobalFallback: Bool = true
+    ) -> HomeScreenShortcutDestination? {
         // Removing before returning makes this a one-shot hand-off: reopening
         // the app later does not repeat an already handled shortcut.
-        guard let rawValue = UserDefaults.standard.string(forKey: pendingShortcutDestinationKey) else { return nil }
-        UserDefaults.standard.removeObject(forKey: pendingShortcutDestinationKey)
-        return HomeScreenShortcutDestination(rawValue: rawValue)
+        let defaults = UserDefaults.standard
+        if let sceneSessionIdentifier {
+            let sceneKey = pendingShortcutSceneKey(
+                for: sceneSessionIdentifier
+            )
+            if let rawValue = defaults.string(forKey: sceneKey) {
+                defaults.removeObject(forKey: sceneKey)
+                return HomeScreenShortcutDestination.decodePersistedValue(
+                    rawValue
+                )
+            }
+        }
+        guard includeGlobalFallback else { return nil }
+        guard let rawValue = defaults.string(
+            forKey: pendingShortcutDestinationKey
+        ) else {
+            return nil
+        }
+        defaults.removeObject(forKey: pendingShortcutDestinationKey)
+        return HomeScreenShortcutDestination.decodePersistedValue(rawValue)
     }
 
     /// Removes any stored external navigation intent during a full app reset,
     /// so onboarding starts at the same blank root as a first installation.
     static func clearPendingHomeScreenShortcut() {
-        UserDefaults.standard.removeObject(forKey: pendingShortcutDestinationKey)
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: pendingShortcutDestinationKey)
+        for key in defaults.dictionaryRepresentation().keys
+        where key.hasPrefix(pendingShortcutSceneKeyPrefix) {
+            defaults.removeObject(forKey: key)
+        }
     }
 
     /// Decodes, stores, and broadcasts a shortcut received outside the main actor.
-    nonisolated fileprivate static func handleShortcutItem(_ shortcutItem: UIApplicationShortcutItem) -> Bool {
+    nonisolated fileprivate static func handleShortcutItem(
+        _ shortcutItem: UIApplicationShortcutItem,
+        sceneSessionIdentifier: String? = nil
+    ) -> Bool {
         guard let destination = destination(from: shortcutItem) else { return false }
         // UIKit callbacks can arrive before the SwiftUI root exists. Persist
         // first, then broadcast so either lifecycle timing can consume it.
-        UserDefaults.standard.set(destination.rawValue, forKey: pendingShortcutDestinationKey)
-        NotificationCenter.default.post(name: .weatherOpenMainViewShortcut, object: destination.rawValue)
+        let defaults = UserDefaults.standard
+        let key = sceneSessionIdentifier.map {
+            pendingShortcutSceneKey(for: $0)
+        } ?? pendingShortcutDestinationKey
+        if sceneSessionIdentifier != nil {
+            // Scene lifecycle delivery supersedes a duplicate application-level
+            // cold-launch hand-off for the same system action.
+            defaults.removeObject(forKey: pendingShortcutDestinationKey)
+        }
+        defaults.set(destination.rawValue, forKey: key)
+        NotificationCenter.default.post(
+            name: .weatherOpenMainViewShortcut,
+            object: sceneSessionIdentifier
+        )
         return true
     }
 
-    /// Resolves one current shortcut payload into a supported destination.
+    nonisolated private static func pendingShortcutSceneKey(
+        for sceneSessionIdentifier: String
+    ) -> String {
+        pendingShortcutSceneKeyPrefix + sceneSessionIdentifier
+    }
+
+    /// Resolves current and legacy shortcut payloads into a supported destination.
     nonisolated private static func destination(
         from shortcutItem: UIApplicationShortcutItem
     ) -> HomeScreenShortcutDestination? {
-        // Prefer the explicit payload added by current versions of the app.
+        // Prefer the explicit payload added by current versions of the app,
+        // while translating the pre-redesign `list` value to Saved Places.
         if let rawValue = shortcutItem.userInfo?["destination"] as? String,
-           let destination = HomeScreenShortcutDestination(rawValue: rawValue) {
+           let destination = HomeScreenShortcutDestination.decodePersistedValue(rawValue) {
             return destination
         }
 
@@ -151,7 +236,18 @@ class AppDelegate: NSObject, UIApplicationDelegate {
         // work even when they do not contain the `userInfo` dictionary.
         let marker = ".openView."
         if let range = shortcutItem.type.range(of: marker) {
-            return HomeScreenShortcutDestination(rawValue: String(shortcutItem.type[range.upperBound...]))
+            let rawValue = String(shortcutItem.type[range.upperBound...])
+            if let destination = HomeScreenShortcutDestination.decodePersistedValue(rawValue) {
+                return destination
+            }
+        }
+
+        // The oldest builds published one action per named city list. Those
+        // lists no longer exist, so both payload shapes open the current Saved
+        // Places dashboard instead of leaving a stale SpringBoard item inert.
+        if shortcutItem.userInfo?["listID"] != nil
+            || shortcutItem.type.contains(".openList.") {
+            return .places
         }
 
         return nil
@@ -173,7 +269,10 @@ final class AppSceneDelegate: NSObject, UIWindowSceneDelegate {
             AppTextSizePolicy.applyCurrentPreferences(to: windowScene)
         }
         if let shortcutItem = connectionOptions.shortcutItem {
-            _ = AppDelegate.handleShortcutItem(shortcutItem)
+            _ = AppDelegate.handleShortcutItem(
+                shortcutItem,
+                sceneSessionIdentifier: session.persistentIdentifier
+            )
         }
     }
 
@@ -190,7 +289,13 @@ final class AppSceneDelegate: NSObject, UIWindowSceneDelegate {
     ) async -> Bool {
         // The same static handler keeps cold-launch and warm-scene behavior
         // identical; its Boolean result is the system's completion signal.
-        AppDelegate.handleShortcutItem(shortcutItem)
+        let sceneSessionIdentifier = await MainActor.run {
+            windowScene.session.persistentIdentifier
+        }
+        return AppDelegate.handleShortcutItem(
+            shortcutItem,
+            sceneSessionIdentifier: sceneSessionIdentifier
+        )
     }
 }
 

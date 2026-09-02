@@ -18,6 +18,9 @@ struct FindSunButton: View {
     // MARK: - Inputs
 
     let currentLocationCoordinate: CLLocationCoordinate2D?
+    /// A fixed Home supplies its localized place name; `nil` retains the
+    /// device-relative “Near Me” action.
+    let nearbyLocationName: String?
     let locale: Locale
     /// Parent-owned Map generation. Clear, a replacement query, and an
     /// external Map hand-off all advance it before a stale deferred action can
@@ -80,10 +83,21 @@ struct FindSunButton: View {
                 )
             }
             Button(action: { runAfterMenuDismissal(findSunNearMe) }) {
-                MapContextMenuLabel(
-                    "Near Me",
-                    systemImage: "location"
-                )
+                if let nearbyLocationName {
+                    MapContextMenuLabel(
+                        resolved: String(
+                            format: localizedString("Near %@", locale: locale),
+                            locale: locale,
+                            nearbyLocationName
+                        ),
+                        systemImage: "location"
+                    )
+                } else {
+                    MapContextMenuLabel(
+                        "Near Me",
+                        systemImage: "location"
+                    )
+                }
             }
 
             Divider()
@@ -402,6 +416,7 @@ private struct CountrySearchModifier: ViewModifier {
             latitude: 51.5072,
             longitude: -0.1276
         ),
+        nearbyLocationName: nil,
         locale: .current,
         sessionGeneration: 0,
         findSunHere: {},

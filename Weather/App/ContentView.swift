@@ -22,6 +22,8 @@ struct ContentView: View {
     @Bindable var networkConnectivity: NetworkConnectivity
     /// App-level state for first-run gating, replay, and contextual tips.
     let tutorial: TutorialPresentationState
+    /// Stable identity of this window scene for scene-targeted quick actions.
+    let sceneSessionIdentifier: String?
 
     // MARK: - Environment and View-Owned State
 
@@ -77,6 +79,7 @@ struct ContentView: View {
             .environment(\.calendar, model.forecastCalendar)
             .onChange(
                 of: model.locationTimeZone?.identifier,
+                initial: true,
                 handleLocationTimeZoneChange
             )
             // Rebuild the shell after a full reset so local view state cannot leak
@@ -143,7 +146,11 @@ struct ContentView: View {
                 refreshLocaleDependencies()
             }
             .onChange(of: model.placesStore.document, initial: true) {
-                handlePlacesDocumentChange()
+                previousDocument, currentDocument in
+                handlePlacesDocumentChange(
+                    previous: previousDocument,
+                    current: currentDocument
+                )
             }
             // The Current Location entry is a stable widget configuration, but
             // its coordinate and locality are live. Republish that one small
@@ -156,6 +163,11 @@ struct ContentView: View {
             .onChange(of: dynamicTypeSize) {
                 model.publishWidgetCatalog(locale: locale)
             }
+            .onChange(of: model.isUsingHomeLocation, initial: true) {
+                // Home Screen copy must follow the same Current-versus-Home
+                // location meaning as the in-app Map controls.
+                AppDelegate.updateHomeScreenShortcuts()
+            }
             .onChange(
                 of: model.placesStore.loadErrorDescription,
                 initial: true,
@@ -166,6 +178,9 @@ struct ContentView: View {
                 handleConnectivityStatusChange
             )
             .onChange(of: scenePhase, handleScenePhaseChange)
+            .onChange(of: sceneSessionIdentifier, initial: true) {
+                handlePendingShortcut()
+            }
             .onChange(of: router.selectedTab, initial: true) { _, newTab in
                 tutorial.presentFeatureTipIfNeeded(
                     for: newTab,
@@ -351,6 +366,11 @@ struct ContentView: View {
         model.retainWeatherScope()
         await model.loadSavedWeather()
         guard !Task.isCancelled, !tutorial.shouldPresent else { return }
+        if model.isUsingHomeLocation,
+           model.locationProvider.hasUsableCoordinate {
+            await model.ensureCurrentLocationWeather(locale: locale)
+            guard !Task.isCancelled, !tutorial.shouldPresent else { return }
+        }
         model.publishWidgetCatalog(locale: locale)
         if !model.isUsingHomeLocation {
             model.locationProvider.requestLocationIfAuthorized(
@@ -374,7 +394,17 @@ struct ContentView: View {
 
     /// Keeps transient forecast retention and cross-process widget metadata in
     /// step with the newly verified Saved Places document.
-    private func handlePlacesDocumentChange() {
+    private func handlePlacesDocumentChange(
+        previous: PlacesLibraryDocument,
+        current: PlacesLibraryDocument
+    ) {
+        // A place can be deleted from Map or another window while one tab still
+        // owns its Detail route. Retain the removed city as session-only route
+        // context before cache pruning makes that destination unresolvable.
+        let currentIDs = Set(current.places.map(\.id))
+        for place in previous.places where !currentIDs.contains(place.id) {
+            model.registerTransientCity(place.city)
+        }
         model.pruneIneligibleRecentCities()
         model.retainWeatherScope()
         model.publishWidgetCatalog(locale: locale)
@@ -458,17 +488,29 @@ struct ContentView: View {
         }
         Task {
             await model.loadSavedWeather()
+            if model.locationProvider.hasUsableCoordinate {
+                // Current and fixed Home forecasts share the same per-place
+                // 30-minute refresh check and 24-hour cache boundary. This also
+                // refreshes an unchanged coordinate whose view task will not rerun.
+                await model.ensureCurrentLocationWeather(locale: locale)
+            }
             model.publishWidgetCatalog(locale: locale)
         }
     }
 
-    /// Joins warm-process notifications with the persisted cold-launch handoff;
-    /// taking the persisted value guarantees a shortcut is routed only once.
+    /// Atomically claims a warm-process shortcut. Every open window observes
+    /// the process notification, so only the one that consumes the persisted
+    /// hand-off may mutate its window-owned router.
     private func handleShortcutNotification(_ notification: Notification) {
-        let notifiedDestination = (notification.object as? String)
-            .flatMap(HomeScreenShortcutDestination.init(rawValue:))
-        let pendingDestination = AppDelegate.takePendingHomeScreenShortcut()
-        guard let destination = pendingDestination ?? notifiedDestination else {
+        let targetSceneIdentifier = notification.object as? String
+        guard scenePhase == .active,
+              sceneSessionIdentifier != nil,
+              targetSceneIdentifier == nil
+                || targetSceneIdentifier == sceneSessionIdentifier,
+              let destination = AppDelegate.takePendingHomeScreenShortcut(
+                  for: sceneSessionIdentifier,
+                  includeGlobalFallback: targetSceneIdentifier == nil
+              ) else {
             return
         }
         handleShortcut(destination)
@@ -504,6 +546,12 @@ struct ContentView: View {
                 selectedDate: $selectedDate,
                 model: model,
                 router: router
+            )
+        case .currentLocation:
+            YourLocationView(
+                model: model,
+                router: router,
+                selectedDate: $selectedDate
             )
         case .savedPlacesLibrary:
             ManageSavedPlaces(
@@ -726,6 +774,10 @@ struct ContentView: View {
             SavedPlacesViewMode.defaultRawValue,
             forKey: SavedPlacesViewMode.storageKey
         )
+        defaults.set(
+            SavedPlacesViewMode.defaultRawValue,
+            forKey: SavedPlacesViewMode.mapResultsStorageKey
+        )
         defaults.removeObject(forKey: "savedPlacesDashboardSectionOrder")
         defaults.removeObject(forKey: "savedPlacesSelectedDayCardOrder")
         defaults.removeObject(forKey: "savedPlacesPlanAheadCardOrder")
@@ -750,6 +802,17 @@ struct ContentView: View {
 
     // MARK: - External Navigation
 
+    /// A manually selected Home is a named place, not the device-relative
+    /// “Near Me” scope. Both use the same nearby-search policy; only their
+    /// identity and user-facing result copy differ.
+    private var defaultLocationFindSunScope: MapSunQueryScope {
+        if model.isUsingHomeLocation,
+           let homeCity = model.currentLocationPlaceCity ?? model.homeLocation {
+            return .nearPlace(homeCity)
+        }
+        return .nearMe
+    }
+
     private func completeTutorial() {
         tutorial.complete()
 
@@ -763,7 +826,11 @@ struct ContentView: View {
     }
 
     private func handlePendingShortcut() {
-        guard let destination = AppDelegate.takePendingHomeScreenShortcut() else {
+        guard scenePhase == .active,
+              let sceneSessionIdentifier,
+              let destination = AppDelegate.takePendingHomeScreenShortcut(
+                  for: sceneSessionIdentifier
+              ) else {
             return
         }
         handleShortcut(destination)
@@ -776,10 +843,17 @@ struct ContentView: View {
         _ destination: HomeScreenShortcutDestination
     ) {
         router.presentedSheet = nil
+        // A newer quick action always supersedes a deferred Near Me hand-off.
+        // Map/Places actions do not start another search, so they must cancel
+        // the old hand-off explicitly before changing destinations.
+        router.cancelPendingMapSunHandoff()
 
         switch destination {
         case .findSunNearMe:
-            router.showMap(findingSunIn: .nearMe, on: selectedDate)
+            router.showMap(
+                findingSunIn: defaultLocationFindSunScope,
+                on: selectedDate
+            )
         case .legacyHome:
             router.yourLocationPath = []
             router.selectedTab = .yourLocation
@@ -787,14 +861,13 @@ struct ContentView: View {
             router.mapPath = []
             router.showMap()
         case .places:
-            router.savedPlacesPath = []
-            router.selectedTab = .savedPlaces
+            router.showSavedPlacesRoot()
         }
     }
 
-    /// Routes app and widget URLs to their native destination. Older generic
-    /// Places URLs still open the manager; city widget URLs now open the city's
-    /// forecast directly when that saved place still exists.
+    /// Routes app and widget URLs to their native destination. Generic or stale
+    /// Places/list URLs return to the dashboard; a valid city payload opens its
+    /// forecast even when an old widget still uses the legacy `list` host.
     private func receiveExternalURL(_ url: URL) {
         guard isSupportedExternalURL(url) else { return }
 
@@ -818,9 +891,10 @@ struct ContentView: View {
         case "place":
             openWidgetPlace(url)
         case "places":
-            router.savedPlacesPath = []
-            router.showPlacesLibrary()
+            router.showSavedPlacesRoot()
             showWidgetIssue(url)
+        case "list":
+            openWidgetPlace(url)
         case "home":
             router.yourLocationPath = []
             router.selectedTab = .yourLocation
@@ -835,7 +909,7 @@ struct ContentView: View {
         guard url.scheme == "weatheratlas" else { return false }
 
         switch url.host {
-        case "place", "places", "home", "map":
+        case "place", "places", "list", "home", "map":
             return true
         default:
             return false
@@ -854,8 +928,7 @@ struct ContentView: View {
             .first(where: { $0.name == "cityID" })?.value else {
             // A malformed or stale city widget should still leave the person at
             // the useful generic Places destination rather than doing nothing.
-            router.savedPlacesPath = []
-            router.showPlacesLibrary()
+            router.showSavedPlacesRoot()
             showWidgetIssue(url)
             return
         }
@@ -869,11 +942,10 @@ struct ContentView: View {
         }
 
         guard let savedPlace = savedPlace(forWidgetCityIdentifier: cityIdentifier) else {
-            // The widget can outlive a delete or rename. Preserve the historic
-            // Places behavior as the safe fallback when its city no longer
-            // resolves in the app's current library.
-            router.savedPlacesPath = []
-            router.showPlacesLibrary()
+            // The widget can outlive a delete or rename. The dashboard is the
+            // useful safe fallback when its city no longer resolves in the
+            // app's current library.
+            router.showSavedPlacesRoot()
             showWidgetIssue(url)
             return
         }

@@ -54,9 +54,13 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
         // Use the same direct WeatherKit path as the timeline so a newly added
         // widget does not wait for WidgetKit's next scheduled refresh.
         let result = await refreshedCity(for: configuration)
+        let entryDate = Date.now
         return SunnyHoursLockScreenEntry(
-            date: .now,
-            city: result.city
+            date: entryDate,
+            city: WidgetTimelinePlanner.displayCity(
+                for: result,
+                at: entryDate
+            )
         )
     }
 
@@ -138,14 +142,39 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
                     return resultForCurrentSelection(configuration)
                 }
             } catch is CancellationError {
-                return transientCurrentLocationFallback(
-                    for: selectedCatalogCity
+                guard selectionStillMatches(
+                    selectionIdentity,
+                    configuration: configuration,
+                    resolvesDeviceLocation: true
+                ) else {
+                    return resultForCurrentSelection(configuration)
+                }
+                let fallback = await transientCurrentLocationFallback(
+                    for: selectedCatalogCity,
+                    defaultLocationKind: capturedDefaultLocationKind,
+                    selectionIdentity: selectionIdentity,
+                    configuration: configuration
                 )
+                guard selectionStillMatches(
+                    selectionIdentity,
+                    configuration: configuration,
+                    resolvesDeviceLocation: true
+                ) else {
+                    return resultForCurrentSelection(configuration)
+                }
+                return fallback
             } catch let error as WidgetCurrentLocationError {
                 switch error {
                 case .widgetUpdatesNotAuthorized:
                     // Once location use is disallowed, never keep presenting or
                     // refetching the last app-published device coordinate.
+                    guard selectionStillMatches(
+                        selectionIdentity,
+                        configuration: configuration,
+                        resolvesDeviceLocation: true
+                    ) else {
+                        return resultForCurrentSelection(configuration)
+                    }
                     WidgetForecastStore.removeSnapshot(
                         for: WidgetDataStore.currentLocationIdentifier
                     )
@@ -161,14 +190,50 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
                      .timedOut:
                     // Preserve the cache for a later verified coordinate match,
                     // but do not display or refetch an unverified old location.
-                    return transientCurrentLocationFallback(
-                        for: selectedCatalogCity
+                    guard selectionStillMatches(
+                        selectionIdentity,
+                        configuration: configuration,
+                        resolvesDeviceLocation: true
+                    ) else {
+                        return resultForCurrentSelection(configuration)
+                    }
+                    let fallback = await transientCurrentLocationFallback(
+                        for: selectedCatalogCity,
+                        defaultLocationKind: capturedDefaultLocationKind,
+                        selectionIdentity: selectionIdentity,
+                        configuration: configuration
                     )
+                    guard selectionStillMatches(
+                        selectionIdentity,
+                        configuration: configuration,
+                        resolvesDeviceLocation: true
+                    ) else {
+                        return resultForCurrentSelection(configuration)
+                    }
+                    return fallback
                 }
             } catch {
-                return transientCurrentLocationFallback(
-                    for: selectedCatalogCity
+                guard selectionStillMatches(
+                    selectionIdentity,
+                    configuration: configuration,
+                    resolvesDeviceLocation: true
+                ) else {
+                    return resultForCurrentSelection(configuration)
+                }
+                let fallback = await transientCurrentLocationFallback(
+                    for: selectedCatalogCity,
+                    defaultLocationKind: capturedDefaultLocationKind,
+                    selectionIdentity: selectionIdentity,
+                    configuration: configuration
                 )
+                guard selectionStillMatches(
+                    selectionIdentity,
+                    configuration: configuration,
+                    resolvesDeviceLocation: true
+                ) else {
+                    return resultForCurrentSelection(configuration)
+                }
+                return fallback
             }
         } else {
             city = await cityResolvingTimeZoneIfNeeded(selectedCatalogCity)
@@ -212,6 +277,13 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
         if resolvesDeviceLocation {
             let remainsAuthorized = await WidgetCurrentLocationResolver
                 .widgetUpdatesAuthorized()
+            guard selectionStillMatches(
+                selectionIdentity,
+                configuration: configuration,
+                resolvesDeviceLocation: true
+            ) else {
+                return resultForCurrentSelection(configuration)
+            }
             guard remainsAuthorized else {
                 WidgetForecastStore.removeSnapshot(
                     for: WidgetDataStore.currentLocationIdentifier
@@ -223,13 +295,6 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
                     snapshot: nil,
                     reloadPolicy: .persistentFailure
                 )
-            }
-            guard selectionStillMatches(
-                selectionIdentity,
-                configuration: configuration,
-                resolvesDeviceLocation: true
-            ) else {
-                return resultForCurrentSelection(configuration)
             }
         }
 
@@ -263,6 +328,9 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
             locationSource: resolvesDeviceLocation
                 ? .deviceCurrentLocation
                 : .fixedLocation,
+            currentLocationGeneration: resolvesDeviceLocation
+                ? capturedCatalog?.currentLocationGeneration
+                : nil,
             resetEpoch: resetEpoch
         )
 
@@ -309,6 +377,15 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
             if resolvesDeviceLocation {
                 let remainsAuthorized = await WidgetCurrentLocationResolver
                     .widgetUpdatesAuthorized()
+                // The authorization query itself suspends. Revalidate the app
+                // publication before either deleting or persisting a response.
+                guard selectionStillMatches(
+                    selectionIdentity,
+                    configuration: configuration,
+                    resolvesDeviceLocation: true
+                ), snapshot.resetEpoch == WidgetResetEpoch.current else {
+                    return resultForCurrentSelection(configuration)
+                }
                 guard remainsAuthorized else {
                     WidgetForecastStore.removeSnapshot(
                         for: WidgetDataStore.currentLocationIdentifier
@@ -321,23 +398,17 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
                         reloadPolicy: .persistentFailure
                     )
                 }
-                // The authorization query itself suspends. Revalidate the app
-                // publication once more before persisting its response.
-                guard selectionStillMatches(
-                    selectionIdentity,
-                    configuration: configuration,
-                    resolvesDeviceLocation: true
-                ), snapshot.resetEpoch == WidgetResetEpoch.current else {
-                    return resultForCurrentSelection(configuration)
-                }
             }
 
+            guard let appliedCity = city.applying(
+                snapshot,
+                preservesResolvedCityName: preservesResolvedCityName
+            ) else {
+                throw WidgetWeatherFetchError.missingCurrentHourlyCoverage
+            }
             WidgetForecastStore.save(snapshot, for: city.id)
             return WidgetRefreshResult(
-                city: city.applying(
-                    snapshot,
-                    preservesResolvedCityName: preservesResolvedCityName
-                ),
+                city: appliedCity,
                 snapshot: snapshot,
                 reloadPolicy: .normal
             )
@@ -351,6 +422,23 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
                 resolvesDeviceLocation: resolvesDeviceLocation
             ) else {
                 return resultForCurrentSelection(configuration)
+            }
+            let authorizationFailure = await currentLocationAuthorizationFailure(
+                for: city,
+                whenRequired: resolvesDeviceLocation
+            )
+            guard selectionStillMatches(
+                selectionIdentity,
+                configuration: configuration,
+                resolvesDeviceLocation: resolvesDeviceLocation
+            ) else {
+                return resultForCurrentSelection(configuration)
+            }
+            if let authorizationFailure {
+                WidgetForecastStore.removeSnapshot(
+                    for: WidgetDataStore.currentLocationIdentifier
+                )
+                return authorizationFailure
             }
             if let fallback = cityUsingFallbackWidgetSnapshot(
                 for: city,
@@ -379,6 +467,23 @@ struct SunnyHoursLockScreenProvider: AppIntentTimelineProvider {
                 resolvesDeviceLocation: resolvesDeviceLocation
             ) else {
                 return resultForCurrentSelection(configuration)
+            }
+            let authorizationFailure = await currentLocationAuthorizationFailure(
+                for: city,
+                whenRequired: resolvesDeviceLocation
+            )
+            guard selectionStillMatches(
+                selectionIdentity,
+                configuration: configuration,
+                resolvesDeviceLocation: resolvesDeviceLocation
+            ) else {
+                return resultForCurrentSelection(configuration)
+            }
+            if let authorizationFailure {
+                WidgetForecastStore.removeSnapshot(
+                    for: WidgetDataStore.currentLocationIdentifier
+                )
+                return authorizationFailure
             }
             if let fallback = cityUsingFallbackWidgetSnapshot(
                 for: city,
@@ -448,15 +553,39 @@ extension SunnyHoursLockScreenProvider {
         if selectedEntity.id == WidgetDataStore.currentLocationIdentifier {
             return defaultCity
         }
-        guard let savedCity = catalog.cities.first(where: {
-            $0.matchesWidgetIdentifier(selectedEntity.id)
-        }), savedCity.hasResolvableWidgetLocation else {
-            return unavailableConfiguredCity(
-                selectedEntity,
-                issue: .unresolvedPlace("saved widget location")
+        if let savedCity = catalog.cities.first(where: {
+            $0.id == selectedEntity.id
+        }), savedCity.hasResolvableWidgetLocation {
+            return savedCity
+        }
+        if let retiredCity = catalog.resolvedRetiredCities.first(where: {
+            $0.id == selectedEntity.id
+        }) {
+            return retiredCity.markingUnavailable(
+                .unresolvedPlace("retired saved widget location")
             )
         }
-        return savedCity
+        if let retiredCity = catalog.resolvedRetiredCities.first(where: {
+            $0.matchesWidgetIdentifier(selectedEntity.id)
+        }) {
+            // A removed Saved Place remains the exact configured identity. Its
+            // fetchable fields were deliberately stripped by the app publisher,
+            // so the widget stays unavailable under its last known name.
+            return retiredCity.markingUnavailable(
+                .unresolvedPlace("retired saved widget location")
+            )
+        }
+        if let savedCity = catalog.cities.first(where: {
+            $0.matchesWidgetIdentifier(selectedEntity.id)
+        }), savedCity.hasResolvableWidgetLocation {
+            // A pre-UUID selection continuously migrates to its active owner
+            // only when no deleted identity still claims that historic alias.
+            return savedCity
+        }
+        return unavailableConfiguredCity(
+            selectedEntity,
+            issue: .unresolvedPlace("saved widget location")
+        )
     }
 
     /// Reports whether the stable default slot currently represents live device
@@ -585,51 +714,63 @@ extension SunnyHoursLockScreenProvider {
         preservesResolvedCityName: Bool = false
     ) -> WidgetAppliedSnapshot? {
         guard city.widgetCurrentIssue == nil else { return nil }
+        let referenceDate = Date.now
+        var appliedCity: WidgetDataCity?
         guard let snapshot = WidgetForecastStore.freshSnapshot(
             forAny: city.allWidgetIdentifiers,
+            now: referenceDate,
             matching: {
-                snapshotMatchesCity(
+                guard snapshotMatchesCity(
                     $0,
                     city: city,
                     defaultLocationKind: defaultLocationKind
-                )
+                ), let candidate = city.applying(
+                    $0,
+                    preservesResolvedCityName: preservesResolvedCityName,
+                    at: referenceDate
+                ), candidate.widgetCurrentIssue == nil else {
+                    return false
+                }
+                appliedCity = candidate
+                return true
             }
-        ) else {
+        ), let appliedCity else {
             return nil
         }
-        return WidgetAppliedSnapshot(
-            city: city.applying(
-                snapshot,
-                preservesResolvedCityName: preservesResolvedCityName
-            ),
-            snapshot: snapshot
-        )
+        return WidgetAppliedSnapshot(city: appliedCity, snapshot: snapshot)
     }
 
-    /// Returns a current-local-day, last-known-good extension snapshot after a
-    /// direct request fails. The host app never supplies weather to this path.
+    /// Returns a last-known-good extension snapshot after a direct request
+    /// fails, promoting its matching future-day payload after local midnight.
+    /// The host app never supplies weather to this path.
     func cityUsingFallbackWidgetSnapshot(
         for city: WidgetDataCity,
         defaultLocationKind: WidgetDefaultLocationKind?,
         preservesResolvedCityName: Bool = false
     ) -> WidgetAppliedSnapshot? {
+        let referenceDate = Date.now
+        var cachedCity: WidgetDataCity?
         guard let snapshot = WidgetForecastStore.fallbackSnapshot(
             forAny: city.allWidgetIdentifiers,
+            now: referenceDate,
             matching: {
-                snapshotMatchesCity(
+                guard snapshotMatchesCity(
                     $0,
                     city: city,
                     defaultLocationKind: defaultLocationKind
-                )
+                ), let candidate = city.applying(
+                    $0,
+                    preservesResolvedCityName: preservesResolvedCityName,
+                    at: referenceDate
+                ), candidate.widgetCurrentIssue == nil else {
+                    return false
+                }
+                cachedCity = candidate
+                return true
             }
-        ) else {
+        ), let cachedCity else {
             return nil
         }
-        let cachedCity = city.applying(
-            snapshot,
-            preservesResolvedCityName: preservesResolvedCityName
-        )
-        guard cachedCity.widgetCurrentIssue == nil else { return nil }
         return WidgetAppliedSnapshot(city: cachedCity, snapshot: snapshot)
     }
 
@@ -767,6 +908,26 @@ enum WidgetTimelinePlanner {
     /// Current-time markers advance between network refresh opportunities.
     private static let markerUpdateInterval: TimeInterval = 30 * 60
 
+    /// Reapplies one immutable snapshot at the exact entry timestamp. Provider
+    /// refresh, gallery snapshot, and timeline planning can straddle a city-local
+    /// midnight, so reusing their earlier applied value could render yesterday.
+    static func displayCity(
+        for result: WidgetRefreshResult,
+        at date: Date
+    ) -> WidgetDataCity? {
+        guard let city = result.city,
+              let snapshot = result.snapshot else {
+            return result.city
+        }
+        guard let appliedCity = city.applying(snapshot, at: date),
+              appliedCity.widgetCurrentIssue == nil else {
+            return city.markingUnavailable(
+                .missingForecastData(at: date)
+            )
+        }
+        return appliedCity
+    }
+
     /// Creates a useful offline timeline from one immutable forecast. Forecast
     /// interval boundaries update sun status, while half-hour checkpoints move
     /// the time marker and countdown if WidgetKit defers the network reload.
@@ -784,7 +945,7 @@ enum WidgetTimelinePlanner {
                 // Refresh a fresh response when it reaches the normal age, not
                 // 30 minutes after a cache-serving provider callback.
                 preferredReloadDate = max(
-                    now.addingTimeInterval(5 * 60),
+                    now,
                     snapshot.fetchedAt.addingTimeInterval(
                         WidgetForecastCachePolicy.freshnessInterval
                     )
@@ -805,9 +966,9 @@ enum WidgetTimelinePlanner {
                 relativeTo: now
               ),
               displayExpiry > now else {
-            // A result can carry an applied city alongside a snapshot that
-            // became invalid at midnight. Clear its weather-bearing fields so
-            // yesterday's status is never rendered during the retry interval.
+            // A result can carry an applied city alongside an expired or
+            // migration-era snapshot that cannot represent this local day.
+            // Clear weather-bearing fields rather than showing a wrong date.
             let city = result.snapshot == nil
                 ? result.city
                 : result.city?.markingUnavailable(
@@ -834,9 +995,14 @@ enum WidgetTimelinePlanner {
             markerDate = markerDate.addingTimeInterval(markerUpdateInterval)
         }
 
-        // Each stored hour represents [date, date + 1 hour). Add both ends so
-        // "Sun Out Now", countdown, and "No More Sun Today" change on time.
-        for condition in snapshot.hourlyWeatherConditions ?? [] {
+        // Each stored hour represents [date, date + 1 hour). Include complete
+        // future-day products as well as the represented day so an offline
+        // timeline rolls to the correct local date after midnight.
+        let timelineHours = (snapshot.hourlyWeatherConditions ?? [])
+            + (snapshot.sunnyWindowDays ?? []).flatMap {
+                $0.hourlyWeatherConditions ?? []
+            }
+        for condition in timelineHours {
             for boundary in [
                 condition.date,
                 condition.date.addingTimeInterval(60 * 60)
@@ -844,15 +1010,56 @@ enum WidgetTimelinePlanner {
                 futureDates.insert(boundary)
             }
         }
-        for boundary in [snapshot.sunrise, snapshot.sunset].compactMap({ $0 })
+        let solarBoundaries = [snapshot.sunrise, snapshot.sunset]
+            + (snapshot.sunnyWindowDays ?? []).flatMap {
+                [$0.sunrise, $0.sunset]
+            }
+        for boundary in solarBoundaries.compactMap({ $0 })
         where boundary > now && boundary < displayExpiry {
             futureDates.insert(boundary)
         }
 
-        var entries = [SunnyHoursLockScreenEntry(date: now, city: city)]
+        // Add every destination-calendar midnight in the remaining absolute
+        // cache lifetime, even when WeatherKit supplied no row for that day.
+        // Calendar day arithmetic covers 23/25-hour DST days; an absent payload
+        // then becomes unavailable at midnight instead of retaining yesterday.
+        if let timeZoneIdentifier = snapshot.timeZoneIdentifier,
+           let timeZone = TimeZone(identifier: timeZoneIdentifier) {
+            var calendar = Calendar.current
+            calendar.timeZone = timeZone
+            var dayBoundary = calendar.date(
+                byAdding: .day,
+                value: 1,
+                to: calendar.startOfDay(for: now)
+            )
+            while let boundary = dayBoundary,
+                  boundary < displayExpiry {
+                if boundary > now {
+                    futureDates.insert(boundary)
+                }
+                guard let nextBoundary = calendar.date(
+                    byAdding: .day,
+                    value: 1,
+                    to: boundary
+                ), nextBoundary > boundary else {
+                    break
+                }
+                dayBoundary = nextBoundary
+            }
+        }
+
+        var entries = [
+            SunnyHoursLockScreenEntry(
+                date: now,
+                city: displayCity(for: result, at: now)
+            )
+        ]
         entries.append(
             contentsOf: futureDates.sorted().map {
-                SunnyHoursLockScreenEntry(date: $0, city: city)
+                SunnyHoursLockScreenEntry(
+                    date: $0,
+                    city: displayCity(for: result, at: $0)
+                )
             }
         )
 
@@ -875,33 +1082,22 @@ enum WidgetTimelinePlanner {
         )
     }
 
-    /// The represented local day and cache retention are independent hard
-    /// boundaries. Whichever arrives first ends forecast presentation.
+    /// A complete response remains displayable for the same hard 24-hour cache
+    /// lifetime used by the main app. Day-specific payload promotion happens
+    /// when each entry is built, so local midnight is no longer an expiry.
     private static func snapshotDisplayExpiry(
         _ snapshot: WidgetWeatherSnapshot,
         relativeTo now: Date
     ) -> Date? {
-        guard snapshot.representsLocalDay(containing: now),
-              let identifier = snapshot.timeZoneIdentifier,
-              let timeZone = TimeZone(identifier: identifier),
-              let representedDate = snapshot.representedLocalDate else {
+        guard snapshot.timeZoneIdentifier.flatMap(TimeZone.init(identifier:))
+                != nil,
+              snapshot.representedLocalDate != nil else {
             return nil
         }
-        var calendar = Calendar.current
-        calendar.timeZone = timeZone
-        guard let nextLocalMidnight = calendar.date(
-            byAdding: .day,
-            value: 1,
-            to: calendar.startOfDay(for: representedDate)
-        ) else {
-            return nil
-        }
-        return min(
-            nextLocalMidnight,
-            snapshot.fetchedAt.addingTimeInterval(
-                WidgetForecastCachePolicy.retentionInterval
-            )
+        let expiry = snapshot.fetchedAt.addingTimeInterval(
+            WidgetForecastCachePolicy.retentionInterval
         )
+        return expiry > now ? expiry : nil
     }
 }
 
@@ -952,6 +1148,10 @@ struct WidgetWeatherSnapshot: Codable, Hashable, Sendable {
     /// Whether the response came from extension-owned Current Location or a
     /// fixed Home/Saved coordinate.
     var locationSource: WidgetForecastLocationSource? = nil
+    /// App-published Current Location generation captured before the extension
+    /// resolved this snapshot's fresher coordinate. Optional decoding preserves
+    /// same-coordinate fallback for snapshots written by earlier versions.
+    var currentLocationGeneration: String? = nil
     /// Exact current WeatherKit condition and its source SF Symbol.
     var currentWeather: WidgetWeatherPresentation? = nil
     /// Detailed current-day conditions used by the shared chart renderer.
@@ -981,7 +1181,10 @@ struct WidgetWeatherSnapshot: Codable, Hashable, Sendable {
             && hourlyWeatherConditions.allSatisfy { $0.weather != nil }
             && sunnyWindowDays.allSatisfy { day in
                 guard let hours = day.hourlyConditions else { return false }
+                let completeHoursAreValid = day.hourlyWeatherConditions?
+                    .allSatisfy { $0.weather != nil } ?? true
                 return hours.allSatisfy { $0.weather != nil }
+                    && completeHoursAreValid
             }
     }
 
@@ -1105,8 +1308,7 @@ enum WidgetForecastStore {
         matching isValidCandidate: (WidgetWeatherSnapshot) -> Bool
     ) -> WidgetWeatherSnapshot? {
         for cityID in cityIDs {
-            guard let snapshot = retainedSnapshot(for: cityID, now: now),
-                  snapshot.representsLocalDay(containing: now) else {
+            guard let snapshot = retainedSnapshot(for: cityID, now: now) else {
                 continue
             }
             if let maximumAge,
@@ -1437,6 +1639,7 @@ struct WidgetForecastRequestKey: Hashable, Sendable {
     /// that city crosses midnight.
     let forecastLocalDate: Date
     let locationSource: WidgetForecastLocationSource
+    let currentLocationGeneration: String?
     let resetEpoch: String?
 }
 
@@ -1943,9 +2146,16 @@ enum WidgetWeatherSnapshotBuilder {
                 hours: daylightHoursByDay[localDay] ?? [],
                 calendar: calendar
             )
+            let hourlyWeatherConditions = widgetForecastHourlyConditions(
+                hours: completeHoursByDay[localDay] ?? [],
+                calendar: calendar
+            )
             return WidgetSunnyWindowDay(
                 date: localDay,
-                hourlyConditions: hourlyConditions
+                hourlyConditions: hourlyConditions,
+                hourlyWeatherConditions: hourlyWeatherConditions,
+                sunrise: day.sun.sunrise,
+                sunset: day.sun.sunset
             )
         }
 
@@ -1959,6 +2169,7 @@ enum WidgetWeatherSnapshotBuilder {
             resolvedCityName: request.cityName,
             cityNameLocaleIdentifier: request.cityNameLocaleIdentifier,
             locationSource: request.locationSource,
+            currentLocationGeneration: request.currentLocationGeneration,
             currentWeather: currentWeather,
             hourlyConditions: currentHourlyConditions,
             hourlyWeatherConditions: currentDayWeatherConditions,

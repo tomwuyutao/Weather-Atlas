@@ -76,27 +76,52 @@ struct WidgetCityQuery: EntityStringQuery {
         let catalog = WidgetDataStore.catalog()
         let defaultLocation = WidgetCityEntity.defaultLocation(in: catalog)
         let cities = catalog?.cities ?? []
+        let retiredCities = catalog?.resolvedRetiredCities ?? []
         return identifiers.compactMap { id in
             if id == WidgetDataStore.currentLocationIdentifier {
                 return defaultLocation
             }
-            guard let city = cities.first(where: {
-                $0.matchesWidgetIdentifier(id)
-            }),
-                  city.hasResolvableWidgetLocation else {
-                // App Intents rehydrates persisted entities through this query.
-                // Returning a tombstone preserves a deleted selection's exact ID
-                // so the provider shows unavailable instead of substituting its
-                // default Current/Home Location.
-                return WidgetCityEntity(
-                    id: id,
-                    cityName: WidgetDataStore.localizedText(for: "Saved Place")
-                )
+            if let city = cities.first(where: {
+                $0.id == id
+            }), city.hasResolvableWidgetLocation {
+                // App Intents requires the rehydrated entity to retain the exact
+                // canonical identifier WidgetKit persisted.
+                return WidgetCityEntity(city, identifier: id)
             }
-            // App Intents requires the rehydrated entity to retain the exact
-            // identifier WidgetKit persisted. The provider later resolves this
-            // legacy alias to the catalog's canonical Saved Place UUID.
-            return WidgetCityEntity(city, identifier: id)
+
+            if let retiredCity = retiredCities.first(where: {
+                $0.id == id
+            }) {
+                // An exact canonical identity always wins over historic aliases
+                // accidentally propagated by catalogs from older releases.
+                return WidgetCityEntity(retiredCity, identifier: id)
+            }
+
+            if let retiredCity = retiredCities.first(where: {
+                $0.matchesWidgetIdentifier(id)
+            }) {
+                // Preserve the deleted selection's last published name and
+                // subtitle while retaining the exact App Intent identifier.
+                // The provider recognizes this as retired and keeps it unavailable.
+                return WidgetCityEntity(retiredCity, identifier: id)
+            }
+
+            if let city = cities.first(where: {
+                $0.matchesWidgetIdentifier(id)
+            }), city.hasResolvableWidgetLocation {
+                // A continuously migrated pre-UUID selection reaches this path
+                // only when no deleted identity still owns its legacy alias.
+                return WidgetCityEntity(city, identifier: id)
+            }
+
+            // Catalogs written before identity tombstones cannot recover a name
+            // for a place that was already deleted. Preserve that existing
+            // selection's exact ID and use the localized generic fallback; never
+            // substitute the current default or a similarly named active city.
+            return WidgetCityEntity(
+                id: id,
+                cityName: WidgetDataStore.localizedText(for: "Saved Place")
+            )
         }
     }
 

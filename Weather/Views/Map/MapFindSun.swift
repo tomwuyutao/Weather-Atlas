@@ -21,6 +21,11 @@ extension MapView {
         _ scope: MapSunQueryScope,
         preservingCandidateContext: Bool = false
     ) {
+        // Any explicit Map search supersedes a location hand-off that may still
+        // be waiting for its cold-launch coordinate. The hand-off path clears
+        // this value itself immediately before it calls back into this method.
+        router.pendingMapSunHandoff = nil
+
         switch scope {
         case .country(let country):
             model.recentSearches.record(country: country)
@@ -591,6 +596,7 @@ extension MapView {
     func clearSunSearch() {
         // Invalidate an in-flight lookup before clearing its visible state.
         sunSearchID &+= 1
+        router.pendingMapSunHandoff = nil
         // The bottom surface owns its morph animation. These plain mutations
         // must not start a transaction on MapKit's annotation hierarchy.
         activeSunQuery = nil
@@ -680,9 +686,22 @@ extension MapView {
         }
 
         do {
+            let keepsSelectedCard = router.selectedMapPlaceID == savedID
+            if keepsSelectedCard {
+                // Convert the selected persisted marker into the same transient
+                // preview contract used after removing a saved Find Sun/Search
+                // result. The place context stays visible and immediately offers
+                // Save Place again instead of disappearing after deletion.
+                model.registerTransientCity(city)
+            }
             try placesStore.deletePlace(id: savedID)
             acknowledgedSavedPlaceIDsByResultID =
                 acknowledgedSavedPlaceIDsByResultID.filter { $0.value != savedID }
+            if keepsSelectedCard {
+                router.selectedMapPlaceID = nil
+                router.mapPreviewCity = city
+                selectedPreviewID = city.id
+            }
             return true
         } catch {
             present(error)

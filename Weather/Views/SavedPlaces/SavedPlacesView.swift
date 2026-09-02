@@ -105,8 +105,9 @@ struct PlacesComparisonView: View {
     @Bindable var router: AppNavigation
     @Binding var selectedDate: Date
 
-    @AppStorage(SavedPlacesViewMode.storageKey)
-    private var storedModeRawValue = SavedPlacesViewMode.defaultRawValue
+    /// The dashboard retains its established preference, while Map results use
+    /// a separate key so changing either screen cannot mutate the other.
+    @AppStorage private var storedModeRawValue: String
     /// Map results are themselves a Boolean navigation destination. Keeping
     /// their child Detail route local prevents the root path from replacing
     /// that destination, so Back returns to the comparison list.
@@ -117,6 +118,24 @@ struct PlacesComparisonView: View {
     @Environment(\.locale) private var locale
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(NetworkConnectivity.self) private var networkConnectivity
+
+    init(
+        source: PlacesComparisonSource,
+        model: WeatherModel,
+        router: AppNavigation,
+        selectedDate: Binding<Date>
+    ) {
+        self.source = source
+        self.model = model
+        self.router = router
+        _selectedDate = selectedDate
+        _storedModeRawValue = AppStorage(
+            wrappedValue: SavedPlacesViewMode.defaultRawValue,
+            source.isSavedPlaces
+                ? SavedPlacesViewMode.storageKey
+                : SavedPlacesViewMode.mapResultsStorageKey
+        )
+    }
 
     // MARK: - Mode
 
@@ -683,7 +702,10 @@ struct PlacesComparisonView: View {
                     }
                 } label: {
                     DetailStyleReportMenuLabel(
-                        title: selectedMode.displayName(locale: locale)
+                        title: selectedMode.displayName(locale: locale),
+                        titleTextStyle: source.isSavedPlaces
+                            ? .title2
+                            : .largeTitle
                     )
                 }
                 .buttonStyle(.plain)

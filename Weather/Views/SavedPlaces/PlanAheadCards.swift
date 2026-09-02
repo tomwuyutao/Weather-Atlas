@@ -181,7 +181,7 @@ private struct SunnyOutlookPlaceRow: View {
 
             Text(outlook.place.displayName)
                 .font(.body)
-                .foregroundStyle(theme.colors.primaryText)
+                .foregroundStyle(placeNameColor)
                 .lineLimit(2)
 
             Spacer(minLength: 8)
@@ -191,6 +191,15 @@ private struct SunnyOutlookPlaceRow: View {
         }
         .padding(.vertical, 8)
         .contentShape(.rect)
+    }
+
+    /// A confirmed no-match is intentionally subdued as one complete row;
+    /// pending and available forecasts retain the normal place-name emphasis.
+    private var placeNameColor: Color {
+        if case .noMatch = outlook.status {
+            return theme.colors.secondaryText
+        }
+        return theme.colors.primaryText
     }
 
     @ViewBuilder
@@ -481,7 +490,8 @@ private struct WeekendDayRecommendationRow: View {
             Text(row.place.displayName)
                 .font(.body)
                 .foregroundStyle(theme.colors.primaryText)
-                .lineLimit(2)
+                .lineLimit(1)
+                .truncationMode(.tail)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             trailingStatus
@@ -499,7 +509,7 @@ private struct WeekendDayRecommendationRow: View {
                     locale: locale
                 )
             )
-            .font(.caption)
+            .font(.body)
             .monospacedDigit()
             .foregroundStyle(theme.colors.secondaryText)
             .lineLimit(1)

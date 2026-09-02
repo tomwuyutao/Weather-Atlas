@@ -166,9 +166,11 @@ struct SettingsView: View {
                 } label: {
                     settingsLabel(
                         "Clear Data and Reset App",
-                        systemImage: "trash"
+                        systemImage: "trash",
+                        color: theme.colors.destructive
                     )
                 }
+                .tint(theme.colors.destructive)
             } header: {
                 sectionHeader("Help")
             }
@@ -344,14 +346,18 @@ struct SettingsView: View {
 
     private func settingsLabel(
         _ title: LocalizedStringKey,
-        systemImage: String
+        systemImage: String,
+        color: Color? = nil
     ) -> some View {
-        Label {
+        let textColor = color ?? theme.colors.primaryText
+        let iconColor = color ?? theme.colors.dotSun
+
+        return Label {
             Text(title)
-                .foregroundStyle(theme.colors.primaryText)
+                .foregroundStyle(textColor)
         } icon: {
             Image(systemName: systemImage)
-                .foregroundStyle(theme.colors.dotSun)
+                .foregroundStyle(iconColor)
 
         }
     }

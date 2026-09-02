@@ -10,6 +10,7 @@
 //  Forecast snapshots remain private to the extension in WidgetForecast.
 //
 
+import CoreLocation
 import Foundation
 import SwiftUI
 import WidgetKit
@@ -196,6 +197,16 @@ struct WidgetSunnyWindowDay: Codable, Hashable, Identifiable, Sendable {
     /// Exact WeatherKit source data for every available daylight hour in this
     /// row. Optional supports snapshots written before detailed source data.
     var hourlyConditions: [WidgetHourlyCondition]? = nil
+    /// Complete civil-day hourly conditions, including night. New snapshots
+    /// persist these so a still-valid offline response can become tomorrow's
+    /// correct Small, Medium, or Lock Screen presentation after local midnight.
+    /// Optional decoding preserves same-day use of snapshots from older builds.
+    var hourlyWeatherConditions: [WidgetHourlyCondition]? = nil
+    /// Exact solar boundaries for this local day. Either value can legitimately
+    /// be absent during polar day/night, so the complete hourly product is the
+    /// migration marker for a roll-forward-capable day rather than these fields.
+    var sunrise: Date? = nil
+    var sunset: Date? = nil
 
     /// Uses the literal local date as row identity.
     /// `Identifiable` gives SwiftUI a stable key when it renders rows in a
@@ -209,12 +220,24 @@ struct WidgetSunnyWindowDay: Codable, Hashable, Identifiable, Sendable {
 struct WidgetDataCatalog: Codable, Hashable {
     /// Cities currently available in Saved Places.
     let cities: [WidgetDataCity]
+    /// Identity-only records for Saved Places removed after they had been
+    /// published to WidgetKit. App Intents can outlive the source Saved Place;
+    /// retaining its last human-readable name lets that configured widget fail
+    /// honestly without becoming a generic or silently retargeted selection.
+    /// Optional decoding keeps catalogs written before tombstones compatible.
+    var retiredCities: [WidgetDataCity]? = nil
     /// Main-app language used for widget localization consistency.
     let appLanguageIdentifier: String
     /// Latest app-published coordinate for the default Current/Home Location
     /// selection. It stays separate from Saved Places so a person never has to
     /// save that location just to configure a widget.
     var currentLocation: WidgetDataCity? = nil
+    /// Generation of the app-published default-location identity. A widget-owned
+    /// Current Location snapshot captures this value when it fetches. That lets
+    /// a later Core Location failure trust an extension snapshot newer than the
+    /// app's older coordinate after travel, while rejecting a snapshot after the
+    /// app itself has published a genuinely different default location.
+    var currentLocationGeneration: String? = nil
     /// Whether the stable default slot represents the device or a fixed home.
     /// Optional keeps catalogs written by older app versions decodable; those
     /// payloads predate Home Location and therefore mean Current Location.
@@ -244,6 +267,11 @@ struct WidgetDataCatalog: Codable, Hashable {
     /// behavior until the containing app next republishes its preferences.
     var resolvedFollowsSystemTextSize: Bool {
         followsSystemTextSize ?? false
+    }
+
+    /// Backward-compatible view of retired widget-selection identities.
+    var resolvedRetiredCities: [WidgetDataCity] {
+        retiredCities ?? []
     }
 }
 
@@ -373,6 +401,15 @@ enum WidgetDataStore {
         // Work on a local copy so the caller's value remains unchanged while we
         // attach the widget-specific strings needed by the extension process.
         var publishedCatalog = catalog
+        let previousCatalog = self.catalog()
+        publishedCatalog.currentLocationGeneration = currentLocationGeneration(
+            from: previousCatalog,
+            for: publishedCatalog
+        )
+        publishedCatalog.retiredCities = retiredWidgetCities(
+            from: previousCatalog,
+            keepingActive: publishedCatalog.cities
+        )
         publishedCatalog.textSize = .current
         let defaults = UserDefaults.standard
         publishedCatalog.followsSystemTextSize = defaults.object(
@@ -390,7 +427,7 @@ enum WidgetDataStore {
         // Avoid spending WidgetKit refresh budget (and causing duplicate
         // WeatherKit work in the extension) when the published value has not
         // actually changed.
-        guard publishedCatalog != self.catalog() else { return }
+        guard publishedCatalog != previousCatalog else { return }
         guard let data = try? JSONEncoder().encode(publishedCatalog) else {
             // Keep the last successfully encoded catalog. A transient encoding
             // failure must not strand every installed widget until the app is
@@ -399,6 +436,98 @@ enum WidgetDataStore {
         }
         defaults.set(data, forKey: catalogKey)
         WidgetCenter.shared.reloadAllTimelines()
+    }
+
+    /// Retains one generation through ordinary GPS jitter and metadata/name
+    /// refinement. A mode switch, timezone change, or meaningful coordinate
+    /// change creates a new generation that invalidates an older widget-owned
+    /// Current Location snapshot without touching Saved/Home caches.
+    private static func currentLocationGeneration(
+        from previousCatalog: WidgetDataCatalog?,
+        for catalog: WidgetDataCatalog
+    ) -> String {
+        guard let previousCatalog,
+              defaultLocationIdentityMatches(previousCatalog, catalog),
+              let generation = previousCatalog.currentLocationGeneration else {
+            return UUID().uuidString
+        }
+        return generation
+    }
+
+    private static func defaultLocationIdentityMatches(
+        _ previous: WidgetDataCatalog,
+        _ current: WidgetDataCatalog
+    ) -> Bool {
+        guard previous.resolvedDefaultLocationKind
+                == current.resolvedDefaultLocationKind,
+              previous.currentLocation?.timeZoneIdentifier
+                == current.currentLocation?.timeZoneIdentifier else {
+            return false
+        }
+
+        switch (previous.currentLocation, current.currentLocation) {
+        case (nil, nil):
+            return true
+        case let (previousCity?, currentCity?):
+            guard let previousLatitude = previousCity.latitude,
+                  let previousLongitude = previousCity.longitude,
+                  let currentLatitude = currentCity.latitude,
+                  let currentLongitude = currentCity.longitude else {
+                return false
+            }
+            let previousLocation = CLLocation(
+                latitude: previousLatitude,
+                longitude: previousLongitude
+            )
+            let currentLocation = CLLocation(
+                latitude: currentLatitude,
+                longitude: currentLongitude
+            )
+            let tolerance: CLLocationDistance =
+                current.resolvedDefaultLocationKind == .currentLocation
+                ? 2_000
+                : 50
+            return previousLocation.distance(from: currentLocation) <= tolerance
+        default:
+            return false
+        }
+    }
+
+    /// Carries deleted Saved Place identities forward without carrying weather
+    /// or fetchable coordinates. An active city matching the former canonical
+    /// row ID means it is a continuous migration and prevents a tombstone. A
+    /// retained tombstone can still own its historic alias ahead of a later
+    /// unrelated active city, preventing an installed widget from retargeting.
+    private static func retiredWidgetCities(
+        from previousCatalog: WidgetDataCatalog?,
+        keepingActive activeCities: [WidgetDataCity]
+    ) -> [WidgetDataCity] {
+        let previousCities = (previousCatalog?.cities ?? [])
+            + (previousCatalog?.resolvedRetiredCities ?? [])
+        var seenIdentifiers: Set<String> = []
+
+        return previousCities.compactMap { city in
+            guard city.id != currentLocationIdentifier,
+                  !activeCities.contains(where: {
+                      $0.matchesWidgetIdentifier(city.id)
+                  }),
+                  seenIdentifiers.insert(city.id).inserted else {
+                return nil
+            }
+
+            return WidgetDataCity(
+                id: city.id,
+                legacyIdentifiers: city.legacyIdentifiers?.filter {
+                    $0 != currentLocationIdentifier
+                        && savedPlaceID(from: $0) == nil
+                },
+                cityName: city.cityName,
+                configurationSubtitle: city.configurationSubtitle,
+                timeZoneIdentifier: nil,
+                latitude: nil,
+                longitude: nil
+            )
+        }
     }
 
     // MARK: - Reset
@@ -553,40 +682,54 @@ extension WidgetDataCity {
             guard let date = calendar.date(byAdding: .day, value: offset, to: .now) else { return nil }
             let sunnyStart = 7 + (offset % 4)
             let sunnyEnd = 15 + (offset % 5)
+            let hours = (6...21).compactMap { hour -> WidgetHourlyCondition? in
+                guard let hourDate = calendar.date(
+                    bySettingHour: hour,
+                    minute: 0,
+                    second: 0,
+                    of: date
+                ) else {
+                    return nil
+                }
+                let weather: WidgetWeatherPresentation
+                if (sunnyStart..<sunnyEnd).contains(hour) {
+                    weather = widgetPreviewWeather(.clear, symbolName: "sun.max.fill")
+                } else if hour == sunnyEnd {
+                    weather = widgetPreviewWeather(
+                        .mostlyClear,
+                        symbolName: "cloud.sun.fill"
+                    )
+                } else if hour == 6 || hour == sunnyEnd + 1 {
+                    weather = widgetPreviewWeather(.partlyCloudy, symbolName: "cloud.sun.fill")
+                } else if hour == 18, offset.isMultiple(of: 3) {
+                    weather = widgetPreviewWeather(.rain, symbolName: "cloud.rain.fill")
+                } else if hour == 19, offset.isMultiple(of: 3) {
+                    weather = widgetPreviewWeather(.drizzle, symbolName: "cloud.drizzle.fill")
+                } else {
+                    weather = widgetPreviewWeather(.cloudy, symbolName: "cloud.fill")
+                }
+                return WidgetHourlyCondition(
+                    date: hourDate,
+                    hour: hour,
+                    weather: weather
+                )
+            }
             return WidgetSunnyWindowDay(
                 date: calendar.startOfDay(for: date),
-                hourlyConditions: (6...21).compactMap { hour in
-                    guard let hourDate = calendar.date(
-                        bySettingHour: hour,
-                        minute: 0,
-                        second: 0,
-                        of: date
-                    ) else {
-                        return nil
-                    }
-                    let weather: WidgetWeatherPresentation
-                    if (sunnyStart..<sunnyEnd).contains(hour) {
-                        weather = widgetPreviewWeather(.clear, symbolName: "sun.max.fill")
-                    } else if hour == sunnyEnd {
-                        weather = widgetPreviewWeather(
-                            .mostlyClear,
-                            symbolName: "cloud.sun.fill"
-                        )
-                    } else if hour == 6 || hour == sunnyEnd + 1 {
-                        weather = widgetPreviewWeather(.partlyCloudy, symbolName: "cloud.sun.fill")
-                    } else if hour == 18, offset.isMultiple(of: 3) {
-                        weather = widgetPreviewWeather(.rain, symbolName: "cloud.rain.fill")
-                    } else if hour == 19, offset.isMultiple(of: 3) {
-                        weather = widgetPreviewWeather(.drizzle, symbolName: "cloud.drizzle.fill")
-                    } else {
-                        weather = widgetPreviewWeather(.cloudy, symbolName: "cloud.fill")
-                    }
-                    return WidgetHourlyCondition(
-                        date: hourDate,
-                        hour: hour,
-                        weather: weather
-                    )
-                }
+                hourlyConditions: hours,
+                hourlyWeatherConditions: hours,
+                sunrise: calendar.date(
+                    bySettingHour: 6,
+                    minute: 30,
+                    second: 0,
+                    of: date
+                ),
+                sunset: calendar.date(
+                    bySettingHour: 21,
+                    minute: 0,
+                    second: 0,
+                    of: date
+                )
             )
         }
         return city
@@ -680,12 +823,60 @@ extension WidgetDataCity {
     // MARK: - Combining Catalog and Snapshot Data
 
     /// Replaces weather-bearing catalog fields with a fetched cached snapshot.
-    /// This returns a new struct because Swift value types are copied on change;
-    /// the catalog value itself remains app-owned and unmodified.
+    /// A retained response can cross local midnight while still inside its
+    /// 24-hour cache lifetime. In that case, promote the matching future-day
+    /// payload to the current-day fields and drop yesterday from the large chart.
+    /// Older snapshots remain usable on their represented day, but safely return
+    /// nil after midnight because they did not persist complete future-day hours.
     func applying(
         _ snapshot: WidgetWeatherSnapshot,
-        preservesResolvedCityName: Bool = false
-    ) -> WidgetDataCity {
+        preservesResolvedCityName: Bool = false,
+        at referenceDate: Date = .now
+    ) -> WidgetDataCity? {
+        guard let timeZoneIdentifier = snapshot.timeZoneIdentifier,
+              let timeZone = TimeZone(identifier: timeZoneIdentifier) else {
+            return nil
+        }
+        var calendar = Calendar.current
+        calendar.timeZone = timeZone
+        let referenceDay = calendar.startOfDay(for: referenceDate)
+
+        let hourlyConditions: [WidgetHourlyCondition]?
+        let hourlyWeatherConditions: [WidgetHourlyCondition]?
+        let currentWeather: WidgetWeatherPresentation?
+        let sunrise: Date?
+        let sunset: Date?
+
+        if snapshot.representsLocalDay(containing: referenceDate) {
+            hourlyConditions = snapshot.hourlyConditions
+            hourlyWeatherConditions = snapshot.hourlyWeatherConditions
+            currentWeather = snapshot.currentWeather
+            sunrise = snapshot.sunrise
+            sunset = snapshot.sunset
+        } else {
+            guard let day = snapshot.sunnyWindowDays?.first(where: {
+                calendar.isDate($0.date, inSameDayAs: referenceDate)
+            }),
+            let dayHourlyConditions = day.hourlyConditions,
+            let dayWeatherConditions = day.hourlyWeatherConditions,
+            dayHourlyConditions.allSatisfy({ $0.weather != nil }),
+            dayWeatherConditions.allSatisfy({ $0.weather != nil }) else {
+                return nil
+            }
+
+            hourlyConditions = dayHourlyConditions
+            hourlyWeatherConditions = dayWeatherConditions
+            currentWeather = dayWeatherConditions.first(where: {
+                $0.date <= referenceDate
+                    && referenceDate < $0.date.addingTimeInterval(60 * 60)
+            })?.weather ?? dayWeatherConditions.min(by: {
+                abs($0.date.timeIntervalSince(referenceDate))
+                    < abs($1.date.timeIntervalSince(referenceDate))
+            })?.weather
+            sunrise = day.sunrise
+            sunset = day.sunset
+        }
+
         let snapshotName: String? = {
             guard !preservesResolvedCityName,
                   id == WidgetDataStore.currentLocationIdentifier,
@@ -703,16 +894,18 @@ extension WidgetDataCity {
             legacyIdentifiers: legacyIdentifiers,
             cityName: snapshotName ?? cityName,
             configurationSubtitle: configurationSubtitle,
-            timeZoneIdentifier: snapshot.timeZoneIdentifier,
+            timeZoneIdentifier: timeZoneIdentifier,
             latitude: snapshot.latitude ?? latitude,
             longitude: snapshot.longitude ?? longitude,
-            hourlyConditions: snapshot.hourlyConditions,
-            hourlyWeatherConditions: snapshot.hourlyWeatherConditions,
-            currentWeather: snapshot.currentWeather,
+            hourlyConditions: hourlyConditions,
+            hourlyWeatherConditions: hourlyWeatherConditions,
+            currentWeather: currentWeather,
             weatherFetchedAt: snapshot.fetchedAt,
-            sunrise: snapshot.sunrise,
-            sunset: snapshot.sunset,
-            sunnyWindowDays: snapshot.sunnyWindowDays,
+            sunrise: sunrise,
+            sunset: sunset,
+            sunnyWindowDays: snapshot.sunnyWindowDays?.filter {
+                calendar.startOfDay(for: $0.date) >= referenceDay
+            },
             dataIssue: snapshot.dataIssue
         )
     }

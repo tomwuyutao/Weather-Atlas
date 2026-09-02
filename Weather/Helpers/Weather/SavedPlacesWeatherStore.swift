@@ -10,6 +10,7 @@
 //  can share work, avoid stale responses, and never exceed five live requests.
 //
 
+import CoreLocation
 import Foundation
 import Observation
 import OSLog
@@ -87,6 +88,10 @@ final class SavedPlacesWeatherStore {
     /// daily/hourly value on the main actor.
     @ObservationIgnored
     private var cachedWeatherByID: [City.ID: CachedCityWeather] = [:]
+    /// IDs temporarily rebound from a nearby retained snapshot after Core
+    /// Location publishes a slightly different coordinate identity. They are
+    /// valid offline fallbacks, but must still refresh at the first viable path.
+    @ObservationIgnored private var adoptedLocationFallbackIDs: Set<City.ID> = []
     /// Nested batches defer persistence until the outermost group completes.
     @ObservationIgnored private var cacheBatchDepth = 0
     @ObservationIgnored private var cacheIsDirty = false
@@ -173,9 +178,70 @@ final class SavedPlacesWeatherStore {
     /// Returns the latest usable weather for a stable place identity.
     /// Reading `weatherRevision` intentionally establishes an Observation
     /// dependency even when `CityWeather` equality/identity stays place-based.
+    /// The timestamp check is repeated at the read boundary so a task delayed by
+    /// app suspension can never expose a snapshot after its hard one-day limit.
     func weather(for placeID: City.ID) -> CityWeather? {
         _ = weatherRevision
+        guard let refreshDate = refreshDatesByPlaceID[placeID],
+              PlaceWeatherSnapshotCache.isWithinRetention(
+                refreshDate,
+                now: .now
+              ) else {
+            return nil
+        }
         return weatherByID[placeID]
+    }
+
+    /// Rebinds the explicitly identified prior physical-location forecast to a
+    /// newly resolved coordinate identity without extending its snapshot age.
+    ///
+    /// Core Location commonly moves a few metres between launches, while the
+    /// repository key intentionally includes rounded coordinates. Reusing a
+    /// nearby snapshot keeps the promised 24-hour offline fallback available;
+    /// the adopted ID is still forced through WeatherKit when a path returns.
+    @discardableResult
+    func adoptRetainedLocationWeather(
+        from sourcePlaceID: City.ID,
+        for city: City,
+        maximumDistanceMeters: CLLocationDistance = 5_000
+    ) -> CityWeather? {
+        discardExpiredWeather()
+        if let existing = weather(for: city.id) {
+            return existing
+        }
+
+        let destination = CLLocation(
+            latitude: city.latitude,
+            longitude: city.longitude
+        )
+        guard sourcePlaceID != city.id,
+              let source = weatherByID[sourcePlaceID],
+              let sourceRefreshDate = refreshDatesByPlaceID[source.id] else {
+            return nil
+        }
+        let sourceLocation = CLLocation(
+            latitude: source.city.latitude,
+            longitude: source.city.longitude
+        )
+        guard destination.distance(from: sourceLocation)
+                <= maximumDistanceMeters else {
+            return nil
+        }
+
+        let adoptedWeather = CityWeather(
+            city: city,
+            dailyForecasts: source.dailyForecasts,
+            currentWeather: source.currentWeather,
+            timeZone: source.timeZone
+        )
+        weatherByID[city.id] = adoptedWeather
+        cachedWeatherByID[city.id] = CachedCityWeather(from: adoptedWeather)
+        refreshDatesByPlaceID[city.id] = sourceRefreshDate
+        adoptedLocationFallbackIDs.insert(city.id)
+        weatherRevision &+= 1
+        markCacheDirty()
+        scheduleCacheExpiry()
+        return adoptedWeather
     }
 
     /// Whether one place is currently waiting for a WeatherKit response.
@@ -345,38 +411,49 @@ final class SavedPlacesWeatherStore {
     }
 
     /// Cancels obsolete work and trims transient forecasts outside the model's
-    /// explicit saved/current/search scope. This prevents successive nearby and
-    /// map searches from making every later cache write progressively larger.
-    func retainWeather(for placeIDs: Set<City.ID>) {
-        loadingIDs.formIntersection(placeIDs)
-        failuresByID = failuresByID.filter { placeIDs.contains($0.key) }
+    /// explicit saved/current/search scope. A cold device-location launch may
+    /// briefly preserve restored entries until Core Location resolves the stable
+    /// current-location identity; the next ordinary retention pass trims them.
+    func retainWeather(
+        for placeIDs: Set<City.ID>,
+        preservingRestoredWeather: Bool = false
+    ) {
+        var retainedPlaceIDs = placeIDs
+        if preservingRestoredWeather {
+            retainedPlaceIDs.formUnion(weatherByID.keys)
+            retainedPlaceIDs.formUnion(cachedWeatherByID.keys)
+        }
+
+        loadingIDs.formIntersection(retainedPlaceIDs)
+        adoptedLocationFallbackIDs.formIntersection(retainedPlaceIDs)
+        failuresByID = failuresByID.filter { retainedPlaceIDs.contains($0.key) }
         requestTokens = requestTokens.filter {
-            placeIDs.contains($0.key)
+            retainedPlaceIDs.contains($0.key)
         }
         // Cancellation is cooperative, so token checks in `performRequest` still
         // protect state if WeatherKit returns after this task has been cancelled.
         for (placeID, request) in inFlightByID
-        where !placeIDs.contains(placeID) {
+        where !retainedPlaceIDs.contains(placeID) {
             request.task.cancel()
         }
         inFlightByID = inFlightByID.filter {
-            placeIDs.contains($0.key)
+            retainedPlaceIDs.contains($0.key)
         }
 
         let removesWeather = weatherByID.keys.contains {
-            !placeIDs.contains($0)
+            !retainedPlaceIDs.contains($0)
         }
         let removesRefreshDates = refreshDatesByPlaceID.keys.contains {
-            !placeIDs.contains($0)
+            !retainedPlaceIDs.contains($0)
         }
         guard removesWeather || removesRefreshDates else { return }
 
-        weatherByID = weatherByID.filter { placeIDs.contains($0.key) }
+        weatherByID = weatherByID.filter { retainedPlaceIDs.contains($0.key) }
         cachedWeatherByID = cachedWeatherByID.filter {
-            placeIDs.contains($0.key)
+            retainedPlaceIDs.contains($0.key)
         }
         refreshDatesByPlaceID = refreshDatesByPlaceID.filter {
-            placeIDs.contains($0.key)
+            retainedPlaceIDs.contains($0.key)
         }
         weatherRevision &+= 1
         markCacheDirty()
@@ -388,6 +465,7 @@ final class SavedPlacesWeatherStore {
         weatherByID = [:]
         loadingIDs = []
         failuresByID = [:]
+        adoptedLocationFallbackIDs = []
         requestTokens = [:]
         inFlightByID.values.forEach { $0.task.cancel() }
         inFlightByID = [:]
@@ -508,10 +586,12 @@ final class SavedPlacesWeatherStore {
             } else {
                 issue = .weatherRequestFailed(error.localizedDescription)
             }
-            // The prior snapshot was removed when this replacement request
-            // began, so publish only the typed unavailable state.
             failuresByID[city.id] = PlaceWeatherFailure(issue: issue)
-            return nil
+            // A replacement must not destroy the app's offline fallback. Restore
+            // the previous snapshot only while its own timestamp remains inside
+            // the hard 24-hour retention window; otherwise preserve the honest
+            // unavailable state.
+            return restoreRetainedWeatherAfterFailure(for: city.id)
         }
 
         guard !Task.isCancelled,
@@ -528,6 +608,7 @@ final class SavedPlacesWeatherStore {
         // never displayed or used as a business value.
         weatherRevision &+= 1
         failuresByID[city.id] = nil
+        adoptedLocationFallbackIDs.remove(city.id)
         recordRefresh(for: city.id)
         markCacheDirty()
         return weather
@@ -566,6 +647,9 @@ final class SavedPlacesWeatherStore {
     /// snapshot is fresh. The only content check here is whether city-local
     /// midnight has made the cached forecast start on the previous day.
     private func shouldRefresh(placeID: City.ID, now: Date = Date()) -> Bool {
+        if adoptedLocationFallbackIDs.contains(placeID) {
+            return true
+        }
         guard let weather = weatherByID[placeID],
               let refreshDate = refreshDatesByPlaceID[placeID] else {
             return true
@@ -596,10 +680,10 @@ final class SavedPlacesWeatherStore {
     private func beginRequest(for placeID: City.ID) -> UUID {
         let requestToken = UUID()
         requestTokens[placeID] = requestToken
-        // A replacement starts from an honest empty/loading state. Do not keep
-        // an older forecast on screen while it is being refreshed or after the
-        // replacement fails.
-        discardCachedWeather(for: placeID)
+        // Preserve the cache as a rollback snapshot while retaining the existing
+        // blank/loading presentation. A successful request replaces it; a failed
+        // request can restore it without extending its original freshness date.
+        hideWeatherDuringReplacement(for: placeID)
         loadingIDs.insert(placeID)
         failuresByID[placeID] = nil
         return requestToken
@@ -633,9 +717,35 @@ final class SavedPlacesWeatherStore {
         scheduleCacheExpiry()
     }
 
-    /// Removes every representation of a forecast before a replacement request.
-    /// Keeping the cache and visible dictionary in sync prevents an older
-    /// forecast from reappearing after that replacement fails.
+    /// Removes only the visible value while an online replacement is in flight.
+    /// Cache data and its original timestamp remain untouched as a failure-only
+    /// fallback, so beginning a refresh cannot weaken later offline behavior.
+    private func hideWeatherDuringReplacement(for placeID: City.ID) {
+        guard weatherByID.removeValue(forKey: placeID) != nil else { return }
+        weatherRevision &+= 1
+    }
+
+    /// Restores an earlier snapshot after a failed replacement without recording
+    /// a new refresh date. This is deliberately a rollback, not fresh weather.
+    private func restoreRetainedWeatherAfterFailure(
+        for placeID: City.ID,
+        now: Date = .now
+    ) -> CityWeather? {
+        guard let refreshDate = refreshDatesByPlaceID[placeID],
+              PlaceWeatherSnapshotCache.isWithinRetention(refreshDate, now: now),
+              let cachedWeather = cachedWeatherByID[placeID],
+              let weather = cachedWeather.toCityWeather() else {
+            discardCachedWeather(for: placeID)
+            return nil
+        }
+
+        weatherByID[placeID] = weather
+        weatherRevision &+= 1
+        return weather
+    }
+
+    /// Removes every representation of an expired, reset, or out-of-scope
+    /// forecast. Replacement requests use `hideWeatherDuringReplacement` instead.
     private func discardCachedWeather(for placeID: City.ID) {
         let removedWeather = weatherByID.removeValue(forKey: placeID) != nil
         let removedCachedWeather = cachedWeatherByID.removeValue(
@@ -644,6 +754,7 @@ final class SavedPlacesWeatherStore {
         let removedRefreshDate = refreshDatesByPlaceID.removeValue(
             forKey: placeID
         ) != nil
+        adoptedLocationFallbackIDs.remove(placeID)
 
         guard removedWeather || removedCachedWeather || removedRefreshDate else {
             return
@@ -683,6 +794,7 @@ final class SavedPlacesWeatherStore {
         refreshDatesByPlaceID = refreshDatesByPlaceID.filter {
             !expiredIDs.contains($0.key)
         }
+        adoptedLocationFallbackIDs.subtract(expiredIDs)
         weatherRevision &+= 1
         markCacheDirty()
         scheduleCacheExpiry(now: now)

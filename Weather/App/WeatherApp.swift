@@ -137,8 +137,6 @@ struct WeatherApp: App {
     @State private var theme = AppTheme.shared
     /// Shared place, weather, and current-location recommendation model.
     @State private var appModel: WeatherModel
-    /// Shared tab, navigation, and modal presentation coordinator.
-    @State private var router: AppNavigation
     /// Single queue for native alerts describing data that remains blank.
     @State private var missingDataAlerts: MissingDataAlertCenter
     /// Shared system reachability state used by the offline-cache presentation.
@@ -146,7 +144,7 @@ struct WeatherApp: App {
     /// Shared first-run and contextual-tip state for every app window.
     @State private var tutorial: TutorialPresentationState
 
-    /// Creates the app's shared stores and navigation state.
+    /// Creates process-wide data stores; each scene owns navigation separately.
     init() {
         // Both stores are created once and injected into the app-wide model,
         // so Your Location, Saved Places, Map, and widgets read the same data.
@@ -167,7 +165,6 @@ struct WeatherApp: App {
                 recentSearches: recentSearches
             )
         )
-        _router = State(initialValue: AppNavigation())
         _missingDataAlerts = State(initialValue: missingDataAlerts)
         _networkConnectivity = State(initialValue: networkConnectivity)
         _tutorial = State(initialValue: TutorialPresentationState())
@@ -182,7 +179,6 @@ struct WeatherApp: App {
                 theme: theme,
                 appLocale: Locale(identifier: appLanguage),
                 appModel: appModel,
-                router: router,
                 missingDataAlerts: missingDataAlerts,
                 networkConnectivity: networkConnectivity,
                 tutorial: tutorial
@@ -201,8 +197,9 @@ struct ThemeRoot: View {
     let appLocale: Locale
     /// Shared place and weather model.
     let appModel: WeatherModel
-    /// Shared native navigation coordinator.
-    let router: AppNavigation
+    /// Navigation and modal presentation belong to this window, not the
+    /// process-wide forecast model shared by every scene.
+    @State private var router = AppNavigation()
     /// Shared native missing-data alert queue.
     let missingDataAlerts: MissingDataAlertCenter
     /// Shared system reachability state.
@@ -234,7 +231,7 @@ private struct ThemeContent: View {
     let appLocale: Locale
     /// Shared model supplied to the root application view.
     let appModel: WeatherModel
-    /// Shared navigation coordinator supplied to the root application view.
+    /// This window's navigation coordinator supplied to the root app view.
     let router: AppNavigation
     /// Shared native missing-data alert queue.
     let missingDataAlerts: MissingDataAlertCenter
@@ -257,6 +254,9 @@ private struct ThemeContent: View {
     /// The device preference remains observable even while this scene applies
     /// its own capped UIKit trait for native menus and presentations.
     @State private var systemContentSizeCategory = UIApplication.shared.preferredContentSizeCategory
+    /// UIKit's stable identifier for this specific window scene. Quick-action
+    /// hand-offs use it so one iPad window cannot navigate another window.
+    @State private var sceneSessionIdentifier: String?
 
     /// Injects locale, text size, theme, tint, and contrast app-wide.
     var body: some View {
@@ -277,7 +277,8 @@ private struct ThemeContent: View {
             router: router,
             missingDataAlerts: missingDataAlerts,
             networkConnectivity: networkConnectivity,
-            tutorial: tutorial
+            tutorial: tutorial,
+            sceneSessionIdentifier: sceneSessionIdentifier
         )
             .environment(\.locale, appLocale)
             // The app stops at its largest supported text setting, including
@@ -287,7 +288,8 @@ private struct ThemeContent: View {
             // This zero-size probe updates only the hosting window scene.
             .background {
                 SceneContentSizeCategoryOverride(
-                    category: effectiveContentSizeCategory
+                    category: effectiveContentSizeCategory,
+                    sceneSessionIdentifier: $sceneSessionIdentifier
                 )
                 .frame(width: 0, height: 0)
             }
@@ -344,10 +346,13 @@ private struct ThemeContent: View {
 private struct SceneContentSizeCategoryOverride: UIViewRepresentable {
     /// Category already clamped to the app's supported range.
     let category: UIContentSizeCategory
+    /// Session identity for the concrete scene hosting this SwiftUI hierarchy.
+    @Binding var sceneSessionIdentifier: String?
 
     func makeUIView(context: Context) -> SceneContentSizeCategoryOverrideView {
         let view = SceneContentSizeCategoryOverrideView()
         view.category = category
+        view.sceneSessionIdentifierDidChange = updateSceneSessionIdentifier
         return view
     }
 
@@ -356,7 +361,13 @@ private struct SceneContentSizeCategoryOverride: UIViewRepresentable {
         context: Context
     ) {
         uiView.category = category
+        uiView.sceneSessionIdentifierDidChange = updateSceneSessionIdentifier
         uiView.applyIfAttached()
+    }
+
+    private func updateSceneSessionIdentifier(_ identifier: String) {
+        guard sceneSessionIdentifier != identifier else { return }
+        sceneSessionIdentifier = identifier
     }
 }
 
@@ -364,15 +375,27 @@ private struct SceneContentSizeCategoryOverride: UIViewRepresentable {
 private final class SceneContentSizeCategoryOverrideView: UIView {
     /// Latest category supplied by the SwiftUI root.
     var category: UIContentSizeCategory = .large
+    /// Reports the owning scene after this otherwise invisible view attaches.
+    var sceneSessionIdentifierDidChange: ((String) -> Void)?
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
         applyIfAttached()
+        publishSceneSessionIdentifierIfAttached()
     }
 
     /// Targets only this view's scene so one iPad window cannot alter another.
     func applyIfAttached() {
         guard let windowScene = window?.windowScene else { return }
         AppTextSizePolicy.apply(category, to: windowScene)
+    }
+
+    /// Publishes only from the UIKit attachment callback, avoiding a SwiftUI
+    /// state mutation during `updateUIView`.
+    private func publishSceneSessionIdentifierIfAttached() {
+        guard let windowScene = window?.windowScene else { return }
+        sceneSessionIdentifierDidChange?(
+            windowScene.session.persistentIdentifier
+        )
     }
 }

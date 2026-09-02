@@ -50,12 +50,13 @@ struct SunnyHoursTimeline: View {
 
     // MARK: - Initialization and Forecast Selection
 
-    /// Your Location includes recovery actions because its forecast depends on
-    /// Core Location authorization and a fresh physical coordinate.
+    /// The default-location report includes recovery actions. Physical location
+    /// supplies a status for permission-specific copy; a fixed Home passes nil
+    /// and uses the ordinary named-place loading/unavailable presentation.
     init(
         weather: CityWeather?,
         selectedDate: Date,
-        locationStatus: LocationProviderStatus,
+        locationStatus: LocationProviderStatus?,
         isLoading: Bool,
         requestLocation: @escaping () -> Void,
         openSettings: @escaping () -> Void,
@@ -122,7 +123,11 @@ struct SunnyHoursTimeline: View {
                 for: forecast,
                 timeZone: weather.timeZone
             )
-            loadedTimeline(weather: weather, data: data)
+            loadedTimeline(
+                weather: weather,
+                forecast: forecast,
+                data: data
+            )
         } else if isLoading || locationStatus?.isActivelyLocating == true {
             HStack(spacing: WeatherCardLayout.headerSpacing) {
                 ProgressView()
@@ -191,11 +196,12 @@ struct SunnyHoursTimeline: View {
 
     private func loadedTimeline(
         weather: CityWeather,
+        forecast: DailyForecast,
         data: SunnyHoursCalculation.SunnyHoursData
     ) -> some View {
         return DailySunnyHoursTrack(
             data: data,
-            selectedDate: selectedDate,
+            forecastDate: forecast.date,
             timeZone: weather.timeZone
         )
     }
@@ -282,7 +288,10 @@ struct SunnyHoursTimeline: View {
 /// It adapts app forecast values to the shared app/widget capsule renderer.
 private struct DailySunnyHoursTrack: View {
     let data: SunnyHoursCalculation.SunnyHoursData
-    let selectedDate: Date
+    /// WeatherKit's actual city-local forecast day. The shared selector carries
+    /// a literal civil day in another calendar and is not a reliable absolute
+    /// instant for deciding whether this remote forecast is Today.
+    let forecastDate: Date
     let timeZone: TimeZone
 
     @Environment(\.appTheme) private var theme
@@ -314,7 +323,7 @@ private struct DailySunnyHoursTrack: View {
             hours: chartHours,
             bounds: data.bounds,
             currentDate: .now,
-            showsCurrentTimeMarker: selectedDateIsToday,
+            showsCurrentTimeMarker: forecastDateIsToday,
             configuration: .init(
                 capsuleSpacing: capsuleSpacing,
                 maximumCapsuleWidth: maximumCapsuleWidth,
@@ -333,25 +342,10 @@ private struct DailySunnyHoursTrack: View {
         )
     }
 
-    private var selectedDateIsToday: Bool {
+    private var forecastDateIsToday: Bool {
         var cityCalendar = calendar
         cityCalendar.timeZone = timeZone
-        return cityCalendar.isDateInToday(selectedDate)
+        return cityCalendar.isDateInToday(forecastDate)
     }
 
-}
-
-// MARK: - Location Status Helpers
-
-/// Presentation-only grouping used by the timeline's loading branch.
-private extension LocationProviderStatus {
-    var isActivelyLocating: Bool {
-        switch self {
-        case .checkingAvailability, .requestingAuthorization, .locating:
-            true
-        case .idle, .resolvingPlace, .ready, .readyWithoutMetadata, .denied,
-                .restricted, .servicesDisabled, .failed:
-            false
-        }
-    }
 }
