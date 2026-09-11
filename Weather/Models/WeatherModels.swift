@@ -462,9 +462,12 @@ final class WeatherModel {
 
         guard let baseCity else { return nil }
         let metadata = locationProvider.metadata
-        let locality = CurrentLocationMetadata.localityName(
-            from: metadata?.displayName
-        )?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let locality = metadata?.displayName?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
+        let titleName = metadata?.titleName?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        )
         let country = metadata?.countryName?.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
@@ -479,7 +482,8 @@ final class WeatherModel {
         return City(
             id: baseCity.id,
             name: resolvedName,
-            titleName: baseCity.titleName,
+            titleName: titleName.flatMap { $0.isEmpty ? nil : $0 }
+                ?? baseCity.titleName,
             country: resolvedCountry,
             countryISO2Code:
                 metadata?.isoCountryCode ?? baseCity.countryISO2Code,
@@ -1440,9 +1444,14 @@ final class WeatherModel {
     /// Keeps a selected search result available to Detail until it is either
     /// explicitly saved or the app session ends.
     func registerTransientCity(_ city: City) {
-        // This does not save a place. It extends the in-memory route/cache scope
-        // until the user explicitly saves the city or ends the app session.
-        foundCitiesByID[city.id] = city
+        registerTransientCities([city])
+    }
+
+    /// Keeps cities removed from Saved Places available to existing routes.
+    func registerTransientCities(_ cities: [City]) {
+        for city in cities {
+            foundCitiesByID[city.id] = city
+        }
         retainWeatherScope()
     }
 
@@ -1883,6 +1892,9 @@ final class WeatherModel {
             name: metadata?.displayName?.trimmingCharacters(
                 in: .whitespacesAndNewlines
             ) ?? "",
+            titleName: metadata?.titleName?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ),
             country: metadata?.countryName?.trimmingCharacters(
                 in: .whitespacesAndNewlines
             ) ?? "",

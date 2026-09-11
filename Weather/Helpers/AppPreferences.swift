@@ -14,6 +14,42 @@
 import Foundation
 import SwiftUI
 
+// MARK: - Full Reset
+
+/// Restores every lightweight display preference to its first-launch value.
+enum AppPreferences {
+    static func reset(defaults: UserDefaults = .standard) {
+        defaults.set(TemperatureUnit.defaultRawValue, forKey: "temperatureUnit")
+        defaults.set(DistanceUnit.defaultRawValue, forKey: "distanceUnit")
+        defaults.set(
+            AppLanguageDefaults.preferredDeviceLanguage(),
+            forKey: AppLanguageDefaults.storageKey
+        )
+        defaults.set(true, forKey: AppTextSizePolicy.useSystemKey)
+        defaults.set(
+            AppTextSizeLevel.defaultRawValue,
+            forKey: AppTextSizePolicy.appLevelKey
+        )
+        defaults.set(true, forKey: "showsMapSunnyHoursLegend")
+        defaults.set(
+            DetailReportSection.defaultStorageValue,
+            forKey: DetailReportSection.storageKey
+        )
+        defaults.set(
+            SavedPlacesViewMode.defaultRawValue,
+            forKey: SavedPlacesViewMode.storageKey
+        )
+        defaults.set(
+            SavedPlacesViewMode.defaultRawValue,
+            forKey: SavedPlacesViewMode.mapResultsStorageKey
+        )
+        defaults.removeObject(forKey: "savedPlacesDashboardSectionOrder")
+        defaults.removeObject(forKey: "savedPlacesSelectedDayCardOrder")
+        defaults.removeObject(forKey: "savedPlacesPlanAheadCardOrder")
+        SavedPlaceNameTranslationPreference.resetToInitialDefault()
+    }
+}
+
 // MARK: - Detail Report Section Order
 
 /// The three movable sections below Detail View's pinned daily timeline.

@@ -351,6 +351,23 @@ struct DetailReportContent<HeaderTitle: View, SupplementaryContent: View>: View 
 
 // MARK: - Current Location Report
 
+/// One title policy shared by current-location and ordinary place reports.
+/// Keeping both callers on this value prevents location-source details from
+/// changing how a saved alias or richer reverse-geocoded title is presented.
+private struct PlaceDetailNames {
+    let displayName: String
+    let title: String
+
+    init(city: City?, savedPlace: SavedPlace?, locale: Locale) {
+        displayName = savedPlace?.localizedDisplayName(locale: locale)
+            ?? city?.localizedDisplayName(locale: locale)
+            ?? ""
+        title = savedPlace?.customName
+            ?? city?.localizedTitleDisplayName(locale: locale)
+            ?? displayName
+    }
+}
+
 /// Current-location presentation built from the same report canvas as a
 /// saved-place detail. Location permission and refresh lifecycle remain in
 /// `YourLocationView`; this type only adapts their live values into report UI.
@@ -423,8 +440,20 @@ struct CurrentLocationReportContent: View {
         return model.placesStore.place(id: savedID)
     }
 
+    private var placeNames: PlaceDetailNames {
+        PlaceDetailNames(
+            city: locationCity,
+            savedPlace: savedPlace,
+            locale: locale
+        )
+    }
+
     private var locationName: String {
-        model.currentLocationDisplayName(locale: locale)
+        placeNames.displayName
+    }
+
+    private var detailTitle: String {
+        placeNames.title
     }
 
     private var temperatureUnit: TemperatureUnit {
@@ -463,7 +492,7 @@ struct CurrentLocationReportContent: View {
     /// Prefer the resolved locality, while retaining a meaningful label during
     /// the short interval before reverse geocoding finishes.
     private var navigationTitle: String {
-        let trimmedName = locationName.trimmingCharacters(
+        let trimmedName = detailTitle.trimmingCharacters(
             in: .whitespacesAndNewlines
         )
         if !trimmedName.isEmpty {
@@ -525,7 +554,8 @@ struct CurrentLocationReportContent: View {
 
     var body: some View {
         DetailReportContent(
-            locationName: locationName,
+            locationName: detailTitle,
+            placeDisplayName: locationName,
             weather: locationWeather,
             forecast: selectedForecast,
             selectedDate: $selectedDate,
@@ -606,7 +636,7 @@ struct CurrentLocationReportContent: View {
 
             ToolbarItem(placement: .topBarLeading) {
                 Button("Settings", systemImage: "slider.horizontal.3") {
-                    router.presentedSheet = .settings
+                    router.isSettingsPresented = true
                 }
                 .labelStyle(.iconOnly)
             }
@@ -914,18 +944,22 @@ struct DetailView: View {
     }
 
     private var displayName: String {
-        savedPlace?.displayName
-            ?? city?.displayName
-            ?? ""
+        placeNames.displayName
     }
 
     /// A fuller reverse-geocoded locality belongs only in the report's title.
     /// A custom saved-place name still takes precedence when the person chose
     /// one explicitly.
     private var detailTitle: String {
-        savedPlace?.customName
-            ?? city?.titleDisplayName
-            ?? displayName
+        placeNames.title
+    }
+
+    private var placeNames: PlaceDetailNames {
+        PlaceDetailNames(
+            city: city,
+            savedPlace: savedPlace,
+            locale: locale
+        )
     }
 
     private var temperatureUnit: TemperatureUnit {
@@ -1032,7 +1066,7 @@ struct DetailView: View {
                     model.useCurrentLocation(preferredLocale: locale)
                 },
                 openSettings: {
-                    router.presentedSheet = .settings
+                    router.isSettingsPresented = true
                 },
                 viewOnMap: {
                     guard let city else { return }
@@ -1248,7 +1282,7 @@ private struct PlaceDetailActionsMenu: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Spacer(minLength: 34)
+            Spacer(minLength: 0)
 
             Menu {
                 Button("View on Map", systemImage: "map", action: viewOnMap)
@@ -1286,7 +1320,7 @@ private struct PlaceDetailActionsMenu: View {
             }
             .buttonStyle(.plain)
 
-            Spacer(minLength: 34)
+            Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity)
     }
@@ -1300,11 +1334,19 @@ private struct PlaceDetailMutationError: Identifiable {
     let message: String
 }
 
+/// The two semantic title sizes used by the shared report header.
+enum DetailStyleReportTitleStyle {
+    /// Place names begin at the prominent report size, step down only as far
+    /// as the Saved Places title size, and then wrap at that same minimum size.
+    case prominent
+    /// Saved Places mode names always use the compact report title size.
+    case compact
+}
+
 /// Shared large heading treatment used by forecast reports and planning views.
 struct DetailStyleReportTitle: View {
     let title: String
-    let horizontalPadding: CGFloat
-    let textStyle: Font.TextStyle
+    var style: DetailStyleReportTitleStyle = .prominent
 
     @Environment(\.appTheme) private var theme
     @ScaledMetric(relativeTo: .largeTitle)
@@ -1312,60 +1354,73 @@ struct DetailStyleReportTitle: View {
     @ScaledMetric(relativeTo: .largeTitle)
     private var titleToContentGap: CGFloat = 8
 
-    init(
-        title: String,
-        horizontalPadding: CGFloat = 34,
-        textStyle: Font.TextStyle = .largeTitle
-    ) {
-        self.title = title
-        self.horizontalPadding = horizontalPadding
-        self.textStyle = textStyle
-    }
-
     var body: some View {
-        Text(title)
-            .font(.system(textStyle, design: .serif).weight(.bold))
-            .foregroundStyle(theme.colors.primaryText)
-            .lineLimit(2)
-            .minimumScaleFactor(0.72)
-            .multilineTextAlignment(.center)
-            .padding(.horizontal, horizontalPadding)
+        titleContent
             .padding(.bottom, titleToContentGap)
             .frame(minHeight: titleMinimumHeight)
     }
+
+    @ViewBuilder
+    private var titleContent: some View {
+        switch style {
+        case .prominent:
+            // Try progressively smaller semantic styles on one line before
+            // wrapping. The final `.title2` candidate is also the exact style
+            // used by Saved Places, so it is a real floor at every text size.
+            ViewThatFits(in: .horizontal) {
+                singleLineTitle(textStyle: .largeTitle)
+                singleLineTitle(textStyle: .title)
+                singleLineTitle(textStyle: .title2)
+                titleText(textStyle: .title2, lineLimit: 2)
+            }
+        case .compact:
+            titleText(textStyle: .title2, lineLimit: 2)
+        }
+    }
+
+    private func singleLineTitle(
+        textStyle: Font.TextStyle
+    ) -> some View {
+        titleText(textStyle: textStyle, lineLimit: 1)
+            // Preserve the candidate's ideal one-line width so ViewThatFits
+            // can move to the next semantic size instead of truncating it.
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private func titleText(
+        textStyle: Font.TextStyle,
+        lineLimit: Int
+    ) -> some View {
+        Text(title)
+            .font(.system(textStyle, design: .serif).weight(.bold))
+            .foregroundStyle(theme.colors.primaryText)
+            .lineLimit(lineLimit)
+            .multilineTextAlignment(.center)
+    }
 }
 
-/// Shared native-menu label for report titles. Keeping the title and chevron
-/// inside one label makes either visible element open the same menu while
-/// preserving the established large-title geometry.
+/// Shared native-menu label for report titles. Symmetric horizontal insets keep
+/// the title itself on the true centerline, while the chevron overlays only the
+/// trailing inset and therefore does not participate in title measurement.
 struct DetailStyleReportMenuLabel: View {
     let title: String
-    let titleTextStyle: Font.TextStyle
+    var style: DetailStyleReportTitleStyle = .prominent
 
     @Environment(\.appTheme) private var theme
 
-    init(
-        title: String,
-        titleTextStyle: Font.TextStyle = .largeTitle
-    ) {
-        self.title = title
-        self.titleTextStyle = titleTextStyle
-    }
-
     var body: some View {
-        HStack(alignment: .top, spacing: 2) {
-            DetailStyleReportTitle(
-                title: title,
-                horizontalPadding: 0,
-                textStyle: titleTextStyle
-            )
-
-            Image(systemName: "chevron.down")
-                .font(.body.weight(.semibold))
-                .foregroundStyle(theme.colors.primaryText)
-                .frame(width: 28, height: 44)
-        }
-        .contentShape(.rect)
+        DetailStyleReportTitle(title: title, style: style)
+            .padding(.horizontal, 34)
+            .overlay(alignment: .topTrailing) {
+                Image(systemName: "chevron.down")
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(theme.colors.primaryText)
+                    .frame(width: 28, height: 44)
+                    // Two points separate the glyph frame from the title; the
+                    // remaining four points preserve a small outer hit inset.
+                    .offset(x: -4)
+            }
+            .contentShape(.rect)
     }
 }
 

@@ -51,21 +51,6 @@ struct MapSunHandoff: Equatable {
     let selectedDate: Date
 }
 
-// MARK: - Modal Values
-
-/// Root-level sheets. An enum keeps mutually exclusive presentations in one
-/// source of truth instead of coordinating several Boolean flags.
-enum AppSheetDestination: Identifiable, Hashable {
-    case settings
-
-    var id: String {
-        switch self {
-        case .settings:
-            "settings"
-        }
-    }
-}
-
 // MARK: - Window Router
 
 /// Main-actor observable navigation state owned by one root window's tab shell.
@@ -84,8 +69,8 @@ final class AppNavigation {
     var savedPlacesPath: [AppRoute] = []
     var mapPath: [AppRoute] = []
     var searchPath: [AppRoute] = []
-    /// Optional enum drives the single root `.sheet(item:)` modifier.
-    var presentedSheet: AppSheetDestination?
+    /// Settings is the app shell's only root-level sheet.
+    var isSettingsPresented = false
     /// Saved-place annotation Map should center or select after navigation.
     var selectedMapPlaceID: City.ID?
     /// An unsaved search result that Map presents with the same floating card
@@ -181,6 +166,16 @@ final class AppNavigation {
     func showSavedPlacesRoot() {
         selectedTab = .savedPlaces
         savedPlacesPath = []
+    }
+
+    /// Restores this window's navigation state after a full app reset.
+    func resetForFullAppReset() {
+        yourLocationPath = []
+        savedPlacesPath = []
+        searchPath = []
+        resetMapHandoffState()
+        selectedTab = .yourLocation
+        isSettingsPresented = false
     }
 
     /// Discards every transient Map hand-off during a full app reset. Advancing

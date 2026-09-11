@@ -112,6 +112,9 @@ struct PlacesComparisonView: View {
     /// their child Detail route local prevents the root path from replacing
     /// that destination, so Back returns to the comparison list.
     @State private var mapDetailPlaceID: City.ID?
+    /// Mirrors the Detail screens: the compact navigation title appears only
+    /// after Saved Places' large in-content mode title scrolls out of view.
+    @State private var showsLargeTitle = true
 
     @Environment(\.appTheme) private var theme
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
@@ -553,15 +556,17 @@ struct PlacesComparisonView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if source.isSavedPlaces {
+                // Keep this item mounted while scrolling. Changing only its
+                // opacity avoids rebuilding the toolbar preference structure.
                 ToolbarItem(placement: .principal) {
-                    Text("Saved Places")
+                    Text(navigationTitle)
                         .lineLimit(1)
-                        .opacity(0)
+                        .opacity(showsLargeTitle ? 0 : 1)
                 }
 
                 ToolbarItem(placement: .topBarLeading) {
                     Button("Settings", systemImage: "slider.horizontal.3") {
-                        router.presentedSheet = .settings
+                        router.isSettingsPresented = true
                     }
                     .labelStyle(.iconOnly)
                 }
@@ -685,7 +690,7 @@ struct PlacesComparisonView: View {
     private var modeHeader: some View {
         VStack(spacing: 9) {
             HStack(spacing: 0) {
-                Spacer(minLength: 34)
+                Spacer(minLength: 0)
 
                 Menu {
                     ForEach(SavedPlacesViewMode.allCases) { mode in
@@ -703,14 +708,14 @@ struct PlacesComparisonView: View {
                 } label: {
                     DetailStyleReportMenuLabel(
                         title: selectedMode.displayName(locale: locale),
-                        titleTextStyle: source.isSavedPlaces
-                            ? .title2
-                            : .largeTitle
+                        style: source.isSavedPlaces
+                            ? .compact
+                            : .prominent
                     )
                 }
                 .buttonStyle(.plain)
 
-                Spacer(minLength: 34)
+                Spacer(minLength: 0)
             }
 
             Text(selectedMode.subtitle)
@@ -722,6 +727,13 @@ struct PlacesComparisonView: View {
         .frame(maxWidth: .infinity)
         .padding(.top, 4)
         .padding(.bottom, 4)
+        .onScrollVisibilityChange(threshold: 0.01) { isVisible in
+            guard source.isSavedPlaces,
+                  showsLargeTitle != isVisible else {
+                return
+            }
+            showsLargeTitle = isVisible
+        }
     }
 
     private var manageSavedPlacesLink: some View {

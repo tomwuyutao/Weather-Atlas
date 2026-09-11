@@ -219,7 +219,10 @@ struct ThemeRoot: View {
             networkConnectivity: networkConnectivity,
             tutorial: tutorial
         )
-        .preferredColorScheme(theme.preferredColorScheme)
+        // Apply onboarding's light appearance at the window root so native
+        // sheets and the shared palette agree, including during tutorial replay.
+        // Finishing restores the person's saved theme without changing it.
+        .preferredColorScheme(tutorial.shouldPresent ? .light : theme.preferredColorScheme)
     }
 }
 

@@ -70,8 +70,10 @@ extension LocationProviderStatus {
 /// All fields are optional because a coordinate can be precise and usable even
 /// when a provider cannot supply one of these presentation-only details.
 nonisolated struct CurrentLocationMetadata: Equatable, Hashable, Sendable {
-    /// City, locality, or map-item name suitable for the Your Location card.
+    /// Concise city/locality used by ordinary place labels.
     let displayName: String?
+    /// Full locality-and-area value retained for a forecast-report heading.
+    let titleName: String?
     /// Geocoder-provided localized country name, when available.
     let countryName: String?
     /// Stable ISO 3166-1 alpha-2 country identity, when available.
@@ -79,15 +81,23 @@ nonisolated struct CurrentLocationMetadata: Equatable, Hashable, Sendable {
     /// Time zone identifier attached to the resolved place, when available.
     let timeZoneIdentifier: String?
 
-    /// Current-location labels show the locality rather than a composite
-    /// locality-and-area result returned by a reverse geocoder.
+    /// Preserve the same two-name contract used by a directly tapped Map
+    /// location: ordinary labels receive the leading locality, while report
+    /// headings retain Apple's complete locality-and-area value.
     init(
         displayName: String?,
+        titleName: String? = nil,
         countryName: String?,
         isoCountryCode: String?,
         timeZoneIdentifier: String?
     ) {
-        self.displayName = Self.localityName(from: displayName)
+        let normalizedDisplayName = Self.normalizedPlaceName(displayName)
+        let normalizedTitleName = Self.normalizedPlaceName(titleName)
+            ?? normalizedDisplayName
+        self.displayName = Self.localityName(
+            from: normalizedDisplayName ?? normalizedTitleName
+        )
+        self.titleName = normalizedTitleName
         self.countryName = countryName
         self.isoCountryCode = Self.normalizedISO2Code(isoCountryCode)
         self.timeZoneIdentifier = timeZoneIdentifier
@@ -141,11 +151,21 @@ nonisolated struct CurrentLocationMetadata: Equatable, Hashable, Sendable {
     ) -> CurrentLocationMetadata {
         CurrentLocationMetadata(
             displayName: displayName ?? other.displayName,
+            titleName: titleName ?? other.titleName,
             countryName: countryName ?? other.countryName,
             isoCountryCode: isoCountryCode ?? other.isoCountryCode,
             timeZoneIdentifier:
                 timeZoneIdentifier ?? other.timeZoneIdentifier
         )
+    }
+
+    private static func normalizedPlaceName(_ value: String?) -> String? {
+        guard let value = value?.trimmingCharacters(
+            in: .whitespacesAndNewlines
+        ), !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 
     private static func normalizedISO2Code(_ code: String?) -> String? {
@@ -306,6 +326,7 @@ final class LocationProvider: NSObject, CLLocationManagerDelegate {
         )
         metadata = CurrentLocationMetadata(
             displayName: city.name,
+            titleName: city.titleName,
             countryName: city.country,
             isoCountryCode: countryISO2Code(representedBy: city),
             timeZoneIdentifier: city.timeZoneIdentifier

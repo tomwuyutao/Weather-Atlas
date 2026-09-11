@@ -116,7 +116,7 @@ struct PlaceSearchView: View {
                 if UIDevice.current.userInterfaceIdiom == .pad {
                     ToolbarItem(placement: .topBarLeading) {
                         Button("Settings", systemImage: "slider.horizontal.3") {
-                            router.presentedSheet = .settings
+                            router.isSettingsPresented = true
                         }
                         .labelStyle(.iconOnly)
                     }

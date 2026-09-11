@@ -3779,6 +3779,7 @@
       }
     },
     "Compare the cities you care about in Saved Places." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -5989,6 +5990,7 @@
       }
     },
     "Explore the Map" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6487,6 +6489,7 @@
       }
     },
     "Find Sun Near You" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -6765,6 +6768,76 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "尋找一個國家中哪些城市陽光充足。"
+          }
+        }
+      }
+    },
+    "Let’s start finding sunshine for your holidays." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lass uns Sonnenschein für deinen Urlaub finden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Let’s start finding sunshine for your holidays."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empecemos a buscar sol para tus vacaciones."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Commençons à chercher le soleil pour vos vacances."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Iniziamo a cercare il sole per le tue vacanze."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "休暇にぴったりの晴れ間を探しましょう。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "휴가를 위한 햇살을 찾아볼까요?"
+          }
+        },
+        "pt" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vamos começar a procurar sol para as suas férias."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Давайте найдём солнечную погоду для вашего отпуска."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让我们开始为你的假期寻找阳光吧。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓我們開始為你的假期尋找陽光吧。"
           }
         }
       }
@@ -7765,6 +7838,7 @@
       }
     },
     "Here are the three ways to find sun using Weather Atlas:" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -13747,6 +13821,16 @@
         }
       }
     },
+    "Page %lld of %lld" : {
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "new",
+            "value" : "Page %1$lld of %2$lld"
+          }
+        }
+      }
+    },
     "Partly Sunny" : {
       "localizations" : {
         "de" : {
@@ -16653,6 +16737,7 @@
       }
     },
     "Search new areas and discover sunny places." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -16937,6 +17022,7 @@
       }
     },
     "See nearby sunny places from Your Location." : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20067,6 +20153,7 @@
       }
     },
     "Track Your Saved Places" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
@@ -20489,6 +20576,9 @@
           }
         }
       }
+    },
+    "Tutorial progress" : {
+
     },
     "Unable to Update Places" : {
       "localizations" : {
@@ -22345,7 +22435,11 @@
         }
       }
     },
+    "Welcome to Weather Atlas" : {
+
+    },
     "Welcome!" : {
+      "extractionState" : "stale",
       "localizations" : {
         "de" : {
           "stringUnit" : {
