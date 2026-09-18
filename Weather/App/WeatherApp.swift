@@ -257,10 +257,6 @@ private struct ThemeContent: View {
     /// The device preference remains observable even while this scene applies
     /// its own capped UIKit trait for native menus and presentations.
     @State private var systemContentSizeCategory = UIApplication.shared.preferredContentSizeCategory
-    /// UIKit's stable identifier for this specific window scene. Quick-action
-    /// hand-offs use it so one iPad window cannot navigate another window.
-    @State private var sceneSessionIdentifier: String?
-
     /// Injects locale, text size, theme, tint, and contrast app-wide.
     var body: some View {
         // Resolve the custom palette after reading the system scheme and
@@ -280,8 +276,7 @@ private struct ThemeContent: View {
             router: router,
             missingDataAlerts: missingDataAlerts,
             networkConnectivity: networkConnectivity,
-            tutorial: tutorial,
-            sceneSessionIdentifier: sceneSessionIdentifier
+            tutorial: tutorial
         )
             .environment(\.locale, appLocale)
             // The app stops at its largest supported text setting, including
@@ -291,8 +286,7 @@ private struct ThemeContent: View {
             // This zero-size probe updates only the hosting window scene.
             .background {
                 SceneContentSizeCategoryOverride(
-                    category: effectiveContentSizeCategory,
-                    sceneSessionIdentifier: $sceneSessionIdentifier
+                    category: effectiveContentSizeCategory
                 )
                 .frame(width: 0, height: 0)
             }
@@ -345,17 +339,14 @@ private struct ThemeContent: View {
     }
 }
 
-/// Bridges the effective category to the one UIKit scene hosting this view.
+/// Applies the effective category to the UIKit scene hosting this view.
 private struct SceneContentSizeCategoryOverride: UIViewRepresentable {
     /// Category already clamped to the app's supported range.
     let category: UIContentSizeCategory
-    /// Session identity for the concrete scene hosting this SwiftUI hierarchy.
-    @Binding var sceneSessionIdentifier: String?
 
     func makeUIView(context: Context) -> SceneContentSizeCategoryOverrideView {
         let view = SceneContentSizeCategoryOverrideView()
         view.category = category
-        view.sceneSessionIdentifierDidChange = updateSceneSessionIdentifier
         return view
     }
 
@@ -364,13 +355,7 @@ private struct SceneContentSizeCategoryOverride: UIViewRepresentable {
         context: Context
     ) {
         uiView.category = category
-        uiView.sceneSessionIdentifierDidChange = updateSceneSessionIdentifier
         uiView.applyIfAttached()
-    }
-
-    private func updateSceneSessionIdentifier(_ identifier: String) {
-        guard sceneSessionIdentifier != identifier else { return }
-        sceneSessionIdentifier = identifier
     }
 }
 
@@ -378,13 +363,10 @@ private struct SceneContentSizeCategoryOverride: UIViewRepresentable {
 private final class SceneContentSizeCategoryOverrideView: UIView {
     /// Latest category supplied by the SwiftUI root.
     var category: UIContentSizeCategory = .large
-    /// Reports the owning scene after this otherwise invisible view attaches.
-    var sceneSessionIdentifierDidChange: ((String) -> Void)?
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
         applyIfAttached()
-        publishSceneSessionIdentifierIfAttached()
     }
 
     /// Targets only this view's scene so one iPad window cannot alter another.
@@ -393,12 +375,4 @@ private final class SceneContentSizeCategoryOverrideView: UIView {
         AppTextSizePolicy.apply(category, to: windowScene)
     }
 
-    /// Publishes only from the UIKit attachment callback, avoiding a SwiftUI
-    /// state mutation during `updateUIView`.
-    private func publishSceneSessionIdentifierIfAttached() {
-        guard let windowScene = window?.windowScene else { return }
-        sceneSessionIdentifierDidChange?(
-            windowScene.session.persistentIdentifier
-        )
-    }
 }

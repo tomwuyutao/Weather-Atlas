@@ -691,9 +691,8 @@ struct MapView: View {
                 consumePendingSunHandoff(requestID: requestID)
             }
             .onChange(of: model.locationProvider.hasUsableCoordinate) {
-                // A cold-launch Near Me shortcut can reach Map before the
-                // authorized one-shot Core Location request returns. Resume
-                // that exact hand-off as soon as its coordinate is usable.
+                // Resume a location-based Find Sun request as soon as its
+                // coordinate is usable.
                 guard model.locationProvider.hasUsableCoordinate else { return }
                 consumePendingSunHandoff(
                     requestID: router.mapSunQueryToken
@@ -919,9 +918,8 @@ struct MapView: View {
     // MARK: - Session Handoffs and Routing
 
     /// Finishes an external Find Sun request only after its required source is
-    /// ready. In particular, Home Screen quick actions are delivered during a
-    /// genuine cold launch before the app's one-shot location callback, while
-    /// an already-running process often still has an in-memory coordinate.
+    /// ready. A location-based request may need to wait for Core Location
+    /// before it can begin its search.
     private func consumePendingSunHandoff(requestID: Int) {
         guard requestID > 0,
               let handoff = router.pendingMapSunHandoff else {

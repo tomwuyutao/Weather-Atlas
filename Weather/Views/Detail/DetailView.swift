@@ -40,19 +40,6 @@ private func detailScreenColorSource(
     )
 }
 
-/// Keeps every large in-content report heading aligned across Detail, Your
-/// Location, and Saved Places while still leaving phone room for the tab bar.
-func detailStyleTitleTopPadding(
-    for size: CGSize,
-    dynamicTypeSize: DynamicTypeSize
-) -> CGFloat {
-    guard UIDevice.current.userInterfaceIdiom == .phone,
-          !dynamicTypeSize.isAccessibilitySize else {
-        return 8
-    }
-    return min(52, max(8, size.height * 0.055))
-}
-
 /// The split report needs enough room for a readable 40% summary pane and a
 /// 60% detail pane after the latter's horizontal reading insets are applied.
 /// Smaller Stage Manager and Split View windows retain the phone-style flow.
@@ -63,26 +50,6 @@ enum LandscapeReportLayout {
         UIDevice.current.userInterfaceIdiom == .pad
             && size.width > size.height
             && size.width >= minimumWidth
-    }
-}
-
-/// Landscape panes have fixed neighbouring content, so iOS 26's default
-/// scroll-edge material reads as an unwanted solid mask rather than a screen
-/// transition. Older systems do not add that effect.
-private struct LandscapePaneScrollEdgeEffectModifier: ViewModifier {
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content.scrollEdgeEffectHidden(for: .vertical)
-        } else {
-            content
-        }
-    }
-}
-
-extension View {
-    func hidesLandscapePaneScrollEdgeEffects() -> some View {
-        modifier(LandscapePaneScrollEdgeEffectModifier())
     }
 }
 
@@ -158,10 +125,10 @@ struct DetailReportContent<HeaderTitle: View, SupplementaryContent: View>: View 
             let usesLandscapeIPadSplit = LandscapeReportLayout.usesSplit(
                 for: geometry.size
             )
-            let topPadding = detailStyleTitleTopPadding(
-                for: geometry.size,
-                dynamicTypeSize: dynamicTypeSize
-            )
+            let topPadding = UIDevice.current.userInterfaceIdiom == .phone
+                && !dynamicTypeSize.isAccessibilitySize
+                ? min(52, max(8, geometry.size.height * 0.055))
+                : 8
 
             if usesLandscapeIPadSplit {
                 reportLayout(
@@ -230,20 +197,32 @@ struct DetailReportContent<HeaderTitle: View, SupplementaryContent: View>: View 
                 // large leading inset without changing either column's width.
                 .offset(x: rightColumnContentInset / 2)
 
-                ScrollView {
-                    LazyVStack(spacing: 14) {
-                        reportDetails
+                if #available(iOS 26.0, *) {
+                    ScrollView {
+                        LazyVStack(spacing: 14) {
+                            reportDetails
+                        }
+                        .padding(.horizontal, rightColumnContentInset)
+                        .frame(width: rightColumnWidth, alignment: .top)
                     }
-                    // Insets belong inside the fixed 60% column so they limit
-                    // readable line length without widening the split itself.
-                    .padding(.horizontal, rightColumnContentInset)
+                    .scrollIndicators(.hidden)
+                    .scrollEdgeEffectHidden(for: .vertical)
+                    .scrollClipDisabled()
+                    .frame(height: landscapeContentHeight)
+                    .frame(width: rightColumnWidth, alignment: .top)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 14) {
+                            reportDetails
+                        }
+                        .padding(.horizontal, rightColumnContentInset)
+                        .frame(width: rightColumnWidth, alignment: .top)
+                    }
+                    .scrollIndicators(.hidden)
+                    .scrollClipDisabled()
+                    .frame(height: landscapeContentHeight)
                     .frame(width: rightColumnWidth, alignment: .top)
                 }
-                .scrollIndicators(.hidden)
-                .hidesLandscapePaneScrollEdgeEffects()
-                .scrollClipDisabled()
-                .frame(height: landscapeContentHeight)
-                .frame(width: rightColumnWidth, alignment: .top)
             }
         } else {
             LazyVStack(spacing: 14) {
@@ -395,7 +374,138 @@ struct CurrentLocationReportContent: View {
     @AppStorage("temperatureUnit")
     private var temperatureUnitRaw = TemperatureUnit.defaultRawValue
 
-    // MARK: - Derived Report Values
+    var body: some View {
+        DetailReportContent(
+            locationName: detailTitle,
+            placeDisplayName: locationName,
+            weather: locationWeather,
+            forecast: selectedForecast,
+            selectedDate: $selectedDate,
+            dailySunnyHoursCard: SunnyHoursTimeline(
+                weather: locationWeather,
+                selectedDate: selectedDate,
+                // A fixed Home is a normal named-place forecast; physical
+                // permission/loading copy would misdescribe that scope.
+                locationStatus: model.isUsingHomeLocation
+                    ? nil
+                    : model.locationProvider.status,
+                isLoading: isLocationForecastLoading,
+                requestLocation: requestCurrentLocation,
+                openSettings: openLocationSettings,
+                retry: refreshCurrentLocation
+            ),
+            tenDaySunnyHoursTimeline: TenDaySunnyHoursTimeline(
+                city: locationWeather,
+                selectedDate: $selectedDate,
+                isLoading: isLocationTimelineLoading,
+                unavailableMessage: locationForecastUnavailableMessage,
+                retry: nil
+            ),
+            temperatureUnit: temperatureUnit,
+            maximumContentWidth: AppContentLayout.standardMaximumWidth,
+            showsTimeZoneFootnote: true,
+            sectionOrder: detailSectionOrder,
+            onHeaderVisibilityChange: { isVisible in
+                guard showsLargeTitle != isVisible else { return }
+                showsLargeTitle = isVisible
+            },
+            headerTitle: {
+                placeActionsMenu
+            }
+        ) {
+            NearbySunnyPlacesSection(
+                model: model,
+                selectedDate: selectedDate,
+                reference: .currentLocation(
+                    distanceReferenceName: model.isUsingHomeLocation
+                        ? navigationTitle
+                        : nil,
+                    requiresPhysicalLocation: !model.isUsingHomeLocation
+                ),
+                requestLocation: requestCurrentLocation,
+                openSettings: openLocationSettings,
+                viewOnMap: {
+                    router.showMap(
+                        findingSunIn: defaultLocationFindSunScope,
+                        on: selectedDate
+                    )
+                }
+            )
+        }
+        .scrollIndicators(.hidden)
+        .weatherConditionScreenBackground(
+            for: screenColorSource.tone,
+            symbolName: screenColorSource.symbolName
+        )
+        .navigationTitle(navigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $presentedSheet) { sheet in
+            switch sheet {
+            case .customize:
+                CustomizeDetail()
+            }
+        }
+        .toolbar {
+            // Keep the toolbar preference tree stable while scrolling. Adding
+            // and removing the principal item in response to header visibility
+            // can feed layout back into visibility on iPad when report content
+            // changes height (for example, when nearby results arrive).
+            ToolbarItem(placement: .principal) {
+                Text(navigationTitle)
+                    .lineLimit(1)
+                    .opacity(showsLargeTitle ? 0 : 1)
+            }
+
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Settings", systemImage: "slider.horizontal.3") {
+                    router.isSettingsPresented = true
+                }
+                .labelStyle(.iconOnly)
+            }
+
+            ToolbarItem(placement: .topBarTrailing) {
+                TopForecastDateSwitcher(
+                    selection: $selectedDate,
+                    availableDates: locationForecastDates
+                )
+            }
+        }
+        .reportingMissingData(
+            metadataMissingDataReport,
+            recoveryKey: "location-metadata:\(metadataRecoveryKey)",
+            retrying: {
+                await model.locationProvider.retryMetadataResolution()
+            }
+        )
+        // A legacy current-location row can have been saved before the more
+        // precise locality arrived. Repair only that exact transient UUID;
+        // ordinary saved catalog cities are not candidates for this migration.
+        .task(id: locationCity) {
+            do {
+                try model.synchronizeSavedCurrentLocationIdentity()
+            } catch {
+                mutationError = PlaceDetailMutationError(
+                    message: localizedPlacesErrorDescription(
+                        error,
+                        locale: locale
+                    )
+                )
+            }
+        }
+        .alert(
+            "Places",
+            isPresented: showsMutationError,
+            presenting: mutationError
+        ) { _ in
+            Button("OK") {
+                mutationError = nil
+            }
+        } message: { error in
+            Text(error.message)
+        }
+    }
+
+    // MARK: - Report Data
 
     private var locationWeather: CityWeather? {
         model.locationWeather
@@ -548,139 +658,6 @@ struct CurrentLocationReportContent: View {
             weather: locationWeather,
             forecast: selectedForecast
         )
-    }
-
-    // MARK: - Presentation
-
-    var body: some View {
-        DetailReportContent(
-            locationName: detailTitle,
-            placeDisplayName: locationName,
-            weather: locationWeather,
-            forecast: selectedForecast,
-            selectedDate: $selectedDate,
-            dailySunnyHoursCard: SunnyHoursTimeline(
-                weather: locationWeather,
-                selectedDate: selectedDate,
-                // A fixed Home is a normal named-place forecast; physical
-                // permission/loading copy would misdescribe that scope.
-                locationStatus: model.isUsingHomeLocation
-                    ? nil
-                    : model.locationProvider.status,
-                isLoading: isLocationForecastLoading,
-                requestLocation: requestCurrentLocation,
-                openSettings: openLocationSettings,
-                retry: refreshCurrentLocation
-            ),
-            tenDaySunnyHoursTimeline: TenDaySunnyHoursTimeline(
-                city: locationWeather,
-                selectedDate: $selectedDate,
-                isLoading: isLocationTimelineLoading,
-                unavailableMessage: locationForecastUnavailableMessage,
-                retry: nil
-            ),
-            temperatureUnit: temperatureUnit,
-            maximumContentWidth: AppContentLayout.standardMaximumWidth,
-            showsTimeZoneFootnote: true,
-            sectionOrder: detailSectionOrder,
-            onHeaderVisibilityChange: { isVisible in
-                guard showsLargeTitle != isVisible else { return }
-                showsLargeTitle = isVisible
-            },
-            headerTitle: {
-                placeActionsMenu
-            }
-        ) {
-            NearbySunnyPlacesSection(
-                model: model,
-                selectedDate: selectedDate,
-                reference: .currentLocation(
-                    distanceReferenceName: model.isUsingHomeLocation
-                        ? navigationTitle
-                        : nil,
-                    requiresPhysicalLocation: !model.isUsingHomeLocation
-                ),
-                requestLocation: requestCurrentLocation,
-                openSettings: openLocationSettings,
-                viewOnMap: {
-                    router.showMap(
-                        findingSunIn: defaultLocationFindSunScope,
-                        on: selectedDate
-                    )
-                }
-            )
-        }
-        .scrollIndicators(.hidden)
-        .weatherConditionScreenBackground(
-            for: screenColorSource.tone,
-            symbolName: screenColorSource.symbolName
-        )
-        .navigationTitle(navigationTitle)
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $presentedSheet) { sheet in
-            switch sheet {
-            case .customize:
-                CustomizeDetail()
-            }
-        }
-        .toolbar {
-            // Keep the toolbar preference tree stable while scrolling. Adding
-            // and removing the principal item in response to header visibility
-            // can feed layout back into visibility on iPad when report content
-            // changes height (for example, when nearby results arrive).
-            ToolbarItem(placement: .principal) {
-                Text(navigationTitle)
-                    .lineLimit(1)
-                    .opacity(showsLargeTitle ? 0 : 1)
-            }
-
-            ToolbarItem(placement: .topBarLeading) {
-                Button("Settings", systemImage: "slider.horizontal.3") {
-                    router.isSettingsPresented = true
-                }
-                .labelStyle(.iconOnly)
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
-                TopForecastDateSwitcher(
-                    selection: $selectedDate,
-                    availableDates: locationForecastDates
-                )
-            }
-        }
-        .reportingMissingData(
-            metadataMissingDataReport,
-            recoveryKey: "location-metadata:\(metadataRecoveryKey)",
-            retrying: {
-                await model.locationProvider.retryMetadataResolution()
-            }
-        )
-        // A legacy current-location row can have been saved before the more
-        // precise locality arrived. Repair only that exact transient UUID;
-        // ordinary saved catalog cities are not candidates for this migration.
-        .task(id: locationCity) {
-            do {
-                try model.synchronizeSavedCurrentLocationIdentity()
-            } catch {
-                mutationError = PlaceDetailMutationError(
-                    message: localizedPlacesErrorDescription(
-                        error,
-                        locale: locale
-                    )
-                )
-            }
-        }
-        .alert(
-            "Places",
-            isPresented: showsMutationError,
-            presenting: mutationError
-        ) { _ in
-            Button("OK") {
-                mutationError = nil
-            }
-        } message: { error in
-            Text(error.message)
-        }
     }
 
     // MARK: - Place Actions
@@ -904,119 +881,81 @@ struct DetailView: View {
         _selectedDate = selectedDate
     }
 
-    // MARK: - Live Model Resolution
-
-    private var savedPlace: SavedPlace? {
-        model.placesStore.place(id: placeID)
-    }
-
-    private var city: City? {
-        model.city(for: placeID)
-    }
-
-    private var cityWeather: CityWeather? {
-        model.weatherStore.weather(for: placeID)
-    }
-
-    private var forecast: DailyForecast? {
-        cityWeather?.forecastIfAvailable(
+    var body: some View {
+        let savedPlace = model.placesStore.place(id: placeID)
+        let city = model.city(for: placeID)
+        let cityWeather = model.weatherStore.weather(for: placeID)
+        let forecast = cityWeather?.forecastIfAvailable(
             on: selectedDate,
             selectionCalendar: model.forecastCalendar
         )
-    }
-
-    /// Detail keeps the app-wide selector's established horizon while removing
-    /// any provider gaps inside it. This avoids manufacturing missing forecast
-    /// days without changing how the shared calendar handles remote civil days.
-    private var detailForecastDates: [Date] {
-        let calendar = model.forecastCalendar
-        let fallbackDates = ForecastDateHorizon.dates(in: calendar)
-        guard let cityWeather else { return fallbackDates }
-
-        let horizon = Set(fallbackDates.map(calendar.startOfDay(for:)))
-        let actualDates = Set(cityWeather.dailyForecasts.compactMap { forecast in
-            cityWeather.selectionDate(
-                for: forecast,
-                selectionCalendar: calendar
-            )
-        }.map(calendar.startOfDay(for:)))
-        return actualDates.filter(horizon.contains).sorted()
-    }
-
-    private var displayName: String {
-        placeNames.displayName
-    }
-
-    /// A fuller reverse-geocoded locality belongs only in the report's title.
-    /// A custom saved-place name still takes precedence when the person chose
-    /// one explicitly.
-    private var detailTitle: String {
-        placeNames.title
-    }
-
-    private var placeNames: PlaceDetailNames {
-        PlaceDetailNames(
+        let placeNames = PlaceDetailNames(
             city: city,
             savedPlace: savedPlace,
             locale: locale
         )
-    }
-
-    private var temperatureUnit: TemperatureUnit {
-        TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault
-    }
-
-    private var detailSectionOrder: [DetailReportSection] {
-        DetailReportSection.order(from: storedDetailSectionOrder)
-    }
-
-    private var isForecastLoading: Bool {
-        guard let city else { return false }
-        guard !networkConnectivity.isOffline else { return false }
-        return model.weatherStore.isLoading(city.id)
-            || (cityWeather == nil
-                && model.weatherStore.failuresByID[city.id] == nil)
-    }
-
-    private var hasForecastRequestFailure: Bool {
-        guard let city else { return false }
-        return model.weatherStore.failuresByID[city.id] != nil
-    }
-
-    private var forecastUnavailableMessage: String? {
-        if cityWeather != nil, forecast == nil {
-            return localizedString(
-                "Forecast data is unavailable for the selected date.",
-                locale: locale
-            )
-        }
-        if cityWeather == nil, networkConnectivity.isOffline {
-            return localizedString(
-                "Weather is temporarily unavailable.",
-                locale: locale
-            )
-        }
-        guard let city,
-              let issue = model.weatherStore.failuresByID[city.id]?.issue else {
-            return nil
-        }
-        return weatherDataIssueMessage(
-            issue,
-            cityName: displayName,
-            locale: locale
+        let displayName = placeNames.displayName
+        let detailTitle = placeNames.title
+        let temperatureUnit = TemperatureUnit(
+            rawValue: temperatureUnitRaw
+        ) ?? .systemDefault
+        let detailSectionOrder = DetailReportSection.order(
+            from: storedDetailSectionOrder
         )
-    }
+        let detailForecastDates: [Date] = {
+            let calendar = model.forecastCalendar
+            let fallbackDates = ForecastDateHorizon.dates(in: calendar)
+            guard let cityWeather else { return fallbackDates }
 
-    private var screenColorSource: (
-        tone: WeatherIconTone?,
-        symbolName: String?
-    ) {
-        detailScreenColorSource(weather: cityWeather, forecast: forecast)
-    }
+            let horizon = Set(fallbackDates.map(calendar.startOfDay(for:)))
+            let actualDates = Set(cityWeather.dailyForecasts.compactMap { forecast in
+                cityWeather.selectionDate(
+                    for: forecast,
+                    selectionCalendar: calendar
+                )
+            }.map(calendar.startOfDay(for:)))
+            return actualDates.filter(horizon.contains).sorted()
+        }()
+        let isForecastLoading: Bool = {
+            guard let city,
+                  !networkConnectivity.isOffline else {
+                return false
+            }
+            return model.weatherStore.isLoading(city.id)
+                || (cityWeather == nil
+                    && model.weatherStore.failuresByID[city.id] == nil)
+        }()
+        let hasForecastRequestFailure = city.map {
+            model.weatherStore.failuresByID[$0.id] != nil
+        } ?? false
+        let forecastUnavailableMessage: String? = {
+            if cityWeather != nil, forecast == nil {
+                return localizedString(
+                    "Forecast data is unavailable for the selected date.",
+                    locale: locale
+                )
+            }
+            if cityWeather == nil, networkConnectivity.isOffline {
+                return localizedString(
+                    "Weather is temporarily unavailable.",
+                    locale: locale
+                )
+            }
+            guard let city,
+                  let issue = model.weatherStore.failuresByID[city.id]?.issue else {
+                return nil
+            }
+            return weatherDataIssueMessage(
+                issue,
+                cityName: displayName,
+                locale: locale
+            )
+        }()
+        let screenColorSource = detailScreenColorSource(
+            weather: cityWeather,
+            forecast: forecast
+        )
 
-    // MARK: - Presentation and Loading
-
-    var body: some View {
         // The complete report remains mounted through loading, missing-day,
         // and request-failure states. Individual cards own their placeholders
         // and recovery copy, so the screen never collapses into a standalone
@@ -1040,7 +979,7 @@ struct DetailView: View {
                 isLoading: isForecastLoading,
                 unavailableMessage: forecastUnavailableMessage,
                 retry: hasForecastRequestFailure
-                    ? { retryForecast() }
+                    ? { retryForecast(for: city) }
                     : nil
             ),
             temperatureUnit: temperatureUnit,
@@ -1052,7 +991,11 @@ struct DetailView: View {
                 showsLargeTitle = isVisible
             },
             headerTitle: {
-                placeActionsMenu
+                placeActionsMenu(
+                    title: detailTitle,
+                    savedPlace: savedPlace,
+                    city: city
+                )
             }
         ) {
             NearbySunnyPlacesSection(
@@ -1182,7 +1125,7 @@ struct DetailView: View {
 
     // MARK: - Forecast Recovery
 
-    private func retryForecast() {
+    private func retryForecast(for city: City?) {
         guard let city else { return }
         Task {
             await model.weatherStore.refresh(city: city)
@@ -1191,14 +1134,18 @@ struct DetailView: View {
 
     // MARK: - Place Actions
 
-    private var placeActionsMenu: some View {
+    private func placeActionsMenu(
+        title: String,
+        savedPlace: SavedPlace?,
+        city: City?
+    ) -> some View {
         PlaceDetailActionsMenu(
-            title: detailTitle,
+            title: title,
             isSaved: savedPlace != nil,
             canUsePlace: city != nil,
-            viewOnMap: viewOnMap,
-            savePlace: savePlace,
-            removePlace: deleteSavedPlace,
+            viewOnMap: { viewOnMap(city: city, isSaved: savedPlace != nil) },
+            savePlace: { savePlace(city: city) },
+            removePlace: { deleteSavedPlace(savedPlace: savedPlace) },
             customizeDetailView: {
                 presentedSheet = .customize
             }
@@ -1218,7 +1165,7 @@ struct DetailView: View {
         )
     }
 
-    private func savePlace() {
+    private func savePlace(city: City?) {
         // The store owns validation and persistence. The view only translates
         // an error into localized, user-facing alert text.
         guard let city else { return }
@@ -1231,7 +1178,7 @@ struct DetailView: View {
         }
     }
 
-    private func deleteSavedPlace() {
+    private func deleteSavedPlace(savedPlace: SavedPlace?) {
         guard let savedPlace else { return }
         // The report may have been opened from the saved-place manager, whose
         // city is otherwise no longer discoverable once its persistence row is
@@ -1248,9 +1195,9 @@ struct DetailView: View {
         }
     }
 
-    private func viewOnMap() {
+    private func viewOnMap(city: City?, isSaved: Bool) {
         guard let city else { return }
-        if savedPlace != nil {
+        if isSaved {
             router.showMap(placeID: placeID)
         } else {
             router.showMap(previewing: city)
@@ -1339,7 +1286,7 @@ enum DetailStyleReportTitleStyle {
     /// Place names begin at the prominent report size, step down only as far
     /// as the Saved Places title size, and then wrap at that same minimum size.
     case prominent
-    /// Saved Places mode names always use the compact report title size.
+    /// Comparison mode names use the compact report title size.
     case compact
 }
 

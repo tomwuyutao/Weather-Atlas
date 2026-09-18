@@ -102,6 +102,18 @@ struct SunnyHoursTimeline: View {
         )
     }
 
+    /// Uses a quiet neutral tinted toward the selected report condition so
+    /// inactive segments belong to the same colorful Detail canvas.
+    private var noSunTimelineColor: Color {
+        let displayedCondition = selectedForecast.flatMap {
+            weather?.displayedCondition(for: $0)
+        }
+        return theme.colors.weatherNoSunTimelineColor(
+            for: displayedCondition?.condition?.iconTone,
+            symbolName: displayedCondition?.symbolName
+        )
+    }
+
     // MARK: - Presentation and Availability States
 
     var body: some View {
@@ -202,7 +214,8 @@ struct SunnyHoursTimeline: View {
         return DailySunnyHoursTrack(
             data: data,
             forecastDate: forecast.date,
-            timeZone: weather.timeZone
+            timeZone: weather.timeZone,
+            noSunColor: noSunTimelineColor
         )
     }
 
@@ -293,6 +306,7 @@ private struct DailySunnyHoursTrack: View {
     /// instant for deciding whether this remote forecast is Today.
     let forecastDate: Date
     let timeZone: TimeZone
+    let noSunColor: Color
 
     @Environment(\.appTheme) private var theme
     @Environment(\.calendar) private var calendar
@@ -311,11 +325,6 @@ private struct DailySunnyHoursTrack: View {
                 condition: forecast.condition
             )
         }
-    }
-
-    /// Uses the shared warm neutral so daily and 10-day cloudy marks match.
-    private var noSunTimelineColor: Color {
-        theme.colors.noSunTimelineFill
     }
 
     var body: some View {
@@ -337,7 +346,7 @@ private struct DailySunnyHoursTrack: View {
                 partlySunny: theme.colors.dotPartlyCloudy,
                 rain: theme.colors.dotRain,
                 drizzle: theme.colors.dotDrizzle,
-                noSun: noSunTimelineColor
+                noSun: noSunColor
             )
         )
     }

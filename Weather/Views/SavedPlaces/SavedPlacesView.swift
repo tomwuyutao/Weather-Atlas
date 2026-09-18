@@ -518,10 +518,10 @@ struct PlacesComparisonView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let topPadding = detailStyleTitleTopPadding(
-                for: geometry.size,
-                dynamicTypeSize: dynamicTypeSize
-            )
+            let topPadding = UIDevice.current.userInterfaceIdiom == .phone
+                && !dynamicTypeSize.isAccessibilitySize
+                ? min(52, max(8, geometry.size.height * 0.055))
+                : 8
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -708,9 +708,7 @@ struct PlacesComparisonView: View {
                 } label: {
                     DetailStyleReportMenuLabel(
                         title: selectedMode.displayName(locale: locale),
-                        style: source.isSavedPlaces
-                            ? .compact
-                            : .prominent
+                        style: .compact
                     )
                 }
                 .buttonStyle(.plain)

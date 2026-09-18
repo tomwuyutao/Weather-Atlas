@@ -95,7 +95,10 @@ struct MapCard<Content: View>: View {
 
     @ViewBuilder
     var body: some View {
-        let shape = MapCardShape(cornerRadius: size.cornerRadius)
+        let shape = RoundedRectangle(
+            cornerRadius: size.cornerRadius,
+            style: .continuous
+        )
 
         if reduceTransparency {
             glassSurface
@@ -168,36 +171,6 @@ private extension View {
         padding(.horizontal, horizontalPadding)
             .padding(.bottom, bottomPadding)
             .frame(maxWidth: maximumWidth, alignment: .bottom)
-    }
-}
-
-/// One animatable outline interpolates from a compact capsule to the large
-/// continuous rounded rectangle without replacing the glass material.
-private struct MapCardShape: InsettableShape {
-    var cornerRadius: CGFloat
-    private var insetAmount: CGFloat = 0
-
-    init(cornerRadius: CGFloat) {
-        self.cornerRadius = cornerRadius
-    }
-
-    var animatableData: CGFloat {
-        get { cornerRadius }
-        set { cornerRadius = newValue }
-    }
-
-    func path(in rect: CGRect) -> Path {
-        let insetRect = rect.insetBy(dx: insetAmount, dy: insetAmount)
-        return RoundedRectangle(
-            cornerRadius: max(0, cornerRadius - insetAmount),
-            style: .continuous
-        ).path(in: insetRect)
-    }
-
-    func inset(by amount: CGFloat) -> MapCardShape {
-        var copy = self
-        copy.insetAmount += amount
-        return copy
     }
 }
 

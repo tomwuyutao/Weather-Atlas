@@ -94,9 +94,23 @@ struct TenDaySunnyHoursTimeline: View {
         SunnyHoursChartBounds.merged(rows.map(\.bounds))
     }
 
-    /// Uses the shared warm neutral so daily and 10-day cloudy marks match.
+    private var selectedForecast: DailyForecast? {
+        city?.forecastIfAvailable(
+            on: selectedDate,
+            selectionCalendar: calendar
+        )
+    }
+
+    /// Uses a quiet neutral tinted toward the selected report condition so
+    /// inactive segments belong to the same colorful Detail canvas.
     private var noSunTimelineColor: Color {
-        theme.colors.noSunTimelineFill
+        let displayedCondition = selectedForecast.flatMap {
+            city?.displayedCondition(for: $0)
+        }
+        return theme.colors.weatherNoSunTimelineColor(
+            for: displayedCondition?.condition?.iconTone,
+            symbolName: displayedCondition?.symbolName
+        )
     }
 
     // MARK: - Presentation

@@ -134,6 +134,8 @@ enum WeatherPreviewFixtures {
 struct DetailViewRoutePreview: View {
     @State private var selectedDate = WeatherPreviewFixtures.selectedDate
     @State private var model = WeatherPreviewFixtures.model()
+    @State private var networkConnectivity = NetworkConnectivity()
+    @State private var missingDataAlerts = MissingDataAlertCenter()
 
     var body: some View {
         NavigationStack {
@@ -145,6 +147,8 @@ struct DetailViewRoutePreview: View {
             )
         }
         .environment(\.appTheme, .shared)
+        .environment(networkConnectivity)
+        .environment(missingDataAlerts)
     }
 }
 
@@ -152,6 +156,8 @@ struct MapViewRoutePreview: View {
     @State private var selectedDate = WeatherPreviewFixtures.selectedDate
     @State private var model = WeatherPreviewFixtures.model()
     @State private var router = WeatherPreviewFixtures.router()
+    @State private var networkConnectivity = NetworkConnectivity()
+    @State private var missingDataAlerts = MissingDataAlertCenter()
 
     var body: some View {
         NavigationStack {
@@ -162,7 +168,8 @@ struct MapViewRoutePreview: View {
             )
         }
         .environment(\.appTheme, .shared)
-        .environment(MissingDataAlertCenter())
+        .environment(networkConnectivity)
+        .environment(missingDataAlerts)
     }
 }
 
@@ -170,6 +177,8 @@ struct SavedPlacesViewRoutePreview: View {
     @State private var selectedDate = WeatherPreviewFixtures.selectedDate
     @State private var model = WeatherPreviewFixtures.model()
     @State private var router = WeatherPreviewFixtures.router()
+    @State private var networkConnectivity = NetworkConnectivity()
+    @State private var missingDataAlerts = MissingDataAlertCenter()
 
     var body: some View {
         NavigationStack {
@@ -180,12 +189,16 @@ struct SavedPlacesViewRoutePreview: View {
             )
         }
         .environment(\.appTheme, .shared)
+        .environment(networkConnectivity)
+        .environment(missingDataAlerts)
     }
 }
 
 struct ManageSavedPlacesRoutePreview: View {
     @State private var model = WeatherPreviewFixtures.model()
     @State private var router = WeatherPreviewFixtures.router()
+    @State private var networkConnectivity = NetworkConnectivity()
+    @State private var missingDataAlerts = MissingDataAlertCenter()
 
     var body: some View {
         NavigationStack {
@@ -195,6 +208,8 @@ struct ManageSavedPlacesRoutePreview: View {
             )
         }
         .environment(\.appTheme, .shared)
+        .environment(networkConnectivity)
+        .environment(missingDataAlerts)
     }
 }
 

@@ -20,9 +20,6 @@ struct ContentView: View {
     let networkConnectivity: NetworkConnectivity
     /// App-level state for first-run gating, replay, and contextual tips.
     let tutorial: TutorialPresentationState
-    /// Stable identity of this window scene for scene-targeted quick actions.
-    let sceneSessionIdentifier: String?
-
     // MARK: - Environment and View-Owned State
 
     @Environment(\.locale) private var locale
@@ -165,9 +162,6 @@ struct ContentView: View {
                 handleConnectivityStatusChange
             )
             .onChange(of: scenePhase, handleScenePhaseChange)
-            .onChange(of: sceneSessionIdentifier, initial: true) {
-                handlePendingShortcut()
-            }
             .onChange(of: router.selectedTab, initial: true) { _, newTab in
                 tutorial.presentFeatureTipIfNeeded(
                     for: newTab,
@@ -189,9 +183,10 @@ struct ContentView: View {
                     for: .weatherOpenMainViewShortcut
                 )
             ) { notification in
-                handlePendingShortcut(
-                    targetSceneIdentifier: notification.object as? String
-                )
+                guard let rawValue = notification.object as? String,
+                      let destination = HomeScreenShortcutDestination.decode(rawValue)
+                else { return }
+                handleShortcut(destination)
             }
     }
 
@@ -201,7 +196,7 @@ struct ContentView: View {
             // tab therefore restores its own back stack rather than another
             // tab's screen.
             Tab(
-                "Your Location",
+                "Location",
                 systemImage: "location.fill",
                 value: AppTab.yourLocation
             ) {
@@ -417,14 +412,13 @@ struct ContentView: View {
         }
     }
 
-    /// On foregrounding, consumes deferred navigation and refreshes only data
-    /// that may have become stale while the process was inactive.
+    /// On foregrounding, refreshes only data that may have become stale while
+    /// the process was inactive.
     private func handleScenePhaseChange(
         _: ScenePhase,
         _ newPhase: ScenePhase
     ) {
         guard newPhase == .active else { return }
-        handlePendingShortcut()
         model.locationProvider.requestLocationIfAuthorized(
             preferredLocale: locale
         )
@@ -598,7 +592,6 @@ struct ContentView: View {
         model.resetLocation()
         missingDataAlerts.reset()
         starterSeedGeneration &+= 1
-        AppDelegate.clearPendingHomeScreenShortcut()
         AppPreferences.reset()
         theme.style = .automatic
         tutorial.resetForFullAppReset()
@@ -612,17 +605,6 @@ struct ContentView: View {
 
     // MARK: - External Navigation
 
-    /// A manually selected Home is a named place, not the device-relative
-    /// “Near Me” scope. Both use the same nearby-search policy; only their
-    /// identity and user-facing result copy differ.
-    private var defaultLocationFindSunScope: MapSunQueryScope {
-        if model.isUsingHomeLocation,
-           let homeCity = model.currentLocationPlaceCity ?? model.homeLocation {
-            return .nearPlace(homeCity)
-        }
-        return .nearMe
-    }
-
     private func completeTutorial() {
         tutorial.complete()
 
@@ -635,43 +617,16 @@ struct ContentView: View {
         handleExternalURL(pendingExternalURL)
     }
 
-    private func handlePendingShortcut(
-        targetSceneIdentifier: String? = nil
-    ) {
-        guard scenePhase == .active,
-              let sceneSessionIdentifier,
-              targetSceneIdentifier == nil
-                || targetSceneIdentifier == sceneSessionIdentifier,
-              let destination = AppDelegate.takePendingHomeScreenShortcut(
-                  for: sceneSessionIdentifier,
-                  includeGlobalFallback: targetSceneIdentifier == nil
-              ) else {
-            return
-        }
-        handleShortcut(destination)
-    }
-
     /// Maps the current Home Screen quick actions into the existing tab and
-    /// Find Sun routes. A legacy location value remains decode-only so old
-    /// SpringBoard entries never lead to a dead end after an app update.
+    /// Find Sun routes through the existing tab and Map workflows.
     private func handleShortcut(
         _ destination: HomeScreenShortcutDestination
     ) {
         router.isSettingsPresented = false
-        // A newer quick action always supersedes a deferred Near Me hand-off.
-        // Map/Places actions do not start another search, so they must cancel
-        // the old hand-off explicitly before changing destinations.
-        router.cancelPendingMapSunHandoff()
 
         switch destination {
         case .findSunNearMe:
-            router.showMap(
-                findingSunIn: defaultLocationFindSunScope,
-                on: selectedDate
-            )
-        case .legacyHome:
-            router.yourLocationPath = []
-            router.selectedTab = .yourLocation
+            router.showMap()
         case .map:
             router.showMap()
         case .places:
@@ -684,7 +639,7 @@ struct ContentView: View {
     /// forecast even when an old widget still uses the legacy `list` host.
     private func receiveExternalURL(_ url: URL) {
         guard url.scheme == "weatheratlas",
-              ["place", "places", "list", "home", "map"]
+              ["place", "places", "list", "map"]
                 .contains(url.host ?? "") else {
             return
         }
@@ -710,9 +665,6 @@ struct ContentView: View {
         case "places":
             router.showSavedPlacesRoot()
             showWidgetIssue(url)
-        case "home":
-            router.yourLocationPath = []
-            router.selectedTab = .yourLocation
         case "map":
             handleShortcut(.map)
         default:

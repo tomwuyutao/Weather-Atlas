@@ -132,15 +132,6 @@ final class AppNavigation {
         selectedTab = .map
     }
 
-    /// Cancels a Find Sun hand-off that Map is still holding while it waits for
-    /// a cold-launch location. Advancing the shared generation also tells the
-    /// mounted Map to clear its local loading/query presentation.
-    func cancelPendingMapSunHandoff() {
-        guard pendingMapSunHandoff != nil else { return }
-        pendingMapSunHandoff = nil
-        mapHandoffToken &+= 1
-    }
-
     /// Clears routing values which belong to the previous Map session. The
     /// caller establishes its replacement target immediately afterward and
     /// Map observes the generation to cancel any in-flight presentation state.

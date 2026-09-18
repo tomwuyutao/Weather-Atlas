@@ -505,9 +505,12 @@ struct ThemeColors {
     /// A quiet inactive fill for sunny-hour timelines. It follows the same
     /// condition-derived canvas as the report, but stays lighter so sunny and
     /// rainy intervals remain the chart's primary signals.
-    func weatherNoSunTimelineColor(for tone: WeatherIconTone?) -> Color {
+    func weatherNoSunTimelineColor(
+        for tone: WeatherIconTone?,
+        symbolName: String? = nil
+    ) -> Color {
         guard let tone else { return settingsRowFill }
-        return weatherIconColor(for: tone).interpolated(
+        return weatherIconColor(for: tone, symbolName: symbolName).interpolated(
             with: background,
             by: 0.86
         )
@@ -750,30 +753,10 @@ private struct GlassCardModifier<Shape: InsettableShape>: ViewModifier {
                 // Interactive glass responds to touch/hover; static report cards
                 // use the calmer regular style to avoid implying a button.
                 content
-                    .background(
-                        theme.colors.glassFill.opacity(colorScheme == .dark ? 0.18 : 0.22),
-                        in: shape
-                    )
                     .glassEffect(.regular.interactive(), in: shape)
-                    .overlay(
-                        shape.stroke(
-                            theme.colors.primaryText.opacity(0.16),
-                            lineWidth: 0.6
-                        )
-                    )
             } else {
                 content
-                    .background(
-                        theme.colors.glassFill.opacity(colorScheme == .dark ? 0.18 : 0.22),
-                        in: shape
-                    )
                     .glassEffect(.regular, in: shape)
-                    .overlay(
-                        shape.stroke(
-                            theme.colors.primaryText.opacity(0.16),
-                            lineWidth: 0.6
-                        )
-                    )
             }
         } else {
             // `.ultraThinMaterial` is the closest broadly available native
@@ -783,12 +766,6 @@ private struct GlassCardModifier<Shape: InsettableShape>: ViewModifier {
                 .background(
                     theme.colors.glassFill.opacity(colorScheme == .dark ? 0.30 : 0.38),
                     in: shape
-                )
-                .overlay(
-                    shape.stroke(
-                        theme.colors.primaryText.opacity(0.16),
-                        lineWidth: 0.6
-                    )
                 )
         }
     }

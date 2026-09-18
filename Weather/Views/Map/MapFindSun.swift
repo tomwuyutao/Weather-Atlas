@@ -22,8 +22,7 @@ extension MapView {
         preservingCandidateContext: Bool = false
     ) {
         // Any explicit Map search supersedes a location hand-off that may still
-        // be waiting for its cold-launch coordinate. The hand-off path clears
-        // this value itself immediately before it calls back into this method.
+        // be waiting for a usable coordinate.
         router.pendingMapSunHandoff = nil
 
         switch scope {
