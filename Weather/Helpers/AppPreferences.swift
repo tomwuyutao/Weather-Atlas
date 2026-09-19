@@ -45,9 +45,6 @@ enum AppPreferences {
       SavedPlacesViewMode.defaultRawValue,
       forKey: SavedPlacesViewMode.mapResultsStorageKey
     )
-    defaults.removeObject(forKey: "savedPlacesDashboardSectionOrder")
-    defaults.removeObject(forKey: "savedPlacesSelectedDayCardOrder")
-    defaults.removeObject(forKey: "savedPlacesPlanAheadCardOrder")
     defaults.removeObject(forKey: "savedPlaceNameAutoTranslationEnabled")
   }
 }

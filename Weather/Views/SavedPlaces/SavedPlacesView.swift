@@ -523,10 +523,10 @@ struct PlacesComparisonView: View {
             maxWidth: horizontalSizeClass == .regular
               && geometry.size.width > geometry.size.height
               ? min(
-                AppContentLayout.standardMaximumWidth,
-                AppContentLayout.landscapeIPadMaximumWidth
+                IPadLayout.standardMaximumWidth,
+                IPadLayout.landscapeMaximumWidth
               )
-              : AppContentLayout.standardMaximumWidth
+              : IPadLayout.standardMaximumWidth
           )
           .frame(maxWidth: .infinity)
           // Target the padded container rather than the title so a

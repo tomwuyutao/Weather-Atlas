@@ -63,7 +63,8 @@
 		5908967630063DF500EB20E0 /* Exceptions for "Weather" folder in "WeatherWidgets" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
-				Helpers/AppTheme.swift,
+				Helpers/AppPalette.swift,
+				Helpers/ThemeColors.swift,
 				Models/SunnyHoursCalculation.swift,
 				Models/WeatherCondition.swift,
 				Models/WeatherDataValidation.swift,

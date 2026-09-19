@@ -90,7 +90,7 @@ struct DetailReportContent<HeaderTitle: View, SupplementaryContent: View>: View 
     dailySunnyHoursCard: SunnyHoursTimeline,
     tenDaySunnyHoursTimeline: TenDaySunnyHoursTimeline,
     temperatureUnit: TemperatureUnit,
-    maximumContentWidth: CGFloat = AppContentLayout.standardMaximumWidth,
+    maximumContentWidth: CGFloat = IPadLayout.standardMaximumWidth,
     showsTimeZoneFootnote: Bool,
     sectionOrder: [DetailReportSection],
     onHeaderVisibilityChange: @escaping (Bool) -> Void = { _ in },
@@ -155,7 +155,7 @@ struct DetailReportContent<HeaderTitle: View, SupplementaryContent: View>: View 
               && geometry.size.width > geometry.size.height
               ? min(
                 maximumContentWidth,
-                AppContentLayout.landscapeIPadMaximumWidth
+                IPadLayout.landscapeMaximumWidth
               )
               : maximumContentWidth
           )
@@ -440,7 +440,7 @@ struct CurrentLocationReportContent: View {
         retry: nil
       ),
       temperatureUnit: (TemperatureUnit(rawValue: temperatureUnitRaw) ?? .systemDefault),
-      maximumContentWidth: AppContentLayout.standardMaximumWidth,
+      maximumContentWidth: IPadLayout.standardMaximumWidth,
       showsTimeZoneFootnote: true,
       sectionOrder: DetailReportSection.order(
         from: storedDetailSectionOrder
@@ -991,7 +991,7 @@ struct DetailView: View {
           : nil
       ),
       temperatureUnit: temperatureUnit,
-      maximumContentWidth: AppContentLayout.standardMaximumWidth,
+      maximumContentWidth: IPadLayout.standardMaximumWidth,
       showsTimeZoneFootnote: true,
       sectionOrder: detailSectionOrder,
       onHeaderVisibilityChange: { isVisible in

@@ -387,7 +387,7 @@ private struct TutorialStageLayout<Actions: View>: View {
       let columnWidth =
         horizontalSizeClass == .regular
           && geometry.size.width > geometry.size.height
-        ? min(480, AppContentLayout.landscapeIPadMaximumWidth)
+        ? min(480, IPadLayout.landscapeMaximumWidth)
         : 480
       // Keep the heading at the same height on both pages, reserving
       // room for the longer location copy and its two bottom actions.
